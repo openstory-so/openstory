@@ -170,6 +170,8 @@ Grouped the way an API/MCP layer would wrap them. Auth: `shot…` fns use
 
 ### Media inject (`src/shots/media-upload.fn.ts`)
 
+The finalize logic lives in `src/shots/server/media-upload.ts`, shared with the MCP `set_*_from_upload` tools; MCP `upload_media` stores the file (no presign).
+
 | Fn                                                                                                | Input → output                                                                                  | Rule enforced                                                    |
 | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `presignFrameImageUploadFn` / `presignShotVideoUploadFn`                                          | `{…, filename}` → `{uploadUrl, publicUrl, path, contentType}`                                   | extension allow-list, team-namespace path                        |

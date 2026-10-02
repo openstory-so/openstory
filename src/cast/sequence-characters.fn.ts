@@ -7,13 +7,8 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { isValidTextToImageModel, safeTextToImageModel } from '@/models/models';
-import { resolveSequenceStyleConfig } from '@/look/style-config';
-import { buildCastingAttributes } from './character-prompt';
-import { isPersonFromTalentCast } from '@/cast/likeness';
+import { isValidTextToImageModel } from '@/models/models';
 import { markPreviewUnusable, previewListWithChosenTake } from '@/cast/voice';
-import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
-import { getGenerationChannel } from '@/platform/realtime';
 import { characterBibleFieldsSchema } from './bible-field';
 import {
   createCharacter,
@@ -25,14 +20,6 @@ import {
   updateCharacter,
 } from '@/cast/server/cast-edit';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type {
-  CharacterSheetWorkflowInput,
-  RecastCharacterWorkflowInput,
-} from '@/platform/server/workflow/types';
-import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
-import { characterToBible } from '@/cast/server/bibles-from-scoped';
-import { enqueueCharacterVoiceDesign } from '@/cast/server/voice/enqueue-character-voice';
 import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import {
   getElevenLabsApiKey,
@@ -48,33 +35,20 @@ import {
   type AssignableVoicePick,
 } from '@/cast/server/voice/elevenlabs-voice';
 import { voiceProviderOf, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
-import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import { readReferenceStaleness } from '@/cast/server/production-staleness';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
-import { getLogger } from '@/platform/logger';
+import {
+  cancelCharacterVoice,
+  generateCharacterVoice,
+  recastCharacter,
+  regenerateCharacterSheet,
+} from '@/cast/server/cast-generation';
 import {
   authWithTeamMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
-
-const logger = getLogger(['openstory', 'serverFn', 'sequence-characters']);
-
-/**
- * Recast accepts talents owned by the requesting team OR public talents.
- * Mirrors the read-side ACL in `talent.getWithRelations`. Extracted for unit
- * testing because this is a permission boundary and silent regressions here
- * would let one team trigger recasts using another team's private talent.
- */
-export function assertTalentAccessible(
-  talent: { teamId: string; isPublic: boolean | null },
-  contextTeamId: string
-): void {
-  if (talent.teamId !== contextTeamId && !talent.isPublic) {
-    throw new Error('Talent does not belong to your team');
-  }
-}
 
 /** Get all characters for a sequence with their assigned talent */
 export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
@@ -180,39 +154,14 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
       })
     )
   )
-  .handler(async ({ context, data }) => {
-    if (!isElevenLabsConfigured()) {
-      throw new ValidationError('Voice design is not configured');
-    }
-    const character = await requireCharacter(
+  .handler(({ context, data }) =>
+    generateCharacterVoice(
       context.scopedDb,
-      data.sequenceId,
-      data.characterId
-    );
-    const enqueued = await enqueueCharacterVoiceDesign({
-      scopedDb: context.scopedDb,
-      character,
-      userId: context.user.id,
-      analysisModel: context.sequence.analysisModel,
-      takes: data.takes,
-      trigger: (payload) => triggerWorkflow('/character-voice', payload),
-    });
-    if (!enqueued.alreadyInFlight) {
-      try {
-        await getGenerationChannel(character.sequenceId).emit(
-          'generation.character-voice:progress',
-          { characterId: character.id, status: 'generating' }
-        );
-      } catch (error) {
-        logger.error('realtime emit failed', { err: error });
-      }
-    }
-    return {
-      characterId: enqueued.characterId,
-      workflowRunId: enqueued.workflowRunId,
-      alreadyInFlight: enqueued.alreadyInFlight,
-    };
-  });
+      { userId: context.user.id },
+      context.sequence,
+      data
+    )
+  );
 
 /**
  * Cancel a voice still generating: the husk fails as cancelled and the
@@ -224,30 +173,9 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
 export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
-  .handler(async ({ context, data }) => {
-    const character = await requireCharacter(
-      context.scopedDb,
-      data.sequenceId,
-      data.characterId
-    );
-    const versionId = character.pendingPromoteVoiceVersionId;
-    if (!versionId) return { cancelled: false };
-    const failed = await context.scopedDb.characters.markVoiceClaimTerminal(
-      versionId,
-      'failed',
-      'Cancelled'
-    );
-    if (!failed) return { cancelled: false };
-    try {
-      await getGenerationChannel(character.sequenceId).emit(
-        'generation.character-voice:progress',
-        { characterId: character.id, status: 'failed', error: 'Cancelled' }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-    return { cancelled: true };
-  });
+  .handler(({ context, data }) =>
+    cancelCharacterVoice(context.scopedDb, data.sequenceId, data.characterId)
+  );
 
 /**
  * Per-character voice switch (#1553): an explicit override of the sequence
@@ -549,60 +477,14 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
       })
     )
   )
-  .handler(async ({ context, data }) => {
-    const character = await requireCharacter(
+  .handler(({ context, data }) =>
+    regenerateCharacterSheet(
       context.scopedDb,
-      data.sequenceId,
-      data.characterId
-    );
-
-    const payload = await buildRegenerateCharacterSheetPayload({
-      scopedDb: context.scopedDb,
-      userId: context.user.id,
-      teamId: context.teamId,
-      sequence: context.sequence,
-      character,
-      imageModel: data.imageModel,
-    });
-
-    // The claim (#1113): last kickoff wins, and any edit to the character's
-    // sheet inputs before this run lands revokes it.
-    const sheetVersionId = await context.scopedDb.characters.claimSheet(
-      character.id,
-      { markGenerating: true }
-    );
-    try {
-      await getGenerationChannel(character.sequenceId).emit(
-        'generation.character-sheet:progress',
-        { characterId: character.id, status: 'generating' }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-
-    let workflowRunId: string;
-    try {
-      const claimed: CharacterSheetWorkflowInput = {
-        ...payload,
-        sheetVersionId,
-      };
-      workflowRunId = await triggerWorkflow('/character-sheet', claimed, {
-        // Explicit regen must not reuse the bible-child id
-        // `character-sheet:${id}` — that instance is already complete, and CF
-        // would no-op a second Generate (sheetStatus stuck at generating).
-        // Same pattern as generateTalentSheetFn: omit dedup so each click is a
-        // new run.
-      });
-    } catch (error) {
-      await context.scopedDb.characters.failSheetClaim(
-        character.id,
-        sheetVersionId,
-        error instanceof Error ? error.message : String(error)
-      );
-      throw error;
-    }
-    return { characterId: character.id, workflowRunId };
-  });
+      { userId: context.user.id },
+      context.sequence,
+      data
+    )
+  );
 
 /** Live sheet staleness for the character detail banner. */
 export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
@@ -628,204 +510,6 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
       z.object({ characterId: z.string().min(1), talentId: ulidSchema })
     )
   )
-  .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character) {
-      throw new NotFoundError('Character not found');
-    }
-    if (character.voiceOnly) {
-      throw new Error(
-        `${character.name} is voice-only (#1585): there is no face to cast`
-      );
-    }
-
-    // Fetch the sequence's style for character sheet generation
-    const sequence = await context.scopedDb.sequences.getForUser({
-      sequenceId: character.sequenceId,
-    });
-    const style =
-      sequence.styleConfig == null && sequence.styleId
-        ? await context.scopedDb.styles.getById(sequence.styleId)
-        : null;
-    const styleConfig =
-      sequence.styleConfig != null || style
-        ? resolveSequenceStyleConfig({
-            snapshot: sequence.styleConfig,
-            live: style?.config,
-          })
-        : undefined;
-
-    const talentWithSheets = await context.scopedDb.talent.getWithRelations(
-      data.talentId
-    );
-    if (!talentWithSheets) {
-      throw new Error('Talent not found');
-    }
-    assertTalentAccessible(talentWithSheets, context.teamId);
-
-    // Filter divergent sheets out of the fallback chain — they are stale-
-    // marked variants and must not back the talent's casting identity.
-    const defaultSheet =
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      talentWithSheets.sheets?.find((s) => s.isDefault && !s.divergedAt) ??
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      talentWithSheets.sheets?.find((s) => !s.divergedAt);
-
-    // Merge talent appearance with character role attributes
-    const castingAttrs = buildCastingAttributes(characterToBible(character), {
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      sheetMetadata: defaultSheet?.metadata ?? undefined,
-      talentName: talentWithSheets.name,
-      talentDescription: talentWithSheets.description ?? undefined,
-      personality: talentWithSheets.personality ?? '',
-      movement: talentWithSheets.movement ?? '',
-    });
-
-    // Update talent assignment AND physical attributes from talent
-    await context.scopedDb.characters.updateTalent(
-      data.characterId,
-      data.talentId
-    );
-    // The talent's appearance becomes a 'recast' bible version (#1600).
-    await context.scopedDb.characters.updateBible(
-      data.characterId,
-      {
-        age: castingAttrs.age,
-        gender: castingAttrs.gender,
-        ethnicity: castingAttrs.ethnicity,
-        physicalDescription: castingAttrs.physicalDescription,
-        personality: castingAttrs.personality,
-        movement: castingAttrs.movement,
-        consistencyTag: castingAttrs.consistencyTag,
-        isPerson: isPersonFromTalentCast(
-          character.isPerson,
-          talentWithSheets.isHuman
-        ),
-      },
-      { actorId: context.user.id, source: 'recast' }
-    );
-    // Cast copies the talent's voice (#1553): its own history row, labelled
-    // 'library' because that voice came from the talent, not this role's
-    // design. The role's old voice is released below once nothing points at
-    // it. Separate write — the voice only moves through `updateVoice`.
-    if (talentWithSheets.voiceId) {
-      await context.scopedDb.characters.updateVoice(
-        data.characterId,
-        {
-          voiceId: talentWithSheets.voiceId,
-          voiceDescription: talentWithSheets.voiceDescription,
-          voicePreviews: null,
-        },
-        'library',
-        context.user.id
-      );
-      await releaseReplacedVoice(
-        context.scopedDb,
-        character.voiceId,
-        talentWithSheets.voiceId
-      );
-    }
-    // Re-read rather than use the write's row: the recast snapshot needs the
-    // live sheet, which resolves from the version pointer (#1419).
-    const updatedCharacter = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!updatedCharacter) {
-      throw new NotFoundError('Character not found');
-    }
-
-    const affectedShotIds =
-      await context.scopedDb.characters.getShotIdsForCharacter(
-        character.sequenceId,
-        data.characterId
-      );
-
-    // Always generate a character sheet showing the talent in costume. The
-    // claim is taken after the cast writes above, which revoke older ones.
-    const sheetVersionId = await context.scopedDb.characters.claimSheet(
-      data.characterId,
-      { markGenerating: true }
-    );
-
-    await getGenerationChannel(character.sequenceId).emit(
-      'generation.character-sheet:progress',
-      { characterId: data.characterId, status: 'generating' }
-    );
-
-    // Freeze every regenerate-shots input here, at the trigger. The workflow
-    // used to rebuild this after its sheet child finished — eight live reads
-    // against state the user never authorised.
-    const imageModel = safeTextToImageModel(sequence.imageModel);
-    const { shotSnapshots, snapshotInputHash } =
-      await buildRecastRegenerateSnapshots({
-        scopedDb: context.scopedDb,
-        sequenceId: character.sequenceId,
-        shotIds: affectedShotIds,
-        imageModel,
-        aspectRatio: sequence.aspectRatio,
-        subject: { kind: 'character', character: updatedCharacter },
-      });
-
-    const workflowInput: RecastCharacterWorkflowInput = {
-      characterDbId: data.characterId,
-      // The recast bible version the metadata below spells out (#1600).
-      bibleVersionId: updatedCharacter.selectedBibleVersionId,
-      characterName: character.name,
-      characterMetadata: {
-        characterId: character.characterId,
-        name: character.name,
-        voiceOnly: character.voiceOnly,
-        isPerson: updatedCharacter.isPerson,
-        voiceDescription: character.voiceDescription ?? '',
-        ...castingAttrs,
-      },
-      sequenceId: character.sequenceId,
-      teamId: context.teamId,
-      userId: context.user.id,
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      talentMetadata: defaultSheet?.metadata ?? undefined,
-      // Image-anchored, name-free (see buildCastingAttributes): naming a
-      // person + "look exactly like" trips OpenAI's likeness moderation.
-      talentDescription:
-        `This character must exactly match the person shown in the reference image. ${talentWithSheets.description ?? ''}`.trim(),
-      reuseTalentSheet: Boolean(
-        defaultSheet?.imageUrl &&
-        shouldReuseTalentSheet({
-          characterClothing: character.standardClothing,
-          characterFeatures: character.distinguishingFeatures,
-          talentClothing: defaultSheet.metadata?.standardClothing,
-          talentFeatures: defaultSheet.metadata?.distinguishingFeatures,
-          talentPhysical: defaultSheet.metadata?.physicalDescription,
-          talentDescription: talentWithSheets.description,
-        })
-      ),
-      imageModel,
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      talentSheetInputHash: defaultSheet?.inputHash ?? null,
-      castTalentDescription: talentWithSheets.description,
-      sheetVersionId,
-      styleConfig,
-      aspectRatio: sequence.aspectRatio,
-      resolution: sequence.resolution,
-      shotSnapshots,
-      snapshotInputHash,
-    };
-
-    const workflowRunId = await triggerWorkflow(
-      '/recast-character',
-      workflowInput
-    );
-
-    return {
-      character: updatedCharacter,
-      talentId: data.talentId,
-      sheetWorkflowRunId: workflowRunId,
-      // The shots actually queued — a shot with no selected image prompt is
-      // dropped by the snapshot builder rather than failing the recast.
-      affectedShotIds: shotSnapshots.map((s) => s.shotId),
-    };
-  });
+  .handler(({ context, data }) =>
+    recastCharacter(context.scopedDb, { userId: context.user.id }, data)
+  );

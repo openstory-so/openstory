@@ -19,50 +19,14 @@
  */
 
 import { getSignedUploadUrl } from '#storage';
-import {
-  computeCharacterSheetInputHash,
-  computeLocationSheetInputHash,
-  hashVisualPromptInput,
-} from './input-hash';
-import { isPersonFromUploadLedger } from '@/cast/likeness';
-import { resolveSheetImageModel } from '@/cast/sheet-image-model';
-import {
-  likenessFromLedger,
-  requireUploadRights,
-} from '@/cast/server/upload-rights';
-import { StyleConfigSchema } from '@/look/style-config';
-import { NotFoundError } from '@/platform/errors';
-import {
-  characterSheetTalentHashFields,
-  computeStyleConfigHash,
-  locationSheetBibleFields,
-} from '@/cast/server/workflows/sheet-snapshots';
-import { resolveCastTalent } from '@/cast/server/sheets/character-sheet-trigger';
-import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
-import {
-  loadShotPromptContext,
-  narrowShotPromptContext,
-} from '@/shots/server/prompt-context';
-import { computeVideoManifestInputHash } from './input-hash';
-import { shotPromptSequence, usesStartFrame } from './use-start-frame';
-import { generateId } from '@/platform/id';
-import type { Scene } from './scene-analysis.schema';
-import type { AspectRatio } from '@/models/aspect-ratios';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
-import { buildVideoManifest } from '@/motion/server/render-segments';
-import { getGenerationChannel } from '@/platform/realtime';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
-import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
-  computeUploadedStillInputHash,
-  parseUploadedStoragePath,
   resolveUploadExtension,
   uploadExtensionList,
   type UploadMediaSurface,
 } from '@/shots/server/upload-media';
-import { USER_UPLOAD_MODEL } from './user-upload-model';
 import {
   STORAGE_BUCKETS,
   type StorageBucket,
@@ -73,42 +37,14 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
-
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'serverFn', 'media-upload']);
-
-/**
- * Resolve a finalize-time `publicUrl` to the bucket-relative `storagePath` the
- * variant tables store, or reject. A bad path here is bad INPUT (a URL outside
- * the caller's team namespace, or not one of ours) — `ValidationError` rides
- * the serialization adapter to the client as a typed 400 instead of surfacing
- * as a 500 the user can't act on.
- */
-/** Exported for tests — a per-shot clip must not overwrite a multi-shot scene render. */
-export function assertSingleShotSegmentForVideoUpload(
-  shotsInSegment: number
-): void {
-  if (shotsInSegment > 1) {
-    throw new ValidationError(
-      'This shot shares a render with others in its scene; upload a clip for the whole scene instead of one shot'
-    );
-  }
-}
-
-function requireUploadedStoragePath(
-  publicUrl: string,
-  bucket: StorageBucket,
-  teamId: string
-): string {
-  const storagePath = parseUploadedStoragePath(publicUrl, bucket, teamId);
-  if (!storagePath) {
-    throw new ValidationError(
-      'Uploaded file is not in this team’s storage namespace'
-    );
-  }
-  return storagePath;
-}
+import {
+  replaceFrameContent,
+  setCharacterSheetFromUpload,
+  setLocationSheetFromUpload,
+  setSequenceMusicFromUpload,
+  setShotVideoFromUpload,
+} from '@/shots/server/media-upload';
+import { generateId } from '@/platform/id';
 
 /**
  * Extension for an upload, rejecting anything outside the surface's allow-list.
@@ -195,106 +131,7 @@ export const presignSequenceMusicUploadFn = createServerFn({ method: 'POST' })
     );
   });
 
-// ---------------------------------------------------------------------------
-// Still upload — §4.3 B (image-only) is the unchanged-prompt branch of
-// `replaceFrameContentFn` below.
-// ---------------------------------------------------------------------------
-
-/**
- * Broadcast a finished media write on the sequence's generation channel, the
- * same terminal event the generating workflow emits. Uploads are a write the
- * OTHER clients never saw start, so without this a second tab (or a
- * collaborator) keeps rendering the superseded still until something else
- * happens to refetch. Best-effort: a realtime failure must not fail the write
- * that already committed.
- */
-async function emitUploadCompleted(
-  sequenceId: string,
-  event: 'image' | 'video',
-  payload: { shotId: string; thumbnailUrl?: string; videoUrl?: string }
-): Promise<void> {
-  try {
-    await getGenerationChannel(sequenceId).emit(
-      event === 'image'
-        ? 'generation.image:progress'
-        : 'generation.video:progress',
-      { ...payload, status: 'completed' }
-    );
-  } catch (error) {
-    logger.error('realtime emit failed', { err: error });
-  }
-}
-
-/**
- * The §4.3 B image-only replace — used by the unchanged-prompt branch of
- * `replaceFrameContentFn`.
- *
- * Appends a `frame_variants.kind:'upload'` version stamped against the CURRENT
- * selected visual prompt + sheets, then `select`s it — the same repoint a
- * history pick performs, so the mirror, `image.selected` event,
- * pending-promote clear, and prompt pairing all behave identically. The visual
- * prompt is NOT touched; downstream video reads stale by manifest derivation.
- */
-async function appendUploadedStill(args: {
-  scopedDb: ScopedDb;
-  shotId: string;
-  frameId: string;
-  sequenceId: string;
-  scene: Scene | null;
-  aspectRatio: AspectRatio;
-  publicUrl: string;
-  storagePath: string;
-  actorId: string;
-}): Promise<{
-  versionId: string;
-  url: string | null;
-  promptVersionId: string | null;
-}> {
-  const { scopedDb } = args;
-  const selectedPrompt = await scopedDb.framePromptVersions.getSelected(
-    args.frameId
-  );
-  const [characters, locations, elements] = await Promise.all([
-    scopedDb.characters.listWithSheets(args.sequenceId),
-    scopedDb.sequenceLocations.listWithReferences(args.sequenceId),
-    scopedDb.sequenceElements.list(args.sequenceId),
-  ]);
-  const inputHash = await computeUploadedStillInputHash({
-    shotId: args.shotId,
-    frameId: args.frameId,
-    scene: args.scene,
-    promptText: selectedPrompt?.text ?? null,
-    characters,
-    locations,
-    elements,
-    aspectRatio: args.aspectRatio,
-  });
-
-  const version = await scopedDb.frameVariants.appendUploadedVersion({
-    frameId: args.frameId,
-    sequenceId: args.sequenceId,
-    model: USER_UPLOAD_MODEL,
-    url: args.publicUrl,
-    storagePath: args.storagePath,
-    inputHash,
-    promptVersionId: selectedPrompt?.id ?? null,
-    promptText: selectedPrompt?.text ?? null,
-    actorId: args.actorId,
-  });
-  await scopedDb.frameVariants.select(args.frameId, version.id, {
-    actorId: args.actorId,
-  });
-
-  return {
-    versionId: version.id,
-    url: version.url,
-    promptVersionId: selectedPrompt?.id ?? null,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Atomic prompt + still replace — §4.3 C (image-only when prompt is unchanged)
-// ---------------------------------------------------------------------------
+// Finalize — the logic lives in `@/shots/server/media-upload`, shared with MCP.
 
 const replaceFrameContentInput = z.object({
   sequenceId: ulidSchema,
@@ -304,149 +141,10 @@ const replaceFrameContentInput = z.object({
   promptText: z.string().optional(),
   publicUrl: mediaUrlSchema,
 });
-
-/**
- * Replace a frame's still, optionally together with its visual prompt, as ONE
- * atomic operation (§4.3 C): the prompt version is written first (stamped with
- * the current upstream-context hash, like `saveShotPromptFn`), the image
- * version's `inputHash` is computed against the NEW prompt text, both
- * selection pointers repoint, and everything commits in a single `db.batch()`
- * — so the image is fresh relative to the prompt it arrived with, and video
- * reads stale by manifest derivation.
- *
- * With `promptText` absent (or identical to the current selection) this is the
- * image-only path B — the prompt is untouched. There is no separate image-only
- * server fn; this is both B and C.
- */
 export const replaceFrameContentFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(replaceFrameContentInput))
-  .handler(async ({ context, data }) => {
-    const { shot, frame, sequence, scene, scopedDb, user, teamId } = context;
-
-    if (data.frameId && data.frameId !== frame.id) {
-      throw new ValidationError(
-        'Only the shot anchor frame can be replaced (multi-frame is not supported yet)'
-      );
-    }
-
-    const storagePath = requireUploadedStoragePath(
-      data.publicUrl,
-      STORAGE_BUCKETS.THUMBNAILS,
-      teamId
-    );
-    // A user still must be cleared or signed on the likeness ledger (#1581).
-    await requireUploadRights(scopedDb, [data.publicUrl]);
-
-    const selectedPrompt = await scopedDb.framePromptVersions.getSelected(
-      frame.id
-    );
-
-    const newPromptText = data.promptText?.trim();
-    // Unchanged text is not an edit — take the image-only path so no duplicate
-    // `user-edit` history row appears (mirrors saveShotPromptFn's no-op guard).
-    if (!newPromptText || newPromptText === selectedPrompt?.text) {
-      const result = await appendUploadedStill({
-        scopedDb,
-        shotId: shot.id,
-        frameId: frame.id,
-        sequenceId: sequence.id,
-        scene,
-        aspectRatio: sequence.aspectRatio,
-        publicUrl: data.publicUrl,
-        storagePath,
-        actorId: user.id,
-      });
-      await emitUploadCompleted(sequence.id, 'image', {
-        shotId: shot.id,
-        ...(result.url ? { thumbnailUrl: result.url } : {}),
-      });
-      return {
-        shotId: shot.id,
-        versionId: result.versionId,
-        promptVersionId: result.promptVersionId,
-        promptChanged: false,
-      } as const;
-    }
-
-    const [characters, locations, elements] = await Promise.all([
-      scopedDb.characters.listWithSheets(sequence.id),
-      scopedDb.sequenceLocations.listWithReferences(sequence.id),
-      scopedDb.sequenceElements.list(sequence.id),
-    ]);
-
-    // Upstream-context hash for the new prompt version — best-effort, exactly
-    // like saveShotPromptFn: a null hash disables staleness for this prompt
-    // but never blocks the save.
-    let promptInputHash: string | null = null;
-    let analysisModel: string | null = null;
-    if (scene) {
-      try {
-        const ctx = await loadShotPromptContext({
-          scopedDb,
-          sequence: shotPromptSequence(sequence, shot),
-          scene,
-          startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
-        });
-        promptInputHash = await hashVisualPromptInput(
-          narrowShotPromptContext(ctx)
-        );
-        analysisModel = ctx.analysisModel;
-      } catch (error) {
-        logger.warn(
-          `replaceFrameContent: uncomputable prompt hash for shot ${shot.id}; recording with null hash`,
-          { err: error }
-        );
-      }
-    }
-
-    // Image hash against the NEW prompt text — the §4.3 C freshness rule.
-    const imageInputHash = await computeUploadedStillInputHash({
-      shotId: shot.id,
-      frameId: frame.id,
-      scene,
-      promptText: newPromptText,
-      characters,
-      locations,
-      elements,
-      aspectRatio: sequence.aspectRatio,
-    });
-
-    const { promptVersion, imageVersion } =
-      await scopedDb.frameVariants.replaceContent({
-        frameId: frame.id,
-        sequenceId: sequence.id,
-        actorId: user.id,
-        prompt: {
-          text: newPromptText,
-          inputHash: promptInputHash,
-          analysisModel,
-          createdBy: user.id,
-        },
-        image: {
-          model: USER_UPLOAD_MODEL,
-          url: data.publicUrl,
-          storagePath,
-          inputHash: imageInputHash,
-        },
-      });
-
-    await emitUploadCompleted(sequence.id, 'image', {
-      shotId: shot.id,
-      ...(imageVersion.url ? { thumbnailUrl: imageVersion.url } : {}),
-    });
-
-    return {
-      shotId: shot.id,
-      versionId: imageVersion.id,
-      promptVersionId: promptVersion.id,
-      promptChanged: true,
-    } as const;
-  });
-
-// ---------------------------------------------------------------------------
-// Video upload
-// ---------------------------------------------------------------------------
+  .handler(({ context, data }) => replaceFrameContent(context, data));
 
 const setShotVideoFromUploadInput = z.object({
   sequenceId: ulidSchema,
@@ -459,102 +157,10 @@ const setShotVideoFromUploadInput = z.object({
    */
   durationSeconds: z.number().positive().optional(),
 });
-
-/**
- * Finalize an uploaded clip as the shot's video: materialize the shot's render
- * segment if needed, adopt the clip's real duration, append a `video_variants`
- * version whose manifest snapshots the CURRENT selected motion-prompt /
- * frame-version pointers (so a later prompt edit or still replace diverges the
- * manifest → stale), then `select` it — the same repoint + `video.selected`
- * event the motion pipeline uses.
- */
 export const setShotVideoFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(setShotVideoFromUploadInput))
-  .handler(async ({ context, data }) => {
-    const { shot, frame, sequence, scopedDb, user, teamId } = context;
-
-    const storagePath = requireUploadedStoragePath(
-      data.publicUrl,
-      STORAGE_BUCKETS.VIDEOS,
-      teamId
-    );
-
-    const renderSegmentId = await scopedDb.renderSegments.ensureForShot(shot);
-
-    // A clip uploaded "for this shot" is written as the SEGMENT's render, so on
-    // a multi-shot segment (#910 scene render) it would silently replace the
-    // siblings' video too — and segment staleness wouldn't flag it, because the
-    // manifest we write only names this shot. Refuse rather than corrupt.
-    const shotsInSegment =
-      await scopedDb.shots.countInRenderSegment(renderSegmentId);
-    assertSingleShotSegmentForVideoUpload(shotsInSegment);
-
-    // Adopt the real duration BEFORE hashing: the manifest folds `durationMs`
-    // in, so writing the shot afterwards would leave the clip instantly stale
-    // against its own render.
-    const durationMs = data.durationSeconds
-      ? Math.round(data.durationSeconds * 1000)
-      : (shot.durationMs ?? 3000);
-    if (durationMs !== shot.durationMs) {
-      await scopedDb.shots.update(shot.id, { durationMs });
-    }
-
-    const [selectedMotion, selectedImage] = await Promise.all([
-      scopedDb.shotPromptVersions.getSelectedMotion(shot.id),
-      scopedDb.frameVariants.getSelected(frame.id),
-    ]);
-    const shotUsesStartFrame = usesStartFrame(shot, sequence);
-    const manifest = buildVideoManifest([
-      {
-        shotId: shot.id,
-        motionPromptVersionId: selectedMotion?.id ?? null,
-        // A reference-only shot's frame pointer is null even when a still
-        // exists (`assembleSequenceSegments` compares against null), so pinning
-        // the still here would make the upload read Stale for ever and let
-        // "Update all" re-render over it.
-        frameVersionId: shotUsesStartFrame ? (selectedImage?.id ?? null) : null,
-        // An upload rendered from nothing we know of; stamp the shot's mode
-        // so it agrees with the pointer above.
-        usesStartFrame: shotUsesStartFrame,
-        durationMs,
-        audioClipIds: [],
-        audioSourceKey: null,
-        dialogueKey: null,
-        referenceKeys: [],
-      },
-    ]);
-    const inputHash = await computeVideoManifestInputHash(
-      manifest,
-      USER_UPLOAD_MODEL
-    );
-
-    const version = await scopedDb.videoVariants.appendUploadedVersion({
-      renderSegmentId,
-      sequenceId: sequence.id,
-      shotId: shot.id,
-      model: USER_UPLOAD_MODEL,
-      manifest,
-      url: data.publicUrl,
-      storagePath,
-      inputHash,
-      actorId: user.id,
-    });
-    await scopedDb.videoVariants.select(shot.id, version.id, {
-      actorId: user.id,
-    });
-
-    await emitUploadCompleted(sequence.id, 'video', {
-      shotId: shot.id,
-      ...(version.url ? { videoUrl: version.url } : {}),
-    });
-
-    return { shotId: shot.id, versionId: version.id, videoUrl: version.url };
-  });
-
-// ---------------------------------------------------------------------------
-// Music upload
-// ---------------------------------------------------------------------------
+  .handler(({ context, data }) => setShotVideoFromUpload(context, data));
 
 const setSequenceMusicFromUploadInput = z.object({
   sequenceId: ulidSchema,
@@ -562,74 +168,10 @@ const setSequenceMusicFromUploadInput = z.object({
   /** Decoded track duration, when the client measured it. */
   durationSeconds: z.number().positive().optional(),
 });
-
-/**
- * Finalize an uploaded audio file as the sequence's score: append it as a
- * completed `user-upload` track and point the sequence at it (#1115), so
- * generated tracks stay switchable alongside it. Tracks are append-only, so
- * an earlier upload stays a row of its own — never a silent delete.
- *
- * `inputHash` is deliberately null (§4.4 "untracked" escape hatch): the user
- * chose this exact track — a prompt edit should not push regeneration over it.
- */
 export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(setSequenceMusicFromUploadInput))
-  .handler(async ({ context, data }) => {
-    const { sequence, scopedDb, user, teamId } = context;
-
-    const storagePath = requireUploadedStoragePath(
-      data.publicUrl,
-      STORAGE_BUCKETS.AUDIO,
-      teamId
-    );
-
-    const variant = await scopedDb.sequenceVariants.appendUploadedMusic({
-      sequenceId: sequence.id,
-      model: USER_UPLOAD_MODEL,
-      url: data.publicUrl,
-      storagePath,
-      prompt: sequence.musicPrompt,
-      tags: sequence.musicTags,
-      durationSeconds: data.durationSeconds ?? null,
-    });
-    const withMusicSet = await scopedDb.sequences.getById(sequence.id);
-    if (!withMusicSet) throw new Error('Sequence not found');
-    // An uploaded score the sequence then excludes from the mix is a dead end
-    // the user gets no feedback about — choosing a track IS opting in.
-    const updatedSequence = withMusicSet.includeMusic
-      ? withMusicSet
-      : await scopedDb.sequences.update({
-          id: sequence.id,
-          includeMusic: true,
-        });
-    await scopedDb.sequenceEvents.record({
-      sequenceId: sequence.id,
-      actorId: user.id,
-      kind: 'music.uploaded',
-      targetType: 'sequence',
-      targetId: sequence.id,
-      summary: 'Uploaded music track',
-      data: { variantId: variant.id },
-    });
-
-    try {
-      await getGenerationChannel(sequence.id).emit(
-        'generation.audio:progress',
-        {
-          status: 'completed',
-          model: variant.model,
-          ...(updatedSequence.musicUrl
-            ? { audioUrl: updatedSequence.musicUrl }
-            : {}),
-        }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-
-    return { sequence: updatedSequence, variantId: variant.id };
-  });
+  .handler(({ context, data }) => setSequenceMusicFromUpload(context, data));
 
 // ---------------------------------------------------------------------------
 // Manual character / location sheet upload on SEQUENCE entities (#1108 Phase 4
@@ -654,134 +196,15 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
     );
   });
 
-/**
- * Style-config hash + image model resolved the way sheet verify does after
- * this upload is selected. The new version's `model` is `user-upload` (not a
- * t2i id), so verify skips it and falls through to the sequence default —
- * hashing the upload against a prior generated model would look stale the
- * moment the pointer moved. Stills re-stale because `applyConvergent`
- * selects a new version id.
- */
-async function resolveSheetHashContext(
-  scopedDb: ScopedDb,
-  sequence: {
-    styleId: string | null;
-    imageModel: string | null;
-  }
-): Promise<{ styleConfigHash: string; imageModel: string }> {
-  const style = sequence.styleId
-    ? await scopedDb.styles.getById(sequence.styleId)
-    : null;
-  const styleConfig = style ? StyleConfigSchema.parse(style.config) : null;
-  return {
-    styleConfigHash: await computeStyleConfigHash(styleConfig),
-    imageModel: resolveSheetImageModel({
-      sequenceImageModel: sequence.imageModel,
-    }),
-  };
-}
-
 const setCharacterSheetInput = z.object({
   sequenceId: ulidSchema,
   characterId: ulidSchema,
   publicUrl: mediaUrlSchema,
 });
-
-/**
- * Finalize an uploaded character sheet: append a completed version, select it,
- * stamp parent + version with the CURRENT bible + talent sheet + style + model
- * hash, and log a `sheet.uploaded` event. No generation is triggered. Stills
- * re-stale because they hash the new selected version id.
- */
 export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(setCharacterSheetInput))
-  .handler(async ({ context, data }) => {
-    const { scopedDb, sequence, user } = context;
-    const storagePath = requireUploadedStoragePath(
-      data.publicUrl,
-      STORAGE_BUCKETS.CHARACTERS,
-      context.teamId
-    );
-    await requireUploadRights(scopedDb, [data.publicUrl]);
-    const character = await scopedDb.characters.getById(data.characterId);
-    if (!character || character.sequenceId !== sequence.id) {
-      throw new NotFoundError('Character not found');
-    }
-    const isPerson = isPersonFromUploadLedger(
-      character.isPerson,
-      await likenessFromLedger(scopedDb, data.publicUrl)
-    );
-
-    // Same upstream resolution the character-sheet workflow uses.
-    const cast = await resolveCastTalent(scopedDb, character.talentId);
-    const { styleConfigHash, imageModel } = await resolveSheetHashContext(
-      scopedDb,
-      sequence
-    );
-    const inputHash = await computeCharacterSheetInputHash({
-      characterBible: {
-        name: character.name,
-        age: character.age ?? '',
-        gender: character.gender,
-        ethnicity: character.ethnicity,
-        physicalDescription: character.physicalDescription,
-        standardClothing: character.standardClothing,
-        distinguishingFeatures: character.distinguishingFeatures,
-        consistencyTag: character.consistencyTag,
-      },
-      talentSheetHash: cast.talentSheetInputHash ?? null,
-      talent: characterSheetTalentHashFields(cast),
-      styleConfigHash,
-      imageModel,
-    });
-
-    // The upload's likeness verdict is a bible edit (#1600): its own version
-    // row, only when it moved.
-    if (isPerson !== character.isPerson) {
-      await scopedDb.characters.updateBible(
-        character.id,
-        { isPerson },
-        { actorId: user.id, source: 'edit' }
-      );
-    }
-    // Append + select: parent + version share the current-inputs hash so later
-    // bible/style/model edits re-stale the sheet. The selected version id is
-    // what stills hash, so this upload re-stales dependent stills even when
-    // inputs didn't change.
-    const { version: variant } =
-      await scopedDb.characterSheetVariants.applyConvergent({
-        characterId: character.id,
-        url: data.publicUrl,
-        storagePath,
-        inputHash,
-        model: USER_UPLOAD_MODEL,
-      });
-    const updated = await scopedDb.characters.getById(character.id);
-    if (!updated) throw new NotFoundError('Character not found');
-    await scopedDb.sequenceEvents.record({
-      sequenceId: sequence.id,
-      actorId: user.id,
-      kind: 'sheet.uploaded',
-      targetType: 'character',
-      targetId: character.id,
-      summary: `Uploaded sheet for ${character.name}`,
-      data: { characterId: character.id, variantId: variant.id },
-    });
-    try {
-      await getGenerationChannel(sequence.id).emit(
-        'generation.character-sheet:progress',
-        {
-          characterId: character.id,
-          status: 'completed',
-          sheetImageUrl: data.publicUrl,
-        }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-    return updated;
-  });
+  .handler(({ context, data }) => setCharacterSheetFromUpload(context, data));
 
 const locationSheetPresignInput = z.object({
   sequenceId: ulidSchema,
@@ -806,79 +229,7 @@ const setLocationSheetInput = z.object({
   locationDbId: ulidSchema,
   publicUrl: mediaUrlSchema,
 });
-
-/**
- * Finalize an uploaded location reference: append a completed version, select
- * it, stamp parent + version with the current bible + library ref + style +
- * model hash. Stills re-stale via the new selected version id.
- */
 export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(setLocationSheetInput))
-  .handler(async ({ context, data }) => {
-    const { scopedDb, sequence, user } = context;
-    const storagePath = requireUploadedStoragePath(
-      data.publicUrl,
-      STORAGE_BUCKETS.LOCATIONS,
-      context.teamId
-    );
-    await requireUploadRights(scopedDb, [data.publicUrl]);
-    const location = await scopedDb.sequenceLocations.getById(
-      data.locationDbId
-    );
-    if (!location || location.sequenceId !== sequence.id) {
-      throw new NotFoundError('Location not found');
-    }
-
-    let libraryLocationReferenceHash: string | null = null;
-    if (location.libraryLocationId) {
-      const libraryLocation = await scopedDb.locations.getById(
-        location.libraryLocationId
-      );
-      libraryLocationReferenceHash =
-        libraryLocation?.referenceInputHash ?? null;
-    }
-    const { styleConfigHash, imageModel } = await resolveSheetHashContext(
-      scopedDb,
-      sequence
-    );
-    const inputHash = await computeLocationSheetInputHash({
-      locationBible: locationSheetBibleFields(toLocationMetadata(location)),
-      libraryLocationReferenceHash,
-      styleConfigHash,
-      imageModel,
-    });
-
-    const { version: variant } =
-      await scopedDb.locationSheetVariants.applyConvergent({
-        locationDbId: location.id,
-        url: data.publicUrl,
-        storagePath,
-        inputHash,
-        model: USER_UPLOAD_MODEL,
-      });
-    const updated = await scopedDb.sequenceLocations.getById(location.id);
-    if (!updated) throw new NotFoundError('Location not found');
-    await scopedDb.sequenceEvents.record({
-      sequenceId: sequence.id,
-      actorId: user.id,
-      kind: 'sheet.uploaded',
-      targetType: 'location',
-      targetId: location.id,
-      summary: `Uploaded reference for ${location.name}`,
-      data: { locationDbId: location.id, variantId: variant.id },
-    });
-    try {
-      await getGenerationChannel(sequence.id).emit(
-        'generation.location-sheet:progress',
-        {
-          locationId: location.id,
-          status: 'completed',
-          referenceImageUrl: data.publicUrl,
-        }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-    return updated;
-  });
+  .handler(({ context, data }) => setLocationSheetFromUpload(context, data));

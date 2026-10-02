@@ -7,10 +7,7 @@
  * playing a different reading than the one marked current.
  */
 
-import {
-  estimateDialogueTakeCost,
-  estimateTtsCost,
-} from '@/billing/elevenlabs-pricing';
+import { estimateDialogueTakeCost } from '@/billing/elevenlabs-pricing';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
@@ -32,26 +29,17 @@ import {
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   dialogueFitBudget,
-  ttsCharacterCount,
 } from '@/motion/dialogue-tts';
-import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { safeImageToVideoModel } from '@/models/models';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type {
-  DialogueAudioWorkflowInput,
-  DialogueTakeWorkflowInput,
-} from '@/platform/server/workflow/types';
-import { loadSceneContextBySequence } from '@/shots/server/scene-script';
-import {
-  loadVoiceMovedShotIds,
-  sceneDialogueJobs,
-  shotDialogueResolver,
-} from '@/shots/server/shot-dialogue';
-import { voicedShotIds } from '@/shots/shot-dialogue';
+import type { DialogueTakeWorkflowInput } from '@/platform/server/workflow/types';
 import { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import {
+  cancelShotDialogueClaim,
+  listShotDialogueClaims,
+  regenerateShotDialogue,
   currentSourceKeys,
   discardShotDialogueSection,
   listShotDialogueReadings,
@@ -146,94 +134,7 @@ export const regenerateShotDialogueFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(shotInput.extend({ scope: z.enum(['shot', 'scene']) }))
   )
-  .handler(async ({ context, data }) => {
-    const { scopedDb, shot, sequence, user } = context;
-    const [shots, characters, versions, sceneContext] = await Promise.all([
-      scopedDb.shots.listBySequence(sequence.id),
-      scopedDb.characters.list(sequence.id),
-      // The rows, not just the lines: a speech names the version it spoke.
-      scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
-    ]);
-    const selectedMotionByShot =
-      await scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        shots.map((row) => row.id)
-      );
-    const model = safeImageToVideoModel(sequence.videoModel);
-    const [job] = sceneDialogueJobs({
-      needing: [shot],
-      shots,
-      dialogueOf: shotDialogueResolver({
-        linesByShotId: new Map(
-          versions.map((version) => [version.shotId, version.lines])
-        ),
-        shots,
-        legacyDialogueOf: (shotId) =>
-          selectedMotionByShot.get(shotId)?.dialogue,
-        scriptDialogueOf: (sceneId) =>
-          sceneContext.get(sceneId)?.script?.dialogue,
-      }),
-      characters,
-      versionIdByShotId: new Map(
-        versions.map((version) => [version.shotId, version.id])
-      ),
-      voiceMovedShotIds: await loadVoiceMovedShotIds(
-        scopedDb,
-        sequence.id,
-        shots
-      ),
-      shotSecondsOf: (shotId) => {
-        if (data.scope === 'shot' && shotId !== shot.id) return undefined;
-        const row = shots.find((candidate) => candidate.id === shotId);
-        return row
-          ? resolveShotDuration({ durationMs: row.durationMs, model })
-          : undefined;
-      },
-    });
-    const speaking = job ? voicedShotIds(job.voiced) : [];
-    const adopting =
-      data.scope === 'scene'
-        ? speaking
-        : speaking.filter((id) => id === shot.id);
-    if (!job || adopting.length === 0) {
-      throw new Error(
-        data.scope === 'scene'
-          ? 'This scene has no voiced lines to record'
-          : 'This shot has no voiced lines to record'
-      );
-    }
-
-    const reservationId = await reserveRunCredits(
-      scopedDb,
-      estimateTtsCost(ttsCharacterCount(job.voiced)),
-      {
-        errorMessage: 'Insufficient credits to record dialogue',
-        sequenceId: sequence.id,
-      }
-    );
-    return releaseReservationOnThrow(scopedDb, reservationId, async () => {
-      const input: DialogueAudioWorkflowInput = {
-        userId: user.id,
-        teamId: sequence.teamId,
-        sequenceId: sequence.id,
-        reservationId,
-        ownsReservation: true,
-        scenes: [
-          {
-            ...job,
-            forceAdoptShotIds: [
-              ...new Set([...job.forceAdoptShotIds, ...adopting]),
-            ],
-          },
-        ],
-        minDurationSeconds: dialogueAudioMinSeconds([model]),
-        maxDurationSeconds: dialogueAudioMaxSeconds([model]),
-      };
-      return {
-        workflowRunId: await triggerWorkflow('/dialogue-audio', input),
-      };
-    });
-  });
+  .handler(({ context, data }) => regenerateShotDialogue(context, data.scope));
 
 /**
  * The files of these speeches (#1802): a scene recorded as one take plays
@@ -429,17 +330,7 @@ export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
 export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
-  .handler(async ({ context }) => {
-    const claims = await context.scopedDb.shotDialogue.listLiveClaims(
-      context.shot.id
-    );
-    return claims.map((claim) => ({
-      id: claim.id,
-      createdAt: claim.createdAt,
-      // Demoted: it still records, but it will not become the shot's audio.
-      willBecomeCurrent: claim.pendingSourceKey !== null,
-    }));
-  });
+  .handler(({ context }) => listShotDialogueClaims(context));
 
 /**
  * Stop a speech in flight from becoming this shot's audio. The run is not
@@ -449,9 +340,6 @@ export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
 export const cancelShotDialogueClaimFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput.extend({ claimId: ulidSchema })))
-  .handler(async ({ context, data }) => ({
-    cancelled: await context.scopedDb.shotDialogue.cancelClaim(
-      context.shot.id,
-      data.claimId
-    ),
-  }));
+  .handler(({ context, data }) =>
+    cancelShotDialogueClaim(context, data.claimId)
+  );

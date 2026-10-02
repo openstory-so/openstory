@@ -1,15 +1,6 @@
-import { safeAudioModel } from '@/models/models';
 import { saveShotPrompt } from '@/shots/server/save-shot-prompt';
 import { regenerateShotPrompt } from '@/shots/server/regenerate-shot-prompt';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
-import {
-  DEFAULT_ANALYSIS_MODEL,
-  getAnalysisModelById,
-} from '@/models/models.config';
-import {
-  computeMusicPromptInputHash,
-  musicPromptInputHashMatches,
-} from './input-hash';
 import {
   SHOT_PROMPT_TYPES,
   type ShotPromptVersion,
@@ -17,20 +8,19 @@ import {
 } from '@/platform/server/db/schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { simpleHash } from '@/platform/hash';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 import { storedMotionDialogueSchema } from './scene-analysis.schema';
-import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { MusicPromptWorkflowInput } from '@/platform/server/workflow/types';
-import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
-import { restoreShotPromptVersion } from '@/shots/server/shot-content-edit';
+import {
+  cancelPendingArtifact,
+  restoreShotPromptVersion,
+} from '@/shots/server/shot-content-edit';
 import {
   restoreMusicPromptVersion,
+  rewriteMusicPrompt,
   saveMusicPrompt,
 } from '@/audio/server/music-edit';
 
@@ -65,14 +55,6 @@ export function shotPromptForceDedupId(
   nonce: string
 ): string {
   return `prompt-${promptType}-${shotId}-force-${nonce}`;
-}
-
-/** Stable deduplication ID for music-prompt regeneration — see above. */
-export function musicPromptDedupId(
-  sequenceId: string,
-  liveHash: string
-): string {
-  return `music-prompt-${sequenceId}-${liveHash}`;
 }
 
 /** True when a cached hash means there is no work for the regeneration to do. */
@@ -245,81 +227,10 @@ const cancelPendingInput = z.object({
   artifact: z.enum(['visual-prompt', 'motion-prompt', 'image']),
 });
 
-/**
- * Settle the frame after an image claim cancel (#1095 review): the producing
- * run may be terminated before its own settle path runs, so drop the promote
- * claim if THIS row holds it. The status needs no write: a cancelled row
- * reads as the frame's selection (#1942), and a newer kickoff's row is newer.
- */
-async function settleFrameAfterImageCancel(
-  scopedDb: ScopedDb,
-  frameId: string,
-  row: { id: string }
-): Promise<void> {
-  await scopedDb.frames.clearPendingPromoteVersionIdIf(frameId, row.id);
-}
-
 export const cancelPendingArtifactFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(cancelPendingInput))
-  .handler(async ({ context, data }) => {
-    const { scopedDb, frame, shot } = context;
-
-    if (data.artifact === 'visual-prompt') {
-      const row = await scopedDb.framePromptVersions.getByIdForFrame(
-        data.versionId,
-        frame.id
-      );
-      if (!row) throw new Error('Prompt version not found for this shot');
-      const cancelled = await scopedDb.framePromptVersions.markTerminal(
-        row.id,
-        'cancelled'
-      );
-      if (!cancelled) return { cancelled: false } as const;
-      const cascaded = await scopedDb.frameVariants.cancelByDependency(
-        row.id,
-        'Upstream visual prompt was cancelled'
-      );
-      for (const dep of cascaded) {
-        // Terminate the image child (if it has a real single-artifact run id)
-        // before settling frame state — cancel should stop spend when possible.
-        // Status guards still discard any completion that races past this.
-        await terminateSingleArtifactRun(dep.workflowRunId);
-        await settleFrameAfterImageCancel(scopedDb, dep.frameId, dep);
-      }
-      await terminateSingleArtifactRun(row.workflowRunId);
-      return { cancelled: true } as const;
-    }
-
-    if (data.artifact === 'motion-prompt') {
-      const row = await scopedDb.shotPromptVersions.getByIdForShot(
-        data.versionId,
-        shot.id
-      );
-      if (!row) throw new Error('Prompt version not found for this shot');
-      const cancelled = await scopedDb.shotPromptVersions.markTerminal(
-        row.id,
-        'cancelled'
-      );
-      if (!cancelled) return { cancelled: false } as const;
-      await terminateSingleArtifactRun(row.workflowRunId);
-      return { cancelled: true } as const;
-    }
-
-    const row = await scopedDb.frameVariants.getById(data.versionId);
-    if (!row || row.frameId !== frame.id) {
-      throw new Error('Image version not found for this shot');
-    }
-    const cancelled = await scopedDb.frameVariants.markTerminal(
-      row.id,
-      'cancelled',
-      'Cancelled by user'
-    );
-    if (!cancelled) return { cancelled: false } as const;
-    await terminateSingleArtifactRun(row.workflowRunId);
-    await settleFrameAfterImageCancel(scopedDb, row.frameId, row);
-    return { cancelled: true } as const;
-  });
+  .handler(({ context, data }) => cancelPendingArtifact(context, data));
 
 const shotRegenerateInput = z.object({
   sequenceId: ulidSchema,
@@ -383,65 +294,13 @@ const sequenceRegenerateInput = z.object({ sequenceId: ulidSchema });
 export const regenerateMusicPromptFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(sequenceRegenerateInput))
-  .handler(async ({ context }) => {
-    const { sequence, scopedDb, user, teamId } = context;
-
-    const [shots, sceneRows] = await Promise.all([
-      scopedDb.shots.listBySequence(sequence.id),
-      scopedDb.scenes.listBySequence(sequence.id),
-    ]);
-    const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
-      sceneRows,
-      shots
-    );
-    if (sceneSummaries.length === 0) {
-      throw new Error(
-        'Sequence has no scenes to regenerate the music prompt from'
-      );
-    }
-
-    const analysisModelId =
-      getAnalysisModelById(sequence.analysisModel)?.id ??
-      DEFAULT_ANALYSIS_MODEL;
-
-    // Bail if nothing has changed since the cached hash was written —
-    // otherwise every double-click enqueues a duplicate workflow run.
-    const liveHash = await computeMusicPromptInputHash({
-      sceneSummaries,
-      analysisModel: analysisModelId,
-    });
-    if (
-      await musicPromptInputHashMatches(
-        sequence.musicPromptInputHash,
-        { sceneSummaries, analysisModel: analysisModelId },
-        legacyShotSummaries
-      )
-    ) {
-      return { workflowRunId: null, alreadyUpToDate: true } as const;
-    }
-
-    const workflowRunId = await triggerWorkflow<MusicPromptWorkflowInput>(
-      '/music-prompt',
-      {
-        userId: user.id,
-        teamId,
-        sequenceId: sequence.id,
-        sceneSummaries,
-        analysisModelId,
-        // Provenance snapshotted here: a prompt already on the sequence makes
-        // this a regeneration.
-        promptSource: sequence.musicPrompt ? 'regenerated' : 'ai-generated',
-        musicModel: safeAudioModel(sequence.musicModel),
-      },
-      {
-        // Dedup by the live input hash so a retry of the same upstream context
-        // collapses to one workflow run instead of N.
-        deduplicationId: musicPromptDedupId(sequence.id, liveHash),
-      }
-    );
-
-    return { workflowRunId, alreadyUpToDate: false } as const;
-  });
+  .handler(({ context }) =>
+    rewriteMusicPrompt(
+      context.scopedDb,
+      { userId: context.user.id },
+      context.sequence
+    )
+  );
 
 export const getMusicPromptStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])

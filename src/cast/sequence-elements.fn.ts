@@ -6,7 +6,7 @@ import {
 } from '@/cast/server/element-vision';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
-import { InsufficientCreditsError, NotFoundError } from '@/platform/errors';
+import { InsufficientCreditsError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
@@ -16,19 +16,12 @@ import {
   setElementDescription,
 } from '@/cast/server/cast-edit';
 import {
-  assertElementUploadAttachable,
   attachElementUpload,
-  triggerElementVision,
+  elementKindOrThrow,
+  replaceElementUpload,
 } from '@/cast/server/sequence-elements/attach-element-upload';
-import {
-  DRAFT_ELEMENT_UPLOAD_PREFIX,
-  elementImageUrlFromPath,
-} from '@/cast/server/sequence-elements/storage-path';
-import { elementKindFromFilename } from './element-kind';
-import {
-  measureStoredMediaDuration,
-  withMeasuredDurations,
-} from '@/cast/server/sequence-elements/media-duration';
+import { DRAFT_ELEMENT_UPLOAD_PREFIX } from '@/cast/server/sequence-elements/storage-path';
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -162,22 +155,6 @@ export const analyzeDraftElementFn = createServerFn({ method: 'POST' })
 // ============================================================================
 // Finalize upload to an existing sequence
 // ============================================================================
-
-/**
- * The uploaded file's kind, from its filename — the ONE place the answer is
- * derived server-side, so a clip can never land as an image row (#1559).
- * Anything we don't store as an element is rejected rather than defaulted:
- * defaulting would send a .pdf to the vision LLM as an image.
- */
-function elementKindOrThrow(filename: string) {
-  const kind = elementKindFromFilename(filename);
-  if (!kind) {
-    throw new Error(
-      `Unsupported element file "${filename}" — use an image, MP3/WAV, or MP4/MOV.`
-    );
-  }
-  return kind;
-}
 
 /**
  * `durationSeconds` is read in the browser and passed through: the worker
@@ -375,68 +352,15 @@ export const replaceSequenceElementFn = createServerFn({ method: 'POST' })
       })
     )
   )
-  .handler(async ({ context, data }) => {
-    await assertElementUploadAttachable({
+  .handler(async ({ context, data }) => ({
+    element: await replaceElementUpload({
       scopedDb: context.scopedDb,
+      teamId: context.teamId,
+      userId: context.user.id,
+      sequenceId: context.sequence.id,
+      elementId: data.elementId,
       path: data.path,
       filename: data.filename,
-      teamId: context.teamId,
-    });
-
-    const element = await context.scopedDb.sequenceElements.getById(
-      data.elementId
-    );
-    if (!element || element.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Element not found');
-    }
-
-    // Derived, never taken off the payload — see `elementImageUrlFromPath`.
-    const imageUrl = elementImageUrlFromPath(data.path);
-    // A replacement can change the kind (swap a still for the clip it came
-    // from), so it is re-derived rather than inherited.
-    const kind = elementKindOrThrow(data.filename);
-
-    const updated = await context.scopedDb.sequenceElements.update(
-      data.elementId,
-      {
-        imageUrl,
-        imagePath: data.path,
-        uploadedFilename: data.filename,
-        kind,
-        durationSeconds:
-          data.durationSeconds ??
-          (kind === 'image'
-            ? null
-            : await measureStoredMediaDuration(data.path)),
-        description: null,
-        consistencyTag: null,
-        visionStatus: kind === 'image' ? 'analyzing' : 'completed',
-        visionError: null,
-        visionGeneratedAt: kind === 'image' ? null : new Date(),
-      }
-    );
-
-    if (kind !== 'image') return { element: updated };
-
-    try {
-      await triggerElementVision({
-        elementId: updated.id,
-        sequenceId: context.sequence.id,
-        imageUrl,
-        filename: updated.uploadedFilename,
-        token: updated.token,
-        teamId: context.teamId,
-        userId: context.user.id,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      await context.scopedDb.sequenceElements.updateVisionStatus(
-        data.elementId,
-        'failed',
-        message
-      );
-      throw err;
-    }
-
-    return { element: updated };
-  });
+      durationSeconds: data.durationSeconds,
+    }),
+  }));

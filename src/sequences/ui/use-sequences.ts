@@ -13,8 +13,8 @@ import {
   setSequenceModelFn,
   setSequenceMusicFn,
   unarchiveSequenceFn,
-  type AddModelResult,
 } from '@/sequences/sequences.fn';
+import type { AddModelResult } from '@/sequences/server/sequence-models';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { micros, type Microdollars } from '@/billing/money';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';

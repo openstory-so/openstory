@@ -16,7 +16,7 @@ import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
   selectEligibleVideoShots,
-} from './sequences.fn';
+} from '@/sequences/server/sequence-models';
 import { resolveUnarchiveRestore } from '@/sequences/server/sequence-edit';
 import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
 

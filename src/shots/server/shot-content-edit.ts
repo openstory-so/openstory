@@ -1,6 +1,7 @@
 /**
  * Shot prompt and spec edits shared by the editor's server fns and the MCP
- * tools: restore an earlier prompt version, save an edited shot spec.
+ * tools: restore an earlier prompt version, save an edited shot spec, cancel
+ * a pending prompt or image claim.
  */
 import type { z } from 'zod';
 import {
@@ -17,6 +18,8 @@ import {
   regenerateShotPrompt,
 } from './regenerate-shot-prompt';
 import type { ShotEditContext } from './shot-context';
+import type { ScopedDb } from '@/platform/server/db/scoped';
+import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
 /**
  * A derived row restores as derived, carrying the spec it was built from.
@@ -160,4 +163,90 @@ export async function saveShotSpec(
     });
   }
   return regenerateShotPrompt(context, scene, { force: false, replace });
+}
+
+/**
+ * Settle the frame after an image claim cancel (#1095 review): the producing
+ * run may be terminated before its own settle path runs, so drop the promote
+ * claim if THIS row holds it. The status needs no write: a cancelled row
+ * reads as the frame's selection (#1942), and a newer kickoff's row is newer.
+ */
+async function settleFrameAfterImageCancel(
+  scopedDb: ScopedDb,
+  frameId: string,
+  row: { id: string }
+): Promise<void> {
+  await scopedDb.frames.clearPendingPromoteVersionIdIf(frameId, row.id);
+}
+
+/**
+ * Cancel an in-flight pending artifact claim (#1085): flip the row to
+ * 'cancelled' (a completion that races in afterwards is discarded against the
+ * status guard), cascade to dependent image claims, and best-effort terminate
+ * the producing workflow when it's a single-artifact run. Idempotent — a row
+ * that already went terminal reports `cancelled: false`.
+ */
+export async function cancelPendingArtifact(
+  context: Pick<ShotEditContext, 'scopedDb' | 'shot' | 'frame'>,
+  data: {
+    versionId: string;
+    artifact: 'visual-prompt' | 'motion-prompt' | 'image';
+  }
+): Promise<{ cancelled: boolean }> {
+  const { scopedDb, frame, shot } = context;
+
+  if (data.artifact === 'visual-prompt') {
+    const row = await scopedDb.framePromptVersions.getByIdForFrame(
+      data.versionId,
+      frame.id
+    );
+    if (!row) throw new NotFoundError('Prompt version not found for this shot');
+    const cancelled = await scopedDb.framePromptVersions.markTerminal(
+      row.id,
+      'cancelled'
+    );
+    if (!cancelled) return { cancelled: false };
+    const cascaded = await scopedDb.frameVariants.cancelByDependency(
+      row.id,
+      'Upstream visual prompt was cancelled'
+    );
+    for (const dep of cascaded) {
+      // Terminate the image child (if it has a real single-artifact run id)
+      // before settling frame state — cancel should stop spend when possible.
+      // Status guards still discard any completion that races past this.
+      await terminateSingleArtifactRun(dep.workflowRunId);
+      await settleFrameAfterImageCancel(scopedDb, dep.frameId, dep);
+    }
+    await terminateSingleArtifactRun(row.workflowRunId);
+    return { cancelled: true };
+  }
+
+  if (data.artifact === 'motion-prompt') {
+    const row = await scopedDb.shotPromptVersions.getByIdForShot(
+      data.versionId,
+      shot.id
+    );
+    if (!row) throw new NotFoundError('Prompt version not found for this shot');
+    const cancelled = await scopedDb.shotPromptVersions.markTerminal(
+      row.id,
+      'cancelled'
+    );
+    if (!cancelled) return { cancelled: false };
+    await terminateSingleArtifactRun(row.workflowRunId);
+    return { cancelled: true };
+  }
+
+  const row = await scopedDb.frameVariants.getById(data.versionId);
+  if (!row || row.frameId !== frame.id) {
+    throw new NotFoundError('Image version not found for this shot');
+  }
+  const cancelled = await scopedDb.frameVariants.markTerminal(
+    row.id,
+    'cancelled',
+    'Cancelled by user'
+  );
+  if (!cancelled) return { cancelled: false };
+  await terminateSingleArtifactRun(row.workflowRunId);
+  await settleFrameAfterImageCancel(scopedDb, row.frameId, row);
+  return { cancelled: true };
 }

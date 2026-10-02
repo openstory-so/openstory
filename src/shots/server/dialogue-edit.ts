@@ -1,12 +1,14 @@
 /**
  * Shot dialogue edits shared by the editor's server fns and the MCP tools:
- * pick a version of the lines, pick or discard a reading (section).
+ * pick a version of the lines, pick or discard a reading (section), record
+ * the lines again, cancel a recording in flight.
  */
 import {
   DIALOGUE_TTS_MODEL,
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
   dialogueClipSourceKey,
+  ttsCharacterCount,
   dialogueFitBudget,
   sectionClip,
   voicedDialogueLines,
@@ -16,12 +18,28 @@ import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { castVoiceIds, speechVoicesMoved } from '@/shots/shot-dialogue';
+import {
+  castVoiceIds,
+  speechVoicesMoved,
+  voicedShotIds,
+} from '@/shots/shot-dialogue';
+import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import {
+  releaseReservationOnThrow,
+  reserveRunCredits,
+} from '@/billing/server/preflight';
+import { resolveShotDuration } from '@/motion/resolve-shot-duration';
+import { ValidationError } from '@/platform/errors';
+import { triggerWorkflow } from '@/platform/server/workflow/client';
+import type { DialogueAudioWorkflowInput } from '@/platform/server/workflow/types';
+import { loadSceneContextBySequence } from './scene-script';
 import type { ShotEditContext } from './shot-context';
 import {
   loadShotDialogueResolver,
   loadVoiceMovedShotIds,
   requireSelectableSection,
+  sceneDialogueJobs,
+  shotDialogueResolver,
 } from './shot-dialogue';
 
 const logger = getLogger(['openstory', 'shots', 'dialogue-edit']);
@@ -258,4 +276,132 @@ export async function discardShotDialogueSection(
     sectionId,
   });
   return { sectionId };
+}
+
+/**
+ * Record a shot's voiced lines again (`regenerateShotDialogueFn`): the whole
+ * scene's conversation is spoken in one call, and this shot adopts the new
+ * reading even if its clip still matches. It lands through a claim like any
+ * other speech. `scope: 'scene'` forces every voiced shot of the shot's scene
+ * to adopt, so the scene is one take again.
+ */
+export async function regenerateShotDialogue(
+  context: DialogueEditContext,
+  scope: 'shot' | 'scene'
+): Promise<{ workflowRunId: string }> {
+  const { scopedDb, shot, sequence, user } = context;
+  const [shots, characters, versions, sceneContext] = await Promise.all([
+    scopedDb.shots.listBySequence(sequence.id),
+    scopedDb.characters.list(sequence.id),
+    // The rows, not just the lines: a speech names the version it spoke.
+    scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
+    loadSceneContextBySequence(scopedDb, sequence.id),
+  ]);
+  const selectedMotionByShot =
+    await scopedDb.shotPromptVersions.getSelectedMotionByShots(
+      shots.map((row) => row.id)
+    );
+  const model = safeImageToVideoModel(sequence.videoModel);
+  const [job] = sceneDialogueJobs({
+    needing: [shot],
+    shots,
+    dialogueOf: shotDialogueResolver({
+      linesByShotId: new Map(
+        versions.map((version) => [version.shotId, version.lines])
+      ),
+      shots,
+      legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
+      scriptDialogueOf: (sceneId) =>
+        sceneContext.get(sceneId)?.script?.dialogue,
+    }),
+    characters,
+    versionIdByShotId: new Map(
+      versions.map((version) => [version.shotId, version.id])
+    ),
+    voiceMovedShotIds: await loadVoiceMovedShotIds(
+      scopedDb,
+      sequence.id,
+      shots
+    ),
+    shotSecondsOf: (shotId) => {
+      if (scope === 'shot' && shotId !== shot.id) return undefined;
+      const row = shots.find((candidate) => candidate.id === shotId);
+      return row
+        ? resolveShotDuration({ durationMs: row.durationMs, model })
+        : undefined;
+    },
+  });
+  const speaking = job ? voicedShotIds(job.voiced) : [];
+  const adopting =
+    scope === 'scene' ? speaking : speaking.filter((id) => id === shot.id);
+  if (!job || adopting.length === 0) {
+    throw new ValidationError(
+      scope === 'scene'
+        ? 'This scene has no voiced lines to record'
+        : 'This shot has no voiced lines to record'
+    );
+  }
+
+  const reservationId = await reserveRunCredits(
+    scopedDb,
+    estimateTtsCost(ttsCharacterCount(job.voiced)),
+    {
+      errorMessage: 'Insufficient credits to record dialogue',
+      sequenceId: sequence.id,
+    }
+  );
+  return releaseReservationOnThrow(scopedDb, reservationId, async () => {
+    const input: DialogueAudioWorkflowInput = {
+      userId: user.id,
+      teamId: sequence.teamId,
+      sequenceId: sequence.id,
+      reservationId,
+      ownsReservation: true,
+      scenes: [
+        {
+          ...job,
+          forceAdoptShotIds: [
+            ...new Set([...job.forceAdoptShotIds, ...adopting]),
+          ],
+        },
+      ],
+      minDurationSeconds: dialogueAudioMinSeconds([model]),
+      maxDurationSeconds: dialogueAudioMaxSeconds([model]),
+    };
+    return {
+      workflowRunId: await triggerWorkflow('/dialogue-audio', input),
+    };
+  });
+}
+
+/** This shot's dialogue speeches in flight (#1657) — the "Generating…" rows. */
+export async function listShotDialogueClaims(
+  context: Pick<ShotEditContext, 'scopedDb' | 'shot'>
+) {
+  const claims = await context.scopedDb.shotDialogue.listLiveClaims(
+    context.shot.id
+  );
+  return claims.map((claim) => ({
+    id: claim.id,
+    createdAt: claim.createdAt,
+    // Demoted: it still records, but it will not become the shot's audio.
+    willBecomeCurrent: claim.pendingSourceKey !== null,
+  }));
+}
+
+/**
+ * Stop a speech in flight from becoming this shot's audio. The run is not
+ * terminated — it records the scene for other shots too — and its reading for
+ * this shot lands in the list, unselected.
+ */
+export async function cancelShotDialogueClaim(
+  context: Pick<ShotEditContext, 'scopedDb' | 'shot'>,
+  claimId: string
+): Promise<{ cancelled: boolean }> {
+  return {
+    cancelled: await context.scopedDb.shotDialogue.cancelClaim(
+      context.shot.id,
+      claimId
+    ),
+  };
 }

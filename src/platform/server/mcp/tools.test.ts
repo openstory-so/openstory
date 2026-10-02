@@ -10,8 +10,20 @@ import {
   vfx,
   user,
 } from '@/platform/server/db/schema';
-import { listFilesPage } from '#storage';
-vi.mock('#storage', () => ({ listFilesPage: vi.fn() }));
+import { listFilesPage, uploadFile } from '#storage';
+vi.mock('#storage', () => ({
+  listFilesPage: vi.fn(),
+  uploadFile: vi.fn(),
+  storageObjectSize: vi.fn(() => Promise.resolve(null)),
+}));
+import { triggerWorkflow } from '@/platform/server/workflow/client';
+vi.mock('@/platform/server/workflow/client', () => ({
+  triggerWorkflow: vi.fn(),
+}));
+import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
+  analyzeTalentMediaForTeam: vi.fn(),
+}));
 import {
   characters,
   characterSheetVariants,
@@ -68,6 +80,7 @@ import {
   renderSegments,
   videoVariants,
   sequenceExports,
+  credits,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import {
@@ -2945,6 +2958,257 @@ describe('cast and music edits (#1979)', () => {
     expect(
       await call('create_character', { sequenceId, name: 'Intruder' })
     ).toMatchObject(refusal('NOT_FOUND'));
+  });
+});
+
+describe('generation and uploads (#1979)', () => {
+  const refusal = (code: string) => ({
+    isError: true,
+    structuredContent: { error: { code } },
+  });
+  // 1×1 PNG.
+  const png =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  beforeEach(() => {
+    vi.mocked(triggerWorkflow).mockReset().mockResolvedValue('run-1');
+    vi.mocked(uploadFile)
+      .mockReset()
+      .mockImplementation((bucket, path) =>
+        Promise.resolve({
+          path,
+          publicUrl: `/r2/${bucket}/${path}`,
+          fullPath: `${bucket}/${path}`,
+        })
+      );
+    vi.mocked(analyzeTalentMediaForTeam)
+      .mockReset()
+      .mockResolvedValue(asStub({ subjectKind: 'other' }));
+  });
+  async function selectedImageVersionId() {
+    const [frame] = await db
+      .select({ id: frames.selectedImageVersionId })
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    return frame?.id;
+  }
+
+  it('lists models and an empty variant grid', async () => {
+    expect(await data('list_models', {})).toMatchObject({
+      image: expect.arrayContaining([
+        expect.objectContaining({ model: 'nano_banana_2' }),
+      ]),
+      video: expect.arrayContaining([
+        expect.objectContaining({ model: 'seedance_v2' }),
+      ]),
+      music: expect.arrayContaining([
+        expect.objectContaining({ model: 'elevenlabs_music' }),
+      ]),
+    });
+    expect(await data('get_shot_variant_grid', { sequenceId, shotId })).toEqual(
+      { shotId, grid: null }
+    );
+  });
+
+  it('generate_shot_image claims the still once; a repeat is in flight', async () => {
+    expect(
+      await call('generate_shot_image', { sequenceId, shotId })
+    ).toMatchObject(refusal('INSUFFICIENT_CREDITS'));
+    await db
+      .update(credits)
+      .set({ balance: 100_000_000 })
+      .where(eq(credits.teamId, teamId));
+    expect(
+      await data('generate_shot_image', { sequenceId, shotId })
+    ).toMatchObject({ shotId, workflowRunId: 'run-1', alreadyInFlight: false });
+    expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledWith(
+      '/image',
+      expect.objectContaining({ shotId, teamId }),
+      expect.anything()
+    );
+    expect(
+      await data('generate_shot_image', { sequenceId, shotId })
+    ).toMatchObject({ alreadyInFlight: true });
+    expect(vi.mocked(triggerWorkflow)).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses work it cannot do before starting anything', async () => {
+    expect(
+      await call('select_shot_image_variant', {
+        sequenceId,
+        shotId,
+        variantIndex: 0,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('generate_shot_video', { sequenceId, shotId, prompt: '  ' })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('render_shot_at_quality', { sequenceId, shotId })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('add_model_to_sequence', {
+        sequenceId,
+        variantType: 'image',
+        model: 'nano_banana_2',
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+    expect(
+      await call('generate_shot_image', { sequenceId: generateId(), shotId })
+    ).toMatchObject(refusal('NOT_FOUND'));
+    expect(vi.mocked(triggerWorkflow)).not.toHaveBeenCalled();
+  });
+
+  it('cancel_video_render cancels a running render of the shot once', async () => {
+    const running = generateId();
+    await db.insert(videoVariants).values({
+      id: running,
+      sequenceId,
+      renderSegmentId: segmentId,
+      model: 'seedance_v2',
+      manifest: [],
+      status: 'generating',
+    });
+    const args = { sequenceId, shotId, versionId: running };
+    expect(await data('cancel_video_render', args)).toEqual({
+      cancelled: true,
+    });
+    expect(await data('cancel_video_render', args)).toEqual({
+      cancelled: false,
+    });
+    expect(
+      await call('cancel_video_render', { ...args, versionId: generateId() })
+    ).toMatchObject(refusal('NOT_FOUND'));
+  });
+
+  it('select_sequence_model selects that model’s stills', async () => {
+    const other = generateId();
+    await db.insert(frameVariants).values({
+      id: other,
+      frameId,
+      sequenceId,
+      model: 'gpt_image_2',
+      status: 'completed',
+      url: '/r2/thumbnails/other.png',
+    });
+    expect(
+      await data('select_sequence_model', {
+        sequenceId,
+        variantType: 'image',
+        model: 'gpt_image_2',
+      })
+    ).toEqual({ count: 1, variantType: 'image', model: 'gpt_image_2' });
+    expect(await selectedImageVersionId()).toBe(other);
+    expect(
+      await call('select_sequence_model', {
+        sequenceId,
+        variantType: 'video',
+        model: 'seedance_v2',
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+  });
+
+  it('uploads an image, checks it, and sets it as the shot’s still', async () => {
+    const stored = z.object({ upload: z.string(), rights: z.string() }).parse(
+      await data('upload_media', {
+        sequenceId,
+        use: 'shot_image',
+        data: png,
+        mimeType: 'image/png',
+      })
+    );
+    expect(stored.rights).toBe('cleared');
+    expect(stored.upload).toMatch(
+      new RegExp(
+        `^/r2/thumbnails/teams/${teamId}/sequences/${sequenceId}/uploads/\\w+\\.png$`
+      )
+    );
+    const set = z
+      .object({ versionId: z.string(), promptChanged: z.boolean() })
+      .parse(
+        await data('set_shot_image_from_upload', {
+          sequenceId,
+          shotId,
+          upload: stored.upload,
+        })
+      );
+    expect(set.promptChanged).toBe(false);
+    expect(await selectedImageVersionId()).toBe(set.versionId);
+  });
+
+  it('needs the portrait sign-off for a real person', async () => {
+    vi.mocked(analyzeTalentMediaForTeam).mockResolvedValue(
+      asStub({ subjectKind: 'human' })
+    );
+    const args = {
+      sequenceId,
+      use: 'character_sheet',
+      data: png,
+      mimeType: 'image/png',
+    };
+    expect(await call('upload_media', args)).toMatchObject(
+      refusal('ATTESTATION_REQUIRED')
+    );
+    expect(
+      await data('upload_media', {
+        ...args,
+        portraitAttestation: {
+          statementVersion: 'portrait-rights-v1',
+          authorizationBasis: 'self',
+        },
+      })
+    ).toMatchObject({ rights: 'signed' });
+  });
+
+  it('refuses wrong types, both sources, and uploads it did not store', async () => {
+    expect(
+      await call('upload_media', {
+        sequenceId,
+        use: 'shot_video',
+        data: png,
+        mimeType: 'image/png',
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('upload_media', {
+        sequenceId,
+        use: 'shot_image',
+        url: 'https://example.com/a.png',
+        data: png,
+        mimeType: 'image/png',
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('set_shot_image_from_upload', {
+        sequenceId,
+        shotId,
+        upload: `/r2/thumbnails/teams/${generateId()}/x.png`,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('set_shot_image_from_upload', {
+        sequenceId,
+        shotId,
+        upload: 'https://example.com/x.png',
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+  });
+
+  it('uploads a track and makes it the sequence’s music', async () => {
+    const { upload } = z.object({ upload: z.string() }).parse(
+      await data('upload_media', {
+        sequenceId,
+        use: 'music',
+        data: 'SUQzBAAAAAAAAA==',
+        mimeType: 'audio/mpeg',
+      })
+    );
+    const { variantId } = z
+      .object({ variantId: z.string() })
+      .parse(await data('set_music_from_upload', { sequenceId, upload }));
+    expect(await data('get_sequence_music', { sequenceId })).toMatchObject({
+      music: { variantId },
+    });
+    expect(vi.mocked(analyzeTalentMediaForTeam)).not.toHaveBeenCalled();
   });
 });
 

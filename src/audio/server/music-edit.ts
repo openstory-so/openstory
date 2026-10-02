@@ -1,13 +1,33 @@
 /**
  * Sequence music edits shared by the editor's server fns and the MCP tools
  * (#1979): save or restore the music prompt, pick a track, discard / undiscard
- * one. No generation starts here.
+ * one, generate a track, rewrite the prompt with the LLM.
  */
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
+import {
+  DEFAULT_MUSIC_MODEL,
+  isValidAudioModel,
+  safeAudioModel,
+} from '@/models/models';
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  getAnalysisModelById,
+} from '@/models/models.config';
+import {
+  computeMusicPromptInputHash,
+  musicPromptInputHashMatches,
+} from '@/shots/input-hash';
+import { triggerWorkflow } from '@/platform/server/workflow/client';
+import type {
+  MusicPromptWorkflowInput,
+  MusicWorkflowInput,
+} from '@/platform/server/workflow/types';
+import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 
 const logger = getLogger(['openstory', 'audio', 'music-edit']);
 
@@ -179,4 +199,157 @@ export async function restoreMusicPromptVersion(
     createdBy: actor.userId,
   });
   return { variantId: inserted.id };
+}
+
+/**
+ * Generate the sequence's music track (`generateMusicFn`). Uses the given
+ * prompt/tags, else the stored ones; an edited prompt or tags is recorded as
+ * a `user-edit` version first. The row and claim are taken before the run
+ * (#1130), compare-and-swapped on the claim this request saw: of two rapid
+ * calls the second finds the claim moved and starts nothing.
+ */
+export async function generateMusic(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequence: Sequence,
+  data: { prompt?: string; tags?: string; model?: string; duration?: number }
+): Promise<{ success: true; variantId: string | null }> {
+  const effectivePrompt = data.prompt ?? sequence.musicPrompt;
+  const effectiveTags = data.tags ?? sequence.musicTags;
+
+  if (!effectivePrompt) {
+    throw new ValidationError(
+      'Music prompt has not been generated yet — generate the storyboard first before editing music inputs.'
+    );
+  }
+  if (!effectiveTags) {
+    throw new ValidationError('Music tags are required.');
+  }
+
+  // Persist the user's intent before triggering the workflow. Both
+  // `data.prompt` and `data.tags` are surfaced as a single user-edit
+  // revision, which the versions helper selects, so a tags-only edit isn't
+  // dropped.
+  if (data.prompt !== undefined || data.tags !== undefined) {
+    await scopedDb.sequenceMusicPromptVersions.write({
+      sequenceId: sequence.id,
+      prompt: effectivePrompt,
+      tags: effectiveTags,
+      source: 'user-edit',
+      createdBy: actor.userId,
+    });
+  }
+
+  const allShots = await scopedDb.shots.listBySequence(sequence.id);
+  const totalDuration = musicRequestDurationSeconds(allShots);
+
+  const baseInput = {
+    userId: actor.userId,
+    teamId: sequence.teamId,
+    sequenceId: sequence.id,
+    duration: data.duration ?? totalDuration,
+    model: data.model && isValidAudioModel(data.model) ? data.model : undefined,
+  };
+
+  const musicInput: MusicWorkflowInput = {
+    ...baseInput,
+    prompt: effectivePrompt,
+    tags: effectiveTags,
+  };
+
+  const variantId = await scopedDb.sequenceVariants.claimMusic({
+    sequenceId: sequence.id,
+    model: baseInput.model ?? DEFAULT_MUSIC_MODEL,
+    prompt: effectivePrompt,
+    tags: effectiveTags,
+    durationSeconds: baseInput.duration,
+    isPrimary: true,
+    workflowRunId: null,
+    ifPendingIs: sequence.pendingPromoteMusicVariantId,
+  });
+  if (!variantId) return { success: true, variantId: null };
+
+  try {
+    await triggerWorkflow('/music', { ...musicInput, variantId });
+  } catch (error) {
+    await scopedDb.sequenceVariants.failMusicClaim(
+      { sequenceId: sequence.id, variantId },
+      error instanceof Error ? error.message : String(error)
+    );
+    throw error;
+  }
+
+  return { success: true, variantId };
+}
+
+/** Stable deduplication ID for music-prompt regeneration. */
+export function musicPromptDedupId(
+  sequenceId: string,
+  liveHash: string
+): string {
+  return `music-prompt-${sequenceId}-${liveHash}`;
+}
+
+/**
+ * Rewrite the music prompt from the scenes with the analysis LLM
+ * (`regenerateMusicPromptFn`). No-ops when nothing changed since the cached
+ * hash was written, so a double click never enqueues a duplicate run.
+ */
+export async function rewriteMusicPrompt(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequence: Sequence
+) {
+  const [shots, sceneRows] = await Promise.all([
+    scopedDb.shots.listBySequence(sequence.id),
+    scopedDb.scenes.listBySequence(sequence.id),
+  ]);
+  const { sceneSummaries, legacyShotSummaries } = musicSceneSummariesFromRows(
+    sceneRows,
+    shots
+  );
+  if (sceneSummaries.length === 0) {
+    throw new ValidationError(
+      'Sequence has no scenes to regenerate the music prompt from'
+    );
+  }
+
+  const analysisModelId =
+    getAnalysisModelById(sequence.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL;
+
+  const liveHash = await computeMusicPromptInputHash({
+    sceneSummaries,
+    analysisModel: analysisModelId,
+  });
+  if (
+    await musicPromptInputHashMatches(
+      sequence.musicPromptInputHash,
+      { sceneSummaries, analysisModel: analysisModelId },
+      legacyShotSummaries
+    )
+  ) {
+    return { workflowRunId: null, alreadyUpToDate: true } as const;
+  }
+
+  const workflowRunId = await triggerWorkflow<MusicPromptWorkflowInput>(
+    '/music-prompt',
+    {
+      userId: actor.userId,
+      teamId: scopedDb.teamId,
+      sequenceId: sequence.id,
+      sceneSummaries,
+      analysisModelId,
+      // Provenance snapshotted here: a prompt already on the sequence makes
+      // this a regeneration.
+      promptSource: sequence.musicPrompt ? 'regenerated' : 'ai-generated',
+      musicModel: safeAudioModel(sequence.musicModel),
+    },
+    {
+      // Dedup by the live input hash so a retry of the same upstream context
+      // collapses to one workflow run instead of N.
+      deduplicationId: musicPromptDedupId(sequence.id, liveHash),
+    }
+  );
+
+  return { workflowRunId, alreadyUpToDate: false } as const;
 }

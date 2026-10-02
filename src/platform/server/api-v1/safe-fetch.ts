@@ -141,15 +141,15 @@ export function assertSafeImageUrl(
 }
 
 /**
- * Fetch a caller-supplied image URL safely. Validates the host, follows a
- * bounded number of redirects to hosts that still pass {@link assertSafeImageUrl},
- * enforces an image Content-Type from the response, and caps size.
- * Returns the bytes, the validated content type, and its file extension.
+ * Open a caller-supplied URL safely: validate the host, follow a bounded
+ * number of redirects to hosts that still pass {@link assertSafeImageUrl},
+ * and return the final 2xx response with its body unread. The caller checks
+ * the content type and size.
  */
-async function fetchSafeImage(
+export async function openSafeUrl(
   rawUrl: string,
   label: string = DEFAULT_IMAGE_LABEL
-): Promise<{ bytes: Uint8Array; contentType: string; extension: string }> {
+): Promise<Response> {
   let current = rawUrl;
 
   for (let hops = 0; hops <= MAX_IMAGE_REDIRECTS; hops++) {
@@ -190,35 +190,56 @@ async function fetchSafeImage(
     }
 
     if (!res.ok) {
+      void res.body?.cancel();
       throw fetchFailed(label, rawUrl);
     }
-
-    const contentType =
-      (res.headers.get('content-type') ?? '')
-        .split(';')[0]
-        ?.trim()
-        .toLowerCase() ?? '';
-    const extension = ALLOWED_IMAGE_TYPES[contentType];
-    if (!extension) {
-      throw new ValidationError(
-        `${label} must be a PNG, JPEG, WebP, GIF, or AVIF.`
-      );
-    }
-
-    const declaredLength = Number(res.headers.get('content-length'));
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
-      throw new ValidationError(`${label} is too large (max 20 MB).`);
-    }
-
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new ValidationError(`${label} is too large (max 20 MB).`);
-    }
-
-    return { bytes, contentType, extension };
+    return res;
   }
 
   throw fetchFailed(label, rawUrl, 'redirect blocked');
+}
+
+/** A response's media type, lower-cased and without parameters. */
+export function responseContentType(res: Response): string {
+  return (
+    (res.headers.get('content-type') ?? '')
+      .split(';')[0]
+      ?.trim()
+      .toLowerCase() ?? ''
+  );
+}
+
+/**
+ * Fetch a caller-supplied image URL safely ({@link openSafeUrl}), enforce an
+ * image Content-Type from the response, and cap size. Returns the bytes, the
+ * validated content type, and its file extension.
+ */
+async function fetchSafeImage(
+  rawUrl: string,
+  label: string = DEFAULT_IMAGE_LABEL
+): Promise<{ bytes: Uint8Array; contentType: string; extension: string }> {
+  const res = await openSafeUrl(rawUrl, label);
+  const contentType = responseContentType(res);
+  const extension = ALLOWED_IMAGE_TYPES[contentType];
+  if (!extension) {
+    void res.body?.cancel();
+    throw new ValidationError(
+      `${label} must be a PNG, JPEG, WebP, GIF, or AVIF.`
+    );
+  }
+
+  const declaredLength = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
+    void res.body?.cancel();
+    throw new ValidationError(`${label} is too large (max 20 MB).`);
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new ValidationError(`${label} is too large (max 20 MB).`);
+  }
+
+  return { bytes, contentType, extension };
 }
 
 export type IngestedImage = {

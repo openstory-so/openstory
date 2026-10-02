@@ -47,7 +47,7 @@ const promptType = z
   .describe('visual = the still’s prompt; motion = the video’s prompt.');
 
 /** A live shot of this team's sequence, loaded as the editor loads it. */
-async function shotEdit(
+export async function shotEdit(
   scopedDb: ScopedDb,
   userId: string,
   input: { sequenceId: string; shotId: string }

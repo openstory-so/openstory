@@ -233,6 +233,37 @@ describe('tools/list and whoami', () => {
       'openstory.select_music_track',
       'openstory.discard_music_track',
       'openstory.undiscard_music_track',
+      'openstory.list_models',
+      'openstory.get_shot_variant_grid',
+      'openstory.generate_shot_image',
+      'openstory.generate_shot_image_variants',
+      'openstory.select_shot_image_variant',
+      'openstory.generate_shot_video',
+      'openstory.cancel_video_render',
+      'openstory.render_shot_at_quality',
+      'openstory.render_sequence_drafts_at_quality',
+      'openstory.add_model_to_sequence',
+      'openstory.select_sequence_model',
+      'openstory.upload_media',
+      'openstory.set_shot_image_from_upload',
+      'openstory.set_shot_video_from_upload',
+      'openstory.set_music_from_upload',
+      'openstory.set_character_sheet_from_upload',
+      'openstory.set_location_sheet_from_upload',
+      'openstory.add_element',
+      'openstory.replace_element',
+      'openstory.regenerate_character_sheet',
+      'openstory.recast_character',
+      'openstory.generate_character_voice',
+      'openstory.cancel_character_voice',
+      'openstory.regenerate_location_sheet',
+      'openstory.recast_location',
+      'openstory.generate_music',
+      'openstory.rewrite_music_prompt',
+      'openstory.list_shot_dialogue_claims',
+      'openstory.regenerate_shot_dialogue',
+      'openstory.cancel_shot_dialogue',
+      'openstory.cancel_pending_shot_artifact',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.get_operation_status',
@@ -292,6 +323,34 @@ describe('tools/list and whoami', () => {
       'openstory.select_music_track',
       'openstory.discard_music_track',
       'openstory.undiscard_music_track',
+      'openstory.generate_shot_image',
+      'openstory.generate_shot_image_variants',
+      'openstory.select_shot_image_variant',
+      'openstory.generate_shot_video',
+      'openstory.cancel_video_render',
+      'openstory.render_shot_at_quality',
+      'openstory.render_sequence_drafts_at_quality',
+      'openstory.add_model_to_sequence',
+      'openstory.select_sequence_model',
+      'openstory.upload_media',
+      'openstory.set_shot_image_from_upload',
+      'openstory.set_shot_video_from_upload',
+      'openstory.set_music_from_upload',
+      'openstory.set_character_sheet_from_upload',
+      'openstory.set_location_sheet_from_upload',
+      'openstory.add_element',
+      'openstory.replace_element',
+      'openstory.regenerate_character_sheet',
+      'openstory.recast_character',
+      'openstory.generate_character_voice',
+      'openstory.cancel_character_voice',
+      'openstory.regenerate_location_sheet',
+      'openstory.recast_location',
+      'openstory.generate_music',
+      'openstory.rewrite_music_prompt',
+      'openstory.regenerate_shot_dialogue',
+      'openstory.cancel_shot_dialogue',
+      'openstory.cancel_pending_shot_artifact',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.retry_failed_work',
@@ -614,6 +673,106 @@ describe('structure edit authorization', () => {
           kind: 'oauth',
           scopes: ['sequences:read', 'sequences:write'],
         }
+      );
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
+      });
+      expect(createDb).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe('generation and upload tool authorization (#1979)', () => {
+  const sequenceId = '01J00000000000000000000000';
+  const shotId = '01J00000000000000000000002';
+  const otherId = '01J00000000000000000000001';
+  const upload = '/r2/thumbnails/teams/x/still.png';
+  it.each([
+    ['generate_shot_image', { sequenceId, shotId }],
+    ['generate_shot_image_variants', { sequenceId, shotId }],
+    ['select_shot_image_variant', { sequenceId, shotId, variantIndex: 0 }],
+    ['generate_shot_video', { sequenceId, shotId }],
+    ['render_shot_at_quality', { sequenceId, shotId }],
+    ['render_sequence_drafts_at_quality', { sequenceId }],
+    [
+      'add_model_to_sequence',
+      { sequenceId, variantType: 'image', model: 'nano_banana_2' },
+    ],
+    ['add_element', { sequenceId, upload, name: 'Logo' }],
+    [
+      'replace_element',
+      { sequenceId, elementId: otherId, upload, name: 'Logo' },
+    ],
+    ['regenerate_character_sheet', { sequenceId, characterId: otherId }],
+    [
+      'recast_character',
+      { sequenceId, characterId: otherId, talentId: otherId },
+    ],
+    ['generate_character_voice', { sequenceId, characterId: otherId }],
+    ['regenerate_location_sheet', { sequenceId, locationId: otherId }],
+    [
+      'recast_location',
+      { sequenceId, locationId: otherId, libraryLocationId: otherId },
+    ],
+    ['generate_music', { sequenceId }],
+    ['rewrite_music_prompt', { sequenceId }],
+    ['regenerate_shot_dialogue', { sequenceId, shotId, scope: 'shot' }],
+  ])(
+    'refuses %s for an OAuth token with sequences:write but not generate',
+    async (name, args) => {
+      const createDb = vi.spyOn(dbModule, 'createScopedDb');
+      const { body } = await rpc(
+        'tools/call',
+        { name: `openstory.${name}`, arguments: args },
+        {
+          ...auth,
+          kind: 'oauth',
+          scopes: ['sequences:read', 'sequences:write'],
+        }
+      );
+      expect(body.result).toMatchObject({
+        isError: true,
+        structuredContent: { error: { code: 'INSUFFICIENT_SCOPE' } },
+      });
+      expect(createDb).not.toHaveBeenCalled();
+    }
+  );
+  it.each([
+    ['cancel_video_render', { sequenceId, shotId, versionId: otherId }],
+    [
+      'select_sequence_model',
+      { sequenceId, variantType: 'image', model: 'nano_banana_2' },
+    ],
+    [
+      'upload_media',
+      { sequenceId, use: 'shot_image', data: 'AA==', mimeType: 'image/png' },
+    ],
+    ['set_shot_image_from_upload', { sequenceId, shotId, upload }],
+    ['set_shot_video_from_upload', { sequenceId, shotId, upload }],
+    ['set_music_from_upload', { sequenceId, upload }],
+    [
+      'set_character_sheet_from_upload',
+      { sequenceId, characterId: otherId, upload },
+    ],
+    [
+      'set_location_sheet_from_upload',
+      { sequenceId, locationId: otherId, upload },
+    ],
+    ['cancel_character_voice', { sequenceId, characterId: otherId }],
+    ['cancel_shot_dialogue', { sequenceId, shotId, claimId: otherId }],
+    [
+      'cancel_pending_shot_artifact',
+      { sequenceId, shotId, versionId: otherId, artifact: 'image' },
+    ],
+  ])(
+    'refuses %s for an OAuth token without sequences:write, before any db',
+    async (name, args) => {
+      const createDb = vi.spyOn(dbModule, 'createScopedDb');
+      const { body } = await rpc(
+        'tools/call',
+        { name: `openstory.${name}`, arguments: args },
+        { ...auth, kind: 'oauth', scopes: ['sequences:read', 'generate'] }
       );
       expect(body.result).toMatchObject({
         isError: true,
