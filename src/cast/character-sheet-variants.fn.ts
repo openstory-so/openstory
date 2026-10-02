@@ -6,6 +6,11 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
+import {
+  discardCharacterSheetVersion,
+  selectCharacterSheetVersion,
+  undiscardCharacterSheetVersion,
+} from '@/cast/server/cast-edit';
 
 import { getLogger } from '@/platform/logger';
 
@@ -47,28 +52,16 @@ export const selectCharacterSheetVersionFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(characterVersionsInput.extend({ versionId: ulidSchema }))
   )
-  .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
-      data.characterId
-    );
-    if (!character || character.sequenceId !== context.sequence.id) {
-      throw new Error('Character not found in this sequence');
-    }
-    const version = await context.scopedDb.characterSheetVariants.select(
-      character.id,
-      data.versionId,
-      { actorId: context.user.id }
-    );
-    try {
-      await getGenerationChannel(context.sequence.id).emit(
-        'generation.character-sheet:progress',
-        { characterId: character.id, status: 'completed' }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-    return { versionId: version.id, characterId: character.id };
-  });
+  .handler(
+    async ({ context, data }) =>
+      await selectCharacterSheetVersion(
+        context.scopedDb,
+        { userId: context.user.id },
+        context.sequence.id,
+        data.characterId,
+        data.versionId
+      )
+  );
 
 /**
  * List active divergent character-sheet alternates across all characters in a
@@ -146,43 +139,25 @@ export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
 export const discardCharacterSheetVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(variantInputSchema))
-  .handler(async ({ data, context }) => {
-    const variant = await context.scopedDb.characterSheetVariants.getById(
-      data.variantId
-    );
-    if (!variant) {
-      throw new Error('Character sheet variant not found');
-    }
-    const character = await context.scopedDb.characters.getById(
-      variant.characterId
-    );
-    if (!character || character.sequenceId !== context.sequence.id) {
-      throw new Error('Character not found in this sequence');
-    }
-    const discardedAt = await context.scopedDb.characterSheetVariants.discard(
-      variant.id
-    );
-    return { variantId: variant.id, discardedAt };
-  });
+  .handler(
+    async ({ data, context }) =>
+      await discardCharacterSheetVersion(
+        context.scopedDb,
+        context.sequence.id,
+        data.variantId
+      )
+  );
 
 export const undiscardCharacterSheetVariantFn = createServerFn({
   method: 'POST',
 })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(variantInputSchema))
-  .handler(async ({ data, context }) => {
-    const variant = await context.scopedDb.characterSheetVariants.getById(
-      data.variantId
-    );
-    if (!variant) {
-      throw new Error('Character sheet variant not found');
-    }
-    const character = await context.scopedDb.characters.getById(
-      variant.characterId
-    );
-    if (!character || character.sequenceId !== context.sequence.id) {
-      throw new Error('Character not found in this sequence');
-    }
-    await context.scopedDb.characterSheetVariants.undiscard(variant.id);
-    return { variantId: variant.id };
-  });
+  .handler(
+    async ({ data, context }) =>
+      await undiscardCharacterSheetVersion(
+        context.scopedDb,
+        context.sequence.id,
+        data.variantId
+      )
+  );

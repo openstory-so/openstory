@@ -2513,6 +2513,441 @@ describe('shot content edits (#1979)', () => {
   });
 });
 
+describe('cast and music edits (#1979)', () => {
+  const refusal = (code: string) => ({
+    isError: true,
+    structuredContent: { error: { code } },
+  });
+  const ids = (rows: { id: string }[]) => rows.map((row) => row.id);
+  const versionsPage = z.object({
+    versions: z.array(
+      z.object({
+        id: z.string(),
+        selected: z.boolean(),
+        discardedAt: z.string().nullable(),
+      })
+    ),
+  });
+  const listVersionsOf = async (
+    kind: string,
+    entityId: string,
+    includeDiscarded = false
+  ) =>
+    versionsPage.parse(
+      await data('list_versions', {
+        sequenceId,
+        kind,
+        entityId,
+        includeDiscarded,
+      })
+    ).versions;
+  async function otherSequence() {
+    const id = generateId();
+    const [fixture] = await db
+      .select({ styleId: sequences.styleId })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!fixture) throw new Error('Missing fixture sequence');
+    await db
+      .insert(sequences)
+      .values({ id, teamId, title: 'Other', styleId: fixture.styleId });
+    return id;
+  }
+
+  it('creates, edits, deletes and restores a character, readable at each step', async () => {
+    const created = z
+      .object({ characterId: z.string(), token: z.string() })
+      .parse(
+        await data('create_character', {
+          sequenceId,
+          name: 'Maya Ross',
+          personality: 'Wry',
+        })
+      );
+    expect(created.token).toBe('char_maya_ross');
+    const [event] = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'character.created'));
+    expect(event).toMatchObject({ actorId, targetId: created.characterId });
+
+    await data('update_character', {
+      sequenceId,
+      characterId: created.characterId,
+      voiceOnly: true,
+      isPerson: false,
+      personality: '',
+      movement: 'Glides',
+    });
+    expect(
+      await data('get_character', {
+        sequenceId,
+        characterId: created.characterId,
+      })
+    ).toMatchObject({
+      character: {
+        name: 'Maya Ross',
+        characterId: 'char_maya_ross',
+        voiceOnly: true,
+        isPerson: false,
+        personality: null,
+        movement: 'Glides',
+      },
+    });
+    // voiceOnly is stated on every edit, as the editor's form does.
+    expect(
+      await call('update_character', {
+        sequenceId,
+        characterId: created.characterId,
+        movement: 'Runs',
+      })
+    ).toMatchObject({ isError: true });
+
+    await data('delete_character', {
+      sequenceId,
+      characterId: created.characterId,
+    });
+    expect(
+      await call('get_character', {
+        sequenceId,
+        characterId: created.characterId,
+      })
+    ).toMatchObject(refusal('NOT_FOUND'));
+    expect(await data('list_deleted_cast', { sequenceId })).toMatchObject({
+      characters: [{ id: created.characterId, name: 'Maya Ross' }],
+      locations: [],
+      elements: [],
+    });
+    await data('restore_character', {
+      sequenceId,
+      characterId: created.characterId,
+    });
+    expect(await data('list_deleted_cast', { sequenceId })).toMatchObject({
+      characters: [],
+    });
+    // A second character of the same name gets the next free token.
+    expect(
+      await data('create_character', { sequenceId, name: 'Maya Ross' })
+    ).toMatchObject({ token: 'char_maya_ross_2' });
+  });
+
+  it('reads and selects character voices and sheet versions', async () => {
+    const characterId = generateId();
+    const [older, newer, sheetA, sheetB] = [
+      generateId(),
+      generateId(),
+      generateId(),
+      generateId(),
+    ];
+    await db.insert(characters).values({
+      id: characterId,
+      sequenceId,
+      characterId: 'char_ada',
+      legacyName: 'Ada',
+      selectedVoiceVersionId: newer,
+      selectedSheetVersionId: sheetB,
+    });
+    await db.insert(characterVoiceVersions).values([
+      {
+        id: older,
+        characterId,
+        source: 'library',
+        voiceId: 'voice-old',
+        createdAt: new Date(Date.now() - 60_000),
+      },
+      { id: newer, characterId, source: 'library', voiceId: 'voice-new' },
+    ]);
+    await db.insert(characterSheetVariants).values(
+      [sheetA, sheetB].map((id) => ({
+        id,
+        characterId,
+        model: 'nano_banana_2',
+        status: 'completed' as const,
+        url: `/r2/${id}.png`,
+      }))
+    );
+
+    const voices = z
+      .object({
+        selectedVoiceVersionId: z.string(),
+        versions: z.array(z.object({ id: z.string(), voiceId: z.string() })),
+      })
+      .parse(await data('list_character_voices', { sequenceId, characterId }));
+    expect(voices.selectedVoiceVersionId).toBe(newer);
+    expect(ids(voices.versions)).toEqual([newer, older]);
+    expect(
+      await data('select_character_voice_version', {
+        sequenceId,
+        characterId,
+        versionId: older,
+      })
+    ).toEqual({ characterId, voiceId: 'voice-old' });
+    expect(
+      await data('get_character', { sequenceId, characterId })
+    ).toMatchObject({
+      character: { selectedVoiceVersionId: older, voiceId: 'voice-old' },
+    });
+    expect(
+      await data('set_character_voice_enabled', {
+        sequenceId,
+        characterId,
+        enabled: false,
+      })
+    ).toEqual({ characterId, useVoice: false });
+
+    await data('select_character_sheet_version', {
+      sequenceId,
+      characterId,
+      versionId: sheetA,
+    });
+    expect(
+      (await listVersionsOf('character_sheet', characterId)).find(
+        (v) => v.selected
+      )?.id
+    ).toBe(sheetA);
+    await data('discard_character_sheet_version', {
+      sequenceId,
+      versionId: sheetB,
+    });
+    expect(ids(await listVersionsOf('character_sheet', characterId))).toEqual([
+      sheetA,
+    ]);
+    expect(
+      await call('select_character_sheet_version', {
+        sequenceId,
+        characterId,
+        versionId: sheetB,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    await data('undiscard_character_sheet_version', {
+      sequenceId,
+      versionId: sheetB,
+    });
+    expect(ids(await listVersionsOf('character_sheet', characterId))).toContain(
+      sheetB
+    );
+  });
+
+  it('creates, edits, deletes and restores a location and picks its reference', async () => {
+    const created = z
+      .object({ locationId: z.string(), token: z.string() })
+      .parse(
+        await data('create_location', {
+          sequenceId,
+          name: 'Harbour',
+          type: 'exterior',
+        })
+      );
+    expect(created.token).toBe('loc_harbour');
+    await data('update_location', {
+      sequenceId,
+      locationId: created.locationId,
+      ambiance: 'Foggy',
+    });
+    expect(
+      await data('get_location', { sequenceId, locationId: created.locationId })
+    ).toMatchObject({
+      location: { name: 'Harbour', type: 'exterior', ambiance: 'Foggy' },
+    });
+    expect(
+      await call('update_location', {
+        sequenceId,
+        locationId: created.locationId,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+
+    const reference = generateId();
+    await db.insert(locationSheetVariants).values({
+      id: reference,
+      parentId: created.locationId,
+      parentType: 'sequence_location',
+      model: 'nano_banana_2',
+      status: 'completed',
+      url: '/r2/harbour.png',
+    });
+    await data('select_location_sheet_version', {
+      sequenceId,
+      locationId: created.locationId,
+      versionId: reference,
+    });
+    expect(
+      await listVersionsOf('location_sheet', created.locationId)
+    ).toMatchObject([{ id: reference, selected: true }]);
+    await data('discard_location_sheet_version', {
+      sequenceId,
+      versionId: reference,
+    });
+    expect(
+      await listVersionsOf('location_sheet', created.locationId, true)
+    ).toMatchObject([{ id: reference, discardedAt: expect.any(String) }]);
+    await data('undiscard_location_sheet_version', {
+      sequenceId,
+      versionId: reference,
+    });
+
+    await data('delete_location', {
+      sequenceId,
+      locationId: created.locationId,
+    });
+    expect(await data('list_deleted_cast', { sequenceId })).toMatchObject({
+      locations: [{ id: created.locationId, locationId: 'loc_harbour' }],
+    });
+    await data('restore_location', {
+      sequenceId,
+      locationId: created.locationId,
+    });
+    expect(
+      await data('get_location', { sequenceId, locationId: created.locationId })
+    ).toMatchObject({ location: { id: created.locationId } });
+  });
+
+  it('describes, renames, deletes and restores elements', async () => {
+    const [bell, horn] = [generateId(), generateId()];
+    await db.insert(sequenceElements).values(
+      [
+        [bell, 'BELL'],
+        [horn, 'HORN'],
+      ].map(([id = '', token = '']) => ({
+        id,
+        sequenceId,
+        token,
+        uploadedFilename: `${token}.mp3`,
+        kind: 'audio' as const,
+        imageUrl: `/r2/${token}.mp3`,
+      }))
+    );
+    await data('set_element_description', {
+      sequenceId,
+      elementId: bell,
+      description: '  A church bell  ',
+    });
+    expect(
+      await data('get_element', { sequenceId, elementId: bell })
+    ).toMatchObject({ element: { description: 'A church bell' } });
+
+    expect(
+      await data('rename_element_token', {
+        sequenceId,
+        elementId: bell,
+        token: 'church bell',
+      })
+    ).toMatchObject({ elementId: bell, token: 'CHURCH_BELL' });
+    expect(
+      await call('rename_element_token', {
+        sequenceId,
+        elementId: horn,
+        token: 'CHURCH_BELL',
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+
+    await data('delete_element', { sequenceId, elementId: horn });
+    expect(await data('list_deleted_cast', { sequenceId })).toMatchObject({
+      elements: [{ id: horn, token: 'HORN', kind: 'audio' }],
+    });
+    await data('restore_element', { sequenceId, elementId: horn });
+    expect(
+      await data('get_element', { sequenceId, elementId: horn })
+    ).toMatchObject({ element: { token: 'HORN' } });
+  });
+
+  it('edits the music prompt and picks, discards and restores tracks', async () => {
+    const [first, second] = [generateId(), generateId()];
+    await db.insert(sequenceMusicVariants).values(
+      [first, second].map((id) => ({
+        id,
+        sequenceId,
+        model: 'music-test',
+        url: `/r2/${id}.mp3`,
+        status: 'completed' as const,
+        prompt: 'Piano',
+      }))
+    );
+    await db
+      .update(sequences)
+      .set({ selectedMusicVariantId: first })
+      .where(eq(sequences.id, sequenceId));
+
+    const saved = z.object({ versionId: z.string() }).parse(
+      await data('update_music_prompt', {
+        sequenceId,
+        prompt: 'Soft strings',
+        tags: 'ambient',
+      })
+    );
+    expect(await data('get_sequence_music', { sequenceId })).toMatchObject({
+      music: {
+        prompt: 'Soft strings',
+        tags: 'ambient',
+        promptVersionId: saved.versionId,
+      },
+    });
+    expect(
+      await data('update_music_prompt', {
+        sequenceId,
+        prompt: 'Soft strings',
+      })
+    ).toEqual({ versionId: null, unchanged: true });
+    await data('update_music_prompt', { sequenceId, prompt: 'Brass' });
+    await data('restore_music_prompt_version', {
+      sequenceId,
+      versionId: saved.versionId,
+    });
+    expect(await data('get_sequence_music', { sequenceId })).toMatchObject({
+      music: { prompt: 'Soft strings', tags: 'ambient' },
+    });
+
+    expect(
+      await data('select_music_track', { sequenceId, versionId: second })
+    ).toEqual({ versionId: second, model: 'music-test' });
+    expect(await data('get_sequence_music', { sequenceId })).toMatchObject({
+      music: { variantId: second },
+    });
+    await data('discard_music_track', { sequenceId, versionId: first });
+    expect(ids(await listVersionsOf('music', sequenceId))).toEqual([second]);
+    expect(
+      await call('select_music_track', { sequenceId, versionId: first })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    await data('undiscard_music_track', { sequenceId, versionId: first });
+    await data('select_music_track', { sequenceId, versionId: first });
+  });
+
+  it('refuses cast and tracks of another sequence', async () => {
+    const characterId = generateId();
+    const track = generateId();
+    await db.insert(characters).values({
+      id: characterId,
+      sequenceId,
+      characterId: 'char_ada',
+      legacyName: 'Ada',
+    });
+    await db.insert(sequenceMusicVariants).values({
+      id: track,
+      sequenceId,
+      model: 'music-test',
+      url: '/r2/m.mp3',
+      status: 'completed',
+    });
+    const other = await otherSequence();
+    for (const [name, args] of [
+      ['update_character', { characterId, voiceOnly: false, name: 'X' }],
+      ['delete_character', { characterId }],
+      ['restore_character', { characterId }],
+      ['list_character_voices', { characterId }],
+      ['select_music_track', { versionId: track }],
+      ['discard_music_track', { versionId: track }],
+    ] as const) {
+      expect(
+        await call(name, { sequenceId: other, ...args }),
+        name
+      ).toMatchObject(refusal('NOT_FOUND'));
+    }
+    scopedDb = createScopedDb(generateId(), actorId);
+    expect(
+      await call('create_character', { sequenceId, name: 'Intruder' })
+    ).toMatchObject(refusal('NOT_FOUND'));
+  });
+});
+
 describe('get_export_status without an exportId (#1461)', () => {
   it('returns null with no exports, then the newest, and refuses a foreign id', async () => {
     expect(await data('get_export_status', { sequenceId })).toEqual({

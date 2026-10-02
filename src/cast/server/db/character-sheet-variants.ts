@@ -1,3 +1,4 @@
+import { NotFoundError, ValidationError } from '@/platform/errors';
 /**
  * Scoped Character Sheet Variants Sub-module
  * Append-only sheet versions plus mid-flight divergence parking.
@@ -238,17 +239,17 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           )
         );
       if (!version) {
-        throw new Error(
+        throw new NotFoundError(
           `CharacterSheetVariant ${versionId} not found for character ${characterId}`
         );
       }
       if (version.status !== 'completed' || !version.url) {
-        throw new Error(
+        throw new ValidationError(
           `CharacterSheetVariant ${versionId} is '${version.status}', not a completed image`
         );
       }
       if (version.discardedAt) {
-        throw new Error(
+        throw new ValidationError(
           `CharacterSheetVariant ${versionId} is discarded — restore it first`
         );
       }

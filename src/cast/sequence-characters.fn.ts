@@ -8,20 +8,22 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
 import { isValidTextToImageModel, safeTextToImageModel } from '@/models/models';
-import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from './character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import { markPreviewUnusable, previewListWithChosenTake } from '@/cast/voice';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
+import { characterBibleFieldsSchema } from './bible-field';
 import {
-  bibleField,
-  identityToken,
-  nextIdentityToken,
-  slugifyTag,
-} from './bible-field';
+  createCharacter,
+  deleteCharacter,
+  requireCharacter,
+  restoreCharacter,
+  selectCharacterVoiceVersion,
+  setCharacterVoiceEnabled,
+  updateCharacter,
+} from '@/cast/server/cast-edit';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type {
@@ -31,10 +33,7 @@ import type {
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { enqueueCharacterVoiceDesign } from '@/cast/server/voice/enqueue-character-voice';
-import {
-  releaseCharacterVoice,
-  releaseReplacedVoice,
-} from '@/cast/server/voice/release-voice';
+import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import {
   getElevenLabsApiKey,
   isElevenLabsConfigured,
@@ -77,18 +76,6 @@ export function assertTalentAccessible(
   }
 }
 
-/** The character, or 404 when it is missing or belongs to another sequence. */
-async function requireCharacter(
-  scopedDb: Pick<ScopedDb, 'characters'>,
-  { sequenceId, characterId }: { sequenceId: string; characterId: string }
-) {
-  const character = await scopedDb.characters.getById(characterId);
-  if (!character || character.sequenceId !== sequenceId) {
-    throw new NotFoundError('Character not found');
-  }
-  return character;
-}
-
 /** Get all characters for a sequence with their assigned talent */
 export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
@@ -99,20 +86,6 @@ export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
 // ============================================================================
 // Manual character CRUD (#1108 Phase 2)
 // ============================================================================
-
-const characterBibleFieldsSchema = z.object({
-  age: bibleField.optional(),
-  gender: bibleField.optional(),
-  ethnicity: bibleField.optional(),
-  physicalDescription: bibleField.optional(),
-  standardClothing: bibleField.optional(),
-  distinguishingFeatures: bibleField.optional(),
-  personality: bibleField.optional(),
-  movement: bibleField.optional(),
-  voiceDescription: bibleField.optional(),
-  consistencyTag: bibleField.optional(),
-  isPerson: z.boolean().optional(),
-});
 
 /**
  * Create a character by hand (no storyboard run) — starts sheet-less
@@ -132,42 +105,13 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const { sequenceId, name, ...bible } = data;
-    const base = identityToken('char', name);
-    const taken = new Set<string>();
-    let characterId = base;
-    // Unique index covers soft-deleted rows too.
-    while (
-      await context.scopedDb.characters.getByCharacterId(
-        sequenceId,
-        characterId
-      )
-    ) {
-      taken.add(characterId);
-      characterId = nextIdentityToken(base, taken);
-    }
-    const character = await context.scopedDb.characters.create(
-      {
-        sequenceId,
-        characterId,
-        name,
-        ...bible,
-        consistencyTag:
-          bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
-        sheetStatus: 'pending',
-      },
-      { source: 'edit', createdBy: context.user.id }
-    );
-    await context.scopedDb.sequenceEvents.record({
+    const { sequenceId, ...fields } = data;
+    return await createCharacter(
+      context.scopedDb,
+      { userId: context.user.id },
       sequenceId,
-      actorId: context.user.id,
-      kind: 'character.created',
-      targetType: 'character',
-      targetId: character.id,
-      summary: `Added character ${name}`,
-      data: { name, characterId },
-    });
-    return character;
+      fields
+    );
   });
 
 /**
@@ -191,12 +135,13 @@ export const updateSequenceCharacterFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { sequenceId, characterId, ...fields } = data;
-    await requireCharacter(context.scopedDb, data);
-    const update: CharacterBibleUpdate = fields;
-    return await context.scopedDb.characters.updateBible(characterId, update, {
-      actorId: context.user.id,
-      source: 'edit',
-    });
+    return await updateCharacter(
+      context.scopedDb,
+      { userId: context.user.id },
+      sequenceId,
+      characterId,
+      fields
+    );
   });
 
 const characterIdInput = z.object({
@@ -213,15 +158,12 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    const existing = await requireCharacter(context.scopedDb, data);
-    const deletedAt = await context.scopedDb.characters.softDelete(
-      data.characterId,
-      { actorId: context.user.id }
+    return await deleteCharacter(
+      context.scopedDb,
+      { userId: context.user.id },
+      data.sequenceId,
+      data.characterId
     );
-    // The voice slot is account-wide, so it goes with the row (#1553); the
-    // description and previews stay, so a restore can regenerate.
-    await releaseCharacterVoice(context.scopedDb, existing, context.user.id);
-    return { characterId: data.characterId, deletedAt };
   });
 
 /**
@@ -242,7 +184,11 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
     if (!isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
     }
-    const character = await requireCharacter(context.scopedDb, data);
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId
+    );
     const enqueued = await enqueueCharacterVoiceDesign({
       scopedDb: context.scopedDb,
       character,
@@ -279,7 +225,11 @@ export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    const character = await requireCharacter(context.scopedDb, data);
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId
+    );
     const versionId = character.pendingPromoteVoiceVersionId;
     if (!versionId) return { cancelled: false };
     const failed = await context.scopedDb.characters.markVoiceClaimTerminal(
@@ -307,17 +257,13 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput.extend({ enabled: z.boolean() })))
   .handler(async ({ context, data }) => {
-    const character = await requireCharacter(context.scopedDb, data);
-    await context.scopedDb.characters.updateVoice(
-      character.id,
-      { useVoice: data.enabled },
-      data.enabled ? 'user-edit' : 'disabled',
-      context.user.id
+    return await setCharacterVoiceEnabled(
+      context.scopedDb,
+      { userId: context.user.id },
+      data.sequenceId,
+      data.characterId,
+      data.enabled
     );
-    if (!data.enabled) {
-      await releaseCharacterVoice(context.scopedDb, character, context.user.id);
-    }
-    return { characterId: character.id, useVoice: data.enabled };
   });
 
 /**
@@ -338,7 +284,11 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     zodValidator(characterIdInput.extend({ generatedVoiceId: z.string() }))
   )
   .handler(async ({ context, data }) => {
-    const character = await requireCharacter(context.scopedDb, data);
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId
+    );
     const previews = previewListWithChosenTake(
       character.voicePreviews ?? [],
       data.generatedVoiceId
@@ -463,7 +413,11 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
     if (!apiKey || !isElevenLabsConfigured()) {
       throw new ValidationError('Voice design is not configured');
     }
-    const character = await requireCharacter(context.scopedDb, data);
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId
+    );
     let pick: AssignableVoicePick;
     if (data.source === 'library') {
       if (!data.publicOwnerId || !data.name) {
@@ -523,7 +477,11 @@ export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    const character = await requireCharacter(context.scopedDb, data);
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId
+    );
     return await context.scopedDb.characters.listVoiceVersions(character.id);
   });
 
@@ -539,17 +497,12 @@ export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput.extend({ versionId: ulidSchema })))
   .handler(async ({ context, data }) => {
-    const character = await requireCharacter(context.scopedDb, data);
-    const updated = await context.scopedDb.characters.selectVoiceVersion(
-      character.id,
+    return await selectCharacterVoiceVersion(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId,
       data.versionId
     );
-    await releaseReplacedVoice(
-      context.scopedDb,
-      character.voiceId,
-      updated.voiceId
-    );
-    return { characterId: character.id, voiceId: updated.voiceId };
   });
 
 /** Undo a character soft-delete. */
@@ -557,10 +510,12 @@ export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(characterIdInput))
   .handler(async ({ context, data }) => {
-    await requireCharacter(context.scopedDb, data);
-    return await context.scopedDb.characters.restore(data.characterId, {
-      actorId: context.user.id,
-    });
+    return await restoreCharacter(
+      context.scopedDb,
+      { userId: context.user.id },
+      data.sequenceId,
+      data.characterId
+    );
   });
 
 /** Get shot IDs for all shots containing a specific character */
@@ -595,7 +550,11 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const character = await requireCharacter(context.scopedDb, data);
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
+      data.characterId
+    );
 
     const payload = await buildRegenerateCharacterSheetPayload({
       scopedDb: context.scopedDb,

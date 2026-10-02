@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /** `''` / whitespace clears a nullable bible field; otherwise trimmed text. */
-export const bibleField = z
+const bibleField = z
   .string()
   .max(2000)
   .transform((v) => {
@@ -49,3 +49,28 @@ export function nextIdentityToken(
   while (taken.has(`${base}_${n}`)) n += 1;
   return `${base}_${n}`;
 }
+
+/** The user-editable character bible fields (#1108); casting stays on recast. */
+export const characterBibleFieldsSchema = z.object({
+  age: bibleField.optional(),
+  gender: bibleField.optional(),
+  ethnicity: bibleField.optional(),
+  physicalDescription: bibleField.optional(),
+  standardClothing: bibleField.optional(),
+  distinguishingFeatures: bibleField.optional(),
+  personality: bibleField.optional(),
+  movement: bibleField.optional(),
+  voiceDescription: bibleField.optional(),
+  consistencyTag: bibleField.optional(),
+  isPerson: z.boolean().optional(),
+});
+
+/** The user-editable location bible fields (#1108); the library link stays on recast. */
+export const locationBibleFieldsSchema = z.object({
+  type: z.enum(['interior', 'exterior', 'both']).optional(),
+  description: bibleField.optional(),
+  architecturalStyle: bibleField.optional(),
+  keyFeatures: bibleField.optional(),
+  ambiance: bibleField.optional(),
+  consistencyTag: bibleField.optional(),
+});

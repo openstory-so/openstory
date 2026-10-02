@@ -45,6 +45,7 @@ import { sceneNarrativeOf } from '@/shots/scene-narrative';
 import { joinSelectedScript, sceneColumns } from '@/shots/server/db/scenes';
 import {
   and,
+  desc,
   eq,
   inArray,
   isNotNull,
@@ -206,6 +207,19 @@ export function createSequenceElementsMethods(db: Database) {
         sequenceElements.createdAt
       );
     },
+
+    /** Soft-deleted elements of the sequence, most recently deleted first. */
+    listDeleted: async (sequenceId: string): Promise<SequenceElement[]> =>
+      await db
+        .select()
+        .from(sequenceElements)
+        .where(
+          and(
+            eq(sequenceElements.sequenceId, sequenceId),
+            isNotNull(sequenceElements.deletedAt)
+          )
+        )
+        .orderBy(desc(sequenceElements.deletedAt)),
 
     listByIds: async (ids: string[]): Promise<SequenceElement[]> => {
       if (ids.length === 0) return [];

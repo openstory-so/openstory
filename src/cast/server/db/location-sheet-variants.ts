@@ -1,3 +1,4 @@
+import { NotFoundError, ValidationError } from '@/platform/errors';
 /**
  * Scoped Location Sheet Variants Sub-module
  * CRUD for divergent location-sheet outputs (Stage 2 of workflow snapshots).
@@ -270,17 +271,17 @@ export function createLocationSheetVariantsMethods(db: Database) {
           )
         );
       if (!version) {
-        throw new Error(
+        throw new NotFoundError(
           `LocationSheetVariant ${versionId} not found for location ${locationDbId}`
         );
       }
       if (version.status !== 'completed' || !version.url) {
-        throw new Error(
+        throw new ValidationError(
           `LocationSheetVariant ${versionId} is '${version.status}', not a completed image`
         );
       }
       if (version.discardedAt) {
-        throw new Error(
+        throw new ValidationError(
           `LocationSheetVariant ${versionId} is discarded — restore it first`
         );
       }

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertSequenceVariantPromotable,
   type SequenceVariantPromoteCandidate,
-} from '@/audio/sequence-variants.fn';
+} from '@/audio/server/music-edit';
 
 const baseCandidate = (
   overrides: Partial<SequenceVariantPromoteCandidate> = {}

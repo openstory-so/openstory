@@ -1,3 +1,4 @@
+import { NotFoundError, ValidationError } from '@/platform/errors';
 /**
  * Scoped Sequence Variants Sub-module — music tracks (#1115).
  *
@@ -397,10 +398,10 @@ export function createSequenceVariantsMethods(db: Database) {
     ): Promise<Sequence> => {
       const variant = await getMusicById(variantId);
       if (!variant || variant.sequenceId !== sequenceId) {
-        throw new Error(`SequenceMusicVariant ${variantId} not found`);
+        throw new NotFoundError(`SequenceMusicVariant ${variantId} not found`);
       }
       if (variant.status !== 'completed' || !variant.url) {
-        throw new Error(
+        throw new ValidationError(
           `SequenceMusicVariant ${variantId} is '${variant.status}' with no track — cannot select`
         );
       }

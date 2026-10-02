@@ -29,6 +29,10 @@ import { z } from 'zod';
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import { restoreShotPromptVersion } from '@/shots/server/shot-content-edit';
+import {
+  restoreMusicPromptVersion,
+  saveMusicPrompt,
+} from '@/audio/server/music-edit';
 
 import { getLogger } from '@/platform/logger';
 
@@ -188,27 +192,15 @@ export const restoreSequenceMusicPromptVariantFn = createServerFn({
 })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(sequenceRestoreInput))
-  .handler(async ({ context, data }) => {
-    const chosen =
-      await context.scopedDb.sequenceMusicPromptVersions.getByIdForSequence(
-        data.variantId,
-        data.sequenceId
-      );
-    if (!chosen) {
-      throw new Error('Music prompt variant not found for this sequence');
-    }
-
-    const inserted = await context.scopedDb.sequenceMusicPromptVersions.write({
-      sequenceId: data.sequenceId,
-      prompt: chosen.prompt,
-      tags: chosen.tags,
-      source: 'restored',
-      inputHash: chosen.inputHash,
-      analysisModel: chosen.analysisModel,
-      createdBy: context.user.id,
-    });
-    return { variantId: inserted.id };
-  });
+  .handler(
+    async ({ context, data }) =>
+      await restoreMusicPromptVersion(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.variantId
+      )
+  );
 
 // Persist a hand-edited prompt as a `user-edit` version WITHOUT triggering a
 // render. Until now the only persistence path for an edited prompt was clicking
@@ -376,39 +368,15 @@ const saveMusicPromptInput = z.object({
 export const saveMusicPromptFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(saveMusicPromptInput))
-  .handler(async ({ context, data }) => {
-    const { sequence, scopedDb, user } = context;
-    const nextTags = data.tags ?? sequence.musicTags ?? null;
-    if (
-      data.prompt === (sequence.musicPrompt ?? '') &&
-      nextTags === (sequence.musicTags ?? null)
-    ) {
-      return { unchanged: true } as const;
-    }
-    const version = await scopedDb.sequenceMusicPromptVersions.write({
-      sequenceId: sequence.id,
-      prompt: data.prompt,
-      tags: nextTags,
-      source: 'user-edit',
-      createdBy: user.id,
-    });
-    await scopedDb.sequenceEvents.record({
-      sequenceId: sequence.id,
-      actorId: user.id,
-      kind: 'music-prompt.edited',
-      targetType: 'sequence',
-      targetId: sequence.id,
-      summary: 'Edited music prompt',
-      data: {
-        versionId: version.id,
-        prevState: {
-          prompt: sequence.musicPrompt ?? null,
-          tags: sequence.musicTags ?? null,
-        },
-      },
-    });
-    return { unchanged: false, versionId: version.id } as const;
-  });
+  .handler(
+    async ({ context, data }) =>
+      await saveMusicPrompt(
+        context.scopedDb,
+        { userId: context.user.id },
+        context.sequence,
+        data
+      )
+  );
 
 const sequenceRegenerateInput = z.object({ sequenceId: ulidSchema });
 

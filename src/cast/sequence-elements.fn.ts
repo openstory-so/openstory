@@ -9,7 +9,12 @@ import { estimateLLMCost } from '@/billing/cost-estimation';
 import { InsufficientCreditsError, NotFoundError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { deriveTokenFromFilename } from './derive-token';
+import {
+  deleteElement,
+  renameElementToken,
+  restoreElement,
+  setElementDescription,
+} from '@/cast/server/cast-edit';
 import {
   assertElementUploadAttachable,
   attachElementUpload,
@@ -235,18 +240,15 @@ export const setSequenceElementDescriptionFn = createServerFn({
       })
     )
   )
-  .handler(async ({ context, data }) => {
-    const element = await context.scopedDb.sequenceElements.getById(
-      data.elementId
-    );
-    if (!element || element.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Element not found');
-    }
-    const trimmed = data.description.trim();
-    return await context.scopedDb.sequenceElements.update(data.elementId, {
-      description: trimmed.length > 0 ? trimmed : null,
-    });
-  });
+  .handler(
+    async ({ context, data }) =>
+      await setElementDescription(
+        context.scopedDb,
+        context.sequence.id,
+        data.elementId,
+        data.description
+      )
+  );
 
 // ============================================================================
 // List / delete / rename
@@ -275,19 +277,15 @@ export const deleteSequenceElementFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, elementId: ulidSchema }))
   )
-  .handler(async ({ context, data }) => {
-    const element = await context.scopedDb.sequenceElements.getById(
-      data.elementId
-    );
-    if (!element || element.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Element not found');
-    }
-    const deletedAt = await context.scopedDb.sequenceElements.softDelete(
-      data.elementId,
-      { actorId: context.user.id }
-    );
-    return { success: true, deletedAt };
-  });
+  .handler(
+    async ({ context, data }) =>
+      await deleteElement(
+        context.scopedDb,
+        { userId: context.user.id },
+        context.sequence.id,
+        data.elementId
+      )
+  );
 
 /** Undo an element soft-delete (toast Undo). */
 export const restoreSequenceElementFn = createServerFn({ method: 'POST' })
@@ -295,17 +293,15 @@ export const restoreSequenceElementFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, elementId: ulidSchema }))
   )
-  .handler(async ({ context, data }) => {
-    const element = await context.scopedDb.sequenceElements.getById(
-      data.elementId
-    );
-    if (!element || element.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Element not found');
-    }
-    return await context.scopedDb.sequenceElements.restore(data.elementId, {
-      actorId: context.user.id,
-    });
-  });
+  .handler(
+    async ({ context, data }) =>
+      await restoreElement(
+        context.scopedDb,
+        { userId: context.user.id },
+        context.sequence.id,
+        data.elementId
+      )
+  );
 
 export const renameSequenceElementTokenFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -318,43 +314,15 @@ export const renameSequenceElementTokenFn = createServerFn({ method: 'POST' })
       })
     )
   )
-  .handler(async ({ context, data }) => {
-    const element = await context.scopedDb.sequenceElements.getById(
-      data.elementId
-    );
-    if (!element || element.sequenceId !== context.sequence.id) {
-      throw new Error('Element not found');
-    }
-
-    const cleaned = deriveTokenFromFilename(data.token);
-    if (cleaned === element.token) {
-      return {
-        element,
-        shotsUpdated: 0,
-        scriptUpdated: false,
-      };
-    }
-
-    // User-driven rename: hard-reject on collision rather than silently
-    // suffixing — the user explicitly typed this name and expects it.
-    const taken = await context.scopedDb.sequenceElements.isTokenTaken(
-      context.sequence.id,
-      cleaned,
-      element.id
-    );
-    if (taken) {
-      throw new Error(
-        `Another element is already named "${cleaned}". Pick a different name.`
-      );
-    }
-
-    return await context.scopedDb.sequenceElements.cascadeRename({
-      sequenceId: context.sequence.id,
-      elementId: element.id,
-      oldToken: element.token,
-      newToken: cleaned,
-    });
-  });
+  .handler(
+    async ({ context, data }) =>
+      await renameElementToken(
+        context.scopedDb,
+        context.sequence.id,
+        data.elementId,
+        data.token
+      )
+  );
 
 // ============================================================================
 // Shot IDs / Replace

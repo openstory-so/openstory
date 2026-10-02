@@ -1,13 +1,13 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { isValidTextToImageModel, safeTextToImageModel } from '@/models/models';
-import type { LocationBibleUpdate } from '@/cast/server/db/sequence-locations';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
+import { locationBibleFieldsSchema } from './bible-field';
 import {
-  bibleField,
-  identityToken,
-  nextIdentityToken,
-  slugifyTag,
-} from './bible-field';
+  createLocation,
+  deleteLocation,
+  restoreLocation,
+  updateLocation,
+} from '@/cast/server/cast-edit';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { getGenerationChannel } from '@/platform/realtime';
@@ -44,15 +44,6 @@ export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
 // Manual location CRUD (#1108 Phase 2)
 // ============================================================================
 
-const locationBibleFieldsSchema = z.object({
-  type: z.enum(['interior', 'exterior', 'both']).optional(),
-  description: bibleField.optional(),
-  architecturalStyle: bibleField.optional(),
-  keyFeatures: bibleField.optional(),
-  ambiance: bibleField.optional(),
-  consistencyTag: bibleField.optional(),
-});
-
 /**
  * Create a location by hand (no storyboard run) — starts reference-less
  * (`referenceStatus: 'pending'`); the reference image comes later via the
@@ -71,41 +62,13 @@ export const createSequenceLocationFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const { sequenceId, name, ...bible } = data;
-    const base = identityToken('loc', name);
-    const taken = new Set<string>();
-    let locationId = base;
-    while (
-      await context.scopedDb.sequenceLocations.getByLocationId(
-        sequenceId,
-        locationId
-      )
-    ) {
-      taken.add(locationId);
-      locationId = nextIdentityToken(base, taken);
-    }
-    const location = await context.scopedDb.sequenceLocations.create(
-      {
-        sequenceId,
-        locationId,
-        name,
-        ...bible,
-        consistencyTag:
-          bible.consistencyTag ?? `${locationId}: ${slugifyTag(name)}`,
-        referenceStatus: 'pending',
-      },
-      { source: 'edit', createdBy: context.user.id }
-    );
-    await context.scopedDb.sequenceEvents.record({
+    const { sequenceId, ...fields } = data;
+    return await createLocation(
+      context.scopedDb,
+      { userId: context.user.id },
       sequenceId,
-      actorId: context.user.id,
-      kind: 'location.created',
-      targetType: 'location',
-      targetId: location.id,
-      summary: `Added location ${name}`,
-      data: { name, locationId },
-    });
-    return location;
+      fields
+    );
   });
 
 /**
@@ -126,16 +89,12 @@ export const updateSequenceLocationFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const { sequenceId, locationDbId, ...fields } = data;
-    const existing =
-      await context.scopedDb.sequenceLocations.getById(locationDbId);
-    if (!existing || existing.sequenceId !== sequenceId) {
-      throw new NotFoundError('Location not found');
-    }
-    const update: LocationBibleUpdate = fields;
-    return await context.scopedDb.sequenceLocations.updateBible(
+    return await updateLocation(
+      context.scopedDb,
+      { userId: context.user.id },
+      sequenceId,
       locationDbId,
-      update,
-      { actorId: context.user.id }
+      fields
     );
   });
 
@@ -151,35 +110,29 @@ const locationIdInput = z.object({
 export const softDeleteSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(locationIdInput))
-  .handler(async ({ context, data }) => {
-    const existing = await context.scopedDb.sequenceLocations.getById(
-      data.locationDbId
-    );
-    if (!existing || existing.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Location not found');
-    }
-    const deletedAt = await context.scopedDb.sequenceLocations.softDelete(
-      data.locationDbId,
-      { actorId: context.user.id }
-    );
-    return { locationDbId: data.locationDbId, deletedAt };
-  });
+  .handler(
+    async ({ context, data }) =>
+      await deleteLocation(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.locationDbId
+      )
+  );
 
 /** Undo a location soft-delete. */
 export const restoreSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(locationIdInput))
-  .handler(async ({ context, data }) => {
-    const existing = await context.scopedDb.sequenceLocations.getById(
-      data.locationDbId
-    );
-    if (!existing || existing.sequenceId !== data.sequenceId) {
-      throw new NotFoundError('Location not found');
-    }
-    return await context.scopedDb.sequenceLocations.restore(data.locationDbId, {
-      actorId: context.user.id,
-    });
-  });
+  .handler(
+    async ({ context, data }) =>
+      await restoreLocation(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.locationDbId
+      )
+  );
 
 export const getTeamLocationsLibraryFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
