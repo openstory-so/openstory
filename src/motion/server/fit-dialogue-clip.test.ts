@@ -1,6 +1,6 @@
 /**
  * The rewrite rung of the dialogue fit ladder (#1651). The ladder itself —
- * measure, rewrite, re-record, refuse — is `recordDialogue`'s, and is tested
+ * measure, rewrite, re-record, refuse — is `generateDialogueSpeech`'s, and is tested
  * there; this pins the one property the rung owns: a rewrite is merged BY
  * INDEX, so it can change words and nothing else.
  */
@@ -10,6 +10,7 @@ import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
 import { DIALOGUE_CLIP_TOKEN } from '@/motion/dialogue-tts';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const llmCall = vi.fn();
 vi.doMock('@/models/server/llm-call-helper', () => ({
@@ -18,10 +19,10 @@ vi.doMock('@/models/server/llm-call-helper', () => ({
 
 const { shortenDialogueLines } = await import('./fit-dialogue-clip');
 
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the LLM helper is mocked; neither is touched
-const step = {} as unknown as WorkflowStep;
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the LLM helper is mocked; neither is touched
-const scopedDb = {} as unknown as WorkflowScopedDb;
+// the LLM helper is mocked; neither is touched
+const step = asStub<WorkflowStep>({});
+// the LLM helper is mocked; neither is touched
+const scopedDb = asStub<WorkflowScopedDb>({});
 
 const LINES: VoicedDialogueLine[] = [
   {

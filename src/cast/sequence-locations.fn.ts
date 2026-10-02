@@ -46,12 +46,9 @@ export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
 
 const locationBibleFieldsSchema = z.object({
   type: z.enum(['interior', 'exterior', 'both']).optional(),
-  timeOfDay: bibleField.optional(),
   description: bibleField.optional(),
   architecturalStyle: bibleField.optional(),
   keyFeatures: bibleField.optional(),
-  colorPalette: bibleField.optional(),
-  lightingSetup: bibleField.optional(),
   ambiance: bibleField.optional(),
   consistencyTag: bibleField.optional(),
 });

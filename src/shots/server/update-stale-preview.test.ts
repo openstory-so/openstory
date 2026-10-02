@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { micros } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 const { estimateImageCost, estimateVideoCost, estimateAudioCost } = vi.hoisted(
   () => ({
@@ -18,8 +19,8 @@ vi.mock('@/billing/cost-estimation', async (importOriginal) => ({
 const { buildUpdateStalePreview } = await import('./update-stale-preview');
 
 const target = (o: object) =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  ({
+  // test stub
+  asStub<never>({
     shotId: 's1',
     regenVisual: false,
     regenMotion: false,
@@ -28,23 +29,23 @@ const target = (o: object) =>
     durationMs: 4000,
     imageModel: 'seedream_v5',
     ...o,
-  }) as never;
+  });
 
 const plan = (
   targets: unknown[],
   music: unknown = null,
-  dialogueRecording: unknown = null
+  dialogueSpeech: unknown = null
 ) =>
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  ({
+  // test stub
+  asStub<never>({
     aspectRatio: '16:9',
     sequence: { videoModel: 'seedance_v2' },
     targets,
     music,
-    dialogueRecording,
+    dialogueSpeech,
     skipped: [],
     promptContext: null,
-  }) as never;
+  });
 
 describe('buildUpdateStalePreview', () => {
   it('buckets targets per level and accumulates cost by depth', () => {
@@ -62,9 +63,9 @@ describe('buildUpdateStalePreview', () => {
     expect(preview.motionPromptShotIds).toEqual(['b']);
     expect(preview.imageShotIds).toEqual(['a']);
     expect(preview.videoShotIds).toEqual(['b']);
-    // 2 LLM calls at $0.02; image $0.04; video $0.50; no music
+    // Rebuild is free. Rewrite is the only prompt LLM. Image $0.04; video $0.50.
     expect(preview.costByLevel).toEqual({
-      prompts: 40_000,
+      prompts: 0,
       images: 40_000,
       dialogue: 0,
       video: 500_000,

@@ -6,6 +6,7 @@ import {
   shotIsUpdating,
 } from './use-shot-staleness';
 import type { ShotView } from '@/shots/shot-view';
+import type { SceneWithScript } from './use-scenes';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 import { Loader2 } from 'lucide-react';
 import { useState } from 'react';
@@ -25,6 +26,12 @@ type SceneStaleShotsProps = {
   stalenessFailed?: boolean;
   /** Same handler the left rail uses — lands at shot scope. */
   onSelectShot: (shotId: string) => void;
+  /**
+   * Across several scenes the chips are scenes, not shots: the rail numbers
+   * shots within a scene, so a sequence-wide "Shot 7" names nothing on it.
+   */
+  scenes?: readonly Pick<SceneWithScript, 'id' | 'title'>[];
+  onSelectScene?: (sceneId: string) => void;
   /**
    * Regenerate out-of-date artifacts across these shots at the chosen
    * cascade depth (#1085) — rendered as a depth menu on the action.
@@ -47,6 +54,8 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
   staleness,
   stalenessFailed = false,
   onSelectShot,
+  scenes,
+  onSelectScene,
   onUpdateAll,
   isUpdating = false,
 }) => {
@@ -79,11 +88,14 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
 
   const busy = isUpdating;
 
-  // Chip labels use the shot's position within the IN-SCOPE list, not
-  // `shotNumber`: shot numbers are per-scene, so at sequence scope every
-  // scene's first shot would read "Shot 1" (#1095 review). Positions match
-  // the rail's ordering because `shots` is documented as in-scope-in-order.
+  // In one scene a chip is the shot's position in it, as the rail numbers
+  // it. Across scenes a chip is a scene (its title, as the rail shows it),
+  // which opens it, where the shot chips take over.
   const numberByShotId = new Map(shots.map((s, index) => [s.id, index + 1]));
+  const sceneChips =
+    !sceneId && scenes && onSelectScene
+      ? sceneChipsOf(staleShots, updatingShots, shots, scenes)
+      : null;
 
   return (
     <div
@@ -107,7 +119,29 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
           : 'Updating out-of-date shots…'}
       </span>
       <span aria-hidden="true">·</span>
-      {[...staleShots, ...updatingShots].map((shot) => {
+      {sceneChips?.map((chip) => (
+        <Button
+          key={chip.sceneId}
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-5 max-w-56 rounded-full px-2 text-xs font-normal"
+          onClick={() => onSelectScene?.(chip.sceneId)}
+          aria-label={`Open ${chip.title} — ${chip.count} ${
+            chip.count === 1 ? 'shot' : 'shots'
+          } ${chip.updating ? 'updating' : 'out of date'}`}
+        >
+          {chip.updating && (
+            <Loader2
+              aria-hidden="true"
+              className="mr-1 h-2.5 w-2.5 shrink-0 animate-spin motion-reduce:animate-none"
+            />
+          )}
+          <span className="truncate">{chip.title}</span>
+          <span className="shrink-0 tabular-nums">· {chip.count}</span>
+        </Button>
+      ))}
+      {(sceneChips ? [] : [...staleShots, ...updatingShots]).map((shot) => {
         const number = numberByShotId.get(shot.id) ?? shot.shotNumber ?? 0;
         const updating = updatingShots.includes(shot);
         return (
@@ -160,7 +194,9 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
             onOpenChange={setUpdateAllOpen}
             staleShots={staleShots.flatMap((s) => staleness?.[s.id] ?? [])}
             scope={{ sequenceId, sceneId }}
-            shotNumberById={numberByShotId}
+            // Across scenes a position number names nothing on the rail;
+            // the dialog says how many shots instead.
+            shotNumberById={sceneChips ? undefined : numberByShotId}
             onConfirm={(depth: UpdateStaleDepth) => {
               setUpdateAllOpen(false);
               onUpdateAll(depth);
@@ -171,3 +207,36 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
     </div>
   );
 };
+
+/**
+ * One chip per scene holding a flagged shot, in rail order. A scene reads
+ * "updating" only when none of its flagged shots is still out of date.
+ */
+function sceneChipsOf(
+  stale: readonly ShotView[],
+  updating: readonly ShotView[],
+  inOrder: readonly ShotView[],
+  scenes: readonly Pick<SceneWithScript, 'id' | 'title'>[]
+): { sceneId: string; title: string; count: number; updating: boolean }[] {
+  const staleIds = new Set(stale.map((shot) => shot.id));
+  const updatingIds = new Set(updating.map((shot) => shot.id));
+  const chips = new Map<
+    string,
+    { sceneId: string; title: string; count: number; updating: boolean }
+  >();
+  for (const shot of inOrder) {
+    const isStale = staleIds.has(shot.id);
+    if ((!isStale && !updatingIds.has(shot.id)) || !shot.sceneId) continue;
+    const index = scenes.findIndex((scene) => scene.id === shot.sceneId);
+    const chip = chips.get(shot.sceneId) ?? {
+      sceneId: shot.sceneId,
+      title: scenes[index]?.title || `Scene ${index + 1}`,
+      count: 0,
+      updating: true,
+    };
+    chip.count += 1;
+    if (isStale) chip.updating = false;
+    chips.set(shot.sceneId, chip);
+  }
+  return [...chips.values()];
+}

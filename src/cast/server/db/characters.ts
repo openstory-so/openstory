@@ -25,6 +25,7 @@ import type {
   CharacterWithSheet,
   Character,
   CharacterRow,
+  CharacterVoice,
   CharacterVoiceVersionSource,
   LegacyCharacterBibleColumn,
   CharacterWithTalent,
@@ -61,18 +62,7 @@ import {
   mergeDefined,
 } from './bible-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-
-/** The bible fields the sheet prompt and its hash read (#1113). */
-const SHEET_BIBLE_FIELDS = [
-  'name',
-  'age',
-  'gender',
-  'ethnicity',
-  'physicalDescription',
-  'standardClothing',
-  'distinguishingFeatures',
-  'consistencyTag',
-] as const;
+import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
 /** A new character's bible where the caller left a field out. */
 const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
@@ -109,7 +99,9 @@ const mergeBible = (base: CharacterBible, patch: Partial<CharacterBible>) =>
   mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
 
 const touchesSheet = (fields: readonly (keyof CharacterBible)[]) =>
-  fields.some((key) => (SHEET_BIBLE_FIELDS as readonly string[]).includes(key));
+  fields.some((key) =>
+    (CHARACTER_SHEET_BIBLE_FIELDS as readonly string[]).includes(key)
+  );
 
 /**
  * The user-editable character bible fields (#1108 Phase 2). Everything else on
@@ -137,28 +129,29 @@ export type CharacterBibleUpdate = Partial<
 >;
 
 /**
- * The four columns that mirror the selected `character_voice_versions` row
- * (#1657). `update` refuses them so a voice write cannot land without saying
- * where it came from: a new value goes through `updateVoice`, re-selecting
- * an old row through `selectVoiceVersion`.
+ * A voice write (#1657): the selected `character_voice_versions` row's values
+ * (#1788) plus `useVoice`, which the version records as `enabled`. `update`
+ * refuses all four so a voice write cannot land without saying where it
+ * came from: a new value goes through `updateVoice`, re-selecting an old row
+ * through `selectVoiceVersion`.
  */
+type CharacterVoiceUpdate = Partial<
+  CharacterVoice & Pick<CharacterRow, 'useVoice'>
+>;
 const VOICE_FIELDS = [
   'voiceId',
   'voiceDescription',
   'voicePreviews',
   'useVoice',
-] as const;
-type VoiceField = (typeof VOICE_FIELDS)[number];
-
-type CharacterVoiceUpdate = Partial<Pick<NewCharacter, VoiceField>>;
+] as const satisfies readonly (keyof CharacterVoiceUpdate)[];
 /**
- * The row's own columns, minus the voice mirror (see {@link VOICE_FIELDS}) and
- * the bible, which only moves through {@link appendBible} (#1600).
+ * The row's own columns, minus `useVoice` (see {@link CharacterVoiceUpdate})
+ * and the bible, which only moves through {@link appendBible} (#1600).
  */
 type CharacterUpdate = Partial<
   Omit<
     typeof characters.$inferInsert,
-    VoiceField | LegacyCharacterBibleColumn | 'selectedBibleVersionId'
+    'useVoice' | LegacyCharacterBibleColumn | 'selectedBibleVersionId'
   >
 >;
 
@@ -190,8 +183,8 @@ const liveSheetVersionId = sql`COALESCE(${characters.selectedSheetVersionId}, ${
  * `sheetStatus` and `sheetError` are NOT in this list. They are character-level
  * generation lifecycle, not version mirrors: `generating` is stamped at trigger
  * time and `failed` on workflow failure, both when no variant row exists to
- * carry them. #1067 kept `frames.imageStatus` / `imageError` for the same
- * reason.
+ * carry them. (Frames solved the same gap by opening a primary row before the
+ * status flips, #1942.)
  */
 // The row's own columns: the legacy bible is read only through the fallback.
 const {
@@ -217,6 +210,10 @@ const charactersWithLiveSheet = {
   sheetImagePath: characterSheetVariants.storagePath,
   sheetGeneratedAt: characterSheetVariants.generatedAt,
   sheetInputHash: characterSheetVariants.inputHash,
+  // The voice IS the selected version row (#1788); all null without one.
+  voiceId: characterVoiceVersions.voiceId,
+  voiceDescription: characterVoiceVersions.description,
+  voicePreviews: characterVoiceVersions.previews,
 };
 
 const RELEASED_VOICE_MESSAGE =
@@ -243,9 +240,13 @@ export function createCharactersMethods(db: Database) {
       .leftJoin(
         characterSheetVariants,
         eq(characterSheetVariants.id, liveSheetVersionId)
+      )
+      .leftJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
       );
 
-  /** A write's row, re-read so it carries the resolved bible and sheet. */
+  /** A write's row, re-read so it carries the resolved bible, sheet and voice. */
   const reread = async (
     row: Pick<CharacterRow, 'id'> | undefined
   ): Promise<CharacterWithSheet> => {
@@ -308,8 +309,8 @@ export function createCharactersMethods(db: Database) {
     data: CharacterUpdate
   ): Promise<Character> => {
     // Belt for the non-literal call site TypeScript's excess-property check
-    // cannot see (a spread, a widened variable): a voice write with no source
-    // would append no history and leave the pointer stale.
+    // cannot see (a spread, a widened variable): drizzle drops a key that is
+    // not a column, so a voice write here would vanish without a trace.
     for (const key of VOICE_FIELDS) {
       if (key in data) {
         throw new Error(`Write ${key} through updateVoice, not update`);
@@ -330,11 +331,11 @@ export function createCharactersMethods(db: Database) {
 
   /**
    * How a NEW voice value lands (#1657): one `db.batch` that appends the
-   * history row, writes the mirror columns and points the character at it.
-   * `source` says WHY — a release and a library pick both used to be inferred
-   * as 'generated'. The other writers of the mirror: `selectVoiceVersion`
-   * (re-selects an old row), `create`'s upsert (coalesce, then the original
-   * row through here) and `updateBible` (description, then history).
+   * history row — the selected one's values with `data` on top — and points
+   * the character at it. `source` says WHY — a release and a library pick
+   * both used to be inferred as 'generated'. The other pointer writers:
+   * `selectVoiceVersion` (re-selects an old row) and
+   * `promoteVoiceClaimIfPending` (a finished Voice Design).
    */
   const updateVoice = async (
     id: string,
@@ -343,10 +344,7 @@ export function createCharactersMethods(db: Database) {
     /** Who did this — required so no writer forgets; null when nobody did. */
     createdBy: string | null
   ): Promise<Character> => {
-    const [existing] = await db
-      .select()
-      .from(characters)
-      .where(eq(characters.id, id));
+    const [existing] = await selectWithLiveSheet().where(eq(characters.id, id));
     if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
     const versionId = generateId();
     const [, updatedRows] = await db.batch([
@@ -370,7 +368,7 @@ export function createCharactersMethods(db: Database) {
       db
         .update(characters)
         .set({
-          ...data,
+          ...(data.useVoice === undefined ? {} : { useVoice: data.useVoice }),
           selectedVoiceVersionId: versionId,
           pendingPromoteVoiceVersionId: null,
           updatedAt: new Date(),
@@ -460,6 +458,10 @@ export function createCharactersMethods(db: Database) {
           characterSheetVariants,
           eq(characterSheetVariants.id, liveSheetVersionId)
         )
+        .leftJoin(
+          characterVoiceVersions,
+          eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+        )
         .where(
           and(
             eq(characters.sequenceId, sequenceId),
@@ -520,6 +522,8 @@ export function createCharactersMethods(db: Database) {
         voiceOnly: _vo,
         isPerson: _ip,
         consistencyTag: _ct,
+        voiceId: incomingVoiceId,
+        voiceDescription: incomingVoiceDescription,
         ...row
       } = data;
       // A field left out keeps its value, as the column upsert did.
@@ -550,11 +554,6 @@ export function createCharactersMethods(db: Database) {
         .onConflictDoUpdate({
           target: [characters.sequenceId, characters.characterId],
           set: {
-            // A voice already on the row wins (#1553): re-writing it would
-            // orphan an ElevenLabs slot. A row without one takes the talent
-            // copy the insert carries.
-            voiceId: sql`coalesce(${characters.voiceId}, excluded.voice_id)`,
-            voiceDescription: sql`coalesce(${characters.voiceDescription}, excluded.voice_description)`,
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,
             // so the character rendered sheet-less until it regenerated.
@@ -585,24 +584,25 @@ export function createCharactersMethods(db: Database) {
           : []),
       ]);
       const character = await reread({ id });
-      // The ORIGINAL history row (#1657): the voice the cast arrived with.
-      // Without it history starts at the first edit, so the analysed /
-      // talent-copied voice can never be selected back. Guarded on the
-      // pointer, so the References-stage re-upsert of the same row does not
-      // append a second one, and the `coalesce` above keeps an existing
-      // voice — a row whose voice did NOT come from this insert is labelled
-      // 'analysis' rather than claimed as the talent's.
-      if (
-        !character.selectedVoiceVersionId &&
-        (character.voiceId ?? character.voiceDescription)
-      ) {
-        // An empty patch: the version copies the row's voice as it stands.
+      // The voice the cast arrived with fills only what the character does
+      // not already have (#1553): re-writing a voice would orphan an
+      // ElevenLabs slot. What lands is a history row (#1657) — the ORIGINAL
+      // one for a new character, so the analysed / talent-copied voice can be
+      // selected back — and an identical re-upsert appends nothing.
+      const voicePatch: CharacterVoiceUpdate = {
+        ...(!character.voiceId && incomingVoiceId
+          ? { voiceId: incomingVoiceId }
+          : {}),
+        ...(!character.voiceDescription && incomingVoiceDescription
+          ? { voiceDescription: incomingVoiceDescription }
+          : {}),
+      };
+      if (Object.keys(voicePatch).length > 0) {
         return await updateVoice(
           character.id,
-          {},
-          character.voiceId && character.voiceId === data.voiceId
-            ? 'library'
-            : 'analysis',
+          voicePatch,
+          // A voice id only ever arrives as the cast talent's copy.
+          voicePatch.voiceId ? 'library' : 'analysis',
           // Seeded by the cast-records step, not by a person.
           null
         );
@@ -622,39 +622,30 @@ export function createCharactersMethods(db: Database) {
       generatedVoiceId: string,
       reason: VoicePreviewUnusable
     ): Promise<Character> => {
-      const [existing] = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, id));
+      const [existing] = await selectWithLiveSheet().where(
+        eq(characters.id, id)
+      );
       if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
       const next = markPreviewUnusable(
         existing.voicePreviews ?? [],
         generatedVoiceId,
         reason
       );
-      if (!next) return await reread(existing);
+      // No previews without a selected version: `next` is null then.
       const versionId = existing.selectedVoiceVersionId;
-      const now = new Date();
-      if (versionId) {
-        const [, updatedRows] = await db.batch([
-          db
-            .update(characterVoiceVersions)
-            .set({ previews: next })
-            .where(eq(characterVoiceVersions.id, versionId)),
-          db
-            .update(characters)
-            .set({ voicePreviews: next, updatedAt: now })
-            .where(eq(characters.id, id))
-            .returning({ id: characters.id }),
-        ]);
-        return await reread(updatedRows[0]);
-      }
-      const [character] = await db
-        .update(characters)
-        .set({ voicePreviews: next, updatedAt: now })
-        .where(eq(characters.id, id))
-        .returning({ id: characters.id });
-      return await reread(character);
+      if (!next || !versionId) return existing;
+      const [, updatedRows] = await db.batch([
+        db
+          .update(characterVoiceVersions)
+          .set({ previews: next })
+          .where(eq(characterVoiceVersions.id, versionId)),
+        db
+          .update(characters)
+          .set({ updatedAt: new Date() })
+          .where(eq(characters.id, id))
+          .returning({ id: characters.id }),
+      ]);
+      return await reread(updatedRows[0]);
     },
 
     /**
@@ -685,6 +676,28 @@ export function createCharactersMethods(db: Database) {
           desc(characterVoiceVersions.createdAt),
           desc(characterVoiceVersions.id)
         ),
+
+    /**
+     * Every voice a sequence's cast has had, and which one each live
+     * character speaks in now — who a recorded turn was, and since when their
+     * voice is the current one (#1802).
+     */
+    listVoiceHistoryBySequence: async (sequenceId: string) => {
+      const rows = await db
+        .select({
+          characterId: characterVoiceVersions.characterId,
+          voiceId: characterVoiceVersions.voiceId,
+          createdAt: characterVoiceVersions.createdAt,
+          current: sql<number>`(${characters.selectedVoiceVersionId} = ${characterVoiceVersions.id} and ${characters.deletedAt} is null)`,
+        })
+        .from(characterVoiceVersions)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterVoiceVersions.characterId)
+        )
+        .where(eq(characters.sequenceId, sequenceId));
+      return rows.map((row) => ({ ...row, current: Boolean(row.current) }));
+    },
 
     /** The husk this run holds, including after it completed in place (#1715). */
     getVoiceVersionById: async (id: string) => {
@@ -726,9 +739,6 @@ export function createCharactersMethods(db: Database) {
       const [updated] = await db
         .update(characters)
         .set({
-          voiceId: version.voiceId,
-          voiceDescription: version.description,
-          voicePreviews: version.previews,
           useVoice: version.enabled,
           selectedVoiceVersionId: version.id,
           pendingPromoteVoiceVersionId: null,
@@ -758,7 +768,8 @@ export function createCharactersMethods(db: Database) {
 
     /**
      * Rows (any team — the id is the ElevenLabs account's) still pointing at
-     * a voice, across characters AND talent, soft-deleted rows included:
+     * a voice — a character through its selected version (#1788), a talent
+     * through its own column — soft-deleted characters included:
      * soft-delete stamps `deletedAt` and THEN releases (provider first, row
      * second), so a deleted row still holding an id is a release that
      * failed, and the voice it names is still on the account. `get` prefix
@@ -768,7 +779,11 @@ export function createCharactersMethods(db: Database) {
       const [chars] = await db
         .select({ n: count() })
         .from(characters)
-        .where(eq(characters.voiceId, voiceId));
+        .innerJoin(
+          characterVoiceVersions,
+          eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+        )
+        .where(eq(characterVoiceVersions.voiceId, voiceId));
       const [tal] = await db
         .select({ n: count() })
         .from(talent)
@@ -883,10 +898,9 @@ export function createCharactersMethods(db: Database) {
       createdBy: string | null,
       opts?: { workflowRunId?: string | null }
     ) => {
-      const [existing] = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, characterId));
+      const [existing] = await selectWithLiveSheet().where(
+        eq(characters.id, characterId)
+      );
       if (!existing)
         throw new Error(`SequenceCharacter ${characterId} not found`);
       const versionId = generateId();
@@ -1037,9 +1051,6 @@ export function createCharactersMethods(db: Database) {
       const [updated] = await db
         .update(characters)
         .set({
-          voiceId: version.voiceId,
-          voiceDescription: version.description,
-          voicePreviews: version.previews,
           useVoice: version.enabled,
           selectedVoiceVersionId: version.id,
           pendingPromoteVoiceVersionId: null,
@@ -1051,8 +1062,8 @@ export function createCharactersMethods(db: Database) {
             eq(characters.pendingPromoteVoiceVersionId, versionId)
           )
         )
-        .returning();
-      return updated ?? null;
+        .returning({ id: characters.id });
+      return updated ? await reread(updated) : null;
     },
 
     stampVoiceClaimWorkflowRunId: async (
@@ -1125,8 +1136,8 @@ export function createCharactersMethods(db: Database) {
         }),
         ...statements,
       ]);
-      // `voiceDescription` is part of the voice mirror, so an edit to it is
-      // a voice write and belongs in the voice history (#1657). Only when it
+      // `voiceDescription` is the selected voice version's, so an edit to it
+      // is a voice write and belongs in the voice history (#1657). Only when it
       // actually moved: the form posts every field, and a row per unrelated
       // bible edit would bury the real takes.
       if (

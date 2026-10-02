@@ -1,3 +1,4 @@
+import type { FreshPlanSequenceOverrides } from '@/shots/server/update-stale-plan';
 /**
  * Load the generation plan (#1816) from live D1: the rows, the existing
  * staleness verdicts and the claims, one read per table, compared in memory
@@ -30,6 +31,7 @@ import {
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
+import { readinessImageStatus } from '@/shots/shot-view';
 import { usesStartFrame } from '@/shots/use-start-frame';
 
 const logger = getLogger(['openstory', 'sequences', 'generation-plan']);
@@ -62,14 +64,23 @@ async function sheetVerdict(
 export async function computeGenerationPlan(
   scopedDb: ScopedDb,
   sequenceId: string,
-  flags?: Partial<Pick<Sequence, 'generateStartFrames' | 'generateVoices'>>
+  flags?: Partial<
+    Pick<Sequence, 'generateStartFrames' | 'generateVoices' | 'includeMusic'>
+  >,
+  options?: {
+    ignoreOwnProcessing?: boolean;
+    sequenceOverrides?: FreshPlanSequenceOverrides;
+  }
 ): Promise<PlanUnit[]> {
   const row = await scopedDb.sequences.getById(sequenceId);
   if (!row) throw new NotFoundError(`Sequence ${sequenceId} not found`);
   const sequence = {
     ...row,
+    ...options?.sequenceOverrides,
     generateStartFrames: flags?.generateStartFrames ?? row.generateStartFrames,
     generateVoices: flags?.generateVoices ?? row.generateVoices,
+    includeMusic: flags?.includeMusic ?? row.includeMusic,
+    status: options?.ignoreOwnProcessing ? ('completed' as const) : row.status,
   };
   const shots = await scopedDb.shots.listBySequence(sequenceId);
   // Script is the root, not a unit: nothing to plan until it made shots.
@@ -89,24 +100,32 @@ async function loadPlanInput(
   const frameIds = [...anchorsByShot.values()].map((frame) => frame.id);
   const shotIds = shots.map((shot) => shot.id);
 
-  const [characters, locations, reads, media, liveDialogue, music] =
-    await Promise.all([
-      scopedDb.characters.list(sequence.id),
-      scopedDb.sequenceLocations.list(sequence.id),
-      loadShotStalenessReads(
-        scopedDb,
-        sequence.id,
-        shots,
-        shotIds,
-        frameIds,
-        sceneContext
-      ),
-      loadShotMediaStates(scopedDb, sequence, shots),
-      scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
-      sequence.includeMusic
-        ? readMusicPromptStaleness(scopedDb, sequence)
-        : Promise.resolve(null),
-    ]);
+  const [
+    characters,
+    locations,
+    reads,
+    media,
+    liveDialogue,
+    music,
+    primaryImageByFrame,
+  ] = await Promise.all([
+    scopedDb.characters.list(sequence.id),
+    scopedDb.sequenceLocations.list(sequence.id),
+    loadShotStalenessReads(
+      scopedDb,
+      sequence.id,
+      shots,
+      shotIds,
+      frameIds,
+      sceneContext
+    ),
+    loadShotMediaStates(scopedDb, sequence, shots),
+    scopedDb.shotDialogue.listShotIdsWithLiveClaim(shotIds),
+    sequence.includeMusic
+      ? readMusicPromptStaleness(scopedDb, sequence)
+      : Promise.resolve(null),
+    scopedDb.frameVariants.getPrimaryByFrameIds(frameIds),
+  ]);
 
   // In parallel, as `getShotStalenessBatchFn` does: the reads are shared,
   // the hashing is per shot. Null = an uncomputable compare.
@@ -152,6 +171,12 @@ async function loadPlanInput(
     const selectedPrompt = frame
       ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
       : null;
+    const imageStatus = readinessImageStatus({
+      selectedImageUrl: selectedImage?.url ?? null,
+      primaryImageStatus: frame
+        ? (primaryImageByFrame.get(frame.id)?.status ?? null)
+        : null,
+    });
     const dialogue = reads.dialogueOf(shot);
     const computed = stalenessByShot.get(shot.id) ?? null;
     const unknown = computed === null;
@@ -206,11 +231,23 @@ async function loadPlanInput(
           inFlight:
             !selectedImage?.url &&
             (frame?.pendingPromoteVersionId != null ||
-              frame?.imageStatus === 'generating' ||
+              imageStatus === 'generating' ||
               (reads.liveImageClaimsByFrame.get(frame?.id ?? '')?.length ?? 0) >
                 0),
         })
       ),
+      spec: verdictOf(
+        staleness.spec === 'untracked'
+          ? 'missing'
+          : artifactVerdict({
+              exists: true,
+              staleness: staleness.spec,
+              inFlight: shot.pendingSpecVersionId != null,
+            })
+      ),
+      visualWritten: selectedPrompt?.source === 'user-edit',
+      motionWritten:
+        reads.selectedMotionByShot.get(shot.id)?.source === 'user-edit',
       motionPrompt: verdictOf(
         artifactVerdict({
           exists: reads.selectedMotionByShot.has(shot.id),
@@ -271,8 +308,6 @@ async function loadPlanInput(
     processing: sequence.status === 'processing',
     runStopAt: resolveStopAt({
       generationStopAt: sequence.generationStopAt,
-      autoGenerateMotion: sequence.autoGenerateMotion,
-      autoGenerateMusic: sequence.autoGenerateMusic,
     }),
     characterSheets,
     locationSheets,

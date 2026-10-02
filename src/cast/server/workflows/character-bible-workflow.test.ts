@@ -11,6 +11,7 @@ import type {
   CharacterSheetWorkflowInput,
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const mockSpawnAndAwaitChild = vi.fn();
 
@@ -32,21 +33,21 @@ class Probe extends CharacterBibleWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the binding is only handed to the (mocked) spawn
-  const env = {
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // the binding is only handed to the (mocked) spawn
+  const env = asStub<Ctor[1]>({
     CHARACTER_SHEET_WORKFLOW: {},
     CHARACTER_VOICE_WORKFLOW: {},
-  } as unknown as Ctor[1];
+  });
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
 
 const characterCreate = vi.fn(
@@ -64,15 +65,15 @@ const createPendingVoiceClaim = vi.fn(
 const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'husk-1' }));
 
 function makeScopedDb(): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  return {
+  // stub covering only the scoped-db surface runImpl touches
+  return asStub<WorkflowScopedDb>({
     characters: {
       create: characterCreate,
       claimSheet: vi.fn(async (id: string) => `ver-${id}`),
       createPendingVoiceClaim,
       markVoiceClaimTerminal,
     },
-  } as unknown as WorkflowScopedDb;
+  });
 }
 
 const entry = (
@@ -365,10 +366,10 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
 
     const [spawnCall] = mockSpawnAndAwaitChild.mock.calls;
     if (!spawnCall) throw new Error('expected a sheet child');
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mocked spawn's second argument
-    const { childPayload } = spawnCall[1] as {
+    // the mocked spawn's second argument
+    const { childPayload } = asStub<{
       childPayload: CharacterSheetWorkflowInput;
-    };
+    }>(spawnCall[1]);
     const [row] = characterCreate.mock.calls[0] ?? [];
     if (!row) throw new Error('expected the character row');
 
@@ -377,14 +378,14 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
 
     // The staleness check hashes the stored row, not the LLM entry: a
     // pipeline sheet must not read "stale" the moment it lands.
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the insert row plus the read-side sheet fields
-    const stored = {
+    // the insert row plus the read-side sheet fields
+    const stored = asStub<Parameters<typeof characterToBible>[0]>({
       ...row,
       sheetImageUrl: null,
       sheetImagePath: null,
       sheetGeneratedAt: null,
       sheetInputHash: null,
-    } as unknown as Parameters<typeof characterToBible>[0];
+    });
     expect(
       await computeCharacterSheetHashFromDto({
         ...childPayload,

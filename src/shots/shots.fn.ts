@@ -135,6 +135,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
       selectedVideoByShot,
       primaryVideoByShot,
       pendingById,
+      primaryImageByFrame,
     ] = await Promise.all([
       scopedDb.frameVariants.getSelectedByFrameIds(anchorRows.map((f) => f.id)),
       // The pre-prompt stand-in is a `kind: 'preview'` row too (#1101) —
@@ -148,6 +149,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
       scopedDb.videoVariants.getSelectedByShotIds(shotIds),
       scopedDb.videoVariants.getPrimaryByShotIds(shotIds),
       scopedDb.frameVariants.getByIds(pendingPromoteIds),
+      scopedDb.frameVariants.getPrimaryByFrameIds(anchorRows.map((f) => f.id)),
     ]);
     const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
     return shotRows.map((shot) => {
@@ -183,6 +185,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
         image: selectedByFrame.get(frame.id) ?? null,
         preview: previewByFrame.get(frame.id) ?? null,
         imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
+        primaryImage: primaryImageByFrame.get(frame.id) ?? null,
         video: selectedVideoByShot.get(shot.id) ?? null,
         primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
         gridSheet,
@@ -236,6 +239,7 @@ export const getShotFn = createServerFn({ method: 'GET' })
       video,
       primaryVideo,
       pendingPromote,
+      primaryImage,
     ] = await Promise.all([
       context.scopedDb.frameVariants.getLatestGridSheet(context.frame.id),
       context.scopedDb.shotPromptVersions.getSelectedMotion(context.shot.id),
@@ -249,6 +253,7 @@ export const getShotFn = createServerFn({ method: 'GET' })
             context.frame.pendingPromoteVersionId
           )
         : Promise.resolve(null),
+      context.scopedDb.frameVariants.getPrimary(context.frame.id),
     ]);
     // The first-shot rule needs the scene-mates, so the sequence's shots are
     // read even for one shot.
@@ -264,6 +269,7 @@ export const getShotFn = createServerFn({ method: 'GET' })
       image,
       preview,
       imagePromptVersion,
+      primaryImage,
       video,
       primaryVideo,
       gridSheet: sheet ? { url: sheet.url, status: sheet.status } : null,

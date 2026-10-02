@@ -293,7 +293,7 @@ describe('llm-client', () => {
       };
 
       // Fast section.
-      expect(await tierFor('openai/gpt-5.6-luna')).toBe('priority');
+      expect(await tierFor('openai/gpt-6-luna')).toBe('priority');
       expect(await tierFor('z-ai/glm-5.3-flash')).toBe('priority');
       // Quality section too: OpenRouter falls back off-tier when a model has
       // no priority endpoint, and bills the endpoint that actually served —
@@ -393,7 +393,7 @@ describe('llm-client', () => {
       await expect(
         drain(
           callLLMStream({
-            model: 'openai/gpt-5.6-luna',
+            model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
             responseSchema: z.object({ scenes: z.array(z.unknown()) }),
           })
@@ -984,7 +984,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'openai/gpt-5.6-luna',
+            model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -994,7 +994,7 @@ describe('llm-client', () => {
         });
       });
 
-      it.each(['openai/gpt-5.6-luna', 'openai/gpt-6-astra'] as const)(
+      it.each(['openai/gpt-6-luna', 'openai/gpt-6-astra'] as const)(
         'drops temperature for %s (no sampling params)',
         async (model) => {
           mockChat.mockReturnValue(textStream());
@@ -1289,7 +1289,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'openai/gpt-5.6-luna',
+            model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
             max_tokens: 300,
             temperature: 0.7,

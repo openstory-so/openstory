@@ -11,8 +11,14 @@
  */
 
 import { and, eq, isNotNull, isNull, notExists, sql } from 'drizzle-orm';
-import type { SQL } from 'drizzle-orm';
+import type { SQL, SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
+import type {
+  AnySQLiteColumn,
+  SQLiteInsertValue,
+  SQLiteTable,
+  SQLiteUpdateSetSource,
+} from 'drizzle-orm/sqlite-core';
 import type { Database } from '@/platform/server/db/client';
 import {
   characterSheetVariants,
@@ -80,203 +86,194 @@ type LandArgs<H> = {
   workflowRunId: string;
 };
 
+/** What {@link landSheetVersion} needs from one sheet entity's tables. */
+type SheetLandSpec<P extends SQLiteTable, V extends SQLiteTable> = {
+  /** Named in the not-found error. */
+  entity: string;
+  parent: P;
+  isParent: SQL;
+  /** The selection pointer and its claim column on the parent. */
+  selected: AnySQLiteColumn;
+  claim: AnySQLiteColumn;
+  isGenerating: SQL;
+  /** Pointer to the version, claim cleared, status completed. */
+  promote: SQLiteUpdateSetSource<P>;
+  /** Status completed, error cleared. */
+  settle: SQLiteUpdateSetSource<P>;
+  variants: V;
+  version: SQLiteInsertValue<V>;
+  versionIdColumn: AnySQLiteColumn;
+  divergedAt: AnySQLiteColumn;
+  park: SQLiteUpdateSetSource<V>;
+  /** An identical divergent twin already parked (the partial unique index allows one). */
+  twinParked: SQLWrapper;
+};
+
 /**
- * Land a character sheet run's result (#1113). One batch: append the version
- * row under the claimed id, then move the pointer ONLY while the claim still
- * names it. A missed claim parks the row as divergent (unless an identical
- * divergent twin is already parked — the partial unique index allows one).
- * The status settles to `completed` only when no newer run holds the pointer.
+ * The one sheet landing batch (#1113, #1865): append the version row under the
+ * claimed id, then move the pointer ONLY while the claim still names it. A
+ * missed claim parks the row as divergent (unless an identical divergent twin
+ * is already parked). The status settles to `completed` only when no newer run
+ * holds the pointer.
  *
  * Retry-safe: the insert is keyed on the claimed id, and the outcome is read
  * from the pointer, not from whether this attempt's UPDATE matched.
  */
-export async function landCharacterSheet(
+async function landSheetVersion<P extends SQLiteTable, V extends SQLiteTable>(
+  db: Database,
+  spec: SheetLandSpec<P, V>,
+  { versionId, claimed }: Pick<LandArgs<unknown>, 'versionId' | 'claimed'>
+): Promise<SheetLanding> {
+  const [, , , , [row]] = await db.batch([
+    db.insert(spec.variants).values(spec.version).onConflictDoNothing(),
+    db
+      .update(spec.parent)
+      .set(spec.promote)
+      .where(
+        and(
+          spec.isParent,
+          claimed ? eq(spec.claim, versionId) : isNull(spec.claim)
+        )
+      ),
+    db
+      .update(spec.variants)
+      .set(spec.park)
+      .where(
+        and(
+          eq(spec.versionIdColumn, versionId),
+          isNull(spec.divergedAt),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(spec.parent)
+              .where(and(spec.isParent, eq(spec.selected, versionId)))
+          ),
+          notExists(spec.twinParked)
+        )
+      ),
+    db
+      .update(spec.parent)
+      .set(spec.settle)
+      .where(and(spec.isParent, isNull(spec.claim), spec.isGenerating)),
+    db
+      .select({ selected: spec.selected })
+      .from(spec.parent)
+      .where(spec.isParent),
+  ]);
+  if (!row) throw new Error(`${spec.entity} not found`);
+  return row.selected === versionId ? 'promoted' : 'parked';
+}
+
+/** The version row's columns both variant tables share. */
+const versionRow = <H>(args: LandArgs<H>, now: Date) => ({
+  id: args.versionId,
+  model: args.model,
+  url: args.url,
+  storagePath: args.storagePath,
+  status: 'completed' as const,
+  workflowRunId: args.workflowRunId,
+  generatedAt: now,
+  inputHash: args.inputHash,
+  bibleVersionId: args.bibleVersionId,
+});
+
+/** Land a character sheet run's result: {@link landSheetVersion}. */
+export function landCharacterSheet(
   db: Database,
   args: LandArgs<CharacterSheetInputHash> & { characterId: string }
 ): Promise<SheetLanding> {
   const { characterId, versionId } = args;
   const now = new Date();
   const twin = alias(characterSheetVariants, 'twin');
-  const [, , , , [row]] = await db.batch([
-    db
-      .insert(characterSheetVariants)
-      .values({
-        id: versionId,
-        characterId,
-        model: args.model,
-        url: args.url,
-        storagePath: args.storagePath,
-        status: 'completed',
-        workflowRunId: args.workflowRunId,
-        generatedAt: now,
-        inputHash: args.inputHash,
-        bibleVersionId: args.bibleVersionId,
-      })
-      .onConflictDoNothing(),
-    db
-      .update(characters)
-      .set({
+  return landSheetVersion(
+    db,
+    {
+      entity: `Character ${characterId}`,
+      parent: characters,
+      isParent: eq(characters.id, characterId),
+      selected: characters.selectedSheetVersionId,
+      claim: characters.pendingPromoteSheetVersionId,
+      isGenerating: eq(characters.sheetStatus, 'generating'),
+      promote: {
         selectedSheetVersionId: versionId,
         pendingPromoteSheetVersionId: null,
         sheetStatus: 'completed',
         sheetError: null,
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(characters.id, characterId),
-          args.claimed
-            ? eq(characters.pendingPromoteSheetVersionId, versionId)
-            : isNull(characters.pendingPromoteSheetVersionId)
-        )
-      ),
-    db
-      .update(characterSheetVariants)
-      .set({ divergedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(characterSheetVariants.id, versionId),
-          isNull(characterSheetVariants.divergedAt),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(characters)
-              .where(
-                and(
-                  eq(characters.id, characterId),
-                  eq(characters.selectedSheetVersionId, versionId)
-                )
-              )
-          ),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(twin)
-              .where(
-                and(
-                  eq(twin.characterId, characterId),
-                  eq(twin.model, args.model),
-                  eq(twin.inputHash, sql`${characterSheetVariants.inputHash}`),
-                  isNotNull(twin.divergedAt)
-                )
-              )
+      },
+      settle: { sheetStatus: 'completed', sheetError: null, updatedAt: now },
+      variants: characterSheetVariants,
+      version: { ...versionRow(args, now), characterId },
+      versionIdColumn: characterSheetVariants.id,
+      divergedAt: characterSheetVariants.divergedAt,
+      park: { divergedAt: now, updatedAt: now },
+      twinParked: db
+        .select({ one: sql`1` })
+        .from(twin)
+        .where(
+          and(
+            eq(twin.characterId, characterId),
+            eq(twin.model, args.model),
+            eq(twin.inputHash, sql`${characterSheetVariants.inputHash}`),
+            isNotNull(twin.divergedAt)
           )
-        )
-      ),
-    db
-      .update(characters)
-      .set({ sheetStatus: 'completed', sheetError: null, updatedAt: now })
-      .where(
-        and(
-          eq(characters.id, characterId),
-          isNull(characters.pendingPromoteSheetVersionId),
-          eq(characters.sheetStatus, 'generating')
-        )
-      ),
-    db
-      .select({ selected: characters.selectedSheetVersionId })
-      .from(characters)
-      .where(eq(characters.id, characterId)),
-  ]);
-  if (!row) throw new Error(`Character ${characterId} not found`);
-  return row.selected === versionId ? 'promoted' : 'parked';
+        ),
+    },
+    args
+  );
 }
 
-/** {@link landCharacterSheet} for a sequence location's reference. */
-export async function landLocationReference(
+/** Land a sequence location reference run's result: {@link landSheetVersion}. */
+export function landLocationReference(
   db: Database,
   args: LandArgs<LocationSheetInputHash> & { locationId: string }
 ): Promise<SheetLanding> {
   const { locationId, versionId } = args;
   const now = new Date();
   const twin = alias(locationSheetVariants, 'twin');
-  const [, , , , [row]] = await db.batch([
-    db
-      .insert(locationSheetVariants)
-      .values({
-        id: versionId,
-        parentType: 'sequence_location',
-        parentId: locationId,
-        model: args.model,
-        url: args.url,
-        storagePath: args.storagePath,
-        status: 'completed',
-        workflowRunId: args.workflowRunId,
-        generatedAt: now,
-        inputHash: args.inputHash,
-        bibleVersionId: args.bibleVersionId,
-      })
-      .onConflictDoNothing(),
-    db
-      .update(sequenceLocations)
-      .set({
+  return landSheetVersion(
+    db,
+    {
+      entity: `SequenceLocation ${locationId}`,
+      parent: sequenceLocations,
+      isParent: eq(sequenceLocations.id, locationId),
+      selected: sequenceLocations.selectedReferenceVersionId,
+      claim: sequenceLocations.pendingPromoteReferenceVersionId,
+      isGenerating: eq(sequenceLocations.referenceStatus, 'generating'),
+      promote: {
         selectedReferenceVersionId: versionId,
         pendingPromoteReferenceVersionId: null,
         referenceStatus: 'completed',
         referenceError: null,
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(sequenceLocations.id, locationId),
-          args.claimed
-            ? eq(sequenceLocations.pendingPromoteReferenceVersionId, versionId)
-            : isNull(sequenceLocations.pendingPromoteReferenceVersionId)
-        )
-      ),
-    db
-      .update(locationSheetVariants)
-      .set({ divergedAt: now, updatedAt: now })
-      .where(
-        and(
-          eq(locationSheetVariants.id, versionId),
-          isNull(locationSheetVariants.divergedAt),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(sequenceLocations)
-              .where(
-                and(
-                  eq(sequenceLocations.id, locationId),
-                  eq(sequenceLocations.selectedReferenceVersionId, versionId)
-                )
-              )
-          ),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(twin)
-              .where(
-                and(
-                  eq(twin.parentType, 'sequence_location'),
-                  eq(twin.parentId, locationId),
-                  eq(twin.model, args.model),
-                  eq(twin.inputHash, sql`${locationSheetVariants.inputHash}`),
-                  isNotNull(twin.divergedAt)
-                )
-              )
-          )
-        )
-      ),
-    db
-      .update(sequenceLocations)
-      .set({
+      },
+      settle: {
         referenceStatus: 'completed',
         referenceError: null,
         updatedAt: now,
-      })
-      .where(
-        and(
-          eq(sequenceLocations.id, locationId),
-          isNull(sequenceLocations.pendingPromoteReferenceVersionId),
-          eq(sequenceLocations.referenceStatus, 'generating')
-        )
-      ),
-    db
-      .select({ selected: sequenceLocations.selectedReferenceVersionId })
-      .from(sequenceLocations)
-      .where(eq(sequenceLocations.id, locationId)),
-  ]);
-  if (!row) throw new Error(`SequenceLocation ${locationId} not found`);
-  return row.selected === versionId ? 'promoted' : 'parked';
+      },
+      variants: locationSheetVariants,
+      version: {
+        ...versionRow(args, now),
+        parentType: 'sequence_location',
+        parentId: locationId,
+      },
+      versionIdColumn: locationSheetVariants.id,
+      divergedAt: locationSheetVariants.divergedAt,
+      park: { divergedAt: now, updatedAt: now },
+      twinParked: db
+        .select({ one: sql`1` })
+        .from(twin)
+        .where(
+          and(
+            eq(twin.parentType, 'sequence_location'),
+            eq(twin.parentId, locationId),
+            eq(twin.model, args.model),
+            eq(twin.inputHash, sql`${locationSheetVariants.inputHash}`),
+            isNotNull(twin.divergedAt)
+          )
+        ),
+    },
+    args
+  );
 }

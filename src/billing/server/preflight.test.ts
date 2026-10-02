@@ -15,6 +15,7 @@ import {
   requireCredits,
   reserveRunCredits,
 } from './preflight';
+import { asStub } from '@/test/as-stub';
 
 type StubProvider = 'fal' | 'openrouter' | 'llmtr';
 
@@ -23,8 +24,8 @@ function fakeScopedDb(opts: {
   invalidKeys?: Array<StubProvider>;
   canAfford?: boolean;
 }): ScopedDb {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- minimal stub of the two methods requireCredits touches
-  return {
+  // minimal stub of the two methods requireCredits touches
+  return asStub<ScopedDb>({
     apiKeys: {
       hasUsableKey: (provider: StubProvider) =>
         Promise.resolve(
@@ -45,7 +46,7 @@ function fakeScopedDb(opts: {
             : { ok: false as const }
         ),
     },
-  } as unknown as ScopedDb;
+  });
 }
 
 const COST = micros(1000);

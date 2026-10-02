@@ -10,6 +10,7 @@ import {
   parseWavHeader,
   pcmToWav,
 } from '@/motion/server/pad-dialogue-audio';
+import { asStub } from '@/test/as-stub';
 
 const SAMPLE_RATE = 8000;
 const BYTES_PER_SECOND = SAMPLE_RATE * 2;
@@ -85,7 +86,7 @@ const { cutAudioSection, cutSpanningSection } =
 
 const base = {
   storageKey: 'audio/team-1/seq-1/dialogue-recordings/rec-1.wav',
-  recordingId: 'rec-1',
+  speechId: 'rec-1',
   teamId: 'team-1',
   sequenceId: 'seq-1',
 };
@@ -277,8 +278,8 @@ describe('cutAudioSection', () => {
 
   it('fails on a recording that is missing or is not a PCM WAV', async () => {
     readStorageObject.mockResolvedValueOnce(
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the real signature's "no such key"
-      null as unknown as Awaited<ReturnType<typeof readStorageObject>>
+      // the real signature's "no such key"
+      asStub<Awaited<ReturnType<typeof readStorageObject>>>(null)
     );
     await expect(
       cutAudioSection({ ...base, fromSeconds: 0, toSeconds: 1 })
@@ -299,16 +300,12 @@ describe('cutAudioSection', () => {
 });
 
 describe('cutSpanningSection (#1794)', () => {
-  const clip = (
-    id: string,
-    recordingId: string | undefined,
-    seconds: number
-  ) => ({
+  const clip = (id: string, speechId: string | undefined, seconds: number) => ({
     id,
     url: `/r2/${id}.wav`,
     token: 'DIALOGUE',
     durationSeconds: seconds,
-    ...(recordingId && { recordingId }),
+    ...(speechId && { speechId }),
   });
   const sections: Record<string, { fromSeconds: number; toSeconds: number }> = {
     a: { fromSeconds: 0.37, toSeconds: 7.8 },
@@ -316,7 +313,7 @@ describe('cutSpanningSection (#1794)', () => {
   };
   const getSection = async (id: string) =>
     sections[id]
-      ? { ...sections[id], recording: { storageKey: base.storageKey } }
+      ? { ...sections[id], speech: { storageKey: base.storageKey } }
       : null;
 
   it('sends one longer section, from the first member start to the last member end', async () => {
@@ -331,7 +328,24 @@ describe('cutSpanningSection (#1794)', () => {
     expect(readStorageStream).toHaveBeenCalledTimes(1);
   });
 
-  it('leaves clips from different recordings, and unreadable sections, as they were', async () => {
+  it('spans clips that still carry the pre-#1913 recordingId key', async () => {
+    const legacy = (id: string, seconds: number) => ({
+      id,
+      url: `/r2/${id}.wav`,
+      token: 'DIALOGUE',
+      durationSeconds: seconds,
+      recordingId: 'rec-1',
+    });
+    const joined = await cutSpanningSection(
+      [legacy('a', 7.43), legacy('b', 2.96)],
+      { teamId: 'team-1', sequenceId: 'seq-1', getSection }
+    );
+
+    expect(joined).toHaveLength(1);
+    expect(joined[0]?.speechId).toBe('rec-1');
+  });
+
+  it('leaves clips from different speeches, and unreadable sections, as they were', async () => {
     const apart = [clip('a', 'rec-1', 7.43), clip('b', 'rec-2', 2.96)];
     const unknown = [clip('x', 'rec-1', 1), clip('y', 'rec-1', 1)];
 

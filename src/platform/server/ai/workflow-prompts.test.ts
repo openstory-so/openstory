@@ -106,3 +106,24 @@ describe('script/enhance — two levels (#1486)', () => {
     );
   });
 });
+
+describe('location identity is independent of scene time', () => {
+  it.each(['phase/scene-bibles-chat', 'phase/location-extraction-chat'])(
+    '%s extracts one physical place for day and night scenes',
+    (name) => {
+      const system = WORKFLOW_CHAT_PROMPTS[name]?.[0]?.content ?? '';
+      expect(system).toContain(
+        'Name the physical place without a time-of-day suffix'
+      );
+      expect(system).toContain('both become "OFFICE"');
+      expect(system).toContain('Keep time of day on the scene');
+      expect(system).toContain(
+        'Preserve genuine place-name words such as "Night Owl Cafe"'
+      );
+      expect(system).not.toContain(
+        'Extract the location name exactly as written'
+      );
+      expect(system).not.toContain('Name as written in the script');
+    }
+  );
+});

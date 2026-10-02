@@ -50,6 +50,9 @@ export const buildLocationReferenceImages = (
 ): ReferenceImageDescription[] => {
   return locations
     .filter((l) => l.referenceImageUrl)
+    .sort((a, b) =>
+      a.locationId < b.locationId ? -1 : a.locationId > b.locationId ? 1 : 0
+    )
     .map((l) => ({
       referenceImageUrl: l.referenceImageUrl ?? '',
       description: buildLocationDescription(l),
@@ -99,7 +102,7 @@ const formatStyleDirectionForLocation = (styleConfig: StyleConfig): string => {
 Render this location in the following visual style:
 Art style: ${look.artStyle}
 Mood: ${look.mood}
-Lighting direction: ${look.lighting}
+Lighting direction: neutral, even light; no time-of-day treatment
 Color palette: ${colorPaletteStr}
 Color grading: ${look.colorGrading}
 Camera approach: ${motion.camera}${referencesStr}
@@ -144,17 +147,13 @@ export const buildLocationSheetPrompt = (
         ? 'Exterior'
         : 'Interior/Exterior';
 
-  const timeOfDayLabel = entry.timeOfDay
-    ? ` - ${entry.timeOfDay.toUpperCase()}`
-    : '';
-
   // Build reference instruction if we have library images
   let referenceInstruction = '';
   if (referenceUrls.length > 0) {
     referenceInstruction = `
 IMPORTANT - Reference Images:
 Use the provided reference images as the definitive source for this location's appearance.
-Match all visual details exactly: architecture, materials, colors, lighting atmosphere, and distinctive features.
+Match all visual details exactly: architecture, materials, surface colors, and distinctive features. Use neutral, even lighting.
 Every panel must be visually consistent with the references while showing different angles and areas.
 `;
   }
@@ -163,7 +162,7 @@ Every panel must be visually consistent with the references while showing differ
     `A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.
 
 [LOCATION]:
-${entry.name}${timeOfDayLabel}
+${entry.name}
 Type: ${typeLabel}
 
 [VISUAL DESCRIPTION]:
@@ -175,11 +174,8 @@ ${entry.architecturalStyle || 'Derive from description and references'}
 [KEY FEATURES]:
 ${entry.keyFeatures || 'Key visual elements that define this space'}
 
-[COLOR PALETTE]:
-${entry.colorPalette || 'Derive from description and mood'}
-
 [LIGHTING]:
-${entry.lightingSetup || 'Match time of day and mood - consistent across all panels'}
+Neutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.
 
 [ATMOSPHERE]:
 ${entry.ambiance || 'Derive from description and setting'}

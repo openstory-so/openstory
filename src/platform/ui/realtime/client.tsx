@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { realtimeSchema } from '@/platform/realtime';
+import { isRealtimeLeaf, parseLeafPayload } from '@/platform/realtime/schema';
 import {
   combineRealtimeStatus,
   jitterReconnectDelay,
@@ -249,14 +250,14 @@ export const RealtimeProvider: FC<{ children: ReactNode }> = ({ children }) => {
 };
 
 interface UseRealtimeOpts<T, E extends string> {
-  events?: readonly E[];
+  events: readonly E[];
   onData?: (arg: EventPayloadUnion<T, E>) => void;
   channels?: readonly (string | undefined)[];
   enabled?: boolean;
 }
 
-function useRealtimeImpl<T, E extends string>(
-  opts: UseRealtimeOpts<T, E>
+function useRealtimeImpl<const E extends EventPaths<typeof realtimeSchema>>(
+  opts: UseRealtimeOpts<typeof realtimeSchema, E>
 ): { status: ConnectionStatus } {
   const { channels = [], events, onData, enabled } = opts;
   const context = useContext(RealtimeContext);
@@ -288,22 +289,15 @@ function useRealtimeImpl<T, E extends string>(
     }
 
     register(registrationId, validChannels, (msg) => {
-      if (
-        events &&
-        events.length > 0 &&
-        !events.some((name) => name === msg.event)
-      ) {
-        return;
-      }
-      // The DO delivers the channel's events untyped; the `events` filter above
-      // guarantees `msg` matches one of the requested paths, but TS can't prove
-      // the narrowing at this typed/untyped boundary.
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- runtime-validated event/payload boundary
-      onDataRef.current?.({
-        event: msg.event,
-        channel: msg.channel,
-        data: msg.data,
-      } as unknown as EventPayloadUnion<T, E>);
+      const name = events.find((candidate) => candidate === msg.event);
+      if (name === undefined || !isRealtimeLeaf(name)) return;
+      const payload = parseLeafPayload(name, msg.channel, msg.data);
+      if (!payload) return;
+      // `{ event: E, data: Output[E] }` is that union, but a generic E does
+      // not distribute into it.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      const typed = payload as EventPayloadUnion<typeof realtimeSchema, E>;
+      onDataRef.current?.(typed);
     });
 
     return () => unregister(registrationId);
@@ -317,11 +311,12 @@ function useRealtimeImpl<T, E extends string>(
  * Type-safe `useRealtime` factory. Binding to `typeof realtimeSchema` gives the
  * same event-name + payload inference the call sites relied on under Upstash.
  */
-function createRealtime<T extends Record<string, unknown>>() {
+function createRealtime() {
   return {
-    useRealtime: <const E extends EventPaths<T>>(opts: UseRealtimeOpts<T, E>) =>
-      useRealtimeImpl<T, E>(opts),
+    useRealtime: <const E extends EventPaths<typeof realtimeSchema>>(
+      opts: UseRealtimeOpts<typeof realtimeSchema, E>
+    ) => useRealtimeImpl(opts),
   };
 }
 
-export const { useRealtime } = createRealtime<typeof realtimeSchema>();
+export const { useRealtime } = createRealtime();

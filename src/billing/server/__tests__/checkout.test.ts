@@ -1,6 +1,7 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { describe, expect, it, vi } from 'vitest';
 import type Stripe from 'stripe';
+import { asStub } from '@/test/as-stub';
 
 const create = vi.fn();
 const updateCustomer = vi.fn();
@@ -40,8 +41,8 @@ function makeScopedDb() {
       clearAutoTopUpFailure: vi.fn(),
     },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub
-  return stub as unknown as ScopedDb;
+  // minimal ScopedDb stub
+  return asStub<ScopedDb>(stub);
 }
 
 describe('createCheckoutSession', () => {
@@ -161,10 +162,10 @@ describe('saveCardFromCheckout', () => {
       billing,
       run: () =>
         saveCardFromCheckout(
-          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Checkout session
-          session as Stripe.Checkout.Session,
-          // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub
-          { billing } as unknown as ScopedDb
+          // minimal Checkout session
+          asStub<Stripe.Checkout.Session>(session),
+          // minimal ScopedDb stub
+          asStub<ScopedDb>({ billing })
         ),
     };
   }

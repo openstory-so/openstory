@@ -38,6 +38,7 @@ import {
 } from './input-hash';
 import { deriveShotDialogueLines, shotDialogue } from './shot-dialogue';
 import { sceneForShot } from './server/shot-work-items';
+import { asStub } from '@/test/as-stub';
 
 const baseThumbnail: ShotImageHashInput = {
   kind: 'thumbnail',
@@ -54,8 +55,8 @@ const baseThumbnail: ShotImageHashInput = {
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
 /** Incomplete assembler payload for "omitted field throws" tests. */
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only incomplete DTO
-const incomplete = <T>(value: object): T => value as T;
+// test-only incomplete DTO
+const incomplete = <T>(value: object): T => asStub<T>(value);
 
 /** No character's voice-only flag moved since the stamp. */
 const VOICE_STILL = { voiceOnlyMoved: false };
@@ -341,11 +342,8 @@ describe('computeLocationSheetInputHash', () => {
       name: 'Office',
       description: 'Modern open-plan, glass',
       type: 'interior',
-      timeOfDay: 'day',
       architecturalStyle: 'modernist',
       keyFeatures: 'standing desks',
-      colorPalette: 'white, steel',
-      lightingSetup: 'fluorescent',
       ambiance: 'busy',
     },
     libraryLocationReferenceHash: 'lib-sha',
@@ -382,11 +380,8 @@ describe('computeLocationSheetInputHash', () => {
       (
         [
           ['type', 'exterior'],
-          ['timeOfDay', 'night'],
           ['architecturalStyle', 'brutalist'],
           ['keyFeatures', 'a single long table'],
-          ['colorPalette', 'teal, orange'],
-          ['lightingSetup', 'neon'],
           ['ambiance', 'deserted'],
         ] as const
       ).map(([field, value]) =>
@@ -396,7 +391,7 @@ describe('computeLocationSheetInputHash', () => {
         })
       )
     );
-    expect(new Set([a, ...edits]).size).toBe(8);
+    expect(new Set([a, ...edits]).size).toBe(5);
   });
 
   it('a location rename does not change the sheet hash', async () => {
@@ -425,11 +420,8 @@ describe('computeLibraryLocationReferenceInputHash', () => {
       locationBible: {
         ...base.locationBible,
         type: 'interior',
-        timeOfDay: '',
         architecturalStyle: '',
         keyFeatures: '',
-        colorPalette: '',
-        lightingSetup: '',
         ambiance: '',
       },
       libraryLocationReferenceHash: null,
@@ -586,12 +578,9 @@ describe('prompt input hashes', () => {
     locationId: 'l1',
     name: 'Beach',
     type: 'exterior',
-    timeOfDay: '',
     description: '',
     architecturalStyle: '',
     keyFeatures: '',
-    colorPalette: '',
-    lightingSetup: '',
     ambiance: '',
     consistencyTag: '',
     firstMention: { sceneId: '', text: '', lineNumber: 0 },
@@ -620,7 +609,7 @@ describe('prompt input hashes', () => {
     expect(motion).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('motion prompt hash changes when the rendered starting frame changes (#929)', async () => {
+  it('the current motion digest ignores the rendered still (#1923)', async () => {
     const baseline = await hashMotionPromptInput(sceneCtx);
     const withImage = await hashMotionPromptInput({
       ...sceneCtx,
@@ -630,10 +619,16 @@ describe('prompt input hashes', () => {
       ...sceneCtx,
       startingFrameImageUrl: '/r2/frames/b.png',
     });
-    // Absent vs present, and present-A vs present-B, must all differ so a
-    // re-rendered still (new URL) re-stales the motion prompt.
-    expect(withImage).not.toBe(baseline);
-    expect(withReRenderedImage).not.toBe(withImage);
+    expect(withImage).toBe(baseline);
+    expect(withReRenderedImage).toBe(withImage);
+    // A legacy stamp still carries the URL, so an old LLM prompt goes stale
+    // once when its still changes.
+    const v4 = await computeMotionPromptInputHashV4(sceneCtx);
+    const v4Image = await computeMotionPromptInputHashV4({
+      ...sceneCtx,
+      startingFrameImageUrl: '/r2/frames/a.png',
+    });
+    expect(v4Image).not.toBe(v4);
   });
 
   it('reference-only re-stales the motion prompt but never the visual one', async () => {
@@ -704,7 +699,7 @@ describe('prompt input hashes', () => {
 
   it("keeps an unedited shot's stored motion digest (#1784)", async () => {
     // What `main` stamped before #1784, hashed over the SCRIPT's lines. A shot
-    // whose node row holds the same lines hashes to the same digest now.
+    // whose node row holds the same lines still verifies that digest.
     const line = { character: 'Alice', line: 'Stay down.', tone: 'calm' };
     const ctx = {
       ...sceneCtx,
@@ -717,9 +712,18 @@ describe('prompt input hashes', () => {
       analysisModel: 'm',
       dialogue: { presence: true, lines: [line] },
     };
-    expect(await hashMotionPromptInput(ctx)).toBe(
-      '0821831a048411fcb78c904bcecad4befdfafbba0ced9b7a7090df87bacab534'
-    );
+    const stored =
+      '0821831a048411fcb78c904bcecad4befdfafbba0ced9b7a7090df87bacab534';
+    // The current digest omits the still URL (#1923), so it is a new stamp.
+    // The stored one still verifies while the spec version is unchanged.
+    expect(await hashMotionPromptInput(ctx)).not.toBe(stored);
+    expect(
+      await motionPromptInputHashMatches(stored, ctx, {
+        legacyScriptDialogue: false,
+        voiceOnlyMoved: false,
+        acceptLegacy: true,
+      })
+    ).toBe(true);
   });
 
   it('the pipeline stamp matches the verify of the row scene-split seeds (#1784)', async () => {
@@ -850,8 +854,8 @@ describe('prompt input hashes', () => {
     const { personality: _p, movement: _m, ...legacyAlice } = aliceCharacter;
     const legacy = {
       ...sceneCtx,
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stored JSON that predates the fields
-      characterBible: [legacyAlice as CharacterBibleEntry],
+      // stored JSON that predates the fields
+      characterBible: [asStub<CharacterBibleEntry>(legacyAlice)],
     };
     expect(await hashMotionPromptInput(legacy)).toBe(
       await hashMotionPromptInput(sceneCtx)
@@ -865,6 +869,70 @@ describe('prompt input hashes', () => {
       startingFrameImageUrl: null,
     });
     expect(omitted).toBe(explicitNull);
+  });
+
+  it('spec content moves the current prompt digest; a pre-spec stamp still matches (#1923)', async () => {
+    const spec = {
+      framing: {
+        shotSize: 'wide',
+        angle: 'eye',
+        composition: 'center',
+        subjectStartState: 'still',
+      },
+      action: 'walks',
+      cameraMovement: { move: 'dolly in, then pan left', pacing: 'slow' },
+      direction: '',
+      soundCue: '',
+    };
+    const without = await hashVisualPromptInput(sceneCtx);
+    const withSpec = await hashVisualPromptInput({ ...sceneCtx, spec });
+    const reordered = await hashVisualPromptInput({
+      ...sceneCtx,
+      spec: {
+        soundCue: spec.soundCue,
+        direction: spec.direction,
+        action: spec.action,
+        cameraMovement: {
+          pacing: spec.cameraMovement.pacing,
+          move: spec.cameraMovement.move,
+        },
+        framing: {
+          subjectStartState: spec.framing.subjectStartState,
+          composition: spec.framing.composition,
+          angle: spec.framing.angle,
+          shotSize: spec.framing.shotSize,
+        },
+      },
+    });
+    expect(withSpec).not.toBe(without);
+    expect(reordered).toBe(withSpec);
+    expect(
+      await visualPromptInputHashMatches(
+        without,
+        { ...sceneCtx, spec },
+        {
+          ...VOICE_STILL,
+          acceptLegacy: true,
+        }
+      )
+    ).toBe(true);
+    expect(
+      await visualPromptInputHashMatches(
+        without,
+        { ...sceneCtx, spec },
+        {
+          ...VOICE_STILL,
+          acceptLegacy: false,
+        }
+      )
+    ).toBe(false);
+    const changed = {
+      ...spec,
+      cameraMovement: { ...spec.cameraMovement, move: 'static' },
+    };
+    expect(
+      await hashMotionPromptInput({ ...sceneCtx, spec: changed })
+    ).not.toBe(await hashMotionPromptInput({ ...sceneCtx, spec }));
   });
 
   it('the visual prompt hash ignores the starting frame (it produces the image)', async () => {
@@ -1121,10 +1189,8 @@ describe('prompt input hashes', () => {
     expect(a).toBe(b);
   });
 
-  it('hash excludes LLM output: same upstream context with different continuity hashes the same', async () => {
-    // The generated prompts moved off the Scene shape entirely (#713), so the
-    // only LLM-derived field still on the scene is `continuity` — confirm it is
-    // excluded from both the visual and motion input hashes.
+  it('scene lighting and palette overrides change both prompt hashes', async () => {
+    // These fields are now editable scene inputs (#1889), not LLM output.
     const upstream = await hashVisualPromptInput(sceneCtx);
     const enriched = await hashVisualPromptInput({
       ...sceneCtx,
@@ -1139,7 +1205,7 @@ describe('prompt input hashes', () => {
         },
       },
     });
-    expect(upstream).toBe(enriched);
+    expect(upstream).not.toBe(enriched);
 
     const motionUpstream = await hashMotionPromptInput(sceneCtx);
     const motionEnriched = await hashMotionPromptInput({
@@ -1155,7 +1221,7 @@ describe('prompt input hashes', () => {
         },
       },
     });
-    expect(motionUpstream).toBe(motionEnriched);
+    expect(motionUpstream).not.toBe(motionEnriched);
   });
 });
 

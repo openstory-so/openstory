@@ -1,7 +1,7 @@
 import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import { useViaAvailability } from '@/models/ui/use-via-availability';
 import { DRAFT_FINAL_RESOLUTION } from '@/motion/draft-mode';
@@ -1642,45 +1642,41 @@ export const ScriptView: FC<{
                   disabled={isDisabled}
                   className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
                 >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    {isSubmitting || isElementBusy ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <GenerateSequenceIcon className="size-4" />
-                    )}
-                    {isSubmitting
-                      ? 'Generating…'
-                      : isElementBusy
-                        ? 'Analyzing elements…'
-                        : isEditing
-                          ? 'Generate Copy'
-                          : 'Generate'}
+                  <span className="relative z-10">
+                    <InButtonCost
+                      estimate={storyboardCostEstimate}
+                      amountWidth={
+                        includesStage(stopAt, 'motion') ? 'double' : 'single'
+                      }
+                    >
+                      {isSubmitting || isElementBusy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <GenerateSequenceIcon className="size-4" />
+                      )}
+                      {isSubmitting
+                        ? 'Generating…'
+                        : isElementBusy
+                          ? 'Analyzing elements…'
+                          : isEditing
+                            ? 'Generate Copy'
+                            : 'Generate'}
+                    </InButtonCost>
                   </span>
                   {/* Shine effect */}
                   <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
                 </Button>
               </div>
-              {/* The estimate only exists client-side (pricing query), so it
-                  pops in after the SSR paint — reserve its line so the footer
-                  doesn't grow and shift the page (#1187). */}
-              <div className="min-h-4">
-                <ActionCost
-                  estimate={storyboardCostEstimate}
-                  align="end"
-                  prefix={
-                    <button
-                      type="button"
-                      className="underline underline-offset-2 hover:text-foreground"
-                      onClick={() => {
-                        setStopAlertMode('edit');
-                        setShowStopAlert(true);
-                      }}
-                    >
-                      {generateScopeLabel}
-                    </button>
-                  }
-                />
-              </div>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground sm:text-right"
+                onClick={() => {
+                  setStopAlertMode('edit');
+                  setShowStopAlert(true);
+                }}
+              >
+                {generateScopeLabel}
+              </button>
               <span className="hidden text-xs text-muted-foreground sm:block sm:text-right">
                 {isEditing
                   ? analysisModels.length === 1

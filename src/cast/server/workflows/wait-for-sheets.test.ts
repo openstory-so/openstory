@@ -17,6 +17,7 @@ import {
   waitForLocationReferences,
   waitForTalentSheets,
 } from './wait-for-sheets';
+import { asStub } from '@/test/as-stub';
 
 /**
  * Minimal `step` stub. `do` runs the durable callback once (one engine
@@ -29,27 +30,27 @@ function fakeStep(): {
 } {
   const doSpy = vi.fn((_name: string, fn: () => Promise<unknown>) => fn());
   const sleepSpy = vi.fn(async () => undefined);
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: helper only uses `do` and `sleep`
-  const step = { do: doSpy, sleep: sleepSpy } as unknown as WorkflowStep;
+  // minimal WorkflowStep stub: helper only uses `do` and `sleep`
+  const step = asStub<WorkflowStep>({ do: doSpy, sleep: sleepSpy });
   return { step, doSpy, sleepSpy };
 }
 
 /** ScopedDb stub exposing only `talent.getByIds`. */
 function talentDb(getByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reaches scopedDb.talent.getByIds
-  return { talent: { getByIds } } as unknown as ScopedDb;
+  // helper only reaches scopedDb.talent.getByIds
+  return asStub<ScopedDb>({ talent: { getByIds } });
 }
 
 /** ScopedDb stub exposing only `locations.getByIds`. */
 function locationDb(getByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reaches scopedDb.locations.getByIds
-  return { locations: { getByIds } } as unknown as ScopedDb;
+  // helper only reaches scopedDb.locations.getByIds
+  return asStub<ScopedDb>({ locations: { getByIds } });
 }
 
 /** ScopedDb stub exposing `sequenceElements.listByIds`. */
 function elementDb(listByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reaches scopedDb.sequenceElements.listByIds
-  return { sequenceElements: { listByIds } } as unknown as ScopedDb;
+  // helper only reaches scopedDb.sequenceElements.listByIds
+  return asStub<ScopedDb>({ sequenceElements: { listByIds } });
 }
 
 describe('waitForTalentSheets', () => {

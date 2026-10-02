@@ -1,7 +1,7 @@
 /**
  * A shot's reading of its lines (#1657): a time range of a
- * `dialogue_recordings` row. A recording inserts one section for EVERY shot
- * it spoke — the shots it was made for are selected (`recorded`), the shots
+ * `dialogue_speeches` row. A speech inserts one section for EVERY shot
+ * it spoke — the shots it was made for are selected (`generated`), the shots
  * that were only spoken as context are left unselected (`context`). Picking
  * any other row, an older reading or a context one, is the same selection.
  *
@@ -25,7 +25,10 @@ import {
 import { generateId } from '@/platform/id';
 import { shots } from './shots';
 
-const SHOT_DIALOGUE_SECTION_SOURCES = ['recorded', 'context'] as const;
+/** `mic`: a line the user performed, spliced into the reading (#1802). */
+const SHOT_DIALOGUE_SECTION_SOURCES = ['generated', 'context', 'mic'] as const;
+export type ShotDialogueSectionSource =
+  (typeof SHOT_DIALOGUE_SECTION_SOURCES)[number];
 
 export const shotDialogueSections = snakeCase.table(
   'shot_dialogue_sections',
@@ -37,8 +40,8 @@ export const shotDialogueSections = snakeCase.table(
     shotId: text()
       .notNull()
       .references(() => shots.id, { onDelete: 'cascade' }),
-    // Soft pointer (plain column, no FK) at the `dialogue_recordings` row.
-    recordingId: text().notNull(),
+    // Soft pointer (plain column, no FK) at the `dialogue_speeches` row.
+    speechId: text().notNull(),
     fromSeconds: real().notNull(),
     /** Already tail-trimmed. */
     toSeconds: real().notNull(),
@@ -63,7 +66,7 @@ export const shotDialogueSections = snakeCase.table(
       table.shotId,
       table.createdAt
     ),
-    index('idx_shot_dialogue_sections_recording').on(table.recordingId),
+    index('idx_shot_dialogue_sections_speech').on(table.speechId),
     uniqueIndex('uq_shot_dialogue_sections_selected')
       .on(table.shotId)
       .where(sql`${table.selectedAt} IS NOT NULL`),

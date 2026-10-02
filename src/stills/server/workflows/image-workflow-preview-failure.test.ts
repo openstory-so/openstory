@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const emit = vi.fn((_event: string, _data: unknown) => Promise.resolve());
 vi.doMock('@/platform/realtime', () => ({
@@ -27,10 +28,10 @@ class Probe extends ImageWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- onFailure never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // onFailure never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // onFailure never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
@@ -39,6 +40,7 @@ describe('ImageWorkflow onFailure skipStorage', () => {
     emit.mockClear();
     const payload: ImageWorkflowInput = {
       userId: 'u1',
+      variantOnly: false,
       teamId: 't1',
       sequenceId: 'seq_1',
       prompt: 'preview',
@@ -53,8 +55,8 @@ describe('ImageWorkflow onFailure skipStorage', () => {
         workflowName: 'image',
         timestamp: new Date(0),
       },
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- skipStorage path does not touch db
-      {} as WorkflowScopedDb
+      // skipStorage path does not touch db
+      asStub<WorkflowScopedDb>({})
     );
     expect(emit).toHaveBeenCalledWith('generation.image:progress', {
       shotId: 'shot_1',

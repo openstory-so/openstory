@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
+import { asStub } from '@/test/as-stub';
 
 const mockTriggerWorkflow = vi.fn();
 const mockFileExists = vi.fn();
@@ -24,14 +25,14 @@ const {
 } = await import('./attach-element-upload');
 
 function makeScopedDb(): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the sequenceElements methods attach calls
-  return {
+  // stub covering only the sequenceElements methods attach calls
+  return asStub<ScopedDb>({
     sequenceElements: {
       create: mockCreate,
       ensureUniqueToken: mockEnsureUniqueToken,
       updateVisionStatus: mockUpdateVisionStatus,
     },
-  } as unknown as ScopedDb;
+  });
 }
 
 function makeUpload(

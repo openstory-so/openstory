@@ -19,15 +19,27 @@ import {
   DialogTitle,
 } from '@/ui/shadcn/dialog';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { ElementThumbnail } from '@/cast/ui/element/element-thumbnail';
 import { HighlightedPrompt } from '@/ui/text-editor/mention/highlighted-prompt';
 import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
+import { Textarea } from '@/ui/shadcn/textarea';
+import { Switch } from '@/ui/shadcn/switch';
+import { isOfferedVideoModel } from '@/models/models';
+import { useViaAvailability } from '@/models/ui/use-via-availability';
+import {
+  STUDIO_EDIT_MODEL,
+  studioCanEditSource,
+  studioUsedReferenceVideo,
+} from '@/studio/text-to-video';
 import {
   useDeleteStudioAsset,
+  useEditStudioAsset,
   useRenderStudioAssetAtQuality,
+  useStudioEditHistory,
   useStudioPendingCreates,
   useToggleStudioFavorite,
 } from './use-studio-assets';
@@ -72,7 +84,7 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
@@ -457,6 +469,121 @@ function ReferenceTile({ reference }: { reference: StudioShownReference }) {
 }
 
 /**
+ * The prompts this clip was made from (#1925), oldest first, when it is an
+ * edit of another clip. An ancestor still in the gallery opens on click.
+ */
+function EditHistory({
+  assetId,
+  onOpen,
+}: {
+  assetId: string;
+  /** An opener for a step still in the gallery; undefined otherwise. */
+  onOpen?: (id: string) => (() => void) | undefined;
+}) {
+  const { data: history } = useStudioEditHistory(assetId);
+  const earlier = history.slice(0, -1);
+  if (earlier.length === 0) return null;
+  return (
+    <section className="flex shrink-0 flex-col gap-2" aria-label="History">
+      <h3 className="text-sm font-medium">History</h3>
+      <ol className="flex max-h-48 flex-col gap-2 overflow-y-auto">
+        {earlier.map((step, index) => {
+          const text = readableStudioPrompt(step.prompt) || 'No prompt';
+          const label = index === 0 ? 'Original' : `Edit ${index}`;
+          const open = onOpen?.(step.id);
+          return (
+            <li key={step.id} className="flex flex-col gap-0.5 text-sm">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              {open ? (
+                <button
+                  type="button"
+                  className="line-clamp-3 rounded-sm text-left break-words hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                  onClick={open}
+                >
+                  {text}
+                </button>
+              ) : (
+                <p className="line-clamp-3 break-words">{text}</p>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * Edit this clip with a prompt (#1925): Seedance 2.5 rewrites it, keeping
+ * its length and shape. Cmd/Ctrl+Enter submits.
+ */
+function EditVideoForm({
+  sourceIsDraft,
+  pending,
+  onEdit,
+}: {
+  /** A draft's edit stays a draft; only a final offers the choice. */
+  sourceIsDraft: boolean;
+  pending: boolean;
+  onEdit: (prompt: string, draft: boolean) => void;
+}) {
+  return (
+    <form
+      className="flex shrink-0 flex-col gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const prompt = form.get('prompt');
+        if (typeof prompt !== 'string' || !prompt.trim()) return;
+        onEdit(prompt.trim(), sourceIsDraft || form.get('draft') === 'on');
+        event.currentTarget.reset();
+      }}
+    >
+      <label htmlFor="studio-edit-prompt" className="text-sm font-medium">
+        Edit video
+      </label>
+      <Textarea
+        id="studio-edit-prompt"
+        name="prompt"
+        required
+        rows={3}
+        placeholder="Make it night, keep everything else"
+        className="text-base md:text-sm"
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            event.currentTarget.form?.requestSubmit();
+          }
+        }}
+      />
+      {!sourceIsDraft && (
+        <div className="flex items-center justify-between gap-4">
+          <label htmlFor="studio-edit-draft" className="text-sm">
+            Draft first
+            <span className="block text-xs text-muted-foreground">
+              480p now; render the final later
+            </span>
+          </label>
+          <Switch id="studio-edit-draft" name="draft" defaultChecked />
+        </div>
+      )}
+      <Button
+        type="submit"
+        className="self-start pointer-coarse:h-11"
+        disabled={pending}
+      >
+        {pending ? 'Starting…' : 'Edit'}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        {sourceIsDraft
+          ? 'Seedance 2.5 · keeps the length · stays a draft'
+          : 'Seedance 2.5 · keeps the length'}
+      </p>
+    </form>
+  );
+}
+
+/**
  * The clip fills the dialog. The recipe sits against it and only grows with
  * its content: model, settings, the references, the prompt, then the actions.
  * The prompt is the one flexible row: a short one leaves the card compact, a
@@ -475,6 +602,9 @@ export function GenerationDetail({
   renderAtQualityPending = false,
   onPrev,
   onNext,
+  onEdit,
+  editPending = false,
+  onOpenHistory,
 }: {
   asset: StudioGalleryAsset;
   supportMode: boolean;
@@ -489,6 +619,11 @@ export function GenerationDetail({
   /** Step to the neighbouring generation in the gallery; absent at the ends. */
   onPrev?: () => void;
   onNext?: () => void;
+  /** Rewrite this clip from a prompt (#1925); absent where it cannot. */
+  onEdit?: (prompt: string, draft: boolean) => void;
+  editPending?: boolean;
+  /** An opener for an earlier step of the edit history, if it is loaded. */
+  onOpenHistory?: (id: string) => (() => void) | undefined;
 }) {
   const prompt = readableStudioPrompt(studioPrompt(asset));
   const references = studioShownReferences(asset);
@@ -559,6 +694,21 @@ export function GenerationDetail({
             <p className="text-sm text-muted-foreground">No prompt</p>
           )}
         </div>
+        {asset.activity === 'video' && !supportMode && (
+          <Suspense fallback={<Skeleton className="h-16 w-full shrink-0" />}>
+            <EditHistory assetId={asset.id} onOpen={onOpenHistory} />
+          </Suspense>
+        )}
+        {onEdit &&
+          asset.activity === 'video' &&
+          asset.status === 'completed' && (
+            <EditVideoForm
+              key={asset.id}
+              sourceIsDraft={asset.input.draft === true}
+              pending={editPending}
+              onEdit={onEdit}
+            />
+          )}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -659,6 +809,9 @@ export function StudioGallery({
   const [copied, setCopied] = useState(false);
   const remove = useDeleteStudioAsset();
   const renderAtQuality = useRenderStudioAssetAtQuality();
+  const edit = useEditStudioAsset();
+  const vias = useViaAvailability();
+  const canEdit = !supportMode && isOfferedVideoModel(STUDIO_EDIT_MODEL, vias);
   useEffect(() => {
     if (!copied) return;
     const id = window.setTimeout(() => setCopied(false), 2000);
@@ -736,6 +889,7 @@ export function StudioGallery({
                 : 'Your stills land here. Start with a prompt below.'
               : 'Browse the composer, then sign in to generate and keep a library.'
         }
+        action={!supportMode && !isAuthenticated ? <SignInButton /> : undefined}
       />
     );
   }
@@ -818,6 +972,23 @@ export function StudioGallery({
               renderAtQualityPending={renderAtQuality.isPending}
               onPrev={prevAsset ? () => step(prevAsset) : undefined}
               onNext={nextAsset ? () => step(nextAsset) : undefined}
+              onEdit={
+                canEdit &&
+                studioCanEditSource(openAsset.input.videoModel) &&
+                !studioUsedReferenceVideo(openAsset.input)
+                  ? (prompt, draft) => {
+                      edit.mutate(
+                        { id: openAsset.id, prompt, draft },
+                        { onSuccess: () => setOpenId(null) }
+                      );
+                    }
+                  : undefined
+              }
+              editPending={edit.isPending}
+              onOpenHistory={(id) => {
+                const target = assets.find((asset) => asset.id === id);
+                return target ? () => step(target) : undefined;
+              }}
             />
           )}
         </DialogContent>

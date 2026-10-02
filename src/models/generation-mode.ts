@@ -30,7 +30,7 @@ export type SelectorGroup = (typeof SELECTOR_GROUP_ORDER)[number];
 
 /** Fast analysis models, recommendation order. Luna is the turbo default. */
 export const TURBO_ANALYSIS_MODELS = [
-  'openai/gpt-5.6-luna',
+  'openai/gpt-6-luna',
   'anthropic/claude-opus-5-fast',
   'google/gemini-3.8-flash',
   'z-ai/glm-5.3-flash',
@@ -58,7 +58,7 @@ export const TURBO_AUDIO_MODELS = [
   'ace_step_1_5',
 ] as const satisfies readonly AudioModel[];
 
-export const TURBO_DEFAULT_ANALYSIS = 'openai/gpt-5.6-luna' as const;
+export const TURBO_DEFAULT_ANALYSIS = 'openai/gpt-6-luna' as const;
 export const TURBO_DEFAULT_IMAGE = 'nano_banana_2_lite' as const;
 export const TURBO_DEFAULT_VIDEO = 'minimax_h3_max' as const;
 export const TURBO_DEFAULT_AUDIO = 'elevenlabs_music' as const;

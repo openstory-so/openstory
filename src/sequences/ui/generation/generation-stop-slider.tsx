@@ -33,8 +33,6 @@ type GenerationStopSliderProps = {
    */
   generateStartFrames?: boolean;
   onGenerateStartFramesChange?: (value: boolean) => void;
-  /** Stills exist: the switch can turn on, never off (#1817). */
-  startFramesLocked?: boolean;
   /** Design a voice per speaking character (#1553); offered like start frames. */
   generateVoices?: boolean;
   onGenerateVoicesChange?: (value: boolean) => void;
@@ -78,7 +76,6 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   maxStage,
   generateStartFrames = true,
   onGenerateStartFramesChange,
-  startFramesLocked = false,
   generateVoices = false,
   onGenerateVoicesChange,
   voicesLocked = false,
@@ -224,18 +221,16 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
                 );
                 if (moved !== value) onChange(moved);
               }}
-              disabled={disabled || (startFramesLocked && generateStartFrames)}
+              disabled={disabled}
             />
             <Label htmlFor="generate-start-frames" className="text-sm">
               Use start frames
             </Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            {startFramesLocked && generateStartFrames
-              ? 'Shots have stills, so start frames stay on.'
-              : generateStartFrames
-                ? 'Each shot’s video starts from a generated still.'
-                : 'Video is generated straight from the reference sheets.'}
+            {generateStartFrames
+              ? 'Each shot’s video starts from a generated still.'
+              : 'Video is generated straight from the reference sheets.'}
           </p>
         </div>
       )}

@@ -83,6 +83,12 @@ verifies with — including resolving the `user-upload` sentinel model through
 | Sequence music           | **Always null** → 'untracked' (§4.4 escape hatch, deliberate): `musicTrackStaleness` treats a null hash as unknown, so a user's chosen score never nags for regeneration. The previous `user-upload` primary is **retired** (soft-discarded), not overwritten, so history survives. `includeMusic` is switched on — choosing a track is opting in.                                                                                                                                                                                         |
 | Character/location sheet | The VERSION row gets the verify-mirrored current-inputs hash (bible + talent/library ref + style + model), read back through the selected version as `sheetInputHash` / `referenceInputHash` (#1419 dropped the parent columns), so later edits re-stale the sheet. `selectedSheetVersionId` / `selectedReferenceVersionId` is the live pointer (mirrored onto the parent URL). Stills hash the selected version id when present, else the parent input hash — so a new sheet image re-stales stills even when bible inputs didn't change. | Legacy rows with no selection pointer keep hashing the parent input hash (no catalog-wide untracked wipe).                                        |
 
+On the character and sequence-location detail pages, the version strip reads
+completed, non-discarded rows through a separate history query and appears once
+two versions exist. A regenerate kickoff returns before its workflow appends a
+version; the terminal sheet-progress event must refresh both the primary row
+and the history query so the new version appears without a page reload.
+
 All uploads: presign (`getSignedUploadUrl` → client PUT to
 `/api/storage/upload`) → finalize. Finalize validates the `publicUrl` against
 the caller's team namespace (`<bucket>/teams/<teamId>/…`, no traversal) and the

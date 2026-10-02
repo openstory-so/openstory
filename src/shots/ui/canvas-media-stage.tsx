@@ -64,7 +64,7 @@ export const CanvasMediaStage: React.FC<CanvasMediaStageProps> = ({
     {below ? (
       <div
         data-testid="canvas-media-below"
-        className="flex max-h-[40%] w-full max-w-2xl shrink-0 flex-col self-center overflow-y-auto"
+        className="flex max-h-[40%] w-full max-w-2xl shrink-0 flex-col self-center overflow-y-auto pr-3"
       >
         {below}
       </div>

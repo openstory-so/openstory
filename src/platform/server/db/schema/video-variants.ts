@@ -6,8 +6,8 @@
  * ordered by time (ULID). Re-rolls accumulate (we keep them); they never
  * overwrite. A segment's chosen video is whichever version
  * `render_segments.selectedVideoVersionId` points at — selection is a pointer,
- * not a per-row flag (revert / switch-model is a repoint); the covered shots'
- * cached `video*` columns mirror it for playback.
+ * not a per-row flag (revert / switch-model is a repoint); playback reads the
+ * covered shots' video through that pointer.
  *
  * The render unit is the SEGMENT, not the scene: render models cap a single
  * render at a per-model limit (15s, newer models 30s), so a scene is tiled into

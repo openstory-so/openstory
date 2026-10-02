@@ -208,6 +208,7 @@ export const generateShotImageFn = createServerFn({ method: 'POST' })
         sequenceId: sequence.id,
         model: workflowInput.model ?? DEFAULT_IMAGE_MODEL,
         pendingInputHash: workflowInput.snapshotInputHash,
+        isPrimary: true,
       });
     } catch (error) {
       const raced = (
@@ -483,18 +484,13 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
       status: 'generating',
       url: cropResult.url,
       storagePath: cropResult.path || null,
+      // The upscale becomes the frame's still, so its render is the frame's
+      // in-flight state (#1942).
+      isPrimary: true,
     });
     await context.scopedDb.frames.setPendingPromoteVersionId(
       frame.id,
       version.id
-    );
-    await context.scopedDb.frames.setImageGenerationStatus(
-      frame.id,
-      {
-        imageStatus: 'generating',
-        imageError: null,
-      },
-      { throwOnMissing: false }
     );
 
     const workflowInput: UpscaleShotVariantWorkflowInput = {
@@ -529,8 +525,11 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
         deduplicationId: `upscale-variant-${shot.id}-${Date.now()}`,
       });
     } catch (error) {
+      // The old still is still good: a failed upscale leaves the status race
+      // rather than reading as the shot's failure (#1942).
       await context.scopedDb.frameVariants.update(version.id, {
         status: 'failed',
+        isPrimary: false,
         error:
           error instanceof Error ? error.message : 'Failed to start upscale',
       });
@@ -538,29 +537,11 @@ export const selectShotVariantFn = createServerFn({ method: 'POST' })
         frame.id,
         version.id
       );
-      await context.scopedDb.frames.setImageGenerationStatus(
-        frame.id,
-        {
-          imageStatus: frame.selectedImageVersionId ? 'completed' : 'pending',
-          imageWorkflowRunId: null,
-          imageError: null,
-        },
-        { throwOnMissing: false }
-      );
       throw error;
     }
     await context.scopedDb.frameVariants.update(version.id, {
       workflowRunId,
     });
-    await context.scopedDb.frames.setImageGenerationStatus(
-      frame.id,
-      {
-        imageStatus: 'generating',
-        imageWorkflowRunId: workflowRunId,
-        imageError: null,
-      },
-      { throwOnMissing: false }
-    );
 
     return {
       shotId: shot.id,

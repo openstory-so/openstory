@@ -197,14 +197,14 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
               <SceneThumbnail
                 thumbnailUrl={shot?.image?.url}
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
-                thumbnailStatus={shot?.frame.imageStatus || undefined}
+                thumbnailStatus={shot?.imageStatus || undefined}
                 // The selected clip, whatever a newer render is doing: the
                 // pointer only moves when that render lands, and the theatre
                 // plays this clip until then. Gating on 'completed' dropped
                 // the frame back to the storyboard mid-regenerate.
                 videoUrl={shot?.video?.url}
                 videoStartSeconds={videoStartSeconds}
-                generationError={shot?.frame.imageError}
+                generationError={shot?.imageError}
                 draftLabel={shotDraftLabel(shot)}
                 alt={linkLabel ?? 'Shot thumbnail'}
                 aspectRatio={aspectRatio}
@@ -377,8 +377,8 @@ const areEqual = (
   if (
     prevShot.image?.url !== nextShot.image?.url ||
     prevShot.previewThumbnailUrl !== nextShot.previewThumbnailUrl ||
-    prevShot.frame.imageStatus !== nextShot.frame.imageStatus ||
-    prevShot.frame.imageError !== nextShot.frame.imageError ||
+    prevShot.imageStatus !== nextShot.imageStatus ||
+    prevShot.imageError !== nextShot.imageError ||
     prevShot.gridSheet?.url !== nextShot.gridSheet?.url ||
     prevShot.pendingUpscaleIndex !== nextShot.pendingUpscaleIndex ||
     prevShot.pendingUpscaleUrl !== nextShot.pendingUpscaleUrl

@@ -43,7 +43,21 @@ type Span = { start: number; end: number };
 
 export type PartsCheck =
   | { ok: true; spans: Span[]; scriptStartSeconds: number }
-  | { ok: false; problem: string };
+  | {
+      ok: false;
+      problem: string;
+      /**
+       * Every line still gets a span, so a take that failed can be kept
+       * (#1802): a doubtful line spans the words that did match it, or the
+       * gap between its neighbours when none did.
+       */
+      spans: Span[];
+      scriptStartSeconds: number;
+      /** The lines not found, each with the share of its letters heard. */
+      doubtful: { line: number; heardShare: number }[];
+      /** The lowest share of any doubtful line — which failed take is the best. */
+      worstShare: number;
+    };
 
 /**
  * Did a take say `parts`, in order, and where is each? Every part must have
@@ -142,7 +156,9 @@ export function checkParts(
     j--;
   }
 
-  const spans: Span[] = [];
+  const found: Array<Span | undefined> = [];
+  const doubtful: { line: number; heardShare: number }[] = [];
+  let problem: string | null = null;
   for (const [i, line] of lines.entries()) {
     const from = first[i];
     const to = last[i];
@@ -150,13 +166,50 @@ export function checkParts(
     const startWord =
       from === undefined ? undefined : heard[wordOf[from] ?? -1];
     const endWord = to === undefined ? undefined : heard[wordOf[to] ?? -1];
-    if (score < LINE_FOUND_SCORE || !startWord || !endWord) {
-      return {
-        ok: false,
-        problem: `line ${i + 1} ("${parts[i]?.slice(0, 60)}") was not heard (${Math.round(score * 100)}% of it matched)`,
-      };
+    const span =
+      startWord && endWord
+        ? { start: startWord.start, end: endWord.end }
+        : undefined;
+    found.push(span);
+    if (score < LINE_FOUND_SCORE || !span) {
+      doubtful.push({ line: i, heardShare: score });
+      problem ??= `line ${i + 1} ("${parts[i]?.slice(0, 60)}") was not heard (${Math.round(score * 100)}% of it matched)`;
     }
-    spans.push({ start: startWord.start, end: endWord.end });
   }
-  return { ok: true, spans, scriptStartSeconds: spans[0]?.start ?? 0 };
+  if (problem === null) {
+    const spans = found.filter((span): span is Span => span !== undefined);
+    return { ok: true, spans, scriptStartSeconds: spans[0]?.start ?? 0 };
+  }
+
+  // A doubtful line sits between the lines that were found: its own matched
+  // letters, clamped to that gap (a few stray letters can land inside a
+  // neighbour), or the whole gap when they fall outside it.
+  const takeStart = heard[0]?.start ?? 0;
+  const takeEnd = heard.at(-1)?.end ?? takeStart;
+  const doubtfulLines = new Set(doubtful.map((d) => d.line));
+  const sure = found.map((span, i) =>
+    doubtfulLines.has(i) ? undefined : span
+  );
+  const spans: Span[] = [];
+  for (const [i, span] of sure.entries()) {
+    if (span) {
+      spans.push(span);
+      continue;
+    }
+    const gapStart = spans.at(-1)?.end ?? takeStart;
+    const next = sure.slice(i + 1).find((later) => later !== undefined);
+    const gapEnd = Math.max(gapStart, next?.start ?? takeEnd);
+    const own = found[i];
+    const start = Math.max(gapStart, own?.start ?? gapStart);
+    const end = Math.min(gapEnd, own?.end ?? gapEnd);
+    spans.push(end > start ? { start, end } : { start: gapStart, end: gapEnd });
+  }
+  return {
+    ok: false,
+    problem,
+    spans,
+    scriptStartSeconds: spans[0]?.start ?? 0,
+    doubtful,
+    worstShare: Math.min(...doubtful.map((d) => d.heardShare)),
+  };
 }

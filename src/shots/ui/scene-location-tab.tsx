@@ -16,6 +16,16 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
+import { canonicalBibleTag } from '@/cast/bible-field';
+import type { SceneWithScript } from './use-scenes';
+import { useUpdateScene } from './use-scene-structure';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
 import {
   restoreSequenceLocation,
@@ -35,6 +45,11 @@ type SceneLocationTabProps = {
   sequenceId: string;
   /** Shots in the current selection. `null` = whole sequence (show all). */
   shotIds: string[] | null;
+  /**
+   * The scene in focus, at scene scope only (#1929): its location is picked
+   * here. Absent at shot scope, where a pick would move every sibling shot.
+   */
+  scene?: SceneWithScript;
 };
 
 type DetailRowProps = {
@@ -58,6 +73,7 @@ const DetailRow: React.FC<DetailRowProps> = ({ label, value }) => {
 export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
   sequenceId,
   shotIds,
+  scene,
 }) => {
   const { data: locations, isLoading } = useSequenceLocations(sequenceId);
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
@@ -124,24 +140,37 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
   // reference, so a newly added one would not show up here.
   const canAdd = shotIds === null;
 
+  const picker =
+    scene && locations && locations.length > 0 ? (
+      <SceneLocationPicker
+        sequenceId={sequenceId}
+        scene={scene}
+        locations={locations}
+      />
+    ) : null;
+
   if (scopedLocations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-        <div className="rounded-full bg-muted p-4">
-          <MapPin className="h-8 w-8 text-muted-foreground/50" />
+      <div className="flex flex-col gap-6">
+        {picker}
+        <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+          <div className="rounded-full bg-muted p-4">
+            <MapPin className="h-8 w-8 text-muted-foreground/50" />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {canAdd
+              ? 'No locations yet'
+              : 'No locations in this selection — clear the selection to add one'}
+          </p>
+          {canAdd && <AddLocationDialog sequenceId={sequenceId} />}
         </div>
-        <p className="text-sm text-muted-foreground">
-          {canAdd
-            ? 'No locations yet'
-            : 'No locations in this selection — clear the selection to add one'}
-        </p>
-        {canAdd && <AddLocationDialog sequenceId={sequenceId} />}
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {picker}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
           <span>{canAdd ? 'All Locations' : 'Locations'}</span>
@@ -224,7 +253,6 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
           <dl className="space-y-3">
             <DetailRow label="Description" value={shotLocation.description} />
             <div className="grid grid-cols-2 gap-3">
-              <DetailRow label="Time of Day" value={shotLocation.timeOfDay} />
               <DetailRow
                 label="Architectural Style"
                 value={shotLocation.architecturalStyle}
@@ -277,3 +305,69 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
     </div>
   );
 };
+
+/**
+ * The scene's location, picked from the sequence's locations (#1929). Writes
+ * the location's tag onto the scene, the same tag scene-split stamps, and its
+ * name as the scene's location text, so the sheet match has one answer.
+ */
+function SceneLocationPicker({
+  sequenceId,
+  scene,
+  locations,
+}: {
+  sequenceId: string;
+  scene: SceneWithScript;
+  locations: SequenceLocationWithReference[];
+}) {
+  const update = useUpdateScene(sequenceId);
+  // Scene-split may stamp several tags, comma-joined.
+  const tags = (scene.continuity?.environmentTag ?? '')
+    .split(',')
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean);
+  const current = locations.find((location) =>
+    tags.includes(canonicalBibleTag(location).toLowerCase())
+  );
+  const items = Object.fromEntries(
+    locations.map((location) => [location.id, location.name])
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-sm font-medium">Scene location</span>
+      <Select
+        value={current?.id ?? null}
+        items={items}
+        disabled={update.isPending}
+        onValueChange={(id) => {
+          const location = locations.find((entry) => entry.id === id);
+          if (!location) return;
+          update.mutate(
+            {
+              sceneId: scene.id,
+              location: location.name,
+              continuity: { environmentTag: canonicalBibleTag(location) },
+            },
+            {
+              onError: (error) =>
+                toast.error('Could not set the scene location', {
+                  description: errorMessage(error),
+                }),
+            }
+          );
+        }}
+      >
+        <SelectTrigger className="w-full" aria-label="Scene location">
+          <SelectValue placeholder="Choose a location" />
+        </SelectTrigger>
+        <SelectContent>
+          {locations.map((location) => (
+            <SelectItem key={location.id} value={location.id}>
+              {location.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}

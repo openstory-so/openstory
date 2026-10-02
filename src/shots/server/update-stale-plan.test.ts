@@ -1,3 +1,16 @@
+import type { StyleConfig } from '@/look/style-config';
+const styleConfig: StyleConfig = {
+  version: 2,
+  look: {
+    mood: 'quiet',
+    artStyle: 'watercolour',
+    lighting: 'soft light',
+    colorPalette: ['silver', 'blue'],
+    colorGrading: 'cool shadows',
+  },
+  motion: { camera: 'locked' },
+  references: [],
+};
 /**
  * `computePlan` decides what "Update all" (#1077) regenerates — and therefore
  * what the user is billed for. These cover the gating rules that are cheap to
@@ -12,53 +25,60 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotStalenessResult } from './shot-staleness';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const FRESH: ShotStalenessResult = {
   thumbnail: 'fresh',
   visualPrompt: 'fresh',
   motionPrompt: 'fresh',
+  spec: 'fresh',
   causes: [],
   liveHashes: {
     thumbnail: 'live-thumb',
     visualPrompt: 'live-visual',
     motionPrompt: 'live-motion',
+    spec: 'live-spec',
   },
 };
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub; computePlan only reads sceneId off the scene
-const scene = { sceneId: 'scene-1' } as unknown as Scene;
+// test stub; computePlan only reads sceneId off the scene
+const scene = asStub<Scene>({
+  sceneId: 'scene-1',
+  metadata: { title: 'Scene 1' },
+  originalScript: { extract: '' },
+});
 
 function makeShot(overrides: Partial<Shot> = {}): Shot {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Shot stub exposing only what computePlan reads
-  return {
+  // minimal Shot stub exposing only what computePlan reads
+  return asStub<Shot>({
     id: 'shot-1',
     sceneId: 'scene-1',
     ...overrides,
-  } as unknown as Shot;
+  });
 }
 
 function makeFrame(overrides: Partial<Frame> = {}): Frame {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Frame stub exposing only what computePlan reads
-  return {
+  // minimal Frame stub exposing only what computePlan reads
+  return asStub<Frame>({
     id: 'frame-1',
     shotId: 'shot-1',
     // The still lives on the selected version (#1067); a set pointer is what
     // "this shot already has an image" means. Null it for a still-less shot.
     selectedImageVersionId: 'fv-1',
     ...overrides,
-  } as unknown as Frame;
+  });
 }
 
 /** The selected `frame_variants` row `getSelectedByFrameIds` would return. */
 function makeSelectedImage(frame: Frame): FrameVariant {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal FrameVariant stub exposing only what computePlan reads
-  return {
+  // minimal FrameVariant stub exposing only what computePlan reads
+  return asStub<FrameVariant>({
     id: frame.selectedImageVersionId,
     frameId: frame.id,
     url: `https://example.com/${frame.id}.jpg`,
     model: 'nano_banana_2',
     inputHash: 'stored-thumb',
-  } as unknown as FrameVariant;
+  });
 }
 
 /** Staleness keyed by shot id; anything unlisted reads fresh. */
@@ -82,7 +102,7 @@ vi.doMock('./prompt-context', () => ({
       characterBible: [],
       locationBible: [],
       elementBible: [],
-      styleConfig: {},
+      styleConfig,
       analysisModel: 'x',
     })
   ),
@@ -117,8 +137,12 @@ vi.doMock('@/shots/input-hash', () => ({
   ),
 }));
 
-const { computePlan, claimTargets, findTargetMissingStartFrameMode } =
-  await import('./update-stale-plan');
+const {
+  computePlan,
+  claimTargets,
+  findTargetMissingStartFrameMode,
+  siblingPrompts,
+} = await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
 type PlanUnitRef = import('@/sequences/generation-plan').PlanUnitRef;
 
@@ -153,8 +177,10 @@ function buildScopedDb(
   frames: Frame[],
   opts: {
     video?: VideoFixture;
+    visualPrompts?: Map<string, { text: string }>;
+    motionPrompts?: Map<string, { text: string }>;
     sequence?: Record<string, unknown>;
-    /** The completed primary `sequence_music_variants` row, if any (#1657). */
+    /** The selected `sequence_music_variants` row, if any (#1657, #1115). */
     musicPrimary?: Record<string, unknown>;
   } = {}
 ): ScopedDb {
@@ -167,6 +193,7 @@ function buildScopedDb(
           title: 'Sequence 1',
           aspectRatio: '16:9',
           styleId: 'st-1',
+          styleConfig,
           imageModel: 'nano_banana_2',
           videoModel: 'kling_v3_pro',
           analysisModel: null,
@@ -204,16 +231,20 @@ function buildScopedDb(
         ),
     },
     framePromptVersions: {
-      getSelectedByFrameIds: () => Promise.resolve(new Map()),
+      getSelectedByFrameIds: () =>
+        Promise.resolve(opts.visualPrompts ?? new Map()),
     },
     shotPromptVersions: {
-      getSelectedMotionByShots: () => Promise.resolve(new Map()),
+      getSelectedMotionByShots: () =>
+        Promise.resolve(opts.motionPrompts ?? new Map()),
     },
     characters: {
-      listWithSheets: () => Promise.resolve([]),
       list: () => Promise.resolve([]),
     },
-    sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
+    sequenceLocations: {
+      list: () => Promise.resolve([]),
+      listWithReferences: () => Promise.resolve([]),
+    },
     sequenceElements: { list: () => Promise.resolve([]) },
     styles: { getById: () => Promise.resolve(null) },
     renderSegments: {
@@ -223,25 +254,32 @@ function buildScopedDb(
       listBySequence: () => Promise.resolve(opts.video?.versions ?? []),
     },
     sequenceMusicPromptVersions: {
-      getLatest: () => Promise.resolve(null),
+      getSelected: () => Promise.resolve(null),
     },
     sequenceVariants: {
-      getMusicPrimary: () => Promise.resolve(opts.musicPrimary ?? null),
+      getMusicById: () => Promise.resolve(opts.musicPrimary ?? null),
+    },
+    shotSpecVersions: {
+      getSelectedByShotIds: () => Promise.resolve(new Map()),
     },
   });
 }
 
 /** Minimal ScopedDb stub exposing only the namespaces computePlan touches. */
 function asScopedDb<T>(stub: T): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as unknown as ScopedDb;
+  // test stub
+  return asStub<ScopedDb>(stub);
 }
 
 /** Every shot owes a visual prompt unless a test names its units. */
 const plan = (
   shots: Shot[],
   frames: Frame[],
-  opts: { units?: PlanUnitRef[]; db?: ScopedDb } = {}
+  opts: {
+    units?: PlanUnitRef[];
+    db?: ScopedDb;
+    renderOptions?: Parameters<typeof computePlan>[0]['renderOptions'];
+  } = {}
 ) =>
   computePlan({
     scopedDb: opts.db ?? buildScopedDb(shots, frames),
@@ -249,6 +287,7 @@ const plan = (
     units:
       opts.units ?? shots.map((s) => ({ kind: 'prompt:visual', id: s.id })),
     userId: 'u1',
+    renderOptions: opts.renderOptions,
   });
 
 beforeEach(() => stalenessByShot.clear());
@@ -278,7 +317,6 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
         getSelectedBySequence: () => Promise.resolve([voicedVersion]),
       },
       characters: {
-        listWithSheets: () => Promise.resolve([]),
         list: () =>
           Promise.resolve([{ name: 'Woman', voiceId: 'voice-woman' }]),
       },
@@ -295,7 +333,7 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
       regenDialogue: true,
       regenVideo: false,
     });
-    expect(result.dialogueRecording?.scenes).toHaveLength(1);
+    expect(result.dialogueSpeech?.scenes).toHaveLength(1);
   });
 
   it('records a FIRST reading when the plan owes one', async () => {
@@ -303,8 +341,16 @@ describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
       units: [{ kind: 'dialogue', id: 'shot-1' }],
       db: withVoices(voiceDb([])),
     });
-    expect(result.targets[0]).toMatchObject({ regenDialogue: true });
-    expect(result.dialogueRecording?.scenes).toHaveLength(1);
+    expect(result.targets[0]).toMatchObject({
+      regenDialogue: true,
+      motionRender: {
+        packedScene: {
+          colorPalette: 'silver, blue',
+          look: 'watercolour, cool shadows',
+        },
+      },
+    });
+    expect(result.dialogueSpeech?.scenes).toHaveLength(1);
   });
 });
 describe('computePlan — what cannot be planned is reported', () => {
@@ -443,8 +489,6 @@ describe('claimTargets (#1085)', () => {
     return {
       shotId: 'shot-1',
       frameId: 'frame-1',
-      beforeShotId: null,
-      afterShotId: null,
       startingFrameImageUrl: null,
       usesStartFrame: true,
       durationMs: null,
@@ -453,6 +497,12 @@ describe('claimTargets (#1085)', () => {
       visualPromptVersionId: null,
       regenVisual: false,
       regenMotion: false,
+      rewriteSpec: false,
+      specVersionId: null,
+      spec: null,
+      specInputHash: null,
+      visualWritten: false,
+      motionWritten: false,
       regenImage: false,
       regenDialogue: false,
       visualLiveHash: 'vh',
@@ -464,6 +514,7 @@ describe('claimTargets (#1085)', () => {
       staleVideoVersionId: null,
       referenceIds: [],
       attachSceneHeader: false,
+      motionRender: { packedScene: {}, description: '', selectedModel: null },
       dialogue: { presence: false, lines: [] },
       dialogueContext: [],
       ...overrides,
@@ -703,11 +754,12 @@ describe('computePlan — durable step-result size', () => {
     const target = result.targets[0];
     expect(target).toBeDefined();
     // Neighbours are carried as ids, resolved to scenes per shot at spawn time.
-    expect(target).toMatchObject({
-      beforeShotId: 'shot-0',
-      afterShotId: 'shot-2',
+    expect(target).toMatchObject({});
+    expect(target).not.toHaveProperty('scene');
+    expect(target?.motionRender).toMatchObject({
+      sceneId: 'scene-1',
+      packedScene: {},
     });
-    expect(JSON.stringify(target)).not.toContain('sceneId');
   });
 });
 
@@ -718,8 +770,8 @@ describe('findTargetMissingStartFrameMode', () => {
   // would SUCCEED — rewriting prompts with the wrong template and re-rendering
   // every clip with no start frame, billed, silently.
   const target = (over: Record<string, unknown>) =>
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape drift is the thing under test
-    ({ shotId: 'shot-1', ...over }) as PlanTarget;
+    // shape drift is the thing under test
+    asStub<PlanTarget>({ shotId: 'shot-1', ...over });
 
   it('passes a plan whose targets all carry the flag', () => {
     expect(
@@ -750,5 +802,95 @@ describe('findTargetMissingStartFrameMode', () => {
 
   it('passes an empty plan', () => {
     expect(findTargetMissingStartFrameMode({ targets: [] })).toBeNull();
+  });
+});
+
+describe('computePlan — persisted clip membership', () => {
+  it('freezes fresh siblings without adding their prompt or still work', async () => {
+    const result = await plan(
+      [
+        makeShot({ id: 'a', renderSegmentId: 'segment' }),
+        makeShot({ id: 'b', renderSegmentId: 'segment' }),
+      ],
+      [
+        makeFrame({ id: 'fa', shotId: 'a' }),
+        makeFrame({ id: 'fb', shotId: 'b' }),
+      ],
+      { units: [{ kind: 'clip', id: 'a' }] }
+    );
+    expect(result.targets.map((target) => target.shotId)).toEqual(['a', 'b']);
+    expect(result.targets[1]).toMatchObject({
+      regenVideo: true,
+      regenVisual: false,
+      regenImage: false,
+      regenMotion: false,
+      motionRender: { renderSegmentId: 'segment', siblingShotIds: ['a', 'b'] },
+    });
+  });
+});
+
+describe('fresh plan model choices', () => {
+  it('freezes model variants and claims the first image at its requested model', async () => {
+    const result = await plan(
+      [makeShot()],
+      [makeFrame({ selectedImageVersionId: null })],
+      {
+        units: [{ kind: 'still', id: 'shot-1' }],
+        renderOptions: {
+          imageModels: ['seedream_v5', 'nano_banana_2'],
+          videoModels: ['seedance_v2', 'kling_v3_pro'],
+          audioModels: ['elevenlabs_music'],
+        },
+      }
+    );
+    expect(result.targets[0]?.imageModel).toBe('seedream_v5');
+    expect(result.renderOptions).toEqual({
+      imageModels: ['seedream_v5', 'nano_banana_2'],
+      videoModels: ['seedance_v2', 'kling_v3_pro'],
+      audioModels: ['elevenlabs_music'],
+    });
+  });
+});
+
+describe('saved sibling direction snapshots', () => {
+  it('carries visual and motion framing from the same scene while excluding the target and other scenes', async () => {
+    const shots = [
+      makeShot(),
+      makeShot({ id: 'sibling' }),
+      makeShot({ id: 'other', sceneId: 'elsewhere' }),
+    ];
+    const frames = [
+      makeFrame(),
+      makeFrame({ id: 'sibling-frame', shotId: 'sibling' }),
+      makeFrame({ id: 'other-frame', shotId: 'other' }),
+    ];
+    const plan = await computePlan({
+      scopedDb: buildScopedDb(shots, frames, {
+        visualPrompts: new Map([
+          ['frame-1', { text: 'Target' }],
+          ['sibling-frame', { text: 'Close-up of the listener' }],
+          ['other-frame', { text: 'Another room' }],
+        ]),
+        motionPrompts: new Map([
+          ['shot-1', { text: 'Target' }],
+          ['sibling', { text: 'Listener turns toward camera' }],
+          ['other', { text: 'Other action' }],
+        ]),
+      }),
+      sequenceId: 'seq-1',
+      userId: 'user',
+      units: [
+        { kind: 'prompt:visual', id: 'shot-1' },
+        { kind: 'prompt:motion', id: 'shot-1' },
+      ],
+    });
+    // One copy per scene, not per target (#1903): the other scene is absent.
+    expect(Object.keys(plan.scenePrompts)).toEqual(['scene-1']);
+    const [target] = plan.targets;
+    if (!target) throw new Error('expected a target');
+    expect(siblingPrompts(plan, target)).toEqual({
+      visual: [{ shotId: 'sibling', text: 'Close-up of the listener' }],
+      motion: [{ shotId: 'sibling', text: 'Listener turns toward camera' }],
+    });
   });
 });

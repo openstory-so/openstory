@@ -95,13 +95,13 @@ export { MotionBatchWorkflow } from '@/motion/server/workflows/motion-batch-work
 export { CharacterSheetWorkflow } from '@/cast/server/workflows/character-sheet-workflow';
 export { CharacterVoiceWorkflow } from '@/cast/server/workflows/character-voice-workflow';
 export { DialogueAudioWorkflow } from '@/motion/server/workflows/dialogue-audio-workflow';
+export { DialogueTakeWorkflow } from '@/motion/server/workflows/dialogue-take-workflow';
 export { LocationSheetWorkflow } from '@/cast/server/workflows/location-sheet-workflow';
 export { LibraryTalentSheetWorkflow } from '@/cast/server/workflows/library-talent-sheet-workflow';
 export { LibraryLocationSheetWorkflow } from '@/cast/server/workflows/library-location-sheet-workflow';
 export { ShotVariantWorkflow } from '@/stills/server/workflows/shot-variant-workflow';
 export { UpscaleShotVariantWorkflow } from '@/stills/server/workflows/upscale-shot-variant-workflow';
-export { FramePromptWorkflow } from '@/stills/server/workflows/frame-prompt-workflow';
-export { MotionPromptWorkflow } from '@/motion/server/workflows/motion-prompt-workflow';
+export { ShotSpecRewriteWorkflow } from '@/shots/server/workflows/shot-spec-rewrite-workflow';
 export { MusicPromptWorkflow } from '@/audio/server/workflows/music-prompt-workflow';
 export { RecastCharacterWorkflow } from '@/cast/server/workflows/recast-character-workflow';
 export { LocationMatchingWorkflow } from '@/cast/server/workflows/location-matching-workflow';
@@ -109,8 +109,6 @@ export { ShotImagesWorkflow } from '@/stills/server/workflows/shot-images-workfl
 export { TalentMatchingWorkflow } from '@/cast/server/workflows/talent-matching-workflow';
 export { CharacterBibleWorkflow } from '@/cast/server/workflows/character-bible-workflow';
 export { LocationBibleWorkflow } from '@/cast/server/workflows/location-bible-workflow';
-export { FramePromptBatchWorkflow } from '@/stills/server/workflows/frame-prompt-batch-workflow';
-export { MotionPromptBatchWorkflow } from '@/motion/server/workflows/motion-prompt-batch-workflow';
 export { MotionMusicPromptsWorkflow } from '@/motion/server/workflows/motion-music-prompts-workflow';
 export { RegenerateShotsWorkflow } from '@/shots/server/workflows/regenerate-shots-workflow';
 export { UpdateStaleShotsWorkflow } from '@/shots/server/workflows/update-stale-shots-workflow';

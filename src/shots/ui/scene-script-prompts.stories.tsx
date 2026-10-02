@@ -15,7 +15,6 @@ const anchorFrame = frameFixture({
   id: 'frame-1',
   shotId: 'shot-1',
   sequenceId: 'seq-1',
-  imageStatus: 'completed',
 });
 
 const mockShot: ShotView = toShotView(
@@ -27,6 +26,8 @@ const mockShot: ShotView = toShotView(
     durationMs: 3000,
     useStartFrame: null,
     selectedMotionPromptVersionId: null,
+    selectedSpecVersionId: null,
+    pendingSpecVersionId: null,
     audioClips: null,
     renderSegmentId: null,
     deletedAt: null,
@@ -43,6 +44,7 @@ const mockShot: ShotView = toShotView(
     }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage: null,
     video: null,
     primaryVideo: null,
   }
@@ -183,6 +185,7 @@ export const ImagePromptTab: Story = {
         text: 'Wide shot of Sarah at a sunlit coffee shop, typing furiously, steam rising from an untouched latte.',
         components: null,
         source: 'ai-generated',
+        specVersionId: null,
         inputHash: null,
         analysisModel: null,
         status: 'completed',

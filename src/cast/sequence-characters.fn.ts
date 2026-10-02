@@ -269,6 +269,37 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
   });
 
 /**
+ * Cancel a voice still generating: the husk fails as cancelled and the
+ * character keeps the voice it had. Data-only: the run is not terminated
+ * (it may be a parent's awaited child, and a stop between save-voice and
+ * persist-voice would leak the provider voice). It lands, finds its claim
+ * no longer live, releases the voice and promotes nothing.
+ */
+export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(async ({ context, data }) => {
+    const character = await requireCharacter(context.scopedDb, data);
+    const versionId = character.pendingPromoteVoiceVersionId;
+    if (!versionId) return { cancelled: false };
+    const failed = await context.scopedDb.characters.markVoiceClaimTerminal(
+      versionId,
+      'failed',
+      'Cancelled'
+    );
+    if (!failed) return { cancelled: false };
+    try {
+      await getGenerationChannel(character.sequenceId).emit(
+        'generation.character-voice:progress',
+        { characterId: character.id, status: 'failed', error: 'Cancelled' }
+      );
+    } catch (error) {
+      logger.error('realtime emit failed', { err: error });
+    }
+    return { cancelled: true };
+  });
+
+/**
  * Per-character voice switch (#1553): an explicit override of the sequence
  * default. Off releases the saved voice.
  */
@@ -498,7 +529,7 @@ export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
 
 /**
  * Point the character back at an earlier voice (#1657). Same order as
- * choosing a take: the pointer and the mirror move first, then the voice the
+ * choosing a take: the pointer moves first, then the voice the
  * row was holding is released if nothing else uses it. A failed release is
  * logged, not thrown (`releaseReplacedVoice`): the switch already happened.
  * A release stamps the old id's history rows, which is why a voice, once
@@ -719,7 +750,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
     // Cast copies the talent's voice (#1553): its own history row, labelled
     // 'library' because that voice came from the talent, not this role's
     // design. The role's old voice is released below once nothing points at
-    // it. Separate write — the voice mirror only moves through `updateVoice`.
+    // it. Separate write — the voice only moves through `updateVoice`.
     if (talentWithSheets.voiceId) {
       await context.scopedDb.characters.updateVoice(
         data.characterId,

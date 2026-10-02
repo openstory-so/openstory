@@ -6,6 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { asStub } from '@/test/as-stub';
 
 const mockTriggerWorkflowRun = vi.fn();
 const mockEmit = vi.fn(async () => undefined);
@@ -21,11 +22,8 @@ const { enqueueLibraryTalentSheet } =
   await import('./enqueue-library-talent-sheet');
 
 const claimSheet = vi.fn(async () => true);
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the claim method
-const scopedDb = { talent: { claimSheet } } as unknown as Pick<
-  ScopedDb,
-  'talent'
->;
+// stub covering only the claim method
+const scopedDb = asStub<Pick<ScopedDb, 'talent'>>({ talent: { claimSheet } });
 
 const params = {
   talentId: 'tal-1',
@@ -55,8 +53,8 @@ describe('enqueueLibraryTalentSheet claim', () => {
     await enqueueLibraryTalentSheet(scopedDb, params);
 
     const [, payload] = mockTriggerWorkflowRun.mock.calls[0] ?? [];
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the mocked trigger's payload
-    const { sheetId } = payload as { sheetId: string };
+    // the mocked trigger's payload
+    const { sheetId } = asStub<{ sheetId: string }>(payload);
     expect(sheetId).toBeTruthy();
     expect(claimSheet).toHaveBeenCalledWith('tal-1', sheetId, {
       description: 'tall',

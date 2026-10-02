@@ -1,6 +1,7 @@
 /**
  * API Key Settings Component
- * Manages BYOK (Bring Your Own Key) for OpenRouter, Fal.ai, xAI, Google and LLMTR
+ * Manages BYOK (Bring Your Own Key) for OpenRouter, Fal.ai, xAI, Google and
+ * LLMTR, plus the Upload-Post key that turns on publishing to social (#1267)
  */
 
 import { Alert, AlertDescription } from '@/ui/shadcn/alert';
@@ -17,6 +18,7 @@ import { FalLogo } from '@/ui/icons/fal-logo';
 import { GoogleGIcon } from '@/ui/icons/google-g-icon';
 import { LlmtrLogo } from '@/ui/icons/llmtr-logo';
 import { OpenRouterLogo } from '@/ui/icons/openrouter-logo';
+import { UploadPostLogo } from '@/ui/icons/upload-post-logo';
 import { XIcon } from '@/ui/icons/x-icon';
 import { Input } from '@/ui/shadcn/input';
 import { Skeleton } from '@/ui/shadcn/skeleton';
@@ -32,6 +34,7 @@ import { getCurrentUserProfileFn } from '@/platform/user.fn';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ApiKeyProvider } from '@/platform/server/db/schema';
 import { useNavigate } from '@tanstack/react-router';
 import { AlertTriangle, ExternalLink, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -42,7 +45,7 @@ type ApiKeySettingsProps = {
   error?: string;
 };
 
-type ApiKeyProviderId = 'openrouter' | 'fal' | 'xai' | 'google' | 'llmtr';
+type ApiKeyProviderId = ApiKeyProvider;
 /** Providers whose key is pasted in — OpenRouter alone uses OAuth. */
 type ManualProvider = Exclude<ApiKeyProviderId, 'openrouter'>;
 
@@ -52,6 +55,7 @@ const PROVIDER_LABELS: Record<ApiKeyProviderId, string> = {
   xai: 'xAI',
   google: 'Google',
   llmtr: 'LLMTR',
+  upload_post: 'Upload-Post',
 };
 
 export function ApiKeySettings(props: ApiKeySettingsProps) {
@@ -134,6 +138,10 @@ function ApiKeySettingsContent({
     void queryClient.invalidateQueries({ queryKey: ['apiKeys', teamId] });
     void queryClient.invalidateQueries({ queryKey: ['apiKeyStatus', teamId] });
     void queryClient.invalidateQueries({ queryKey: [...BILLING_GATE_KEY] });
+    // The Download menu's "Publish to social…" follows the Upload-Post key.
+    void queryClient.invalidateQueries({
+      queryKey: ['social-publishing', teamId],
+    });
   };
 
   const saveKeyMutation = useMutation({
@@ -205,6 +213,7 @@ function ApiKeySettingsContent({
   const xaiKey = apiKeys?.find((k) => k.provider === 'xai');
   const googleKey = apiKeys?.find((k) => k.provider === 'google');
   const llmtrKey = apiKeys?.find((k) => k.provider === 'llmtr');
+  const uploadPostKey = apiKeys?.find((k) => k.provider === 'upload_post');
 
   // Re-validate stored team keys on mount so opening the settings page
   // refreshes their validity without waiting for the next workflow failure.
@@ -424,6 +433,35 @@ function ApiKeySettingsContent({
               saveKeyMutation.mutate({ provider: 'llmtr', apiKey })
             }
             onDelete={() => deleteMutation.mutate('llmtr')}
+            isSaving={saveKeyMutation.isPending}
+            isDeleting={deleteMutation.isPending}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Publishing</CardTitle>
+          <CardDescription>
+            Optional. With a key, the Download menu gains “Publish to social…”
+            for sending a finished render to your own accounts.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="flex flex-col gap-3">
+          <ManualKeyRow
+            provider="upload_post"
+            icon={<UploadPostLogo className="size-5" />}
+            blurb="TikTok, Instagram, YouTube, LinkedIn, X & more from one key."
+            placeholder="Upload-Post API key"
+            keyUrl="https://app.upload-post.com/api-keys"
+            existingKey={uploadPostKey}
+            status={keyStatus?.upload_post}
+            isLoading={isLoading}
+            onSave={(apiKey) =>
+              saveKeyMutation.mutate({ provider: 'upload_post', apiKey })
+            }
+            onDelete={() => deleteMutation.mutate('upload_post')}
             isSaving={saveKeyMutation.isPending}
             isDeleting={deleteMutation.isPending}
           />

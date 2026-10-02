@@ -9,7 +9,7 @@ import {
 import { useSeedVoices } from '@/cast/ui/use-voice-design-available';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
   designedTakesForDisplay,
@@ -26,6 +26,7 @@ import {
   useAssignCharacterVoice,
   useCharacterVoiceVersions,
   useChooseCharacterVoiceTake,
+  useCancelCharacterVoice,
   useGenerateCharacterVoice,
   useSelectCharacterVoiceVersion,
   useSetCharacterVoiceEnabled,
@@ -65,6 +66,7 @@ export const CharacterVoiceSection: React.FC<{
 }> = ({ sequenceId, character, generateVoices }) => {
   const queryClient = useQueryClient();
   const generate = useGenerateCharacterVoice();
+  const cancel = useCancelCharacterVoice();
   const seedVoices = useSeedVoices();
   const [takeCount, setTakeCount] = useState(SEED_VOICE_DEFAULT_TAKES);
   const setEnabled = useSetCharacterVoiceEnabled();
@@ -123,7 +125,8 @@ export const CharacterVoiceSection: React.FC<{
             character.id
           ),
         });
-        if (data.status === 'failed') {
+        const cancelled = 'error' in data && data.error === 'Cancelled';
+        if (data.status === 'failed' && !cancelled) {
           toast.error('Voice design failed', {
             description:
               'error' in data && typeof data.error === 'string'
@@ -319,24 +322,29 @@ export const CharacterVoiceSection: React.FC<{
               <Library className="mr-2 h-4 w-4" />
               Browse voices
             </Button>
-            <div className="flex w-fit flex-col gap-1">
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  generate.mutate(
-                    {
-                      sequenceId,
-                      characterId: character.id,
-                      takes: takeCount,
-                    },
-                    {
-                      onError: (error) =>
-                        toast.error('Failed to design voice', {
-                          description: errorMessage(error),
-                        }),
-                    }
-                  )
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                generate.mutate(
+                  {
+                    sequenceId,
+                    characterId: character.id,
+                    takes: takeCount,
+                  },
+                  {
+                    onError: (error) =>
+                      toast.error('Failed to design voice', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+            >
+              <InButtonCost
+                onPrimary={false}
+                estimate={
+                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
                 }
               >
                 {designing ? (
@@ -348,13 +356,19 @@ export const CharacterVoiceSection: React.FC<{
                   designing,
                   Boolean(character.voiceId || takes.length > 0)
                 )}
-              </Button>
-              <ActionCost
-                estimate={
-                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
+              </InButtonCost>
+            </Button>
+            {pendingHusk ? (
+              <Button
+                variant="ghost"
+                disabled={cancel.isPending}
+                onClick={() =>
+                  cancel.mutate({ sequenceId, characterId: character.id })
                 }
-              />
-            </div>
+              >
+                {cancel.isPending ? 'Cancelling…' : 'Cancel'}
+              </Button>
+            ) : null}
             {seedVoices && (
               <div className="flex flex-col gap-1">
                 <ToggleGroup

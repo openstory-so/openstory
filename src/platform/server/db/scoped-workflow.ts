@@ -82,11 +82,27 @@ type WorkflowDomains = {
  * `hasUsableKey` is deliberately NOT here — "does this team own a key" is a
  * billing fact that gates a charge, so it lives under `liveRead.apiKeys`.
  */
+type ApiKeys = ScopedDb['apiKeys'];
+
+/**
+ * Keys a workflow may spend. `upload_post` (social publishing, #1267) is
+ * a team's own social accounts, not a generation provider — never resolved
+ * mid-run.
+ */
+type GenerationProvider = Exclude<
+  Parameters<ApiKeys['resolveKey']>[0],
+  'upload_post'
+>;
+
 type WorkflowCredentials = Pick<ScopedDb, 'teamId' | 'userId'> &
-  Pick<
-    ScopedDb['apiKeys'],
-    'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
-  >;
+  Pick<ApiKeys, 'resolveLlmKey'> & {
+    resolveKey: (
+      provider: GenerationProvider
+    ) => ReturnType<ApiKeys['resolveKey']>;
+    resolveOptionalKey: (
+      provider: GenerationProvider
+    ) => ReturnType<ApiKeys['resolveOptionalKey']>;
+  };
 
 /**
  * Hatch 2 — CLAIMS. Reads of append-only rows by an id the run already holds:
@@ -178,11 +194,10 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   /** `listWithReferences`: live bibles for a re-render. */
   sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'listWithReferences'>;
   /**
-   * Existence guards, the music spawn-time billing guards (music has no claim
-   * rows), and the ready-email title (#1453) — scene-split writes it mid-run,
-   * so the trigger snapshot only ever holds the placeholder.
+   * The ready-email title (#1453) — scene-split writes it mid-run, so the
+   * trigger snapshot only ever holds the placeholder.
    */
-  sequences: Pick<ScopedDb['sequences'], 'getById' | 'getForUser'>;
+  sequences: Pick<ScopedDb['sequences'], 'getForUser'>;
   /**
    * Existence guards, plus the ready-email clip/duration line (#1276) —
    * those numbers are this run's own writes, not knowable at the trigger.
@@ -225,6 +240,10 @@ export type WorkflowScopedDb = WorkflowDomains & {
    * references it.
    */
   stalenessPlanning: ScopedDb;
+  /** Storyboard only: one checkpoint after analysis writes its scenes, shots and
+   * initial prompts. Those rows cannot exist at the original trigger. It freezes
+   * a generation plan; later stages consume that snapshot, never this hatch. */
+  generationPlanning: ScopedDb;
 };
 
 export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
@@ -247,6 +266,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
     claims: scopedDb,
     liveRead: scopedDb,
     stalenessPlanning: scopedDb,
+    generationPlanning: scopedDb,
   };
 }
 
@@ -261,4 +281,4 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
  * reading env (#1552). Satisfied by `scopedDb.credentials`.
  */
 export type CredentialScopedDb = Pick<ScopedDb, 'userId'> &
-  Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;
+  Pick<WorkflowCredentials, 'resolveKey' | 'resolveOptionalKey'>;

@@ -7,6 +7,7 @@ import {
 } from '@videojs/media';
 
 import type { SequencePlayerMeta, SequencePlayerOptions } from './playback';
+import { asStub } from '@/test/as-stub';
 
 const { mocks, lastOpts } = vi.hoisted(() => {
   const lastOpts: { current: SequencePlayerOptions | null } = { current: null };
@@ -62,8 +63,8 @@ const source = {
   musicEnabled: true,
 };
 
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- engine is mocked; attach only stores the handle
-const canvas = {} as unknown as HTMLCanvasElement;
+// engine is mocked; attach only stores the handle
+const canvas = asStub<HTMLCanvasElement>({});
 
 function collectEvents(media: EventTarget): string[] {
   const events: string[] = [];

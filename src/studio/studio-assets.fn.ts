@@ -26,6 +26,7 @@ import {
 } from '@/platform/server/storage/storage-cloudflare';
 import {
   createStudioAssets,
+  editStudioAsset,
   renderStudioAssetAtQuality,
 } from '@/studio/server/create-studio-asset';
 import {
@@ -101,6 +102,58 @@ export const renderStudioAssetAtQualityFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(z.object({ id: ulidSchema })))
   .handler(async ({ context, data }) => {
     return renderStudioAssetAtQuality(context.scopedDb, data.id);
+  });
+
+/** Rewrite a finished clip from a prompt (#1925); see `editStudioAsset`. */
+export const editStudioAssetFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        id: ulidSchema,
+        prompt: z.string().trim().min(1, 'Enter a prompt').max(50_000),
+        draft: z.boolean(),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    return editStudioAsset(context.scopedDb, data.id, data.prompt, data.draft);
+  });
+
+/** Longest edit chain walked; a cycle cannot form, this bounds a bad row. */
+const MAX_EDIT_HISTORY = 50;
+
+/**
+ * The prompts a clip was made from (#1925), oldest first: the original, then
+ * each edit (`input.sourceAssetId`) down to this clip. A deleted ancestor
+ * ends the walk.
+ */
+export const getStudioEditHistoryFn = createServerFn({ method: 'GET' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.object({ id: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    const history: {
+      id: string;
+      prompt: string;
+      modelName: string;
+      edit: boolean;
+      createdAt: Date;
+    }[] = [];
+    let id: string | undefined = data.id;
+    while (id && history.length < MAX_EDIT_HISTORY) {
+      const asset = await context.scopedDb.generatedAssets.getById(id);
+      if (!asset || asset.source !== 'studio') break;
+      const { prompt, sourceAssetId, mode } = asset.input;
+      history.unshift({
+        id: asset.id,
+        prompt: typeof prompt === 'string' ? prompt : '',
+        modelName: asset.modelName,
+        edit: mode === 'edit',
+        createdAt: asset.createdAt,
+      });
+      id = typeof sourceAssetId === 'string' ? sourceAssetId : undefined;
+    }
+    return history;
   });
 
 export const setStudioAssetFavoriteFn = createServerFn({ method: 'POST' })

@@ -308,6 +308,16 @@ export function useGenerationStream(
           description: 'The selected model is kept in Versions.',
         });
       }
+      // A failed upscale leaves the shot on its current still (#1942), so the
+      // shot shows no failure; this toast is the only place the user hears.
+      if (
+        eventName === 'generation.image:progress' &&
+        typeof data.upscaleError === 'string'
+      ) {
+        toast.warning('Upscale failed', {
+          description: `${data.upscaleError}. The current still is kept.`,
+        });
+      }
       // reservation:short is a top-up prompt, not a failure toast (#1328).
       // The scenes banner is the persistent CTA.
 

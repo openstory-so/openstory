@@ -18,12 +18,9 @@ import { z } from 'zod';
 const locationFormSchema = z.object({
   name: z.string().trim().min(1).max(255),
   type: z.enum(['interior', 'exterior', 'both']),
-  timeOfDay: z.string().max(2000),
   description: z.string().max(2000),
   architecturalStyle: z.string().max(2000),
   keyFeatures: z.string().max(2000),
-  colorPalette: z.string().max(2000),
-  lightingSetup: z.string().max(2000),
   ambiance: z.string().max(2000),
 });
 
@@ -104,12 +101,6 @@ export const LocationBibleForm: React.FC<{
             </SelectContent>
           </Select>
         </div>
-        <BibleField
-          idPrefix="location"
-          label="Time of Day"
-          name="timeOfDay"
-          defaultValue={location.timeOfDay}
-        />
       </div>
       <BibleField
         idPrefix="location"
@@ -130,18 +121,6 @@ export const LocationBibleForm: React.FC<{
         name="keyFeatures"
         defaultValue={location.keyFeatures}
         textarea
-      />
-      <BibleField
-        idPrefix="location"
-        label="Color Palette"
-        name="colorPalette"
-        defaultValue={location.colorPalette}
-      />
-      <BibleField
-        idPrefix="location"
-        label="Lighting Setup"
-        name="lightingSetup"
-        defaultValue={location.lightingSetup}
       />
       <BibleField
         idPrefix="location"

@@ -113,6 +113,9 @@ import {
   unresolvedStudioReferences,
   resolveStudioAliases,
   snapStudioVideoDuration,
+  studioBillableSeconds,
+  studioSupportsAutoDuration,
+  type StudioDuration,
   studioAudioLimit,
   studioCombinedRefCap,
   studioReferenceEndpoint,
@@ -161,6 +164,7 @@ const MODE_LABELS: Record<StudioVideoMode, string> = {
   text: 'Text to video',
   reference: 'Reference to video',
   frames: 'Image to video',
+  edit: 'Edit video',
 };
 
 type PickerTarget = 'reference' | 'start' | 'end';
@@ -346,7 +350,7 @@ export function StudioComposer({
 }: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
-  const { pricing } = useFalPricing();
+  const { pricing, isPending: pricingPending } = useFalPricing();
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
@@ -372,7 +376,7 @@ export function StudioComposer({
   const [pickedResolution, setResolution] =
     useState<Resolution>(DEFAULT_RESOLUTION);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState<StudioDuration>(5);
   const [generateAudio, setGenerateAudio] = useState(true);
   // On by default (#1756): a 480p look before the 1080p spend.
   const [draftMode, setDraftMode] = useState(true);
@@ -550,7 +554,7 @@ export function StudioComposer({
       : mode;
 
   const estimate = useMemo(() => {
-    if (!pricing) return null;
+    if (!pricing) return pricingPending ? undefined : null;
     if (activity === 'image') {
       const still = estimateImageCost(imageModel, aspectRatio, 1, {
         pricing,
@@ -561,7 +565,7 @@ export function StudioComposer({
     }
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
-      snappedDuration,
+      studioBillableSeconds(snappedDuration, compatibleVideoModel),
       {
         pricing,
         mode: effectiveMode,
@@ -578,6 +582,7 @@ export function StudioComposer({
     effectiveMode,
     imageModel,
     pricing,
+    pricingPending,
     references.length,
     resolution,
     snappedDuration,
@@ -1193,7 +1198,11 @@ export function StudioComposer({
     resolutionTiers.length > 0
       ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
       : null,
-    isVideo && durationCapable ? `${snappedDuration}s` : null,
+    isVideo && durationCapable
+      ? snappedDuration === 'auto'
+        ? 'Auto length'
+        : `${snappedDuration}s`
+      : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     draftOn ? 'Draft 480p' : null,
     `×${count}`,
@@ -1368,77 +1377,74 @@ export function StudioComposer({
         </div>
       )}
 
-      {isAuthenticated &&
-        checks.length > 0 && (
-          // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
-          <div
-            className="flex shrink-0 flex-col gap-2"
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
-              if (!(event.target instanceof HTMLInputElement)) return;
-              event.preventDefault();
-              if (rightsTicked && !attest.isPending) confirmRights();
-            }}
-          >
-            {checks
-              .filter((c) => c.query.isError)
-              .map((c) => (
-                <p key={c.url} className="text-xs text-destructive">
-                  Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
-                  {isInsufficientCreditsError(c.query.error) ? (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() =>
-                        openAddCreditsDialog('studio-rights-check')
-                      }
-                    >
-                      Add credits
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() => void c.query.refetch()}
-                    >
-                      Retry
-                    </Button>
-                  )}
-                </p>
-              ))}
-            {portraitUrls.length > 0 && (
-              <PortraitAttestationFields
-                id="studio-portrait-attestation"
-                attested={portraitTicked}
-                onAttestedChange={(checked) =>
-                  setPortraitTickedFor(checked ? portraitKey : '')
-                }
-                authorizationBasis={authorizationBasis}
-                onAuthorizationBasisChange={setAuthorizationBasis}
+      {isAuthenticated && checks.length > 0 && (
+        // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
+        <div
+          className="flex shrink-0 flex-col gap-2"
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            if (!(event.target instanceof HTMLInputElement)) return;
+            event.preventDefault();
+            if (rightsTicked && !attest.isPending) confirmRights();
+          }}
+        >
+          {checks
+            .filter((c) => c.query.isError)
+            .map((c) => (
+              <p key={c.url} className="text-xs text-destructive">
+                Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
+                {isInsufficientCreditsError(c.query.error) ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => openAddCreditsDialog('studio-rights-check')}
+                  >
+                    Add credits
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => void c.query.refetch()}
+                  >
+                    Retry
+                  </Button>
+                )}
+              </p>
+            ))}
+          {portraitUrls.length > 0 && (
+            <PortraitAttestationFields
+              id="studio-portrait-attestation"
+              attested={portraitTicked}
+              onAttestedChange={(checked) =>
+                setPortraitTickedFor(checked ? portraitKey : '')
+              }
+              authorizationBasis={authorizationBasis}
+              onAuthorizationBasisChange={setAuthorizationBasis}
+            >
+              <p className="text-xs font-medium">
+                Real person in {badges(portraitUrls)}
+              </p>
+            </PortraitAttestationFields>
+          )}
+          {owed.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                disabled={!rightsTicked || attest.isPending}
+                onClick={confirmRights}
               >
-                <p className="text-xs font-medium">
-                  Real person in {badges(portraitUrls)}
-                </p>
-              </PortraitAttestationFields>
-            )}
-            {owed.length > 0 && (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!rightsTicked || attest.isPending}
-                  onClick={confirmRights}
-                >
-                  {attest.isPending ? 'Saving…' : 'Confirm rights'}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+                {attest.isPending ? 'Saving…' : 'Confirm rights'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {isVideo && (
@@ -1572,6 +1578,10 @@ export function StudioComposer({
                     <Select
                       value={String(snappedDuration)}
                       onValueChange={(value) => {
+                        if (value === 'auto') {
+                          setDuration('auto');
+                          return;
+                        }
                         const next = Number(value);
                         if (Number.isFinite(next) && next > 0)
                           setDuration(next);
@@ -1584,6 +1594,14 @@ export function StudioComposer({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        {studioSupportsAutoDuration(compatibleVideoModel) && (
+                          <SelectItem
+                            value="auto"
+                            className="font-mono text-xs"
+                          >
+                            Auto
+                          </SelectItem>
+                        )}
                         {studioVideoDurations(compatibleVideoModel).map(
                           (value) => (
                             <SelectItem
@@ -1727,7 +1745,11 @@ export function StudioComposer({
               Clear all
             </Button>
           )}
-          <ActionCost estimate={estimate} align="end" />
+          <ActionCost
+            estimate={estimate}
+            align="end"
+            amountWidth={activity === 'video' ? 'double' : 'single'}
+          />
           <VoiceInputButton label="prompt" {...promptVoice} />
           <Button
             type="submit"

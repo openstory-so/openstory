@@ -85,6 +85,25 @@ describe('checkParts', () => {
     expect(!check.ok && check.problem).toContain('line 2');
   });
 
+  // A failed take is still kept for dialogue (#1802), so every line needs a
+  // place in it: a line never said sits between its neighbours.
+  it('still places every line of a failed take, and names the doubtful one', () => {
+    const check = checkParts(timed('hello there mate see you later'), [
+      'Hello there mate.',
+      'How are you going?',
+      'See you later.',
+    ]);
+    expect(check.ok).toBe(false);
+    if (check.ok) return;
+    expect(check.spans).toEqual([
+      { start: 0, end: 2.8 },
+      { start: 2.8, end: 3 },
+      { start: 3, end: 5.8 },
+    ]);
+    expect(check.doubtful.map((d) => d.line)).toEqual([1]);
+    expect(check.worstShare).toBeLessThan(0.5);
+  });
+
   // Scribe's words for a real two-voice Seed take (#1803). The checker before
   // this one failed it on "All right" for "Alright".
   it('splits a real take', () => {

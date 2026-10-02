@@ -88,6 +88,7 @@ describe('sequences.create model defaults', () => {
   it('substitutes app-level defaults when models are omitted', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({
+      generationStopAt: 'images',
       title: 'omitted',
       styleId,
     });
@@ -99,6 +100,7 @@ describe('sequences.create model defaults', () => {
   it('persists an explicit analysisModel', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({
+      generationStopAt: 'images',
       title: 'explicit',
       styleId,
       analysisModel: 'anthropic/claude-sonnet-4.6',

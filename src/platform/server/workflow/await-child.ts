@@ -28,14 +28,14 @@
 
 import { simpleHash } from '@/platform/hash';
 import { getLogger } from '@/platform/logger';
+import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
+import { NonRetryableError } from 'cloudflare:workflows';
 import {
   isInstanceAlreadyExistsError,
   isRecipientInFiniteStateError,
 } from './errors';
 import { disposeRpcStub } from './rpc-dispose';
 import type { CloudflareEnv } from './types';
-import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
-import { NonRetryableError } from 'cloudflare:workflows';
 
 const logger = getLogger(['openstory', 'workflow', 'await-child']);
 
@@ -111,6 +111,11 @@ export type ParentNotifyHint = {
 type ChildOutcome<TOutput> =
   | { status: 'ok'; output: TOutput }
   | { status: 'failed'; error: string };
+
+function readJson(text: string): unknown {
+  const value: unknown = JSON.parse(text);
+  return value;
+}
 
 /**
  * A workflow binding viewed as a child target: its payload is the child's
@@ -201,11 +206,11 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
     return { childInstanceId, eventType };
   });
 
-  // step.waitForEvent's generic is constrained to Rpc.Serializable, but
-  // `TOutput` is whatever the child workflow returns — by construction that's
-  // serializable JSON (workflow results are persisted by CF either way), so
-  // we widen to `unknown` at the call site and narrow back via the discriminant.
-  let event: { payload: unknown };
+  // waitForEvent's type argument has to extend Rpc.Serializable of itself.
+  // ChildOutcome<TOutput> does not: TOutput is chosen by the caller, and a
+  // generic wrapper is not provable as Serializable. Wait on the status
+  // discriminant, which is. notifyParent is the only sender of this event.
+  let event: { payload: { status: 'ok' | 'failed' } };
   try {
     event = await step.waitForEvent<{ status: 'ok' | 'failed' }>(
       args.awaitStepName,
@@ -251,10 +256,11 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
       logger.warn(
         `[spawnAndAwaitChild] ${args.awaitStepName} timed out but child ${childInstanceId} completed; recovering its output from instance status`
       );
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the recovered output is the child's runImpl return value, the same TOutput notifyParent would have delivered
-      return (
-        child.outputJson === null ? undefined : JSON.parse(child.outputJson)
-      ) as TOutput;
+      const recovered: unknown =
+        child.outputJson === null ? undefined : readJson(child.outputJson);
+      // instance.status().output is unknown. It is this child's runImpl return.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+      return recovered as TOutput;
     }
     if (child.status === 'errored' || child.status === 'terminated') {
       throw new Error(
@@ -264,8 +270,10 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
     // Still queued/running/paused — the await budget is genuinely exhausted.
     throw waitError;
   }
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- payload shape is enforced by notifyParent / notifyParentOfFailure which are the only senders for this event type
-  const outcome = event.payload as ChildOutcome<TOutput>;
+  const payload: unknown = event.payload;
+  // notifyParent and notifyParentOfFailure are the only senders of this event.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+  const outcome = payload as ChildOutcome<TOutput>;
 
   if (outcome.status === 'failed') {
     throw new Error(`Child workflow ${args.childId} failed: ${outcome.error}`);

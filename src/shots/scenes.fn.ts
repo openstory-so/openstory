@@ -160,6 +160,8 @@ const sceneNarrativeFieldsSchema = z.object({
       characterTags: z.array(z.string()).optional(),
       environmentTag: z.string().optional(),
       elementTags: z.array(z.string()).optional(),
+      lightingSetup: z.string().trim().max(2000).optional(),
+      colorPalette: z.string().trim().max(2000).optional(),
     })
     .optional(),
 });
@@ -263,8 +265,12 @@ export const updateSceneFn = createServerFn({ method: 'POST' })
             '',
           elementTags:
             continuity.elementTags ?? existing.continuity?.elementTags ?? [],
-          colorPalette: existing.continuity?.colorPalette ?? '',
-          lightingSetup: existing.continuity?.lightingSetup ?? '',
+          colorPalette:
+            continuity.colorPalette ?? existing.continuity?.colorPalette ?? '',
+          lightingSetup:
+            continuity.lightingSetup ??
+            existing.continuity?.lightingSetup ??
+            '',
           styleTag: existing.continuity?.styleTag ?? '',
         }
       : undefined;

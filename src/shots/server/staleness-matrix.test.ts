@@ -52,11 +52,7 @@ import {
   computeSequenceMusicInputHash,
 } from '@/shots/input-hash';
 import { computeShotStaleness } from './shot-staleness';
-
-function asStub<T>(stub: unknown): T {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as T;
-}
+import { asStub } from '@/test/as-stub';
 
 const ANALYSIS_MODEL = 'anthropic/claude-haiku-4.5';
 /** Takes dialogue audio and reference images, so both reach its manifest. */
@@ -126,12 +122,9 @@ const BEACH = asStub<SequenceLocationWithReference>({
   locationId: 'beach',
   name: 'Beach',
   type: 'exterior',
-  timeOfDay: 'day',
   description: 'white sand',
   architecturalStyle: null,
   keyFeatures: null,
-  colorPalette: null,
-  lightingSetup: null,
   ambiance: null,
   consistencyTag: 'beach_tag',
   firstMentionSceneId: 'scene-1',
@@ -273,6 +266,8 @@ function shotDb(
       getLatestWithInputHash: none,
       getLivePending: none,
     },
+    // No spec: the matrix pins prompt staleness, not spec currency (#1923).
+    shotSpecVersions: { getSelected: none },
     frameVariants: { listLiveClaims: empty },
     // The stale-cause hints read these; the legacy-digest verify reads the
     // character versions for a moved voice-only flag (#1787).
@@ -458,8 +453,8 @@ const SHOT_MATRIX: ShotRow[] = [
       ...w,
       still: { id: 'still-2', url: '/r2/still-2.png' },
     }),
-    // The motion prompt is written looking at the still.
-    stale: ['motionPrompt', 'clip'],
+    // The motion prompt is built from the spec, not the still (#1923).
+    stale: ['clip'],
   },
   {
     mutation: 'new motion prompt selected',
@@ -624,8 +619,8 @@ const SHOT_MATRIX: ShotRow[] = [
     stale: ['visualPrompt', 'motionPrompt'],
   },
   {
-    mutation: 'location lighting edited',
-    apply: (w) => withLocation(w, { lightingSetup: 'low sun' }),
+    mutation: 'location fixtures edited',
+    apply: (w) => withLocation(w, { keyFeatures: 'neon sign' }),
     stale: ['visualPrompt', 'motionPrompt'],
   },
   {
@@ -734,15 +729,14 @@ describe('staleness matrix — a shot and its clip', () => {
 
   it('a pre-#1785 stamp of a voice-only Alice stays fresh on deploy', async () => {
     // The pre-#1785 digest of a voice-only Alice is the digest of a voiced
-    // one: that shape never read the flag.
+    // one: that shape never read the flag. Visual only: an old motion stamp
+    // also carried the still URL, which `stampShot`'s current digest drops
+    // (#1923), so it cannot stand in for one.
     const stamps = await stampShot();
     const verdicts = await shotVerdicts(aliceVoiceOnly, stamps, [
       { characterId: 'c-alice', voiceOnly: true, createdAt: BEFORE },
     ]);
-    expect(verdicts).toMatchObject({
-      visualPrompt: 'fresh',
-      motionPrompt: 'fresh',
-    });
+    expect(verdicts).toMatchObject({ visualPrompt: 'fresh' });
   });
 
   it.each(SHOT_MATRIX)('$mutation → stale: $stale', async (row) => {
@@ -977,8 +971,8 @@ const SHEET_MATRIX: SheetRow[] = [
     location: 'stale',
   },
   {
-    mutation: 'location time of day edited',
-    apply: (w) => ({ ...w, beach: { ...w.beach, timeOfDay: 'night' } }),
+    mutation: 'location fixtures edited',
+    apply: (w) => ({ ...w, beach: { ...w.beach, keyFeatures: 'neon sign' } }),
     character: 'fresh',
     location: 'stale',
   },
@@ -1113,7 +1107,7 @@ async function musicVerdicts(world: MusicWorld) {
     shots: { listBySequence: () => Promise.resolve(world.shots) },
     scenes: { listBySequence: () => Promise.resolve(world.scenes) },
     sequenceVariants: {
-      getMusicPrimary: () =>
+      getMusicById: () =>
         Promise.resolve({
           status: 'completed',
           model: AUDIO_MODEL,
@@ -1121,7 +1115,7 @@ async function musicVerdicts(world: MusicWorld) {
         }),
     },
     sequenceMusicPromptVersions: {
-      getLatest: () => Promise.resolve({ analysisModel: ANALYSIS_MODEL }),
+      getSelected: () => Promise.resolve({ analysisModel: ANALYSIS_MODEL }),
     },
   });
   return readMusicPromptStaleness(
@@ -1130,7 +1124,7 @@ async function musicVerdicts(world: MusicWorld) {
       id: 'seq',
       status: 'completed',
       analysisModel: ANALYSIS_MODEL,
-      musicModel: AUDIO_MODEL,
+      selectedMusicVariantId: 'track',
       musicPrompt: world.musicPrompt,
       musicTags: world.musicTags,
       musicPromptInputHash: world.promptStamped ? promptStamp : null,
@@ -1255,12 +1249,9 @@ describe('stamp == verify', () => {
       locationId: 'beach',
       name: 'Beach',
       type: 'exterior' as const,
-      timeOfDay: 'day',
       description: 'white sand',
       architecturalStyle: '',
       keyFeatures: 'driftwood',
-      colorPalette: '',
-      lightingSetup: 'low sun',
       ambiance: '',
       consistencyTag: 'beach_tag',
       firstMention: { sceneId: 'scene-1', text: 'BEACH', lineNumber: 1 },

@@ -3,7 +3,7 @@
     {
       "match": {
         "userMessage": "Classify music design for each scene and generate a unified music prompt for the sequence.\n\nThere are 4 scenes. Return exactly 4 rows in `scenes`, in this order.\n\n<SCENES>\n[\n  {\n    \"sceneId\": \"01M2CJ4TT32EGVA1RXKYMRRG1G\",\n    \"title\": \"Hard morning light cuts across white tile and a...\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 18,\n    \"location\": \"\",\n    \"timeOfDay\": \"\"\n  },\n  {\n    \"sceneId\": \"01M2CJ4TTS6FCGZ6XZZKGWGV5X\",\n    \"title\": \"Scarlett strides through a narrow downtown hall...\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 12,\n    \"location\": \"\",\n    \"timeOfDay\": \"\"\n  },\n  {\n    \"sceneId\": \"01M2CJ4TTS6FCGZ6XZZKGWGV5Y\",\n    \"title\": \"A wide 16:9 street composition: Scarlett steps ...\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 18,\n    \"location\": \"\",\n    \"timeOfDay\": \"\"\n  },\n  {\n    \"sceneId\": \"01M2CJ4TTS6FCGZ6XZZKGWGV5Z\",\n    \"title\": \"On a rooftop beside low concrete walls and pott...\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 12,\n    \"location\": \"\",\n    \"timeOfDay\": \"\"\n  }\n]\n</SCENES>\n\nFor each scene, classify:\n1. presence: \"none\"|\"minimal\"|\"moderate\"|\"full\"\n2. style: Genre/instrumentation (if music present)\n3. mood: Emotional quality (if music present)\n4. atmosphere: Environmental atmosphere\n\nThen synthesize unified tags (starting with \"instrumental\") and a 1-2 sentence prompt for one cohesive music track.\n\nRespond with ONLY valid JSON matching the schema.",
-        "model": "openai/gpt-5.6-luna",
+        "model": "openai/gpt-6-luna",
         "turnIndex": 0,
         "hasToolResult": false
       },

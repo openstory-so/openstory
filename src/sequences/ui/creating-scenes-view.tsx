@@ -10,7 +10,7 @@ import {
 } from '@/sequences/ui/generation-stream.reducer';
 import { SEQUENCE_HEADER_SLOT_ID } from '@/sequences/ui/sequence-header-slot';
 import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
-import { flagsFromStopAt, type GenerationStage } from '@/sequences/pipeline';
+import type { GenerationStage } from '@/sequences/pipeline';
 import { CanvasViewToggle } from '@/shots/ui/canvas-view-toggle';
 import { SceneScriptDocument } from '@/shots/ui/scene-script-document';
 import { useMemo } from 'react';
@@ -29,11 +29,8 @@ export function CreatingScenesView({
   generateVoices = false,
 }: CreatingScenesViewProps) {
   const generationState = useMemo(() => {
-    const flags = flagsFromStopAt(stopAt);
     const config: GenerationPhaseConfig = {
       stopAt,
-      autoGenerateMotion: flags.autoGenerateMotion,
-      autoGenerateMusic: flags.autoGenerateMusic,
       referenceOnly: !generateStartFrames,
       generateVoices,
     };

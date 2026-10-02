@@ -126,21 +126,20 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
         <BlobLoaderContainer size="sm" className="absolute inset-0" />
       )}
 
-      {showVideoFrame &&
-        !showOverlay && (
-          // `#t=` pins the poster to this shot's window in a packed clip
-          // (t=0.001 for the first member); `preload="metadata"` keeps it to
-          // headers plus that frame rather than the whole clip.
-          // Muted + playsInline + no controls: this is a thumbnail, not a player.
-          <video
-            src={videoPosterSrc(videoUrl ?? '', videoStartSeconds)}
-            className="h-full w-full object-cover"
-            preload="metadata"
-            muted
-            playsInline
-            aria-label={alt}
-          />
-        )}
+      {showVideoFrame && !showOverlay && (
+        // `#t=` pins the poster to this shot's window in a packed clip
+        // (t=0.001 for the first member); `preload="metadata"` keeps it to
+        // headers plus that frame rather than the whole clip.
+        // Muted + playsInline + no controls: this is a thumbnail, not a player.
+        <video
+          src={videoPosterSrc(videoUrl ?? '', videoStartSeconds)}
+          className="h-full w-full object-cover"
+          preload="metadata"
+          muted
+          playsInline
+          aria-label={alt}
+        />
+      )}
 
       {displayUrl && !showOverlay && (
         <AppImage

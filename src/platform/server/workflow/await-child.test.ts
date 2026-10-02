@@ -21,6 +21,7 @@ import {
 import { NonRetryableError } from 'cloudflare:workflows';
 import type { CloudflareEnv } from './types';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 // Cloudflare's documented event-type rule.
 const CF_EVENT_TYPE = /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/;
@@ -28,8 +29,8 @@ const CF_EVENT_TYPE = /^[a-zA-Z0-9_][a-zA-Z0-9-_]*$/;
 /** Minimal `step` stub that runs the durable callback once (one engine attempt). */
 function fakeStep(): { step: WorkflowStep; doSpy: ReturnType<typeof vi.fn> } {
   const doSpy = vi.fn((_name: string, fn: () => Promise<unknown>) => fn());
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: notifyParentOfFailure only uses `do`
-  const step = { do: doSpy } as unknown as WorkflowStep;
+  // minimal WorkflowStep stub: notifyParentOfFailure only uses `do`
+  const step = asStub<WorkflowStep>({ do: doSpy });
   return { step, doSpy };
 }
 
@@ -39,10 +40,10 @@ function fakeEnv(sendEvent: ReturnType<typeof vi.fn>): {
   get: ReturnType<typeof vi.fn>;
 } {
   const get = vi.fn(() => ({ sendEvent }));
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal CloudflareEnv stub exposing only the parent binding under test
-  const env = {
+  // minimal CloudflareEnv stub exposing only the parent binding under test
+  const env = asStub<CloudflareEnv>({
     IMAGE_WORKFLOW: { get, create: vi.fn() },
-  } as unknown as CloudflareEnv;
+  });
   return { env, get };
 }
 
@@ -165,14 +166,16 @@ describe('spawnAndAwaitChild', () => {
     });
     const doSpy = vi.fn((_name: string, fn: () => Promise<unknown>) => fn());
     const stepStub = { do: doSpy, waitForEvent };
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub exposing only do + waitForEvent
-    const step = stepStub as unknown as WorkflowStep;
+    // minimal WorkflowStep stub exposing only do + waitForEvent
+    const step = asStub<WorkflowStep>(stepStub);
     const bindingStub = { create, get: vi.fn() };
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Workflow binding stub exposing only create + get
-    const binding = bindingStub as unknown as Workflow<{
-      userId: string;
-      teamId: string;
-    }>;
+    // minimal Workflow binding stub exposing only create + get
+    const binding = asStub<
+      Workflow<{
+        userId: string;
+        teamId: string;
+      }>
+    >(bindingStub);
     return { step, binding, create, waitForEvent };
   }
 
@@ -241,13 +244,15 @@ describe('spawnAndAwaitChild', () => {
     const doSpy = vi.fn((_name: string, fn: () => Promise<unknown>) => fn());
     const instanceStatus = vi.fn().mockResolvedValue(status);
     const get = vi.fn(() => Promise.resolve({ status: instanceStatus }));
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub exposing only do + waitForEvent
-    const step = { do: doSpy, waitForEvent } as unknown as WorkflowStep;
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Workflow binding stub exposing only create + get
-    const binding = { create, get } as unknown as Workflow<{
-      userId: string;
-      teamId: string;
-    }>;
+    // minimal WorkflowStep stub exposing only do + waitForEvent
+    const step = asStub<WorkflowStep>({ do: doSpy, waitForEvent });
+    // minimal Workflow binding stub exposing only create + get
+    const binding = asStub<
+      Workflow<{
+        userId: string;
+        teamId: string;
+      }>
+    >({ create, get });
     return { step, binding, get };
   }
 

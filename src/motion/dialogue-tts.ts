@@ -20,10 +20,14 @@ import type {
 /** ElevenLabs model an ElevenLabs voice's dialogue is recorded with (a Seed voice's is `SEED_AUDIO_MODEL`). */
 export const DIALOGUE_TTS_MODEL = 'eleven_v3';
 
+/** ElevenLabs Voice Changer model a mic take is turned into an ElevenLabs voice with (#1802). */
+export const DIALOGUE_STS_MODEL = 'eleven_multilingual_sts_v2';
+
 /** A dialogue model as the readings list names it. */
 export function dialogueModelLabel(model: string): string {
   if (model === SEED_AUDIO_MODEL) return 'Seed Audio';
   if (model === DIALOGUE_TTS_MODEL) return 'ElevenLabs v3';
+  if (model === DIALOGUE_STS_MODEL) return 'ElevenLabs Voice Changer';
   return model;
 }
 
@@ -40,25 +44,40 @@ export const DIALOGUE_TTS_STABILITY = 0.35;
 export const DIALOGUE_CLIP_TOKEN = 'DIALOGUE';
 
 /**
- * The clip a shot holds for a section of a recording (#1657). The one place
+ * The clip a shot holds for a section of a speech (#1657). The one place
  * that says a generated dialogue clip's `id` IS its section id.
  */
 export function sectionClip(
   section: {
     id: string;
-    recordingId: string;
+    speechId: string;
     sourceKey: string;
     spokenLines: MotionAudioClip['spokenLines'] | null;
+    source: NonNullable<MotionAudioClip['source']>;
+    /** The speech's turns: its doubtful lines are flagged on the clip. */
+    speechTurns: readonly {
+      shotId: string;
+      index: number;
+      heardShare?: number;
+    }[];
+    shotId: string;
   },
   cut: { url: string; durationSeconds: number }
 ): MotionAudioClip {
+  const unclearLines = section.speechTurns.flatMap((turn) =>
+    turn.shotId === section.shotId && turn.heardShare !== undefined
+      ? [{ index: turn.index, heardShare: turn.heardShare }]
+      : []
+  );
   return {
     id: section.id,
     url: cut.url,
     token: DIALOGUE_CLIP_TOKEN,
     durationSeconds: cut.durationSeconds,
     sourceKey: section.sourceKey,
-    recordingId: section.recordingId,
+    speechId: section.speechId,
+    source: section.source,
+    ...(unclearLines.length > 0 && { unclearLines }),
     ...(section.spokenLines && { spokenLines: section.spokenLines }),
   };
 }

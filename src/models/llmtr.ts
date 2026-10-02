@@ -49,6 +49,8 @@ export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
  */
 export const LLMTR_UNMAPPED_MODEL_IDS = [
   'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6-sol', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6-luna', // LLMTR support and pricing not yet verified.
   'x-ai/grok-4.7', // LLMTR support and pricing not yet verified.
   'anthropic/claude-opus-5-fast',
   'deepseek/deepseek-v3.2',
@@ -74,7 +76,6 @@ export const LLMTR_TEXT_MODELS = {
   'google/gemini-3.8-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
   'openai/gpt-6-astra': 'openai/gpt-6-astra',
-  'openai/gpt-5.6-sol': 'openai/gpt-5.6-sol',
   'openai/gpt-5.5': 'openai/gpt-5.5',
   'anthropic/claude-opus-4.8': 'anthropic/claude-opus-4.8',
   'x-ai/grok-4.20': 'xai/grok-4.20-0309-reasoning',
@@ -83,7 +84,6 @@ export const LLMTR_TEXT_MODELS = {
   'openai/gpt-5.6-terra': 'openai/gpt-5.6-terra',
   'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
   'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
-  'openai/gpt-5.6-luna': 'openai/gpt-5.6-luna',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
   'mistralai/mistral-small-2603': 'mistral/mistral-small-latest',
@@ -171,7 +171,6 @@ const LLMTR_TEXT_RATES: Record<
   'google/gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },
   'openai/gpt-6-astra': { input: 10, output: 50 },
-  'openai/gpt-5.6-sol': { input: 4, output: 20 },
   'openai/gpt-5.5': { input: 5, output: 30 },
   'anthropic/claude-opus-4.8': { input: 5, output: 25 },
   'xai/grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
@@ -180,7 +179,6 @@ const LLMTR_TEXT_RATES: Record<
   'openai/gpt-5.6-terra': { input: 2, output: 12 },
   'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
   'anthropic/claude-sonnet-5': { input: 2, output: 10 },
-  'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },
   'mistral/mistral-small-latest': { input: 0.15, output: 0.6 },

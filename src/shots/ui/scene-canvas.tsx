@@ -2,6 +2,7 @@ import { ScenePlayer } from '@/motion/ui/scene-player';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { CanvasMediaStage } from './canvas-media-stage';
 import { ShotDialogueUnderVideo } from './shot-dialogue-readings';
+import { SequenceDialogueLines } from './sequence-dialogue-lines';
 import { ShotMediaDropZone } from './shot-media-drop-zone';
 import { StartingFrameVariants } from './starting-frame-variants';
 import { SequenceDownloadMenu } from './sequence-export-actions';
@@ -11,7 +12,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import type { SceneWithScript } from './use-scenes';
 import { useSetSequenceMusic } from '@/sequences/ui/use-sequences';
 import type { TabValue } from './scene-script-prompts';
-import type { TextToImageModel } from '@/models/models';
+import { safeImageToVideoModel, type TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import {
   selectionScope,
@@ -45,6 +46,8 @@ type SceneCanvasProps = {
   progressMessage?: React.ReactNode;
   retry?: { attempt: number; maxAttempts?: number };
   onSelectShot?: (shotId: string) => void;
+  /** A scene title in the dialogue list was clicked. */
+  onSelectScene?: (sceneId: string) => void;
   /** Scene-level image model (#909) used to generate starting-frame variants. */
   sceneImageModel?: TextToImageModel;
   /** Shots with an in-flight scene-variants generation (#882). */
@@ -61,6 +64,8 @@ type SceneCanvasProps = {
   onAutoPlayConsumed?: () => void;
   /** The shot under the sequence player's playhead (#1771). */
   onPlayingShot?: (shotId: string | undefined) => void;
+  /** The shot under the sequence player's playhead — its lines are marked. */
+  playingShotId?: string;
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -78,6 +83,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   progressMessage,
   retry,
   onSelectShot,
+  onSelectScene,
   sceneImageModel,
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
@@ -86,6 +92,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   autoPlay = false,
   onAutoPlayConsumed,
   onPlayingShot,
+  playingShotId,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -166,7 +173,12 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         aspectRatio={aspectRatio}
         below={
           selectedShot ? (
-            <ShotDialogueUnderVideo shot={selectedShot} />
+            <ShotDialogueUnderVideo
+              shot={selectedShot}
+              videoModel={safeImageToVideoModel(
+                selectedShot.video?.model ?? sequence?.videoModel
+              )}
+            />
           ) : undefined
         }
       >
@@ -202,7 +214,20 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   }
 
   return (
-    <CanvasMediaStage aspectRatio={aspectRatio}>
+    <CanvasMediaStage
+      aspectRatio={aspectRatio}
+      below={
+        <SequenceDialogueLines
+          sequenceId={sequence.id}
+          shots={scopedShots}
+          sequenceShots={shots}
+          scenes={scenes}
+          playingShotId={playingShotId}
+          onSelectShot={onSelectShot}
+          onSelectScene={onSelectScene}
+        />
+      }
+    >
       <SequencePlayer
         clips={playbackClips}
         musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}
@@ -225,6 +250,11 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
               sequenceExport={sequenceExport}
               draftLabel={draftLabel}
               variant="overlay"
+              publish={{
+                teamId: sequence.teamId,
+                sequenceId: sequence.id,
+                defaultTitle: sequence.title,
+              }}
             />
           ) : undefined
         }

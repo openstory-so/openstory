@@ -22,14 +22,16 @@ import {
   locationBibleVersions,
   renderSegments,
   sequenceLocations,
+  sequenceMusicPromptVersions,
+  sequenceMusicVariants,
   sequenceStyleVersions,
   sequences,
   shots,
   styles,
+  user,
   videoVariants,
 } from '@/platform/server/db/schema';
 import type {
-  Frame,
   NewSequence,
   Sequence,
   SequenceStyleSource,
@@ -40,10 +42,19 @@ import type {
   MusicStatus,
   SequenceStatus,
 } from '@/platform/server/db/schema/sequences';
+import { alias } from 'drizzle-orm/sqlite-core';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { parseStyleConfig } from '@/look/style-config';
-import type { ShotReadiness, ShotView } from '@/shots/shot-view';
-import { getLatestPreviewByFrameIds } from '@/stills/server/db/frame-variants';
+import {
+  type ImageStatus,
+  type ShotReadiness,
+  type ShotView,
+  readinessImageStatus,
+} from '@/shots/shot-view';
+import {
+  getLatestPreviewByFrameIds,
+  getPrimaryImageByFrameIds,
+} from '@/stills/server/db/frame-variants';
 import { getPrimaryVideoByShotIds } from '@/motion/server/db/video-variants';
 import {
   buildEventInsert,
@@ -63,7 +74,10 @@ export type ShotProductionReadiness = ShotReadiness &
     shotId: string;
     /** Null while the selected render has no file, even though it is selected. */
     selectedVideoUrl: string | null;
-    imageStatus: Frame['imageStatus'] | null;
+    /** Derived — see `readinessImageStatus`. */
+    imageStatus: ImageStatus;
+    /** The primary still render's run, null when the frame has none or its
+     * newest primary row is a claim no run has stamped yet. */
     imageWorkflowRunId: string | null;
     primaryVideoId: string | null;
     videoWorkflowRunId: string | null;
@@ -88,25 +102,102 @@ import { generateId } from '@/platform/id';
 const { legacyStyleConfig: _legacyStyleConfig, ...sequenceRecordColumns } =
   getTableColumns(sequences);
 
+// The music surface's three rows (#1115): the selected track, the selected
+// prompt, and the newest primary track — whose lifecycle is the status.
+const selectedMusic = alias(sequenceMusicVariants, 'selected_music');
+const selectedMusicPrompt = alias(
+  sequenceMusicPromptVersions,
+  'selected_music_prompt'
+);
+const latestMusic = alias(sequenceMusicVariants, 'latest_music');
+
 /**
  * Sequence columns with the style snapshot resolved from the selected
  * `sequence_style_versions` row (#1600) — the one reader of the snapshot. A
  * sequence with no version reads the legacy column: null for a new row, the
- * old snapshot for one a pre-#1600 worker wrote. Needs {@link joinSelectedStyle}.
+ * old snapshot for one a pre-#1600 worker wrote.
+ *
+ * The music fields (#1115) are projected from the version tables under the
+ * names the dropped mirror columns had: prompt/tags/hash from the selected
+ * prompt row, url/path/generatedAt from the selected track, and status/error
+ * from the newest primary track row — `pending` there reads `generating`, a
+ * `failed` one reads failed with its error; with none in flight the sequence
+ * reads `completed` when a track is selected, else `pending`.
+ * Needs the joins {@link selectSequencesFrom} applies.
  */
-export const sequenceColumns = {
+const sequenceColumns = {
   ...sequenceRecordColumns,
   styleConfig:
     sql<StoredStyleConfig | null>`CASE WHEN ${sequenceStyleVersions.id} IS NULL THEN ${sequences.legacyStyleConfig} ELSE ${sequenceStyleVersions.config} END`.mapWith(
       sequenceStyleVersions.config
     ),
+  musicPrompt: sql<string | null>`${selectedMusicPrompt.prompt}`,
+  musicTags: sql<string | null>`${selectedMusicPrompt.tags}`,
+  musicPromptInputHash: sql<string | null>`${selectedMusicPrompt.inputHash}`,
+  musicUrl: sql<string | null>`${selectedMusic.url}`,
+  musicPath: sql<string | null>`${selectedMusic.storagePath}`,
+  musicGeneratedAt: sql<Date | null>`${selectedMusic.generatedAt}`.mapWith(
+    selectedMusic.generatedAt
+  ),
+  musicStatus: sql<MusicStatus>`CASE
+    WHEN ${latestMusic.status} = 'pending' THEN 'generating'
+    WHEN ${latestMusic.status} = 'failed' THEN 'failed'
+    WHEN ${selectedMusic.id} IS NOT NULL THEN 'completed'
+    ELSE 'pending' END`,
+  musicError: sql<
+    string | null
+  >`CASE WHEN ${latestMusic.status} = 'failed' THEN ${latestMusic.error} END`,
 };
 
-/** The join {@link sequenceColumns} reads from. */
-export const joinSelectedStyle = eq(
-  sequenceStyleVersions.id,
-  sequences.selectedStyleVersionId
-);
+const newestPrimaryMusicId = sql`(select max(primary_music.id) from sequence_music_variants primary_music
+  where primary_music.sequence_id = ${sequences.id}
+  and primary_music.is_primary = 1)`;
+
+/** `select(sequenceColumns)` + the joins it reads from. */
+export const selectSequencesFrom = (db: Database) =>
+  db
+    .select(sequenceColumns)
+    .from(sequences)
+    .leftJoin(
+      sequenceStyleVersions,
+      eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
+    )
+    .leftJoin(
+      selectedMusic,
+      eq(selectedMusic.id, sequences.selectedMusicVariantId)
+    )
+    .leftJoin(
+      selectedMusicPrompt,
+      eq(selectedMusicPrompt.id, sequences.selectedMusicPromptVersionId)
+    )
+    .leftJoin(latestMusic, eq(latestMusic.id, newestPrimaryMusicId));
+
+/**
+ * {@link selectSequencesFrom} with the creator's name and email — the admin
+ * list. Same joins; drizzle cannot share a join chain across select shapes.
+ */
+export const selectSequencesWithCreatorFrom = (db: Database) =>
+  db
+    .select({
+      sequence: sequenceColumns,
+      creatorName: user.name,
+      creatorEmail: user.email,
+    })
+    .from(sequences)
+    .leftJoin(
+      sequenceStyleVersions,
+      eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
+    )
+    .leftJoin(
+      selectedMusic,
+      eq(selectedMusic.id, sequences.selectedMusicVariantId)
+    )
+    .leftJoin(
+      selectedMusicPrompt,
+      eq(selectedMusicPrompt.id, sequences.selectedMusicPromptVersionId)
+    )
+    .leftJoin(latestMusic, eq(latestMusic.id, newestPrimaryMusicId))
+    .leftJoin(user, eq(sequences.createdBy, user.id));
 
 /** The statement that records a style snapshot as a version row. */
 const insertStyleVersion = (
@@ -121,28 +212,12 @@ const insertStyleVersion = (
   }
 ) => db.insert(sequenceStyleVersions).values(row);
 
-export type MusicFieldsUpdate = {
-  musicStatus?: MusicStatus;
-  musicModel?: string;
-  musicError?: string | null;
-  musicUrl?: string;
-  musicPath?: string;
-  musicGeneratedAt?: Date;
-};
-
 // D1 caps a single query at 100 bound parameters. `listShotsByIds` binds one
 // param per sequence id plus the teamId filter, so each query must stay under
 // that ceiling. We chunk the ids well below 100 and union the results; without
 // this a team with enough sequences overflows the limit (and previously tripped
 // the 500-item request cap on `getShotsForSequencesFn` — see #957).
 const SHOTS_BY_IDS_BATCH = 90;
-
-/** `select(sequenceColumns)` + the join it reads from. */
-export const selectSequencesFrom = (db: Database) =>
-  db
-    .select(sequenceColumns)
-    .from(sequences)
-    .leftJoin(sequenceStyleVersions, joinSelectedStyle);
 
 function createSequencesReadMethods(db: Database, teamId: string) {
   const selectSequences = () => selectSequencesFrom(db);
@@ -314,8 +389,6 @@ function createSequencesReadMethods(db: Database, teamId: string) {
               useStartFrame: shots.useStartFrame,
               renderSegmentId: shots.renderSegmentId,
               frameId: frames.id,
-              imageStatus: frames.imageStatus,
-              imageWorkflowRunId: frames.imageWorkflowRunId,
               selectedImageUrl: frameVariants.url,
               selectedVideoId: videoVariants.id,
               selectedVideoUrl: videoVariants.url,
@@ -363,27 +436,38 @@ function createSequencesReadMethods(db: Database, teamId: string) {
       );
       const rows = batched.flat();
 
-      const [primaryByShot, previewByFrame] = await Promise.all([
-        getPrimaryVideoByShotIds(
-          db,
-          rows.map((row) => row.shotId)
-        ),
-        getLatestPreviewByFrameIds(
-          db,
-          rows.flatMap((row) => (row.frameId ? [row.frameId] : []))
-        ),
-      ]);
+      const frameIds = rows.flatMap((row) =>
+        row.frameId ? [row.frameId] : []
+      );
+      const [primaryByShot, primaryImageByFrame, previewByFrame] =
+        await Promise.all([
+          getPrimaryVideoByShotIds(
+            db,
+            rows.map((row) => row.shotId)
+          ),
+          getPrimaryImageByFrameIds(db, frameIds),
+          getLatestPreviewByFrameIds(db, frameIds),
+        ]);
 
       return rows.map((row) => {
         const primary = primaryByShot.get(row.shotId);
+        const primaryImage = row.frameId
+          ? primaryImageByFrame.get(row.frameId)
+          : undefined;
+        const selectedImageUrl = row.selectedImageUrl ?? null;
+        const primaryImageStatus = primaryImage?.status ?? null;
         return {
           sequenceId: row.sequenceId,
           shotId: row.shotId,
           useStartFrame: row.useStartFrame,
           renderSegmentId: row.renderSegmentId,
-          imageStatus: row.imageStatus,
-          imageWorkflowRunId: row.imageWorkflowRunId,
-          selectedImageUrl: row.selectedImageUrl ?? null,
+          imageStatus: readinessImageStatus({
+            selectedImageUrl,
+            primaryImageStatus,
+          }),
+          imageWorkflowRunId: primaryImage?.workflowRunId ?? null,
+          primaryImageStatus,
+          selectedImageUrl,
           previewImageUrl: row.frameId
             ? (previewByFrame.get(row.frameId)?.url ?? null)
             : null,
@@ -446,9 +530,7 @@ export function createSequencesMethods(
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
-      autoGenerateMotion?: boolean;
-      autoGenerateMusic?: boolean;
-      generationStopAt?: GenerationStage;
+      generationStopAt: GenerationStage;
       /** Opt-in to the frame-based workflow; off = reference-only (the default). */
       generateStartFrames?: boolean;
       /** Design a voice per speaking character (#1553); off by default. */
@@ -484,8 +566,6 @@ export function createSequencesMethods(
         imageModel: params.imageModel ?? DEFAULT_IMAGE_MODEL,
         videoModel: params.videoModel ?? DEFAULT_VIDEO_MODEL,
         musicModel: params.musicModel,
-        autoGenerateMotion: params.autoGenerateMotion ?? false,
-        autoGenerateMusic: params.autoGenerateMusic ?? false,
         generationStopAt: params.generationStopAt,
         generateStartFrames: params.generateStartFrames ?? false,
         generateVoices: params.generateVoices ?? false,
@@ -592,16 +672,9 @@ export function createSequencesMethods(
       imageModel?: string;
       videoModel?: string;
       musicModel?: string;
-      musicStatus?: MusicStatus;
-      musicError?: string | null;
-      musicUrl?: string;
-      musicPath?: string;
-      musicGeneratedAt?: Date;
       posterUrl?: string | null;
       includeMusic?: boolean;
-      autoGenerateMotion?: boolean;
-      autoGenerateMusic?: boolean;
-      generationStopAt?: GenerationStage | null;
+      generationStopAt?: GenerationStage;
       /**
        * Continue-from before Images (#1698): the create-time default can
        * still change because no stills exist yet. The general
@@ -785,17 +858,6 @@ export function createSequencesMethods(
         .where(eq(sequences.id, sequenceId));
     },
 
-    updateMusicPrompt: async (
-      sequenceId: string,
-      musicPrompt: string,
-      musicTags: string
-    ): Promise<void> => {
-      await db
-        .update(sequences)
-        .set({ musicPrompt, musicTags, updatedAt: new Date() })
-        .where(eq(sequences.id, sequenceId));
-    },
-
     updateWorkflow: async (
       sequenceId: string,
       workflow: string
@@ -808,37 +870,12 @@ export function createSequencesMethods(
   };
 }
 
-function createSequenceReadMethods(db: Database, sequenceId: string) {
-  return {
-    getMusicStatus: async () => {
-      const [row] = await db
-        .select({
-          musicStatus: sequences.musicStatus,
-          musicUrl: sequences.musicUrl,
-          musicModel: sequences.musicModel,
-        })
-        .from(sequences)
-        .where(eq(sequences.id, sequenceId));
-      return row;
-    },
-  };
-}
-
 export function createSequenceMethods(db: Database, sequenceId: string) {
   return {
-    ...createSequenceReadMethods(db, sequenceId),
-
     updateStatus: async (status: SequenceStatus, error?: string | null) => {
       await db
         .update(sequences)
         .set({ status, statusError: error ?? null, updatedAt: new Date() })
-        .where(eq(sequences.id, sequenceId));
-    },
-
-    updateMusicFields: async (fields: MusicFieldsUpdate) => {
-      await db
-        .update(sequences)
-        .set({ ...fields, updatedAt: new Date() })
         .where(eq(sequences.id, sequenceId));
     },
   };

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { analyzeFailures, analyzeLoadedFailures } from './failure-analysis';
 import type {
-  Frame,
+  FrameVariant,
   SceneRow,
   Shot,
   VideoVariant,
@@ -30,7 +30,8 @@ const render = (overrides: Partial<VideoVariant> = {}) =>
 function makeShot(
   params: {
     shot?: Partial<Shot>;
-    frame?: Partial<Frame>;
+    /** The newest primary still render (#1942); none by default. */
+    primary?: Partial<FrameVariant>;
     sources?: Partial<ShotViewSources>;
   } = {}
 ): ShotView {
@@ -42,6 +43,8 @@ function makeShot(
     durationMs: 3000,
     useStartFrame: null,
     selectedMotionPromptVersionId: null,
+    selectedSpecVersionId: null,
+    pendingSpecVersionId: null,
     audioClips: null,
     renderSegmentId: 'seg-1',
     deletedAt: null,
@@ -52,8 +55,6 @@ function makeShot(
   const frame = frameFixture({
     shotId: shot.id,
     sequenceId: shot.sequenceId,
-    imageStatus: 'completed',
-    ...params.frame,
   });
   const video = render();
   return toShotView(shot, frame, {
@@ -64,6 +65,13 @@ function makeShot(
     }),
     preview: null,
     imagePromptVersion: null,
+    primaryImage: params.primary
+      ? frameVariantFixture({
+          frameId: frame.id,
+          sequenceId: shot.sequenceId,
+          ...params.primary,
+        })
+      : null,
     video,
     primaryVideo: video,
     motionPrompt: {
@@ -106,13 +114,14 @@ function makeSequence(overrides: Partial<Sequence> = {}): Sequence {
     musicTags: 'epic,cinematic',
     musicPromptInputHash: null,
     includeMusic: true,
+    selectedMusicVariantId: null,
+    selectedMusicPromptVersionId: null,
+    pendingPromoteMusicVariantId: null,
     statusError: null,
     workflowRunId: null,
     posterUrl: null,
     readyEmailSentAt: null,
-    autoGenerateMotion: false,
-    autoGenerateMusic: false,
-    generationStopAt: null,
+    generationStopAt: 'images',
     generateStartFrames: true,
     generateVoices: false,
     draftMotion: false,
@@ -136,17 +145,17 @@ describe('analyzeFailures', () => {
     const shots = [
       makeShot({
         shot: { sceneId: 'scene-1' },
-        frame: { imageStatus: 'failed' },
+        primary: { status: 'failed' },
         sources: { image: null },
       }),
       makeShot({
         shot: { id: 'shot-2', sceneId: 'scene-2' },
-        frame: { imageStatus: 'failed' },
+        primary: { status: 'failed' },
         sources: { image: null },
       }),
       makeShot({
         shot: { id: 'shot-3', sceneId: 'scene-3' },
-        frame: { imageStatus: 'failed' },
+        primary: { status: 'failed' },
         sources: { image: null },
       }),
     ];
@@ -206,8 +215,8 @@ describe('analyzeFailures', () => {
           motionPrompt: null,
           video: null,
           primaryVideo: render({ status: 'pending', url: null }),
+          image: null,
         },
-        frame: { imageStatus: 'pending' },
       }),
     ];
     const sequence = makeSequence({
@@ -260,9 +269,9 @@ describe('analyzeFailures', () => {
   test('content-checker image failures are a warning, not a hard error', () => {
     const shots = [
       makeShot({
-        frame: {
-          imageStatus: 'failed',
-          imageError:
+        primary: {
+          status: 'failed',
+          error:
             'The content could not be processed because it contained material flagged by a content checker.',
         },
         sources: { image: null },
@@ -282,15 +291,15 @@ describe('analyzeFailures', () => {
   test('mixed content-checker and infrastructure image failures stay an error', () => {
     const shots = [
       makeShot({
-        frame: {
-          imageStatus: 'failed',
-          imageError: 'material flagged by a content checker.',
+        primary: {
+          status: 'failed',
+          error: 'material flagged by a content checker.',
         },
         sources: { image: null },
       }),
       makeShot({
         shot: { id: 'shot-2' },
-        frame: { imageStatus: 'failed', imageError: 'Model timeout' },
+        primary: { status: 'failed', error: 'Model timeout' },
         sources: { image: null },
       }),
     ];
@@ -305,7 +314,7 @@ describe('analyzeFailures', () => {
   test('image-only failures', () => {
     const shots = [
       makeShot({
-        frame: { imageStatus: 'failed', imageError: 'Model timeout' },
+        primary: { status: 'failed', error: 'Model timeout' },
         sources: { image: null, video: null, primaryVideo: null },
       }),
       makeShot({ shot: { id: 'shot-2' } }),
@@ -337,7 +346,7 @@ describe('analyzeFailures', () => {
       makeShot({ shot: { id: 'shot-6' } }),
       makeShot({
         shot: { id: 'shot-7' },
-        frame: { imageStatus: 'failed', imageError: 'content flag' },
+        primary: { status: 'failed', error: 'content flag' },
         sources: { image: null, video: null, primaryVideo: null },
       }),
     ];
@@ -429,7 +438,7 @@ describe('analyzeFailures', () => {
   test('mixed failures (image + motion)', () => {
     const shots = [
       makeShot({
-        frame: { imageStatus: 'failed', imageError: 'Image error' },
+        primary: { status: 'failed', error: 'Image error' },
         sources: { image: null },
       }),
       makeShot({
@@ -452,7 +461,7 @@ describe('analyzeFailures', () => {
   test('motion failed but no thumbnail skips motion retry', () => {
     const shots = [
       makeShot({
-        frame: { imageStatus: 'failed' },
+        primary: { status: 'failed' },
         sources: {
           image: null,
           video: null,
@@ -593,9 +602,9 @@ describe('analyzeLoadedFailures', () => {
   test('loaded shot-level content failures produce the content-checker banner', () => {
     const shots = [
       makeShot({
-        frame: {
-          imageStatus: 'failed',
-          imageError:
+        primary: {
+          status: 'failed',
+          error:
             'The content could not be processed because it contained material flagged by a content checker.',
         },
         sources: { image: null },

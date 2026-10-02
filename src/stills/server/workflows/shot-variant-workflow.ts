@@ -114,6 +114,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
             description: `Primary source scene — generate ${gridConfig?.count ?? 9} variant shots from this image`,
             role: 'primary',
           },
+          ...(input.referenceImages ?? []),
           ...(input.characterReferences ?? []),
           ...(input.locationReferences ?? []),
           ...(input.elementReferences ?? []),
@@ -168,6 +169,9 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           inputHash: await tileInputHash(input),
           status: 'generating',
           workflowRunId,
+          // A sheet is never the frame's still, so its render never speaks
+          // for the frame's status (#1942).
+          isPrimary: false,
         });
 
         await getGenerationChannel(input.sequenceId).emit(

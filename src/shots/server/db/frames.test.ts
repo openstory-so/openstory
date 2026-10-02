@@ -121,13 +121,10 @@ describe('frames.update', () => {
       orderIndex: 0,
       role: 'first',
     });
-    // Seed the pointer + the frame-owned lifecycle as the select path would.
+    // Seed the pointer as the select path would.
     await db
       .update(frames)
-      .set({
-        selectedImageVersionId: 'ver-1',
-        imageStatus: 'completed',
-      })
+      .set({ selectedImageVersionId: 'ver-1' })
       .where(eq(frames.id, frame.id));
 
     await m.update(frame.id, { orderIndex: 2, role: 'key' });
@@ -141,7 +138,6 @@ describe('frames.update', () => {
     expect(refreshed.role).toBe('key');
     // Selection-owned columns untouched.
     expect(refreshed.selectedImageVersionId).toBe('ver-1');
-    expect(refreshed.imageStatus).toBe('completed');
   });
 
   it('throws on a missing frame by default, returns undefined when opted out', async () => {

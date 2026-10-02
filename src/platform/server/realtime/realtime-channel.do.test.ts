@@ -19,6 +19,7 @@ import {
   SSE_MAX_BUFFERED_BYTES,
   SSE_MAX_BUFFERED_CHUNKS,
 } from './realtime-channel.do';
+import { asStub } from '@/test/as-stub';
 
 const channelLogger = getLogger(['openstory', 'realtime', 'channel']);
 
@@ -139,10 +140,10 @@ function createHarness(): Harness {
   };
 
   const channel = new RealtimeChannel(
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node sqlite stand-in for DO storage
-    ctx as unknown as DurableObjectState,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- DO under test does not read env
-    {} as Cloudflare.Env
+    // Node sqlite stand-in for DO storage
+    asStub<DurableObjectState>(ctx),
+    // DO under test does not read env
+    asStub<Cloudflare.Env>({})
   );
   return {
     channel,

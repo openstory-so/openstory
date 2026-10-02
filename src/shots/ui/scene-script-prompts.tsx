@@ -1,5 +1,5 @@
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost, costButtonClassName } from '@/billing/ui/action-cost';
 import type { ModelGenerationStatus } from '@/models/ui/pickers/base-model-selector';
 import { ImageModelSelector } from '@/models/ui/pickers/image-model-selector';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
@@ -75,6 +75,8 @@ import {
   shotStalenessUnknown,
   useShotStaleness,
 } from './use-shot-staleness';
+import { invalidateRebuiltPrompts, useShotSpec } from './use-shot-spec';
+import { ShotSpecForm } from './shot-spec-form';
 import {
   sceneKeys,
   useSaveSceneScript,
@@ -112,11 +114,7 @@ import {
 } from '@/models/content-rejection';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { motionGenerateLabel } from '@/shots/packed-clip-window';
-import { motionReferenceSupport } from '@/motion/reference-support';
-import type {
-  AssemblableMotionPrompt,
-  MotionDialogue,
-} from '@/shots/scene-analysis.schema';
+import type { AssemblableMotionPrompt } from '@/shots/scene-analysis.schema';
 
 import { useShotPromptStream } from './use-shot-prompt-stream';
 import type { ShotView } from '@/shots/shot-view';
@@ -148,13 +146,9 @@ import { SceneStaleShots } from './scene-stale-shots';
 import { SceneElementsTab } from './scene-elements-tab';
 import { SceneLocationTab } from './scene-location-tab';
 import { SceneMusicFacet } from './scene-music-facet';
-import { MotionDialoguePanel } from './motion-dialogue-panel';
 import { SceneScriptTab } from './scene-script-tab';
-import {
-  SceneDialogueLines,
-  ShotDialogueLines,
-  ShotDialogueReadings,
-} from './shot-dialogue-readings';
+import { SceneSettingForm } from './scene-setting-form';
+import { SceneDialogueLines } from './shot-dialogue-readings';
 import { ShotDurationField } from './shot-duration-field';
 import { sumShotSeconds } from './scene-group';
 
@@ -324,6 +318,8 @@ type SceneScriptPromptsProps = {
   facetShotIds?: string[] | null;
   /** Music facet editable only at sequence scope. */
   musicEditable?: boolean;
+  /** Scene scope: the scene's location is picked on the Locations tab. */
+  sceneScope?: boolean;
   /**
    * The scene in focus — the selected shot's scene at shot scope, the selected
    * scene at scene scope. Undefined when the selection spans several scenes (or
@@ -345,6 +341,10 @@ type SceneScriptPromptsProps = {
   scopeStalenessFailed?: boolean;
   /** Navigate down to a shot — same handler the left rail uses. */
   onSelectShot?: (shotId: string) => void;
+  /** Every scene, for the scene chips across several scenes. */
+  scenes?: readonly SceneWithScript[];
+  /** Navigate down to a scene — same handler the left rail uses. */
+  onSelectScene?: (sceneId: string) => void;
 };
 
 export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
@@ -379,12 +379,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   onCompareDivergent,
   facetShotIds = null,
   musicEditable = false,
+  sceneScope = false,
   scene,
   scopeShots,
   filmSeconds,
   scopeStaleness,
   scopeStalenessFailed,
   onSelectShot,
+  scenes,
+  onSelectScene,
 }) => {
   const scriptSceneId = scene?.id;
   const scriptText = scene?.script?.extract;
@@ -491,6 +494,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     sequenceId,
     shotId: shot?.id,
   });
+  const { data: shotSpec } = useShotSpec({ sequenceId, shotId: shot?.id });
+  // The prompt a Rebuild or Rewrite would replace, awaiting the user's yes.
+  const [confirmReplace, setConfirmReplace] = useState<
+    'visual' | 'motion' | null
+  >(null);
 
   // "Update all" (#1077) — enqueues the durable UpdateStaleShotsWorkflow,
   // which recomputes staleness server-side and regenerates whatever reads
@@ -531,11 +539,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     ]
   );
 
-  const {
-    items: mentionItems,
-    elements,
-    onMentionRename,
-  } = useSequenceMentionItems(sequenceId);
+  const { items: mentionItems, onMentionRename } =
+    useSequenceMentionItems(sequenceId);
   // The realtime hook owns the per-prompt-type stream status — `'pending'`
   // covers the window between a successful enqueue and the first delta, so
   // the button stays in its busy state without a sibling useState to sync.
@@ -546,6 +551,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     mutationFn: (vars: {
       promptType: 'visual' | 'motion';
       force?: boolean;
+      replaceWritten?: boolean;
     }) => {
       if (!shot?.id) throw new Error('shot required');
       return regenerateShotPromptFn({
@@ -554,6 +560,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           shotId: shot.id,
           promptType: vars.promptType,
           force: vars.force,
+          replaceWritten: vars.replaceWritten,
         },
       });
     },
@@ -580,19 +587,15 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       if (result.alreadyUpToDate) {
         toast.info('Prompt is already up to date');
       } else if (result.alreadyInFlight) {
-        // Server-side dedup hit (#1085): a run — this tab's, another tab's,
-        // or a teammate's — is already producing this prompt.
         toast.info('This prompt is already being regenerated');
+      } else if (result.rebuilt) {
+        toast.success('Rebuilt the prompts from the shot spec');
+        if (shot?.id) {
+          void invalidateRebuiltPrompts(queryClient, sequenceId, shot.id);
+        }
       } else {
-        // Workflow is now enqueued; hold the busy state via the stream's
-        // `'pending'` status until deltas start arriving. Naturally cleared
-        // when the DELTA/COMPLETED/FAILED reducer cases fire.
         markPromptPending(vars.promptType);
-        toast.success(
-          vars.promptType === 'visual'
-            ? 'Regenerating visual prompt…'
-            : 'Regenerating motion prompt…'
-        );
+        toast.success('Rewriting the shot…');
       }
       // Deliberately no staleness invalidation here: the workflow has only been
       // enqueued, so a refetch now would answer 'stale' and undo the optimistic
@@ -732,9 +735,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   );
 
   const handleSaveMotionPrompt = useCallback(
-    (text: string, dialogue?: MotionDialogue) => {
+    (text: string) => {
       saveMotionPrompt.mutate(
-        { text, dialogue },
+        { text },
         {
           onSuccess: (r) => {
             dirtyMotionRef.current = false;
@@ -887,14 +890,12 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     motionModelConfig.requiredStyleCategory !== styleCategory
       ? DEFAULT_VIDEO_MODEL
       : aspectCompatibleMotion;
+  // Preview and submit share this model. Leftover Grok is 1:1; using the
+  // packing model here would show a packed N-shot clip then generate one shot.
   const regenMotionModel: ImageToVideoModel =
     shot && leftoverGrokShotIds?.has(shot.id)
       ? 'grok_imagine_video_1_5'
       : effectiveMotionModel;
-  // Preview and submit share this model. Leftover Grok is 1:1; using the
-  // packing model here would show a packed N-shot clip then generate one shot.
-  const motionTakesAudioReferences =
-    motionReferenceSupport(regenMotionModel).audio;
   // Draft first for this shot (#1756): the sequence's Draft first switch,
   // honoured while the model has a draft mode and this team can reach Ark.
   // A final only ever comes from an approved draft (Render final below).
@@ -984,7 +985,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           f.id === shot.id
             ? {
                 ...f,
-                frame: { ...f.frame, imageStatus: 'generating' as const },
+                imageStatus: 'generating' as const,
+                imageError: null,
                 imagePromptVersion:
                   promptOverride && f.imagePromptVersion
                     ? { ...f.imagePromptVersion, text: promptOverride }
@@ -1001,7 +1003,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       if (!oldShot) return oldShot;
       return {
         ...oldShot,
-        frame: { ...oldShot.frame, imageStatus: 'generating' as const },
+        imageStatus: 'generating' as const,
+        imageError: null,
         imagePromptVersion:
           promptOverride && oldShot.imagePromptVersion
             ? { ...oldShot.imagePromptVersion, text: promptOverride }
@@ -1214,18 +1217,19 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       : [];
 
   // Transparent pricing under Generate Image / Generate Motion (#1140).
-  const { pricing: falPricing } = useFalPricing();
+  const { pricing: falPricing, isPending: pricingPending } = useFalPricing();
   const imageCostEstimate = useMemo(() => {
-    if (!falPricing) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(
       regenImageModel,
       aspectRatio ?? DEFAULT_ASPECT_RATIO,
       1,
       { pricing: falPricing, resolution }
     );
-  }, [falPricing, regenImageModel, aspectRatio, resolution]);
+  }, [falPricing, pricingPending, regenImageModel, aspectRatio, resolution]);
   const motionCostEstimate = useMemo(() => {
-    if (!falPricing || !shot) return null;
+    if (!shot) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     const duration = resolveShotDuration({
       durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
       model: regenMotionModel,
@@ -1243,6 +1247,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     });
   }, [
     falPricing,
+    pricingPending,
     shot,
     regenMotionModel,
     regenAsDraft,
@@ -1253,7 +1258,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   ]);
   // The final of an approved draft is always 1080p (#1756).
   const finalCostEstimate = useMemo(() => {
-    if (!falPricing || !shot || !selectedDraft) return null;
+    if (!shot || !selectedDraft) return null;
+    if (!falPricing) return pricingPending ? undefined : null;
     const duration = resolveShotDuration({
       durationMs: promptPreview?.packedDurationMs ?? shot.durationMs,
       model: regenMotionModel,
@@ -1268,6 +1274,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     });
   }, [
     falPricing,
+    pricingPending,
     shot,
     selectedDraft,
     regenMotionModel,
@@ -1285,16 +1292,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     staleTime: Infinity,
   });
   const storageDomain = storageConfig?.storageDomain ?? null;
-
-  // This shot's readings (#1657) — one list for either dialogue panel below.
-  const shotLines = shot?.dialogue?.presence ? shot.dialogue.lines : [];
-  const dialogueReadings = shot ? (
-    <ShotDialogueReadings
-      sequenceId={sequenceId}
-      shotId={shot.id}
-      lines={shotLines}
-    />
-  ) : undefined;
 
   // Flipping this re-stales the motion prompt — the two modes use different
   // templates. See `usesStartFrame`.
@@ -1398,13 +1395,22 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
     editedMotionPrompt.trim().length > 0 &&
     editedMotionPrompt.trim() !== rawMotionPrompt.trim();
 
-  // "Regenerate" promises a previous version to replace. Reference-only skips
-  // the visual-prompt phase entirely, so its shots reach this panel with no
-  // image prompt ever written — and the button offering to redo one that does
-  // not exist is why it reads wrong. Keyed on the prompt itself rather than on
-  // the mode, so it is also right for a shot whose prompt generation failed.
-  const visualPromptAction = imagePrompt?.trim() ? 'Regenerate' : 'Generate';
-  const motionPromptAction = rawMotionPrompt.trim() ? 'Regenerate' : 'Generate';
+  // A current spec rebuilds the prompt for free. A stale or missing one needs
+  // Rewrite shot, one LLM call that refills the spec first (#1929).
+  const rewritesShot =
+    shotSpec?.verdict === 'stale' || shotSpec?.verdict === 'missing';
+  const promptAction = rewritesShot
+    ? { label: 'Rewrite shot', busy: 'Rewriting…' }
+    : { label: 'Rebuild prompt', busy: 'Rebuilding…' };
+  const promptWritten = {
+    visual: shotSpec?.visualWritten === true,
+    motion: shotSpec?.motionWritten === true,
+  };
+  // A written prompt is replaced only after the user says so.
+  const requestPromptRebuild = (promptType: 'visual' | 'motion') => {
+    if (promptWritten[promptType]) setConfirmReplace(promptType);
+    else regeneratePromptMutation.mutate({ promptType, force: true });
+  };
   // Generate Image / Generate Motion spend credits; an empty (or whitespace)
   // base prompt has nothing to render. Generate Prompt above is the way out.
   const hasVisualPrompt = !isBlankPrompt(editedImagePrompt);
@@ -1412,7 +1418,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
 
   // Check if image is currently generating
   const isGenerating =
-    shot?.frame.imageStatus === 'generating' ||
+    shot?.imageStatus === 'generating' ||
     (shot?.id ? regeneratingImages.has(shot.id) : false);
 
   // Check if motion is currently generating
@@ -1553,6 +1559,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           staleness={scopeStaleness}
           stalenessFailed={scopeStalenessFailed}
           onSelectShot={onSelectShot}
+          scenes={scenes}
+          onSelectScene={onSelectScene}
           onUpdateAll={handleScopeUpdateAll}
           isUpdating={updateStaleShots.isRunning}
         />
@@ -1624,6 +1632,21 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           onCopy={(text) => void handleCopy(text, 'script')}
           mentionItems={mentionItems}
           onMentionRename={onMentionRename}
+          setting={
+            scene ? (
+              <SceneSettingForm
+                // A save (or a script edit elsewhere) resets the fields.
+                key={[
+                  scene.id,
+                  scene.timeOfDay,
+                  scene.continuity?.lightingSetup,
+                  scene.continuity?.colorPalette,
+                ].join('|')}
+                scene={scene}
+                sequenceId={sequenceId}
+              />
+            ) : null
+          }
           dialogue={
             <SceneDialogueLines
               sequenceId={sequenceId}
@@ -1656,6 +1679,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             <Alert>
               <AlertDescription>{shortenStatus.success}</AlertDescription>
             </Alert>
+          )}
+
+          {shot && (
+            <ShotSpecForm
+              sequenceId={sequenceId}
+              shotId={shot.id}
+              part="still"
+            />
           )}
 
           {/* Editable prompt */}
@@ -1848,15 +1879,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           <Button
             type="button"
             variant="outline"
-            onClick={() =>
-              regeneratePromptMutation.mutate({
-                promptType: 'visual',
-                force: true,
-              })
-            }
+            onClick={() => requestPromptRebuild('visual')}
             disabled={!shot || isRegeneratingVisualPrompt}
             className="w-full"
-            aria-label={`${visualPromptAction} visual prompt`}
           >
             {isRegeneratingVisualPrompt ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1864,8 +1889,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
             {isRegeneratingVisualPrompt
-              ? `${visualPromptAction}ing…`
-              : `${visualPromptAction} Prompt`}
+              ? promptAction.busy
+              : promptAction.label}
           </Button>
 
           {divergentImageVariant && (
@@ -1891,16 +1916,18 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               disabled={
                 isGenerating || variantIsGenerating || !shot || !hasVisualPrompt
               }
-              className="w-full"
+              className={costButtonClassName}
             >
-              {(isGenerating || variantIsGenerating) && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isGenerating || variantIsGenerating
-                ? 'Generating…'
-                : imageModelGenerated
-                  ? 'Regenerate Image'
-                  : 'Generate Image'}
+              <InButtonCost estimate={imageCostEstimate}>
+                {(isGenerating || variantIsGenerating) && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                {isGenerating || variantIsGenerating
+                  ? 'Generating…'
+                  : imageModelGenerated
+                    ? 'Regenerate Image'
+                    : 'Generate Image'}
+              </InButtonCost>
             </Button>
             <p
               className={
@@ -1914,7 +1941,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             >
               {EMPTY_GENERATION_PROMPT_MESSAGE}
             </p>
-            <ActionCost estimate={imageCostEstimate} />
           </div>
 
           {/* Manual still inject (#1108) — upload replaces the selected image;
@@ -1981,6 +2007,14 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           {/* Thinking bar while the model reasons, before the regenerated
               prompt starts streaming back ('pending' → first delta). */}
           <ThinkingBar active={shotPromptStream.motion.status === 'pending'} />
+
+          {shot && (
+            <ShotSpecForm
+              sequenceId={sequenceId}
+              shotId={shot.id}
+              part="motion"
+            />
+          )}
 
           {/* Editable raw motion prompt */}
           <div className="space-y-2">
@@ -2095,44 +2129,6 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             )}
           </div>
 
-          {/* What the shot says (#1657) — `shot.dialogue`, the same resolved
-              lines a render speaks and assembly appends to the prompt above —
-              plus the one thing only this panel can say: whose recorded voice
-              speaks them. The save rides the prompt save, so until the shot
-              has a motion prompt the lines show with no voice picker. */}
-          <MotionDialoguePanel
-            dialogue={shot?.dialogue}
-            elements={elements}
-            clip={shot?.audioClips?.[0] ?? null}
-            shotSeconds={
-              shot?.durationMs && shot.durationMs > 0
-                ? shot.durationMs / 1000
-                : undefined
-            }
-            onChange={
-              shot?.motionPrompt && motionTakesAudioReferences
-                ? (next) =>
-                    handleSaveMotionPrompt(
-                      editedMotionPrompt || rawMotionPrompt,
-                      next
-                    )
-                : null
-            }
-            disabled={saveMotionPrompt.isPending || isAwaitingMotionPrompt}
-            source={shot?.motionPrompt ? 'prompt' : 'script'}
-            readings={dialogueReadings}
-            lineEditor={
-              shot ? (
-                <ShotDialogueLines
-                  key={shot.id}
-                  sequenceId={sequenceId}
-                  shotId={shot.id}
-                  lines={shotLines}
-                />
-              ) : undefined
-            }
-          />
-
           {/* Model selector — per-asset (#1066): seeded from the shot's selected
               video version; a pick applies to the next generation. */}
           <div className="space-y-2">
@@ -2211,15 +2207,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           <Button
             type="button"
             variant="outline"
-            onClick={() =>
-              regeneratePromptMutation.mutate({
-                promptType: 'motion',
-                force: true,
-              })
-            }
+            onClick={() => requestPromptRebuild('motion')}
             disabled={!shot || isRegeneratingMotionPrompt}
             className="w-full"
-            aria-label={`${motionPromptAction} motion prompt`}
           >
             {isRegeneratingMotionPrompt ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -2227,8 +2217,8 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
               <RefreshCw className="mr-2 h-4 w-4" />
             )}
             {isRegeneratingMotionPrompt
-              ? `${motionPromptAction}ing…`
-              : `${motionPromptAction} Prompt`}
+              ? promptAction.busy
+              : promptAction.label}
           </Button>
 
           {divergentVideoVariant && (
@@ -2336,7 +2326,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
             <div className="flex flex-col gap-1">
               <Button
                 type="button"
-                className="w-full"
+                className={costButtonClassName}
                 disabled={
                   renderAtQuality.isPending ||
                   isGeneratingMotion ||
@@ -2344,13 +2334,9 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 }
                 onClick={() => renderAtQuality.mutate()}
               >
-                <span className="relative">
+                <InButtonCost estimate={finalCostEstimate} amountWidth="double">
                   {renderAtQuality.isPending ? 'Starting…' : 'Render final'}
-                  <ActionCost
-                    estimate={finalCostEstimate}
-                    className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
-                  />
-                </span>
+                </InButtonCost>
               </Button>
             </div>
           )}
@@ -2380,12 +2366,16 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                 !shot ||
                 !hasMotionPrompt
               }
-              className="w-full"
+              className={costButtonClassName}
             >
               {(isGeneratingMotion || videoVariantIsGenerating) && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              <span className="relative">
+              <InButtonCost
+                estimate={motionCostEstimate}
+                onPrimary={!selectedDraft}
+                amountWidth="double"
+              >
                 {isGeneratingMotion || videoVariantIsGenerating
                   ? 'Generating…'
                   : motionGenerateLabel(
@@ -2393,11 +2383,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
                       videoModelGenerated,
                       regenAsDraft
                     )}
-                <ActionCost
-                  estimate={motionCostEstimate}
-                  className="absolute top-1/2 left-full ml-2 -translate-y-1/2"
-                />
-              </span>
+              </InButtonCost>
             </Button>
             <p
               className={
@@ -2473,7 +2459,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       </TabsContent>
 
       <TabsContent value="location">
-        <SceneLocationTab sequenceId={sequenceId} shotIds={facetShotIds} />
+        <SceneLocationTab
+          sequenceId={sequenceId}
+          shotIds={facetShotIds}
+          scene={sceneScope ? scene : undefined}
+        />
       </TabsContent>
 
       <TabsContent value="elements">
@@ -2500,6 +2490,54 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
           }
         />
       )}
+
+      <AlertDialog
+        open={confirmReplace !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmReplace(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Replace your written prompt?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {rewritesShot
+                ? 'Rewrite shot refills the shot spec. Replace your text with a prompt built from it, or keep your text.'
+                : 'Replace your text with a prompt built from the shot spec.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {rewritesShot && (
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmReplace) {
+                    regeneratePromptMutation.mutate({
+                      promptType: confirmReplace,
+                      force: true,
+                    });
+                  }
+                }}
+              >
+                Keep mine
+              </AlertDialogAction>
+            )}
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmReplace) {
+                  regeneratePromptMutation.mutate({
+                    promptType: confirmReplace,
+                    force: true,
+                    replaceWritten: true,
+                  });
+                }
+              }}
+            >
+              Replace
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Tabs>
   );
 };

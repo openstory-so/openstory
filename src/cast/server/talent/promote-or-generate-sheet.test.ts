@@ -5,6 +5,7 @@ import {
   libraryTalentGenerateDedupId,
   libraryTalentUploadDedupId,
 } from './library-talent-sheet-dedup';
+import { asStub } from '@/test/as-stub';
 
 type TriggerOptions = { deduplicationId?: string };
 
@@ -70,13 +71,13 @@ function talentRow(opts: {
 }
 
 function scopedDb(row: ReturnType<typeof talentRow>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only getWithRelations
-  return {
+  // stub covering only getWithRelations
+  return asStub<ScopedDb>({
     talent: {
       ...sheetClaim,
       getWithRelations: vi.fn(async () => row),
     },
-  } as unknown as ScopedDb;
+  });
 }
 
 function lastTrigger() {

@@ -15,6 +15,7 @@
  * § prompt versioning and docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { ShotDialogueSectionSource } from './shot-dialogue-sections';
 import type {
   MotionAudio,
   MotionDialogue,
@@ -56,10 +57,27 @@ export type MotionAudioClip = {
    */
   spokenLines?: { index: number; text: string }[];
   /**
-   * The `dialogue_recordings` row this clip was cut from (#1657); the clip's
+   * The `dialogue_speeches` row this clip was cut from (#1657); the clip's
    * `id` is then its `shot_dialogue_sections.id`. Absent on a row from before
-   * recordings, and on a user-bound element clip.
+   * speeches, and on a user-bound element clip.
    */
+  speechId?: string;
+  /**
+   * The section's source: `mic` marks the user's own take (#1802). Absent on
+   * clips cut before it was stamped.
+   */
+  source?: ShotDialogueSectionSource;
+  /**
+   * This shot's lines the take check could not find (#1802), by line index,
+   * with the share of each heard. Absent: every line was heard.
+   */
+  unclearLines?: { index: number; heardShare: number }[];
+  /**
+   * @deprecated The pre-#1913 name of `speechId`. The #1913 migration rewrites
+   * stored clips, but a workflow payload snapshotted before the deploy can
+   * still carry it. Read through `clipSpeechId`, never directly.
+   */
+  // ponytail: delete with `clipSpeechId`'s fallback once no pre-#1913 run can be in flight.
   recordingId?: string;
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';
@@ -92,6 +110,8 @@ export type ShotPromptType = (typeof SHOT_PROMPT_TYPES)[number];
 
 const PROMPT_VARIANT_SOURCES = [
   'ai-generated',
+  // Shot-list derivation consumes no rendered start frame (#1892).
+  'derived',
   'user-edit',
   'regenerated',
   'restored',
@@ -120,7 +140,7 @@ export const shotPromptVersions = snakeCase.table(
       .references(() => shots.id, { onDelete: 'cascade' }),
     promptType: text().$type<ShotPromptType>().notNull(),
 
-    // Full prompt text (mirrors the cached column on `shots`).
+    // Full prompt text.
     text: text().notNull(),
     // Structured prompt components (when available — visual prompts split into
     // composition / lighting / etc.; user-edits may not have components).
@@ -159,6 +179,9 @@ export const shotPromptVersions = snakeCase.table(
     // stamp, all of which were written before reference-only shipped and so
     // were image-to-video; every write input requires an explicit value.
     usesStartFrame: integer({ mode: 'boolean' }).default(true).notNull(),
+    // The `shot_spec_versions` row this text was derived from (#1915). Null
+    // for text that was not derived from a spec (an LLM or a user wrote it).
+    specVersionId: text(),
 
     // SHA-256 of the upstream context that produced an AI prompt; null for
     // user-edits since they have no upstream input surface.

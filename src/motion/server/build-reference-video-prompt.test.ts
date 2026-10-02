@@ -5,7 +5,7 @@ import {
   buildReferenceVideoPrompt,
   type ReferencePromptBinding,
 } from './build-reference-video-prompt';
-import { assembleMotionPrompt } from './assemble-motion-prompt';
+import { buildMotionShotPrompt } from './build-motion-prompts';
 import { buildMotionReferenceImages } from './build-motion-references';
 
 const STILL = 'https://example.com/still.png';
@@ -537,7 +537,7 @@ describe('a dialogue line bound to a voice element', () => {
   };
 
   it('reaches the request as @Audio1 with the file attached', () => {
-    const prompt = assembleMotionPrompt({
+    const prompt = buildMotionShotPrompt({
       motionPrompt: {
         fullPrompt: 'Slow push in on Sarah at the window.',
         dialogue: {
@@ -586,7 +586,7 @@ describe('recorded dialogue token versus ordinary prose (#1720)', () => {
     (bindRecording) => {
       const config = getMotionReferenceEndpoint('minimax_h3_max');
       if (!config) throw new Error('MiniMax reference endpoint missing');
-      const base = assembleMotionPrompt({
+      const base = buildMotionShotPrompt({
         model: 'minimax_h3_max',
         motionPrompt: {
           fullPrompt: 'STEVE looks up.',

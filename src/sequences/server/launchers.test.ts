@@ -19,6 +19,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
 
 const triggerWorkflowMock = vi.fn();
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
@@ -87,9 +88,7 @@ function makeScopedDb(opts: {
   }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
   musicPrompt?: string | null;
-  generationStopAt?: GenerationStage | null;
-  autoGenerateMotion?: boolean;
-  autoGenerateMusic?: boolean;
+  generationStopAt?: GenerationStage;
 }) {
   const updateStatus = vi.fn();
   const claimWorkflowSlot = vi.fn<
@@ -113,9 +112,7 @@ function makeScopedDb(opts: {
     videoModel: 'not-a-real-video-model',
     workflowRunId: opts.workflowRunId,
     musicPrompt: opts.musicPrompt ?? null,
-    generationStopAt: opts.generationStopAt ?? null,
-    autoGenerateMotion: opts.autoGenerateMotion ?? false,
-    autoGenerateMusic: opts.autoGenerateMusic ?? false,
+    generationStopAt: opts.generationStopAt ?? 'images',
     status: 'failed',
   }));
   const getStyleById = vi.fn(async () =>
@@ -136,8 +133,8 @@ function makeScopedDb(opts: {
     teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub exposing only what the launcher touches
-  const scopedDb = stub as unknown as ScopedDb;
+  // minimal ScopedDb stub exposing only what the launcher touches
+  const scopedDb = asStub<ScopedDb>(stub);
   return {
     scopedDb,
     updateStatus,
@@ -278,7 +275,7 @@ describe('triggerStoryboard', () => {
     });
   });
 
-  test('pins explicit stopAt so flags cannot collapse References to Images', async () => {
+  test('pins an explicit stopAt over the sequence snapshot', async () => {
     runStateResult = 'failed';
     triggerWorkflowMock.mockReset();
     triggerWorkflowMock.mockResolvedValue('run-1');
@@ -287,8 +284,6 @@ describe('triggerStoryboard', () => {
     await triggerStoryboard(scopedDb, {
       ...INPUT,
       stopAt: 'references',
-      autoGenerateMotion: false,
-      autoGenerateMusic: false,
     });
 
     expect(triggerWorkflowMock.mock.calls[0]?.[1]).toEqual(
@@ -303,8 +298,6 @@ describe('triggerStoryboard', () => {
     const { scopedDb } = makeScopedDb({
       workflowRunId: null,
       generationStopAt: 'references',
-      autoGenerateMotion: false,
-      autoGenerateMusic: false,
     });
 
     await triggerStoryboard(scopedDb, INPUT);

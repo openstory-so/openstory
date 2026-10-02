@@ -1,9 +1,9 @@
 /**
  * Server functions for sequence-level music variants:
  *   - `getDivergentSequenceMusicVariantsFn` reads the live divergent alternates.
- *   - `promoteSequenceMusicVariantFn` atomically copies variant fields onto
- *     `sequences.*` and soft-deletes the variant row, then emits a synthetic
- *     terminal realtime event so existing listeners refetch the sequence.
+ *   - `promoteSequenceMusicVariantFn` points the sequence at a parked track
+ *     and un-parks it (#1115), then emits a synthetic terminal realtime event
+ *     so existing listeners refetch the sequence.
  *   - `discardSequenceMusicVariantFn` / `undiscardSequenceMusicVariantFn` toggle
  *     `discardedAt` for the toast Undo flow.
  */
@@ -97,8 +97,10 @@ export const promoteSequenceMusicVariantFn = createServerFn({ method: 'POST' })
     );
     assertSequenceVariantPromotable(variant, sequence.id);
 
-    const { sequence: updatedSequence } =
-      await scopedDb.sequenceVariants.promoteMusicVariant(variant.id);
+    const updatedSequence = await scopedDb.sequenceVariants.selectMusic(
+      sequence.id,
+      variant.id
+    );
 
     try {
       await getGenerationChannel(sequence.id).emit(
@@ -126,12 +128,11 @@ const setMusicFromVariantInputSchema = z.object({
 });
 
 /**
- * Switch the sequence's live primary music to the selected model's track
- * ("Set Music"). Resolves
- * the model to its own live (non-divergent, non-discarded) completed variant
- * and copies it onto `sequences.music*` without discarding the row, so the
- * model stays available to switch back to. Emits a terminal `audio:progress`
- * so existing listeners refetch the sequence.
+ * Switch the sequence's music to the selected model's track ("Set Music").
+ * Resolves the model to its newest finished (non-parked, non-discarded) track
+ * and points the sequence at it (#1115); the other models' tracks stay to
+ * switch back to. Emits a terminal `audio:progress` so existing listeners
+ * refetch the sequence.
  */
 export const setMusicFromVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -141,19 +142,22 @@ export const setMusicFromVariantFn = createServerFn({ method: 'POST' })
     const variants = await scopedDb.sequenceVariants.listMusicBySequence(
       sequence.id
     );
-    const variant = variants.find(
-      (v) =>
-        v.model === data.model &&
-        v.status === 'completed' &&
-        v.divergedAt === null &&
-        v.discardedAt === null &&
-        v.url
-    );
+    const variant = [...variants]
+      .reverse()
+      .find(
+        (v) =>
+          v.model === data.model &&
+          v.status === 'completed' &&
+          v.divergedAt === null &&
+          v.discardedAt === null &&
+          v.url
+      );
     if (!variant) {
       throw new Error('No completed track found for this model');
     }
 
-    const updatedSequence = await scopedDb.sequenceVariants.setMusicFromVariant(
+    const updatedSequence = await scopedDb.sequenceVariants.selectMusic(
+      sequence.id,
       variant.id
     );
 

@@ -315,6 +315,10 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
       case 'llmtr':
         // Team BYOK only — OpenRouter/fal cover platform LLM calls.
         return undefined;
+      case 'upload_post':
+        // Publishing always posts to the team's OWN social accounts, so
+        // there is deliberately no platform-level fallback (#1267).
+        return undefined;
       default: {
         const _exhaustive: never = provider;
         throw new Error(`Unknown provider: ${String(_exhaustive)}`);
@@ -355,12 +359,14 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
 
     if (lookup.isInvalid) {
       const reason = lookup.invalidReason ?? 'Team API key marked invalid';
-      logger.warn('Falling back to platform key', {
-        provider,
-        teamId,
-        reason,
-      });
-      return platformFallback(reason);
+      const fallback = platformFallback(reason);
+      logger.warn(
+        fallback
+          ? 'Falling back to platform key'
+          : 'Team API key marked invalid; no platform key',
+        { provider, teamId, reason }
+      );
+      return fallback;
     }
 
     const result = await decryptOrMarkInvalid(provider, lookup);
@@ -573,6 +579,25 @@ export function createApiKeysReadMethods(db: Database, teamId: string) {
           return { valid: false, error: 'LLMTR did not return a completion' };
         }
         return { valid: true };
+      }
+      case 'upload_post': {
+        // Key check: 200 live, 401/403 bad (the `Apikey` scheme, not Bearer).
+        // Anything else says nothing about the key, so it throws instead of
+        // marking a good key invalid during an Upload-Post outage.
+        const response = await fetch(
+          'https://api.upload-post.com/api/uploadposts/me',
+          {
+            headers: { Authorization: `Apikey ${apiKey}` },
+            signal: AbortSignal.timeout(15_000),
+          }
+        );
+        if (response.ok) return { valid: true };
+        if (response.status === 401 || response.status === 403) {
+          return { valid: false, error: 'Invalid Upload-Post API key' };
+        }
+        throw new Error(
+          `Upload-Post is unavailable (${response.status}), so the key could not be checked. Try again.`
+        );
       }
       default: {
         const _exhaustive: never = provider;

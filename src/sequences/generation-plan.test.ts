@@ -5,6 +5,8 @@ import {
   firstStageWithWork,
   planCounts,
   planWorkLabel,
+  planWorkLine,
+  planWorkSummary,
   switchLocks,
   updateAllUnits,
   planUnits,
@@ -19,6 +21,9 @@ const SEQ = 'seq-1';
 function shot(id: string, overrides: Partial<PlanShot> = {}): PlanShot {
   return {
     id,
+    spec: 'done',
+    visualWritten: false,
+    motionWritten: false,
     usesStartFrame: true,
     references: { characterIds: [], locationIds: [], elementIds: [] },
     speakerIds: [],
@@ -97,7 +102,8 @@ describe('planUnits — scenario table (#1816)', () => {
       'still:s1': 'stale',
       'still:s2': 'stale',
       'still:s3': 'done',
-      'prompt:motion:s1': 'stale',
+      // Motion is built from the spec, not the still (#1923).
+      'prompt:motion:s1': 'done',
       'clip:s1': 'stale',
       'clip:s3': 'done',
     });
@@ -199,11 +205,13 @@ describe('planUnits — scenario table (#1816)', () => {
     );
     expect(states(plan)).toMatchObject({
       'still:s1': 'running',
-      'prompt:motion:s1': 'blocked by still:s1',
-      'clip:s1': 'blocked by prompt:motion:s1,still:s1',
+      'prompt:motion:s1': 'missing',
+      'clip:s1': 'blocked by still:s1',
     });
-    // Nothing a run could make yet.
-    expect(planWork(plan, 'music')).toEqual([]);
+    // The motion prompt no longer waits on the still (#1923).
+    expect(planWork(plan, 'music').map((unit) => unit.kind)).toEqual([
+      'prompt:motion',
+    ]);
   });
 
   it('an uncomputable verdict is blocked, never fresh', () => {
@@ -300,7 +308,6 @@ describe('planWork', () => {
     expect(planWork(plan, 'motion').map((u) => u.kind)).toEqual([
       'sheet:character',
       'still',
-      'prompt:motion',
       'clip',
     ]);
   });
@@ -387,10 +394,35 @@ describe('footer helpers', () => {
   ];
 
   it('names the count and the noun', () => {
-    expect(planWorkLabel(planWork(plan, 'images'))).toBe(
-      'Generate 1 reference, 2 prompts'
+    expect(planWorkLabel(planWork(plan, 'images'))).toBe('Generate');
+    expect(planWorkSummary(planWork(plan, 'images'))).toBe(
+      '1 reference, 2 prompts'
     );
     expect(planWorkLabel([])).toBe('Nothing to generate');
+    expect(
+      planWorkLabel([
+        {
+          kind: 'still',
+          id: 's1',
+          state: 'stale',
+          requires: [],
+          cascaded: false,
+        },
+      ])
+    ).toBe('Regenerate');
+  });
+
+  it('names redone work apart only when new work rides with it', () => {
+    const unit = (
+      kind: PlanUnit['kind'],
+      id: string,
+      state: PlanUnit['state']
+    ): PlanUnit => ({ kind, id, state, requires: [], cascaded: false });
+    const stale = [unit('still', 's1', 'stale'), unit('still', 's2', 'stale')];
+    const fresh = [unit('clip', 's1', 'missing')];
+    expect(planWorkLine([...stale, ...fresh])).toBe('1 video · redo 2 images');
+    expect(planWorkLine(stale)).toBe('2 images');
+    expect(planWorkLine(fresh)).toBe('1 video');
   });
 
   it('says what a blocked unit waits on', () => {
@@ -405,7 +437,6 @@ describe('footer helpers', () => {
 
   it('locks a switch once its units exist', () => {
     expect(switchLocks(plan)).toEqual({
-      startFrames: false,
       voices: true,
       // s1's clip is blocked, so it may not exist yet: Draft first stays open.
       draft: false,
@@ -420,17 +451,6 @@ describe('footer helpers', () => {
           cascaded: false,
         },
       ]).draft
-    ).toBe(true);
-    expect(
-      switchLocks([
-        {
-          kind: 'still',
-          id: 's1',
-          state: 'stale',
-          requires: [],
-          cascaded: false,
-        },
-      ]).startFrames
     ).toBe(true);
   });
 
@@ -476,12 +496,7 @@ describe('updateAllUnits — Update all is the plan filtered to stale (#1819)', 
     ).toEqual([]);
     expect(
       keys(updateAllUnits(plan, { depth: 'images', shotIds: null }))
-    ).toEqual([
-      'sheet:character:maya',
-      'still:s1',
-      // The new still re-conditions its motion prompt (#929).
-      'prompt:motion:s1',
-    ]);
+    ).toEqual(['sheet:character:maya', 'still:s1']);
   });
 
   it('records a first reading only when every speaker has a voice (#1780 §6)', () => {
@@ -522,4 +537,96 @@ describe('updateAllUnits — Update all is the plan filtered to stale (#1819)', 
     );
     expect(other).toEqual([]);
   });
+
+  it('a stale prompt whose spec is missing pulls that rewrite in; a done spec does not (#1945)', () => {
+    const missing = planUnits(
+      input({
+        shots: [
+          shot('old', {
+            spec: 'missing',
+            visualPrompt: 'stale',
+            motionPrompt: 'stale',
+          }),
+        ],
+      }),
+      SEQ
+    );
+    expect(
+      keys(updateAllUnits(missing, { depth: 'prompts', shotIds: null }))
+    ).toEqual(
+      expect.arrayContaining([
+        'spec:old',
+        'prompt:visual:old',
+        'prompt:motion:old',
+      ])
+    );
+
+    const current = planUnits(
+      input({
+        shots: [
+          shot('s', {
+            spec: 'done',
+            visualPrompt: 'stale',
+            motionPrompt: 'stale',
+          }),
+        ],
+      }),
+      SEQ
+    );
+    const currentKeys = keys(
+      updateAllUnits(current, { depth: 'prompts', shotIds: null })
+    );
+    expect(currentKeys).toEqual(
+      expect.arrayContaining(['prompt:visual:s', 'prompt:motion:s'])
+    );
+    expect(currentKeys).not.toContain('spec:s');
+  });
+});
+
+it('a derived motion prompt requires the spec and ignores the still; a written one does not (#1923)', () => {
+  const derived = planUnits(
+    input({
+      shots: [
+        shot('s', {
+          still: 'missing',
+          clip: 'missing',
+        }),
+      ],
+    }),
+    SEQ
+  );
+  expect(derived.find((unit) => unit.kind === 'prompt:motion')).toMatchObject({
+    state: 'done',
+    requires: [{ kind: 'spec', id: 's' }],
+  });
+  const written = planUnits(
+    input({
+      shots: [
+        shot('s', {
+          spec: 'stale',
+          motionWritten: true,
+          visualWritten: true,
+        }),
+      ],
+    }),
+    SEQ
+  );
+  expect(written.find((unit) => unit.kind === 'prompt:motion')).toMatchObject({
+    state: 'done',
+    requires: [],
+  });
+  expect(written.find((unit) => unit.kind === 'prompt:visual')).toMatchObject({
+    state: 'done',
+    requires: [],
+  });
+  const staleSpec = planUnits(
+    input({ shots: [shot('s', { spec: 'stale' })] }),
+    SEQ
+  );
+  expect(staleSpec.find((unit) => unit.kind === 'prompt:motion')).toMatchObject(
+    { state: 'stale', cascaded: true }
+  );
+  expect(staleSpec.find((unit) => unit.kind === 'prompt:visual')).toMatchObject(
+    { state: 'stale', cascaded: true }
+  );
 });

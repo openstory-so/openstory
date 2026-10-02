@@ -65,6 +65,7 @@ async function createAutoSequence(derive: boolean) {
     draft: placeholderAutoStyleDraft(),
   });
   await scopedDb.sequences.create({
+    generationStopAt: 'images',
     id: sequenceId,
     title: 'S',
     styleId: style.id,

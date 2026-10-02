@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Stripe from 'stripe';
+import { asStub } from '@/test/as-stub';
 
 const captureProductEvent = vi.fn();
 vi.doMock('@/platform/server/observability/product-events', () => ({
@@ -20,12 +21,12 @@ function stripeEvent(
   type: Stripe.Event['type'],
   object: Record<string, unknown>
 ): Stripe.Event {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- Stripe.Event is a 260-member union; tests only need type + data.object
-  return {
+  // Stripe.Event is a 260-member union; tests only need type + data.object
+  return asStub<Stripe.Event>({
     id: 'evt_1',
     type,
     data: { object },
-  } as unknown as Stripe.Event;
+  });
 }
 
 function lastCapture() {

@@ -127,7 +127,7 @@ export const AddModelMenuSection = ({
       const eligible = shotList.filter(
         (f) =>
           rendersReferenceOnly(f, { generateStartFrames }) ||
-          (f.frame.imageStatus === 'completed' && f.image?.url)
+          (f.imageStatus === 'completed' && f.image?.url)
       );
       const count = eligible.length;
       // The add generates for EVERY eligible shot, so a single reference-only

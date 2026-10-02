@@ -14,7 +14,6 @@ export function buildLocationMatchingPromptVariables(
       (loc) => `- Location ID: ${loc.locationId}
   Name: ${loc.name}
   Type: ${loc.type}
-  Time of Day: ${loc.timeOfDay}
   Description: ${loc.description}
   Architectural Style: ${loc.architecturalStyle}
   Key Features: ${loc.keyFeatures}

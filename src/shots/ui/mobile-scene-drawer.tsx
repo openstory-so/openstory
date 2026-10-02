@@ -84,7 +84,7 @@ export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
         <SceneThumbnail
           thumbnailUrl={previewShot?.image?.url}
           previewThumbnailUrl={previewShot?.previewThumbnailUrl}
-          thumbnailStatus={previewShot?.frame.imageStatus || undefined}
+          thumbnailStatus={previewShot?.imageStatus || undefined}
           videoUrl={previewShot?.video?.url}
           draftLabel={shotDraftLabel(previewShot)}
           gridSheetUrl={previewShot?.gridSheet?.url}

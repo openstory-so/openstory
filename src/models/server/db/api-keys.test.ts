@@ -831,3 +831,58 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
     });
   });
 });
+
+describe('upload_post (social publishing, #1267)', () => {
+  it('resolves only the team key — there is no platform fallback', async () => {
+    const read = createApiKeysReadMethods(db, teamId);
+    expect(await read.resolveOptionalKey('upload_post')).toBeUndefined();
+    expect(await read.hasUsableKey('upload_post')).toBe(false);
+
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'upload_post', apiKey: 'up-team' });
+
+    expect(await scope.resolveOptionalKey('upload_post')).toEqual({
+      key: 'up-team',
+      source: 'team',
+    });
+    expect(await scope.hasUsableKey('upload_post')).toBe(true);
+  });
+
+  it('validates against /me with the Apikey scheme', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      const auth = new Headers(init?.headers).get('Authorization');
+      return new Response('{}', { status: auth === 'Apikey good' ? 200 : 401 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const scope = createApiKeysReadMethods(db, teamId);
+      expect(await scope.validateKey('upload_post', 'good')).toEqual({
+        valid: true,
+      });
+      expect(await scope.validateKey('upload_post', 'bad')).toEqual({
+        valid: false,
+        error: 'Invalid Upload-Post API key',
+      });
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        'https://api.upload-post.com/api/uploadposts/me'
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('throws on an outage rather than calling the key invalid', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 }))
+    );
+    try {
+      const scope = createApiKeysReadMethods(db, teamId);
+      await expect(scope.validateKey('upload_post', 'good')).rejects.toThrow(
+        /unavailable \(503\)/
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

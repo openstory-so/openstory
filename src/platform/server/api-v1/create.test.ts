@@ -2,6 +2,7 @@ import type { Style } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const mocks = vi.hoisted(() => ({
   createLibraryTalent: vi.fn(),
@@ -113,12 +114,12 @@ describe('runOneShotCreate', () => {
     user: { id: 'user-1' },
     teamId: 'team-1',
     request: { ipAddress: '203.0.113.9', userAgent: 'vitest' },
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- stub covering styles.list + talent/location list/delete
-    scopedDb: {
+    // stub covering styles.list + talent/location list/delete
+    scopedDb: asStub<ScopedDb>({
       styles: { list: async () => [makeStyle()] },
       talent: { list: async () => [], delete: talentDelete },
       locations: { list: async () => [], delete: locationDelete },
-    } as unknown as ScopedDb,
+    }),
   };
 
   beforeEach(() => {

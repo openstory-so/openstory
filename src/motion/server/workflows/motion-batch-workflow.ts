@@ -19,24 +19,19 @@ import {
 import { reportBytePlusAssetPool } from '@/models/server/byteplus-observability';
 import { isBytePlusAssetsConfigured } from '@/models/server/byteplus-config';
 import { arkStillsToRegister } from '@/motion/server/motion-generation';
-import {
-  videoPromptHardLimit,
-  isNativeBytePlusVideoModel,
-} from '@/models/models';
+import { isNativeBytePlusVideoModel } from '@/models/models';
 import { resolveAudioModels } from '@/models/resolve-audio-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import {
-  assembleMotionPrompt,
-  assemblePackedMotionPrompt,
-  packedPromptFitsLimit,
-} from '@/motion/server/assemble-motion-prompt';
-import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
+
+import { buildMotionRender } from '@/motion/server/build-motion-render';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
-import { attachRecordedClips, buildMotionJobs } from './motion-batch-jobs';
+import {
+  attachSpeechClips,
+  missingDialogueAudioShotIds,
+} from './motion-batch-jobs';
 import type {
   BatchMotionMusicWorkflowInput,
   DialogueAudioWorkflowInput,
@@ -114,11 +109,16 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // minutes later.
     await this.awaitBytePlusPoolAdmission(input, step, scopedDb);
 
-    // Step 0b: record dialogue ONCE PER SCENE (#1657). Without this each
-    // child with voiced lines and no matching clip records its own window of
-    // the scene — N overlapping ElevenLabs calls for N shots, and N different
-    // performances of one conversation. The children only attach.
+    // Step 0b: record dialogue ONCE PER SCENE (#1657). The parent must not
+    // fan out motion until every voiced shot has a matching take; a failed or
+    // partial scene speech blocks the batch below.
     const shots = await this.recordScenesOnce(input, step, parentInstanceId);
+    const missingDialogueShotIds = missingDialogueAudioShotIds(shots);
+    if (missingDialogueShotIds.length > 0) {
+      throw new WorkflowValidationError(
+        `Dialogue audio was not generated for shot${missingDialogueShotIds.length === 1 ? '' : 's'} ${missingDialogueShotIds.join(', ')}; motion is blocked.`
+      );
+    }
 
     // Step 1: Fan out motion workflows + optional music workflow in parallel.
     // Multi-model video (#545/#1510): one MOTION_WORKFLOW child per packed
@@ -128,123 +128,9 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     // the rest are alternates in `shot_variants`. Pattern 3 spawns + awaits
     // each child via `spawnAndAwaitChild`; Promise.allSettled lets a single
     // failing (shot, model) not poison the rest of the batch.
-    const packedShots = packMotionBatchShots(shots, input.videoModels, {
-      promptFits: (members) => {
-        const models = input.videoModels?.length
-          ? [...new Set(input.videoModels)]
-          : members[0]?.model
-            ? [members[0].model]
-            : [];
-        if (models.length === 0) return true;
-        return models.every((packModel) =>
-          packedPromptFitsLimit(
-            assemblePackedMotionPrompt({
-              shots: members.map((member) => ({
-                durationSeconds: member.duration ?? 3,
-                motionPrompt: member.motionPrompt,
-                prompt: member.prompt,
-                characterTags: member.characterTags,
-                generateAudio: member.generateAudio,
-              })),
-              model: packModel,
-              generateAudio: members[0]?.generateAudio,
-              scene: members[0]?.packedScene,
-            }),
-            videoPromptHardLimit(packModel)
-          )
-        );
-      },
-    });
-    const motionJobs = buildMotionJobs(packedShots, input.videoModels);
-
-    const motionAwaits = motionJobs.map(({ shot, shotIndex, model }) => {
-      // Per-model prompt: re-assemble from the structured motion prompt when
-      // present so audio-capable models get dialogue/audio sections, falling
-      // back to the pre-assembled `prompt` for manual single-model paths.
-      // Packed in-clip jobs (#1510) compose every member's prompt with that
-      // model's cut syntax; a 1-shot job stays the existing path.
-      const members = shot.coveredShots;
-      const packed =
-        members && members.length > 1
-          ? assemblePackedMotionPrompt({
-              shots: members.map((member) => ({
-                durationSeconds: member.duration ?? shot.duration ?? 3,
-                motionPrompt: member.motionPrompt,
-                prompt: member.prompt ?? shot.prompt,
-                characterTags: member.characterTags ?? shot.characterTags,
-                generateAudio: shot.generateAudio,
-              })),
-              model,
-              generateAudio: shot.generateAudio,
-              scene: shot.packedScene ?? members[0]?.packedScene,
-            })
-          : null;
-      const prompt = packed
-        ? packed.prompt
-        : shot.motionPrompt
-          ? assembleMotionPrompt({
-              motionPrompt: shot.motionPrompt,
-              model,
-              characterTags: shot.characterTags,
-              generateAudio: shot.generateAudio,
-              attachSceneHeader: shot.attachSceneHeader,
-              scene: shot.packedScene,
-            })
-          : shot.prompt;
-      const voicedLines = members
-        ? members.flatMap((member) => member.voicedLines ?? [])
-        : shot.voicedLines;
-      const audioClips = members
-        ? members.flatMap((member) => member.audioClips ?? [])
-        : shot.audioClips;
-
-      const motionBody: MotionWorkflowInput = {
-        userId: input.userId,
-        teamId: input.teamId,
-        shotId: shot.shotId,
-        sequenceId,
-        // Pinned at the trigger — passed through untouched, never re-derived.
-        sceneId: shot.sceneId,
-        imageUrl: shot.imageUrl,
-        referenceOnly: shot.referenceOnly,
-        frameVersionId: shot.frameVersionId,
-        motionPromptVersionId: shot.motionPromptVersionId,
-        prompt,
-        model,
-        duration: shot.duration,
-        fps: shot.fps,
-        motionBucket: shot.motionBucket,
-        aspectRatio: shot.aspectRatio,
-        resolution: shot.resolution,
-        draft: shot.draft,
-        generateAudio: shot.generateAudio,
-        sceneTitle: shot.sceneTitle,
-        sequenceTitle: shot.sequenceTitle,
-        // Only a batch queued before #1786 carries these; see PreClickEditPayload.
-        userEditProvenance: shot.userEditProvenance,
-        userEditText: shot.userEditText,
-        priorMotion: shot.priorMotion,
-        // Cast/element reference images (#873) — carried by every model, on
-        // the wire or as substituted descriptions.
-        referenceImages: shot.referenceImages,
-        voicedLines,
-        // The conversation around the shot (#1657) — without it the child
-        // records the shot's lines as a cold read.
-        dialogueContext: shot.dialogueContext,
-        audioClips:
-          audioClips && audioClips.length > 0 ? audioClips : undefined,
-        motionPrompt: shot.motionPrompt,
-        characterTags: shot.characterTags,
-        packedScene: shot.packedScene,
-        attachSceneHeader: shot.attachSceneHeader,
-        // Add-model (#547) batches generate alternates only — the child must
-        // not write the legacy `shots.video*` columns.
-        variantOnly: input.variantOnly,
-        reservationId: input.reservationId,
-        coveredShots: members,
-        multiPrompt: packed?.multiPrompt,
-      };
-
+    const motionJobs = buildMotionRender({ ...input, shots });
+    const motionAwaits = motionJobs.map(({ input: motionBody, shotIndex }) => {
+      const { model, shotId } = motionBody;
       return spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
         step,
         {
@@ -253,7 +139,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           parentInstanceId,
           // The model token keeps sibling-model children from colliding on the
           // global CF instance id (mirrors shot-images' childId scheme).
-          childId: `motion:${sequenceId}:${shot.shotId}:${model}`,
+          childId: `motion:${sequenceId}:${shotId}:${model}`,
           childPayload: motionBody,
           spawnStepName: `spawn-motion-${shotIndex}-${model}`,
           awaitStepName: `await-motion-${shotIndex}-${model}`,
@@ -269,10 +155,10 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
     });
 
     // Multi-model audio (#546): one MUSIC_WORKFLOW child per selected model,
-    // each reusing the same prompt/tags/duration and writing its own primary
-    // row in sequence_music_variants (keyed by (sequenceId, model)). Only the
-    // first model is primary — it alone writes the live `sequences.music*`
-    // columns; the rest persist only their variant row (see `isPrimary` below).
+    // each reusing the same prompt/tags/duration and opening its own row in
+    // sequence_music_variants. Only the first model is primary — it alone
+    // claims the sequence's track pointer (#1115); the rest land as their own
+    // rows (see `isPrimary` below).
     // Falls back to the single `music.model` when no audioModels were threaded.
     const audioModels =
       includeMusic && input.music
@@ -304,7 +190,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
           duration: music.duration,
           model,
           // audioModels[0] is primary (resolveAudioModels preserves order +
-          // dedupes); only it writes the live `sequences.music*` columns.
+          // dedupes); only it claims the sequence's track pointer.
           isPrimary: index === 0,
           reservationId: input.reservationId,
         },
@@ -332,7 +218,7 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
         // don't reliably survive into the log body (the June 7 run produced
         // bare "Motion failed for shot …:" lines with no cause attached).
         logger.warn(
-          `[MotionBatchWorkflow:cf] Motion failed for shot ${job?.shot.shotId ?? '(unknown)'} model ${job?.model ?? '(unknown)'}: ${String(r.reason)}`,
+          `[MotionBatchWorkflow:cf] Motion failed for shot ${job?.input.shotId ?? '(unknown)'} model ${job?.input.model ?? '(unknown)'}: ${String(r.reason)}`,
           {
             err: r.reason,
           }
@@ -377,59 +263,47 @@ export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotion
    * `deferred` event will show if it ever matters.
    */
   /**
-   * Record every scene in `input.dialogueRecording` once, then return the
-   * shots with their new clips attached. A shot that ends up with a matching
-   * clip drops its `dialogueContext` — its child has nothing left to record.
+   * Record every scene in `input.dialogueSpeech` once, then return the
+   * shots with their new clips attached.
    *
-   * Never fatal: a scene that cannot be recorded (a reading that will not fit,
-   * a provider outage) leaves its shots as they were, and each child falls
-   * back to recording itself in context — which fails that SHOT, not the batch.
+   * A failed scene remains without clips. The caller validates every voiced
+   * shot before fan-out and blocks motion for any shot without a matching take.
    */
   private async recordScenesOnce(
     input: BatchMotionMusicWorkflowInput,
     step: WorkflowStep,
     parentInstanceId: string
   ): Promise<BatchMotionMusicWorkflowInput['shots']> {
-    const recording = input.dialogueRecording;
+    const speech = input.dialogueSpeech ?? input.dialogueRecording;
     const sequenceId = input.sequenceId;
-    if (!recording || recording.scenes.length === 0 || !sequenceId) {
+    if (!speech || speech.scenes.length === 0 || !sequenceId) {
       return input.shots;
     }
 
-    let clipsByShotId: Record<string, MotionAudioClip[]> = {};
-    try {
-      const result = await spawnAndAwaitChild<
-        DialogueAudioWorkflowInput,
-        DialogueAudioWorkflowResult
-      >(step, {
-        binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
-        parentBindingName: 'MOTION_BATCH_WORKFLOW',
-        parentInstanceId,
-        childId: `dialogue-audio:${sequenceId}:${parentInstanceId}`,
-        childPayload: {
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          reservationId: input.reservationId,
-          scenes: recording.scenes,
-          minDurationSeconds: recording.minDurationSeconds,
-          maxDurationSeconds: recording.maxDurationSeconds,
-          analysisModelId: recording.analysisModelId,
-        },
-        spawnStepName: 'spawn-dialogue-audio',
-        awaitStepName: 'await-dialogue-audio',
-        timeout: '60 minutes',
-      });
-      clipsByShotId = result.clipsByShotId;
-    } catch (error) {
-      logger.warn(
-        '[MotionBatchWorkflow] Scene dialogue not recorded up front; each shot records its own',
-        { sequenceId, err: error }
-      );
-      return input.shots;
-    }
+    const result = await spawnAndAwaitChild<
+      DialogueAudioWorkflowInput,
+      DialogueAudioWorkflowResult
+    >(step, {
+      binding: this.env.DIALOGUE_AUDIO_WORKFLOW,
+      parentBindingName: 'MOTION_BATCH_WORKFLOW',
+      parentInstanceId,
+      childId: `dialogue-audio:${sequenceId}:${parentInstanceId}`,
+      childPayload: {
+        userId: input.userId,
+        teamId: input.teamId,
+        sequenceId,
+        reservationId: input.reservationId,
+        scenes: speech.scenes,
+        minDurationSeconds: speech.minDurationSeconds,
+        maxDurationSeconds: speech.maxDurationSeconds,
+        analysisModelId: speech.analysisModelId,
+      },
+      spawnStepName: 'spawn-dialogue-audio',
+      awaitStepName: 'await-dialogue-audio',
+      timeout: '60 minutes',
+    });
 
-    return attachRecordedClips(input.shots, clipsByShotId);
+    return attachSpeechClips(input.shots, result.clipsByShotId);
   }
 
   private async awaitBytePlusPoolAdmission(

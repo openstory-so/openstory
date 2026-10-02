@@ -81,7 +81,7 @@ describe('sequences.create persists the chosen settings', () => {
       title: 'Frame-based board',
       styleId,
       videoModel: 'minimax_h3_max',
-      autoGenerateMotion: true,
+      generationStopAt: 'motion',
       generateStartFrames: true,
     });
 
@@ -94,7 +94,11 @@ describe('sequences.create persists the chosen settings', () => {
 
   it('defaults to off when the caller omits it', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
-    const created = await methods.create({ title: 'Normal', styleId });
+    const created = await methods.create({
+      title: 'Normal',
+      styleId,
+      generationStopAt: 'images',
+    });
     expect(created.generateStartFrames).toBe(false);
   });
 
@@ -104,12 +108,11 @@ describe('sequences.create persists the chosen settings', () => {
       title: 'Everything',
       styleId,
       aspectRatio: '9:16',
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
       musicModel: 'elevenlabs_music',
-      autoGenerateMotion: true,
-      autoGenerateMusic: true,
+      generationStopAt: 'music',
       generateStartFrames: false,
     });
 
@@ -119,17 +122,15 @@ describe('sequences.create persists the chosen settings', () => {
       imageModel: created.imageModel,
       videoModel: created.videoModel,
       musicModel: created.musicModel,
-      autoGenerateMotion: created.autoGenerateMotion,
-      autoGenerateMusic: created.autoGenerateMusic,
+      generationStopAt: created.generationStopAt,
       generateStartFrames: created.generateStartFrames,
     }).toEqual({
       aspectRatio: '9:16',
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
       musicModel: 'elevenlabs_music',
-      autoGenerateMotion: true,
-      autoGenerateMusic: true,
+      generationStopAt: 'music',
       generateStartFrames: false,
     });
   });
@@ -139,6 +140,7 @@ describe('sequences.update persists continue generation flags', () => {
   it('writes generateStartFrames and generateVoices chosen on continue', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({
+      generationStopAt: 'images',
       title: 'Stopped after references',
       styleId,
       generateStartFrames: false,

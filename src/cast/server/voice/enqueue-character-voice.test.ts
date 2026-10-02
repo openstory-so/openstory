@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { enqueueCharacterVoiceDesign } from './enqueue-character-voice';
+import { asStub } from '@/test/as-stub';
 
 function character(
   overrides: Partial<CharacterWithSheet> = {}
@@ -64,8 +65,8 @@ function makeScopedDb(overrides: {
   const markVoiceClaimTerminal = vi.fn(async () => ({}));
   const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({}));
   const releaseCharacterVoice = vi.fn();
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the enqueue surface
-  const scopedDb = {
+  // stub of the enqueue surface
+  const scopedDb = asStub<ScopedDb>({
     teamId: 'team-1',
     characters: {
       listLiveVoiceClaims,
@@ -73,7 +74,7 @@ function makeScopedDb(overrides: {
       markVoiceClaimTerminal,
       stampVoiceClaimWorkflowRunId,
     },
-  } as unknown as ScopedDb;
+  });
   return {
     scopedDb,
     listLiveVoiceClaims,

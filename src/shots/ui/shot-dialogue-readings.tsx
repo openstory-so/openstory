@@ -1,7 +1,8 @@
 /**
- * This shot's readings, fetched (#1657) — the data half of the presentational
- * pieces in `motion-dialogue-panel.tsx`. Mounted in the prompt editor and
- * under the shot's video; both share one query.
+ * A shot's dialogue, fetched (#1657) — the data half of the presentational
+ * pieces in `motion-dialogue-panel.tsx`. It all sits under the shot's video
+ * (`ShotDialogueUnderVideo`); the Script tab edits every shot's lines of a
+ * scene (`SceneDialogueLines`).
  */
 
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
@@ -22,19 +23,19 @@ import { ActionCost } from '@/billing/ui/action-cost';
 import {
   cancelShotDialogueClaimFn,
   discardShotDialogueSectionFn,
-  listShotDialogueClaimsFn,
   listShotDialogueSectionsFn,
   listShotDialogueVersionsFn,
   regenerateShotDialogueFn,
-  saveShotDialogueFn,
   selectShotDialogueSectionFn,
   selectShotDialogueVersionFn,
 } from '@/shots/shot-dialogue.fn';
 import type { ShotView } from '@/shots/shot-view';
+import type { ImageToVideoModel } from '@/models/models';
+import { motionReferenceSupport } from '@/motion/reference-support';
 import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import type { QueryClient } from '@tanstack/react-query';
 import {
+  queryOptions,
   useMutation,
   useQueryClient,
   useSuspenseQuery,
@@ -43,12 +44,24 @@ import { Suspense } from 'react';
 import { toast } from 'sonner';
 import type { DialogueLine } from '@/shots/scene-analysis.schema';
 import {
-  DialogueLinesEditor,
-  ShotDialogueBlock,
+  DialogueLineRows,
+  invalidateLinesMoved,
+  invalidateRecordingStarted,
+  PlayDialogueButton,
+  recordableLines,
+  unclearLines,
+  useDialoguePlayer,
+  useLineTake,
+  useSaveShotLines,
+  dialogueClaimsQuery as claimsQuery,
+} from './dialogue-lines';
+import {
+  MotionDialoguePanel,
   ShotDialogueHistory,
   ShotReadingsList,
   ShotMissingVoices,
-  ShotRecordingsInFlight,
+  ShotSpeechesInFlight,
+  shotPlayback,
   shotSpokenByNote,
 } from './motion-dialogue-panel';
 import { StalenessIndicator } from './staleness/staleness-indicator';
@@ -56,10 +69,15 @@ import { segmentKeys } from './use-segments';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
 
+const readingsQuery = (sequenceId: string, shotId: string) =>
+  queryOptions({
+    queryKey: shotKeys.dialogueSections(shotId),
+    queryFn: () => listShotDialogueSectionsFn({ data: { sequenceId, shotId } }),
+  });
+
 type ReadingsProps = {
   sequenceId: string;
   shotId: string;
-  collapsible?: boolean;
   /**
    * What the shot says (#1773). Off Generated (video model, audio element)
    * the reading is not in use, so a note stands in for the staleness line and
@@ -68,12 +86,7 @@ type ReadingsProps = {
   lines: readonly DialogueLine[];
 };
 
-const Readings: React.FC<ReadingsProps> = ({
-  sequenceId,
-  shotId,
-  collapsible,
-  lines,
-}) => {
+const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   const queryClient = useQueryClient();
   const spokenBy = shotSpokenByNote(lines);
   const { data: characters } = useSequenceCharacters(sequenceId);
@@ -107,13 +120,12 @@ const Readings: React.FC<ReadingsProps> = ({
       });
     }
   };
-  // Keyed by shot alone: a new recording invalidates it (the realtime
+  // Keyed by shot alone: a new speech invalidates it (the realtime
   // `dialogue-audio` event), so the list on screen stays put while it
   // refetches instead of dropping back to the fallback.
-  const { data: readings } = useSuspenseQuery({
-    queryKey: shotKeys.dialogueSections(shotId),
-    queryFn: () => listShotDialogueSectionsFn({ data: { sequenceId, shotId } }),
-  });
+  const { data: readings } = useSuspenseQuery(
+    readingsQuery(sequenceId, shotId)
+  );
   const selectReading = useMutation({
     mutationFn: (sectionId: string) =>
       selectShotDialogueSectionFn({ data: { sequenceId, shotId, sectionId } }),
@@ -151,12 +163,9 @@ const Readings: React.FC<ReadingsProps> = ({
     onError: (error: Error) =>
       toast.error('Reading not discarded', { description: error.message }),
   });
-  // Recordings in flight. Refreshed by the same realtime event as the list:
+  // Speeches in flight. Refreshed by the same realtime event as the list:
   // the key sits under `dialogueSections`.
-  const { data: claims } = useSuspenseQuery({
-    queryKey: shotKeys.dialogueClaims(shotId),
-    queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
-  });
+  const { data: claims } = useSuspenseQuery(claimsQuery(sequenceId, shotId));
   const cancelClaim = useMutation({
     mutationFn: (claimId: string) =>
       cancelShotDialogueClaimFn({ data: { sequenceId, shotId, claimId } }),
@@ -171,11 +180,11 @@ const Readings: React.FC<ReadingsProps> = ({
   // refetches it and "Generating…" takes over from the button.
   const record = useMutation({
     mutationFn: () =>
-      regenerateShotDialogueFn({ data: { sequenceId, shotId } }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: shotKeys.dialogueClaims(shotId),
+      regenerateShotDialogueFn({
+        data: { sequenceId, shotId, scope: 'shot' },
       }),
+    onSuccess: () =>
+      invalidateRecordingStarted(queryClient, sequenceId, [shotId]),
     onError: (error: Error) =>
       toast.error('Dialogue not generated', { description: error.message }),
   });
@@ -201,6 +210,8 @@ const Readings: React.FC<ReadingsProps> = ({
           onGenerate={voiceDesign ? (id) => void generateVoice(id) : null}
           cost={
             <ActionCost
+              onPrimary={false}
+              inline
               estimate={
                 seedVoices
                   ? seedVoiceEstimate(SEED_VOICE_DEFAULT_TAKES)
@@ -238,48 +249,22 @@ const Readings: React.FC<ReadingsProps> = ({
               : 'Generate dialogue'}
         </Button>
       )}
-      <ShotRecordingsInFlight
+      <ShotSpeechesInFlight
         claims={claims}
         onCancel={(claimId) => cancelClaim.mutate(claimId)}
         cancellingId={cancelClaim.isPending ? cancelClaim.variables : null}
       />
-      {/* History only where there is room to act on it: the prompt editor. */}
-      {collapsible ? null : (
-        <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
-      )}
+      <DialogueHistory sequenceId={sequenceId} shotId={shotId} />
       <ShotReadingsList
         readings={readings}
         onUse={(sectionId) => selectReading.mutate(sectionId)}
         onDiscard={(sectionId) => discardReading.mutate(sectionId)}
         usingId={selectReading.isPending ? selectReading.variables : null}
-        collapsible={collapsible}
+        collapsible
       />
     </>
   );
 };
-
-/**
- * Everything that reads a shot's lines, after they moved (a restore or an
- * edit): its history, which readings match, `shot.dialogue` on the shots list,
- * and the video rendered from the old lines.
- */
-const invalidateLinesMoved = (
-  queryClient: QueryClient,
-  sequenceId: string,
-  shotId: string
-) =>
-  Promise.all([
-    queryClient.invalidateQueries({
-      queryKey: shotKeys.dialogueVersions(shotId),
-    }),
-    queryClient.invalidateQueries({
-      queryKey: shotKeys.dialogueSections(shotId),
-    }),
-    queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),
-    queryClient.invalidateQueries({ queryKey: segmentKeys.list(sequenceId) }),
-    queryClient.invalidateQueries({ queryKey: shotKeys.detail(shotId) }),
-    queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
-  ]);
 
 /** Same speakers, words and tone — voice bindings aside. */
 const sameWords = (
@@ -336,14 +321,13 @@ const DialogueHistory: React.FC<{ sequenceId: string; shotId: string }> = ({
 };
 
 // The fallback is what the list most often resolves to, so nothing moves when
-// it lands: the record button, then one h-8 row under the video and nothing
-// more in the prompt editor (a lone selected reading renders no list).
-export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
+// it lands: the record button, then the one h-8 readings row.
+const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
   <Suspense
     fallback={
       <>
         <Skeleton className="h-8 w-32" />
-        {props.collapsible ? <Skeleton className="h-8 w-full" /> : null}
+        <Skeleton className="h-8 w-full" />
       </>
     }
   >
@@ -351,56 +335,94 @@ export const ShotDialogueReadings: React.FC<ReadingsProps> = (props) => (
   </Suspense>
 );
 
-/** Lines, current audio and readings for the shot whose video is on the canvas. */
-export const ShotDialogueUnderVideo: React.FC<{ shot: ShotView }> = ({
-  shot,
-}) => {
-  const { data: elements } = useSequenceElements(shot.sequenceId);
-  const clip = shot.audioClips?.[0] ?? null;
-  return (
-    <ShotDialogueBlock
-      dialogue={shot.dialogue}
-      elements={elements}
-      clip={clip}
-      readings={
-        <ShotDialogueReadings
-          sequenceId={shot.sequenceId}
-          shotId={shot.id}
-          collapsible
-          lines={shot.dialogue?.presence ? shot.dialogue.lines : []}
-        />
-      }
-    />
-  );
+/**
+ * The shot's dialogue, under its video: the one place it is edited, heard
+ * and recorded — lines, audio source, readings, history, a line at the mic.
+ * The audio source is a write of the lines (a `voiceToken` on each), the
+ * same save as a line edit, so it needs no motion prompt.
+ */
+type UnderVideoProps = {
+  shot: ShotView;
+  /** The video model this shot renders with — the source picker needs audio input. */
+  videoModel: ImageToVideoModel;
 };
 
-/**
- * A shot's lines, editable in place (#1773). The save appends a `user-edit`
- * version of this shot's lines only — no prompt row, no other shot.
- */
-export const ShotDialogueLines: React.FC<{
-  sequenceId: string;
-  shotId: string;
-  lines: readonly DialogueLine[];
-  label?: string;
-}> = ({ sequenceId, shotId, lines, label }) => {
-  const queryClient = useQueryClient();
-  const { data: characters } = useSequenceCharacters(sequenceId);
-  const save = useMutation({
-    mutationFn: (next: DialogueLine[]) =>
-      saveShotDialogueFn({ data: { sequenceId, shotId, lines: next } }),
-    onSuccess: () => invalidateLinesMoved(queryClient, sequenceId, shotId),
-    onError: (error: Error) =>
-      toast.error('Lines not saved', { description: error.message }),
-  });
+export const ShotDialogueUnderVideo: React.FC<UnderVideoProps> = (props) => (
+  <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+    <DialogueUnderVideo {...props} />
+  </Suspense>
+);
+
+const DialogueUnderVideo: React.FC<UnderVideoProps> = ({
+  shot,
+  videoModel,
+}) => {
+  // Read once here: while a speech is on its way, no line is recorded.
+  const { data: claims } = useSuspenseQuery(
+    claimsQuery(shot.sequenceId, shot.id)
+  );
+  const { data: elements } = useSequenceElements(shot.sequenceId);
+  const { data: characters } = useSequenceCharacters(shot.sequenceId);
+  const take = useLineTake(shot.sequenceId);
+  const player = useDialoguePlayer();
+  const save = useSaveShotLines(shot.sequenceId);
+  const lines = shot.dialogue?.presence ? shot.dialogue.lines : [];
+  const clip = shot.audioClips?.[0] ?? null;
+  const voices = (elements ?? []).filter((el) => el.kind === 'audio');
+  const { url } = shotPlayback(lines, voices, clip);
   return (
-    <DialogueLinesEditor
-      lines={lines}
-      onSave={(next) => save.mutate(next)}
-      saving={save.isPending}
-      label={label}
-      speakers={(characters ?? []).map((character) => character.name)}
-    />
+    <>
+      {player.audio}
+      <MotionDialoguePanel
+        dialogue={shot.dialogue}
+        elements={elements}
+        clip={clip}
+        shotSeconds={
+          shot.durationMs && shot.durationMs > 0
+            ? shot.durationMs / 1000
+            : undefined
+        }
+        onChange={
+          motionReferenceSupport(videoModel).audio
+            ? (next) => save.mutate({ shotId: shot.id, lines: next.lines })
+            : null
+        }
+        disabled={save.isPending}
+        play={
+          <PlayDialogueButton
+            player={player}
+            clips={url ? [{ shotIds: [shot.id], url }] : []}
+            label="this shot"
+          />
+        }
+        lineList={
+          <DialogueLineRows
+            key={shot.id}
+            shotId={shot.id}
+            lines={lines}
+            active={player.isPlaying(shot.id)}
+            speakers={(characters ?? []).map((character) => character.name)}
+            onSave={(next) => save.mutate({ shotId: shot.id, lines: next })}
+            saving={save.isPending}
+            take={take}
+            recordable={
+              claims.some((claim) => claim.willBecomeCurrent)
+                ? new Map()
+                : recordableLines(lines, shot.audioClips, characters ?? [])
+            }
+            unclear={unclearLines(shot.audioClips)}
+            canAdd
+          />
+        }
+        readings={
+          <ShotDialogueReadings
+            sequenceId={shot.sequenceId}
+            shotId={shot.id}
+            lines={lines}
+          />
+        }
+      />
+    </>
   );
 };
 
@@ -412,27 +434,40 @@ export const SceneDialogueLines: React.FC<{
   sequenceId: string;
   shots: readonly ShotView[];
 }> = ({ sequenceId, shots }) => {
+  const { data: characters } = useSequenceCharacters(sequenceId);
+  const take = useLineTake(sequenceId);
+  const save = useSaveShotLines(sequenceId);
   if (shots.length === 0) return null;
   const ordered = [...shots].sort(
     (a, b) => (a.shotNumber ?? 0) - (b.shotNumber ?? 0)
   );
+  const speakers = (characters ?? []).map((character) => character.name);
   return (
     <section aria-label="Dialogue" className="flex flex-col gap-2">
       <span className="text-sm font-medium">Dialogue</span>
       <ul className="flex flex-col gap-2">
         {ordered.map((shot, index) => {
-          const name = `Shot ${shot.shotNumber ?? index + 1}`;
+          const lines = shot.dialogue?.presence ? shot.dialogue.lines : [];
           return (
-            <li
-              key={shot.id}
-              className="flex flex-col gap-1 rounded-md border p-3"
-            >
-              <span className="text-xs font-medium">{name}</span>
-              <ShotDialogueLines
-                sequenceId={sequenceId}
+            <li key={shot.id} className="flex flex-col gap-1">
+              <span className="text-xs font-medium">
+                Shot {shot.shotNumber ?? index + 1}
+              </span>
+              <DialogueLineRows
                 shotId={shot.id}
-                lines={shot.dialogue?.presence ? shot.dialogue.lines : []}
-                label={`Edit lines for ${name.toLowerCase()}`}
+                lines={lines}
+                active={false}
+                speakers={speakers}
+                onSave={(next) => save.mutate({ shotId: shot.id, lines: next })}
+                saving={save.isPending && save.variables.shotId === shot.id}
+                take={take}
+                recordable={recordableLines(
+                  lines,
+                  shot.audioClips,
+                  characters ?? []
+                )}
+                unclear={unclearLines(shot.audioClips)}
+                canAdd
               />
             </li>
           );

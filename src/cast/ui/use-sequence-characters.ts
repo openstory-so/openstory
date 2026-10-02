@@ -2,6 +2,7 @@
  * Hook for fetching sequence characters
  */
 
+import { toast } from 'sonner';
 import {
   useMutation,
   useQuery,
@@ -17,6 +18,7 @@ import {
   regenerateCharacterSheetFn,
   assignCharacterVoiceFn,
   chooseCharacterVoiceTakeFn,
+  cancelCharacterVoiceFn,
   generateCharacterVoiceFn,
   listCharacterVoiceVersionsFn,
   selectCharacterVoiceVersionFn,
@@ -137,6 +139,29 @@ function invalidateAfterVoiceChange(
     queryKey: segmentKeys.list(sequenceId),
   });
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+}
+
+/** Cancel a voice still generating; the character keeps the voice it had. */
+export function useCancelCharacterVoice() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      cancelCharacterVoiceFn({ data }),
+    onSuccess: (_result, { sequenceId, characterId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.list(sequenceId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.voiceVersions(
+            sequenceId,
+            characterId
+          ),
+        }),
+      ]),
+    onError: (error: Error) =>
+      toast.error('Voice not cancelled', { description: error.message }),
+  });
 }
 
 /** Voice design (#1553): the workflow's realtime events refresh the list. */

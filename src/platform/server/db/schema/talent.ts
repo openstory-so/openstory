@@ -46,8 +46,9 @@ export const talent = snakeCase.table(
     // is never read at cast.
     personality: text(),
     movement: text(),
-    // Voice (#1553): copied from the character at save-to-library and onto
-    // the character at cast. Shared ElevenLabs id — see characters.voiceId.
+    // Voice (#1553): copied from the character's selected voice version at
+    // save-to-library, and onto the character (as a new version) at cast.
+    // Shared ElevenLabs id — see characters.selectedVoiceVersionId.
     voiceId: text(),
     voiceDescription: text(),
     imageUrl: text(), // Talent avatar/headshot

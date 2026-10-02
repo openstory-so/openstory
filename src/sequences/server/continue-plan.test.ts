@@ -90,13 +90,13 @@ describe('continueFromPlan (#1817)', () => {
     expect(units(result)).toEqual(['voice:maya', 'dialogue:s1']);
   });
 
-  it('turning Start frames off after stills exist is refused', () => {
+  it('turning Start frames off after stills exist is allowed', () => {
     expect(() =>
       decide([u('still', 's1', 'done'), u('clip', 's1', 'missing')], 'music', {
         saved: ON,
         requested: { ...ON, generateStartFrames: false },
       })
-    ).toThrow('Start frames can’t be turned off: shots already have stills');
+    ).not.toThrow();
   });
 
   it('turning Voices off after a recording exists is refused', () => {
@@ -150,6 +150,21 @@ describe('continueFromPlan (#1817)', () => {
     });
     expect(result.stopAt).toBe('dialogue');
     expect(units(result)).toEqual(['voice:maya', 'dialogue:s1']);
+  });
+
+  it('Voices on still reaches Motion when no later unit exists', () => {
+    const next = [
+      u('voice', 'maya', 'missing'),
+      u('dialogue', 's1', 'missing'),
+      u('clip', 's1', 'missing'),
+    ];
+    const result = decide([], 'music', {
+      saved: { generateStartFrames: true, generateVoices: false },
+      requested: { generateStartFrames: true, generateVoices: true },
+      next,
+    });
+    expect(result.stopAt).toBe('music');
+    expect(units(result)).toEqual(['voice:maya', 'dialogue:s1', 'clip:s1']);
   });
 
   it('Start frames on stops at Images; both on stop at the later, Dialogue', () => {

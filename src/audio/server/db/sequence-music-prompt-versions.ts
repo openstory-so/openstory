@@ -1,11 +1,10 @@
 /**
  * Scoped Sequence Music Prompt Versions Sub-module
  *
- * Appends a new revision row to `sequence_music_prompt_versions` and
- * updates the cached `musicPrompt` / `musicTags` / `musicPromptInputHash`
- * columns on `sequences`. Sequential, not transactional — see the
- * equivalent docstring in `shot-prompt-versions.ts` for the durability
- * story. Renamed from `sequence-music-prompt-variants` in #988.
+ * Appends a new revision row to `sequence_music_prompt_versions` and points
+ * `sequences.selectedMusicPromptVersionId` at it (#1115) — that row IS the
+ * sequence's music prompt. Renamed from `sequence-music-prompt-variants` in
+ * #988.
  *
  * See docs/architecture/workflow-snapshots-and-content-hash-staleness.md
  * § prompt versioning.
@@ -18,7 +17,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import type { SequenceMusicPromptVersion } from '@/platform/server/db/schema';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, getTableColumns } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import type { MusicPromptInputHash } from '@/shots/input-hash';
@@ -32,14 +31,13 @@ type WriteSequenceMusicPromptVersionBase = {
 
 /**
  * AI-generated and regenerated rows must carry the upstream-context hash and
- * the analysis model that produced the prompt — without these, the cached
- * `musicPromptInputHash` column on `sequences` is meaningless and staleness
- * detection silently breaks. User-edits forbid both fields so they cannot be
+ * the analysis model that produced the prompt — without these, the selected
+ * row's hash is meaningless and staleness detection silently breaks. User-edits forbid both fields so they cannot be
  * set by mistake.
  *
  * Restored rows carry the source version's hash + analysisModel verbatim so
- * the cached `musicPromptInputHash` column keeps tracking the upstream
- * context that originally produced the prompt — restoring an old AI prompt
+ * the selected prompt keeps tracking the upstream context that originally
+ * produced it — restoring an old AI prompt
  * must NOT silently disable staleness detection. Both fields can be null
  * when the source is itself a user-edit (which never had a hash).
  */
@@ -66,9 +64,9 @@ export type WriteSequenceMusicPromptVersionInput =
 export function createSequenceMusicPromptVersionsMethods(db: Database) {
   return {
     /**
-     * Append a music prompt version row and update the cached
-     * `musicPrompt` / `musicTags` / `musicPromptInputHash` columns on
-     * `sequences`. Returns the inserted (or pre-existing matching) row.
+     * Append a music prompt version row and select it. Returns the inserted
+     * row — or, when an AI row with the same hash already exists, that row,
+     * which is then the one selected.
      *
      * AI-generated rows are deduped on a unique partial index
      * `(sequence_id, input_hash) WHERE input_hash IS NOT NULL AND
@@ -119,9 +117,7 @@ export function createSequenceMusicPromptVersionsMethods(db: Database) {
       await db
         .update(sequences)
         .set({
-          musicPrompt: input.prompt,
-          musicTags: input.tags ?? null,
-          musicPromptInputHash: nextHash,
+          selectedMusicPromptVersionId: version.id,
           updatedAt: new Date(),
         })
         .where(eq(sequences.id, input.sequenceId));
@@ -143,16 +139,21 @@ export function createSequenceMusicPromptVersionsMethods(db: Database) {
       );
     },
 
-    /** Most recent music prompt version, or null if none exists. */
-    getLatest: async (
+    /** The sequence's selected music prompt version, or null if none. */
+    getSelected: async (
       sequenceId: string
     ): Promise<SequenceMusicPromptVersion | null> => {
       const [row] = await db
-        .select()
+        .select(getTableColumns(sequenceMusicPromptVersions))
         .from(sequenceMusicPromptVersions)
-        .where(eq(sequenceMusicPromptVersions.sequenceId, sequenceId))
-        .orderBy(desc(sequenceMusicPromptVersions.createdAt))
-        .limit(1);
+        .innerJoin(
+          sequences,
+          eq(
+            sequences.selectedMusicPromptVersionId,
+            sequenceMusicPromptVersions.id
+          )
+        )
+        .where(eq(sequences.id, sequenceId));
       return row ?? null;
     },
 

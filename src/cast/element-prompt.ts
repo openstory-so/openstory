@@ -47,25 +47,27 @@ export function buildElementDescription(
 export function buildElementReferenceImages(
   elements: SequenceElementMinimal[]
 ): ReferenceImageDescription[] {
-  return elements.flatMap((el) =>
-    el.imageUrl
-      ? [
-          {
-            referenceImageUrl: el.imageUrl,
-            description: buildElementDescription(el),
-            role: 'element' as const,
-            kind: el.kind ?? ('image' as const),
-            durationSeconds: el.durationSeconds,
-            token: el.token,
-            provenanceKey: referenceProvenanceKey(
-              'element',
-              el.id,
-              el.imageUrl
-            ),
-          },
-        ]
-      : []
-  );
+  return [...elements]
+    .sort((a, b) => (a.token < b.token ? -1 : a.token > b.token ? 1 : 0))
+    .flatMap((el) =>
+      el.imageUrl
+        ? [
+            {
+              referenceImageUrl: el.imageUrl,
+              description: buildElementDescription(el),
+              role: 'element' as const,
+              kind: el.kind ?? ('image' as const),
+              durationSeconds: el.durationSeconds,
+              token: el.token,
+              provenanceKey: referenceProvenanceKey(
+                'element',
+                el.id,
+                el.imageUrl
+              ),
+            },
+          ]
+        : []
+    );
 }
 
 /**

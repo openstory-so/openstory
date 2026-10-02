@@ -186,7 +186,7 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
         softened: false,
       })
     ).toBe(
-      "Content checker rejected the dialogue recording (Seedance 2.5). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script."
+      "Content checker rejected the generated dialogue (Seedance 2.5). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script."
     );
     expect(
       clipContentRejectionMessage({

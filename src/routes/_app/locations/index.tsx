@@ -1,4 +1,5 @@
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { AddLocationDialog } from '@/cast/ui/location-library/add-location-dialog';
 import { LocationLibraryFilters } from '@/cast/ui/location-library/location-library-filters';
 import { LocationLibraryList } from '@/cast/ui/location-library/location-library-list';
@@ -65,7 +66,7 @@ function LocationsPage() {
                 ? 'Add locations to your library to maintain visual consistency across your sequences.'
                 : 'Check back soon, or sign in to build your own location library.'
             }
-            action={addAction}
+            action={isAuthenticated ? addAction : <SignInButton />}
           />
         ) : (
           <LocationLibraryList

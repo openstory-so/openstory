@@ -12,6 +12,7 @@ import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import { loadSequenceSegments } from '@/shots/server/sequence-segments';
+import { loadVoiceMovedShotIds } from '@/shots/server/shot-dialogue';
 import type { StartFrameSequence } from '@/shots/use-start-frame';
 
 export type ShotMediaStaleness = {
@@ -52,6 +53,16 @@ export async function loadShotMediaStates(
     sequence,
     shots
   );
+  // A voice change dates every shot recorded alongside it, not just the
+  // speaker's own (#1802).
+  const [voiceMoved, recording] = await Promise.all([
+    loadVoiceMovedShotIds(scopedDb, sequence.id, shots),
+    // A speech in flight that will become the shot's audio: updating, not
+    // stale, so nothing offers to record it again meanwhile.
+    scopedDb.shotDialogue.listShotIdsWithLiveClaim(
+      shots.map((shot) => shot.id)
+    ),
+  ]);
 
   const videoByShot = new Map<
     string,
@@ -83,7 +94,9 @@ export async function loadShotMediaStates(
         dialogue: dialogueArtifactStaleness({
           voiced: key != null,
           hasAudio: (shot.audioClips?.length ?? 0) > 0,
-          matching: clipsMatchKey(shot.audioClips, key),
+          matching:
+            clipsMatchKey(shot.audioClips, key) && !voiceMoved.has(shot.id),
+          generating: recording.has(shot.id),
         }),
         video: videoArtifactStaleness({
           hasVideo: video?.hasVideo ?? false,

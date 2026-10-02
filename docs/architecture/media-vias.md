@@ -21,7 +21,7 @@ Seedance has neither: Ark documents no limit, only a style recommendation ("no m
 
 Only the hard limit gates clip **packing** (`packedPromptFitsLimit`, which returns true when there is none), so a packed Seedance clip is no longer refused against a limit that does not exist.
 
-**Studio refuses; only sequences shorten.** Studio has no prompt-version history, so a rewrite there would be an edit the user never sees — the thing #1754 removed. Past a ceiling the via enforces, the composer turns the counter red (`12588 / 4096`) and a Generate click opens a dialog naming both numbers; `buildStudioVideoInput` asserts the same limit as the backstop so a bypass reads our wording, not fal's 400.
+**Studio refuses; only sequences shorten.** Studio's only history is the edit chain (#1925), which records the user's own prompts, so a rewrite there would be an edit the user never sees — the thing #1754 removed. Past a ceiling the via enforces, the composer turns the counter red (`12588 / 4096`) and a Generate click opens a dialog naming both numbers; `buildStudioVideoInput` asserts the same limit as the backstop so a bypass reads our wording, not fal's 400.
 
 **When a hard limit really refuses** in sequence generation, the motion workflow recovers rather than cutting: `isPromptTooLongError` classifies our own `PromptTooLongError` and the provider's 422 alike, `shortenOverlongMotionPrompt` rewrites the prompt with an LLM under the real budget, and the result is saved as a `shortened` shot prompt version (selected on a primary render, history-only on a variant). The shortening is therefore a visible, revertable edit in Versions, not something that happened inside a request builder. One rewrite per run; a second refusal fails the clip and names both numbers.
 

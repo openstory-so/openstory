@@ -1,25 +1,22 @@
 /**
- * The `motionMusicPromptsWorkflow` durable workflow.
- *
- * Wave 3 mid-tier orchestrator: fans out to motion-prompts (per-scene tree)
- * and music-prompt (single scene-summaries → music design call) in parallel.
+ * Music prompt for a sequence whose shots already have derived motion text.
+ * The motion-prompt LLM this used to fan out is retired (#1923). The result
+ * still carries empty motion maps so a parent typed against the old shape
+ * keeps compiling.
  */
 
-import { DEFAULT_VIDEO_MODEL } from '@/models/models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { snapDuration } from '@/motion/snap-duration';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
+import { DEFAULT_MUSIC_MODEL } from '@/models/models';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import type {
   MotionMusicPromptsWorkflowInput,
   MotionMusicPromptsWorkflowResult,
-  MotionPromptBatchWorkflowInput,
   MusicPromptWorkflowInput,
   MusicPromptWorkflowResult,
 } from '@/platform/server/workflow/types';
-import type { MotionPromptWorkflowResult } from './motion-prompt-workflow';
 import {
   joinMusicDesignByIndex,
   musicSceneSummariesFromAnalysis,
@@ -28,8 +25,6 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'motion-music-prompts']);
-
-type MotionPromptsResult = MotionPromptWorkflowResult[];
 
 export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<MotionMusicPromptsWorkflowInput> {
   protected override async runImpl(
@@ -41,166 +36,61 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
     const {
       scenesWithVisualPrompts,
       analysisModelId,
-      videoModel,
-      videoModels,
       sequenceId,
       userId,
       teamId,
-      aspectRatio,
-      characterBible,
-      locationBible,
-      elementBible,
-      styleConfig,
-      shotMapping,
-      startingFrameImageUrls,
-      referenceOnly,
     } = input;
 
-    // Snap durations against the primary video model. The structured motion
-    // prompts produced here are model-independent; per-model assembly happens
-    // downstream in motion-batch (#545).
-    const modelKey = videoModels?.[0] ?? videoModel ?? DEFAULT_VIDEO_MODEL;
-
-    // Snap durations upfront so the motion prompts see model-accurate
-    // duration values.
-    const scenesWithSnappedDurations: Scene[] = await step.do(
-      'snap-durations',
-      () =>
-        Promise.resolve(
-          scenesWithVisualPrompts.map((scene) => ({
-            ...scene,
-            metadata: scene.metadata
-              ? {
-                  ...scene.metadata,
-                  durationSeconds: snapDuration(
-                    scene.metadata.durationSeconds,
-                    modelKey
-                  ),
-                }
-              : scene.metadata,
-          }))
-        )
-    );
-
-    // Music reads the rows scene-split wrote — each scene's shot durations,
-    // not the snapped scene label — so its stamp is what verify rebuilds
-    // (#1783).
     const sceneSummaries = musicSceneSummariesFromAnalysis(
       scenesWithVisualPrompts
     );
 
-    // Run motion prompts and music design in parallel via Pattern 3.
-    const [motionPrompts, musicDesign] = await Promise.all([
-      spawnAndAwaitChild<MotionPromptBatchWorkflowInput, MotionPromptsResult>(
-        step,
-        {
-          binding: this.env.MOTION_PROMPT_BATCH_WORKFLOW,
-          parentBindingName: 'MOTION_MUSIC_PROMPTS_WORKFLOW',
-          parentInstanceId: event.instanceId,
-          childId: `motion-prompts-batch:${sequenceId}`,
-          childPayload: {
-            userId,
-            teamId,
-            sequenceId,
-            reservationId: input.reservationId,
-            scenes: scenesWithSnappedDurations,
-            aspectRatio,
-            characterBible,
-            locationBible,
-            elementBible,
-            styleConfig,
-            analysisModelId,
-            shotMapping,
-            startingFrameImageUrls,
-            referenceOnly,
-            dialogueLinesByShotId: input.dialogueLinesByShotId,
-          },
-          spawnStepName: 'spawn-motion-prompts',
-          awaitStepName: 'await-motion-prompts',
-          // Must exceed the child's own await budget: motion-prompts awaits
-          // each per-scene grandchild for 30 minutes, plus notify lag under a
-          // burst.
-          timeout: '45 minutes',
-        }
-      ),
-      spawnAndAwaitChild<MusicPromptWorkflowInput, MusicPromptWorkflowResult>(
-        step,
-        {
-          binding: this.env.MUSIC_PROMPT_WORKFLOW,
-          parentBindingName: 'MOTION_MUSIC_PROMPTS_WORKFLOW',
-          parentInstanceId: event.instanceId,
-          childId: `music-prompt:${sequenceId}`,
-          childPayload: {
-            userId,
-            teamId,
-            sequenceId,
-            reservationId: input.reservationId,
-            sceneSummaries,
-            analysisModelId,
-            promptSource: input.musicPromptSource,
-          },
-          spawnStepName: 'spawn-music-prompt',
-          awaitStepName: 'await-music-prompt',
-          // LLM-only child; headroom is for burst notify lag.
-          timeout: '45 minutes',
-        }
-      ),
-    ]);
+    const musicDesign = await spawnAndAwaitChild<
+      MusicPromptWorkflowInput,
+      MusicPromptWorkflowResult
+    >(step, {
+      binding: this.env.MUSIC_PROMPT_WORKFLOW,
+      parentBindingName: 'MOTION_MUSIC_PROMPTS_WORKFLOW',
+      parentInstanceId: event.instanceId,
+      childId: `music-prompt:${sequenceId}`,
+      childPayload: {
+        userId,
+        teamId,
+        sequenceId,
+        reservationId: input.reservationId,
+        sceneSummaries,
+        analysisModelId,
+        promptSource: input.musicPromptSource,
+        // Nothing spawns this workflow any more (drain path, #1923) and its
+        // payload carries no audio model; a failure is recorded against the
+        // default one.
+        musicModel: DEFAULT_MUSIC_MODEL,
+      },
+      spawnStepName: 'spawn-music-prompt',
+      awaitStepName: 'await-music-prompt',
+      timeout: '45 minutes',
+    });
 
-    // Merge music design into scenes by index. The summaries we sent are
-    // index-aligned; echoed ULIDs are not a reliable join key (same class
-    // as style recommendation moving to catalog indices). Extra LLM rows
-    // are dropped; a short list still throws.
-    const completeScenes: Scene[] = await step.do(
-      'merge-music-and-motion',
-      () => {
-        const echoedIds = musicDesign.scenes.map((s) => s.sceneId);
-        const expectedIds = scenesWithSnappedDurations.map((s) => s.sceneId);
-        if (echoedIds.some((id, i) => id !== expectedIds[i])) {
-          logger.warn(
-            '[MotionMusicPrompts] Music design sceneIds did not match; pairing by index',
-            { sequenceId, expected: expectedIds, echoed: echoedIds }
-          );
-        }
-        // Motion prompts are persisted to `shot_prompt_versions` by the
-        // per-scene child (mirrored on `shot.motionPrompt`) — they are NOT
-        // merged back into `scene.prompts` (#1143 / #713). Only music design
-        // rides on the scene metadata here.
-        return Promise.resolve(
-          joinMusicDesignByIndex(scenesWithSnappedDurations, musicDesign.scenes)
+    const completeScenes: Scene[] = await step.do('merge-music', () => {
+      const echoedIds = musicDesign.scenes.map((s) => s.sceneId);
+      const expectedIds = scenesWithVisualPrompts.map((s) => s.sceneId);
+      if (echoedIds.some((id, i) => id !== expectedIds[i])) {
+        logger.warn(
+          '[MotionMusicPrompts] Music design sceneIds did not match; pairing by index',
+          { sequenceId, expected: expectedIds, echoed: echoedIds }
         );
       }
-    );
-
-    // Return the generated motion prompts in memory, keyed by sceneId, so the
-    // parent pipeline (analyze-script) threads them straight into the motion
-    // render batch rather than re-reading the racy `shot.motionPrompt` mirror /
-    // selected-version pointer from the DB (#713/#991). The per-scene child has
-    // already persisted them to `shot_prompt_versions`.
-    const motionPromptsBySceneId = Object.fromEntries(
-      motionPrompts.map((m) => [m.sceneId, m.motionPrompt])
-    );
-    const motionPromptVersionIdsBySceneId = Object.fromEntries(
-      motionPrompts.map((m) => [m.sceneId, m.finalVersionId ?? null])
-    );
-    const motionPromptsByShotId: Record<
-      string,
-      (typeof motionPrompts)[number]['motionPrompt']
-    > = {};
-    const motionPromptVersionIdsByShotId: Record<string, string | null> = {};
-    for (const prompt of motionPrompts) {
-      if (!prompt.shotId) continue;
-      motionPromptsByShotId[prompt.shotId] = prompt.motionPrompt;
-      motionPromptVersionIdsByShotId[prompt.shotId] =
-        prompt.finalVersionId ?? null;
-    }
+      return Promise.resolve(
+        joinMusicDesignByIndex(scenesWithVisualPrompts, musicDesign.scenes)
+      );
+    });
 
     return {
       completeScenes,
-      motionPromptsBySceneId,
-      motionPromptVersionIdsBySceneId,
-      motionPromptsByShotId,
-      motionPromptVersionIdsByShotId,
+      motionPromptsBySceneId: {},
+      motionPromptVersionIdsBySceneId: {},
+      motionPromptsByShotId: {},
+      motionPromptVersionIdsByShotId: {},
       musicPrompt: musicDesign.prompt,
       musicTags: reinforceInstrumentalTags(musicDesign.tags),
     };
@@ -214,7 +104,7 @@ export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<Moti
     scopedDb: WorkflowScopedDb;
   }): void {
     logger.error(
-      `[MotionMusicPromptsWorkflow:cf] Motion/music prompt generation failed: ${error}`
+      `[MotionMusicPromptsWorkflow:cf] Music prompt generation failed: ${error}`
     );
   }
 }

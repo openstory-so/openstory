@@ -82,6 +82,7 @@ describe('shot-list schema — constraints', () => {
           },
           action: 'he walks toward the desk',
           cameraMovement: { move: 'dolly', pacing: 'slow' },
+          direction: '',
           soundCue: 'footsteps',
           dialogue: [],
           durationSeconds: 4,
@@ -103,6 +104,7 @@ describe('shot-list schema — constraints', () => {
       },
       action: 'turns',
       cameraMovement: { move: 'pan', pacing: 'smooth' } as const,
+      direction: '',
       soundCue: '',
       dialogue: [],
       durationSeconds: 3,
@@ -134,12 +136,14 @@ describe('shot-list schema — constraints', () => {
     if (result.success) expect(result.data.shots).toHaveLength(3);
   });
 
-  it('rejects pacing adverbs outside slow/smooth/gradual', () => {
-    const result = shotSpecSchema.shape.cameraMovement.safeParse({
-      move: 'pan',
-      pacing: 'fast',
-    });
-    expect(result.success).toBe(false);
+  it('keeps a chained move and a free pacing intact (#1915)', () => {
+    const cameraMovement = {
+      move: 'arc around the actor, then follow as she runs',
+      pacing: 'accelerating into the turn',
+    };
+    expect(shotSpecSchema.shape.cameraMovement.parse(cameraMovement)).toEqual(
+      cameraMovement
+    );
   });
 
   it('rejects an empty shots array; there is no parse-time ceiling (#1593)', () => {
@@ -153,6 +157,7 @@ describe('shot-list schema — constraints', () => {
       },
       action: 'turns',
       cameraMovement: { move: 'pan', pacing: 'smooth' as const },
+      direction: '',
       soundCue: '',
       dialogue: [],
       durationSeconds: 3,

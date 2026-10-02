@@ -222,6 +222,50 @@ export async function getLatestPreviewByFrameIds(
   return byFrame;
 }
 
+/** A primary row speaks for its frame's status unless it is a preview (#1942). */
+function speaksForFrame() {
+  return and(
+    eq(frameVariants.isPrimary, true),
+    ne(frameVariants.kind, 'preview')
+  );
+}
+
+/**
+ * Newest primary non-preview version per frame — the render whose lifecycle
+ * IS the frame's image status (#1942), as `getPrimaryVideoByShotIds` is for
+ * video. Frames with none are absent. Discarded rows count: discarding hides a
+ * version from the picker, but a discarded failure is still the last thing
+ * that happened to the primary slot.
+ */
+export async function getPrimaryImageByFrameIds(
+  db: Database,
+  frameIds: string[]
+): Promise<Map<string, FrameVariant>> {
+  if (frameIds.length === 0) return new Map();
+  const byFrame = new Map<string, FrameVariant>();
+  for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+    const newest = db
+      .select({ id: sql<string>`max(${frameVariants.id})` })
+      .from(frameVariants)
+      .where(
+        and(
+          inArray(
+            frameVariants.frameId,
+            frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+          ),
+          speaksForFrame()
+        )
+      )
+      .groupBy(frameVariants.frameId);
+    const rows = await db
+      .select()
+      .from(frameVariants)
+      .where(inArray(frameVariants.id, newest));
+    for (const row of rows) byFrame.set(row.frameId, row);
+  }
+  return byFrame;
+}
+
 export function createFrameVariantsMethods(db: Database) {
   /**
    * `select`'s body. With `consumeClaim`, the pointer move, mirror and prompt
@@ -422,10 +466,25 @@ export function createFrameVariantsMethods(db: Database) {
       promotableVersion,
       null
     );
+    // A failure the user answered by picking a still no longer speaks for
+    // the frame (#1942): its failed runs leave the status race, so the shot
+    // reads completed (as the old copy on the frame did) and smart retry does
+    // not pay for a new still. The rows stay history. Mirrors `selectMusic`.
+    const retireFailures = db
+      .update(frameVariants)
+      .set({ isPrimary: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(frameVariants.frameId, frameId),
+          eq(frameVariants.isPrimary, true),
+          eq(frameVariants.status, 'failed')
+        )
+      );
 
     if (linkedPrompt && shouldClearPending) {
       await db.batch([
         mirrorUpdate,
+        retireFailures,
         imageSelectedEvent,
         demotePromptClaims(),
         db
@@ -441,6 +500,7 @@ export function createFrameVariantsMethods(db: Database) {
     } else if (linkedPrompt) {
       await db.batch([
         mirrorUpdate,
+        retireFailures,
         imageSelectedEvent,
         demotePromptClaims(),
         db
@@ -455,6 +515,7 @@ export function createFrameVariantsMethods(db: Database) {
     } else if (shouldClearPending) {
       await db.batch([
         mirrorUpdate,
+        retireFailures,
         imageSelectedEvent,
         db
           .update(frames)
@@ -465,7 +526,7 @@ export function createFrameVariantsMethods(db: Database) {
           .where(eq(frames.id, frameId)),
       ]);
     } else {
-      await db.batch([mirrorUpdate, imageSelectedEvent]);
+      await db.batch([mirrorUpdate, retireFailures, imageSelectedEvent]);
     }
     return version;
   };
@@ -497,8 +558,10 @@ export function createFrameVariantsMethods(db: Database) {
      * the version at click and pass `versionId`; they never hit this path.
      */
     appendVersion: async (
-      data: Omit<NewFrameVariant, 'inputHash'> & {
+      data: Omit<NewFrameVariant, 'inputHash' | 'isPrimary'> & {
         inputHash?: ShotImageInputHash | null;
+        /** Does this render speak for the frame's status? (#1942) */
+        isPrimary: boolean;
       }
     ): Promise<FrameVariant> => {
       if (data.status === 'generating' && data.workflowRunId) {
@@ -561,6 +624,8 @@ export function createFrameVariantsMethods(db: Database) {
             url: input.url,
             storagePath: input.storagePath,
             status: 'completed',
+            // The user's own still answers the primary slot (#1942).
+            isPrimary: true,
             generatedAt: new Date(),
             inputHash: input.inputHash,
             promptHash: input.promptText ? simpleHash(input.promptText) : null,
@@ -662,6 +727,7 @@ export function createFrameVariantsMethods(db: Database) {
             url: input.image.url,
             storagePath: input.image.storagePath,
             status: 'completed',
+            isPrimary: true,
             generatedAt: now,
             inputHash: input.image.inputHash,
             promptHash: simpleHash(input.prompt.text),
@@ -673,8 +739,6 @@ export function createFrameVariantsMethods(db: Database) {
           .set({
             selectedImagePromptVersionId: promptVersionId,
             selectedImageVersionId: imageVersionId,
-            imageStatus: 'completed',
-            imageError: null,
             pendingPromoteVersionId: null,
             updatedAt: now,
           })
@@ -751,19 +815,31 @@ export function createFrameVariantsMethods(db: Database) {
      */
     markFailedByWorkflowRun: async (
       workflowRunId: string,
-      error: string
-    ): Promise<void> => {
+      error: string,
+      /** `isPrimary: false`: a failure the shot must not read as its own (a failed upscale, #1942). */
+      options?: { isPrimary: false }
+    ): Promise<number> => {
       // 'pending' included since #1085: a pre-created claim row whose run died
       // before reaching `set-generating-status` must not stay live forever.
-      await db
+      const rows = await db
         .update(frameVariants)
-        .set({ status: 'failed', error, updatedAt: new Date() })
+        .set({ status: 'failed', error, ...options, updatedAt: new Date() })
         .where(
           and(
             eq(frameVariants.workflowRunId, workflowRunId),
             inArray(frameVariants.status, [...LIVE_PENDING_STATUSES])
           )
-        );
+        )
+        .returning({ id: frameVariants.id });
+      // Rows ACCOUNTED FOR, as `videoVariants.markFailedByWorkflowRun`: an
+      // already-terminal row (a user cancel) counts, so only a run that died
+      // before opening any row returns 0 and gets a terminal row (#1942).
+      if (rows.length > 0) return rows.length;
+      const [existing] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(frameVariants)
+        .where(eq(frameVariants.workflowRunId, workflowRunId));
+      return existing?.count ?? 0;
     },
 
     /**
@@ -781,6 +857,8 @@ export function createFrameVariantsMethods(db: Database) {
       dependsOnVersionId?: string | null;
       workflowRunId?: string | null;
       promptVersionId?: string | null;
+      /** False for an added model (`variantOnly`, #1942). */
+      isPrimary: boolean;
     }): Promise<FrameVariant> => {
       const [row] = await db
         .insert(frameVariants)
@@ -790,6 +868,7 @@ export function createFrameVariantsMethods(db: Database) {
           kind: 'model',
           model: input.model,
           status: 'pending',
+          isPrimary: input.isPrimary,
           pendingInputHash: input.pendingInputHash ?? null,
           dependsOnVersionId: input.dependsOnVersionId ?? null,
           workflowRunId: input.workflowRunId ?? null,
@@ -836,6 +915,8 @@ export function createFrameVariantsMethods(db: Database) {
         kind: 'preview',
         model: input.model,
         status: 'generating',
+        // A preview never speaks for the frame's status (#1942).
+        isPrimary: false,
         promptHash: input.promptHash,
         promptVersionId: null,
         workflowRunId: input.workflowRunId,
@@ -908,6 +989,7 @@ export function createFrameVariantsMethods(db: Database) {
           url: input.url,
           storagePath: input.storagePath,
           status: 'completed',
+          isPrimary: false,
           generatedAt: new Date(),
           promptHash: input.promptHash,
           promptVersionId: null,
@@ -1073,6 +1155,27 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frameVariants.id, versionId),
             inArray(frameVariants.status, [...LIVE_PENDING_STATUSES])
+          )
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    /** Fail a claim no run has picked up yet (still `pending`); null once a
+     * run holds it (`generating`) or it is terminal. A parent that stops
+     * waiting on a child uses this, not `markTerminal`: a child still
+     * rendering owns its row and fails it itself. */
+    failUnclaimed: async (
+      versionId: string,
+      error: string
+    ): Promise<FrameVariant | null> => {
+      const [row] = await db
+        .update(frameVariants)
+        .set({ status: 'failed', error, updatedAt: new Date() })
+        .where(
+          and(
+            eq(frameVariants.id, versionId),
+            eq(frameVariants.status, 'pending')
           )
         )
         .returning();
@@ -1316,6 +1419,21 @@ export function createFrameVariantsMethods(db: Database) {
      */
     listLatestPreviewsByFrameIds: (frameIds: string[]) =>
       getLatestPreviewByFrameIds(db, frameIds),
+
+    /** See {@link getPrimaryImageByFrameIds}. */
+    getPrimaryByFrameIds: (frameIds: string[]) =>
+      getPrimaryImageByFrameIds(db, frameIds),
+
+    /** Single-frame {@link getPrimaryByFrameIds}. */
+    getPrimary: async (frameId: string): Promise<FrameVariant | null> => {
+      const rows = await db
+        .select()
+        .from(frameVariants)
+        .where(and(eq(frameVariants.frameId, frameId), speaksForFrame()))
+        .orderBy(desc(frameVariants.id))
+        .limit(1);
+      return rows[0] ?? null;
+    },
 
     /**
      * The model of each shot's SELECTED image version across a sequence, keyed

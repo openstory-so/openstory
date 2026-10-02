@@ -50,8 +50,8 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,
   },
-  'openai/gpt-5.6-sol': {
-    name: 'OpenAI: GPT-5.6 Sol',
+  'openai/gpt-6-sol': {
+    name: 'OpenAI: GPT-6 Sol',
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 10,
     webSearchPerQuery: 0.01,
@@ -108,10 +108,10 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 6,
     webSearchPerQuery: 0.005,
   },
-  'openai/gpt-5.6-luna': {
-    name: 'OpenAI: GPT-5.6 Luna',
-    promptPerMillionTokens: 0.19999999999999998,
-    completionPerMillionTokens: 1.2,
+  'openai/gpt-6-luna': {
+    name: 'OpenAI: GPT-6 Luna',
+    promptPerMillionTokens: 0.1,
+    completionPerMillionTokens: 0.5,
     webSearchPerQuery: 0.01,
   },
   'openai/gpt-5.4-mini': {

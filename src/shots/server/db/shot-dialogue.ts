@@ -7,11 +7,11 @@
  *     row per shot. The shot-list pass seeds a `prompt` row; a user edit
  *     appends `user-edit`. This is what References records and what render
  *     and staleness read.
- *   `dialogue_recordings` — one row per ElevenLabs Text to Dialogue call, the
- *     whole file. No selected flag: a recording is never "the" recording of
+ *   `dialogue_speeches` — one row per ElevenLabs Text to Dialogue call, the
+ *     whole file. No selected flag: a speech is never "the" speech of
  *     anything, it is what sections point into.
- *   `shot_dialogue_sections` — a shot's time range of a recording, one
- *     selected row per shot. A recording inserts a section for every shot it
+ *   `shot_dialogue_sections` — a shot's time range of a speech, one
+ *     selected row per shot. A speech inserts a section for every shot it
  *     spoke and selects only the shots that adopt it, so a shot that was only
  *     context keeps the reading it had. `shots.audioClips` holds the cut file
  *     of the selected section (working set).
@@ -23,16 +23,16 @@
 
 import type { Database } from '@/platform/server/db/client';
 import {
-  dialogueRecordings,
+  dialogueSpeeches,
   shotDialogueClaims,
   shotDialogueSections,
   shotDialogueVersions,
   shots,
 } from '@/platform/server/db/schema';
 import type {
-  DialogueRecording,
+  DialogueSpeech,
   MotionAudioClip,
-  DialogueRecordingTurn,
+  DialogueSpeechTurn,
   ShotDialogueClaim,
   ShotDialogueLine,
   ShotDialogueSection,
@@ -50,18 +50,20 @@ import {
   sql,
 } from 'drizzle-orm';
 
-export type AppendDialogueRecordingInput = {
+export type AppendDialogueSpeechInput = {
   /** Generated inside the workflow step, so a replay lands on the same rows. */
   id: string;
   sequenceId: string;
   storageKey: string;
   url: string;
   durationSeconds: number;
-  turns: DialogueRecordingTurn[];
+  turns: DialogueSpeechTurn[];
   inputHash: string;
   characterCount: number;
-  /** Null for a recording no workflow made. */
+  /** Null for a speech no workflow made. */
   workflowRunId: string | null;
+  /** What an adopting section is: a generated speech, or a mic take (#1802). */
+  adoptedAs: 'generated' | 'mic';
   /** One per shot the call spoke. */
   sections: Array<{
     id: string;
@@ -74,7 +76,7 @@ export type AppendDialogueRecordingInput = {
     /** Null when the lines were derived from the script (no version row). */
     dialogueVersionId: string | null;
     /**
-     * Set for a shot this recording was made FOR: the claim that has to still
+     * Set for a shot this speech was made FOR: the claim that has to still
      * be live for the reading to become the shot's audio, and the clip cut
      * from it. Null = spoken as context only.
      */
@@ -130,7 +132,7 @@ export function createShotDialogueMethods(db: Database) {
     );
 
   /**
-   * The user did something that should win over any recording in flight for
+   * The user did something that should win over any speech in flight for
    * this shot (picked a reading, changed or restored the lines). The run
    * still finishes and its reading is kept — it just cannot take the
    * selection any more. Rides in the SAME batch as the user's write.
@@ -191,7 +193,7 @@ export function createShotDialogueMethods(db: Database) {
     /**
      * Point the shot back at an earlier set of lines. The pointer is the whole
      * change: every reader resolves what a shot says from the selected row,
-     * so the prompt text, the recording and the panel all follow. Readings
+     * so the prompt text, the speech and the panel all follow. Readings
      * are not touched — the current one stops matching (so the next render
      * records), and any reading of the restored wording becomes usable again.
      */
@@ -270,7 +272,7 @@ export function createShotDialogueMethods(db: Database) {
       // inserting a selected row before the clear would trip the partial
       // unique index.
       const [, , inserted] = await db.batch([
-        // The words moved: a recording in flight speaks the old ones.
+        // The words moved: a speech in flight speaks the old ones.
         demoteLiveClaims(shotId),
         clearSelectedVersion(shotId),
         db
@@ -290,14 +292,14 @@ export function createShotDialogueMethods(db: Database) {
     },
 
     /**
-     * Claim the shots a recording is about to be made for (#1657). Returns
+     * Claim the shots a speech is about to be made for (#1657). Returns
      * shot id → claim id for the shots THIS run now holds. A shot missing from
      * the result is already being recorded, for the same words, by another
      * run — the live unique index refused the insert — so this run must not
      * adopt it. Safe under step replay: a claim this run already made is
      * found by its run id and handed back.
      */
-    claimRecording: async (input: {
+    claimSpeech: async (input: {
       shots: ReadonlyArray<{ shotId: string; sourceKey: string }>;
       workflowRunId: string;
     }): Promise<Record<string, string>> => {
@@ -357,7 +359,7 @@ export function createShotDialogueMethods(db: Database) {
     },
 
     /**
-     * The user does not want this recording to become the shot's audio. The
+     * The user does not want this speech to become the shot's audio. The
      * run is not stopped — it records the scene for other shots too — but its
      * reading for this shot lands unselected.
      */
@@ -376,7 +378,7 @@ export function createShotDialogueMethods(db: Database) {
       return cancelled.length > 0;
     },
 
-    /** A shot's recordings in flight, newest first. */
+    /** A shot's speeches in flight, newest first. */
     listLiveClaims: async (shotId: string): Promise<ShotDialogueClaim[]> =>
       await db
         .select()
@@ -390,7 +392,7 @@ export function createShotDialogueMethods(db: Database) {
         .orderBy(desc(shotDialogueClaims.createdAt)),
 
     /**
-     * The shots with a recording in flight that will become their audio —
+     * The shots with a speech in flight that will become their audio —
      * the unique-index predicate, so a demoted claim does not count (#1816).
      */
     listShotIdsWithLiveClaim: async (
@@ -411,7 +413,7 @@ export function createShotDialogueMethods(db: Database) {
     },
 
     /**
-     * Land one call: the recording, a section for every shot it spoke, and —
+     * Land one call: the speech, a section for every shot it spoke, and —
      * for each shot it was made FOR — the promotion, guarded by that shot's
      * claim (#1657).
      *
@@ -424,12 +426,12 @@ export function createShotDialogueMethods(db: Database) {
      * Context shots get an unselected row and keep what they had.
      *
      * Returns the shots that were promoted. Idempotent under replay: the ids
-     * come from the caller, a recording that already exists means this batch
+     * come from the caller, a speech that already exists means this batch
      * committed whole, and the answer is read back off the claims.
      * One statement per section keeps each under D1's 100-bound-parameter cap.
      */
-    appendRecording: async (
-      input: AppendDialogueRecordingInput
+    appendSpeech: async (
+      input: AppendDialogueSpeechInput
     ): Promise<{ promotedShotIds: string[] }> => {
       const adopting = input.sections.flatMap((section) =>
         section.adopt ? [{ ...section, adopt: section.adopt }] : []
@@ -456,13 +458,13 @@ export function createShotDialogueMethods(db: Database) {
       };
 
       const [existing] = await db
-        .select({ id: dialogueRecordings.id })
-        .from(dialogueRecordings)
-        .where(eq(dialogueRecordings.id, input.id))
+        .select({ id: dialogueSpeeches.id })
+        .from(dialogueSpeeches)
+        .where(eq(dialogueSpeeches.id, input.id))
         .limit(1);
       if (existing) return await promoted();
 
-      // The recording is a soft pointer, so no CHECK can say this.
+      // The speech is a soft pointer, so no CHECK can say this.
       const outside = input.sections.find(
         (section) => section.toSeconds > input.durationSeconds
       );
@@ -475,7 +477,7 @@ export function createShotDialogueMethods(db: Database) {
       const now = new Date();
       await db.batch([
         db
-          .insert(dialogueRecordings)
+          .insert(dialogueSpeeches)
           .values({
             id: input.id,
             sequenceId: input.sequenceId,
@@ -495,13 +497,13 @@ export function createShotDialogueMethods(db: Database) {
             .values({
               id: section.id,
               shotId: section.shotId,
-              recordingId: input.id,
+              speechId: input.id,
               fromSeconds: section.fromSeconds,
               toSeconds: section.toSeconds,
               sourceKey: section.sourceKey,
               spokenLines: section.spokenLines,
               dialogueVersionId: section.dialogueVersionId,
-              source: section.adopt ? 'recorded' : 'context',
+              source: section.adopt ? input.adoptedAs : 'context',
               workflowRunId: input.workflowRunId,
             })
             .onConflictDoNothing()
@@ -551,27 +553,54 @@ export function createShotDialogueMethods(db: Database) {
       return await promoted();
     },
 
+    /** Each speech's file, turns and when it was made, by id (#1802). */
+    listSpeeches: async (
+      speechIds: readonly string[]
+    ): Promise<
+      Map<string, { url: string; turns: DialogueSpeechTurn[]; createdAt: Date }>
+    > => {
+      const ids = [...new Set(speechIds)];
+      const out = new Map<
+        string,
+        { url: string; turns: DialogueSpeechTurn[]; createdAt: Date }
+      >();
+      // Under D1's 100-bound-parameter cap (#1019).
+      for (let i = 0; i < ids.length; i += 90) {
+        const rows = await db
+          .select({
+            id: dialogueSpeeches.id,
+            url: dialogueSpeeches.url,
+            turns: dialogueSpeeches.turns,
+            createdAt: dialogueSpeeches.createdAt,
+          })
+          .from(dialogueSpeeches)
+          .where(inArray(dialogueSpeeches.id, ids.slice(i, i + 90)));
+        for (const { id, ...speech } of rows) out.set(id, speech);
+      }
+      return out;
+    },
+
     /** A shot's readings, newest first, each with the file it points into. */
     listSections: async (
       shotId: string
     ): Promise<
       Array<
         ShotDialogueSection & {
-          recordingUrl: string;
-          recordingTurns: DialogueRecordingTurn[];
+          speechUrl: string;
+          speechTurns: DialogueSpeechTurn[];
         }
       >
     > => {
       const rows = await db
         .select({
           section: shotDialogueSections,
-          recordingUrl: dialogueRecordings.url,
-          recordingTurns: dialogueRecordings.turns,
+          speechUrl: dialogueSpeeches.url,
+          speechTurns: dialogueSpeeches.turns,
         })
         .from(shotDialogueSections)
         .innerJoin(
-          dialogueRecordings,
-          eq(dialogueRecordings.id, shotDialogueSections.recordingId)
+          dialogueSpeeches,
+          eq(dialogueSpeeches.id, shotDialogueSections.speechId)
         )
         .where(
           and(
@@ -585,36 +614,34 @@ export function createShotDialogueMethods(db: Database) {
         );
       return rows.map((row) => ({
         ...row.section,
-        recordingUrl: row.recordingUrl,
-        recordingTurns: row.recordingTurns,
+        speechUrl: row.speechUrl,
+        speechTurns: row.speechTurns,
       }));
     },
 
     getSectionById: async (
       sectionId: string
-    ): Promise<
-      (ShotDialogueSection & { recording: DialogueRecording }) | null
-    > => {
+    ): Promise<(ShotDialogueSection & { speech: DialogueSpeech }) | null> => {
       const [row] = await db
         .select({
           section: shotDialogueSections,
-          recording: dialogueRecordings,
+          speech: dialogueSpeeches,
         })
         .from(shotDialogueSections)
         .innerJoin(
-          dialogueRecordings,
-          eq(dialogueRecordings.id, shotDialogueSections.recordingId)
+          dialogueSpeeches,
+          eq(dialogueSpeeches.id, shotDialogueSections.speechId)
         )
         .where(eq(shotDialogueSections.id, sectionId))
         .limit(1);
-      return row ? { ...row.section, recording: row.recording } : null;
+      return row ? { ...row.section, speech: row.speech } : null;
     },
 
     /**
      * Soft-discard a reading. A discarded section can never stay selected, and
      * the shot must not keep a clip cut from it — so discarding the CURRENT
      * reading clears `shots.audioClips` in the same batch, and the next render
-     * records afresh. The recording file is untouched: other shots may hold
+     * records afresh. The speech file is untouched: other shots may hold
      * sections of it.
      */
     discardSection: async (

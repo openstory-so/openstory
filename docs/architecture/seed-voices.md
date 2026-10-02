@@ -71,10 +71,10 @@ ElevenLabs configured) and snapshotted on the payload.
 4. The first surviving take is the voice. "Use this take" on another costs
    nothing — a Seed take is its voice, there is nothing to save.
 
-## Recording (`recordSeedDialogueCall`)
+## Speech (`generateSeedDialogueSpeech`)
 
 Same claim → record → cut → promote lifecycle as ElevenLabs; only the call
-differs. `recordDialogue` sends a call to Seed when its lines are Seed
+differs. `generateDialogueSpeech` sends a call to Seed when its lines are Seed
 voices; `chunkTakeLines` never mixes providers in one call, breaks a Seed
 call before a fourth speaker joins (a fourth would have no reference clip)
 and keeps it under 1,000 line characters. With three speakers every slot is
@@ -98,16 +98,32 @@ line` in order.
   Speech before the script is cut off (the first shot's range starts at the
   script); speech between lines belongs to neither. Invented words are not
   checked for — the user regenerates a reading they do not like. A take
-  where a line cannot be found is retaken, up to 3 per call, then the
-  recording fails. Seed's own subtitles are not used: they run adjacent
+  where a line cannot be found is retaken, up to 3 per call. When none is
+  clean the best (highest worst-line share) is **kept**, not failed (#1802):
+  a doubtful line is placed in the gap between the lines that were found,
+  its turn carries `heardShare`, and the shot's clip lists it in
+  `unclearLines`, so the line list flags it ("May not be said clearly") for
+  the user to record or regenerate. A best take with a line under a quarter
+  heard (`SEED_KEEP_MIN_SHARE`) is a miss, not a doubt: the speech fails.
+  Character voice samples stay strict. Seed's own subtitles are not used: they run adjacent
   lines together into one timed word, so a line break is lost (up to 2.3 s
   off in testing).
-- Failed takes are not billed to the team.
+- Takes thrown away are not billed to the team; a kept one is.
 - **A failed scene does not fail the run.** `DialogueAudioWorkflow` keeps the
   scenes that recorded and logs the rest; the failed scene's shots record at
   motion and fail there, one by one, with the reason (e.g. which character
   still has an ElevenLabs voice sharing a shot with a Seed voice). Fix it and
   retry those shots — nothing else is regenerated.
+
+## A line at the mic (#1802)
+
+A user's take of one line goes to Seed Audio as a second reference
+(`@Audio2`) next to the speaker's normal clip (`@Audio1`). The prompt
+(`seedGuidedPrompt`) is experimental and not yet reliable, which is why
+Record is hidden behind `MIC_TAKES_ENABLED`. The take is checked by Scribe against the line like
+every take (3 takes, then the line fails) and trimmed to Scribe's span.
+Spliced into the shot's reading like an ElevenLabs Voice Changer take — see
+`elevenlabs.md`.
 
 ## Open
 

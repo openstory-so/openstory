@@ -19,6 +19,10 @@ import type {
   Shot,
   VideoVariant,
 } from '@/platform/server/db/schema';
+import type { SHOT_GENERATION_STATUSES } from '@/platform/server/db/schema/shots';
+
+/** A shot's still lifecycle, as {@link readinessImageStatus} derives it. */
+export type ImageStatus = (typeof SHOT_GENERATION_STATUSES)[number];
 
 /**
  * The narrow slice of a shot's sources that readiness tallies are derived from
@@ -40,6 +44,11 @@ export type ShotReadiness = {
   hasSelectedVideo: boolean;
   /** `status` of the newest non-`variantOnly` render, or null if none exists. */
   primaryVideoStatus: VideoVariant['status'] | null;
+  /**
+   * `status` of the anchor frame's newest primary non-preview
+   * `frame_variants` row, or null if none exists (#1942).
+   */
+  primaryImageStatus: FrameVariant['status'] | null;
 };
 
 /**
@@ -66,11 +75,37 @@ export function readinessVideoStatus(
   );
 }
 
+/**
+ * A shot's still status (#1942). The newest primary render's lifecycle wins:
+ * an open row (`pending` claim or `generating`) reads `generating`, a failed
+ * one `failed`. A completed or cancelled one — a cancel is the user standing
+ * down, not a state of the still — and a frame with no primary row read from
+ * the selection: `completed` with a selected still, else `pending`.
+ */
+export function readinessImageStatus(
+  readiness: Pick<ShotReadiness, 'selectedImageUrl' | 'primaryImageStatus'>
+): ImageStatus {
+  const status = readiness.primaryImageStatus;
+  switch (status) {
+    case 'pending':
+    case 'generating':
+      return 'generating';
+    case 'failed':
+      return 'failed';
+    case 'completed':
+    case 'cancelled':
+    case null:
+      return readiness.selectedImageUrl !== null ? 'completed' : 'pending';
+    default: {
+      const unhandled: never = status;
+      throw new Error(`Unhandled image status: ${String(unhandled)}`);
+    }
+  }
+}
+
 export type ShotGridSheet = {
   url: string | null;
-  // Sourced from a `frame_variants` row, whose status union is wider than the
-  // frame's (adds 'cancelled', #1085).
-  status: Frame['imageStatus'] | FrameVariant['status'];
+  status: FrameVariant['status'] | null;
 };
 
 /**
@@ -91,6 +126,12 @@ export type ShotViewSources = {
   preview: FrameVariant | null;
   /** The anchor frame's selected `frame_prompt_versions` row. */
   imagePromptVersion: FramePromptVersion | null;
+  /**
+   * The anchor frame's newest primary non-preview `frame_variants` row — its
+   * lifecycle IS the shot's image status (#1942). Separate from `image` for
+   * the same reason `primaryVideo` is separate from `video`.
+   */
+  primaryImage: FrameVariant | null;
   /** The version `render_segments.selectedVideoVersionId` points at. */
   video: VideoVariant | null;
   /**
@@ -114,10 +155,15 @@ export type ShotViewSources = {
 };
 
 export type ShotView = Shot & {
-  /** The anchor frame — owns the still's lifecycle (status/error). */
+  /** The anchor frame — owns the selection pointers. */
   frame: Frame;
   image: FrameVariant | null;
   imagePromptVersion: FramePromptVersion | null;
+  primaryImage: FrameVariant | null;
+  /** Derived, not stored — see {@link readinessImageStatus}. */
+  imageStatus: ImageStatus;
+  /** The failed primary row's error; null unless `imageStatus` is `failed`. */
+  imageError: string | null;
   /**
    * Derived, not stored: the newest non-discarded `kind: 'preview'` version
    * (#1101). Bytes live in our bucket (ImageWorkflow copies them off the
@@ -180,9 +226,6 @@ export function shotViewMissingFrame(
     sequenceId: shot.sequenceId,
     orderIndex: 0,
     role: 'first',
-    imageStatus: null,
-    imageWorkflowRunId: null,
-    imageError: null,
     selectedImageVersionId: null,
     selectedImagePromptVersionId: null,
     pendingPromoteVersionId: null,
@@ -194,6 +237,7 @@ export function shotViewMissingFrame(
     image: null,
     preview: null,
     imagePromptVersion: null,
+    primaryImage: null,
     ...video,
   });
 }
@@ -203,13 +247,21 @@ export function toShotView(
   frame: Frame,
   sources: ShotViewSources
 ): ShotView {
-  const { image, preview, imagePromptVersion, video, primaryVideo } = sources;
+  const { image, preview, imagePromptVersion, primaryImage, video } = sources;
+  const { primaryVideo } = sources;
+  const imageStatus = readinessImageStatus({
+    selectedImageUrl: image?.url ?? null,
+    primaryImageStatus: primaryImage?.status ?? null,
+  });
   return {
     ...shot,
     frame,
     image,
     previewThumbnailUrl: preview?.url ?? null,
     imagePromptVersion,
+    primaryImage,
+    imageStatus,
+    imageError: imageStatus === 'failed' ? (primaryImage?.error ?? null) : null,
     video,
     primaryVideo,
     videoStatus: readinessVideoStatus({
@@ -263,7 +315,8 @@ export function shotAfterVariantSelect(
     ...shot,
     image:
       imageUrl && shot.image ? { ...shot.image, url: imageUrl } : shot.image,
-    frame: { ...shot.frame, imageStatus: 'generating' },
+    imageStatus: 'generating',
+    imageError: null,
     pendingUpscaleUrl: imageUrl ?? shot.pendingUpscaleUrl ?? null,
     pendingUpscaleIndex: variantIndex ?? shot.pendingUpscaleIndex ?? null,
     video: null,
@@ -276,7 +329,7 @@ export function shotAfterVariantSelect(
  * caller holding a partial projection can still ask the question.
  */
 type MotionEligibilityShot = {
-  frame: Pick<Frame, 'imageStatus'>;
+  imageStatus: ImageStatus;
   image: Pick<FrameVariant, 'url'> | null;
   videoStatus: ShotView['videoStatus'];
 };
@@ -300,7 +353,7 @@ export function isBatchMotionEligible(
   shot: MotionEligibilityShot,
   referenceOnly: boolean
 ): boolean {
-  const hasStill = shot.frame.imageStatus === 'completed' && !!shot.image?.url;
+  const hasStill = shot.imageStatus === 'completed' && !!shot.image?.url;
   return (
     (referenceOnly || hasStill) &&
     (shot.videoStatus === 'pending' ||
@@ -318,6 +371,6 @@ export function isMotionGenerating(
   shot: MotionEligibilityShot,
   referenceOnly: boolean
 ): boolean {
-  const hasStill = shot.frame.imageStatus === 'completed' && !!shot.image?.url;
+  const hasStill = shot.imageStatus === 'completed' && !!shot.image?.url;
   return (referenceOnly || hasStill) && shot.videoStatus === 'generating';
 }

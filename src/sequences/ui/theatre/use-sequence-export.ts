@@ -39,6 +39,8 @@ export type SequenceExportState = {
   renderStartedAt: number | null;
   /** Ready MP4 of the current scenes + music choice, or null. */
   freshExportUrl: string | null;
+  /** The `sequence_exports` row behind `freshExportUrl` (publishing, #1267). */
+  freshExportId: string | null;
   /** A ready MP4 exists, but of an earlier cut. */
   hasStaleExport: boolean;
   /** Download the current cut's MP4. No-op until it has been rendered. */
@@ -173,10 +175,10 @@ export function useSequenceExport(
     exportMutation.mutate({ signal: controller.signal });
   }, [exportMutation, isRunning, posthog, sequenceId]);
 
-  const freshExportUrl =
-    (inputsHash &&
-      exports?.find((e) => e.sourceShotsHash === inputsHash)?.url) ||
+  const freshExport =
+    (inputsHash && exports?.find((e) => e.sourceShotsHash === inputsHash)) ||
     null;
+  const freshExportUrl = freshExport?.url ?? null;
   // The list is ready rows only.
   const hasStaleExport = !freshExportUrl && Boolean(exports?.length);
 
@@ -217,6 +219,7 @@ export function useSequenceExport(
     isRunning,
     renderStartedAt,
     freshExportUrl,
+    freshExportId: freshExport?.id ?? null,
     hasStaleExport,
     download,
     copyLink,

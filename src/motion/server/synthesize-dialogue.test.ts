@@ -24,9 +24,9 @@ vi.doMock('#storage', () => ({
     fullPath: 'audio/dialogue.wav',
   })),
 }));
-const { recordDialogueCall } = await import('./synthesize-dialogue');
+const { generateDialogueSpeechCall } = await import('./synthesize-dialogue');
 
-describe('recordDialogueCall voice identity', () => {
+describe('generateDialogueSpeechCall voice identity', () => {
   it('sends each character’s selected voice to ElevenLabs and stores the recording', async () => {
     const lines = voicedDialogueLines(
       {
@@ -45,7 +45,7 @@ describe('recordDialogueCall voice identity', () => {
         { name: 'Young Man', voiceId: 'young-man-selected-voice' },
       ]
     );
-    const recording = await recordDialogueCall({
+    const recording = await generateDialogueSpeechCall({
       apiKey: 'test-key',
       teamId: 'team-1',
       sequenceId: 'seq-1',
@@ -82,7 +82,7 @@ describe('recordDialogueCall voice identity', () => {
   });
 });
 
-describe('recordDialogueCall turn timing', () => {
+describe('generateDialogueSpeechCall turn timing', () => {
   const cast = [
     { name: 'Maya', voiceId: 'voice-maya' },
     { name: 'Otto', voiceId: 'voice-otto' },
@@ -118,7 +118,7 @@ describe('recordDialogueCall turn timing', () => {
       })
     );
   const record = () =>
-    recordDialogueCall({
+    generateDialogueSpeechCall({
       apiKey: 'test-key',
       teamId: 'team-1',
       sequenceId: 'seq-1',

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BytePlusGovernor } from './byteplus-governor.do';
+import { asStub } from '@/test/as-stub';
 
 const bucket = {
   bucket: 'assets-write',
@@ -19,10 +20,10 @@ function governor(store = storage()): BytePlusGovernor {
     put: (key: string, value: unknown) => void store.set(key, value),
   };
   return new BytePlusGovernor(
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the DO reads only ctx.storage.kv
-    { storage: { kv } } as unknown as DurableObjectState,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the DO reads no env
-    {} as Cloudflare.Env
+    // the DO reads only ctx.storage.kv
+    asStub<DurableObjectState>({ storage: { kv } }),
+    // the DO reads no env
+    asStub<Cloudflare.Env>({})
   );
 }
 

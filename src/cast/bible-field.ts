@@ -18,6 +18,17 @@ export function slugifyTag(name: string): string {
 }
 
 /**
+ * The tag a scene carries for a bible entry: its consistency tag, or its name
+ * as a slug. Scene-split stamps it; the scene location picker writes it.
+ */
+export function canonicalBibleTag(entry: {
+  name: string;
+  consistencyTag: string | null;
+}): string {
+  return entry.consistencyTag || slugifyTag(entry.name);
+}
+
+/**
  * Script-style identity for a manually added character/location
  * (`char_maya`, `loc_office`). Sequential `char_001` is the LLM's job;
  * a hand-added row should read as a shortened name, not a ULID.

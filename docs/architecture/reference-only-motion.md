@@ -29,9 +29,7 @@ every visual decision the prompt declines to make, the model makes instead —
 and it makes a _different_ one on the next shot. A sequence written that way
 loses its set, its light and its framing between every cut.
 
-So reference-only uses a separate template
-(`phase/motion-prompt-reference-only-chat`) that asks for the still's job and
-the motion's job in one prompt:
+Reference-only motion text is derived (`deriveMotionPrompt`). It prefixes the shot's framing, then the action, direction, camera move and sound cue:
 
 1. **Shot size and lens feel** — the framing at the instant the shot opens.
 2. **Blocking** — where each named character is, facing where, touching what,
@@ -47,10 +45,9 @@ the motion's job in one prompt:
 Then the same motion discipline as its sibling: one camera move, camera and
 subject motion in separate sentences, one physics event, one continuous take.
 
-Two templates rather than one template with a conditional block. They disagree
-on their most load-bearing rule, and a prompt that hedges between them gets
-both half-right. `src/motion/server/motion-prompt-templates.test.ts` pins the
-disagreement so a future edit cannot quietly merge them.
+`deriveMotionPrompt` writes that opening from the spec's framing fields. The
+still prompt is derived the same way and is skipped when the shot is
+reference-only.
 
 ### What it must still NOT describe
 
@@ -350,3 +347,63 @@ a sequence back into the frame-based workflow. Every sequence and shot that
 existed before the default flipped was stamped onto start frames by migration
 `20260903000946_backfill_generate_start_frames`, so the flip changed nothing
 already made.
+
+## Scene direction ownership (#1889)
+
+`sceneDirection` (`src/shots/scene-direction.ts`) resolves the inputs shared by
+visual prompts, derived shot stills and motion headers. The location is only
+the physical place: layout, architecture, materials, surface colours and fixed
+features such as practical light fixtures. Its sheet is rendered in neutral,
+even light, and its bible no longer reads or writes time of day, lighting or
+palette. Extraction names the physical place without slugline time suffixes, so
+day and night scenes share a location. The original heading stays in the
+scene and first mention; existing names and real names such as Night Owl Cafe
+are not mechanically stripped. The columns remain until the separately deployed #1890 migration.
+
+The scene owns location, time of day and lighting. At scene scope the
+inspector edits them through `updateSceneFn`, which appends the same narrative
+version as a script edit: time of day, lighting and the palette override on
+the Script tab, the location on the Locations tab (#1929). The location is
+picked from the sequence's locations, never typed: the pick writes the
+location's tag (`canonicalBibleTag`) to `continuity.environmentTag` and its
+name to the scene's location text, so the sheet match has one answer. A pick is
+scene-owned, so shot scope does not offer it. Empty lighting defaults from time of day. The style
+owns medium, art style, grading and palette; an optional scene palette override
+wins when nonempty. Clearing it restores the style. Legacy scene `styleTag`
+is not a source of look. Location sheets use style art direction but always
+neutral illumination.
+
+The #1889 generated custom data repair clears analysis-authored scene palettes
+from both scene narrative stores before these values become user overrides.
+Pre-implementation production inspection found zero location bible versions
+with source `edit` or `user-edit` containing the retired fields, so no authored
+location values needed copying into description. This was an aggregate read
+with zero writes.
+
+Location sheet hashes are explicitly version 2 for the neutral-place prompt.
+Scene lighting and palette overrides participate in both prompt hashes, so
+a scene-setting edit marks the downstream prompt stale.
+
+Every `packedSceneFromScene` call requires the resolved style, including
+previews and retries. Request handlers load the saved sequence style first;
+only legacy rows without a snapshot fall back to the live library style.
+The executor freezes the resolved header at plan time, and fresh analysis
+passes its existing style snapshot. The render builder includes this header
+for standalone shots as well as packed siblings; dialogue reassembly retains
+the same header. Prompt-authoring workflows share `scenePromptContext`, which
+removes legacy `styleTag` and supplies the resolved scene direction.
+
+### Location column retirement (#1890)
+
+The location bible and its legacy fallback no longer store time of day,
+lighting or palette. The generated migration uses six native `DROP COLUMN`
+statements without rebuilding either table. Merge and deploy this only after
+the field-ownership change (#1889) is deployed: migrations run before the
+new Worker, so the old Worker must already have stopped reading the fields.
+
+The migration was applied with foreign keys enabled in one transaction to
+a current-schema copy of local D1: all 77 table counts (6,099 rows) were
+unchanged, `foreign_key_check` returned no rows and `integrity_check` returned
+`ok`. Neither table had a trigger or an index on a retired field. A separate
+sequence-table rebuild control changed 22 child-table counts, demonstrating
+that the same check detects cascading deletion.

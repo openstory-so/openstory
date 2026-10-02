@@ -115,7 +115,10 @@ export async function ingestArkAssets(
 
     const publicUrl = await step.do(`${name}-url`, async () => {
       const falKey = await args.credentials.resolveOptionalKey('fal');
-      await assertArkCreateAssetSize(still.storedUrl);
+      // The 300px floor is an image rule; a clip has no dimensions to read.
+      if ((still.kind ?? 'Image') === 'Image') {
+        await assertArkCreateAssetSize(still.storedUrl);
+      }
       return toArkFetchableUrl(still.storedUrl, falKey?.key);
     });
 

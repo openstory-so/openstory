@@ -73,8 +73,12 @@ vi.doMock('@/models/server/byteplus-final-render', () => ({
   submitBytePlusFinalRender: mockSubmitFinalRender,
 }));
 
-const { submitStudioVideoJob, pollStudioVideoJob, studioVideoCostFromUsage } =
-  await import('./studio-video-generation');
+const {
+  arkStillsForStudio,
+  submitStudioVideoJob,
+  pollStudioVideoJob,
+  studioVideoCostFromUsage,
+} = await import('./studio-video-generation');
 
 describe('submitStudioVideoJob', () => {
   beforeEach(() => {
@@ -617,6 +621,95 @@ describe('submitStudioVideoJob', () => {
             source: { type: 'url', value: 'https://example.com/clip.mp4' },
           },
         ],
+      })
+    );
+  });
+});
+
+describe('submitStudioVideoJob edit and auto length (#1925)', () => {
+  beforeEach(() => {
+    mockGenerateVideo.mockClear();
+    mockFalVideo.mockClear();
+    testEnv.FAL_KEY = 'test-fal-key';
+    testEnv.ARK_API_KEY = 'ark-test';
+    testEnv.ARK_BASE_URL = undefined;
+    testEnv.E2E_TEST = undefined;
+  });
+
+  it('registers the source of an edit as a Video asset, never plain', () => {
+    expect(
+      arkStillsForStudio(
+        {
+          mode: 'edit',
+          sourceVideoUrl: '/r2/videos/source.mp4',
+        },
+        ['/r2/videos/source.mp4']
+      )
+    ).toEqual([
+      { storedUrl: '/r2/videos/source.mp4', slot: 'library', kind: 'Video' },
+    ]);
+  });
+
+  it('sends an edit to Ark as the registered source clip with duration -1', async () => {
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-edit' });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Make it night',
+      model: 'seedance_v2_5',
+      mode: 'edit',
+      sourceVideoUrl: 'https://example.com/source.mp4',
+      duration: 'auto',
+      aspectRatio: '9:16',
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: [
+          { type: 'text', content: 'Edit @Video1. Make it night' },
+          {
+            type: 'video',
+            source: {
+              type: 'url',
+              value: 'asset://https://example.com/source.mp4',
+            },
+          },
+        ],
+        size: 'adaptive_720p',
+        modelOptions: expect.objectContaining({ duration: -1 }),
+      })
+    );
+  });
+
+  it('refuses an edit routed to fal rather than falling back', async () => {
+    testEnv.ARK_API_KEY = undefined;
+    await expect(
+      submitStudioVideoJob({
+        arkAssets: registeredAssets,
+        prompt: 'Make it night',
+        model: 'seedance_v2_5',
+        mode: 'edit',
+        sourceVideoUrl: 'https://example.com/source.mp4',
+        duration: 'auto',
+      })
+    ).rejects.toThrow(/BytePlus route/);
+    expect(mockFalVideo).not.toHaveBeenCalled();
+  });
+
+  it("sends fal Seedance duration 'auto'", async () => {
+    testEnv.ARK_API_KEY = undefined;
+    mockGenerateVideo.mockResolvedValue({ jobId: 'fal-auto' });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'A red fox turns toward camera',
+      model: 'seedance_v2',
+      duration: 'auto',
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({ duration: 'auto' }),
       })
     );
   });

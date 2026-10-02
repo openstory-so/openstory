@@ -11,12 +11,20 @@ The **Theatre** tab is where you preview and share your final video. It displays
 
 When a merged video is available, it displays in a full video player sized to your sequence's aspect ratio. The player is centered in the viewport and constrained to fit the screen height.
 
-### Share Menu
+### Download Menu
 
-A share button (top-right corner of the player) opens a dropdown with:
+The Download button (top-right corner of the player) opens a menu with:
 
-- **Copy video URL** — Copies the direct video URL to your clipboard
-- **Download video** — Downloads the `.mp4` file with a filename based on your sequence title (e.g., `My_Sequence_openstory.mp4`)
+- **Download MP4** — Downloads the render of the current cut, named after your sequence title (e.g., `My_Sequence_openstory.mp4`)
+- **Copy link** — Copies the render's URL to your clipboard
+
+Until the current cut has been rendered, the menu offers **Render MP4 on server** instead of Download.
+
+### Publish to social
+
+If your team has added an Upload-Post key in **Settings → API Keys**, the Download menu also offers **Publish to social…** once the current cut has been rendered. Pick an Upload-Post profile, the platforms to post to (only the accounts connected to that profile are listed), a caption and an optional description. YouTube uploads default to private; TikTok uses your account's default unless you pick "Only me".
+
+You review exactly what will be posted before anything is sent, then follow each platform's result — a link to the post, or the reason it failed. Publishing exactly the same post again is detected and not sent twice. If Upload-Post doesn't confirm a post, the dialog keeps checking on it — even after you close and reopen it — rather than letting you send it again.
 
 ## Video States
 

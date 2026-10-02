@@ -25,7 +25,8 @@ import type {
   LocationSheetWorkflowResult,
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { reportParkedLocationSheet } from './sheet-divergence';
+import { landSheetRun } from './sheet-divergence';
+import type { SheetRunOutcome } from './sheet-divergence';
 import { locationSheetHashMatchesStored } from './sheet-snapshots';
 import { getLogger } from '@/platform/logger';
 
@@ -209,39 +210,35 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     // run holds one, and otherwise parks instead of revoking that run's claim.
     const reconcileOutcome = await step.do(
       'reconcile-database',
-      async (): Promise<
-        { kind: 'convergent'; versionId: string | null } | { kind: 'divergent' }
-      > => {
+      async (): Promise<SheetRunOutcome> => {
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         const claimed = Boolean(input.referenceVersionId);
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         const versionId = input.referenceVersionId ?? generateId();
-        const landing = await scopedDb.locationSheetVariants.promoteIfPending({
-          locationId: locationDbId,
-          versionId,
-          claimed,
-          url: storageResult.url,
-          storagePath: storageResult.path,
-          inputHash: input.snapshotInputHash,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
-          bibleVersionId: input.bibleVersionId ?? null,
-          model: generationParams.model,
-          workflowRunId,
-        });
-        if (landing === 'promoted') return { kind: 'convergent', versionId };
-        logger.warn('[LocationSheetWorkflow:cf] claim moved; sheet parked', {
-          locationDbId,
-          versionId,
-          claimed,
-          storagePath: storageResult.path,
-        });
-        await reportParkedLocationSheet({
+        return landSheetRun({
+          land: () =>
+            scopedDb.locationSheetVariants.promoteIfPending({
+              locationId: locationDbId,
+              versionId,
+              claimed,
+              url: storageResult.url,
+              storagePath: storageResult.path,
+              inputHash: input.snapshotInputHash,
+              // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
+              bibleVersionId: input.bibleVersionId ?? null,
+              model: generationParams.model,
+              workflowRunId,
+            }),
+          logger,
+          logTag: '[LocationSheetWorkflow:cf]',
           sequenceId,
-          locationId: locationDbId,
+          entityType: 'location',
+          entityId: locationDbId,
           versionId,
+          claimed,
+          storagePath: storageResult.path,
           snapshotInputHash: input.snapshotInputHash,
         });
-        return { kind: 'divergent' };
       }
     );
     if (reconcileOutcome.kind === 'convergent') {

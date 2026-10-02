@@ -7,6 +7,7 @@ import { buildShotInserts, defaultSingleShot } from '@/shots/shot-list-pass';
 import { buildSceneNarrative } from '@/sequences/server/scene-persistence';
 import { readMusicPromptStaleness } from './music-staleness';
 import { musicSceneSummariesFromAnalysis } from './workflows/music-scene-summaries';
+import { asStub } from '@/test/as-stub';
 
 const metadata: NonNullable<Scene['metadata']> = {
   title: 'Pickup',
@@ -57,13 +58,13 @@ const shotRows = buildShotInserts(
 );
 
 function asScopedDb<T>(stub: T): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as unknown as ScopedDb;
+  // test stub
+  return asStub<ScopedDb>(stub);
 }
 
 function asSequence<T>(stub: T): Sequence {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as unknown as Sequence;
+  // test stub
+  return asStub<Sequence>(stub);
 }
 
 describe('readMusicPromptStaleness (#1783)', () => {
@@ -75,9 +76,9 @@ describe('readMusicPromptStaleness (#1783)', () => {
     const scopedDb = asScopedDb({
       shots: { listBySequence: () => Promise.resolve(shotRows) },
       scenes: { listBySequence: () => Promise.resolve(sceneRows) },
-      sequenceVariants: { getMusicPrimary: () => Promise.resolve(null) },
+      sequenceVariants: { getMusicById: () => Promise.resolve(null) },
       sequenceMusicPromptVersions: {
-        getLatest: () => Promise.resolve({ analysisModel: 'm' }),
+        getSelected: () => Promise.resolve({ analysisModel: 'm' }),
       },
     });
     const read = (musicPromptInputHash: string) =>
@@ -86,7 +87,7 @@ describe('readMusicPromptStaleness (#1783)', () => {
         asSequence({
           id: 'seq',
           status: 'completed',
-          musicModel: null,
+          selectedMusicVariantId: null,
           musicPromptInputHash,
           analysisModel: 'm',
         })

@@ -46,6 +46,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   getFrameVariantsByIds,
   getLatestPreviewByFrameIds,
+  getPrimaryImageByFrameIds,
 } from '@/stills/server/db/frame-variants';
 import { getPrimaryVideoByShotIds } from '@/motion/server/db/video-variants';
 
@@ -236,9 +237,10 @@ async function loadDialogueResolver(
 /**
  * Map rows from {@link selectShotViewRows} to views.
  *
- * Two follow-up queries: the newest PRIMARY render per shot and the newest
- * `kind: 'preview'` version per anchor frame (#1101). Both are group-wise maxes
- * rather than pointer hops, so neither can ride the join. Grid sheets are
+ * Follow-up queries: the newest PRIMARY render per shot, the newest primary
+ * still render per anchor frame (#1942) and the newest `kind: 'preview'`
+ * version per anchor frame (#1101). All are group-wise maxes rather than
+ * pointer hops, so none can ride the join. Grid sheets are
  * optional because only the scenes read path shows them.
  */
 export async function assembleShotViews(
@@ -256,23 +258,27 @@ export async function assembleShotViews(
       )
     ),
   ];
-  const [primaryByShot, previewByFrame, pendingById, dialogueOf] =
-    await Promise.all([
-      getPrimaryVideoByShotIds(
-        db,
-        rows.map((r) => r.shots.id)
-      ),
-      options.includeAssets === false
-        ? new Map<string, FrameVariant>()
-        : getLatestPreviewByFrameIds(
-            db,
-            rows.flatMap((r) => (r.frames ? [r.frames.id] : []))
-          ),
-      options.includeAssets === false
-        ? new Map<string, FrameVariant>()
-        : getFrameVariantsByIds(db, pendingPromoteIds),
-      options.includePrompts === false ? null : loadDialogueResolver(db, rows),
-    ]);
+  const frameIds = rows.flatMap((r) => (r.frames ? [r.frames.id] : []));
+  const [
+    primaryByShot,
+    primaryImageByFrame,
+    previewByFrame,
+    pendingById,
+    dialogueOf,
+  ] = await Promise.all([
+    getPrimaryVideoByShotIds(
+      db,
+      rows.map((r) => r.shots.id)
+    ),
+    getPrimaryImageByFrameIds(db, frameIds),
+    options.includeAssets === false
+      ? new Map<string, FrameVariant>()
+      : getLatestPreviewByFrameIds(db, frameIds),
+    options.includeAssets === false
+      ? new Map<string, FrameVariant>()
+      : getFrameVariantsByIds(db, pendingPromoteIds),
+    options.includePrompts === false ? null : loadDialogueResolver(db, rows),
+  ]);
   return rows.map((row) => {
     const dialogue = dialogueOf ? dialogueOf(row.shots) : null;
     const video = {
@@ -289,6 +295,7 @@ export async function assembleShotViews(
       image: row.frame_variants,
       preview: previewByFrame.get(row.frames.id) ?? null,
       imagePromptVersion: row.frame_prompt_versions,
+      primaryImage: primaryImageByFrame.get(row.frames.id) ?? null,
       gridSheet: gridSheetByFrameId?.get(row.frames.id) ?? null,
       pendingUpscaleUrl: pendingUpscaleUrlFromVersion(
         row.frames.pendingPromoteVersionId

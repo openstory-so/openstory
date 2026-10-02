@@ -174,12 +174,9 @@ export function locationSheetBibleFields(
   return {
     name: metadata.name,
     type: metadata.type,
-    timeOfDay: metadata.timeOfDay,
     description: metadata.description,
     architecturalStyle: metadata.architecturalStyle,
     keyFeatures: metadata.keyFeatures,
-    colorPalette: metadata.colorPalette,
-    lightingSetup: metadata.lightingSetup,
     ambiance: metadata.ambiance,
   };
 }

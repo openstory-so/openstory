@@ -7,7 +7,6 @@ import {
   bannerStagesForStopAt,
   GENERATION_STAGE_META,
   GENERATION_STAGES,
-  resolveStopAt,
   sliderStopLabel,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -115,8 +114,6 @@ export type GenerationStreamState = {
 
 export type GenerationPhaseConfig = {
   stopAt?: GenerationStage;
-  autoGenerateMotion?: boolean;
-  autoGenerateMusic?: boolean;
   /**
    * Straight-to-video: no shot-images stage. Reference-only renders straight
    * to video, so the images stage never runs and its motion prompts are
@@ -209,7 +206,9 @@ function updateShotRetries(
 export function createInitialState(
   config?: GenerationPhaseConfig
 ): GenerationStreamState {
-  const stopAt = resolveStopAt(config ?? {});
+  // No stop-at yet = the sequence has not loaded; the placeholder banner is
+  // an images run until RESET brings the real one.
+  const stopAt = config?.stopAt ?? 'images';
   const combinedMusic = stopAt === 'music';
   const phases: GenerationPhase[] = bannerStagesForStopAt(stopAt, {
     referenceOnly: config?.referenceOnly,

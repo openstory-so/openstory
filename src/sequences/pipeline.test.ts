@@ -6,6 +6,7 @@ import {
   sliderTickLabel,
   stopAfterSentence,
   runScopeLabel,
+  sliderCommittedStop,
   sliderThumbIndex,
   stopAtFromSliderIndex,
   DEFAULT_GENERATION_STOP_AT,
@@ -57,20 +58,14 @@ describe('generation pipeline stages', () => {
     });
   });
 
-  it('prefers an explicit stop-at over auto-generate flags', () => {
+  it('prefers this click over the snapshot, and throws with neither', () => {
     expect(
-      resolveStopAt({
-        stopAt: 'references',
-        autoGenerateMotion: false,
-        autoGenerateMusic: false,
-      })
+      resolveStopAt({ stopAt: 'references', generationStopAt: 'music' })
     ).toBe('references');
-    expect(
-      resolveStopAt({
-        autoGenerateMotion: false,
-        autoGenerateMusic: false,
-      })
-    ).toBe('images');
+    expect(resolveStopAt({ generationStopAt: 'motion' })).toBe('motion');
+    expect(() => resolveStopAt({ generationStopAt: null })).toThrow(
+      'no generation stop-at'
+    );
   });
 
   it('maps legacy flags back onto a stop-at stage', () => {
@@ -165,6 +160,8 @@ describe('banner and slider stops', () => {
     // A remembered Images stop lands on the next stop up, Motion & Music.
     expect(sliderThumbIndex('images', stages)).toBe(2);
     expect(stopAtFromSliderIndex(2, stages)).toBe('music');
+    expect(sliderCommittedStop('images', true)).toBe('music');
+    expect(sliderCommittedStop('references', true)).toBe('references');
     expect(sliderThumbIndex('references', stages)).toBe(1);
   });
   it('slider inserts Dialogue before motion when Voices is on without start frames', () => {

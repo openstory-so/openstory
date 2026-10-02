@@ -9,6 +9,7 @@
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { describe, expect, it, vi } from 'vitest';
 import { micros, ZERO_MICROS } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 const reportReservationShort = vi.fn();
 vi.doMock('@/billing/billing-observability', () => ({
@@ -34,8 +35,8 @@ function makeScopedDb(opts: { remaining: number; growOk?: boolean }) {
     teamId: 'team_1',
     billing: { growReservation, zeroReservation, checkAutoTopUp },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- gate only touches billing
-  const scopedDb = stub as unknown as WorkflowScopedDb;
+  // gate only touches billing
+  const scopedDb = asStub<WorkflowScopedDb>(stub);
   return { scopedDb, growReservation, zeroReservation, checkAutoTopUp };
 }
 

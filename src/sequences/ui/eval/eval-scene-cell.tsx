@@ -100,7 +100,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
     if (!shot.image?.url) {
       return (
         <div className="border-b p-2 h-full flex items-center justify-center">
-          {shot.frame.imageStatus === 'generating' ? (
+          {shot.imageStatus === 'generating' ? (
             <Skeleton className="w-full h-full" />
           ) : (
             <div className="text-xs text-muted-foreground text-center">

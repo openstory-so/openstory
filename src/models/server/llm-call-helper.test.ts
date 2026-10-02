@@ -7,6 +7,7 @@ import * as tanstackAi from '@tanstack/ai';
 import * as createAdapterModule from './create-adapter';
 import * as promptsModule from '@/platform/server/ai/prompts-index';
 import * as realtimeModule from '@/platform/realtime';
+import { asStub } from '@/test/as-stub';
 
 const mockChat = vi.fn();
 vi.doMock('@tanstack/ai', () => ({
@@ -56,10 +57,10 @@ const {
 const { usdToMicros, ZERO_MICROS } = await import('@/billing/money');
 
 // Minimal WorkflowStep: run every step body immediately, no retries.
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the helper only uses `do`
-const step = {
+// minimal WorkflowStep stub: the helper only uses `do`
+const step = asStub<WorkflowStep>({
   do: (_name: string, fn: () => Promise<unknown>) => fn(),
-} as unknown as WorkflowStep;
+});
 
 const schema = z.object({
   visual: z.object({ fullPrompt: z.string() }),
@@ -68,7 +69,7 @@ const schema = z.object({
 const callConfig = {
   name: 'visual-prompts',
   phase: { number: 3, name: 'Visual prompts' },
-  promptName: 'phase/visual-prompt-scene-generation-chat',
+  promptName: 'phase/shot-spec-rewrite-chat',
   promptVariables: {},
   modelId: 'x-ai/grok-4.7' as const,
   responseSchema: schema,
@@ -89,7 +90,7 @@ const nonStreamContext = {
 describe('chatModelOptionsForCall', () => {
   it('uses Responses wire names for LLMTR Luna, not Chat Completions', () => {
     const options = chatModelOptionsForCall(
-      'openai/gpt-5.6-luna',
+      'openai/gpt-6-luna',
       { key: 'k', via: 'llmtr' },
       true
     );
@@ -186,7 +187,7 @@ describe('durableLLMCallCf usage cost capture', () => {
 
     await durableLLMCallCf(
       step,
-      { ...callConfig, modelId: 'openai/gpt-5.6-luna' },
+      { ...callConfig, modelId: 'openai/gpt-6-luna' },
       nonStreamContext
     );
 

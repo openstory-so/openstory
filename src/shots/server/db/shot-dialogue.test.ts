@@ -7,7 +7,7 @@
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
-  dialogueRecordings,
+  dialogueSpeeches,
   scenes,
   sequences,
   shotDialogueSections,
@@ -26,7 +26,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createShotDialogueMethods,
-  type AppendDialogueRecordingInput,
+  type AppendDialogueSpeechInput,
 } from './shot-dialogue';
 
 let client: Client;
@@ -42,7 +42,7 @@ const line = (text: string): ShotDialogueLine => ({
   tone: 'calm',
 });
 
-type SectionInput = AppendDialogueRecordingInput['sections'][number];
+type SectionInput = AppendDialogueSpeechInput['sections'][number];
 
 const section = (
   forShotId: string,
@@ -77,7 +77,7 @@ const claimIdBySectionId = new Map<string, string>();
  * write. Claim ids are remembered per section, so landing the same input
  * twice is a step REPLAY (same claims), not a second run.
  */
-const land = async (methods: Methods, input: AppendDialogueRecordingInput) => {
+const land = async (methods: Methods, input: AppendDialogueSpeechInput) => {
   const sections: SectionInput[] = [];
   for (const entry of input.sections) {
     if (!entry.adopt) {
@@ -86,7 +86,7 @@ const land = async (methods: Methods, input: AppendDialogueRecordingInput) => {
     }
     let claimId = claimIdBySectionId.get(entry.id);
     if (claimId === undefined) {
-      const claims = await methods.claimRecording({
+      const claims = await methods.claimSpeech({
         shots: [{ shotId: entry.shotId, sourceKey: entry.sourceKey }],
         workflowRunId: `run-${entry.id}`,
       });
@@ -95,13 +95,13 @@ const land = async (methods: Methods, input: AppendDialogueRecordingInput) => {
     }
     sections.push({ ...entry, adopt: { ...entry.adopt, claimId } });
   }
-  return await methods.appendRecording({ ...input, sections });
+  return await methods.appendSpeech({ ...input, sections });
 };
 
 const recording = (
   sections: SectionInput[],
-  overrides: Partial<AppendDialogueRecordingInput> = {}
-): AppendDialogueRecordingInput => ({
+  overrides: Partial<AppendDialogueSpeechInput> = {}
+): AppendDialogueSpeechInput => ({
   id: generateId(),
   sequenceId,
   storageKey: 'audio/t/s/dialogue/take.wav',
@@ -120,6 +120,7 @@ const recording = (
   inputHash: 'hash-1',
   characterCount: 42,
   workflowRunId: 'run-1',
+  adoptedAs: 'generated',
   sections,
   ...overrides,
 });
@@ -132,7 +133,7 @@ const versionsOf = async (forShotId: string) =>
 
 async function seed() {
   await db.delete(shotDialogueSections);
-  await db.delete(dialogueRecordings);
+  await db.delete(dialogueSpeeches);
   await db.delete(shotDialogueVersions);
   await db.delete(shots);
   await db.delete(scenes);
@@ -273,18 +274,18 @@ describe('recordings and sections', () => {
     const input = recording([adopted, context]);
     await land(methods, input);
 
-    expect(await db.select().from(dialogueRecordings)).toHaveLength(1);
+    expect(await db.select().from(dialogueSpeeches)).toHaveLength(1);
     const mine = await methods.getSectionById(adopted.id);
     expect(mine).toMatchObject({
       shotId,
-      recordingId: input.id,
-      source: 'recorded',
+      speechId: input.id,
+      source: 'generated',
       dialogueVersionId: 'version-1',
       spokenLines: [{ index: 0, text: 'Shorter' }],
       workflowRunId: 'run-1',
     });
     expect(mine?.selectedAt).toBeInstanceOf(Date);
-    expect(mine?.recording).toMatchObject({
+    expect(mine?.speech).toMatchObject({
       id: input.id,
       storageKey: input.storageKey,
       durationSeconds: 4.5,
@@ -338,7 +339,7 @@ describe('recordings and sections', () => {
     await land(methods, input);
     await land(methods, input);
 
-    expect(await db.select().from(dialogueRecordings)).toHaveLength(1);
+    expect(await db.select().from(dialogueSpeeches)).toHaveLength(1);
     expect(await db.select().from(shotDialogueSections)).toHaveLength(2);
     const selected = (await methods.listSections(shotId)).filter(
       (row) => row.selectedAt
@@ -372,10 +373,7 @@ describe('recordings and sections', () => {
     await land(methods, recording([newer], { url: '/r2/audio/b.wav' }));
 
     expect(
-      (await methods.listSections(shotId)).map((row) => [
-        row.id,
-        row.recordingUrl,
-      ])
+      (await methods.listSections(shotId)).map((row) => [row.id, row.speechUrl])
     ).toEqual([
       [newer.id, '/r2/audio/b.wav'],
       [older.id, '/r2/audio/a.wav'],
@@ -395,7 +393,7 @@ describe('recordings and sections', () => {
       token: 'DIALOGUE',
       durationSeconds: 2,
       sourceKey: 'k',
-      recordingId: 'rec',
+      speechId: 'rec',
     };
     const picked = await methods.selectSection(otherShotId, context.id, [clip]);
     expect(picked.id).toBe(context.id);
@@ -547,11 +545,11 @@ describe('recordings and sections', () => {
     it('a second run for the same shot and the same words stands down', async () => {
       const methods = createShotDialogueMethods(db);
       const request = { shots: [{ shotId, sourceKey: 'k' }] };
-      const first = await methods.claimRecording({
+      const first = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-a',
       });
-      const second = await methods.claimRecording({
+      const second = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-b',
       });
@@ -559,12 +557,12 @@ describe('recordings and sections', () => {
       expect(second).toEqual({});
       // A replay of the first run's own claim step gets its claim back.
       expect(
-        await methods.claimRecording({ ...request, workflowRunId: 'run-a' })
+        await methods.claimSpeech({ ...request, workflowRunId: 'run-a' })
       ).toEqual(first);
       // Different words are a different recording: both may run.
       expect(
         Object.keys(
-          await methods.claimRecording({
+          await methods.claimSpeech({
             shots: [{ shotId, sourceKey: 'other-words' }],
             workflowRunId: 'run-b',
           })
@@ -580,7 +578,7 @@ describe('recordings and sections', () => {
 
       // A new recording starts…
       const late = section(shotId, true, { sourceKey: 'k2' });
-      const claims = await methods.claimRecording({
+      const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k2' }],
         workflowRunId: 'run-late',
       });
@@ -597,7 +595,7 @@ describe('recordings and sections', () => {
       // Kept as a reading the user can still choose — never thrown away.
       const kept = await methods.getSectionById(late.id);
       expect(kept?.selectedAt).toBeNull();
-      expect(kept?.source).toBe('recorded');
+      expect(kept?.source).toBe('generated');
       expect((await shotRow())?.audioClips).toEqual([pickedClip]);
     });
 
@@ -605,7 +603,7 @@ describe('recordings and sections', () => {
       const methods = createShotDialogueMethods(db);
       await methods.write(shotId, [line('Old words.')], 'prompt');
       const late = section(shotId, true);
-      const claims = await methods.claimRecording({
+      const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-old-words',
       });
@@ -622,7 +620,7 @@ describe('recordings and sections', () => {
     it('lists shots with a live claim; a demoted claim no longer counts (#1816)', async () => {
       const methods = createShotDialogueMethods(db);
       await methods.write(shotId, [line('Old words.')], 'prompt');
-      await methods.claimRecording({
+      await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-live',
       });
@@ -637,7 +635,7 @@ describe('recordings and sections', () => {
     it("a cancelled claim records but never becomes the shot's audio", async () => {
       const methods = createShotDialogueMethods(db);
       const late = section(shotId, true);
-      const claims = await methods.claimRecording({
+      const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-cancelled',
       });
@@ -665,7 +663,7 @@ describe('recordings and sections', () => {
     it('a failed recording clears its claims so the words can be recorded again', async () => {
       const methods = createShotDialogueMethods(db);
       const request = { shots: [{ shotId, sourceKey: 'k' }] };
-      const claims = await methods.claimRecording({
+      const claims = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-dies',
       });
@@ -673,7 +671,7 @@ describe('recordings and sections', () => {
       expect(await methods.listLiveClaims(shotId)).toEqual([]);
       expect(
         Object.keys(
-          await methods.claimRecording({
+          await methods.claimSpeech({
             ...request,
             workflowRunId: 'run-next',
           })

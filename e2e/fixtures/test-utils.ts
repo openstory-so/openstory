@@ -27,7 +27,7 @@ const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
 export const RECORDED_PIPELINE_SETTINGS = {
   generationMode: 'quality',
   aspectRatio: '16:9',
-  analysisModels: ['openai/gpt-5.6-luna'],
+  analysisModels: ['openai/gpt-6-luna'],
   imageModel: 'grok_imagine_image',
   imageModels: ['grok_imagine_image'],
   motionModel: 'minimax_h3_max',

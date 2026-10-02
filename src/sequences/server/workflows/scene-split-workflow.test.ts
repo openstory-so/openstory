@@ -26,6 +26,7 @@ import type {
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import type { SceneSplitWorkflowInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
 
 const triggerWorkflow =
   vi.fn<(path: string, body: unknown, options?: unknown) => Promise<string>>();
@@ -300,8 +301,8 @@ function makeScopedDb(
     },
     sequenceElements: { updateFirstMention: () => Promise.resolve() },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  return scopedDb as unknown as WorkflowScopedDb;
+  // stub covering only the scoped-db surface runImpl touches
+  return asStub<WorkflowScopedDb>(scopedDb);
 }
 
 function makeEvent(
@@ -327,8 +328,8 @@ function makeStep(): WorkflowStep {
       maybeFn?: () => Promise<unknown>
     ) => (typeof configOrFn === 'function' ? configOrFn() : maybeFn?.())
   );
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return { do: lastDoMock } as unknown as WorkflowStep;
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({ do: lastDoMock });
 }
 
 /**
@@ -348,10 +349,10 @@ class Probe extends SceneSplitWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
@@ -672,6 +673,7 @@ function shotSpec(shotNumber: number, action: string) {
     },
     action,
     cameraMovement: { move: 'static', pacing: 'slow' as const },
+    direction: '',
     soundCue: '',
     dialogue: [] as Array<{ character: string; line: string; tone: string }>,
     durationSeconds: 4,
