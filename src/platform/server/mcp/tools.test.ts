@@ -2534,10 +2534,21 @@ describe('official MCP client transport (#1463)', () => {
     await mcp.close();
   });
 
-  it('refuses a 2025-only client: -32022 naming the supported revision', async () => {
-    await expect(connect(null, 'legacy')).rejects.toThrow(
-      /-32022.*Unsupported protocol version: 2025-11-25.*2026-07-28/
+  it('serves a 2025-only client without a session (Claude’s connector)', async () => {
+    const legacy = await connect(null, 'legacy');
+    const { tools } = await legacy.listTools();
+    expect(tools.map((tool) => tool.name)).toContain(
+      'openstory.list_sequences'
     );
+    expect(
+      structured(
+        await legacy.callTool({
+          name: 'openstory.list_sequences',
+          arguments: {},
+        })
+      )
+    ).toMatchObject({ sequences: [{ id: sequenceId }] });
+    await legacy.close();
   });
 
   it('refuses a missing scope with an actionable error', async () => {
