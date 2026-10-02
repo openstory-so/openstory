@@ -43,15 +43,21 @@ Project API Key.
 
 ### 3. Re-deploy the main Worker
 
-The main `wrangler.jsonc` references the forwarder via `tail_consumers`. CI
-patches previews to reference the `stg` forwarder. Both must be deployed
-before the main Worker can reference them.
+The main `wrangler.jsonc` references the forwarder via
+`streaming_tail_consumers`. CI patches previews to reference the `stg`
+forwarder. Both must be deployed before the main Worker can reference them.
+Deploy the forwarder first when its handlers change: it still answers the
+legacy `tail()` feed so logs keep flowing until the main Worker redeploys.
 
 ## How it works
 
-A tail consumer is a Worker that receives a batch of `TailEvent` objects every
-time the source Worker handles an invocation. Each event contains all the
-`console.log` lines emitted during that invocation plus any thrown exceptions.
+A streaming tail consumer opens one handler per invocation of the source
+Worker (`tailStream`) and gets each `console.log` line and thrown exception as
+its own event. Every event carries Cloudflare's trace context, so each record
+is stamped with the same `traceId` / `spanId` as the trace Cloudflare exports
+to PostHog, and PostHog links a log to its trace. Records are sent when the
+invocation's outcome arrives (or every 100 lines for long invocations), with
+`cf.outcome` added.
 
 For each log line:
 
@@ -65,10 +71,14 @@ For each log line:
    covers third-party libs that haven't been routed through LogTape.
 
 Exceptions become ERROR-level records with `exception.name` /
-`exception.message` attributes.
+`exception.message` / `exception.stacktrace` attributes.
 
-OTLP payload is POSTed to `${POSTHOG_HOST}/i/v1/logs?token=${POSTHOG_TOKEN}`
-inside `ctx.waitUntil` so the request survives isolate suspension.
+The streaming feed sends request URLs unredacted, so `http.url` goes through
+`src/log-url.ts`, which applies Cloudflare's own tail redaction rule (long
+hex or mixed-case ids become `REDACTED`) everywhere except a `/_serverFn/`
+path, where the id names the server function.
+
+OTLP payload is POSTed to `${POSTHOG_HOST}/i/v1/logs?token=${POSTHOG_TOKEN}`.
 
 ## Quotas
 

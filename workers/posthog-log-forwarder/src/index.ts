@@ -4,11 +4,12 @@
  *
  * Wiring (in the source Worker's wrangler.jsonc):
  *
- *   "tail_consumers": [{ "service": "openstory-log-forwarder-prd" }]
+ *   "streaming_tail_consumers": [{ "service": "openstory-log-forwarder-prd" }]
  *
- * Tail consumers receive a batch of TailEvents per invocation; each event has
- * the original Worker's console.log output (in `logs`) plus any thrown
- * exceptions. We:
+ * The streaming feed (`tailStream`) opens one handler per invocation; every
+ * event carries Cloudflare's trace context, so each record gets the same
+ * trace/span id as the trace Cloudflare exports to PostHog, and PostHog links
+ * the two. For each invocation we:
  *   1. Try to parse each log line as our LogTape JSON shape and lift its
  *      fields onto an OTLP log record (`body` = the rendered template,
  *      attributes = `logger` + LogTape `properties`).
@@ -19,6 +20,8 @@
  * The destination must be the PostHog project token (starts with `phc_`),
  * set as a secret via `wrangler secret put POSTHOG_TOKEN --env prd|stg`.
  */
+
+import { logUrl } from './log-url';
 
 type Env = {
   POSTHOG_TOKEN: string;
@@ -35,12 +38,14 @@ type TailLog = {
 type TailException = {
   name: string;
   message: string;
+  stack?: string;
   timestamp: number;
 };
 
 type TailRequest = {
   url?: string;
   method?: string;
+  getUnredacted?: () => { url?: string };
 };
 
 type TailEventInfo = {
@@ -70,6 +75,8 @@ type OtlpLogRecord = {
   severityText: string;
   body: { stringValue: string };
   attributes: OtlpAttribute[];
+  traceId?: string;
+  spanId?: string;
 };
 
 // https://opentelemetry.io/docs/specs/otel/logs/data-model/#field-severitynumber
@@ -87,8 +94,14 @@ const SEVERITY_NUMBER: Record<string, number> = {
 };
 
 const MAX_BODY_BYTES = 4000;
+// ponytail: a long invocation (workflow step, websocket) would otherwise hold
+// every line until its outcome; flush in batches of this size instead.
+const FLUSH_EVERY = 100;
 
 export default {
+  // Legacy `tail_consumers` feed: no trace context. Kept so logs keep flowing
+  // while the forwarder and the source Worker deploy in turn; delete once
+  // prod and previews both run on `streaming_tail_consumers`.
   async tail(
     events: TailEvent[],
     env: Env,
@@ -96,7 +109,14 @@ export default {
   ): Promise<void> {
     const records: OtlpLogRecord[] = [];
     for (const event of events) {
-      const baseAttrs = buildBaseAttrs(event);
+      const request = event.event?.request;
+      const baseAttrs = [
+        ...buildBaseAttrs(event.scriptName, {
+          method: request?.method,
+          url: request?.getUnredacted?.().url ?? request?.url,
+        }),
+        outcomeAttr(event.outcome),
+      ];
       for (const log of event.logs) {
         records.push(toLogRecord(log, baseAttrs));
       }
@@ -104,78 +124,131 @@ export default {
         records.push(toExceptionRecord(exc, baseAttrs));
       }
     }
-    if (records.length === 0) return;
+    if (records.length > 0) ctx.waitUntil(send(records, env));
+  },
 
-    const payload = {
-      resourceLogs: [
-        {
-          resource: {
-            attributes: [
-              {
-                key: 'service.name',
-                value: { stringValue: env.SERVICE_NAME ?? 'openstory' },
-              },
-            ],
-          },
-          scopeLogs: [{ logRecords: records }],
-        },
-      ],
+  tailStream(
+    onset: TailStream.TailEvent<TailStream.Onset>,
+    env: Env
+  ): TailStream.TailEventHandlerObject {
+    const { info, scriptName } = onset.event;
+    const baseAttrs = buildBaseAttrs(
+      scriptName,
+      info.type === 'fetch' ? info : {}
+    );
+    let records: OtlpLogRecord[] = [];
+
+    const flush = async (outcome?: string): Promise<void> => {
+      const batch = records;
+      records = [];
+      if (outcome) {
+        for (const r of batch) r.attributes.push(outcomeAttr(outcome));
+      }
+      if (batch.length > 0) await send(batch, env);
     };
 
-    const host = env.POSTHOG_HOST ?? 'https://us.i.posthog.com';
-    const url = `${host}/i/v1/logs?token=${encodeURIComponent(env.POSTHOG_TOKEN)}`;
-
-    ctx.waitUntil(
-      fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            // eslint-disable-next-line no-console -- forwarder needs raw console
-            console.error(
-              `posthog forward failed ${res.status}: ${body.slice(0, 500)}`
-            );
-          }
-        })
-        .catch((err: unknown) => {
-          // eslint-disable-next-line no-console -- forwarder needs raw console
-          console.error('posthog forward error', err);
-        })
-    );
+    return {
+      log: async (e) => {
+        const { message, level } = e.event;
+        const record = toLogRecord(
+          {
+            // An untruncated message is the console call's argument array;
+            // a truncated one arrives as a raw string.
+            message: Array.isArray(message) ? message : [message],
+            level,
+            timestamp: e.timestamp.getTime(),
+          },
+          baseAttrs
+        );
+        records.push(withTrace(record, e.spanContext));
+        if (records.length >= FLUSH_EVERY) await flush();
+      },
+      exception: (e) => {
+        const record = toExceptionRecord(
+          { ...e.event, timestamp: e.timestamp.getTime() },
+          baseAttrs
+        );
+        records.push(withTrace(record, e.spanContext));
+      },
+      outcome: (e) => flush(e.event.outcome),
+    };
   },
 };
 
-function buildBaseAttrs(event: TailEvent): OtlpAttribute[] {
+async function send(records: OtlpLogRecord[], env: Env): Promise<void> {
+  const payload = {
+    resourceLogs: [
+      {
+        resource: {
+          attributes: [
+            {
+              key: 'service.name',
+              value: { stringValue: env.SERVICE_NAME ?? 'openstory' },
+            },
+          ],
+        },
+        scopeLogs: [{ logRecords: records }],
+      },
+    ],
+  };
+
+  const host = env.POSTHOG_HOST ?? 'https://us.i.posthog.com';
+  const url = `${host}/i/v1/logs?token=${encodeURIComponent(env.POSTHOG_TOKEN)}`;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      // eslint-disable-next-line no-console -- forwarder needs raw console
+      console.error(
+        `posthog forward failed ${res.status}: ${body.slice(0, 500)}`
+      );
+    }
+  } catch (err: unknown) {
+    // eslint-disable-next-line no-console -- forwarder needs raw console
+    console.error('posthog forward error', err);
+  }
+}
+
+// OTLP/JSON wants lowercase hex: 32 chars for a trace id, 16 for a span id.
+// Anything else is left off rather than sent malformed.
+function withTrace(
+  record: OtlpLogRecord,
+  spanContext: TailStream.SpanContext
+): OtlpLogRecord {
+  const traceId = spanContext.traceId.toLowerCase();
+  const spanId = spanContext.spanId?.toLowerCase();
+  if (/^[0-9a-f]{32}$/.test(traceId)) record.traceId = traceId;
+  if (spanId && /^[0-9a-f]{16}$/.test(spanId)) record.spanId = spanId;
+  return record;
+}
+
+function buildBaseAttrs(
+  scriptName: string | undefined,
+  request: { method?: string; url?: string }
+): OtlpAttribute[] {
   const attrs: OtlpAttribute[] = [
-    {
-      key: 'cf.script',
-      value: { stringValue: event.scriptName ?? 'unknown' },
-    },
-    {
-      key: 'cf.outcome',
-      value: { stringValue: event.outcome ?? 'unknown' },
-    },
+    { key: 'cf.script', value: { stringValue: scriptName ?? 'unknown' } },
   ];
-  if (event.event?.request) {
-    if (event.event.request.method) {
-      attrs.push({
-        key: 'http.method',
-        value: { stringValue: event.event.request.method },
-      });
-    }
-    if (event.event.request.url) {
-      attrs.push({
-        key: 'http.url',
-        value: { stringValue: event.event.request.url },
-      });
-    }
+  if (request.method) {
+    attrs.push({ key: 'http.method', value: { stringValue: request.method } });
+  }
+  if (request.url) {
+    attrs.push({
+      key: 'http.url',
+      value: { stringValue: logUrl(request.url) },
+    });
   }
   return attrs;
 }
 
+function outcomeAttr(outcome: string | undefined): OtlpAttribute {
+  return { key: 'cf.outcome', value: { stringValue: outcome ?? 'unknown' } };
+}
 type LogTapeShape = {
   '@timestamp'?: unknown;
   level?: unknown;
@@ -225,7 +298,7 @@ function toLogRecord(log: TailLog, baseAttrs: OtlpAttribute[]): OtlpLogRecord {
     severityNumber: SEVERITY_NUMBER[levelText] ?? SEVERITY_INFO,
     severityText: levelText,
     body: { stringValue: clipBody(rendered) },
-    attributes: baseAttrs,
+    attributes: [...baseAttrs],
   };
 }
 
@@ -242,6 +315,9 @@ function toExceptionRecord(
       ...baseAttrs,
       { key: 'exception.name', value: { stringValue: exc.name } },
       { key: 'exception.message', value: { stringValue: exc.message } },
+      ...(exc.stack
+        ? [{ key: 'exception.stacktrace', value: { stringValue: exc.stack } }]
+        : []),
     ],
   };
 }

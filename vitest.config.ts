@@ -31,7 +31,11 @@ export default defineConfig({
   },
   plugins: [viteReact()],
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'scripts/**/*.test.ts',
+      'workers/**/*.test.ts',
+    ],
     setupFiles: ['./src/test/setup.ts'],
     environment: 'node',
     pool: 'forks',

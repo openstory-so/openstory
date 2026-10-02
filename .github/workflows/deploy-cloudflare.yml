@@ -168,7 +168,10 @@ jobs:
             // forwarder must be deployed as 'openstory-log-forwarder-stg'
             // before preview deploys can reference it. See PR #765 /
             // issue #754 / workers/posthog-log-forwarder/README.md.
-            obj.tail_consumers = [{ service: 'openstory-log-forwarder-stg' }];
+            delete obj.tail_consumers;
+            obj.streaming_tail_consumers = [
+              { service: 'openstory-log-forwarder-stg' },
+            ];
             // NOTE: triggers.crons retained on previews so the reconciler
             // sweep can be tested end-to-end. Each preview has its own
             // isolated D1, so the sweep operates on preview rows only. See
