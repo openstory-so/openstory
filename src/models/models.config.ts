@@ -84,18 +84,18 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Frontier multimodal reasoning with 1M context',
   },
   {
-    id: 'openai/gpt-6-sol',
-    name: 'GPT-6 Sol',
+    id: 'openai/gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
-    // Bumped from GPT-5.6 Sol (Arena 1483, gpt-5.6-sol-xhigh); re-rank on
-    // next LMArena snapshot.
+    // Bumped from GPT-6 Sol (itself bumped from GPT-5.6 Sol, Arena 1483,
+    // gpt-5.6-sol-xhigh); re-rank on next LMArena snapshot.
     qualityRank: 7,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
     description:
-      'GPT-6 high-end tier: complex reasoning and agentic work, 1M context',
+      'GPT-6.1 high-end tier: complex reasoning and agentic work, 1M context',
   },
   {
     id: 'openai/gpt-5.5',

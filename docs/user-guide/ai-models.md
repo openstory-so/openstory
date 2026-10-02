@@ -19,7 +19,7 @@ These LLM models analyze your script, extract scenes, characters, and locations,
 | Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary               |
 | Gemini 3.7 Flash   | Google    | 1M tokens      | Proprietary               |
 | Gemini 3.1 Pro     | Google    | 1M tokens      | Proprietary               |
-| GPT-6 Sol          | OpenAI    | 1M tokens      | Proprietary               |
+| GPT-6.1 Sol        | OpenAI    | 1M tokens      | Proprietary               |
 | GLM-5.3 Flash      | Z.ai      | 1M tokens      | Open Weight (MIT)         |
 | GPT-5.6 Terra      | OpenAI    | 1M tokens      | Proprietary               |
 | DeepSeek V4 Pro    | DeepSeek  | 1M tokens      | Open Weight (MIT)         |
