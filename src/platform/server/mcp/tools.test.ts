@@ -2360,6 +2360,159 @@ describe('structure edits (#1979)', () => {
   });
 });
 
+describe('shot content edits (#1979)', () => {
+  const shotPrompts = z.object({
+    anchorFrame: z.object({ prompt: z.string().nullable().optional() }),
+    motion: z.object({ prompt: z.string().nullable().optional() }),
+  });
+  const promptsOf = async () =>
+    shotPrompts.parse(await data('get_shot', { sequenceId, shotId }));
+
+  it('update_shot_prompt writes a selected version that get_shot reads', async () => {
+    const saved = z
+      .object({ versionId: z.string(), unchanged: z.literal(false) })
+      .parse(
+        await data('update_shot_prompt', {
+          sequenceId,
+          shotId,
+          promptType: 'visual',
+          text: 'A lighthouse at dusk',
+        })
+      );
+    expect((await promptsOf()).anchorFrame.prompt).toBe('A lighthouse at dusk');
+    expect(
+      await data('update_shot_prompt', {
+        sequenceId,
+        shotId,
+        promptType: 'visual',
+        text: 'A lighthouse at dusk',
+      })
+    ).toMatchObject({ unchanged: true });
+
+    const [original] = await db
+      .select({ id: framePromptVersions.id })
+      .from(framePromptVersions)
+      .where(eq(framePromptVersions.frameId, frameId))
+      .orderBy(framePromptVersions.id)
+      .limit(1);
+    expect(saved.versionId).not.toBe(original?.id);
+    await data('restore_shot_prompt_version', {
+      sequenceId,
+      shotId,
+      promptType: 'visual',
+      versionId: original?.id,
+    });
+    expect((await promptsOf()).anchorFrame.prompt).toBe('Visual prompt');
+
+    await data('update_shot_prompt', {
+      sequenceId,
+      shotId,
+      promptType: 'motion',
+      text: 'Slow push in',
+    });
+    expect((await promptsOf()).motion.prompt).toBe('Slow push in');
+  });
+
+  it('refuses to restore a prompt version of another shot', async () => {
+    const other = await addShot();
+    const [motion] = await db
+      .select({ id: shotPromptVersions.id })
+      .from(shotPromptVersions)
+      .where(eq(shotPromptVersions.shotId, shotId));
+    expect(
+      await call('restore_shot_prompt_version', {
+        sequenceId,
+        shotId: other,
+        promptType: 'motion',
+        versionId: motion?.id,
+      })
+    ).toMatchObject({
+      isError: true,
+      structuredContent: { error: { code: 'NOT_FOUND' } },
+    });
+  });
+
+  it('edits dialogue lines and reads and selects their versions', async () => {
+    const lines = [{ character: 'ADA', line: 'Hello.', tone: 'warm' }];
+    const first = z
+      .object({ versionId: z.string() })
+      .parse(await data('update_shot_dialogue', { sequenceId, shotId, lines }));
+    await data('update_shot_dialogue', {
+      sequenceId,
+      shotId,
+      lines: [{ character: 'ADA', line: 'Goodbye.', tone: 'cold' }],
+    });
+    const listed = z
+      .object({
+        selectedVersionId: z.string(),
+        versions: z.array(
+          z.object({ id: z.string(), lines: z.array(z.unknown()) })
+        ),
+        readings: z.array(z.unknown()),
+      })
+      .parse(await data('list_shot_dialogue', { sequenceId, shotId }));
+    expect(listed.versions).toHaveLength(2);
+    expect(listed.selectedVersionId).not.toBe(first.versionId);
+    expect(listed.readings).toEqual([]);
+
+    await data('select_shot_dialogue_version', {
+      sequenceId,
+      shotId,
+      versionId: first.versionId,
+    });
+    expect(
+      await data('list_shot_dialogue', { sequenceId, shotId })
+    ).toMatchObject({ selectedVersionId: first.versionId });
+  });
+
+  it('selects an earlier still and refuses an unfinished one', async () => {
+    const earlier = generateId();
+    await db.insert(frameVariants).values({
+      id: earlier,
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      status: 'completed',
+      url: '/r2/openstory-images/earlier.png',
+    });
+    expect(
+      await data('select_shot_image_version', {
+        sequenceId,
+        shotId,
+        versionId: earlier,
+      })
+    ).toEqual({
+      shotId,
+      imageUrl: 'https://openstory.test/r2/openstory-images/earlier.png',
+    });
+    const pending = generateId();
+    await db.insert(frameVariants).values({
+      id: pending,
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      status: 'pending',
+    });
+    expect(
+      await call('select_shot_image_version', {
+        sequenceId,
+        shotId,
+        versionId: pending,
+      })
+    ).toMatchObject({ isError: true });
+  });
+
+  it('get_shot_spec reports a shot without a spec as missing', async () => {
+    expect(await data('get_shot_spec', { sequenceId, shotId })).toEqual({
+      shotId,
+      spec: null,
+      verdict: 'missing',
+      visualWritten: true,
+      motionWritten: true,
+    });
+  });
+});
+
 describe('get_export_status without an exportId (#1461)', () => {
   it('returns null with no exports, then the newest, and refuses a foreign id', async () => {
     expect(await data('get_export_status', { sequenceId })).toEqual({

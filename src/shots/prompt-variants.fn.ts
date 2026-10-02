@@ -28,6 +28,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
+import { restoreShotPromptVersion } from '@/shots/server/shot-content-edit';
 
 import { getLogger } from '@/platform/logger';
 
@@ -170,79 +171,12 @@ const shotRestoreInput = z.object({
   promptType: promptTypeSchema,
 });
 
-/**
- * A derived row restores as derived, carrying the spec it was built from.
- * A derived row whose spec id is missing (legacy) cannot be written as
- * derived, so it restores as history. Every other source restores as history.
- */
-function restoredPromptProvenance(row: {
-  source: string;
-  specVersionId: string | null;
-}): { source: 'derived'; specVersionId: string } | { source: 'restored' } {
-  if (row.source === 'derived' && row.specVersionId) {
-    return { source: 'derived', specVersionId: row.specVersionId };
-  }
-  return { source: 'restored' };
-}
-
 export const restoreShotPromptVariantFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotRestoreInput))
-  .handler(async ({ context, data }) => {
-    // Visual prompt history lives in frame_prompt_versions (#989); motion stays
-    // on shot_prompt_versions. The caller says which — see `promptType` above.
-    // Use the resolved anchor frame id (never the shot id).
-    if (data.promptType === 'visual') {
-      const frameChosen =
-        await context.scopedDb.framePromptVersions.getByIdForFrame(
-          data.variantId,
-          context.frame.id
-        );
-      if (!frameChosen) {
-        throw new Error('Prompt variant not found for this shot');
-      }
-      if (frameChosen.status !== 'completed') {
-        // In-flight/failed placeholders have no content to restore (#1085).
-        throw new Error('Cannot restore a prompt version that never completed');
-      }
-      const inserted = await context.scopedDb.framePromptVersions.write({
-        frameId: context.frame.id,
-        text: frameChosen.text,
-        components: frameChosen.components,
-        inputHash: frameChosen.inputHash,
-        analysisModel: frameChosen.analysisModel,
-        createdBy: context.user.id,
-        ...restoredPromptProvenance(frameChosen),
-      });
-      return { variantId: inserted.id };
-    }
-
-    const chosen = await context.scopedDb.shotPromptVersions.getByIdForShot(
-      data.variantId,
-      data.shotId
-    );
-    if (!chosen) {
-      throw new Error('Prompt variant not found for this shot');
-    }
-    if (chosen.status !== 'completed') {
-      throw new Error('Cannot restore a prompt version that never completed');
-    }
-
-    const inserted = await context.scopedDb.shotPromptVersions.write({
-      shotId: data.shotId,
-      promptType: chosen.promptType,
-      text: chosen.text,
-      components: chosen.components,
-      parameters: chosen.parameters,
-      audio: chosen.audio,
-      usesStartFrame: chosen.usesStartFrame,
-      inputHash: chosen.inputHash,
-      analysisModel: chosen.analysisModel,
-      createdBy: context.user.id,
-      ...restoredPromptProvenance(chosen),
-    });
-    return { variantId: inserted.id };
-  });
+  .handler(async ({ context, data }) =>
+    restoreShotPromptVersion(context, data.promptType, data.variantId)
+  );
 
 const sequenceRestoreInput = z.object({
   sequenceId: ulidSchema,

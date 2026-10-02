@@ -1,4 +1,4 @@
-import type { ShotContext } from '@/shots/shot-access.fn';
+import type { ShotEditContext } from './shot-context';
 import type { z } from 'zod';
 import type { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import {
@@ -25,7 +25,7 @@ const logger = getLogger(['openstory', 'server', 'save-shot-prompt']);
 /** Persist an authored prompt and its reference tags before a render snapshots them. */
 export async function saveShotPrompt(
   context: Pick<
-    ShotContext,
+    ShotEditContext,
     'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'scene'
   >,
   data: {

@@ -194,6 +194,18 @@ describe('tools/list and whoami', () => {
       'openstory.reorder_shots',
       'openstory.delete_shot',
       'openstory.restore_shot',
+      'openstory.get_shot_spec',
+      'openstory.list_shot_dialogue',
+      'openstory.update_shot_prompt',
+      'openstory.restore_shot_prompt_version',
+      'openstory.rebuild_shot_prompts',
+      'openstory.update_shot_spec',
+      'openstory.update_shot_dialogue',
+      'openstory.select_shot_dialogue_version',
+      'openstory.select_shot_dialogue_reading',
+      'openstory.discard_shot_dialogue_reading',
+      'openstory.select_shot_image_version',
+      'openstory.select_shot_video_version',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.get_operation_status',
@@ -218,6 +230,16 @@ describe('tools/list and whoami', () => {
       'openstory.reorder_shots',
       'openstory.delete_shot',
       'openstory.restore_shot',
+      'openstory.update_shot_prompt',
+      'openstory.restore_shot_prompt_version',
+      'openstory.rebuild_shot_prompts',
+      'openstory.update_shot_spec',
+      'openstory.update_shot_dialogue',
+      'openstory.select_shot_dialogue_version',
+      'openstory.select_shot_dialogue_reading',
+      'openstory.discard_shot_dialogue_reading',
+      'openstory.select_shot_image_version',
+      'openstory.select_shot_video_version',
       'openstory.plan_generation',
       'openstory.execute_generation',
       'openstory.retry_failed_work',
@@ -228,6 +250,7 @@ describe('tools/list and whoami', () => {
       'openstory.archive_sequence',
       'openstory.delete_scene',
       'openstory.delete_shot',
+      'openstory.discard_shot_dialogue_reading',
     ]);
     for (const tool of tools.slice(1))
       expect(tool.annotations, tool.name).toMatchObject({
@@ -456,6 +479,27 @@ describe('structure edit authorization', () => {
       { sequenceId: ids.sequenceId, shotId: ids.shotId, durationSeconds: 4 },
     ],
     ['delete_shot', { sequenceId: ids.sequenceId, shotId: ids.shotId }],
+    [
+      'update_shot_prompt',
+      {
+        sequenceId: ids.sequenceId,
+        shotId: ids.shotId,
+        promptType: 'visual',
+        text: 'x',
+      },
+    ],
+    [
+      'update_shot_dialogue',
+      { sequenceId: ids.sequenceId, shotId: ids.shotId, lines: [] },
+    ],
+    [
+      'select_shot_image_version',
+      {
+        sequenceId: ids.sequenceId,
+        shotId: ids.shotId,
+        versionId: ids.sceneId,
+      },
+    ],
   ])(
     'refuses %s for an OAuth token without sequences:write, before any db',
     async (name, args) => {

@@ -30,6 +30,7 @@ import { listShots } from './tools/list-shots';
 import { getShot } from './tools/get-shot';
 import { updateSceneTool } from './tools/update-scene';
 import { structureEditTools } from './tools/structure-edits';
+import { shotContentTools } from './tools/shot-content-edits';
 import {
   executeGenerationTool,
   getOperationStatusTool,
@@ -95,6 +96,7 @@ export const mcpServer = createMCPServer({
     ...libraryReadTools,
     updateSceneTool,
     ...structureEditTools,
+    ...shotContentTools,
     planGenerationTool,
     executeGenerationTool,
     getOperationStatusTool,
