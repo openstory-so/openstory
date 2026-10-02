@@ -50,6 +50,7 @@ import { passkey as passkeyPlugin } from '@better-auth/passkey';
 
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { getLogger } from '@/platform/logger';
+import { formatBetterAuthLog } from './format-better-auth-log';
 
 const logger = getLogger(['openstory', 'auth', 'config']);
 const betterAuthLogger = getLogger(['openstory', 'auth', 'better-auth']);
@@ -117,18 +118,19 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       level: 'warn',
       log: (level, message, ...args) => {
         const props = args.length > 0 ? { args } : {};
+        const visibleMessage = formatBetterAuthLog(message, args);
         switch (level) {
           case 'error':
-            betterAuthLogger.error(message, props);
+            betterAuthLogger.error(visibleMessage, props);
             break;
           case 'warn':
-            betterAuthLogger.warn(message, props);
+            betterAuthLogger.warn(visibleMessage, props);
             break;
           case 'info':
-            betterAuthLogger.info(message, props);
+            betterAuthLogger.info(visibleMessage, props);
             break;
           default:
-            betterAuthLogger.debug(message, props);
+            betterAuthLogger.debug(visibleMessage, props);
         }
       },
     },

@@ -150,7 +150,7 @@ export function PublishDialog(props: PublishDialogProps) {
                 errorComponent={({ error, reset }) => (
                   <div className="flex flex-col gap-4">
                     <p role="alert" className="text-sm text-destructive">
-                      {error.message}
+                      {error instanceof Error ? error.message : String(error)}
                     </p>
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={onClose}>
