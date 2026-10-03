@@ -77,11 +77,19 @@ const logger = getLogger(['openstory', 'mcp']);
 
 /** The schema under `.optional()` / `.nullable()` / `.default()`. */
 function unwrapped(field: z.ZodType): z.ZodType {
-  return field instanceof z.ZodOptional ||
-    field instanceof z.ZodNullable ||
-    field instanceof z.ZodDefault
-    ? unwrapped(field.unwrap())
-    : field;
+  if (
+    !(
+      field instanceof z.ZodOptional ||
+      field instanceof z.ZodNullable ||
+      field instanceof z.ZodDefault
+    )
+  ) {
+    return field;
+  }
+  // `unwrap()` is typed as the core schema on one of the three; the runtime
+  // value is always a ZodType.
+  const inner: unknown = field.unwrap();
+  return inner instanceof z.ZodType ? unwrapped(inner) : field;
 }
 
 /**
