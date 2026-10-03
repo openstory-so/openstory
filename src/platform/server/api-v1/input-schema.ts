@@ -13,6 +13,7 @@
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { aspectRatioSchema } from '@/models/aspect-ratios';
 import { resolutionSchema } from '@/models/resolutions';
+import { GENERATION_STAGES, generationStageSchema } from '@/sequences/pipeline';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/sequences/server/sequence.schemas';
 import { z } from 'zod';
 
@@ -169,6 +170,14 @@ export const apiCreateSequenceSchema = z
       .boolean()
       .default(false)
       .meta({ description: 'Generate sequence music.' }),
+    stopAt: generationStageSchema.optional().meta({
+      description: `How far the run goes, in order: ${GENERATION_STAGES.join(', ')}. Overrides motion and music when set.`,
+      examples: ['dialogue'],
+    }),
+    voices: z.boolean().default(false).meta({
+      description:
+        'Design a voice per speaking character. Needed for dialogue audio; each saved voice uses an account-wide slot.',
+    }),
     audioModels: z.array(z.string()).min(1).optional().meta({
       description: 'Audio model key(s) for music; first is primary.',
     }),
@@ -216,7 +225,7 @@ export const apiCreateSequenceSchema = z
         'Reserved for phase 2: URL to receive a signed completion webhook. Stored intent only — delivery is not implemented yet.',
     }),
   })
-  .refine((data) => !data.music || data.motion, {
+  .refine((data) => data.stopAt !== undefined || !data.music || data.motion, {
     path: ['music'],
     message: MUSIC_REQUIRES_MOTION_ERROR,
   })

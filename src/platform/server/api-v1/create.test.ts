@@ -96,6 +96,7 @@ const baseInput = {
   enhance: 'off' as const,
   motion: false,
   music: false,
+  voices: false,
 };
 
 function pngResponse(): Response {
@@ -190,6 +191,21 @@ describe('runOneShotCreate', () => {
     mocks.enqueueLibraryLocationSheet.mockImplementation(async () => {
       callLog.push('enqueueLocationSheet');
     });
+  });
+
+  it('passes stop-at and voices through, with Match script when no style is named', async () => {
+    await runOneShotCreate(
+      { ...baseInput, stopAt: 'dialogue', voices: true },
+      ctx
+    );
+    expect(mocks.createSequences).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stopAt: 'dialogue',
+        generateVoices: true,
+        styleId: 'auto',
+      }),
+      expect.anything()
+    );
   });
 
   it('ingests every character reference before insert and enqueues sheets only after the sequence exists', async () => {

@@ -396,8 +396,10 @@ export async function runOneShotCreate(
       analysisModels: input.analysisModels,
       imageModels: input.imageModels,
       videoModels: input.videoModels,
+      stopAt: input.stopAt,
       autoGenerateMotion: input.motion,
       autoGenerateMusic: input.music,
+      generateVoices: input.voices,
       // The API keeps the frame-based workflow: motion is opt-in spend here, and
       // reference-only (the app default) cannot exist without it.
       generateStartFrames: true,
