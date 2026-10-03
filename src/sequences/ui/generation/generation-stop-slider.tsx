@@ -1,5 +1,4 @@
 import {
-  GENERATION_STAGE_META,
   includesStage,
   sliderStages,
   sliderTickLabel,
@@ -112,7 +111,7 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
     if (tick === 'dialogue' && combinedStillsAndDialogue) {
       return sliderTickLabel('dialogue', { generateStartFrames: true });
     }
-    return GENERATION_STAGE_META[tick].shortName;
+    return sliderTickLabel(tick);
   };
 
   /*
@@ -142,11 +141,14 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
               className={cn(
                 'absolute max-w-[6.5rem] text-[11px] leading-tight tracking-wide whitespace-pre-line line-clamp-2',
                 side === 'above' ? 'bottom-0' : 'top-0',
+                // The end labels hang off the track's ends so they stay inside
+                // it; their lines still centre on each other, like the rest.
+                'text-center',
                 index === 0
-                  ? 'translate-x-0 text-left'
+                  ? 'translate-x-0'
                   : index === lastTick
-                    ? '-translate-x-full text-right'
-                    : '-translate-x-1/2 text-center',
+                    ? '-translate-x-full'
+                    : '-translate-x-1/2',
                 !ghost && index <= clampedIndex
                   ? 'font-medium text-foreground'
                   : 'text-muted-foreground/40',

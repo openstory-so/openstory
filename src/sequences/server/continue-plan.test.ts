@@ -64,7 +64,7 @@ describe('continueFromPlan (#1817)', () => {
       u('still', 's1', 'missing'),
     ];
     expect(() => decide(plan, 'references')).toThrow(
-      'Nothing to generate up to References & Prompts'
+      'Nothing to generate up to Sheets & Voices'
     );
     expect(units(decide(plan, 'images'))).toEqual(['still:s1']);
   });

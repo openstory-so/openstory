@@ -54,10 +54,14 @@ export const GENERATION_STAGE_META: Record<
   },
   references: {
     phase: 2,
-    name: 'Generating references & prompts\u2026',
-    shortName: 'References',
-    description: 'Generating reference sheets and crafting visual prompts',
-    actionLabel: 'Generate References',
+    // "Sheets & Voices" is what the user gets from it (#2004); the visual
+    // prompts ride along. ponytail: says Voices even on a sequence with none
+    // (no voice design on the deployment); take `generateVoices` if that reads wrong.
+    name: 'Generating sheets & voices\u2026',
+    shortName: 'Sheets & Voices',
+    description:
+      'Generating character and location sheets, designing voices and crafting visual prompts',
+    actionLabel: 'Generate Sheets & Voices',
   },
   images: {
     phase: 3,
@@ -294,7 +298,6 @@ export function sliderStopLabel(
   if (stopAt === 'music' || stopAt === 'motion') {
     return opts?.draftFirst ? 'Drafts' : 'Motion & Music';
   }
-  if (stopAt === 'references') return 'References & Prompts';
   if (stopAt === 'dialogue' && opts?.generateStartFrames) {
     return 'Start Frames & Dialogue';
   }
@@ -318,7 +321,7 @@ export function sliderTickLabel(
  */
 const STOP_AFTER_SENTENCE: Record<GenerationStage, string> = {
   script: 'Stop after casting',
-  references: 'Stop after references & prompts',
+  references: 'Stop after sheets & voices',
   images: 'Stop after images',
   dialogue: 'Stop after dialogue',
   motion: 'Don’t stop',
