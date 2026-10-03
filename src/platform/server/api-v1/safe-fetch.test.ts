@@ -3,6 +3,7 @@ import { ValidationError } from '@/platform/errors';
 import {
   IMAGE_FETCH_TIMEOUT_MS,
   MAX_IMAGE_REDIRECTS,
+  MEDIA_BODY_TIMEOUT_MS,
   assertSafeImageUrl,
   ingestImageToBucket,
   openSafeUrl,
@@ -128,12 +129,44 @@ describe('ingestImageToBucket', () => {
       );
 
       const res = await openSafeUrl('https://cdn.example.com/clip.mp4');
-      expect(vi.getTimerCount()).toBe(1); // only the body's own timer
+      expect(vi.getTimerCount()).toBe(2); // the body's own timer + the body budget
       await vi.advanceTimersByTimeAsync(IMAGE_FETCH_TIMEOUT_MS * 2);
       expect(signal?.aborted).toBe(false);
       expect(new Uint8Array(await res.arrayBuffer())).toEqual(
         new Uint8Array([1, 2, 3, 4])
       );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('aborts a body that is still trickling at the body budget', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: RequestInfo, init?: RequestInit) => {
+          signal = init?.signal ?? undefined;
+          // Never closes: a slow-loris host.
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              signal?.addEventListener('abort', () =>
+                controller.error(signal?.reason)
+              );
+            },
+          });
+          return Promise.resolve(
+            new Response(body, { headers: { 'content-type': 'video/mp4' } })
+          );
+        })
+      );
+
+      const res = await openSafeUrl('https://cdn.example.com/clip.mp4');
+      const read = res.arrayBuffer();
+      await vi.advanceTimersByTimeAsync(MEDIA_BODY_TIMEOUT_MS);
+      expect(signal?.aborted).toBe(true);
+      await expect(read).rejects.toThrow();
     } finally {
       vi.useRealTimers();
     }

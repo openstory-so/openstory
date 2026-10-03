@@ -35,6 +35,9 @@ const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
 /** Wall-clock budget per hop until the response headers arrive; the body is unbounded. */
 export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
 
+/** Wall-clock budget for reading a 2xx body (a 500 MB clip at ~1 MB/s). */
+export const MEDIA_BODY_TIMEOUT_MS = 10 * 60_000;
+
 /** Max 3xx hops; each hop is re-checked by {@link assertSafeImageUrl}. */
 export const MAX_IMAGE_REDIRECTS = 3;
 
@@ -203,6 +206,13 @@ export async function openSafeUrl(
       void res.body?.cancel();
       throw fetchFailed(label, rawUrl);
     }
+    // The body gets its own, longer budget: a host that trickles a 500 MB
+    // clip for hours would otherwise hold the request open for good. Once
+    // the body is consumed the abort is a no-op.
+    setTimeout(
+      () => controller.abort(new DOMException('timeout', 'TimeoutError')),
+      MEDIA_BODY_TIMEOUT_MS
+    );
     return res;
   }
 
