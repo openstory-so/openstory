@@ -112,8 +112,7 @@ baseTest.describe('Route Protection', () => {
       await page.goto('/');
       await waitForScriptEditor(page);
       const generate = page.getByRole('button', {
-        name: 'Generate',
-        exact: true,
+        name: 'Sign in to Generate',
       });
       await expect(generate).toBeEnabled();
       await generate.click();
@@ -137,8 +136,7 @@ baseTest.describe('Route Protection', () => {
       );
 
       const generate = page.getByRole('button', {
-        name: 'Generate',
-        exact: true,
+        name: 'Sign in to Generate',
       });
       await expect(generate).toBeEnabled();
       await generate.click();
