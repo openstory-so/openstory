@@ -18,11 +18,10 @@ import {
 } from './storage-path';
 
 /**
- * Fire the element-vision workflow for a row that has no description yet.
- * Exported for `replaceSequenceElementFn`, which re-runs vision against an
- * existing row rather than creating one.
+ * Fire the element-vision workflow for a row that has no description yet
+ * (an attach, or a replace re-running vision on an existing row).
  */
-export async function triggerElementVision(params: {
+async function triggerElementVision(params: {
   elementId: string;
   sequenceId: string;
   imageUrl: string;
@@ -47,7 +46,7 @@ export async function triggerElementVision(params: {
  * Every path that points a row at an uploaded object goes through here:
  * draft attach at creation, finalize on an existing sequence, and replace.
  */
-export async function assertElementUploadAttachable(params: {
+async function assertElementUploadAttachable(params: {
   scopedDb: ScopedDb;
   path: string;
   filename: string;
@@ -212,4 +211,95 @@ export async function attachDraftElementUploads(params: {
       durationSeconds: upload.durationSeconds,
     });
   }
+}
+
+/**
+ * The uploaded file's kind, from its filename — the ONE place the answer is
+ * derived server-side, so a clip can never land as an image row (#1559).
+ * Anything we don't store as an element is rejected rather than defaulted:
+ * defaulting would send a .pdf to the vision LLM as an image.
+ */
+export function elementKindOrThrow(filename: string) {
+  const kind = elementKindFromFilename(filename);
+  if (!kind) {
+    throw new ValidationError(
+      `Unsupported element file "${filename}" — use an image, MP3/WAV, or MP4/MOV.`
+    );
+  }
+  return kind;
+}
+
+/**
+ * Replace an element's file. Persists the new file and re-runs vision on an
+ * image. Affected shots are left stale — the user updates them from the
+ * inspector (edit vs regen is a per-shot choice; replace-time is the wrong
+ * moment to pick one for the whole sequence).
+ */
+export async function replaceElementUpload(params: {
+  scopedDb: ScopedDb;
+  teamId: string;
+  userId: string;
+  sequenceId: string;
+  elementId: string;
+  path: string;
+  filename: string;
+  durationSeconds?: number | null;
+}): Promise<SequenceElement> {
+  const { scopedDb, teamId, sequenceId } = params;
+  await assertElementUploadAttachable({
+    scopedDb,
+    path: params.path,
+    filename: params.filename,
+    teamId,
+  });
+
+  const element = await scopedDb.sequenceElements.getById(params.elementId);
+  if (!element || element.sequenceId !== sequenceId) {
+    throw new NotFoundError('Element not found');
+  }
+
+  // Derived, never taken off the payload — see `elementImageUrlFromPath`.
+  const imageUrl = elementImageUrlFromPath(params.path);
+  // A replacement can change the kind (swap a still for the clip it came
+  // from), so it is re-derived rather than inherited.
+  const kind = elementKindOrThrow(params.filename);
+
+  const updated = await scopedDb.sequenceElements.update(params.elementId, {
+    imageUrl,
+    imagePath: params.path,
+    uploadedFilename: params.filename,
+    kind,
+    durationSeconds:
+      params.durationSeconds ??
+      (kind === 'image' ? null : await measureStoredMediaDuration(params.path)),
+    description: null,
+    consistencyTag: null,
+    visionStatus: kind === 'image' ? 'analyzing' : 'completed',
+    visionError: null,
+    visionGeneratedAt: kind === 'image' ? null : new Date(),
+  });
+
+  if (kind !== 'image') return updated;
+
+  try {
+    await triggerElementVision({
+      elementId: updated.id,
+      sequenceId,
+      imageUrl,
+      filename: updated.uploadedFilename,
+      token: updated.token,
+      teamId,
+      userId: params.userId,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    await scopedDb.sequenceElements.updateVisionStatus(
+      params.elementId,
+      'failed',
+      message
+    );
+    throw err;
+  }
+
+  return updated;
 }

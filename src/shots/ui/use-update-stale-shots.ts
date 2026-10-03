@@ -1,7 +1,12 @@
-import { getUpdateStaleShotsRunFn, updateStaleShotsFn } from '@/shots/shots.fn';
+import {
+  getRunningUpdateStaleShotsFn,
+  getUpdateStaleShotsRunFn,
+  updateStaleShotsFn,
+} from '@/shots/shots.fn';
+import { useRealtime } from '@/platform/ui/realtime/client';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { shotStalenessNamespace } from './use-shot-staleness';
 
@@ -39,8 +44,46 @@ const RUN_DEADLINE_MS = 15 * 60_000;
 export function useUpdateStaleShots(args: { sequenceId: string }) {
   const { sequenceId } = args;
   const queryClient = useQueryClient();
-  const [runId, setRunId] = useState<string | null>(null);
+  // 0 until a run is adopted or the first `unknown` tick, which arms it: a
+  // remount with a cached run id must not give up on that first tick.
   const deadlineRef = useRef(0);
+  // The tracked run lives in the query cache, not component state: the
+  // button's own trigger, a run announced on the sequence channel (MCP,
+  // another tab) and a run already in flight when the editor opens all land
+  // in the same place, so each gets the same spinner, refresh and report.
+  const runningKey = ['update-stale-shots-running', sequenceId] as const;
+  const { data: runId = null } = useQuery({
+    queryKey: runningKey,
+    queryFn: async () => {
+      const running = await getRunningUpdateStaleShotsFn({
+        data: { sequenceId },
+      });
+      if (running) deadlineRef.current = Date.now() + RUN_DEADLINE_MS;
+      return running;
+    },
+    staleTime: Infinity,
+  });
+  const setRunId = useCallback(
+    (id: string | null) => {
+      if (id) deadlineRef.current = Date.now() + RUN_DEADLINE_MS;
+      queryClient.setQueryData(['update-stale-shots-running', sequenceId], id);
+    },
+    [queryClient, sequenceId]
+  );
+  useRealtime({
+    channels: [sequenceId],
+    events: ['generation.update-stale:start'] as const,
+    onData: useCallback(
+      ({ data }: { data: { workflowRunId: string } }) => {
+        const tracked = queryClient.getQueryData([
+          'update-stale-shots-running',
+          sequenceId,
+        ]);
+        if (!tracked) setRunId(data.workflowRunId);
+      },
+      [queryClient, sequenceId, setRunId]
+    ),
+  });
 
   const trigger = useMutation({
     mutationFn: (vars: {
@@ -57,10 +100,7 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
       triggerMutate(
         { sceneId: vars.sceneId, shotId: vars.shotId, depth: vars.depth },
         {
-          onSuccess: ({ workflowRunId }) => {
-            deadlineRef.current = Date.now() + RUN_DEADLINE_MS;
-            setRunId(workflowRunId);
-          },
+          onSuccess: ({ workflowRunId }) => setRunId(workflowRunId),
           onError: (error) => {
             toast.error('Update failed to start', {
               description:
@@ -70,7 +110,7 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
         }
       );
     },
-    [triggerPending, runId, triggerMutate]
+    [triggerPending, runId, triggerMutate, setRunId]
   );
 
   const { data: outcome, dataUpdatedAt } = useQuery({
@@ -117,7 +157,9 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
     if (outcome.state === 'unknown') {
       // No verdict available (unresolvable run id, or the status lookup kept
       // failing). Say so rather than implying success.
-      if (Date.now() > deadlineRef.current) {
+      if (deadlineRef.current === 0) {
+        deadlineRef.current = Date.now() + RUN_DEADLINE_MS;
+      } else if (Date.now() > deadlineRef.current) {
         setRunId(null);
         toast.warning("Couldn't confirm the update finished", {
           description: 'Check the indicators to see what is still out of date.',
@@ -193,7 +235,7 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
         ? `Updated ${regenerated} item${regenerated === 1 ? '' : 's'} across ${totalShots} shot${totalShots === 1 ? '' : 's'}${touchedMusic ? ' + music' : ''}`
         : 'Updated the sequence music'
     );
-  }, [outcome, runId]);
+  }, [outcome, runId, setRunId]);
 
   return { run, isRunning: triggerPending || runId !== null };
 }

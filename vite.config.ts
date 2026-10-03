@@ -28,7 +28,9 @@ const authCookiePrefix = isDev
   ? process.env.VITE_AUTH_COOKIE_PREFIX
   : undefined;
 
-function localTunnel(): { tunnelName: string; zone: string } | undefined {
+function localTunnel():
+  | { tunnelName: string; zone: string; hostnames: string[] }
+  | undefined {
   const path = join(homedir(), '.openstory/dev-tunnels.json');
   if (!existsSync(path)) return undefined;
   try {
@@ -45,7 +47,17 @@ function localTunnel(): { tunnelName: string; zone: string } | undefined {
       'zone' in parsed && typeof parsed.zone === 'string'
         ? parsed.zone
         : 'openstory.so';
-    return { tunnelName: parsed.tunnelName, zone };
+    const routes: unknown[] =
+      'routes' in parsed && Array.isArray(parsed.routes) ? parsed.routes : [];
+    const hostnames = routes.flatMap((route) =>
+      typeof route === 'object' &&
+      route !== null &&
+      'hostname' in route &&
+      typeof route.hostname === 'string'
+        ? [route.hostname]
+        : []
+    );
+    return { tunnelName: parsed.tunnelName, zone, hostnames };
   } catch {
     return undefined;
   }
@@ -233,6 +245,11 @@ export default defineConfig({
       '127.0.0.1',
       'host.docker.internal',
       `.${namedTunnel?.zone ?? 'openstory.so'}`,
+      // Each tunnel hostname by exact name as well: the Cloudflare plugin
+      // restarts the dev server when the connected tunnel's hostname is not
+      // in this list verbatim (the suffix entry does not count), and that
+      // restart leaves every request to the worker hanging.
+      ...(namedTunnel?.hostnames ?? []),
     ],
     watch: {
       ignored: [

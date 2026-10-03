@@ -1,3 +1,8 @@
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 /**
  * Scoped Location Sheet Variants Sub-module
  * CRUD for divergent location-sheet outputs (Stage 2 of workflow snapshots).
@@ -270,17 +275,17 @@ export function createLocationSheetVariantsMethods(db: Database) {
           )
         );
       if (!version) {
-        throw new Error(
+        throw new NotFoundError(
           `LocationSheetVariant ${versionId} not found for location ${locationDbId}`
         );
       }
       if (version.status !== 'completed' || !version.url) {
-        throw new Error(
+        throw new ValidationError(
           `LocationSheetVariant ${versionId} is '${version.status}', not a completed image`
         );
       }
       if (version.discardedAt) {
-        throw new Error(
+        throw new ValidationError(
           `LocationSheetVariant ${versionId} is discarded — restore it first`
         );
       }
@@ -390,8 +395,38 @@ export function createLocationSheetVariantsMethods(db: Database) {
       });
     },
 
-    /** Soft-delete a divergent alternate; preserves the row for the toast Undo. */
+    /**
+     * Soft-delete a divergent alternate; preserves the row for the toast Undo.
+     * A sequence location's live reference (the pointer, or the pre-#1419 row
+     * keyed to the location's own id) is refused: select another first. A
+     * library location keeps mirror columns, so it has no pointer to guard.
+     */
     discard: async (variantId: string): Promise<Date> => {
+      const [owner] = await db
+        .select({
+          id: sequenceLocations.id,
+          selectedReferenceVersionId:
+            sequenceLocations.selectedReferenceVersionId,
+        })
+        .from(locationSheetVariants)
+        .innerJoin(
+          sequenceLocations,
+          eq(sequenceLocations.id, locationSheetVariants.parentId)
+        )
+        .where(
+          and(
+            eq(locationSheetVariants.id, variantId),
+            eq(locationSheetVariants.parentType, 'sequence_location')
+          )
+        );
+      if (
+        owner &&
+        (owner.selectedReferenceVersionId ?? owner.id) === variantId
+      ) {
+        throw new ConflictError(
+          'Cannot discard the selected reference version; select another first.'
+        );
+      }
       const discardedAt = new Date();
       const result = await db
         .update(locationSheetVariants)

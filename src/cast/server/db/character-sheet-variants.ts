@@ -1,3 +1,8 @@
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 /**
  * Scoped Character Sheet Variants Sub-module
  * Append-only sheet versions plus mid-flight divergence parking.
@@ -238,17 +243,17 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           )
         );
       if (!version) {
-        throw new Error(
+        throw new NotFoundError(
           `CharacterSheetVariant ${versionId} not found for character ${characterId}`
         );
       }
       if (version.status !== 'completed' || !version.url) {
-        throw new Error(
+        throw new ValidationError(
           `CharacterSheetVariant ${versionId} is '${version.status}', not a completed image`
         );
       }
       if (version.discardedAt) {
-        throw new Error(
+        throw new ValidationError(
           `CharacterSheetVariant ${versionId} is discarded — restore it first`
         );
       }
@@ -366,8 +371,28 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       });
     },
 
-    /** Soft-delete a divergent alternate; preserves the row for the toast Undo. */
+    /**
+     * Soft-delete a divergent alternate; preserves the row for the toast Undo.
+     * The live sheet (the pointer, or the pre-#1419 row keyed to the
+     * character's own id) is refused: select another version first.
+     */
     discard: async (variantId: string): Promise<Date> => {
+      const [owner] = await db
+        .select({
+          id: characters.id,
+          selectedSheetVersionId: characters.selectedSheetVersionId,
+        })
+        .from(characterSheetVariants)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterSheetVariants.characterId)
+        )
+        .where(eq(characterSheetVariants.id, variantId));
+      if (owner && (owner.selectedSheetVersionId ?? owner.id) === variantId) {
+        throw new ConflictError(
+          'Cannot discard the selected sheet version; select another first.'
+        );
+      }
       const discardedAt = new Date();
       const result = await db
         .update(characterSheetVariants)

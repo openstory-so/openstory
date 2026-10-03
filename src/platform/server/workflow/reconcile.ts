@@ -8,14 +8,7 @@
  * workflow died without persisting its outcome.
  */
 
-import { getEnv } from '#env';
-import { getCfBindingForRunId } from './trigger-bindings';
-import { disposeRpcStub } from './rpc-dispose';
-import type { CloudflareEnv } from './types';
-
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'workflow', 'reconcile']);
+import { readInstanceStatus } from './run-outcome';
 
 export const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 
@@ -26,12 +19,13 @@ export const STALE_THRESHOLD_MS = 5 * 60 * 1000;
  *   - 'failed'    when the runId is empty, or doesn't resolve to a known
  *                 workflow binding (e.g. a legacy QStash run id from before the
  *                 cutover — the row is already stale, so fail it for retry),
- *                 or the instance reports `errored` / `terminated`.
+ *                 the instance no longer exists (`instance.not_found`: it
+ *                 cannot be running), or it reports `errored` / `terminated`.
  *   - 'completed' when the instance reports `complete`.
  *   - null        when the instance is genuinely still in flight
  *                 (queued/running/paused/waiting).
- *   - 'unknown'   when the status lookup itself threw (transient API blip or
- *                 evicted instance) — we can't say whether a run is live.
+ *   - 'unknown'   when the status lookup itself threw for any other reason
+ *                 (transient API blip) — we can't say whether a run is live.
  *                 Errors are logged, not propagated.
  *
  * Both `null` and `'unknown'` mean "don't write a terminal status", but
@@ -43,28 +37,12 @@ export async function resolveRunState(
   runId: string
 ): Promise<'failed' | 'completed' | 'unknown' | null> {
   if (runId === '') return 'failed';
-
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
-  const env = getEnv() as unknown as CloudflareEnv;
-  const binding = getCfBindingForRunId(runId, env);
-  if (!binding) return 'failed';
-
-  try {
-    // `binding.get()` hands back a WorkflowInstance RPC result; dispose it once
-    // the status read is done so the runtime doesn't warn about a leaked result.
-    const instance = await binding.get(runId);
-    try {
-      const { status } = await instance.status();
-      if (status === 'complete') return 'completed';
-      if (status === 'errored' || status === 'terminated') return 'failed';
-      return null;
-    } finally {
-      disposeRpcStub(instance);
-    }
-  } catch (error) {
-    logger.error(`Failed to check workflow ${runId}:`, {
-      data: error instanceof Error ? error.message : error,
-    });
-    return 'unknown';
+  const read = await readInstanceStatus(runId);
+  if (read.kind === 'no_binding') return 'failed';
+  if (read.kind === 'unreadable') return 'unknown';
+  if (read.status === 'complete') return 'completed';
+  if (read.status === 'errored' || read.status === 'terminated') {
+    return 'failed';
   }
+  return null;
 }

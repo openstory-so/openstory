@@ -12,7 +12,18 @@
 
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { aspectRatioSchema } from '@/models/aspect-ratios';
-import { resolutionSchema } from '@/models/resolutions';
+import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_MUSIC_MODEL,
+  DEFAULT_VIDEO_MODEL,
+} from '@/models/models';
+import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
+import { DEFAULT_RESOLUTION, resolutionSchema } from '@/models/resolutions';
+import {
+  GENERATION_STAGES,
+  generationStageSchema,
+  stopAtFromFlags,
+} from '@/sequences/pipeline';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/sequences/server/sequence.schemas';
 import { z } from 'zod';
 
@@ -127,7 +138,7 @@ export const apiCreateSequenceSchema = z
       .optional()
       .meta({
         description:
-          'Target video length in seconds (max 5 minutes), applied whenever enhancement runs.',
+          'Target video length in seconds (max 5 minutes), applied whenever enhancement runs. Omit to match the script.',
         examples: [30],
       }),
 
@@ -137,7 +148,7 @@ export const apiCreateSequenceSchema = z
       .optional()
       .meta({
         description:
-          'Style by id, name, or slugified name. Omit to auto-pick the most popular available style.',
+          'Style by id, name, or slugified name. Omit (or "auto") for Match script: a style derived from the script.',
         examples: ['Cinematic Noir'],
       }),
     aspectRatio: aspectRatioSchema.optional().meta({
@@ -146,32 +157,53 @@ export const apiCreateSequenceSchema = z
     }),
 
     resolution: resolutionSchema.optional().meta({
-      description:
-        'Output resolution tier, resolved per model to the nearest thing it serves. Defaults to 720p.',
+      description: `Output resolution tier, resolved per model to the nearest thing it serves. Defaults to ${DEFAULT_RESOLUTION}.`,
     }),
 
-    analysisModels: z.array(z.string()).min(1).optional().meta({
-      description:
-        'Analysis model id(s); one sequence is created per model. Validated against the model registry.',
-    }),
-    imageModels: z.array(z.string()).min(1).optional().meta({
-      description: 'Image model key(s); first is primary.',
-    }),
-    videoModels: z.array(z.string()).min(1).optional().meta({
-      description: 'Video (image-to-video) model key(s); first is primary.',
-    }),
+    analysisModels: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .meta({
+        description: `Analysis model id(s); one sequence is created per model. Validated against the model registry. Defaults to ${DEFAULT_ANALYSIS_MODEL}.`,
+      }),
+    imageModels: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .meta({
+        description: `Image model key(s); first is primary. Defaults to ${DEFAULT_IMAGE_MODEL}.`,
+      }),
+    videoModels: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .meta({
+        description: `Video (image-to-video) model key(s); first is primary. Defaults to ${DEFAULT_VIDEO_MODEL}.`,
+      }),
 
-    motion: z
-      .boolean()
-      .default(false)
-      .meta({ description: 'Generate motion (video) for each shot.' }),
+    motion: z.boolean().default(false).meta({
+      description: 'Generate motion (video) for each shot. Default false.',
+    }),
     music: z
       .boolean()
       .default(false)
-      .meta({ description: 'Generate sequence music.' }),
-    audioModels: z.array(z.string()).min(1).optional().meta({
-      description: 'Audio model key(s) for music; first is primary.',
+      .meta({ description: 'Generate sequence music. Default false.' }),
+    stopAt: generationStageSchema.optional().meta({
+      description: `How far the run goes, in order: ${GENERATION_STAGES.join(', ')}. Overrides motion and music when set. Omitted, the run stops at ${stopAtFromFlags({})} unless motion or music is true.`,
+      examples: ['dialogue'],
     }),
+    voices: z.boolean().default(false).meta({
+      description:
+        'Design a voice per speaking character. Needed for dialogue audio; each saved voice uses an account-wide slot. Default false.',
+    }),
+    audioModels: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .meta({
+        description: `Audio model key(s) for music; first is primary. Defaults to ${DEFAULT_MUSIC_MODEL}.`,
+      }),
 
     characters: z.array(characterRefSchema).optional().meta({
       description:
@@ -216,7 +248,7 @@ export const apiCreateSequenceSchema = z
         'Reserved for phase 2: URL to receive a signed completion webhook. Stored intent only — delivery is not implemented yet.',
     }),
   })
-  .refine((data) => !data.music || data.motion, {
+  .refine((data) => data.stopAt !== undefined || !data.music || data.motion, {
     path: ['music'],
     message: MUSIC_REQUIRES_MOTION_ERROR,
   })

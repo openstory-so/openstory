@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
@@ -14,20 +13,26 @@ import { readReferenceStaleness } from '@/cast/server/production-staleness';
 import { readSegmentStaleness } from '@/motion/server/production-staleness';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import {
-  registerProductionRead,
+  productionRead,
   collectionInput,
   sequenceInput,
-  type ReadToolContextFactory,
 } from '../tool-context';
 import { productionAccess } from '@/sequences/server/production-access';
+import {
+  productionBibleSchema,
+  readProductionBible,
+} from '@/sequences/server/production-bible';
 
-export function registerContextReads(
-  server: McpServer,
-  context: ReadToolContextFactory
-) {
-  registerProductionRead(
-    server,
-    context,
+export const contextReadTools = [
+  productionRead(
+    'get_production_bible',
+    'Read the production bible in one call: style, characters, locations, elements and each scene’s selected narrative with a script excerpt. Lists are capped (50 per kind, 100 scenes, 400-char excerpts); a cap that bites names the list tool and cursor that continue it. Also the openstory://sequences/{sequenceId}/bible resource.',
+    sequenceInput,
+    productionBibleSchema,
+    (input, { scopedDb, origin }) =>
+      readProductionBible(scopedDb, input.sequenceId, origin)
+  ),
+  productionRead(
     'list_shot_references',
     "Find the characters, locations or elements a shot uses, from the editor inspector's own resolution. IDs can be passed to the entity detail tools.",
     collectionInput.extend({ shotId: ulidSchema, kind: referenceKindSchema }),
@@ -36,10 +41,8 @@ export function registerContextReads(
       nextCursor: z.string().nullable(),
     }),
     async (input, { scopedDb }) => listShotReferences(scopedDb, input)
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'list_entity_usages',
     "Find shots using a sequence character, location or element, optionally within one scene, from the editor inspector's own resolution. Cursors bind the entity and scene filter.",
     collectionInput.extend({
@@ -58,20 +61,16 @@ export function registerContextReads(
       nextCursor: z.string().nullable(),
     }),
     async (input, { scopedDb }) => listEntityUsages(scopedDb, input)
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_shot_staleness',
     'Compute current visual prompt, motion prompt and anchor image freshness plus cause hints. Uses editor semantics without creating missing frames. Use get_render_segment_staleness for the selected video.',
     sequenceInput.extend({ shotId: ulidSchema }),
     shotStalenessSchema,
     async (input, { scopedDb }) =>
       readShotStaleness(scopedDb, input.sequenceId, input.shotId)
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'list_shot_staleness',
     'Page active shots and compute their prompt/image freshness, optionally within one scene (limit 1–20, default 5). This is a detailed dependency read, more expensive than get_sequence_status.',
     collectionInput.extend({
@@ -83,10 +82,8 @@ export function registerContextReads(
       nextCursor: z.string().nullable(),
     }),
     async (input, { scopedDb }) => listShotStaleness(scopedDb, input)
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_reference_staleness',
     'Compute character or location reference-sheet freshness using the existing sheet input hashes. Voice-only characters report applicable false. Does not generate sheets.',
     sequenceInput.extend({
@@ -101,20 +98,16 @@ export function registerContextReads(
         input.kind,
         input.entityId
       )
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_render_segment_staleness',
     'Compare the selected video manifest against current member shots, frames, motion prompts and dialogue voice bindings. This detailed dependency read does not plan or start generation.',
     sequenceInput.extend({ segmentId: ulidSchema }),
     z.object({ status: artifactStalenessSchema }),
     async (input, { scopedDb }) =>
       readSegmentStaleness(scopedDb, input.sequenceId, input.segmentId)
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_music_staleness',
     'Compute sequence music-prompt freshness with the shared editor derivation. Track-level freshness is untracked: the product currently derives music regeneration from prompt changes.',
     sequenceInput,
@@ -129,5 +122,5 @@ export function registerContextReads(
       )),
       track: 'untracked' as const,
     })
-  );
-}
+  ),
+];

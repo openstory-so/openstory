@@ -7,7 +7,7 @@
  * prompt is left alone unless the caller names it in `replace`.
  */
 
-import type { ShotContext } from '@/shots/shot-access.fn';
+import type { ShotEditContext } from './shot-context';
 import type { ShotSpecVersion } from '@/platform/server/db/schema';
 import type { ShotSpecRewriteWorkflowInput } from '@/platform/server/workflow/types';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
@@ -46,7 +46,7 @@ import {
 } from './shot-dialogue';
 
 type RegenerateContext = Pick<
-  ShotContext,
+  ShotEditContext,
   'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'teamId'
 >;
 

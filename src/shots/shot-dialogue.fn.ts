@@ -7,10 +7,7 @@
  * playing a different reading than the one marked current.
  */
 
-import {
-  estimateDialogueTakeCost,
-  estimateTtsCost,
-} from '@/billing/elevenlabs-pricing';
+import { estimateDialogueTakeCost } from '@/billing/elevenlabs-pricing';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { isSeedVoiceConfigured } from '@/models/server/seed-speech-config';
@@ -29,48 +26,31 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import {
-  DIALOGUE_TTS_MODEL,
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
-  dialogueClipSourceKey,
   dialogueFitBudget,
-  sectionClip,
-  ttsCharacterCount,
-  voicedDialogueLines,
-  type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
-import { resolveShotDuration } from '@/motion/resolve-shot-duration';
-import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
-import { getLogger } from '@/platform/logger';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type {
-  DialogueAudioWorkflowInput,
-  DialogueTakeWorkflowInput,
-} from '@/platform/server/workflow/types';
-import { loadSceneContextBySequence } from '@/shots/server/scene-script';
-import {
-  loadShotDialogueResolver,
-  requireSelectableSection,
-  loadVoiceMovedShotIds,
-  sceneDialogueJobs,
-  shotDialogueResolver,
-} from '@/shots/server/shot-dialogue';
-import {
-  castVoiceIds,
-  speechVoicesMoved,
-  voicedShotIds,
-} from '@/shots/shot-dialogue';
+import type { DialogueTakeWorkflowInput } from '@/platform/server/workflow/types';
 import { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
+import {
+  cancelShotDialogueClaim,
+  listShotDialogueClaims,
+  regenerateShotDialogue,
+  currentSourceKeys,
+  discardShotDialogueSection,
+  listShotDialogueReadings,
+  saveShotDialogue,
+  selectShotDialogueSection,
+  selectShotDialogueVersion,
+} from '@/shots/server/dialogue-edit';
 import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-
-const logger = getLogger(['openstory', 'serverFn', 'shot-dialogue']);
 
 const shotInput = z.object({ sequenceId: ulidSchema, shotId: ulidSchema });
 
@@ -79,129 +59,11 @@ const shotInput = z.object({ sequenceId: ulidSchema, shotId: ulidSchema });
  * What the shot says now, by the one resolver every reader uses. Empty when
  * nothing is voiced — no reading matches that.
  */
-async function currentSourceKeys(
-  scopedDb: Pick<
-    ScopedDb,
-    | 'shots'
-    | 'shotDialogue'
-    | 'shotPromptVersions'
-    | 'characters'
-    | 'scenes'
-    | 'sceneScriptVersions'
-  >,
-  shotId: string,
-  sequenceId: string
-): Promise<{
-  key: string;
-  untokenedKey: string;
-  voiced: VoicedDialogueLine[];
-  /** The voices the cast speaks in now (`speechVoicesMoved`). */
-  castVoices: Set<string>;
-}> {
-  const [shots, selectedMotion, characters] = await Promise.all([
-    scopedDb.shots.listBySequence(sequenceId),
-    scopedDb.shotPromptVersions.getSelectedMotion(shotId),
-    scopedDb.characters.list(sequenceId),
-  ]);
-  const dialogueOf = await loadShotDialogueResolver(
-    scopedDb,
-    sequenceId,
-    shots,
-    () => selectedMotion?.dialogue
-  );
-  const dialogue = dialogueOf({ id: shotId });
-  const voiced = voicedDialogueLines(dialogue, characters);
-  return {
-    voiced,
-    castVoices: castVoiceIds(characters),
-    key: dialogueClipSourceKey(voiced),
-    // The key the lines would have with every line on Generated: a shot moved
-    // to Video model or an audio element voices nothing, so `key` is empty,
-    // yet its words may be exactly what a reading spoke (#1773).
-    untokenedKey: dialogueClipSourceKey(
-      voicedDialogueLines(
-        {
-          ...dialogue,
-          lines: dialogue.lines.map(({ voiceToken: _, ...line }) => line),
-        },
-        characters
-      )
-    ),
-  };
-}
-
-/**
- * A source key without its voices. Each key line is
- * `voiceId \t line \t tone \t model` (`dialogueClipSourceKey`); with the first
- * column gone, two keys are equal exactly when only a voice moved. Covers the
- * readings with no version id to compare: lines still derived from the script.
- */
-const wordsOfKey = (key: string): string =>
-  key
-    .split('\n')
-    .map((line) => line.slice(line.indexOf('\t') + 1))
-    .join('\n');
-
 /** This shot's readings, newest first; discarded ones omitted. */
 export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
-  .handler(async ({ context }) => {
-    const [sections, keys, currentVersion, shots] = await Promise.all([
-      context.scopedDb.shotDialogue.listSections(context.shot.id),
-      currentSourceKeys(context.scopedDb, context.shot.id, context.sequence.id),
-      context.scopedDb.shotDialogue.getSelected(context.shot.id),
-      context.scopedDb.shots.listBySequence(context.sequence.id),
-    ]);
-    // The current reading answers to the scene-wide rule; an older one only
-    // to the voices that spoke in it.
-    const currentVoiceMoved = (
-      await loadVoiceMovedShotIds(context.scopedDb, context.sequence.id, shots)
-    ).has(context.shot.id);
-    const { key: currentKey, untokenedKey, castVoices } = keys;
-    return sections.map((section) => {
-      const ownKeyMatches =
-        currentKey !== '' && section.sourceKey === currentKey;
-      // A voice that spoke in its speech is gone — a scene-mate's counts too:
-      // this shot was acted against it (#1802).
-      const voicesMoved =
-        section.selectedAt != null
-          ? currentVoiceMoved
-          : speechVoicesMoved(section.speechTurns, castVoices);
-      return {
-        id: section.id,
-        source: section.source,
-        selected: section.selectedAt != null,
-        fromSeconds: section.fromSeconds,
-        toSeconds: section.toSeconds,
-        speechUrl: section.speechUrl,
-        // Every turn of a call runs on one model; the first says which.
-        model: section.speechTurns[0]?.ttsModel ?? DIALOGUE_TTS_MODEL,
-        createdAt: section.createdAt,
-        matchesCurrentLines: ownKeyMatches,
-        // Lines the take check could not find in this reading (#1802).
-        unclearLineCount: section.speechTurns.filter(
-          (turn) =>
-            turn.shotId === context.shot.id && turn.heardShare !== undefined
-        ).length,
-        // WHY it no longer matches, when it does not. The key folds words and
-        // voices together; the version the reading spoke tells them apart: same
-        // version, moved key → the voice changed (a recast). Unknown (a reading
-        // from before the id was stamped) reads as the lines. Words are compared
-        // as if every line were Generated, so a source pick that kept the words
-        // (Video model, an element) reads as the voice, not the lines (#1773).
-        mismatch: ownKeyMatches
-          ? voicesMoved
-            ? ('voice' as const)
-            : null
-          : (section.dialogueVersionId !== null &&
-                section.dialogueVersionId === currentVersion?.id) ||
-              wordsOfKey(section.sourceKey) === wordsOfKey(untokenedKey)
-            ? ('voice' as const)
-            : ('lines' as const),
-      };
-    });
-  });
+  .handler(async ({ context }) => listShotDialogueReadings(context));
 
 /**
  * Make a reading the shot's current one and put its cut file on the shot —
@@ -212,56 +74,9 @@ export const listShotDialogueSectionsFn = createServerFn({ method: 'GET' })
 export const selectShotDialogueSectionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput.extend({ sectionId: ulidSchema })))
-  .handler(async ({ context, data }) => {
-    const { scopedDb, shot, sequence } = context;
-    const videoModels = [safeImageToVideoModel(sequence.videoModel)];
-    const { limitSeconds } = dialogueFitBudget({
-      maxSeconds: dialogueAudioMaxSeconds(videoModels),
-    });
-    const [candidate, { key: currentKey }] = await Promise.all([
-      scopedDb.shotDialogue.getSectionById(data.sectionId),
-      currentSourceKeys(scopedDb, shot.id, sequence.id),
-    ]);
-    const section = requireSelectableSection({
-      section: candidate,
-      shotId: shot.id,
-      currentKey,
-      limitSeconds,
-    });
-
-    const cut = await cutAudioSection({
-      storageKey: section.speech.storageKey,
-      speechId: section.speechId,
-      teamId: sequence.teamId,
-      sequenceId: sequence.id,
-      fromSeconds: section.fromSeconds,
-      toSeconds: section.toSeconds,
-      minDurationSeconds: dialogueAudioMinSeconds(videoModels),
-    });
-
-    const clip = sectionClip(
-      { ...section, speechTurns: section.speech.turns },
-      cut
-    );
-    await scopedDb.shotDialogue.selectSection(shot.id, section.id, [clip]);
-    try {
-      await scopedDb.sequenceEvents.record({
-        sequenceId: sequence.id,
-        actorId: context.user.id,
-        kind: 'dialogue.section.selected',
-        targetType: 'shot',
-        targetId: shot.id,
-        data: { sectionId: section.id },
-      });
-    } catch (error) {
-      logger.error('dialogue.section.selected event not recorded', {
-        shotId: shot.id,
-        sectionId: section.id,
-        err: error,
-      });
-    }
-    return { sectionId: section.id, clip };
-  });
+  .handler(async ({ context, data }) =>
+    selectShotDialogueSection(context, data.sectionId)
+  );
 
 /** Every authored version of this shot's lines, newest first. */
 export const listShotDialogueVersionsFn = createServerFn({ method: 'GET' })
@@ -272,11 +87,7 @@ export const listShotDialogueVersionsFn = createServerFn({ method: 'GET' })
       await context.scopedDb.shotDialogue.listVersions(context.shot.id)
   );
 
-/**
- * Edit what this shot says (#1773): character, words, tone. Appends a
- * `user-edit` version of THIS shot's lines and nothing else — no prompt row,
- * no other shot. `write` hands back the selected row when nothing moved.
- */
+/** Edit what this shot says (#1773): a `user-edit` version of its lines. */
 export const saveShotDialogueFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(
@@ -284,15 +95,7 @@ export const saveShotDialogueFn = createServerFn({ method: 'POST' })
       shotInput.extend({ lines: storedMotionDialogueSchema.shape.lines })
     )
   )
-  .handler(async ({ context, data }) => {
-    const version = await context.scopedDb.shotDialogue.write(
-      context.shot.id,
-      data.lines,
-      'user-edit',
-      { createdBy: context.user.id }
-    );
-    return { versionId: version?.id ?? null };
-  });
+  .handler(({ context, data }) => saveShotDialogue(context, data.lines));
 
 /**
  * Point the shot back at an earlier set of lines. The pointer is the whole
@@ -303,29 +106,9 @@ export const saveShotDialogueFn = createServerFn({ method: 'POST' })
 export const selectShotDialogueVersionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput.extend({ versionId: ulidSchema })))
-  .handler(async ({ context, data }) => {
-    const version = await context.scopedDb.shotDialogue.selectVersion(
-      context.shot.id,
-      data.versionId
-    );
-    try {
-      await context.scopedDb.sequenceEvents.record({
-        sequenceId: context.sequence.id,
-        actorId: context.user.id,
-        kind: 'dialogue.version.selected',
-        targetType: 'shot',
-        targetId: context.shot.id,
-        data: { versionId: version.id },
-      });
-    } catch (error) {
-      logger.error('dialogue.version.selected event not recorded', {
-        shotId: context.shot.id,
-        versionId: version.id,
-        err: error,
-      });
-    }
-    return { versionId: version.id };
-  });
+  .handler(async ({ context, data }) =>
+    selectShotDialogueVersion(context, data.versionId)
+  );
 
 /**
  * "Regenerate dialogue": another reading of this shot's lines, on demand. The same
@@ -340,94 +123,7 @@ export const regenerateShotDialogueFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(shotInput.extend({ scope: z.enum(['shot', 'scene']) }))
   )
-  .handler(async ({ context, data }) => {
-    const { scopedDb, shot, sequence, user } = context;
-    const [shots, characters, versions, sceneContext] = await Promise.all([
-      scopedDb.shots.listBySequence(sequence.id),
-      scopedDb.characters.list(sequence.id),
-      // The rows, not just the lines: a speech names the version it spoke.
-      scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
-      loadSceneContextBySequence(scopedDb, sequence.id),
-    ]);
-    const selectedMotionByShot =
-      await scopedDb.shotPromptVersions.getSelectedMotionByShots(
-        shots.map((row) => row.id)
-      );
-    const model = safeImageToVideoModel(sequence.videoModel);
-    const [job] = sceneDialogueJobs({
-      needing: [shot],
-      shots,
-      dialogueOf: shotDialogueResolver({
-        linesByShotId: new Map(
-          versions.map((version) => [version.shotId, version.lines])
-        ),
-        shots,
-        legacyDialogueOf: (shotId) =>
-          selectedMotionByShot.get(shotId)?.dialogue,
-        scriptDialogueOf: (sceneId) =>
-          sceneContext.get(sceneId)?.script?.dialogue,
-      }),
-      characters,
-      versionIdByShotId: new Map(
-        versions.map((version) => [version.shotId, version.id])
-      ),
-      voiceMovedShotIds: await loadVoiceMovedShotIds(
-        scopedDb,
-        sequence.id,
-        shots
-      ),
-      shotSecondsOf: (shotId) => {
-        if (data.scope === 'shot' && shotId !== shot.id) return undefined;
-        const row = shots.find((candidate) => candidate.id === shotId);
-        return row
-          ? resolveShotDuration({ durationMs: row.durationMs, model })
-          : undefined;
-      },
-    });
-    const speaking = job ? voicedShotIds(job.voiced) : [];
-    const adopting =
-      data.scope === 'scene'
-        ? speaking
-        : speaking.filter((id) => id === shot.id);
-    if (!job || adopting.length === 0) {
-      throw new Error(
-        data.scope === 'scene'
-          ? 'This scene has no voiced lines to record'
-          : 'This shot has no voiced lines to record'
-      );
-    }
-
-    const reservationId = await reserveRunCredits(
-      scopedDb,
-      estimateTtsCost(ttsCharacterCount(job.voiced)),
-      {
-        errorMessage: 'Insufficient credits to record dialogue',
-        sequenceId: sequence.id,
-      }
-    );
-    return releaseReservationOnThrow(scopedDb, reservationId, async () => {
-      const input: DialogueAudioWorkflowInput = {
-        userId: user.id,
-        teamId: sequence.teamId,
-        sequenceId: sequence.id,
-        reservationId,
-        ownsReservation: true,
-        scenes: [
-          {
-            ...job,
-            forceAdoptShotIds: [
-              ...new Set([...job.forceAdoptShotIds, ...adopting]),
-            ],
-          },
-        ],
-        minDurationSeconds: dialogueAudioMinSeconds([model]),
-        maxDurationSeconds: dialogueAudioMaxSeconds([model]),
-      };
-      return {
-        workflowRunId: await triggerWorkflow('/dialogue-audio', input),
-      };
-    });
-  });
+  .handler(({ context, data }) => regenerateShotDialogue(context, data.scope));
 
 /**
  * The files of these speeches (#1802): a scene recorded as one take plays
@@ -615,45 +311,15 @@ export const recordShotDialogueLineFn = createServerFn({ method: 'POST' })
 export const discardShotDialogueSectionFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput.extend({ sectionId: ulidSchema })))
-  .handler(async ({ context, data }) => {
-    await context.scopedDb.shotDialogue.discardSection(
-      context.shot.id,
-      data.sectionId
-    );
-    try {
-      await context.scopedDb.sequenceEvents.record({
-        sequenceId: context.sequence.id,
-        actorId: context.user.id,
-        kind: 'dialogue.section.discarded',
-        targetType: 'shot',
-        targetId: context.shot.id,
-        data: { sectionId: data.sectionId },
-      });
-    } catch (error) {
-      logger.error('dialogue.section.discarded event not recorded', {
-        shotId: context.shot.id,
-        sectionId: data.sectionId,
-        err: error,
-      });
-    }
-    return { sectionId: data.sectionId };
-  });
+  .handler(async ({ context, data }) =>
+    discardShotDialogueSection(context, data.sectionId)
+  );
 
 /** This shot's dialogue speeches in flight (#1657) — the "Generating…" rows. */
 export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
-  .handler(async ({ context }) => {
-    const claims = await context.scopedDb.shotDialogue.listLiveClaims(
-      context.shot.id
-    );
-    return claims.map((claim) => ({
-      id: claim.id,
-      createdAt: claim.createdAt,
-      // Demoted: it still records, but it will not become the shot's audio.
-      willBecomeCurrent: claim.pendingSourceKey !== null,
-    }));
-  });
+  .handler(({ context }) => listShotDialogueClaims(context));
 
 /**
  * Stop a speech in flight from becoming this shot's audio. The run is not
@@ -663,9 +329,6 @@ export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
 export const cancelShotDialogueClaimFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput.extend({ claimId: ulidSchema })))
-  .handler(async ({ context, data }) => ({
-    cancelled: await context.scopedDb.shotDialogue.cancelClaim(
-      context.shot.id,
-      data.claimId
-    ),
-  }));
+  .handler(({ context, data }) =>
+    cancelShotDialogueClaim(context, data.claimId)
+  );

@@ -53,6 +53,20 @@ vi.doMock('@/sequences/server/launchers', async () => {
 const triggerWorkflowMock = vi.fn();
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: triggerWorkflowMock,
+  // Image, motion and music-prompt retries go through the keyed trigger
+  // (#1460); without a run key it is the plain one.
+  triggerWorkflowRun: async (
+    path: unknown,
+    body: unknown,
+    options?: { deduplicationId?: string }
+  ) => ({
+    workflowRunId: await triggerWorkflowMock(
+      path,
+      body,
+      ...(options?.deduplicationId ? [options] : [])
+    ),
+    reused: false,
+  }),
 }));
 
 const reserveRunCreditsMock = vi.fn();
@@ -586,7 +600,7 @@ describe('executeSmartRetry — full retry fallback', () => {
     expect(triggerWorkflowMock).not.toHaveBeenCalled();
     // The launcher owns the 'processing' write — no direct status write here.
     expect(updateStatus).not.toHaveBeenCalled();
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       retryType: 'full',
       retriedItems: ['full storyboard'],
     });
@@ -631,7 +645,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
       })
     );
     expect(updateStatus).toHaveBeenCalledWith('completed');
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       retryType: 'smart',
       retriedItems: ['1 image(s)'],
     });
@@ -665,7 +679,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
       '/image',
       expect.objectContaining({ shotId: 'shot-1' })
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       retryType: 'smart',
       retriedItems: ['1 image(s)'],
     });
@@ -705,7 +719,7 @@ describe('executeSmartRetry — partial retry status reset', () => {
         ],
       })
     );
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       retryType: 'smart',
       retriedItems: ['1 motion video(s)'],
     });
@@ -1106,5 +1120,71 @@ describe('executeSmartRetry — resolution forwarding (#1570)', () => {
         resolution: '1080p',
       })
     );
+  });
+});
+
+describe('executeSmartRetry — planned retry (#1461)', () => {
+  // A dry run's one write is the idempotent anchor-frame repair every read path also makes.
+  test('a dry run plans the same items and starts, reserves and resets nothing', async () => {
+    resetMocks();
+    const shot = makeShot({
+      imageStatus: 'failed',
+      imagePrompt: 'A cinematic shot of the lab',
+    });
+    const dry = makeContext(makeSequence(), [shot]);
+    const plan = await executeSmartRetry(dry.context, { dryRun: true });
+    expect(triggerWorkflowMock).not.toHaveBeenCalled();
+    expect(reserveRunCreditsMock).not.toHaveBeenCalled();
+    expect(dry.updateStatus).not.toHaveBeenCalled();
+
+    const launched: string[] = [];
+    triggerWorkflowMock.mockResolvedValue('image-run-1');
+    const real = makeContext(makeSequence(), [shot]);
+    const run = await executeSmartRetry(real.context, {
+      onLaunched: async (id) => {
+        launched.push(id);
+      },
+    });
+    expect(run.planned).toEqual(plan.planned);
+    expect(plan.planned.images).toEqual([
+      { shotId: 'shot-1', model: expect.any(String) },
+    ]);
+    // Images reserve against fal, so a fal key waives the plan's check.
+    expect(plan.creditProviders).toEqual(['fal']);
+    expect(launched).toEqual(['image-run-1']);
+  });
+
+  test('smartOnly refuses a full-storyboard fallback instead of expanding it', async () => {
+    resetMocks();
+    const { context } = makeContext(makeSequence({ status: 'failed' }), []);
+    await expect(
+      executeSmartRetry(context, { dryRun: true, smartOnly: true })
+    ).rejects.toThrow(/full storyboard/);
+    expect(triggerStoryboardMock).not.toHaveBeenCalled();
+  });
+
+  test('a full-storyboard dry run prices it and reserves or starts nothing', async () => {
+    resetMocks();
+    const { context } = makeContext(makeSequence(), []);
+    const plan = await executeSmartRetry(context, { dryRun: true });
+    expect(plan.planned.retryType).toBe('full');
+    expect(reserveRunCreditsMock).not.toHaveBeenCalled();
+    expect(triggerStoryboardMock).not.toHaveBeenCalled();
+  });
+
+  test('a music dry run takes no claim and starts nothing', async () => {
+    resetMocks();
+    const { context, claimMusic, createReservation } = makeContext(
+      makeSequence({ musicStatus: 'failed', musicModel: 'elevenlabs_music' }),
+      [makeShot({ videoStatus: 'completed' })]
+    );
+    const plan = await executeSmartRetry(context, { dryRun: true });
+    expect(plan.planned.music).toBe(true);
+    // ElevenLabs music spends the platform key: no team key waives the plan.
+    expect(plan.creditProviders).toEqual([]);
+    expect(claimMusic).not.toHaveBeenCalled();
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(reserveRunCreditsMock).not.toHaveBeenCalled();
+    expect(triggerWorkflowMock).not.toHaveBeenCalled();
   });
 });

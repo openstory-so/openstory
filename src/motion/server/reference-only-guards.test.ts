@@ -18,7 +18,6 @@ import {
   createSequenceSchema,
   REFERENCE_ONLY_MODEL_ERROR,
   REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
-  updateSequenceSchema,
 } from '@/sequences/server/sequence.schemas';
 
 const xaiKeyDb = {
@@ -254,13 +253,5 @@ describe('sequence schemas', () => {
         generateStartFrames: false,
       }).success
     ).toBe(true);
-  });
-
-  it('refuses to update generateStartFrames on an existing sequence', () => {
-    // Toggling it past the create-time model gate rewrites what every already
-    // rendered shot means — on, approved stills are dropped from the request
-    // while their prompts still assume one.
-    const parsed = updateSequenceSchema.parse({ generateStartFrames: true });
-    expect(Object.keys(parsed)).not.toContain('generateStartFrames');
   });
 });

@@ -18,7 +18,6 @@
 
 import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
 import { runApiV1Handler } from '@/platform/server/api-v1/errors';
-import { decideExistingExport } from '@/platform/server/api-v1/export-reuse';
 import {
   API_V1_BASE,
   getLink,
@@ -27,52 +26,13 @@ import {
   type HalLinks,
 } from '@/platform/server/api-v1/hal';
 import { getWaitMs, longPoll } from '@/platform/server/api-v1/wait';
-import type { SequenceExportDocument } from '@/platform/server/api-v1/state';
-import type { SequenceExport } from '@/platform/server/db/schema';
-import { generateId } from '@/platform/id';
-import { NotFoundError, ValidationError } from '@/platform/errors';
+import { NotFoundError } from '@/platform/errors';
 import {
-  STORAGE_BUCKETS,
-  getPublicUrl,
-  toShareableUrl,
-} from '@/platform/server/storage/buckets';
-import {
-  effectiveExportMusicUrl,
-  hashSequenceExportInputs,
-} from '@/sequences/ui/theatre/source-shots-hash';
-import { collapseConsecutiveUrls } from '@/sequences/ui/theatre/playback-clips';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { SequenceExportWorkflowInput } from '@/platform/server/workflow/types';
+  formatExport,
+  resolveExportCut,
+  startExport,
+} from '@/sequences/server/export';
 import { createFileRoute } from '@tanstack/react-router';
-
-const EXPORT_FILENAME_SUFFIX = '_openstory.mp4';
-
-// A `processing` row older than the workflow's worst-case render time is
-// assumed dead (the worker crashed before `onFailure` ran). The render step is
-// `timeout: 15m` with one retry (+10s delay), so a live export can legitimately
-// run ~30m; pad past that so we only reconcile genuinely-orphaned rows. Such a
-// stale row is marked `failed` (freeing the one-processing-row slot) rather
-// than blocking new exports forever.
-const STALE_PROCESSING_MS = 35 * 60 * 1000;
-
-function buildExportPath(teamId: string, sequenceId: string): string {
-  return `teams/${teamId}/sequences/${sequenceId}/exports/${generateId().slice(-8)}${EXPORT_FILENAME_SUFFIX}`;
-}
-
-function formatExport(
-  row: SequenceExport,
-  origin: string
-): SequenceExportDocument {
-  return {
-    id: row.id,
-    status: row.status,
-    // The file only exists once `ready`; absolutize the stored `/r2/...` URL.
-    url: row.status === 'ready' ? toShareableUrl(row.url, origin) : null,
-    durationSeconds: row.durationSeconds,
-    error: row.error,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
 
 function exportsLinks(sequenceId: string): HalLinks {
   const base = `${API_V1_BASE}/sequences/${sequenceId}`;
@@ -133,138 +93,26 @@ export const Route = createFileRoute('/api/v1/sequences/$id/exports')({
 
       POST: async ({ params, context, request }) =>
         runApiV1Handler(async () => {
-          const sequence = await context.scopedDb.sequences.getById(params.id);
-          if (!sequence) throw new NotFoundError('Sequence not found');
-
           const origin = new URL(request.url).origin;
-
-          // Resolve the whole cut here, before anything is reserved: the
-          // workflow renders this snapshot and reads no DB, so a shot
-          // finishing mid-render can't change the list under it. An
-          // incomplete sequence is a synchronous 4xx rather than a reserved
-          // row that fails a step later.
-          const shots = await context.scopedDb.shots.listBySequence(params.id, {
-            orderBy: 'sceneOrder',
-            ascending: true,
+          const cut = await resolveExportCut(context.scopedDb, params.id);
+          const { row, workflowRunId } = await startExport(context.scopedDb, {
+            userId: context.user.id,
+            teamId: context.teamId,
+            sequenceId: params.id,
+            cut,
           });
-          if (shots.length === 0) {
-            throw new ValidationError('Sequence has no shots yet');
-          }
-          // Each shot's video is the version its render segment points at
-          // (#1067 phase 2d) — one batched read for the whole sequence.
-          const selectedVideoByShot =
-            await context.scopedDb.videoVariants.getSelectedByShotIds(
-              shots.map((s) => s.id)
-            );
-          const shotUrls = shots.map(
-            (s) => selectedVideoByShot.get(s.id)?.url ?? null
-          );
-          if (shotUrls.some((url) => !url)) {
-            const missing = shotUrls.filter((url) => !url).length;
-            throw new ValidationError(
-              missing === shots.length
-                ? 'No scene videos are ready yet'
-                : `${missing} of ${shots.length} scenes are still generating`
-            );
-          }
-          // Packed in-clip renders share one URL across covered shots (#1510).
-          const scenes = collapseConsecutiveUrls(
-            shotUrls.filter((url): url is string => Boolean(url))
-          ).map((videoUrl, orderIndex) => ({ orderIndex, videoUrl }));
-
-          // Hash is computed here, not accepted from the client — a wrong
-          // client cache key would mark a stale MP4 as current (#1253 / #1406).
-          const musicUrl = effectiveExportMusicUrl(
-            sequence.includeMusic,
-            sequence.musicUrl
-          );
-          const sourceShotsHash = await hashSequenceExportInputs({
-            sceneUrls: scenes.map((s) => s.videoUrl),
-            musicUrl,
-          });
-
-          // Content-addressed reuse (#1402): a ready MP4 of this exact cut is
-          // served as-is. Otherwise coalesce onto a live processing row, or
-          // fail a stale one so it stops blocking new exports.
-          const existing =
-            await context.scopedDb.sequenceExports.listAllBySequence(params.id);
-          const decision = decideExistingExport(
-            existing,
-            sourceShotsHash,
-            Date.now(),
-            STALE_PROCESSING_MS
-          );
-          if (decision.action === 'return-ready') {
-            return Response.json(
-              withLinks(
-                { export: formatExport(decision.row, origin) },
-                exportsLinks(params.id)
-              ),
-              { status: 200 }
-            );
-          }
-          if (decision.action === 'return-processing') {
-            return Response.json(
-              withLinks(
-                { export: formatExport(decision.row, origin) },
-                exportsLinks(params.id)
-              ),
-              { status: 202 }
-            );
-          }
-          if (decision.action === 'fail-stale-processing') {
-            await context.scopedDb.sequenceExports.markFailed(
-              decision.row.id,
-              'Export timed out — no result from the render worker'
-            );
-          }
-
-          // Reserve the row BEFORE triggering so a crash between the two
-          // leaves a row the stale sweep above can reconcile. `created: false`
-          // means a concurrent POST won the one-processing-row race — coalesce
-          // onto its row rather than starting a second workflow.
-          const path = buildExportPath(context.teamId, params.id);
-          const { row, created } =
-            await context.scopedDb.sequenceExports.createProcessing({
-              sequenceId: params.id,
-              url: getPublicUrl(STORAGE_BUCKETS.VIDEOS, path),
-              storagePath: path,
-              sourceShotsHash,
-            });
-          if (!created) {
-            return Response.json(
-              withLinks(
-                { export: formatExport(row, origin) },
-                exportsLinks(params.id)
-              ),
-              { status: 202 }
-            );
-          }
-
-          const workflowRunId =
-            await triggerWorkflow<SequenceExportWorkflowInput>(
-              'sequence-export',
-              {
-                userId: context.user.id,
-                teamId: context.teamId,
-                sequenceId: params.id,
-                exportId: row.id,
-                storagePath: path,
-                scenes,
-                musicUrl,
-              }
-            );
-          await context.scopedDb.sequenceExports.setWorkflowRunId(
-            row.id,
-            workflowRunId
-          );
-
+          // 200: a ready MP4 of this cut, reused. 202: a new render, or the
+          // live one this request joined.
           return Response.json(
             withLinks(
-              { export: { ...formatExport(row, origin), workflowRunId } },
+              {
+                export: workflowRunId
+                  ? { ...formatExport(row, origin), workflowRunId }
+                  : formatExport(row, origin),
+              },
               exportsLinks(params.id)
             ),
-            { status: 202 }
+            { status: row.status === 'ready' ? 200 : 202 }
           );
         }),
     },

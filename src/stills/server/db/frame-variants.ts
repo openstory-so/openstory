@@ -25,6 +25,11 @@ import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Resolution } from '@/models/resolutions';
 import { generateId } from '@/platform/id';
 import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
+import {
   framePromptVersions,
   frameVariants,
   frames,
@@ -286,7 +291,7 @@ export function createFrameVariantsMethods(db: Database) {
         and(eq(frameVariants.id, versionId), eq(frameVariants.frameId, frameId))
       );
     if (!version) {
-      throw new Error(
+      throw new NotFoundError(
         `FrameVariant ${versionId} not found for frame ${frameId}`
       );
     }
@@ -297,7 +302,7 @@ export function createFrameVariantsMethods(db: Database) {
     // render manifest that snapshots it) can never name a preview.
     const { kind } = version;
     if (!isSelectableFrameVariantKind(kind)) {
-      throw new Error(
+      throw new ValidationError(
         `FrameVariant ${versionId} is kind '${kind}' — a preview is a pre-prompt stand-in and can never become a frame's still`
       );
     }
@@ -305,7 +310,7 @@ export function createFrameVariantsMethods(db: Database) {
     // pending/failed version would mirror its null url + failed status onto
     // the frame, silently blanking a good image.
     if (version.status !== 'completed') {
-      throw new Error(
+      throw new ConflictError(
         `FrameVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished image`
       );
     }
@@ -329,7 +334,7 @@ export function createFrameVariantsMethods(db: Database) {
       .from(frames)
       .where(eq(frames.id, frameId));
     if (!frame) {
-      throw new Error(`Frame ${frameId} not found`);
+      throw new NotFoundError(`Frame ${frameId} not found`);
     }
 
     // Cancel auto-promote only when the user picks a *different* version than

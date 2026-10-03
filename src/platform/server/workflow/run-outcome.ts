@@ -4,7 +4,8 @@
  * `resolveRunState` (reconcile.ts) answers "is this row still in flight?" for
  * the cron sweep and deliberately discards the output. This is the other half:
  * user-facing callers that need to know *what the run reported* — how much
- * succeeded, what failed — and not merely that it stopped.
+ * succeeded, what failed — and not merely that it stopped. Both are mappers
+ * over `readInstanceStatus`, so they agree on what a missing instance means.
  *
  * The output is returned as `unknown` on purpose. Callers own its shape and
  * should validate it (zod) rather than have this helper assert a type it
@@ -13,6 +14,7 @@
 
 import { getEnv } from '#env';
 import { disposeRpcStub } from './rpc-dispose';
+import { isInstanceNotFoundError } from './errors';
 import {
   getCfBindingForRunId,
   workflowNameFromRunId,
@@ -28,7 +30,7 @@ export type WorkflowRunOutcome =
   | { state: 'running' }
   /** Reached the end of `runImpl`; `output` is whatever it returned. */
   | { state: 'complete'; output: unknown }
-  /** `errored` or `terminated`. */
+  /** `errored` or `terminated`, or the instance no longer exists. */
   | { state: 'failed'; error: string }
   /**
    * The lookup itself failed, or the id doesn't map to a known binding (a
@@ -85,15 +87,25 @@ export async function terminateSingleArtifactRun(
   }
 }
 
-export async function getWorkflowRunOutcome(
-  runId: string
-): Promise<WorkflowRunOutcome> {
-  if (runId === '') return { state: 'unknown' };
+export type InstanceRead =
+  /** The engine's status; `error` is its `{ name, message }` flattened. */
+  | { kind: 'read'; status: string; output: unknown; error: string | null }
+  /** The id maps to no workflow binding (legacy id, E2E mock id). */
+  | { kind: 'no_binding' }
+  /** The lookup threw for a reason other than not-found; logged. */
+  | { kind: 'unreadable' };
 
+/**
+ * The one read of a workflow instance's status. An instance the engine no
+ * longer has (`instance.not_found`: retention ran out, or it lived in another
+ * dev server) reads as `errored`: it is not running, and reading it as
+ * unreadable left the generation mutex and pollers waiting on it for good.
+ */
+export async function readInstanceStatus(runId: string): Promise<InstanceRead> {
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
   const env = getEnv() as unknown as CloudflareEnv;
   const binding = getCfBindingForRunId(runId, env);
-  if (!binding) return { state: 'unknown' };
+  if (!binding) return { kind: 'no_binding' };
 
   try {
     // `binding.get()` hands back a WorkflowInstance RPC result; dispose it
@@ -101,23 +113,44 @@ export async function getWorkflowRunOutcome(
     const instance = await binding.get(runId);
     try {
       const { status, output, error } = await instance.status();
-      if (status === 'complete') return { state: 'complete', output };
-      if (status === 'errored' || status === 'terminated') {
+      return {
+        kind: 'read',
+        status,
+        output,
         // Engine error shape is { name, message } — flatten it, same as
         // await-child.ts does at its step boundary.
-        return {
-          state: 'failed',
-          error: error ? `${error.name}: ${error.message}` : `Run ${status}`,
-        };
-      }
-      return { state: 'running' };
+        error: error ? `${error.name}: ${error.message}` : null,
+      };
     } finally {
       disposeRpcStub(instance);
     }
   } catch (error) {
-    logger.error(`Failed to read workflow outcome for ${runId}:`, {
+    if (isInstanceNotFoundError(error)) {
+      return {
+        kind: 'read',
+        status: 'errored',
+        output: undefined,
+        error: 'Instance no longer exists',
+      };
+    }
+    logger.error(`Failed to read workflow ${runId}:`, {
       data: error instanceof Error ? error.message : error,
     });
-    return { state: 'unknown' };
+    return { kind: 'unreadable' };
   }
+}
+
+export async function getWorkflowRunOutcome(
+  runId: string
+): Promise<WorkflowRunOutcome> {
+  if (runId === '') return { state: 'unknown' };
+  const read = await readInstanceStatus(runId);
+  if (read.kind !== 'read') return { state: 'unknown' };
+  if (read.status === 'complete') {
+    return { state: 'complete', output: read.output };
+  }
+  if (read.status === 'errored' || read.status === 'terminated') {
+    return { state: 'failed', error: read.error ?? `Run ${read.status}` };
+  }
+  return { state: 'running' };
 }

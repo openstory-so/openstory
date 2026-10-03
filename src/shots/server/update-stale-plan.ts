@@ -86,6 +86,7 @@ import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scen
 import { NotFoundError } from '@/platform/errors';
 import {
   updateAllUnits,
+  type PlanUnit,
   type PlanUnitKind,
   type PlanUnitRef,
 } from '@/sequences/generation-plan';
@@ -502,16 +503,21 @@ export async function planUpdateAll(args: {
   sequenceId: string;
   sceneId?: string;
   shotId?: string;
+  /** An explicit shot list (agent plans, #1460); wins over sceneId/shotId. */
+  shotIds?: readonly string[];
   depth: UpdateStaleDepth;
   userId: string;
+  /** The live plan, when the caller already computed it (agent plans). */
+  generationPlan?: readonly PlanUnit[];
 }): Promise<UpdateStalePlan> {
   const { scopedDb, sequenceId, sceneId, shotId, depth, userId } = args;
   const [generationPlan, allShots] = await Promise.all([
-    computeGenerationPlan(scopedDb, sequenceId),
+    args.generationPlan ?? computeGenerationPlan(scopedDb, sequenceId),
     scopedDb.shots.listBySequence(sequenceId),
   ]);
-  const shotIds =
-    sceneId || shotId
+  const shotIds = args.shotIds
+    ? new Set(args.shotIds)
+    : sceneId || shotId
       ? new Set(
           filterInScopeShots(allShots, { sceneId, shotId }).map((s) => s.id)
         )

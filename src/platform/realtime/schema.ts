@@ -311,6 +311,10 @@ export const realtimeSchema = {
       error: z.string(),
     }),
 
+    // An Update all run started (#1979): every open editor adopts it, so a run
+    // started by MCP or another tab shows its progress too.
+    'update-stale:start': z.object({ workflowRunId: z.string().min(1) }),
+
     // Replace-element events: edit affected shots to swap an element
     'replace-element:start': z.object({
       elementId: z.string().min(1),
@@ -493,6 +497,8 @@ export const realtimeLeaves = {
     realtimeSchema.generation['recast-location:complete'],
   'generation.recast-location:failed':
     realtimeSchema.generation['recast-location:failed'],
+  'generation.update-stale:start':
+    realtimeSchema.generation['update-stale:start'],
   'generation.replace-element:start':
     realtimeSchema.generation['replace-element:start'],
   'generation.replace-element:complete':
@@ -591,6 +597,8 @@ const leafParsers: LeafParsers = {
     parseWith(realtimeLeaves['generation.recast-location:complete'], data),
   'generation.recast-location:failed': (data) =>
     parseWith(realtimeLeaves['generation.recast-location:failed'], data),
+  'generation.update-stale:start': (data) =>
+    parseWith(realtimeLeaves['generation.update-stale:start'], data),
   'generation.replace-element:start': (data) =>
     parseWith(realtimeLeaves['generation.replace-element:start'], data),
   'generation.replace-element:complete': (data) =>

@@ -69,7 +69,7 @@ const countSchema = z.number().int().min(1).max(4);
 
 export const studioActivitySchema = z.enum(['image', 'video']);
 export const studioSortSchema = z.enum(['newest', 'oldest']);
-export const studioReferenceKindSchema = z.enum(['image', 'video', 'audio']);
+const studioReferenceKindSchema = z.enum(['image', 'video', 'audio']);
 
 export type StudioActivity = z.infer<typeof studioActivitySchema>;
 export type StudioSort = z.infer<typeof studioSortSchema>;
@@ -241,6 +241,28 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
 ]);
 
 export type StudioCreateInput = z.infer<typeof studioCreateInputSchema>;
+
+/** Draft a prompt from the attached references (`draftStudioPromptForTeam`). */
+export const studioPromptDraftInputSchema = z.object({
+  activity: studioActivitySchema,
+  references: z
+    .array(
+      z.object({
+        url: mediaUrlSchema,
+        label: z.string().min(1).max(200),
+        kind: studioReferenceKindSchema,
+      })
+    )
+    .max(15)
+    .default([]),
+  startImageUrl: mediaUrlSchema.optional(),
+  endImageUrl: mediaUrlSchema.optional(),
+  currentPrompt: z.string().max(5000).optional(),
+});
+
+export type StudioPromptDraftInput = z.infer<
+  typeof studioPromptDraftInputSchema
+>;
 
 type StudioCreateAsset = {
   id: string;

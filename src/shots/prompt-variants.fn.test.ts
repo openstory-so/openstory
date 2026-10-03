@@ -14,8 +14,8 @@ import {
   shotPromptDedupId,
   shotPromptForceDedupId,
   isPromptUpToDate,
-  musicPromptDedupId,
 } from './prompt-variants.fn';
+import { musicPromptDedupId } from '@/audio/server/music-edit';
 
 describe('isPromptUpToDate', () => {
   it('returns false when no stored hash (legacy / never generated)', () => {

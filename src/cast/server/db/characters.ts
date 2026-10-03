@@ -12,6 +12,7 @@ import {
   exists,
   getTableColumns,
   inArray,
+  isNotNull,
   isNull,
   or,
   sql,
@@ -46,7 +47,7 @@ import {
   talent,
 } from '@/platform/server/db/schema';
 import { markPreviewUnusable } from '@/cast/voice';
-import { ValidationError } from '@/platform/errors';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import {
@@ -417,6 +418,17 @@ export function createCharactersMethods(db: Database) {
       );
     },
 
+    /** Soft-deleted characters of the sequence, most recently deleted first. */
+    listDeleted: async (sequenceId: string): Promise<CharacterWithSheet[]> =>
+      await selectWithLiveSheet()
+        .where(
+          and(
+            eq(characters.sequenceId, sequenceId),
+            isNotNull(characters.deletedAt)
+          )
+        )
+        .orderBy(desc(characters.deletedAt)),
+
     /**
      * Every bible version of the sequence's characters, oldest first (#1600).
      * Staleness causes diff the version live when an artifact was made
@@ -722,12 +734,12 @@ export function createCharactersMethods(db: Database) {
           )
         );
       if (!version)
-        throw new Error(
+        throw new NotFoundError(
           `Voice version ${versionId} not found for character ${characterId}`
         );
       // The id on a released row no longer exists at ElevenLabs, so selecting
       // it would put a dead voice on the row and 404 at TTS (#1657).
-      if (version.releasedAt) throw new Error(RELEASED_VOICE_MESSAGE);
+      if (version.releasedAt) throw new ValidationError(RELEASED_VOICE_MESSAGE);
       if (version.status !== 'completed') {
         throw new ValidationError(VOICE_HUSK_NOT_READY_MESSAGE);
       }

@@ -22,6 +22,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { NotFoundError } from '@/platform/errors';
 import {
   dialogueSpeeches,
   shotDialogueClaims,
@@ -212,7 +213,7 @@ export function createShotDialogueMethods(db: Database) {
         )
         .limit(1);
       if (!version) {
-        throw new Error(
+        throw new NotFoundError(
           `Shot dialogue version ${versionId} not found for shot ${shotId}`
         );
       }
@@ -659,7 +660,7 @@ export function createShotDialogueMethods(db: Database) {
         )
         .limit(1);
       if (!section) {
-        throw new Error(
+        throw new NotFoundError(
           `Shot dialogue section ${sectionId} not found for shot ${shotId}`
         );
       }

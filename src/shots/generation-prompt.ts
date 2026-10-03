@@ -7,6 +7,8 @@
  * so a stale tab gets the same answer as the UI.
  */
 
+import { ValidationError } from '@/platform/errors';
+
 export const EMPTY_GENERATION_PROMPT_MESSAGE =
   'Write or generate a prompt first.';
 
@@ -25,6 +27,6 @@ export function requireGenerationPrompt(
 ): void {
   const source = override !== undefined ? override : (stored ?? '');
   if (isBlankPrompt(source)) {
-    throw new Error(EMPTY_GENERATION_PROMPT_MESSAGE);
+    throw new ValidationError(EMPTY_GENERATION_PROMPT_MESSAGE);
   }
 }

@@ -13,8 +13,8 @@ import {
   setSequenceModelFn,
   setSequenceMusicFn,
   unarchiveSequenceFn,
-  type AddModelResult,
 } from '@/sequences/sequences.fn';
+import type { AddModelResult } from '@/sequences/server/sequence-models';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { micros, type Microdollars } from '@/billing/money';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
@@ -311,9 +311,8 @@ function invalidateSequenceLists(
 
 /**
  * Rename a sequence (#1108 Phase 4) — title-only write via the dedicated
- * `renameSequenceFn` (never `updateSequenceFn`, whose aspect-ratio handling
- * makes it unsafe for partial writes). Refreshes the detail (breadcrumb +
- * header) and the sequences list.
+ * `renameSequenceFn`. Refreshes the detail (breadcrumb + header) and the
+ * sequences list.
  */
 export function useRenameSequence(sequenceId: string) {
   const queryClient = useQueryClient();

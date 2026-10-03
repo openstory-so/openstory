@@ -5,6 +5,8 @@
  */
 
 import type { SceneNarrative } from '@/platform/server/db/schema';
+import { z } from 'zod';
+import { plainSceneTitle } from '@/platform/markdown-plain';
 
 export const sceneNarrativeOf = (scene: SceneNarrative): SceneNarrative => ({
   title: scene.title,
@@ -32,3 +34,39 @@ export function narrativeFieldsChanged(
   }
   return changed;
 }
+
+// Narrative edit input, shared by the editor (scenes.fn.ts) and MCP (#1459).
+
+/** `''` / whitespace clears a nullable narrative field; otherwise trimmed. */
+const narrativeField = z
+  .string()
+  .max(2000)
+  .transform((v) => {
+    const trimmed = v.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  });
+
+/** Titles are labels: drop markdown sigils from the script editor. */
+const sceneTitleField = z
+  .string()
+  .max(2000)
+  .transform((v) => {
+    const plain = plainSceneTitle(v);
+    return plain.length > 0 ? plain : null;
+  });
+
+export const sceneNarrativeFieldsSchema = z.object({
+  title: sceneTitleField.optional(),
+  location: narrativeField.optional(),
+  timeOfDay: narrativeField.optional(),
+  storyBeat: narrativeField.optional(),
+  continuity: z
+    .object({
+      characterTags: z.array(z.string().trim().max(200)).max(100).optional(),
+      environmentTag: z.string().trim().max(200).optional(),
+      elementTags: z.array(z.string().trim().max(200)).max(100).optional(),
+      lightingSetup: z.string().trim().max(2000).optional(),
+      colorPalette: z.string().trim().max(2000).optional(),
+    })
+    .optional(),
+});

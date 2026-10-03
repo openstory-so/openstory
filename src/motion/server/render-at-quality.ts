@@ -27,6 +27,7 @@ import {
 } from '@/billing/server/preflight';
 import { DEFAULT_VIDEO_MODEL, safeImageToVideoModel } from '@/models/models';
 import { DRAFT_FINAL_RESOLUTION, draftTaskUsable } from '@/motion/draft-mode';
+import { ConflictError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { VideoVariant } from '@/platform/server/db/schema';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
@@ -70,18 +71,18 @@ export async function renderDraftAtQuality(options: {
 }): Promise<{ workflowRunId: string; versionId: string }> {
   const { scopedDb, sequence, version } = options;
   const blocker = draftRenderBlocker(version);
-  if (blocker) throw new Error(blocker);
+  if (blocker) throw new ValidationError(blocker);
   const draftTaskId = version.draftTaskId;
-  if (!draftTaskId) throw new Error('This clip is not a draft');
+  if (!draftTaskId) throw new ValidationError('This clip is not a draft');
   const lead = version.manifest[0];
-  if (!lead) throw new Error('The draft covers no shots');
+  if (!lead) throw new ValidationError('The draft covers no shots');
   // The segment is already rendering — a second final would bill twice for
   // the same clip.
   const siblings = await scopedDb.videoVariants.listBySegment(
     version.renderSegmentId
   );
   if (siblings.some((row) => row.status === 'generating')) {
-    throw new Error(ALREADY_RENDERING);
+    throw new ConflictError(ALREADY_RENDERING);
   }
   // See the header: one hold and one instance per (draft, attempt).
   const runKey = `motion-final-${version.id}-${siblings.length}`;

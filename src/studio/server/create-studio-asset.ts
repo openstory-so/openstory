@@ -34,6 +34,7 @@ import { needsLikenessCheck } from '@/cast/upload-rights';
 import { studioReferenceImages } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import {
   studioCreateInputSchema,
@@ -171,7 +172,7 @@ async function requireOwnEditSource(
     !studioCanEditSource(source.input.videoModel) ||
     studioPrimaryOutput(source)?.url !== input.sourceVideoUrl
   ) {
-    throw new Error('Video to edit not found');
+    throw new NotFoundError('Video to edit not found');
   }
   // An edit registers its source in Ark's portrait library, which vouches
   // for whoever is in it. Reference clips skip the likeness gate (only stills
@@ -182,7 +183,7 @@ async function requireOwnEditSource(
   // does not say which row made it. Relax once uploaded videos are
   // classified like stills.
   if (studioUsedReferenceVideo(source.input)) {
-    throw new Error(
+    throw new ValidationError(
       'This clip was made from a reference video, so it cannot be edited'
     );
   }
@@ -209,7 +210,7 @@ export async function createStudioAssets(
         usingOwnFalKey: falKey?.source === 'team',
       }) === 'byteplus';
     if (!isOfferedVideoModel(input.videoModel, { byteplus })) {
-      throw new Error('Unknown video model');
+      throw new ValidationError('Unknown video model');
     }
     if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
     input = {
@@ -372,13 +373,15 @@ export async function renderStudioAssetAtQuality(
 ): Promise<StudioCreateResult> {
   const asset = await scopedDb.generatedAssets.getById(assetId);
   if (!asset || asset.source !== 'studio') {
-    throw new Error('Generated asset not found');
+    throw new NotFoundError('Generated asset not found');
   }
   if (!asset.draftTaskId || asset.status !== 'completed') {
-    throw new Error('This clip is not a finished draft');
+    throw new ValidationError('This clip is not a finished draft');
   }
   if (!draftTaskUsable(asset.createdAt)) {
-    throw new Error('The draft is over seven days old — generate it again');
+    throw new ValidationError(
+      'The draft is over seven days old — generate it again'
+    );
   }
   const input = studioCreateInputSchema.parse({
     ...asset.input,
@@ -409,11 +412,11 @@ export async function editStudioAsset(
 ): Promise<StudioCreateResult> {
   const asset = await scopedDb.generatedAssets.getById(assetId);
   if (!asset || asset.source !== 'studio' || asset.activity !== 'video') {
-    throw new Error('Generated asset not found');
+    throw new NotFoundError('Generated asset not found');
   }
   const video = studioPrimaryOutput(asset);
   if (asset.status !== 'completed' || !video) {
-    throw new Error('This clip has not finished');
+    throw new ValidationError('This clip has not finished');
   }
   const input = studioCreateInputSchema.parse({
     activity: 'video',

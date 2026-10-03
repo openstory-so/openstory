@@ -27,7 +27,7 @@ import {
   unusableReferenceLines,
 } from '@/motion/reference-support';
 import { ulidSchemaOptional } from '@/platform/server/schemas/id.schemas';
-import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
+import { createInsertSchema } from 'drizzle-orm/zod';
 import { draftElementUploadSchema } from '@/cast/draft-element-upload';
 import { z } from 'zod';
 
@@ -281,55 +281,5 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     const flags = flagsFromStopAt(stopAt);
     return { ...data, stopAt, ...flags };
   });
-
-export const updateSequenceSchema = createUpdateSchema(sequences, {
-  title: (schema) => schema.min(1), // drizzle-zod auto-applies max from varchar(500)
-  script: (schema) => schema.min(10).max(10000), // Business rule: meaningful scripts
-  analysisModel: (schema) =>
-    schema.refine(isValidAnalysisModelId, {
-      message: 'Invalid analysis model',
-    }),
-  imageModel: (schema) =>
-    schema.refine((val) => validImageModelKeys.includes(val), {
-      message: 'Invalid image model',
-    }),
-  videoModel: (schema) =>
-    schema.refine((val) => validVideoModelKeys.includes(val), {
-      message: 'Invalid video model',
-    }),
-  aspectRatio: aspectRatioSchema.optional(),
-  resolution: resolutionSchema.optional(),
-}).omit({
-  id: true,
-  teamId: true,
-  status: true,
-  createdAt: true,
-  updatedAt: true,
-  createdBy: true,
-  updatedBy: true,
-  workflow: true, // Set by workflow, not user
-  workflowRunId: true, // Set at workflow trigger time, not user
-  // Set at creation only. Toggling it on an existing sequence bypasses the
-  // model refine below AND rewrites what every already-rendered shot means:
-  // on, the stills the user approved are silently dropped from the request
-  // while their prompts still assume one; off, no shot has a still and batch
-  // motion finds nothing eligible. Regenerate instead of toggling.
-  generateStartFrames: true,
-  // Chip-only write (`setSequenceTargetDurationFn`). The general update
-  // path must not set it: no 5s floor, and it is not an aspect-ratio-style
-  // regenerate trigger.
-  targetDurationSeconds: true,
-  // Copied from the style row on styleId change — clients send styleId only
-  // (#1600: a version row, reached through this pointer).
-  legacyStyleConfig: true,
-  selectedStyleVersionId: true,
-  // Music pointers - moved by the music claim lifecycle, not user input
-  // (#1115).
-  musicModel: true,
-  selectedMusicVariantId: true,
-  selectedMusicPromptVersionId: true,
-  pendingPromoteMusicVariantId: true,
-  generationStopAt: true,
-});
 
 export type CreateSequenceInput = z.infer<typeof createSequenceSchema>;

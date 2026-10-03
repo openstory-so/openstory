@@ -16,6 +16,7 @@
 import { z } from 'zod';
 import { enhanceScriptToString } from '@/sequences/server/script-enhancement';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
+import { AUTO_STYLE_ID } from '@/look/auto-style';
 import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/models/models';
 import { isShortScript } from '@/models/should-enhance';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
@@ -272,7 +273,10 @@ export async function runOneShotCreate(
 
   const [style, elementUploads, ingestedCharacters, ingestedLocations] =
     await Promise.all([
-      resolveStyle(ctx.scopedDb, input.style),
+      // No style (or "auto") is Match script, the app's default (#1213).
+      input.style && input.style !== AUTO_STYLE_ID
+        ? resolveStyle(ctx.scopedDb, input.style)
+        : null,
       ingestElements(ctx.teamId, input.elements),
       ingestInlineCharacterImages(input.characters, ctx.teamId),
       ingestInlineLocationImages(input.locations, ctx.teamId),
@@ -383,17 +387,19 @@ export async function runOneShotCreate(
     const parsed = createSequenceSchema.parse({
       title: input.title,
       script,
-      styleId: style.id,
+      styleId: style?.id ?? AUTO_STYLE_ID,
       // Mirror the new-sequence page: fall back to the style's recommended aspect
       // ratio when the caller doesn't pin one.
       aspectRatio:
-        input.aspectRatio ?? style.defaultAspectRatio ?? DEFAULT_ASPECT_RATIO,
+        input.aspectRatio ?? style?.defaultAspectRatio ?? DEFAULT_ASPECT_RATIO,
       resolution: input.resolution ?? DEFAULT_RESOLUTION,
       analysisModels: input.analysisModels,
       imageModels: input.imageModels,
       videoModels: input.videoModels,
+      stopAt: input.stopAt,
       autoGenerateMotion: input.motion,
       autoGenerateMusic: input.music,
+      generateVoices: input.voices,
       // The API keeps the frame-based workflow: motion is opt-in spend here, and
       // reference-only (the app default) cannot exist without it.
       generateStartFrames: true,

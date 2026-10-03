@@ -40,7 +40,9 @@ import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-dur
 import { getRequestCountry } from '@/platform/server/request-country';
 import {
   DEFAULT_IMAGE_MODEL,
+  DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/models/models';
@@ -55,7 +57,12 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { sequenceScenesUrl } from './notify-sequence-ready';
-import { resolveStopAt } from '@/sequences/pipeline';
+import {
+  flagsFromStopAt,
+  resolveStopAt,
+  type GenerationStage,
+} from '@/sequences/pipeline';
+import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
 import type {
@@ -292,4 +299,45 @@ export async function triggerStoryboard(
   await scopedDb.sequences.update({ id: sequenceId, workflowRunId });
 
   return { workflowRunId };
+}
+
+/**
+ * Continue (#1408, #1818): run the frozen plan's units in resume mode up to
+ * `stopAt`, with the sequence's current models. Shared by the editor's
+ * `continueGenerationFn` and agent operations (#1460). Holds the mutex via
+ * `triggerStoryboard`.
+ */
+export function triggerContinue(
+  scopedDb: ScopedDb,
+  input: {
+    userId: string;
+    teamId: string;
+    sequence: Pick<Sequence, 'id' | 'imageModel' | 'videoModel' | 'musicModel'>;
+    plan: UpdateStalePlan;
+    stopAt: GenerationStage;
+    leftoverGrokShotIds?: string[];
+  }
+): Promise<{ workflowRunId: string }> {
+  const { sequence, stopAt } = input;
+  const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
+  return triggerStoryboard(scopedDb, {
+    userId: input.userId,
+    teamId: input.teamId,
+    sequenceId: sequence.id,
+    resume: true,
+    plan: input.plan,
+    stopAt,
+    autoGenerateMotion,
+    autoGenerateMusic,
+    imageModels: [
+      safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+    ],
+    videoModels: [
+      safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+    ],
+    musicModel: sequence.musicModel
+      ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+      : undefined,
+    leftoverGrokShotIds: input.leftoverGrokShotIds,
+  });
 }

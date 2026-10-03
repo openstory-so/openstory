@@ -106,7 +106,10 @@ Errors are always JSON: { "error": { "code", "message", "details"? } } with the
 matching HTTP status — never an HTML page or redirect.
 
 Machine-readable spec: GET /api/v1/openapi.json returns the full OpenAPI 3.1
-document (generated from the same schema this API validates against).`;
+document (generated from the same schema this API validates against).
+
+MCP: to inspect and edit a whole production from an MCP client, connect to
+/mcp; see the 'agent-guide' link.`;
 
 /** A representative `POST /api/v1/sequences` body (schema defaults applied). */
 function exampleCreateBody(): unknown {
@@ -274,6 +277,10 @@ export function buildRootDocument(): RootDocument {
         templated: true,
         title: 'Get sequence status (supports ?wait long-polling)',
       },
+      'agent-guide': getLink(
+        '/docs/developer-guide/agents',
+        'Use OpenStory from an agent: MCP server, auth, identifiers and the production workflow'
+      ),
       'openapi-spec': {
         href: `${API_V1_BASE}/openapi.json`,
         method: 'GET',

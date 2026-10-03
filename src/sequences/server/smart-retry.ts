@@ -40,7 +40,8 @@ import {
   gateEstimate,
 } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
-import { addMicros, ZERO_MICROS } from '@/billing/money';
+import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
+import { ValidationError } from '@/platform/errors';
 import {
   loadShotDialogueLines,
   shotDialogueResolver,
@@ -51,6 +52,7 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
+  type Provider,
 } from '@/billing/server/preflight';
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
@@ -69,7 +71,11 @@ import {
 import { toShotView } from '@/shots/shot-view';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import { buildCharacterReferenceImages } from '@/cast/character-prompt';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
+import {
+  triggerWorkflow,
+  triggerWorkflowRun,
+} from '@/platform/server/workflow/client';
+import { simpleHash } from '@/platform/hash';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   notifySequenceReady,
@@ -120,12 +126,86 @@ export type SmartRetryContext = {
 };
 
 /**
+ * What a retry would start (#1461). Filled by a `dryRun` with the same
+ * branch logic and costs as the real run, so an agent's plan cannot drift
+ * from what executes.
+ */
+type SmartRetryPlan = {
+  retryType: 'full' | 'smart';
+  images: { shotId: string; model: string }[];
+  motion: { shotId: string; model: string }[];
+  music: boolean;
+  musicPrompt: boolean;
+  estimateMicros: Microdollars;
+};
+
+export type SmartRetryOptions = {
+  /** Plan only: compute items and cost; reserve, claim and trigger nothing. */
+  dryRun?: boolean;
+  /** Refuse instead of falling back to a full storyboard (#1461 `smart`). */
+  smartOnly?: boolean;
+  /** Called with each started run id as soon as it starts. */
+  onLaunched?: (workflowRunId: string) => Promise<void>;
+  /**
+   * Keys the image, motion and music-prompt runs this call starts (#1460), so
+   * a repeat of the same approved plan reuses them instead of paying twice.
+   * The storyboard fallback holds the sequence mutex and music lands through
+   * its claim, so neither needs one. Starts with the sequence id: status
+   * reads require it before reading a caller-supplied run id.
+   */
+  runKey?: string;
+};
+
+/**
  * Handler body, extracted so unit tests can exercise the orchestration
  * (mutex gate → retry planning → triggers → status reset) without the
  * server-fn middleware chain.
  */
-export async function executeSmartRetry(context: SmartRetryContext) {
+export async function executeSmartRetry(
+  context: SmartRetryContext,
+  options: SmartRetryOptions = {}
+) {
   const { sequence, user, teamId } = context;
+  const { dryRun = false, runKey } = options;
+  // Not `options.onLaunched?.(trigger())`: an absent callback would skip the trigger.
+  const launched = async (workflowRunId: string) => {
+    await options.onLaunched?.(workflowRunId);
+  };
+  /**
+   * Trigger under this call's key. A reused run owns its own hold, so the one
+   * taken for this call is released: the work is already paid for once.
+   */
+  const triggerKeyed = async <T extends { userId: string; teamId: string }>(
+    path: string,
+    body: T,
+    suffix: string,
+    reservationId: string | undefined
+  ) => {
+    const run = await releaseReservationOnThrow(
+      context.scopedDb,
+      reservationId,
+      () =>
+        triggerWorkflowRun(path, body, {
+          deduplicationId: runKey ? `${runKey}-${suffix}` : undefined,
+        })
+    );
+    if (run.reused && reservationId) {
+      await context.scopedDb.billing.zeroReservation(reservationId);
+    }
+    await launched(run.workflowRunId);
+  };
+  const planned: SmartRetryPlan = {
+    retryType: 'smart',
+    images: [],
+    motion: [],
+    music: false,
+    musicPrompt: false,
+    estimateMicros: ZERO_MICROS,
+  };
+  // Whose keys waive a balance check of the whole plan (#1461): the
+  // strictest set any item below reserves with, so a plan the check passes
+  // cannot fail a reservation part-way.
+  let creditProviders: Provider[] = ['fal'];
 
   // A sequence marked failed does NOT imply its workflow tree is dead —
   // children outlive a timed-out parent (#839). Reject every retry shape
@@ -205,11 +285,16 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   const summary = analyzeFailures(shotViews, sequence, scenesById);
 
   if (!summary.hasFailed) {
-    throw new Error('No failures found to retry');
+    throw new ValidationError('No failures found to retry');
   }
 
   // Full retry fallback
   if (summary.requiresFullRetry) {
+    if (options.smartOnly) {
+      throw new ValidationError(
+        'Recovering these failures needs a full storyboard run. Plan with mode full_if_required to see its cost.'
+      );
+    }
     const imageModel = safeTextToImageModel(
       sequence.imageModel,
       DEFAULT_IMAGE_MODEL
@@ -222,50 +307,62 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     const stopAt = resolveStopAt({
       generationStopAt: sequence.generationStopAt,
     });
-    const reservationId = await reserveRunCredits(
-      context.scopedDb,
-      estimateStoryboardPreflightCost({
-        script: sequence.script ?? '',
-        imageModel,
-        aspectRatio: sequence.aspectRatio,
-        resolution: sequence.resolution,
-        stopAt,
-        videoModels: [videoModel],
-        audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
-        referenceOnly: !sequence.generateStartFrames,
-        generateVoices: sequence.generateVoices,
-        draftMotion: sequence.draftMotion,
-        targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-        pricing: await getEffectiveFalPricing(),
-      }),
-      {
-        providers: ['fal', 'openrouter'],
-        errorMessage: 'Insufficient credits to retry storyboard',
-        sequenceId: sequence.id,
-      }
-    );
+    const fullCost = estimateStoryboardPreflightCost({
+      script: sequence.script ?? '',
+      imageModel,
+      aspectRatio: sequence.aspectRatio,
+      resolution: sequence.resolution,
+      stopAt,
+      videoModels: [videoModel],
+      audioModels: [safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)],
+      referenceOnly: !sequence.generateStartFrames,
+      generateVoices: sequence.generateVoices,
+      draftMotion: sequence.draftMotion,
+      targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
+      pricing: await getEffectiveFalPricing(),
+    });
+    creditProviders = ['fal', 'openrouter'];
+    const fullResult = {
+      retryType: 'full' as const,
+      retriedItems: ['full storyboard'],
+      planned: {
+        ...planned,
+        retryType: 'full' as const,
+        estimateMicros: fullCost,
+      },
+      creditProviders,
+    };
+    if (dryRun) return fullResult;
+    const reservationId = await reserveRunCredits(context.scopedDb, fullCost, {
+      providers: creditProviders,
+      errorMessage: 'Insufficient credits to retry storyboard',
+      sequenceId: sequence.id,
+    });
 
     // Owns the generation mutex, the 'processing' status write, and the
     // run-id persistence (#839).
-    await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-      triggerStoryboard(context.scopedDb, {
-        userId: user.id,
-        teamId,
-        sequenceId: sequence.id,
-        reservationId,
-        options: {
-          shotsPerScene: 3,
-          generateThumbnails: true,
-          generateDescriptions: true,
-          aiProvider: 'openrouter',
-          regenerateAll: true,
-        },
-        ...flagsFromStopAt(stopAt),
-        stopAt,
-      })
+    const { workflowRunId: storyboardRunId } = await releaseReservationOnThrow(
+      context.scopedDb,
+      reservationId,
+      () =>
+        triggerStoryboard(context.scopedDb, {
+          userId: user.id,
+          teamId,
+          sequenceId: sequence.id,
+          reservationId,
+          options: {
+            shotsPerScene: 3,
+            generateThumbnails: true,
+            generateDescriptions: true,
+            aiProvider: 'openrouter',
+            regenerateAll: true,
+          },
+          ...flagsFromStopAt(stopAt),
+          stopAt,
+        })
     );
-
-    return { retryType: 'full' as const, retriedItems: ['full storyboard'] };
+    await launched(storyboardRunId);
+    return fullResult;
   }
 
   // Smart retry: only retry failed parts
@@ -353,6 +450,12 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         }),
         { model: imageModel, operation: 'smart-retry:image' }
       );
+      planned.images.push({ shotId: shot.id, model: imageModel });
+      planned.estimateMicros = addMicros(planned.estimateMicros, imageCost);
+      if (dryRun) {
+        triggeredImages++;
+        continue;
+      }
       const reservationId =
         imageCost > 0
           ? await reserveRunCredits(context.scopedDb, imageCost, {
@@ -382,8 +485,13 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         referenceImages,
       };
 
-      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-        triggerWorkflow('/image', workflowInput)
+      // Hashed so the id fits the instance-id limit with the sequence id
+      // and key in front of it (truncation shears the tail).
+      await triggerKeyed(
+        '/image',
+        workflowInput,
+        simpleHash(shot.id),
+        reservationId
       );
       triggeredImages++;
     }
@@ -499,29 +607,39 @@ export async function executeSmartRetry(context: SmartRetryContext) {
         videoCost,
         estimateTtsCost(batchDialogue.ttsChars)
       );
-      const reservationId =
-        motionCost > 0
-          ? await reserveRunCredits(context.scopedDb, motionCost, {
-              providers: ['fal'],
-              errorMessage: 'Insufficient credits to retry failed items',
-              sequenceId: sequence.id,
-            })
-          : undefined;
-      const workflowInput: BatchMotionMusicWorkflowInput = {
-        userId: user.id,
-        teamId,
-        reservationId,
-        ownsReservation: true,
-        sequenceId: sequence.id,
-        includeMusic: false,
-        ...(batchDialogue.dialogueSpeech
-          ? { dialogueSpeech: batchDialogue.dialogueSpeech }
-          : {}),
-        shots: batchShots,
-      };
-      await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-        triggerWorkflow('/motion-batch', workflowInput)
-      );
+      planned.motion = batchShots.map((s) => ({
+        shotId: s.shotId,
+        model: s.model ?? sequence.videoModel,
+      }));
+      planned.estimateMicros = addMicros(planned.estimateMicros, motionCost);
+      if (!dryRun) {
+        const reservationId =
+          motionCost > 0
+            ? await reserveRunCredits(context.scopedDb, motionCost, {
+                providers: ['fal'],
+                errorMessage: 'Insufficient credits to retry failed items',
+                sequenceId: sequence.id,
+              })
+            : undefined;
+        const workflowInput: BatchMotionMusicWorkflowInput = {
+          userId: user.id,
+          teamId,
+          reservationId,
+          ownsReservation: true,
+          sequenceId: sequence.id,
+          includeMusic: false,
+          ...(batchDialogue.dialogueSpeech
+            ? { dialogueSpeech: batchDialogue.dialogueSpeech }
+            : {}),
+          shots: batchShots,
+        };
+        await triggerKeyed(
+          '/motion-batch',
+          workflowInput,
+          'motion',
+          reservationId
+        );
+      }
       retried.push(`${batchShots.length} motion video(s)`);
     }
   }
@@ -535,56 +653,68 @@ export async function executeSmartRetry(context: SmartRetryContext) {
       estimateAudioCost(musicModel, totalDuration, { pricing }),
       { model: musicModel, operation: 'smart-retry:music' }
     );
-    const reservationId =
-      musicCost > 0
-        ? await reserveRunCredits(context.scopedDb, musicCost, {
-            // Native ElevenLabs always spends the platform key.
-            providers: musicModel === 'elevenlabs_music' ? [] : ['fal'],
-            errorMessage: 'Insufficient credits to retry failed items',
-            sequenceId: sequence.id,
-          })
-        : undefined;
+    planned.music = true;
+    planned.estimateMicros = addMicros(planned.estimateMicros, musicCost);
+    // Native ElevenLabs always spends the platform key.
+    const musicProviders: Provider[] =
+      musicModel === 'elevenlabs_music' ? [] : ['fal'];
+    if (musicProviders.length === 0) creditProviders = [];
+    if (!dryRun) {
+      const reservationId =
+        musicCost > 0
+          ? await reserveRunCredits(context.scopedDb, musicCost, {
+              providers: musicProviders,
+              errorMessage: 'Insufficient credits to retry failed items',
+              sequenceId: sequence.id,
+            })
+          : undefined;
 
-    const musicTags = sequence.musicTags ?? '';
-    // Row + claim before the run (#1130), compare-and-swapped on the claim
-    // this request saw: a concurrent retry that already claimed wins and this
-    // one starts nothing.
-    const variantId = await context.scopedDb.sequenceVariants.claimMusic({
-      sequenceId: sequence.id,
-      model: musicModel,
-      prompt: sequence.musicPrompt,
-      tags: musicTags,
-      durationSeconds: totalDuration,
-      isPrimary: true,
-      workflowRunId: null,
-      ifPendingIs: sequence.pendingPromoteMusicVariantId,
-    });
-    if (variantId) {
-      const musicInput: MusicWorkflowInput = {
-        userId: user.id,
-        teamId,
+      const musicTags = sequence.musicTags ?? '';
+      // Row + claim before the run (#1130), compare-and-swapped on the claim
+      // this request saw: a concurrent retry that already claimed wins and this
+      // one starts nothing.
+      const variantId = await context.scopedDb.sequenceVariants.claimMusic({
         sequenceId: sequence.id,
-        reservationId,
-        ownsReservation: true,
-        prompt: sequence.musicPrompt,
         model: musicModel,
+        prompt: sequence.musicPrompt,
         tags: musicTags,
-        duration: totalDuration,
-        variantId,
-      };
-      try {
-        await releaseReservationOnThrow(context.scopedDb, reservationId, () =>
-          triggerWorkflow('/music', musicInput)
-        );
-      } catch (error) {
-        await context.scopedDb.sequenceVariants.failMusicClaim(
-          { sequenceId: sequence.id, variantId },
-          error instanceof Error ? error.message : String(error)
-        );
-        throw error;
+        durationSeconds: totalDuration,
+        isPrimary: true,
+        workflowRunId: null,
+        ifPendingIs: sequence.pendingPromoteMusicVariantId,
+      });
+      if (variantId) {
+        const musicInput: MusicWorkflowInput = {
+          userId: user.id,
+          teamId,
+          sequenceId: sequence.id,
+          reservationId,
+          ownsReservation: true,
+          prompt: sequence.musicPrompt,
+          model: musicModel,
+          tags: musicTags,
+          duration: totalDuration,
+          variantId,
+        };
+        let musicRunId: string;
+        try {
+          musicRunId = await releaseReservationOnThrow(
+            context.scopedDb,
+            reservationId,
+            () => triggerWorkflow('/music', musicInput)
+          );
+        } catch (error) {
+          await context.scopedDb.sequenceVariants.failMusicClaim(
+            { sequenceId: sequence.id, variantId },
+            error instanceof Error ? error.message : String(error)
+          );
+          throw error;
+        }
+        // Outside the try: a started run's claim must not be failed.
+        await launched(musicRunId);
+      } else if (reservationId) {
+        await context.scopedDb.billing.zeroReservation(reservationId);
       }
-    } else if (reservationId) {
-      await context.scopedDb.billing.zeroReservation(reservationId);
     }
 
     retried.push('music');
@@ -603,20 +733,29 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     );
     const totalDuration = musicRequestDurationSeconds(allShots);
 
-    // Generate music prompt
-    await triggerWorkflow<MusicPromptWorkflowInput>('/music-prompt', {
-      userId: user.id,
-      teamId,
-      sequenceId: sequence.id,
-      sceneSummaries: scenes,
-      analysisModelId:
-        getAnalysisModelById(sequence.analysisModel)?.id ??
-        DEFAULT_ANALYSIS_MODEL,
-      duration: totalDuration,
-      // This branch only runs when the sequence has no music prompt at all.
-      promptSource: 'ai-generated',
-      musicModel: safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
-    });
+    planned.musicPrompt = true;
+    if (!dryRun) {
+      // Generate music prompt
+      const musicPromptInput: MusicPromptWorkflowInput = {
+        userId: user.id,
+        teamId,
+        sequenceId: sequence.id,
+        sceneSummaries: scenes,
+        analysisModelId:
+          getAnalysisModelById(sequence.analysisModel)?.id ??
+          DEFAULT_ANALYSIS_MODEL,
+        duration: totalDuration,
+        // This branch only runs when the sequence has no music prompt at all.
+        promptSource: 'ai-generated',
+        musicModel: safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
+      };
+      await triggerKeyed(
+        '/music-prompt',
+        musicPromptInput,
+        'music-prompt',
+        undefined
+      );
+    }
 
     retried.push('music prompt');
   }
@@ -627,9 +766,18 @@ export async function executeSmartRetry(context: SmartRetryContext) {
   // with zero work in flight is exactly the lying-status class #839 is
   // about.
   if (retried.length === 0) {
-    throw new Error(
+    throw new ValidationError(
       'None of the failed items can be retried automatically — regenerate the sequence instead.'
     );
+  }
+
+  if (dryRun) {
+    return {
+      retryType: 'smart' as const,
+      retriedItems: retried,
+      planned,
+      creditProviders,
+    };
   }
 
   // Clear the sequence-level 'failed' flag now that retries are in flight.
@@ -662,5 +810,10 @@ export async function executeSmartRetry(context: SmartRetryContext) {
     }
   }
 
-  return { retryType: 'smart' as const, retriedItems: retried };
+  return {
+    retryType: 'smart' as const,
+    retriedItems: retried,
+    planned,
+    creditProviders,
+  };
 }

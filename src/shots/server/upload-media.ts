@@ -34,7 +34,7 @@ import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate
  * script-bearing `.svg` (or an `.html` typed as such) out of a bucket the
  * worker serves same-origin from `/r2/`.
  */
-const UPLOAD_EXTENSIONS = {
+export const UPLOAD_EXTENSIONS = {
   image: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
   video: ['mp4', 'webm', 'mov'],
   audio: ['mp3', 'wav', 'ogg', 'm4a'],

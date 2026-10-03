@@ -173,7 +173,7 @@ export const sequences = snakeCase.table(
     // element sheets, and this is the opt-in back to the frame-based
     // workflow. Replaced the inverted `referenceOnly` (ADD COLUMN + backfill +
     // DROP COLUMN, no rebuild, #612). Set at creation and never toggled
-    // after (`updateSequenceSchema` omits it): the storyboard trigger
+    // after (no update path takes it): the storyboard trigger
     // snapshots it onto the workflow payload,
     // and every stored motion prompt's input hash folds the resolved mode in,
     // so flipping it re-stales the prompts rather than mixing two styles.

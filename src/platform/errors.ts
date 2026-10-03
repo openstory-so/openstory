@@ -76,6 +76,27 @@ export class NotFoundError extends OpenStoryError {
   }
 }
 
+/** An OAuth token without the scope this operation needs (RFC 6750 insufficient_scope). */
+export class InsufficientScopeError extends OpenStoryError {
+  constructor(scope: string) {
+    super(
+      `This token requires the ${scope} scope.`,
+      'INSUFFICIENT_SCOPE',
+      403,
+      {
+        scope,
+      }
+    );
+  }
+}
+
+/** The target moved since the caller read it (stale read-then-edit). */
+export class ConflictError extends OpenStoryError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'CONFLICT', 409, details);
+  }
+}
+
 export class InsufficientCreditsError extends OpenStoryError {
   constructor(
     message: string = 'Insufficient credits',

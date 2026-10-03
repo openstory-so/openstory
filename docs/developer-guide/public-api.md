@@ -139,8 +139,11 @@ curl -X POST https://openstory.so/api/v1/sequences \
 ```
 
 The body is ergonomic: reference a style, cast member, or location by id or name,
-or pass an inline object to create a new one. `enhance` (`auto` | `always` |
-`off`) controls script expansion; `motion` and `music` toggle video and score.
+or pass an inline object to create a new one. No `style` (or `"auto"`) is Match
+script, a style derived from the script. `enhance` (`auto` | `always` | `off`)
+controls script expansion; `motion` and `music` toggle video and score, and
+`stopAt` (`script` … `music`) sets how far the run goes, overriding both.
+`voices` designs a voice per speaking character, which dialogue needs.
 See `GET /api/v1` or the OpenAPI spec for the full request schema.
 
 Response (`202`):

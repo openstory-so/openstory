@@ -14,7 +14,7 @@ import {
   getPathFromUrl,
 } from '@/platform/server/storage/buckets';
 
-const TEAM_USER_UPLOAD_PREFIX = 'uploads';
+export const TEAM_USER_UPLOAD_PREFIX = 'uploads';
 const LEGACY_TEMP_PREFIX = 'temp';
 
 const USER_UPLOAD_BUCKETS = [

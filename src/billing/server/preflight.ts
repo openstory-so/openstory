@@ -29,7 +29,7 @@ type ReservationPreflightScopedDb = {
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'createReservation'>;
 };
 
-type Provider = 'fal' | 'openrouter';
+export type Provider = 'fal' | 'openrouter';
 
 async function coversProvider(
   scopedDb: PreflightScopedDb,

@@ -15,10 +15,17 @@ import { toShotView, type ImageStatus, type ShotView } from '@/shots/shot-view';
 import {
   assertModelNotAlreadyAdded,
   buildAddAudioMusicInput,
-  resolveUnarchiveRestore,
   selectEligibleVideoShots,
-} from './sequences.fn';
+} from '@/sequences/server/sequence-models';
+import {
+  regenerateInput,
+  resolveUnarchiveRestore,
+} from '@/sequences/server/sequence-edit';
 import { sumShotDurationsSeconds } from '@/sequences/server/shot-durations';
+import type { Sequence } from '@/platform/server/db/schema';
+import { asStub } from '@/test/as-stub';
+import { generateId } from '@/platform/id';
+import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 
 const NOW = new Date('2026-06-03T00:00:00.000Z');
 
@@ -296,5 +303,56 @@ describe('resolveUnarchiveRestore', () => {
     expect(
       resolveUnarchiveRestore({ recordedStatus: null, hasShots: false })
     ).toEqual({ status: 'draft', interrupted: false });
+  });
+});
+
+describe('regenerateInput', () => {
+  // The editor's regenerate (`script-view.tsx`) creates a NEW sequence from
+  // the source's settings; MCP builds the same input here.
+  const source = asStub<Sequence>({
+    id: generateId(),
+    script: 'A lighthouse keeper befriends a whale and learns to let go.',
+    styleId: generateId(),
+    aspectRatio: '9:16',
+    resolution: '1080p',
+    analysisModel: DEFAULT_ANALYSIS_MODEL,
+    imageModel: 'nano_banana_2',
+    videoModel: 'kling_v3_pro',
+    musicModel: 'elevenlabs_music',
+    generationStopAt: 'images',
+    generateStartFrames: true,
+    generateVoices: false,
+    draftMotion: false,
+    targetDurationSeconds: null,
+  });
+
+  it('keeps the source settings, applies the change, and points at the source', () => {
+    const input = regenerateInput(source, {
+      script: 'The keeper rows out at dawn to meet the whale.',
+    });
+    expect(input).toMatchObject({
+      script: 'The keeper rows out at dawn to meet the whale.',
+      styleId: source.styleId,
+      aspectRatio: '9:16',
+      resolution: '1080p',
+      analysisModels: [DEFAULT_ANALYSIS_MODEL],
+      imageModels: ['nano_banana_2'],
+      videoModels: ['kling_v3_pro'],
+      audioModels: ['elevenlabs_music'],
+      stopAt: 'images',
+      generateStartFrames: true,
+      sourceSequenceId: source.id,
+    });
+    expect(input.targetDurationSeconds).toBeUndefined();
+    expect(regenerateInput(source, { aspectRatio: '1:1' })).toMatchObject({
+      script: source.script,
+      aspectRatio: '1:1',
+    });
+  });
+
+  it('refuses a source with no script unless one is sent', () => {
+    expect(() =>
+      regenerateInput({ ...source, script: null }, { aspectRatio: '1:1' })
+    ).toThrow();
   });
 });

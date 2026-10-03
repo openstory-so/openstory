@@ -52,6 +52,7 @@ describe('buildRootDocument', () => {
       href: '/api/v1/device/code',
     });
     expect(_links['sequence-status']?.templated).toBe(true);
+    expect(_links['agent-guide']?.href).toBe('/docs/developer-guide/agents');
 
     const create = _links['create-sequence'];
     expect(create?.method).toBe('POST');

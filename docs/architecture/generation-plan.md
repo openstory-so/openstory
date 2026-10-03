@@ -358,3 +358,99 @@ the completed still and its frozen prompt/reference inputs. These replay-dedupli
 grids remain independent enrichment workflows: they can finish after the parent
 and retain their own idempotent debit, outside its reservation envelope. Cancelled
 or empty still results never start a grid; Continue and Update retain their existing behavior.
+
+## Agent plans (#1460)
+
+MCP's `plan_generation` / `execute_generation` / `get_operation_status`
+(`src/sequences/server/generation-operations.ts`) are a third caller of the
+same plan, not a second planner. Nothing is stored: a plan is a token the
+agent hands back, and the launched runs are the operation.
+
+- **Modes.** `stale` is Update all (`planUpdateAll` up to a depth) for the
+  sequence, an explicit list of scene IDs or an explicit list of shot IDs
+  (never inferred from each other). `missing` is Continue
+  (`continueFromPlan` → `computePlan`) up to a stop, for the whole sequence
+  only, under the sequence's current switches and models. Anything else is
+  refused with an actionable `VALIDATION_ERROR`.
+- **Retry (#1461).** `retry_failed_work` plans with a `dryRun` of
+  `executeSmartRetry`, so the plan and the launch run one code path (same
+  failure analysis, models, costs). `smart` refuses when recovery needs a
+  full storyboard; `full_if_required` plans that storyboard and shows its
+  cost. It launches only through `execute_generation`. Retry planning throws
+  `GENERATION_IN_PROGRESS` on a live run rather than reporting a blocker:
+  the dry run reads the same mutex. The editor's own smart retry is
+  unchanged.
+- **Export (#1461).** Exports spend no credits and `startExport` (the REST
+  route's service) already reuses a ready MP4 of the cut or joins its live
+  render, so there is no plan to approve: `plan_export` is a read
+  (`previewExport`: `reuse_ready` / `join_in_flight` / `busy_other_cut` /
+  `render`) and `start_export` starts directly through `startExport` with
+  `refuseOtherCut`, which refuses `busy_other_cut` with `EXPORT_BUSY` from
+  its own decision and reports the `action` it took (REST joins it; an
+  agent would hand back an MP4 without the latest edits). Poll
+  `get_export_status`.
+- **No side effects.** Planning prices with the editor's preview/estimate
+  and reports insufficient credits as a `blocker`; it starts nothing and
+  writes nothing (bar `computePlan`'s existing anchor-frame repair). There
+  is no second "is it running" gate: the planners' own gates are the one
+  gate, so a running sequence is refused the way the editor refuses it,
+  thrown, not reported — Update all with `prepareUpdateStale`'s
+  `VALIDATION_ERROR`, Continue and retry with the storyboard mutex as
+  `GENERATION_IN_PROGRESS`. Nothing-to-do is a `NOTHING_TO_DO` blocker for
+  Update all; Continue (`continueFromPlan`) and retry ("no failures",
+  "needs a full storyboard" under `smart`) throw their `VALIDATION_ERROR`.
+- **The token is the plan.** `planToken` is unsigned base64url JSON: the
+  sequence id, the request, the digest and a random 12-hex-char key. It is
+  not signed because it can only name work its holder could plan directly,
+  and execute re-plans and re-checks everything in it. There is no expiry:
+  live pricing is in the digest, so a price change already fails the
+  compare.
+- **Digest.** It covers the request, every target (ids, flags, pinned
+  version ids, input hashes, models), music, skips, the render-affecting
+  sequence settings and the estimate. Display fields (the sequence title,
+  reference rows) and Dates are left out: a moved selection, model, target
+  or price is `PLAN_CHANGED`; a rename or a touched timestamp is not.
+- **Credits.** The balance check never skips: Update all checks the larger
+  of the estimate and the editor's one-image floor, Continue the known part
+  of its estimate (as `continueGenerationFn`), retry its estimate against
+  the strictest provider set the launch reserves with (`creditProviders`
+  from the dry run: `[]` when ElevenLabs music is planned, so a fal key
+  cannot pass a plan whose music reservation then fails). These paths hold
+  no reservation, as in the editor.
+- **Execute** re-plans and requires the same digest, then rejects a live run
+  (`GENERATION_IN_PROGRESS`), a blocker and a short balance, and launches
+  through the editor's launchers with `<sequenceId>-plan-<key>` as the
+  deduplication id: `launchUpdateStale`'s run key, and `executeSmartRetry`'s
+  `runKey`, which keys each image run (`-<hash of the shot id>`, hashed so
+  the id fits the instance-id limit without truncation), the motion batch
+  (`-motion`) and the music prompt (`-music-prompt`), and releases this
+  call's credit hold when the trigger reused a run. Continue goes through
+  `triggerContinue`, whose storyboard mutex is its launch-once guard. **A
+  repeat of the same token is safe:** it re-sends the same ids and the
+  trigger hands back the live or finished runs (`triggerCfWorkflow`), so it
+  returns the same `workflowRunIds` and spends nothing. Once the launched
+  work has moved the sequence on (claims taken, shots no longer stale or
+  failed), the re-plan no longer matches and the repeat is `PLAN_CHANGED`
+  (Continue: `GENERATION_IN_PROGRESS` while its run is live): the earlier
+  call started it, and the agent checks `get_sequence_status`.
+- **Launch part-way.** A launch that throws after some runs started is
+  `LAUNCH_INCOMPLETE` with `details.workflowRunIds`: those runs are running
+  and paid for, so the agent polls them and does not plan the same work
+  again.
+- **Status** takes the `workflowRunIds` an execute returned and reads those
+  runs, never a sequence aggregate. Every id this feature mints embeds the
+  sequence id, and status requires it before reading a caller-supplied id
+  (as `readUpdateStaleRun` always has). Update all reports its own per-shot
+  failures and skips; Continue and retry runs report run-level success, so
+  what is failed on the sequence now is listed for the agent to plan a
+  retry. Poll every 15 s. Terminal: `completed`, `partially_failed`,
+  `failed`. Not terminal: `running`, `unknown` (a run could not be read). A
+  run the engine no longer has (`instance.not_found`) is `failed`, never
+  `unknown`: `getWorkflowRunOutcome` and the mutex's `resolveRunState` read
+  through one `readInstanceStatus`, so a poller never waits on a run the
+  mutex treats as finished.
+- **Scopes.** Plan and execute need OAuth `generate`; polling and
+  `plan_export` need `sequences:read`, `start_export` `sequences:write`.
+  API keys stay unscoped. `confirm: true` is the caller's assertion that a
+  human approved the plan; scope, digest and credits are what the server
+  enforces.

@@ -1,4 +1,4 @@
-import type { ShotContext } from '@/shots/shot-access.fn';
+import type { ShotEditContext } from './shot-context';
 import type { z } from 'zod';
 import type { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import {
@@ -19,13 +19,14 @@ import { loadShotPromptDialogue } from './shot-dialogue';
 import { rescanContinuityFromPrompt } from './rescan-continuity-from-prompt';
 import { dbSceneId } from '@/shots/scene-id';
 import { getLogger } from '@/platform/logger';
+import { ValidationError } from '@/platform/errors';
 
 const logger = getLogger(['openstory', 'server', 'save-shot-prompt']);
 
 /** Persist an authored prompt and its reference tags before a render snapshots them. */
 export async function saveShotPrompt(
   context: Pick<
-    ShotContext,
+    ShotEditContext,
     'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'scene'
   >,
   data: {
@@ -38,7 +39,7 @@ export async function saveShotPrompt(
   let scene = context.scene;
   const text = data.text.trim();
   if (!text) {
-    throw new Error('Cannot save an empty prompt');
+    throw new ValidationError('Cannot save an empty prompt');
   }
 
   // No-op guard: don't append a `user-edit` identical to the live prompt —

@@ -48,6 +48,7 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   // between two similarly-priced routes; the envelope is an estimate.
   'src/sequences/server/smart-retry.ts': 'whole-run credit estimate',
   'src/sequences/sequences.fn.ts': 'whole-run credit estimate',
+  'src/sequences/server/sequence-edit.ts': 'whole-run credit estimate',
   'src/stills/shot-image.fn.ts': 'whole-run credit estimate',
   'src/billing/pricing.fn.ts': 'whole-run credit estimate',
   'src/sequences/ui/use-draft-generation-estimate.ts':
@@ -61,6 +62,9 @@ const SEQUENCE_LEVEL_BY_DESIGN: Record<string, string> = {
   'src/sequences/ui/use-generation-plan.ts': 'plan under a sequence default',
   'src/sequences/server/continue-plan.ts':
     'the continue switch edits the sequence default',
+  // Agent plans (#1460) run Continue under the sequence's own switches.
+  'src/sequences/server/generation-operations.ts':
+    'continue switches and whole-run estimate, as continueGenerationFn',
   'src/sequences/generation-plan.ts':
     'a switch turned on caps the stop (`switchStopAt`): sequence defaults',
   'src/sequences/ui/use-sequences.ts':

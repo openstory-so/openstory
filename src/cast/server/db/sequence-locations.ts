@@ -6,9 +6,11 @@
 import {
   and,
   asc,
+  desc,
   eq,
   getTableColumns,
   inArray,
+  isNotNull,
   isNull,
   or,
   sql,
@@ -378,6 +380,19 @@ export function createSequenceLocationsMethods(db: Database) {
         page
       );
     },
+
+    /** Soft-deleted locations of the sequence, most recently deleted first. */
+    listDeleted: async (
+      sequenceId: string
+    ): Promise<SequenceLocationWithReference[]> =>
+      await selectWithLiveReference()
+        .where(
+          and(
+            eq(sequenceLocations.sequenceId, sequenceId),
+            isNotNull(sequenceLocations.deletedAt)
+          )
+        )
+        .orderBy(desc(sequenceLocations.deletedAt)),
 
     /** Every bible version of the sequence's locations, oldest first (#1600). */
     listBibleVersionsBySequence: async (sequenceId: string) =>

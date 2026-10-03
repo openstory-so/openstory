@@ -76,3 +76,13 @@ export function isInstanceAlreadyExistsError(error: unknown): boolean {
     errorMessage(error)
   );
 }
+
+/**
+ * CF surfaces a missing instance id as `(instance.not_found) Instance does not
+ * exist` — retention ran out, or (locally) the run happened in another dev
+ * server whose database this one was copied from. Anchored on the `instance`
+ * token like {@link isInstanceAlreadyExistsError}.
+ */
+export function isInstanceNotFoundError(error: unknown): boolean {
+  return /instance\.not_found/i.test(errorMessage(error));
+}

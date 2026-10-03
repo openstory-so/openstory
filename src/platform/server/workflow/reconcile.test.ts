@@ -20,7 +20,8 @@ const getCfBindingForRunIdMock = vi.fn<
 >(() => ({ get: getInstanceMock }));
 
 vi.doMock('#env', () => ({ getEnv: () => ({}) }));
-vi.doMock('./trigger-bindings', () => ({
+vi.doMock('./trigger-bindings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./trigger-bindings')>()),
   getCfBindingForRunId: getCfBindingForRunIdMock,
 }));
 
@@ -79,6 +80,16 @@ describe('resolveRunState', () => {
     expect(await resolveRunState('local_image_5')).toBe('unknown');
   });
 
+  test("returns 'failed' when the instance no longer exists (not running)", async () => {
+    // Retention ran out, or the run was in another dev server. Reading it as
+    // 'unknown' locked the sequence: the generation mutex refuses on unknown.
+    getInstanceMock.mockRejectedValueOnce(
+      new Error('(instance.not_found) Instance does not exist')
+    );
+    const { resolveRunState } = await import('./reconcile');
+    expect(await resolveRunState('local_image_8')).toBe('failed');
+  });
+
   test('disposes the instance RPC stub after a successful status read (#933)', async () => {
     statusMock.mockResolvedValueOnce({ status: 'complete' });
     const { resolveRunState } = await import('./reconcile');
@@ -91,5 +102,33 @@ describe('resolveRunState', () => {
     const { resolveRunState } = await import('./reconcile');
     await resolveRunState('local_image_7');
     expect(disposeMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('getWorkflowRunOutcome', () => {
+  beforeEach(() => {
+    statusMock.mockReset();
+    getInstanceMock.mockClear();
+    getCfBindingForRunIdMock.mockReset();
+    getCfBindingForRunIdMock.mockReturnValue({ get: getInstanceMock });
+  });
+
+  test('a missing instance is failed, not unknown: pollers would wait on it for good', async () => {
+    getInstanceMock.mockRejectedValueOnce(
+      new Error('(instance.not_found) Instance does not exist')
+    );
+    const { getWorkflowRunOutcome } = await import('./run-outcome');
+    expect(await getWorkflowRunOutcome('local_image_9')).toEqual({
+      state: 'failed',
+      error: 'Instance no longer exists',
+    });
+  });
+
+  test('a lookup blip stays unknown', async () => {
+    statusMock.mockRejectedValueOnce(new Error('network'));
+    const { getWorkflowRunOutcome } = await import('./run-outcome');
+    expect(await getWorkflowRunOutcome('local_image_10')).toEqual({
+      state: 'unknown',
+    });
   });
 });
