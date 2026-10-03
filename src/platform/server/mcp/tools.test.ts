@@ -2215,13 +2215,13 @@ describe('update_scene continuity (#1459)', () => {
 });
 
 describe('structure edits (#1979)', () => {
-  it('apply_sequence_edits runs several writes and stops before a generation tool', async () => {
+  it('apply_sequence_edits runs several writes and stops when a later edit fails', async () => {
     const result = await data('apply_sequence_edits', {
       sequenceId,
       changes: [
         { tool: 'update_sequence', arguments: { title: 'Batch title' } },
         { tool: 'update_sequence', arguments: { includeMusic: false } },
-        { tool: 'generate_shot_video', arguments: { shotId, prompt: 'no' } },
+        { tool: 'delete_shot', arguments: { shotId: generateId() } },
       ],
     });
     expect(result).toMatchObject({
@@ -2230,7 +2230,7 @@ describe('structure edits (#1979)', () => {
         { tool: 'update_sequence', data: { title: 'Batch title' } },
         { tool: 'update_sequence', data: { includeMusic: false } },
       ],
-      stoppedAt: { index: 2, tool: 'generate_shot_video' },
+      stoppedAt: { index: 2, tool: 'delete_shot' },
     });
     expect(await data('get_sequence', { sequenceId })).toMatchObject({
       title: 'Batch title',

@@ -31,7 +31,7 @@ import { getShot } from './tools/get-shot';
 import { getSequenceContactSheet, getShotFrames } from './tools/shot-frames';
 import { updateSceneTool } from './tools/update-scene';
 import { structureEditTools } from './tools/structure-edits';
-import { applySequenceEdits } from './tools/apply-sequence-edits';
+import { createApplySequenceEdits } from './tools/apply-sequence-edits';
 import { shotContentTools } from './tools/shot-content-edits';
 import { castMusicTools } from './tools/cast-music-edits';
 import { generationUploadTools } from './tools/generation-uploads';
@@ -104,7 +104,8 @@ export const mcpServer = createMCPServer({
     ...libraryReadTools,
     updateSceneTool,
     ...structureEditTools,
-    applySequenceEdits,
+    // After every other tool has registered, so the catalog includes them.
+    createApplySequenceEdits(),
     ...shotContentTools,
     ...castMusicTools,
     ...generationUploadTools,

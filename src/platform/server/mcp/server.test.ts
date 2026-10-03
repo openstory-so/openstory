@@ -283,6 +283,14 @@ describe('tools/list and whoami', () => {
       'openstory.start_export',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
+    const batch = tools.find(
+      (tool) => tool.name === 'openstory.apply_sequence_edits'
+    );
+    const batchSchema = JSON.stringify(batch?.inputSchema);
+    expect(batch?.description).toContain('update_shot_prompt');
+    expect(batch?.description).toContain('update_music_prompt');
+    expect(batchSchema).toContain('expectedScriptVersionId');
+    expect(batchSchema).not.toContain('generate_shot_video');
     const writes = new Set([
       'openstory.update_scene',
       'openstory.create_sequence',

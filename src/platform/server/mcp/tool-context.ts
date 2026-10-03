@@ -255,10 +255,19 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
 }
 
-const registeredWrites = new Map<
-  string,
-  (input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>
->();
+export type RegisteredWrite = {
+  name: string;
+  description: string;
+  inputSchema: z.ZodObject;
+  run: (input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>;
+};
+
+const registeredWrites = new Map<string, RegisteredWrite>();
+
+/** `sequences:write` tools, in registration order. Generation tools are absent. */
+export function registeredWriteCatalog(): RegisteredWrite[] {
+  return [...registeredWrites.values()];
+}
 
 /**
  * Run a registered `sequences:write` tool by its unprefixed name. Generation
@@ -268,7 +277,7 @@ const registeredWrites = new Map<
 export function runRegisteredWrite(
   name: string
 ): ((input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>) | null {
-  return registeredWrites.get(name) ?? null;
+  return registeredWrites.get(name)?.run ?? null;
 }
 
 type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
@@ -303,9 +312,12 @@ export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
     spec.scope === 'sequences:write' &&
     spec.name !== 'apply_sequence_edits'
   ) {
-    registeredWrites.set(spec.name, (input, ctx) =>
-      runTool(spec, input, () => ctx)
-    );
+    registeredWrites.set(spec.name, {
+      name: spec.name,
+      description: spec.description,
+      inputSchema: spec.inputSchema,
+      run: (input, ctx) => runTool(spec, input, () => ctx),
+    });
   }
   return toolDefinition({
     name: `openstory.${spec.name}` as const,
