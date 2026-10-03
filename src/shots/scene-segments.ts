@@ -247,6 +247,12 @@ export type LiveShotInputs = {
   audioClipIdsByShot: ReadonlyMap<string, readonly string[]>;
   /** `kind:entityId` → the provenance key a render would be sent now. */
   referenceIdentity: ReadonlyMap<string, string>;
+  /**
+   * Entities the shot's prompts reference (`kind:id`), per shot (#2012).
+   * A stamped reference outside the set is ignored. Absent map: compare
+   * every stamped key.
+   */
+  referencedEntitiesByShot?: ReadonlyMap<string, ReadonlySet<string>>;
   /** Raw `shots.durationMs` (unset/0 = no user duration, not compared). */
   durationMsByShot: ReadonlyMap<string, number | null>;
   /** Seconds of dialogue audio bound to the shot, for the audio raise. */
@@ -255,7 +261,10 @@ export type LiveShotInputs = {
 /** The half of {@link LiveShotInputs} that takes I/O; the rest is on the shot rows. */
 export type LoadedShotInputs = Pick<
   LiveShotInputs,
-  'audioSourceKeyByShot' | 'dialogueKeyByShot' | 'referenceIdentity'
+  | 'audioSourceKeyByShot'
+  | 'dialogueKeyByShot'
+  | 'referenceIdentity'
+  | 'referencedEntitiesByShot'
 >;
 export type SegmentShotInput = {
   id: string;
@@ -334,7 +343,11 @@ export function isSelectedVersionStale(
         !legacyPackedAudioMatches(selected, index, live)) ||
       audioClipsMoved(entry, live) ||
       dialogueMoved(entry, selected.model, currentMotion, live) ||
-      referenceKeysMoved(entry.referenceKeys, live.referenceIdentity) ||
+      referenceKeysMoved(
+        entry.referenceKeys,
+        live.referenceIdentity,
+        live.referencedEntitiesByShot?.get(entry.shotId)
+      ) ||
       durationMoved(entry, selected.model, live, selected.manifest.length > 1)
     );
   });

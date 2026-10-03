@@ -102,11 +102,22 @@ What this buys:
 - **A sheet records the bible it was made from.** The trigger snapshots
   `bibleVersionId` onto the payload and the land batch stamps it on the
   sheet's version row, promoted or parked.
-- **Causes name the field.** `findStalenessCauses` looks up the version live
+- **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` looks up the version live
   when the stale artifact was made (the newest created at or before it) and
   diffs it against the live bible: `Character "Jack": clothing, sheet`. A row
   touched without a bible change (a claim, a voice) is no longer named. An
   artifact older than the row's history falls back to the old timestamp guess.
+  Characters, locations and elements come from `resolveShotReferences`, the
+  same per-shot set as the prompt hash and the clip's `referenceKeys`. A
+  living-room shot does not name a bathroom edited elsewhere in the sequence,
+  and a prompt that names no one does not name the scene's cast. The prompt
+  hash narrows through that set too (`narrowShotPromptContext`'s shot view).
+  Digests stamped on the scene roster stay fresh: verify also accepts
+  `sceneScope`, and when an off-shot bible moved it restores that entry from
+  history (`restoreOffShotCharacters` / `restoreOffShotLocations`) before
+  comparing. Elements have no bible history, so a description edit of an
+  element the shot does not reference can still move an old digest until the
+  prompt is stamped again.
 - **The hash edge stays a hash edge.** The sheet and prompt hashes read more
   than the bible (talent, style, model, the scene), so a pointer compare
   could not replace them without moving every stored digest.
@@ -195,7 +206,7 @@ comparison trivially passes.
 
 A clip is compared by pointer, not by hash: `isSelectedVersionStale` (`src/shots/scene-segments.ts`) walks each `VideoManifestEntry` and asks whether what the render was sent still matches what a render would be sent now. That only works for inputs the manifest stamps and the compare reads, and the red edges on the docs dependency graph (`src/ui/docs/dependency-graph.ts`) were exactly the ones it did neither. Four changes close them:
 
-- **`referenceKeys`** — every reference the render was handed, as `kind:entityId:identity` where identity is the selected version id when the entity has one and the media URL otherwise (`src/motion/reference-provenance.ts`, built from `ReferenceImageDescription.provenanceKey`). Character sheets ride as video references in **both** modes, location sheets only in reference-only, and an element's audio or video clip rides wherever the model takes one — none of which the manifest saw before. The live side is `liveReferenceIdentity`, so a re-selected sheet version, a re-upload, or a deleted entity all read stale; a rename does not.
+- **`referenceKeys`** — every reference the render was handed, as `kind:entityId:identity` where identity is the selected version id when the entity has one and the media URL otherwise (`src/motion/reference-provenance.ts`, built from `ReferenceImageDescription.provenanceKey`). Character sheets ride as video references in **both** modes, location sheets only in reference-only, and an element's audio or video clip rides wherever the model takes one — none of which the manifest saw before. The live side is `liveReferenceIdentity`, so a re-selected sheet version, a re-upload, or a deleted entity all read stale; a rename does not. Which entities count is per shot (#2012): `resolveShotReferences` (`src/shots/scene-matching.ts`) reads the shot's visual and motion prompts, and `referencedEntitiesByShot` drops a stamped key outside that set. A prop close-up that was rendered with a scene-mate's sheet does not go stale when that sheet changes. An absent map still compares every stamped key.
 - **`audioClipIds`, compared** — a generated dialogue clip's id IS the `shot_dialogue_sections` row it was cut from, so the ids the manifest already stamped are the selection pointer. `audioSourceKey` already caught a line, tone or voice edit, but not the user picking a different reading of the same lines, which is a pointer like the frame version. `audioClipsMoved` compares the entry's ids against the shot's working-set clip ids (`audioClipIdsByShot`, from `shots.audioClips`): different sets → stale. An entry with no clip ids is not compared — a voice appearing is `audioSourceKey`'s job — and a manifest from before #1657 holds the ids the working set still holds, so nothing old flips. Sections are per shot, so re-pointing one shot re-stales one clip: a re-record for a neighbour's edit leaves this shot's section, clip id and video alone.
 - **Duration, snapped on both sides.** The manifest holds the length the model was asked for, so the live `shots.durationMs` is snapped onto the same model's grid before comparing, and a length raised to cover bound dialogue audio counts as unchanged too (`durationMoved`). Comparing raw values is what made a pipeline re-snap flag every clip, which is why the compare ignored duration entirely until now (#767).
 - **Dialogue lines come from the shot, not the script.** `shot_dialogue_versions` is the authored node — append-only, one selected row per shot. Speaking order is shot order, then line order within the shot, so a reorder moves no row and stales nothing. The script's `originalScript.dialogue` stays as the LLM's seed and is only read for a shot with no row yet (`deriveShotDialogueLines`), so no backfill migration exists. `src/shots/server/live-shot-state.ts` is the one loader of the live side, shared by the Scenes read and the Update-all planner, so both compare against identical inputs.

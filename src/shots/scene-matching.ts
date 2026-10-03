@@ -172,6 +172,9 @@ export function matchCharactersToShotImage<T extends CharacterMatchInput>(
   const named = allCharacters.filter((c) =>
     characterMentionedInPrompt(c, prompt)
   );
+  // Stills keep the tag fallback for a prompt with no identifiable subject
+  // so stored still digests do not move. Staleness does not: see
+  // `resolveShotReferences`.
   return named.length > 0 ? named : tagged;
 }
 
@@ -413,6 +416,63 @@ export function matchElementsToMotion<T extends ElementMatchInput>(
       ...named,
     ]),
   ];
+}
+
+/**
+ * Who and what one shot references (#2012).
+ *
+ * The prompt hash, the staleness cause list and the clip's `referenceKeys`
+ * all read this. Scene continuity is the roster of the whole scene; a shot
+ * that names a person, a room or a prop in its own prompt keeps only those.
+ * A prompt that names no characters keeps none — it does not inherit the
+ * scene cast. With no prompt yet, continuity tags still apply.
+ *
+ * Location text falls through to the scene slugline when the shot's own
+ * words name no room. The scene extract is not scanned once the shot has
+ * prompt text: that extract names every room in the scene.
+ */
+export function resolveShotReferences<
+  C extends CharacterMatchInput,
+  L extends LocationMatchInput,
+  E extends ElementMatchInput,
+>(
+  all: { characters: C[]; locations: L[]; elements: E[] },
+  args: {
+    characterTags?: string[] | null;
+    environmentTag?: string | null;
+    sceneLocation?: string | null;
+    elementTags?: string[] | null;
+    sceneExtract?: string | null;
+    visualPrompt?: string | null;
+    motionPrompt?: string | null;
+    voiceTokens?: readonly string[];
+    referenceOnly: boolean;
+  }
+): { characters: C[]; locations: L[]; elements: E[] } {
+  const visual = (args.visualPrompt ?? '').trim();
+  const motion = (args.motionPrompt ?? '').trim();
+  const shotText = [visual, motion]
+    .filter((text) => text.length > 0)
+    .join('\n');
+  const characters = shotText
+    ? all.characters.filter((c) => characterMentionedInPrompt(c, shotText))
+    : matchCharactersToScene(all.characters, args.characterTags ?? []);
+  const locations = matchLocationsToScene(
+    all.locations,
+    args.environmentTag ?? '',
+    args.sceneLocation ?? '',
+    shotText ? undefined : args.sceneExtract,
+    shotText || undefined
+  );
+  const elements = matchElementsToShot(all.elements, {
+    visualPrompt: visual,
+    motionPrompt: motion,
+    elementTags: args.elementTags,
+    sceneExtract: args.sceneExtract,
+    voiceTokens: args.voiceTokens,
+    referenceOnly: args.referenceOnly,
+  });
+  return { characters, locations, elements };
 }
 
 /**

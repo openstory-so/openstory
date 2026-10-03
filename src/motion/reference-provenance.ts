@@ -86,8 +86,19 @@ export function liveReferenceIdentity(input: {
  */
 export function referenceKeysMoved(
   stamped: readonly string[] | undefined,
-  live: ReadonlyMap<string, string>
+  live: ReadonlyMap<string, string>,
+  /**
+   * Entities this shot references (`kind:entityId`). A stamped key outside
+   * the set is an over-attached scene reference (#2012) and is ignored, so
+   * editing that entity does not stale the clip. Omit it to compare every
+   * stamped key.
+   */
+  referenced?: ReadonlySet<string>
 ): boolean {
   if (!stamped) return false;
-  return stamped.some((key) => live.get(referenceEntityKey(key)) !== key);
+  return stamped.some((key) => {
+    const entity = referenceEntityKey(key);
+    if (referenced && !referenced.has(entity)) return false;
+    return live.get(entity) !== key;
+  });
 }
