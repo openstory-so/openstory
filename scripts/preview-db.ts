@@ -256,18 +256,56 @@ export async function markReady(pr: number, databaseId: string): Promise<void> {
     throw new Error(`Cannot mark PR ${pr} preview ready: missing fork record`);
 }
 
+/** Close an unmerged PR. Delete the database before clearing its fork record. */
+export async function discard(pr: number): Promise<void> {
+  const db = await registry();
+  const [existing] = await query<Fork>(
+    db,
+    'SELECT revision, database_id FROM preview_forks WHERE pr = ?',
+    [pr]
+  );
+  const name = `openstory-pr-${pr}`;
+  const listed = await api<Array<{ name: string; uuid: string }>>(
+    `${root}?name=${name}`
+  );
+  const target = listed.find((item) => item.name === name);
+  if (existing && target && existing.database_id !== target.uuid)
+    throw new Error(`PR ${pr} database ID differs from its fork record`);
+  const base = await baseOf(db);
+  if (
+    target?.uuid === base.database_id ||
+    existing?.database_id === base.database_id
+  )
+    throw new Error(
+      `PR ${pr} database is the active preview base; refusing to delete it`
+    );
+  if (target) {
+    await api<unknown>(`${root}/${target.uuid}`, { method: 'DELETE' });
+    console.log(`Deleted unmerged preview database ${name} (${target.uuid})`);
+  }
+  if (existing) {
+    await query(
+      db,
+      'DELETE FROM preview_forks WHERE pr = ? AND database_id = ?',
+      [pr, existing.database_id]
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const [mode, rawPr, databaseId] = process.argv.slice(2);
   const pr = Number(rawPr);
   if (!account || !token || !Number.isSafeInteger(pr) || pr <= 0) {
     throw new Error(
-      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> (requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN)'
+      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> | discard <pr> (requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN)'
     );
   }
   if (mode === 'fork' && databaseId && /^[0-9a-f-]{36}$/.test(databaseId)) {
     await fork(pr, databaseId);
   } else if (mode === 'promote' && !databaseId) {
     await promote(pr);
+  } else if (mode === 'discard' && !databaseId) {
+    await discard(pr);
   } else if (
     mode === 'ready' &&
     databaseId &&
@@ -276,7 +314,7 @@ async function main(): Promise<void> {
     await markReady(pr, databaseId);
   } else {
     throw new Error(
-      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr>'
+      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> | discard <pr>'
     );
   }
 }

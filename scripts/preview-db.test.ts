@@ -9,7 +9,7 @@ vi.hoisted(() => {
 const exec = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ execFileSync: exec }));
 
-const { fork, promote, markReady } = await import('./preview-db');
+const { fork, promote, markReady, discard } = await import('./preview-db');
 
 const base = { revision: 2, database_id: 'base-id' };
 let forked: {
@@ -19,6 +19,7 @@ let forked: {
   ready: number;
 } | null;
 let queries: string[];
+let previewExists: boolean;
 
 function response(result: unknown): Response {
   return new Response(JSON.stringify({ success: true, result }), {
@@ -31,6 +32,7 @@ beforeEach(() => {
   base.revision = 2;
   base.database_id = 'base-id';
   queries = [];
+  previewExists = true;
   exec.mockReset();
   exec.mockImplementation((_bin: string, args: string[]) => {
     if (args.includes('--no-schema') || args.includes('--no-data')) {
@@ -43,6 +45,14 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith('?name=openstory-preview-registry'))
         return response([{ uuid: 'registry-id' }]);
+      if (url.endsWith('?name=openstory-pr-12'))
+        return response(
+          previewExists ? [{ name: 'openstory-pr-12', uuid: 'pr-db' }] : []
+        );
+      if (url.endsWith('/pr-db') && init?.method === 'DELETE') {
+        previewExists = false;
+        return response(null);
+      }
       if (url.endsWith('/base-id')) return response({ name: 'openstory-pr-1' });
       // Mocked D1 query payload has a known shape.
       // oxlint-disable typescript/no-unsafe-type-assertion
@@ -67,6 +77,13 @@ beforeEach(() => {
           database_id: String(params[2]),
           ready: 0,
         };
+        changes = 1;
+      }
+      if (
+        sql.startsWith('DELETE FROM preview_forks') &&
+        forked?.pr === params[0]
+      ) {
+        forked = null;
         changes = 1;
       }
       if (
@@ -134,5 +151,22 @@ describe('preview D1 lineage', () => {
     await markReady(12, 'pr-db');
     await promote(12);
     expect(base.database_id).toBe('pr-db');
+  });
+
+  it('discards an unmerged PR and lets reopening fork the current base', async () => {
+    forked = { pr: 12, revision: 1, database_id: 'pr-db', ready: 1 };
+    await discard(12);
+    expect(previewExists).toBe(false);
+    expect(forked).toBeNull();
+    await fork(12, 'new-pr-db');
+    expect(forked).toMatchObject({ revision: 2, database_id: 'new-pr-db' });
+  });
+
+  it('does not clear the record or delete the current base', async () => {
+    forked = { pr: 12, revision: 2, database_id: 'pr-db', ready: 1 };
+    base.database_id = 'pr-db';
+    await expect(discard(12)).rejects.toThrow('active preview base');
+    expect(previewExists).toBe(true);
+    expect(forked).not.toBeNull();
   });
 });

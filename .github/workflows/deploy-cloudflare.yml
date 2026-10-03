@@ -500,27 +500,10 @@ jobs:
       - name: Delete unmerged D1 database
         if: github.event.pull_request.merged != true
         env:
-          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          DB_NAME="openstory-pr-${PR_NUMBER}"
-
-          # Find database ID by name
-          uuid=$(curl -sf \
-            -H "Authorization: Bearer $CF_API_TOKEN" \
-            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/d1/database?name=$DB_NAME" \
-            | jq -r --arg name "$DB_NAME" '.result[] | select(.name == $name) | .uuid')
-
-          if [ -n "$uuid" ]; then
-            status=$(curl -sw '%{http_code}' -o /dev/null \
-              -X DELETE \
-              -H "Authorization: Bearer $CF_API_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/d1/database/$uuid")
-            echo "Delete D1 database $DB_NAME ($uuid) response: $status"
-          else
-            echo "D1 database $DB_NAME not found (already deleted?)"
-          fi
+        run: bun scripts/preview-db.ts discard "$PR_NUMBER"
 
       # Each preview owns `openstory-virtual-pr-<n>-…` on the shared Ark
       # account (#1635). Delete that group here; the Worker/D1 are already
