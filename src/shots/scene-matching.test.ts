@@ -12,6 +12,7 @@ import {
   matchElementsToScene,
   matchElementsToShot,
   matchElementsToShotImage,
+  resolveShotReferences,
   matchLocationsToScene,
 } from './scene-matching';
 
@@ -283,6 +284,33 @@ describe('matchCharactersToShotImage', () => {
         visualPrompt: '   ',
       }).map((c) => c.name)
     ).toEqual(['Jack']);
+  });
+
+  it('does not inherit the scene cast when the prompt names nobody (#2012)', () => {
+    const resolved = resolveShotReferences(
+      {
+        characters: [scarlett, jack],
+        locations: [
+          {
+            locationId: 'living',
+            name: 'Living room',
+            consistencyTag: 'living',
+          },
+          { locationId: 'bath', name: 'Bathroom', consistencyTag: 'bath' },
+        ],
+        elements: [],
+      },
+      {
+        characterTags: ['Scarlett', 'Jack'],
+        environmentTag: '',
+        sceneLocation: '',
+        sceneExtract: 'They start in the bathroom, then the living room.',
+        visualPrompt: 'Close on the vase in the LIVING ROOM.',
+        referenceOnly: false,
+      }
+    );
+    expect(resolved.characters).toEqual([]);
+    expect(resolved.locations.map((l) => l.locationId)).toEqual(['living']);
   });
 
   it('matches characterId and consistencyTag slug in the prompt', () => {

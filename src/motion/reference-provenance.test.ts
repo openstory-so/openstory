@@ -69,4 +69,20 @@ describe('reference provenance (#1657)', () => {
     expect(referenceKeysMoved(undefined, live)).toBe(false);
     expect(referenceKeysMoved([], live)).toBe(false);
   });
+
+  it('ignores a stamped reference the shot does not use (#2012)', () => {
+    const stamped = [
+      referenceProvenanceKey('character', 'c1', 'csv-1'),
+      referenceProvenanceKey('character', 'c2', '/r2/b.png'),
+    ];
+    const onlyC2 = new Set(['character:c2']);
+    expect(referenceKeysMoved(stamped, live, onlyC2)).toBe(false);
+    expect(
+      referenceKeysMoved(
+        [referenceProvenanceKey('character', 'c2', 'old-sheet')],
+        live,
+        onlyC2
+      )
+    ).toBe(true);
+  });
 });

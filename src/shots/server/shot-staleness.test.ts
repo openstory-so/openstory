@@ -618,6 +618,99 @@ describe('staleness causes (#1194)', () => {
     expect(result.causes).toEqual(['Character "Woman": clothing, sheet']);
   });
 
+  it('names only the characters and locations this shot references (#2012)', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue({});
+    hashVisualPromptInput.mockResolvedValue('visual-moved');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const before = new Date('2025-12-31T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const scopedDb = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      visualSelected: {
+        text: 'Close on the vase. The LIVING ROOM is empty.',
+      },
+    });
+    Object.assign(scopedDb, {
+      scenes: {
+        getById: vi.fn().mockResolvedValue({
+          updatedAt: before,
+          location: 'Living room',
+          continuity: {
+            characterTags: ['woman', 'man'],
+            environmentTag: 'house',
+            elementTags: [],
+          },
+        }),
+      },
+      sceneScriptVersions: {
+        getSelected: vi.fn().mockResolvedValue({
+          createdAt: before,
+          content: {
+            extract: 'She walks from the bathroom onto the verandah.',
+            dialogue: [],
+          },
+        }),
+        listBySequence: vi.fn().mockResolvedValue([]),
+      },
+      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: asStub<FrameVariant>({
+        id: 'fv-1',
+        inputHash: null,
+        model: null,
+        url: null,
+        generatedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+      scene,
+      refs: asStub({
+        characters: [
+          {
+            id: 'c-woman',
+            characterId: 'woman',
+            name: 'Woman',
+            consistencyTag: '',
+            updatedAt: afterGen,
+            sheetGeneratedAt: afterGen,
+          },
+        ],
+        locations: [
+          {
+            id: 'l-bath',
+            locationId: 'bath',
+            name: 'Bathroom',
+            consistencyTag: '',
+            updatedAt: afterGen,
+            referenceGeneratedAt: afterGen,
+          },
+          {
+            id: 'l-live',
+            locationId: 'living',
+            name: 'Living room',
+            consistencyTag: '',
+            updatedAt: before,
+            referenceGeneratedAt: before,
+          },
+        ],
+        elements: [],
+        style: null,
+      }),
+    });
+
+    expect(result.visualPrompt).toBe('stale');
+    expect(result.causes).toEqual([]);
+  });
+
   it('names the scene fields that moved, not the script, when only they did (#1600)', async () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',

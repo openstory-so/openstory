@@ -19,13 +19,29 @@ import {
   matchCharactersToScene,
   matchElementsToScene,
   matchLocationsToScene,
+  resolveShotReferences,
 } from '@/shots/scene-matching';
 
 /**
  * Everything a prompt hash reads except the shot's lines, which the motion
  * hash takes separately (`dialogue`, #1784) — the caller resolves them.
  */
-export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'>;
+export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'> & {
+  /**
+   * Scene-tag narrowing of the same inputs (#2012). Present when a shot
+   * view was applied. Verify accepts this digest so prompts stamped before
+   * per-shot scope stay fresh. The hash assembler strips the field.
+   */
+  sceneScope?: Omit<MotionPromptHashInput, 'dialogue'>;
+};
+
+/** The shot's own prompts. Absent text means "no prompt yet" — tags apply. */
+export type ShotReferenceView = {
+  visualPrompt?: string | null;
+  motionPrompt?: string | null;
+  voiceTokens?: readonly string[];
+  referenceOnly: boolean;
+};
 
 export type ShotPromptContextSequence = {
   id: string;
@@ -150,9 +166,12 @@ export async function loadNarrowShotPromptContext(args: {
   analysisModelOverride?: string | null;
   startingFrameImageUrl?: string | null;
   refs?: ShotPromptContextRefs;
+  /** Per-shot prompts. Omit to narrow by the scene roster only. */
+  shot?: ShotReferenceView;
 }): Promise<ShotPromptContext> {
-  const full = await loadShotPromptContext(args);
-  return narrowShotPromptContext(full);
+  const { shot, ...rest } = args;
+  const full = await loadShotPromptContext(rest);
+  return narrowShotPromptContext(full, shot);
 }
 
 /**
@@ -163,27 +182,57 @@ export async function loadNarrowShotPromptContext(args: {
  * (no start-frame) narrows without dummy motion channels.
  */
 export function narrowShotPromptContext<T extends VisualPromptHashInput>(
-  ctx: T
-): T {
+  ctx: T,
+  shot?: ShotReferenceView
+): T & { sceneScope?: T } {
   const { scene } = ctx;
   const continuity = scene.continuity;
-  if (!continuity) return ctx;
+  if (!continuity && !shot) return ctx;
 
-  const characterBible = matchCharactersToScene(
-    [...ctx.characterBible],
-    continuity.characterTags
-  );
-  const locationBible = matchLocationsToScene(
-    [...ctx.locationBible],
-    continuity.environmentTag,
-    scene.metadata?.location ?? '',
-    scene.originalScript.extract
-  );
-  const elementBible = matchElementsToScene(
-    [...ctx.elementBible],
-    continuity.elementTags ?? [],
-    scene.originalScript.extract
-  );
+  if (!shot) {
+    if (!continuity) return ctx;
+    const characterBible = matchCharactersToScene(
+      [...ctx.characterBible],
+      continuity.characterTags
+    );
+    const locationBible = matchLocationsToScene(
+      [...ctx.locationBible],
+      continuity.environmentTag,
+      scene.metadata?.location ?? '',
+      scene.originalScript.extract
+    );
+    const elementBible = matchElementsToScene(
+      [...(ctx.elementBible ?? [])],
+      continuity.elementTags ?? [],
+      scene.originalScript.extract
+    );
+    return { ...ctx, characterBible, locationBible, elementBible };
+  }
 
-  return { ...ctx, characterBible, locationBible, elementBible };
+  const resolved = resolveShotReferences(
+    {
+      characters: [...ctx.characterBible],
+      locations: [...ctx.locationBible],
+      elements: [...(ctx.elementBible ?? [])],
+    },
+    {
+      characterTags: continuity?.characterTags,
+      environmentTag: continuity?.environmentTag,
+      sceneLocation: scene.metadata?.location,
+      elementTags: continuity?.elementTags,
+      sceneExtract: scene.originalScript.extract,
+      visualPrompt: shot.visualPrompt,
+      motionPrompt: shot.motionPrompt,
+      voiceTokens: shot.voiceTokens,
+      referenceOnly: shot.referenceOnly,
+    }
+  );
+  const sceneScope = narrowShotPromptContext(ctx);
+  return {
+    ...ctx,
+    characterBible: resolved.characters,
+    locationBible: resolved.locations,
+    elementBible: resolved.elements,
+    sceneScope,
+  };
 }

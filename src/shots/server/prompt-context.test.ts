@@ -158,6 +158,44 @@ describe('narrowShotPromptContext', () => {
     expect(narrowed.elementBible.map((e) => e.token)).toEqual(['LOGO']);
   });
 
+  it('names only the character the shot prompt names, and keeps the scene roster for legacy digests (#2012)', async () => {
+    const ctx = {
+      scene: sceneReferencing({ characterTags: ['alice', 'bob'] }),
+      styleConfig: style,
+      characterBible: [alice, bob],
+      locationBible: [],
+      elementBible: [],
+      aspectRatio: '16:9',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    };
+    const sceneScoped = narrowShotPromptContext(ctx);
+    const shotScoped = narrowShotPromptContext(ctx, {
+      visualPrompt: 'ALICE waits by the window.',
+      referenceOnly: false,
+    });
+    expect(shotScoped.characterBible.map((c) => c.characterId)).toEqual([
+      'alice',
+    ]);
+    expect(
+      shotScoped.sceneScope?.characterBible.map((c) => c.characterId)
+    ).toEqual(['alice', 'bob']);
+    const stored = await hashVisualPromptInput(sceneScoped);
+    expect(
+      await hashVisualPromptInput(shotScoped.sceneScope ?? shotScoped)
+    ).toBe(stored);
+    expect(await hashVisualPromptInput(shotScoped)).not.toBe(stored);
+    const bobEdited = narrowShotPromptContext(
+      {
+        ...ctx,
+        characterBible: [{ ...bob, physicalDescription: 'now bearded' }, alice],
+      },
+      { visualPrompt: 'ALICE waits by the window.', referenceOnly: false }
+    );
+    expect(await hashVisualPromptInput(bobEdited)).toBe(
+      await hashVisualPromptInput(shotScoped)
+    );
+  });
+
   it('returns the full context unchanged when continuity is absent', () => {
     const ctx = {
       scene: {
