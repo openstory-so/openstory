@@ -195,11 +195,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Open-weights frontier reasoning, 1M context',
   },
   {
-    id: 'anthropic/claude-sonnet-5',
-    name: 'Claude Sonnet 5',
+    id: 'anthropic/claude-sonnet-5.5',
+    name: 'Claude Sonnet 5.5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1461 (sonnet-5-high).
+    // Bumped from Claude Sonnet 5 (Arena 1461, sonnet-5-high); re-rank on
+    // next LMArena snapshot.
     qualityRank: 15,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -404,7 +405,7 @@ export function analysisModelSupportsVision(modelId: string): boolean {
  * back here).
  */
 export const DEFAULT_VISION_MODEL: AnalysisModelId =
-  'anthropic/claude-sonnet-5';
+  'anthropic/claude-sonnet-5.5';
 
 /**
  * Resolve which model should actually run a call given whether it carries image

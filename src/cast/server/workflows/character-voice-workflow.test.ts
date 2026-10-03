@@ -170,7 +170,7 @@ function makeEvent(
       characterDbId: 'char-1',
       characterBible,
       voiceDescription,
-      analysisModelId: 'anthropic/claude-sonnet-5',
+      analysisModelId: 'anthropic/claude-sonnet-5.5',
       voiceProvider: 'elevenlabs',
       takes: 2,
       ...(opts && 'targetVersionId' in opts

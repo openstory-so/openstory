@@ -39,7 +39,7 @@ describe('regionFallbackModel', () => {
     expect(regionFallbackModel('anthropic/claude-opus-5-fast')).toBe(
       REGION_FALLBACK_MODEL
     );
-    expect(regionFallbackModel('anthropic/claude-sonnet-5')).toBe(
+    expect(regionFallbackModel('anthropic/claude-sonnet-5.5')).toBe(
       REGION_FALLBACK_MODEL
     );
   });

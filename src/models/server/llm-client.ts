@@ -299,7 +299,7 @@ export type LLMRequestParams<T = unknown> = {
 const STRUCTURED_OUTPUT_MODELS = new Set([
   'x-ai/grok-4.7',
   'anthropic/claude-fable-5.1',
-  'anthropic/claude-sonnet-5',
+  'anthropic/claude-sonnet-5.5',
   'x-ai/grok-4.20',
   'anthropic/claude-opus-5.5',
   'anthropic/claude-opus-5-fast',
@@ -326,9 +326,9 @@ function modelSupportsStructuredOutputs(model: string): boolean {
 }
 
 export const RECOMMENDED_MODELS = {
-  creative: 'anthropic/claude-sonnet-5',
-  structured: 'anthropic/claude-sonnet-5',
-  fast: 'anthropic/claude-sonnet-5',
+  creative: 'anthropic/claude-sonnet-5.5',
+  structured: 'anthropic/claude-sonnet-5.5',
+  fast: 'anthropic/claude-sonnet-5.5',
   premium: 'anthropic/claude-fable-5.1',
 } as const;
 

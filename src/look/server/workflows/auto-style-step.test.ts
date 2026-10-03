@@ -61,7 +61,7 @@ const PARAMS = {
   styleId: 'style_auto',
   script: 'INT. HALLWAY — NIGHT',
   aspectRatio: '16:9' as const,
-  analysisModelId: 'anthropic/claude-sonnet-5' as const,
+  analysisModelId: 'anthropic/claude-sonnet-5.5' as const,
 };
 
 describe('deriveAutoStyle', () => {
@@ -95,7 +95,7 @@ describe('deriveAutoStyle', () => {
     expect(callConfig).toMatchObject({
       name: 'automatic-style',
       promptName: 'phase/automatic-style-chat',
-      modelId: 'anthropic/claude-sonnet-5',
+      modelId: 'anthropic/claude-sonnet-5.5',
       promptVariables: {
         script: 'INT. HALLWAY — NIGHT',
         categories: expect.stringContaining('film, commercial'),

@@ -206,7 +206,7 @@ const INPUT: SceneSplitWorkflowInput = {
   teamId: 't1',
   sequenceId: 'seq_1',
   script: SCRIPT,
-  modelId: 'anthropic/claude-sonnet-5',
+  modelId: 'anthropic/claude-sonnet-5.5',
   promptName: 'scene-splitting',
   aspectRatio: '16:9',
   elements: [],

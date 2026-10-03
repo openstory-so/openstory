@@ -203,13 +203,13 @@ describe('createAdapter LLMTR routing', () => {
   });
 
   it('keeps the id unchanged for a model LLMTR spells the same way', () => {
-    createAdapter('anthropic/claude-sonnet-5', {
+    createAdapter('anthropic/claude-fable-5.1', {
       key: 'llmtr-team',
       via: 'llmtr',
     });
 
     const call = lastLlmtrCall();
-    expect(call.model).toBe('anthropic/claude-sonnet-5');
+    expect(call.model).toBe('anthropic/claude-fable-5.1');
     expect(call.config.baseURL).toBe(LLMTR_URL);
     expect(call.config.api).toBe('chat-completions');
   });
@@ -245,9 +245,9 @@ describe('createAdapter LLMTR routing', () => {
   });
 
   it('never resolves a platform LLMTR key — LLMTR is team BYOK only', () => {
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toBeUndefined();
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toBeUndefined();
     testEnv.OPENROUTER_KEY = 'platform-or';
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toEqual({
       key: 'platform-or',
       via: 'openrouter',
       source: 'platform',
@@ -451,7 +451,7 @@ describe('native Google routing', () => {
     // Mirrors the xai case: a Google key reaching OpenRouter would 401 as
     // "Missing Authentication header", so the mismatch fails loudly instead.
     expect(() =>
-      createAdapter('anthropic/claude-sonnet-5', {
+      createAdapter('anthropic/claude-sonnet-5.5', {
         key: 'google-team',
         via: 'google',
       })
@@ -510,7 +510,7 @@ describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     testEnv.OPENROUTER_KEY = 'platform-or';
 
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')?.via).toBe(
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')?.via).toBe(
       'openrouter'
     );
     expect(getPlatformLlmKey()?.via).toBe('openrouter');
@@ -555,7 +555,7 @@ describe('getPlatformLlmKey with XAI_API_KEY (issue #1167)', () => {
     testEnv.XAI_API_KEY = 'platform-xai';
     testEnv.OPENROUTER_KEY = 'platform-or';
 
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toStrictEqual({
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toStrictEqual({
       key: 'platform-or',
       via: 'openrouter',
       source: 'platform',

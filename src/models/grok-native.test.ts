@@ -30,7 +30,7 @@ describe('nativeGrokTextModel', () => {
   });
 
   it('returns undefined for every non-Grok model', () => {
-    expect(nativeGrokTextModel('anthropic/claude-sonnet-5')).toBeUndefined();
+    expect(nativeGrokTextModel('anthropic/claude-sonnet-5.5')).toBeUndefined();
     expect(nativeGrokTextModel('openai/gpt-5.5')).toBeUndefined();
   });
 });

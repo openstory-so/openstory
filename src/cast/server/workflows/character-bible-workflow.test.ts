@@ -120,7 +120,7 @@ function makeEvent(
       characterBible,
       generateVoices: opts.generateVoices ?? false,
       speakingCharacterIds: opts.speakingCharacterIds ?? [],
-      analysisModelId: 'anthropic/claude-sonnet-5',
+      analysisModelId: 'anthropic/claude-sonnet-5.5',
     },
     instanceId: 'run-1',
     workflowName: 'character-bible',

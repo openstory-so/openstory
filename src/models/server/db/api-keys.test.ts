@@ -490,7 +490,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
 });
 
 describe('resolveLlmKey — LLMTR gateway', () => {
-  const CARRIED = 'anthropic/claude-sonnet-5';
+  const CARRIED = 'anthropic/claude-fable-5.1';
   const NOT_CARRIED = 'anthropic/claude-opus-5-fast';
 
   it('prefers a team LLMTR key over the team OpenRouter key for a carried model', async () => {
@@ -657,7 +657,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
     expect(
-      await scope.resolveLlmKey('anthropic/claude-sonnet-5')
+      await scope.resolveLlmKey('anthropic/claude-sonnet-5.5')
     ).toMatchObject({ key: 'sk-team-or', via: 'openrouter' });
   });
 
@@ -720,7 +720,7 @@ describe('native Google key resolution', () => {
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
 
     expect(
-      await scope.resolveLlmKey('anthropic/claude-sonnet-5')
+      await scope.resolveLlmKey('anthropic/claude-sonnet-5.5')
     ).toMatchObject({ key: 'sk-team-or', via: 'openrouter' });
   });
 
