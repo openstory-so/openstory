@@ -76,9 +76,38 @@ async function query<T>(
   return result[0].results as T[];
 }
 
+type ListedDatabase = { uuid: string; name: string };
+
+/** `?name=` is a search, and the first page can be a different database. */
+async function databaseIdByName(name: string): Promise<string | undefined> {
+  for (let page = 1; page <= 20; page++) {
+    const response = await fetch(
+      `${root}?name=${encodeURIComponent(name)}&page=${page}&per_page=100`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    // Cloudflare's HTTP response has no static type.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    const body = (await response.json()) as {
+      success: boolean;
+      errors?: unknown;
+      result: ListedDatabase[];
+      result_info?: { page: number; per_page: number; total_count: number };
+    };
+    if (!response.ok || !body.success) {
+      throw new Error(
+        `Cloudflare D1 API ${response.status}: ${JSON.stringify(body.errors)}`
+      );
+    }
+    const match = body.result.find((item) => item.name === name);
+    if (match) return match.uuid;
+    const info = body.result_info;
+    if (!info || info.page * info.per_page >= info.total_count) return;
+  }
+  return;
+}
+
 async function registry(): Promise<string> {
-  const listed = await api<{ uuid: string }[]>(`${root}?name=${REGISTRY_NAME}`);
-  let id = listed[0]?.uuid;
+  let id = await databaseIdByName(REGISTRY_NAME);
   if (!id) {
     try {
       const created = await api<{ uuid: string }>(root, {
@@ -88,10 +117,7 @@ async function registry(): Promise<string> {
       id = created.uuid;
     } catch (error) {
       // Another preview may have created the registry after our list request.
-      const raced = await api<{ uuid: string }[]>(
-        `${root}?name=${REGISTRY_NAME}`
-      );
-      id = raced[0]?.uuid;
+      id = await databaseIdByName(REGISTRY_NAME);
       if (!id) throw error;
     }
   }
@@ -142,7 +168,17 @@ export async function fork(pr: number, databaseId: string): Promise<void> {
   }
 
   const base = await baseOf(db);
-  if (base.database_id) {
+  const [occupied] = await query<{ name: string }>(
+    databaseId,
+    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' LIMIT 1"
+  );
+  // A retry after a partial import, or a preview that predates its fork row,
+  // already has objects. Importing again runs CREATE TABLE into that database.
+  if (occupied) {
+    console.log(
+      `PR ${pr} database already has tables; recording fork revision ${base.revision} without importing`
+    );
+  } else if (base.database_id) {
     const source = await api<{ name: string }>(`${root}/${base.database_id}`);
     const dir = mkdtempSync(path.join(tmpdir(), 'openstory-preview-db-'));
     try {
@@ -265,10 +301,8 @@ export async function discard(pr: number): Promise<void> {
     [pr]
   );
   const name = `openstory-pr-${pr}`;
-  const listed = await api<Array<{ name: string; uuid: string }>>(
-    `${root}?name=${name}`
-  );
-  const target = listed.find((item) => item.name === name);
+  const targetId = await databaseIdByName(name);
+  const target = targetId ? { name, uuid: targetId } : undefined;
   if (existing && target && existing.database_id !== target.uuid)
     throw new Error(`PR ${pr} database ID differs from its fork record`);
   const base = await baseOf(db);

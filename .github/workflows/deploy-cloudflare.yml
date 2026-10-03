@@ -495,7 +495,6 @@ jobs:
         run: |
           echo '::error::Preview DB promotion failed. The PR database is preserved for manual reconciliation.'
           gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body "Preview DB promotion failed (see [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)). The preview D1 is preserved; another PR may have advanced the base. Reconcile manually before promoting it. Production D1 is unaffected."
-          exit 1
 
       - name: Delete unmerged D1 database
         if: github.event.pull_request.merged != true
@@ -536,6 +535,10 @@ jobs:
           edit-mode: replace
           body: |
             <!-- cf-preview -->
-            **Cloudflare Preview** torn down${{ github.event.pull_request.merged && ' — D1 promoted as the next preview base' || '' }}
+            **Cloudflare Preview** torn down${{ github.event.pull_request.merged && (steps.promotion.outcome == 'success' && ' — D1 promoted as the next preview base' || ' — D1 preserved; promotion did not complete') || '' }}
 
-            Worker `pr-${{ github.event.pull_request.number }}`, preview workflows, container application `pr-${{ github.event.pull_request.number }}-videoexportcontainer`, and BytePlus Ark group `openstory-virtual-pr-${{ github.event.pull_request.number }}-*` have been deleted. D1 `openstory-pr-${{ github.event.pull_request.number }}` was ${{ github.event.pull_request.merged && 'retained as the next preview base' || 'deleted' }}.
+            Worker `pr-${{ github.event.pull_request.number }}`, preview workflows, container application `pr-${{ github.event.pull_request.number }}-videoexportcontainer`, and BytePlus Ark group `openstory-virtual-pr-${{ github.event.pull_request.number }}-*` have been deleted. D1 `openstory-pr-${{ github.event.pull_request.number }}` was ${{ github.event.pull_request.merged && (steps.promotion.outcome == 'success' && 'retained as the next preview base' || 'preserved because promotion failed') || 'deleted' }}.
+
+      - name: Fail the job when promotion did not succeed
+        if: github.event.pull_request.merged == true && steps.promotion.outcome != 'success'
+        run: exit 1

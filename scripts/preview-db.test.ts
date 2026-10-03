@@ -20,6 +20,8 @@ let forked: {
 } | null;
 let queries: string[];
 let previewExists: boolean;
+let previewHasTables: boolean;
+let registrySplitAcrossPages: boolean;
 
 function response(result: unknown): Response {
   return new Response(JSON.stringify({ success: true, result }), {
@@ -33,6 +35,8 @@ beforeEach(() => {
   base.database_id = 'base-id';
   queries = [];
   previewExists = true;
+  previewHasTables = false;
+  registrySplitAcrossPages = false;
   exec.mockReset();
   exec.mockImplementation((_bin: string, args: string[]) => {
     if (args.includes('--no-schema') || args.includes('--no-data')) {
@@ -43,11 +47,34 @@ beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
-      if (url.endsWith('?name=openstory-preview-registry'))
-        return response([{ uuid: 'registry-id' }]);
-      if (url.endsWith('?name=openstory-pr-12'))
+      const parsed = new URL(url);
+      const listedName = parsed.searchParams.get('name');
+      const page = Number(parsed.searchParams.get('page') ?? '1');
+      if (listedName === 'openstory-preview-registry') {
+        if (registrySplitAcrossPages && page === 1) {
+          return new Response(
+            JSON.stringify({
+              success: true,
+              result: [
+                { name: 'openstory-preview-registry-old', uuid: 'wrong' },
+              ],
+              result_info: { page: 1, per_page: 1, total_count: 2 },
+            }),
+            { status: 200 }
+          );
+        }
+        return response([
+          { name: 'openstory-preview-registry', uuid: 'registry-id' },
+        ]);
+      }
+      if (listedName === 'openstory-pr-12')
         return response(
-          previewExists ? [{ name: 'openstory-pr-12', uuid: 'pr-db' }] : []
+          previewExists
+            ? [
+                { name: 'openstory-pr-120', uuid: 'other' },
+                { name: 'openstory-pr-12', uuid: 'pr-db' },
+              ]
+            : [{ name: 'openstory-pr-120', uuid: 'other' }]
         );
       if (url.endsWith('/pr-db') && init?.method === 'DELETE') {
         previewExists = false;
@@ -66,6 +93,8 @@ beforeEach(() => {
       queries.push(sql);
       let results: unknown[] = [];
       let changes = 0;
+      if (sql.includes('sqlite_schema') && previewHasTables)
+        results = [{ name: 'teams' }];
       if (sql.includes('SELECT revision, database_id FROM preview_base'))
         results = [{ ...base }];
       if (sql.includes('FROM preview_forks WHERE pr') && forked)
@@ -109,6 +138,31 @@ beforeEach(() => {
 });
 
 describe('preview D1 lineage', () => {
+  it('records an occupied database instead of importing into it', async () => {
+    previewHasTables = true;
+    await fork(12, 'pr-db');
+    expect(exec).not.toHaveBeenCalled();
+    expect(forked).toEqual({
+      pr: 12,
+      revision: 2,
+      database_id: 'pr-db',
+      ready: 0,
+    });
+  });
+
+  it('ignores a name-search hit that is not the registry', async () => {
+    registrySplitAcrossPages = true;
+    await fork(12, 'pr-db');
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/registry-id/query'),
+      expect.anything()
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/wrong/'),
+      expect.anything()
+    );
+  });
+
   it('forks only once, preserving the PR database on redeploy', async () => {
     await fork(12, 'pr-db');
     expect(exec).toHaveBeenCalledTimes(4); // schema/data export and import
