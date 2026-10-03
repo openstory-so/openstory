@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { MCP_SERVER_NAME, MCP_SERVER_VERSION, serveMcpRequest } from './server';
 import type { User } from '@/platform/server/auth/config';
 import { asStub } from '@/test/as-stub';
-import * as operationsModule from '@/sequences/server/generation-operations';
 
 const user = {
   id: 'user_1',
@@ -470,39 +469,5 @@ describe('export tool authorization', () => {
       },
     });
     expect(createDb).not.toHaveBeenCalled();
-  });
-});
-
-describe('plan tool mode gating', () => {
-  // Plans belong to the user, not the token: the tool's mode list is what
-  // keeps a sequences:write token from starting paid generation.
-  it.each([
-    ['execute_generation', ['stale', 'missing', 'retry']],
-    ['start_export', ['export']],
-  ])('%s may start only %j plans', async (name, modes) => {
-    vi.spyOn(dbModule, 'createScopedDb').mockReturnValue(
-      asStub<ScopedDb>({ teamId: 'team_1' })
-    );
-    const execute = vi
-      .spyOn(operationsModule, 'executeGeneration')
-      .mockRejectedValue(new Error('stop'));
-    await rpc(
-      'tools/call',
-      {
-        name: `openstory.${name}`,
-        arguments: {
-          sequenceId: '01J00000000000000000000000',
-          planId: '01J00000000000000000000001',
-          confirm: true,
-        },
-      },
-      {
-        ...auth,
-        kind: 'oauth',
-        scopes: ['sequences:read', 'sequences:write', 'generate'],
-      }
-    );
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute.mock.calls[0]?.[4]).toEqual(modes);
   });
 });

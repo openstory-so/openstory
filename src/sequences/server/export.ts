@@ -40,7 +40,7 @@ const EXPORT_FILENAME_SUFFIX = '_openstory.mp4';
 // run ~30m; pad past that so we only reconcile genuinely-orphaned rows. Such a
 // stale row is marked `failed` (freeing the one-processing-row slot) rather
 // than blocking new exports forever.
-export const STALE_PROCESSING_MS = 35 * 60 * 1000;
+const STALE_PROCESSING_MS = 35 * 60 * 1000;
 
 export type ExportCut = {
   scenes: { orderIndex: number; videoUrl: string }[];
