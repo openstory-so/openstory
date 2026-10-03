@@ -9,8 +9,10 @@
  * `motion/reference-provenance.ts`, the speech key in
  * `shots/shot-dialogue.ts`, the track compare in
  * `audio/music-track-staleness.ts` and the Update-all plan in
- * `shots/server/update-stale-plan.ts`. When one of those changes, this graph
- * is the doc that has to move with it.
+ * `shots/server/update-stale-plan.ts`. When one of those changes, update this
+ * graph in the same PR. The written map is
+ * `docs/architecture/prompt-staleness-dependency-graph.md`; it shows the same
+ * graph and moves with this file.
  */
 
 export const GRAPH_MODES = ['start-frame', 'reference-only'] as const;
@@ -108,7 +110,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'INT./EXT. heading',
       'Time of day',
       'Story beat',
-      'Continuity tags: they pick which characters, locations and elements the prompts read',
+      'Continuity tags. They pick the prompt bibles only while the shot has no visual or motion prompt; once those exist, the shot text does (#2012)',
     ],
     ignored: [
       'Scene title',
@@ -197,7 +199,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Token and description (prompts). The token reaches the model, so a rename re-stales every prompt, still and clip that names it',
       'Image (still)',
       'Audio or video clip: sent as a reference when the video model takes one',
-      'Its media URL, stamped on every clip it was sent to (referenceKeys)',
+      'Its media URL, stamped on a clip it was sent to (referenceKeys). A later compare ignores the key when this shot no longer names the element',
     ],
     ignored: ['Consistency tag'],
   },
@@ -540,7 +542,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Scene extract, heading, time of day, story beat',
       'Style config',
-      'Character, location and element bibles, narrowed to this scene — as cast, so a talent match moves nothing afterwards',
+      'Character, location and element bibles for this shot only: named in the visual or motion prompt, or the scene continuity tags while those prompts are empty (#2012). As cast, so a talent match moves nothing afterwards',
       "The shot's framing and start state, on a multi-shot scene",
       'Aspect ratio',
       'Script model it was written with',
@@ -610,7 +612,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Selected visual prompt text',
       'Image model',
       'Aspect ratio',
-      'Selected character sheet versions',
+      'Selected character sheet versions. A visual prompt that names nobody still falls back to the scene continuity tags, so an off-camera sheet can stale the still',
       'Selected location sheet versions',
       'Element image URLs',
       'For a tile picked from the 3×3 grid: the same list, as it stood when the grid was made',
@@ -631,7 +633,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Bound dialogue-audio identity (audioSourceKey: voice id + line + tone + TTS model)',
       'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio',
       'Which dialogue sections its audio was cut from (audioClipIds, against the clip ids the shot holds now)',
-      'Every reference it was sent, as the sheet version or media URL that was current then (referenceKeys)',
+      'References this shot names, as the sheet version or media URL that was current then (referenceKeys). A stamped key for someone the shot does not name is ignored',
       'The length it was rendered at, snapped onto the model grid on both sides',
     ],
     ignored: [
@@ -675,9 +677,24 @@ export const GRAPH_NODES: readonly GraphNode[] = [
 const bibleToPrompt: GraphEdge[] = ['visualPrompt', 'motionPrompt'].flatMap(
   (to) => [
     { from: 'script', to, tracking: 'hash' as const },
-    { from: 'character', to, tracking: 'hash' as const },
-    { from: 'location', to, tracking: 'hash' as const },
-    { from: 'element', to, tracking: 'hash' as const },
+    {
+      from: 'character',
+      to,
+      tracking: 'hash' as const,
+      note: 'only a character this shot names. Empty prompts fall back to the scene continuity tags (#2012)',
+    },
+    {
+      from: 'location',
+      to,
+      tracking: 'hash' as const,
+      note: 'only a location this shot names. Empty prompts fall back to the scene (#2012)',
+    },
+    {
+      from: 'element',
+      to,
+      tracking: 'hash' as const,
+      note: 'only an element this shot names (#2012)',
+    },
     { from: 'style', to, tracking: 'hash' as const },
     { from: 'aspectRatio', to, tracking: 'hash' as const },
     {
@@ -900,14 +917,14 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'characterSheet',
     to: 'clip',
     tracking: 'pointer',
-    note: 'the sheets ride as video references in both modes; the manifest stamps the selected version id it was sent (referenceKeys)',
+    note: 'the sheets ride as video references in both modes. referenceKeys ignores a sheet for a character this shot does not name (#2012)',
   },
   {
     from: 'locationSheet',
     to: 'clip',
     tracking: 'pointer',
     mode: 'reference-only',
-    note: 'only reference-only sends the location sheet to the video model; the manifest stamps the version it was sent',
+    note: 'only reference-only sends the location sheet, and only for a location this shot names. The manifest stamps the version it was sent (#2012)',
   },
   {
     from: 'startFrameMode',
@@ -943,7 +960,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'element',
     to: 'clip',
     tracking: 'hash',
-    note: 'its media URL is stamped in referenceKeys, so a re-uploaded image, audio or video clip flags the render',
+    note: 'its media URL is stamped in referenceKeys when this shot names it. A re-upload then flags the render; a key for an element the shot does not name is ignored (#2012)',
   },
   {
     from: 'resolution',

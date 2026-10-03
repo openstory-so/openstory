@@ -267,6 +267,14 @@ changing the area, and update it in the same PR.**
   never defaulted (`!undefined` is `true`). Where a team's keys are reachable
   ask `canRenderReferenceOnly(model, credentials)`, not the model-only
   `supportsReferenceOnlyMotion`.
+- **Staleness graph** — `docs/architecture/prompt-staleness-dependency-graph.md`
+  and the interactive page `/docs/dependency-graph`
+  (`src/ui/docs/dependency-graph.ts`). They show the same graph. A change to
+  what a hash or a pointer compare reads updates both in the same PR.
+  Prompt hashes, causes and clip `referenceKeys` resolve references per shot
+  (`resolveShotReferences` in `src/shots/scene-matching.ts`), not from the
+  scene roster. Design rationale:
+  `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 - **Generation plan, stop-at and continue (#1408, #1816)** —
   `docs/architecture/generation-plan.md`. What a sequence still owes is the
   generation plan, derived from live D1 — never a stored stage. `stopAt` is the
