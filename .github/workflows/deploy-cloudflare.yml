@@ -182,8 +182,7 @@ jobs:
           cat wrangler.jsonc | head -30
 
       # Runs after the patch so wrangler resolves the PR's own D1 (the
-      # binding's database_id was just rewritten). Seeding happens at
-      # runtime via the worker's self-seed (src/server.ts). See #897.
+      # binding's database_id was just rewritten).
       - name: Migrate D1 (preview)
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -191,6 +190,24 @@ jobs:
         run: |
           bun scripts/flatten-migrations.ts
           bunx wrangler d1 migrations apply DB --remote
+
+      # A fresh preview needs many system styles plus talent and locations.
+      # Doing those remote D1 writes in the first Worker request can leave the
+      # browser waiting long enough to cancel it, with a partial seed and a
+      # stale lock. Seed from CI before the preview receives traffic instead.
+      - name: Seed D1 (preview)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_D1_DATABASE_ID: ${{ steps.d1.outputs.database-id }}
+          VITE_R2_PUBLIC_ASSETS_DOMAIN: ${{ vars.VITE_R2_PUBLIC_ASSETS_DOMAIN }}
+        run: |
+          bun scripts/seed.ts --d1
+          # The CLI can skip when another request holds the seed lock. Do not
+          # report a successful deploy of a fresh preview in that case.
+          bunx wrangler d1 execute DB --remote \
+            --command "SELECT key FROM app_metadata WHERE key = 'system-templates-seed-hash'" --json \
+            | jq -e '.[0].results | length == 1' > /dev/null
 
       # The worker is named `pr-<n>`, so its URL is known before the deploy:
       # only the account's workers.dev subdomain is needed. Baking it into the

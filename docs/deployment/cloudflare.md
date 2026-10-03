@@ -96,7 +96,8 @@ bun db:migrate:prd         # flatten → wrangler d1 migrations apply DB --env=p
   configured deploy command — identical to `deploy` except the migrate step
   targets the `[env.production]` D1.
 - **PR previews**: CI applies migrations with `wrangler d1 migrations apply DB
---remote` after patching the PR's database id into the config.
+--remote` after patching the PR's database id into the config, then seeds
+  system templates through the D1 HTTP API before deploying the Worker.
 - **Local dev / e2e**: unchanged — drizzle-orm's migrator applies the nested
   files directly against the Miniflare binding (`bun db:migrate:local`).
 
@@ -106,9 +107,11 @@ remote apply path.
 
 ## Seeding
 
-There are no CI seed steps: the worker self-seeds system templates on first
-request (`src/server.ts` → `src/platform/server/db/seed-system-templates.ts`). A hash of
-the template definitions is stored in `app_metadata`; when it matches, the
+The worker self-seeds system templates on first request (`src/server.ts` →
+`src/platform/server/db/seed-system-templates.ts`). PR previews run the same
+seed before deployment so a fresh database's remote writes do not delay the
+first page load. A hash of the template definitions is stored in
+`app_metadata`; when it matches, the
 check is a single SELECT per isolate, and when it doesn't (fresh database, or
 a deploy that changed templates) the idempotent sync runs once. `bun
 db:seed:local` / `bun scripts/seed.ts --test` reuse the same module for local
