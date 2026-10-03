@@ -44,6 +44,8 @@ const RUN_DEADLINE_MS = 15 * 60_000;
 export function useUpdateStaleShots(args: { sequenceId: string }) {
   const { sequenceId } = args;
   const queryClient = useQueryClient();
+  // 0 until a run is adopted or the first `unknown` tick, which arms it: a
+  // remount with a cached run id must not give up on that first tick.
   const deadlineRef = useRef(0);
   // The tracked run lives in the query cache, not component state: the
   // button's own trigger, a run announced on the sequence channel (MCP,
@@ -155,7 +157,9 @@ export function useUpdateStaleShots(args: { sequenceId: string }) {
     if (outcome.state === 'unknown') {
       // No verdict available (unresolvable run id, or the status lookup kept
       // failing). Say so rather than implying success.
-      if (Date.now() > deadlineRef.current) {
+      if (deadlineRef.current === 0) {
+        deadlineRef.current = Date.now() + RUN_DEADLINE_MS;
+      } else if (Date.now() > deadlineRef.current) {
         setRunId(null);
         toast.warning("Couldn't confirm the update finished", {
           description: 'Check the indicators to see what is still out of date.',

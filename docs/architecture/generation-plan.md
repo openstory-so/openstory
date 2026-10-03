@@ -377,13 +377,21 @@ agent hands back, and the launched runs are the operation.
   route's service) already reuses a ready MP4 of the cut or joins its live
   render, so there is no plan to approve: `plan_export` is a read
   (`previewExport`: `reuse_ready` / `join_in_flight` / `busy_other_cut` /
-  `render`) and `start_export` starts directly, refusing only
-  `busy_other_cut` with `EXPORT_BUSY` (REST joins it; an agent would hand
-  back an MP4 without the latest edits). Poll `get_export_status`.
+  `render`) and `start_export` starts directly through `startExport` with
+  `refuseOtherCut`, which refuses `busy_other_cut` with `EXPORT_BUSY` from
+  its own decision and reports the `action` it took (REST joins it; an
+  agent would hand back an MP4 without the latest edits). Poll
+  `get_export_status`.
 - **No side effects.** Planning prices with the editor's preview/estimate
-  and reports insufficient credits, a running sequence or nothing-to-do as
-  `blockers`; it starts nothing and writes nothing (bar `computePlan`'s
-  existing anchor-frame repair).
+  and reports insufficient credits as a `blocker`; it starts nothing and
+  writes nothing (bar `computePlan`'s existing anchor-frame repair). There
+  is no second "is it running" gate: the planners' own gates are the one
+  gate, so a running sequence is refused the way the editor refuses it,
+  thrown, not reported — Update all with `prepareUpdateStale`'s
+  `VALIDATION_ERROR`, Continue and retry with the storyboard mutex as
+  `GENERATION_IN_PROGRESS`. Nothing-to-do is a `NOTHING_TO_DO` blocker for
+  Update all; Continue (`continueFromPlan`) and retry ("no failures",
+  "needs a full storyboard" under `smart`) throw their `VALIDATION_ERROR`.
 - **The token is the plan.** `planToken` is unsigned base64url JSON: the
   sequence id, the request, the digest and a random 12-hex-char key. It is
   not signed because it can only name work its holder could plan directly,
@@ -397,8 +405,11 @@ agent hands back, and the launched runs are the operation.
   or price is `PLAN_CHANGED`; a rename or a touched timestamp is not.
 - **Credits.** The balance check never skips: Update all checks the larger
   of the estimate and the editor's one-image floor, Continue the known part
-  of its estimate (as `continueGenerationFn`). These paths hold no
-  reservation, as in the editor.
+  of its estimate (as `continueGenerationFn`), retry its estimate against
+  the strictest provider set the launch reserves with (`creditProviders`
+  from the dry run: `[]` when ElevenLabs music is planned, so a fal key
+  cannot pass a plan whose music reservation then fails). These paths hold
+  no reservation, as in the editor.
 - **Execute** re-plans and requires the same digest, then rejects a live run
   (`GENERATION_IN_PROGRESS`), a blocker and a short balance, and launches
   through the editor's launchers with `<sequenceId>-plan-<key>` as the
@@ -426,7 +437,11 @@ agent hands back, and the launched runs are the operation.
   failures and skips; Continue and retry runs report run-level success, so
   what is failed on the sequence now is listed for the agent to plan a
   retry. Poll every 15 s. Terminal: `completed`, `partially_failed`,
-  `failed`. Not terminal: `running`, `unknown` (a run could not be read).
+  `failed`. Not terminal: `running`, `unknown` (a run could not be read). A
+  run the engine no longer has (`instance.not_found`) is `failed`, never
+  `unknown`: `getWorkflowRunOutcome` and the mutex's `resolveRunState` read
+  through one `readInstanceStatus`, so a poller never waits on a run the
+  mutex treats as finished.
 - **Scopes.** Plan and execute need OAuth `generate`; polling and
   `plan_export` need `sequences:read`, `start_export` `sequences:write`.
   API keys stay unscoped. `confirm: true` is the caller's assertion that a

@@ -20,7 +20,8 @@ const getCfBindingForRunIdMock = vi.fn<
 >(() => ({ get: getInstanceMock }));
 
 vi.doMock('#env', () => ({ getEnv: () => ({}) }));
-vi.doMock('./trigger-bindings', () => ({
+vi.doMock('./trigger-bindings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./trigger-bindings')>()),
   getCfBindingForRunId: getCfBindingForRunIdMock,
 }));
 
@@ -101,5 +102,33 @@ describe('resolveRunState', () => {
     const { resolveRunState } = await import('./reconcile');
     await resolveRunState('local_image_7');
     expect(disposeMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('getWorkflowRunOutcome', () => {
+  beforeEach(() => {
+    statusMock.mockReset();
+    getInstanceMock.mockClear();
+    getCfBindingForRunIdMock.mockReset();
+    getCfBindingForRunIdMock.mockReturnValue({ get: getInstanceMock });
+  });
+
+  test('a missing instance is failed, not unknown: pollers would wait on it for good', async () => {
+    getInstanceMock.mockRejectedValueOnce(
+      new Error('(instance.not_found) Instance does not exist')
+    );
+    const { getWorkflowRunOutcome } = await import('./run-outcome');
+    expect(await getWorkflowRunOutcome('local_image_9')).toEqual({
+      state: 'failed',
+      error: 'Instance no longer exists',
+    });
+  });
+
+  test('a lookup blip stays unknown', async () => {
+    statusMock.mockRejectedValueOnce(new Error('network'));
+    const { getWorkflowRunOutcome } = await import('./run-outcome');
+    expect(await getWorkflowRunOutcome('local_image_10')).toEqual({
+      state: 'unknown',
+    });
   });
 });

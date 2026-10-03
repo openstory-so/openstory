@@ -7,34 +7,35 @@
 import { z } from 'zod';
 import { aspectRatioSchema } from '@/models/aspect-ratios';
 import { isValidImageToVideoModel } from '@/models/models';
+import { isValidAnalysisModelId } from '@/models/models.config';
 import { runOneShotCreate } from '@/platform/server/api-v1/create';
 import { apiCreateSequenceSchema } from '@/platform/server/api-v1/input-schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { createSequences } from '@/sequences/server/create-sequences';
 import { productionAccess } from '@/sequences/server/production-access';
 import {
   archiveSequence,
-  renameSequence,
+  regenerateInput,
   unarchiveSequence,
-  updateSequence,
+  updateSequenceSettings,
 } from '@/sequences/server/sequence-edit';
-import { updateSequenceSchema } from '@/sequences/server/sequence.schemas';
 import { dbSceneId } from '@/shots/scene-id';
 import { sceneNarrativeFieldsSchema } from '@/shots/scene-narrative';
 import { updateScene } from '@/shots/server/scene-edit';
 import {
-  anchorFrameOf,
   createScene,
   createShot,
   requireSceneInSequence,
   requireShotInSequence,
   setShotUseStartFrame,
 } from '@/shots/server/structure-edit';
-import type { Sequence } from '@/platform/server/db/schema';
+import type { Sequence, Shot } from '@/platform/server/db/schema';
 import {
   openstoryTool,
   productionRead,
   readToolDefinition,
 } from '../tool-context';
+import { shotEdit } from './shot-content-edits';
 
 const writeAnnotations = {
   readOnlyHint: false,
@@ -137,29 +138,14 @@ const updateSequenceTool = openstoryTool({
       message: `Send at least one of: ${SETTINGS_FIELDS.join(', ')}.`,
     }),
   outputSchema: sequenceSettingsSchema,
-  run: async (input, { scopedDb, userId }) => {
-    let sequence = await productionAccess(scopedDb).sequence(input.sequenceId);
-    if (input.title !== undefined) {
-      sequence = await renameSequence(
-        scopedDb,
-        { userId },
-        sequence,
-        input.title
-      );
-    }
-    const { targetDurationSeconds, includeMusic, videoModel } = input;
-    if (
-      targetDurationSeconds !== undefined ||
-      includeMusic !== undefined ||
-      videoModel !== undefined
-    ) {
-      sequence = await scopedDb.sequences.update({
-        id: sequence.id,
-        targetDurationSeconds,
-        includeMusic,
-        videoModel,
-      });
-    }
+  run: async ({ sequenceId: id, ...settings }, { scopedDb, userId }) => {
+    const previous = await productionAccess(scopedDb).sequence(id);
+    const sequence = await updateSequenceSettings(
+      scopedDb,
+      { userId },
+      previous,
+      settings
+    );
     return {
       data: settingsOf(sequence),
       summary: `Updated sequence ${sequence.title}.`,
@@ -173,53 +159,62 @@ const STORYBOARD_FIELDS = [
   'aspectRatio',
   'analysisModel',
 ] as const;
-const storyboardFields = updateSequenceSchema.pick({
-  script: true,
-  styleId: true,
-  analysisModel: true,
-}).shape;
 
 const regenerateStoryboardTool = openstoryTool({
   name: 'regenerate_storyboard',
   description:
-    'Change a sequence’s whole script, style, aspect ratio or analysis model and re-run its storyboard from scratch: scenes and shots are rebuilt, then generation continues to the sequence’s stop-at. Spends credits and replaces the current storyboard. To edit one scene’s script without a re-run use update_scene.',
+    'Regenerate a sequence with a new script, style, aspect ratio or analysis model, as the editor’s Generate does: a NEW sequence is created from this one (same models, stop-at and settings; its elements are copied) and its storyboard runs from scratch. The source sequence is left as it is. Spends credits. Poll get_sequence_status with the returned sequenceId; give the user the appUrl. To edit one scene’s script without a re-run use update_scene.',
   scope: 'generate',
-  annotations: destructiveAnnotations,
+  annotations: { ...writeAnnotations, openWorldHint: true },
   inputSchema: z
     .strictObject({
-      sequenceId,
-      script: storyboardFields.script.describe('The full new script.'),
-      styleId: storyboardFields.styleId.describe(
-        'Style ID (list_styles / the Gallery).'
-      ),
+      sequenceId: sequenceId.describe('The sequence to regenerate from.'),
+      script: z
+        .string()
+        .min(10)
+        .max(10000)
+        .optional()
+        .describe('The full new script.'),
+      styleId: z
+        .string()
+        .optional()
+        .describe('Style ID (list_styles / the Gallery).'),
       aspectRatio: aspectRatioSchema.optional(),
-      analysisModel: storyboardFields.analysisModel,
+      analysisModel: z
+        .string()
+        .refine(isValidAnalysisModelId, { message: 'Invalid analysis model' })
+        .optional(),
     })
     .refine((input) => STORYBOARD_FIELDS.some((k) => input[k] !== undefined), {
       message: `Send at least one of: ${STORYBOARD_FIELDS.join(', ')}.`,
     }),
   outputSchema: z.object({
+    sourceSequenceId: z.string(),
     sequenceId: z.string(),
     status: z.string(),
-    workflowRunId: z.string().nullable(),
+    workflowRunId: z.string(),
+    appUrl: z.string(),
   }),
-  run: async ({ sequenceId: id, ...update }, { scopedDb, userId }) => {
-    const previous = await productionAccess(scopedDb).sequence(id);
-    await updateSequence(
+  run: async ({ sequenceId: id, ...change }, { scopedDb, userId, origin }) => {
+    const source = await productionAccess(scopedDb).sequence(id);
+    const { entries } = await createSequences(regenerateInput(source, change), {
       scopedDb,
-      { userId, teamId: scopedDb.teamId },
-      previous,
-      update
-    );
-    // The trigger wrote the run id and the status.
-    const sequence = await productionAccess(scopedDb).sequence(id);
+      user: { id: userId },
+      teamId: scopedDb.teamId,
+      notify: false,
+    });
+    const [created] = entries;
+    if (!created) throw new Error('Regenerate created no sequence');
+    const { sequence, workflowRunId } = created;
     return {
       data: {
+        sourceSequenceId: source.id,
         sequenceId: sequence.id,
         status: sequence.status,
-        workflowRunId: sequence.workflowRunId ?? null,
+        workflowRunId,
+        appUrl: `${origin}/sequences/${sequence.id}/script`,
       },
-      summary: `Storyboard re-run started for ${sequence.title}. Poll get_sequence_status.`,
+      summary: `Regenerating ${source.title} as new sequence ${sequence.id}. Poll get_sequence_status.`,
     };
   },
 });
@@ -312,7 +307,8 @@ const createSceneTool = openstoryTool({
       },
       input.withShot
     );
-    let scriptVersionId: string | null = null;
+    // Created with a first (empty) script version.
+    let { selectedScriptVersionId: scriptVersionId } = scene;
     if (input.scriptExtract !== undefined || input.continuity !== undefined) {
       const edited = await updateScene(
         scopedDb,
@@ -322,11 +318,10 @@ const createSceneTool = openstoryTool({
           sceneId: dbSceneId(scene.id),
           scriptExtract: input.scriptExtract,
           narrative: { continuity: input.continuity },
-          // A titled scene is created with a first version.
-          expectedScriptVersionId: scene.selectedScriptVersionId ?? null,
+          expectedScriptVersionId: scriptVersionId,
         }
       );
-      scriptVersionId = edited.scene.selectedScriptVersionId ?? null;
+      scriptVersionId = edited.scene.selectedScriptVersionId;
     }
     return {
       data: { sceneId: scene.id, shotId: firstShotId, scriptVersionId },
@@ -484,16 +479,14 @@ const updateShotTool = openstoryTool({
     durationSeconds: z.number().nullable(),
     useStartFrame: z.boolean().nullable(),
   }),
-  run: async (input, { scopedDb }) => {
-    const access = productionAccess(scopedDb);
-    const sequence = await access.sequence(input.sequenceId);
-    let shot = await access.shot(sequence.id, input.shotId);
+  run: async (input, { scopedDb, userId }) => {
+    const target = await shotEdit(scopedDb, userId, input);
+    let shot: Omit<Shot, 'sequence'> = target.shot;
     if (input.useStartFrame !== undefined) {
-      const frame = await anchorFrameOf(scopedDb, shot);
       shot =
         (await setShotUseStartFrame(
           scopedDb,
-          { shot, frameId: frame.id, sequence },
+          { shot, frameId: target.frame.id, sequence: target.sequence },
           input.useStartFrame
         )) ?? shot;
     }

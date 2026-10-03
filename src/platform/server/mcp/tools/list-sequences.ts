@@ -1,13 +1,11 @@
 import { z } from 'zod';
-import { decodeCursor, encodeCursor } from '@/platform/server/api-v1/list';
 import {
-  buildSequenceSummary,
-  sequenceSummarySchema,
-} from '@/platform/server/api-v1/state';
-import {
-  buildProductionStatus,
-  productionStatusSchema,
-} from '@/sequences/server/production-status';
+  decodeCursor,
+  encodeCursor,
+  summarizeSequencePage,
+} from '@/platform/server/api-v1/list';
+import { sequenceSummarySchema } from '@/platform/server/api-v1/state';
+import { productionStatusSchema } from '@/sequences/server/production-status';
 import { readToolDefinition } from '../tool-context';
 
 export const listSequences = readToolDefinition({
@@ -33,44 +31,25 @@ export const listSequences = readToolDefinition({
       limit: input.limit,
       cursor: input.cursor ? decodeCursor(input.cursor) : null,
     });
-    const sequences = rows.slice(0, input.limit);
-    const [readiness, styles] = await Promise.all([
-      scopedDb.sequences.listShotReadinessByIds(sequences.map((s) => s.id)),
-      scopedDb.styles.listByIds([...new Set(sequences.map((s) => s.styleId))]),
-    ]);
-    const styleById = new Map(styles.map((s) => [s.id, s]));
-    const summaries = sequences.map((sequence) => {
-      const status = buildProductionStatus(
-        sequence,
-        {
-          rows: readiness.filter((r) => r.sequenceId === sequence.id),
-          exports: [],
-          failedFrames: [],
-        },
-        false
-      );
-      return {
-        ...buildSequenceSummary({
-          sequence,
-          counts: status.counts,
-          style: styleById.get(sequence.styleId) ?? null,
-          origin,
-        }),
-        status: status.status,
-        sequenceStatus: sequence.status,
-        counts: status.counts,
-      };
-    });
-    const last = sequences.at(-1);
+    const page = rows.slice(0, input.limit);
+    const sequences = (
+      await summarizeSequencePage({ scopedDb, sequences: page, origin })
+    ).map(({ summary, status, counts }) => ({
+      ...summary,
+      status,
+      sequenceStatus: summary.status,
+      counts,
+    }));
+    const last = page.at(-1);
     return {
       data: {
-        sequences: summaries,
+        sequences,
         nextCursor:
           rows.length > input.limit && last
             ? encodeCursor({ updatedAt: last.updatedAt, id: last.id })
             : null,
       },
-      summary: `${sequences.length} sequences${rows.length > input.limit ? '; more available' : ''}.`,
+      summary: `${page.length} sequences${rows.length > input.limit ? '; more available' : ''}.`,
     };
   },
 });

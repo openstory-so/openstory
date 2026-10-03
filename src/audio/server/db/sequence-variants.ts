@@ -1,4 +1,8 @@
-import { NotFoundError, ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 /**
  * Scoped Sequence Variants Sub-module — music tracks (#1115).
  *
@@ -543,7 +547,21 @@ export function createSequenceVariantsMethods(db: Database) {
         .orderBy(sequenceMusicVariants.divergedAt);
     },
 
+    /** Hide a track from history. The one playing is refused: select another first. */
     discardMusicVariant: async (variantId: string): Promise<Date> => {
+      const [owner] = await db
+        .select({ selectedMusicVariantId: sequences.selectedMusicVariantId })
+        .from(sequenceMusicVariants)
+        .innerJoin(
+          sequences,
+          eq(sequences.id, sequenceMusicVariants.sequenceId)
+        )
+        .where(eq(sequenceMusicVariants.id, variantId));
+      if (owner?.selectedMusicVariantId === variantId) {
+        throw new ConflictError(
+          'Cannot discard the selected track; select another first.'
+        );
+      }
       const discardedAt = new Date();
       const result = await db
         .update(sequenceMusicVariants)

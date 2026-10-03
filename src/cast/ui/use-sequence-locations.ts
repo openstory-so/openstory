@@ -245,12 +245,8 @@ export function useRecastLocation() {
 
   return useMutation({
     meta: { globalError: true },
-    mutationFn: (data: {
-      locationId: string;
-      libraryLocationId: string;
-      referenceImageUrl: string;
-      description?: string;
-    }) => recastLocationFn({ data }),
+    mutationFn: (data: { locationId: string; libraryLocationId: string }) =>
+      recastLocationFn({ data }),
     onSuccess: () => {
       // Invalidate sequence locations to refresh the list
       void queryClient.invalidateQueries({

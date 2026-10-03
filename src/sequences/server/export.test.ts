@@ -128,9 +128,11 @@ describe('export service', () => {
     });
     const first = await start();
     expect(first.workflowRunId).toBe('export-run');
+    expect(first.action).toBe('render');
     const joined = await start();
     expect(joined.row.id).toBe(first.row.id);
     expect(joined.workflowRunId).toBeNull();
+    expect(joined.action).toBe('join_in_flight');
     await db
       .update(sequenceExports)
       .set({ status: 'ready' })
@@ -142,6 +144,36 @@ describe('export service', () => {
     const reused = await start();
     expect(reused.row.id).toBe(first.row.id);
     expect(reused.workflowRunId).toBeNull();
+    expect(reused.action).toBe('reuse_ready');
+    expect(triggerWorkflow).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuseOtherCut joins a render of the same cut but refuses one of another cut', async () => {
+    const first = await start();
+    const sameCut = await startExport(scoped(), {
+      userId: generateId(),
+      teamId,
+      sequenceId,
+      cut: await resolveExportCut(scoped(), sequenceId),
+      refuseOtherCut: true,
+    });
+    expect(sameCut).toMatchObject({
+      row: { id: first.row.id },
+      action: 'join_in_flight',
+    });
+    await db
+      .update(videoVariants)
+      .set({ url: '/r2/openstory-videos/clip-b.mp4' })
+      .where(eq(videoVariants.id, videoId));
+    await expect(
+      startExport(scoped(), {
+        userId: generateId(),
+        teamId,
+        sequenceId,
+        cut: await resolveExportCut(scoped(), sequenceId),
+        refuseOtherCut: true,
+      })
+    ).rejects.toMatchObject({ code: 'EXPORT_BUSY' });
     expect(triggerWorkflow).toHaveBeenCalledTimes(1);
   });
 

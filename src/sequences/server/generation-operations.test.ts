@@ -270,6 +270,29 @@ describe('plan_generation', () => {
     ).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
+  it('a plan of 200 shot ids round-trips through its token (past the old 4 KiB cap)', async () => {
+    const shotIds = Array.from({ length: 200 }, () => generateId());
+    await db.insert(shots).values(
+      shotIds.map((id, i) => ({
+        id,
+        sequenceId,
+        sceneId: dbSceneId(sceneId),
+        shotNumber: i + 2,
+      }))
+    );
+    const { planToken } = await planGeneration(scoped(), actor(), sequenceId, {
+      ...stale,
+      target: { kind: 'shots', shotIds },
+    });
+    expect(planToken.length).toBeGreaterThan(4096);
+    expect(await execute(planToken)).toMatchObject({
+      workflowRunIds: [updateAllRun],
+    });
+    expect(planUpdateAll).toHaveBeenLastCalledWith(
+      expect.objectContaining({ shotIds })
+    );
+  });
+
   it('refuses missing (Continue) work for anything but the whole sequence', async () => {
     await expect(
       planGeneration(scoped(), actor(), sequenceId, {
@@ -533,7 +556,12 @@ describe('planned retry (#1461)', () => {
   const retry = { mode: 'retry' as const, retry: 'smart' as const };
 
   it('plans by dry run and launches under the plan key, reporting every run', async () => {
-    executeSmartRetry.mockResolvedValue({ planned: retryPlan });
+    // ElevenLabs music in the plan: the launch reserves it against platform
+    // credits, so the plan's check must not let a fal key waive it.
+    executeSmartRetry.mockResolvedValue({
+      planned: retryPlan,
+      creditProviders: [],
+    });
     const plan = await planGeneration(scoped(), actor(), sequenceId, retry);
     expect(executeSmartRetry).toHaveBeenLastCalledWith(expect.anything(), {
       dryRun: true,
@@ -544,6 +572,11 @@ describe('planned retry (#1461)', () => {
       images: retryPlan.images,
     });
     expect(plan.estimate.micros).toBe(900_000);
+    expect(requireCredits).toHaveBeenLastCalledWith(
+      expect.anything(),
+      900_000,
+      { providers: [] }
+    );
 
     executeSmartRetry.mockImplementation(
       async (
@@ -554,7 +587,7 @@ describe('planned retry (#1461)', () => {
           await opts.onLaunched?.('image-run');
           await opts.onLaunched?.('motion-run');
         }
-        return { planned: retryPlan };
+        return { planned: retryPlan, creditProviders: [] };
       }
     );
     expect(await execute(plan.planToken)).toMatchObject({
@@ -581,7 +614,7 @@ describe('planned retry (#1461)', () => {
           await opts.onLaunched?.('image-run');
           throw new Error('motion trigger failed');
         }
-        return { planned: retryPlan };
+        return { planned: retryPlan, creditProviders: ['fal'] };
       }
     );
     const plan = await planGeneration(scoped(), actor(), sequenceId, {
@@ -596,10 +629,14 @@ describe('planned retry (#1461)', () => {
   });
 
   it('refuses a retry whose failures changed since planning, and one while a run is live', async () => {
-    executeSmartRetry.mockResolvedValueOnce({ planned: retryPlan });
+    executeSmartRetry.mockResolvedValueOnce({
+      planned: retryPlan,
+      creditProviders: ['fal'],
+    });
     const plan = await planGeneration(scoped(), actor(), sequenceId, retry);
     executeSmartRetry.mockResolvedValueOnce({
       planned: { ...retryPlan, images: [] },
+      creditProviders: ['fal'],
     });
     await expect(execute(plan.planToken)).rejects.toMatchObject({
       details: { code: 'PLAN_CHANGED' },
@@ -628,32 +665,24 @@ describe('export (#1461)', () => {
     expect(startExport).not.toHaveBeenCalled();
 
     const exportId = generateId();
+    // The action is the start's own, never a separate preview's: a concurrent
+    // coalesce reports what actually happened.
     startExport.mockResolvedValue({
       row: { id: exportId, status: 'processing' },
-      workflowRunId: 'export-run',
+      workflowRunId: null,
+      action: 'join_in_flight',
     });
     expect(await startExportOperation(scoped(), actor(), sequenceId)).toEqual({
       sequenceId,
       exportId,
       status: 'processing',
-      action: 'render',
-      workflowRunId: 'export-run',
+      action: 'join_in_flight',
+      workflowRunId: null,
     });
     expect(startExport).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ sequenceId, cut })
+      expect.objectContaining({ sequenceId, cut, refuseOtherCut: true })
     );
-  });
-
-  it('refuses to start while an earlier cut renders', async () => {
-    resolveExportCut.mockResolvedValue(cut);
-    previewExport.mockResolvedValue({
-      action: 'busy_other_cut',
-      exportId: 'old',
-    });
-    await expect(
-      startExportOperation(scoped(), actor(), sequenceId)
-    ).rejects.toMatchObject({ code: 'EXPORT_BUSY' });
-    expect(startExport).not.toHaveBeenCalled();
+    expect(previewExport).toHaveBeenCalledTimes(1);
   });
 });

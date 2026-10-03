@@ -359,8 +359,6 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
       {
         locationId: location.id,
         libraryLocationId: selectedLibraryLocation.id,
-        referenceImageUrl: selectedLibraryLocation.referenceImageUrl ?? '',
-        description: selectedLibraryLocation.description ?? undefined,
       },
       {
         onSuccess: () => {

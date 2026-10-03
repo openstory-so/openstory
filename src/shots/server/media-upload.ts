@@ -45,7 +45,10 @@ import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
   computeUploadedStillInputHash,
   parseUploadedStoragePath,
+  UPLOAD_EXTENSIONS,
 } from '@/shots/server/upload-media';
+import { measureStoredMediaDuration } from '@/cast/server/sequence-elements/media-duration';
+import { base64ToBytes } from '@/platform/base64';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
   STORAGE_BUCKETS,
@@ -368,9 +371,15 @@ export async function setShotVideoFromUpload(
 
   // Adopt the real duration BEFORE hashing: the manifest folds `durationMs`
   // in, so writing the shot afterwards would leave the clip instantly stale
-  // against its own render.
-  const durationMs = data.durationSeconds
-    ? Math.round(data.durationSeconds * 1000)
+  // against its own render. The browser measured it on upload; a caller that
+  // sent none (MCP) gets it read from the file instead.
+  const durationSeconds =
+    data.durationSeconds ??
+    (await measureStoredMediaDuration(
+      `${STORAGE_BUCKETS.VIDEOS}/${storagePath}`
+    ));
+  const durationMs = durationSeconds
+    ? Math.round(durationSeconds * 1000)
     : (shot.durationMs ?? 3000);
   if (durationMs !== shot.durationMs) {
     await scopedDb.shots.update(shot.id, { durationMs });
@@ -425,7 +434,12 @@ export async function setShotVideoFromUpload(
     ...(version.url ? { videoUrl: version.url } : {}),
   });
 
-  return { shotId: shot.id, versionId: version.id, videoUrl: version.url };
+  return {
+    shotId: shot.id,
+    versionId: version.id,
+    videoUrl: version.url,
+    durationSeconds: durationSeconds ?? null,
+  };
 }
 
 /**
@@ -456,7 +470,11 @@ export async function setSequenceMusicFromUpload(
     storagePath,
     prompt: sequence.musicPrompt,
     tags: sequence.musicTags,
-    durationSeconds: data.durationSeconds ?? null,
+    durationSeconds:
+      data.durationSeconds ??
+      (await measureStoredMediaDuration(
+        `${STORAGE_BUCKETS.AUDIO}/${storagePath}`
+      )),
   });
   const withMusicSet = await scopedDb.sequences.getById(sequence.id);
   if (!withMusicSet) throw new NotFoundError('Sequence not found');
@@ -727,22 +745,30 @@ const UPLOAD_MEDIA_TYPES: Record<string, string> = {
 };
 
 /**
- * Extensions per use: the editor's upload surfaces. Elements take MP3/WAV and
- * MP4/MOV only — the browser re-encodes M4A/OGG to WAV first, which a server
- * upload cannot, and WebM is refused by the models (#1559).
+ * Extensions per use: the editor's upload surfaces (`UPLOAD_EXTENSIONS`).
+ * Elements take MP3/WAV and MP4/MOV only — the browser re-encodes M4A/OGG to
+ * WAV first, which a server upload cannot, and WebM is refused by the models
+ * (#1559).
  */
+const ELEMENT_EXTENSIONS = [
+  ...UPLOAD_EXTENSIONS.image,
+  'mp3',
+  'wav',
+  'mp4',
+  'mov',
+];
 const USE_EXTENSIONS: Record<UploadUse, readonly string[]> = {
-  shot_image: ['jpg', 'png', 'webp', 'gif'],
-  character_sheet: ['jpg', 'png', 'webp', 'gif'],
-  location_sheet: ['jpg', 'png', 'webp', 'gif'],
-  shot_video: ['mp4', 'webm', 'mov'],
-  music: ['mp3', 'wav', 'ogg', 'm4a'],
-  element: ['jpg', 'png', 'webp', 'gif', 'mp3', 'wav', 'mp4', 'mov'],
+  shot_image: UPLOAD_EXTENSIONS.image,
+  character_sheet: UPLOAD_EXTENSIONS.image,
+  location_sheet: UPLOAD_EXTENSIONS.image,
+  shot_video: UPLOAD_EXTENSIONS.video,
+  music: UPLOAD_EXTENSIONS.audio,
+  element: ELEMENT_EXTENSIONS,
   // A Studio reference, start/end frame or clip; the same types as elements.
-  studio: ['jpg', 'png', 'webp', 'gif', 'mp3', 'wav', 'mp4', 'mov'],
+  studio: ELEMENT_EXTENSIONS,
 };
 
-const IMAGE_EXTENSIONS = new Set(['jpg', 'png', 'webp', 'gif']);
+const IMAGE_EXTENSIONS = new Set<string>(UPLOAD_EXTENSIONS.image);
 
 /** Inline bytes ride in the tool call's JSON, so they stay small. */
 export const MAX_INLINE_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -847,7 +873,7 @@ export async function storeUpload(args: {
     const ext = extensionFor(use, mediaType);
     let bytes: Uint8Array;
     try {
-      bytes = Uint8Array.from(atob(source.data), (c) => c.charCodeAt(0));
+      bytes = base64ToBytes(source.data);
     } catch {
       throw new ValidationError('data is not valid base64.');
     }
@@ -874,18 +900,26 @@ export async function storeUpload(args: {
       void res.body?.cancel();
       throw error;
     }
+    // The length is required up front: an image is read whole, so the cap
+    // must hold before the read, and a clip is streamed into the bucket, never
+    // held in the isolate (`uploadResponse` buffers without a length).
     const declared = Number(res.headers.get('content-length'));
-    const known = Number.isFinite(declared) && declared > 0;
-    const image = IMAGE_EXTENSIONS.has(ext);
-    const cap = image ? MAX_URL_IMAGE_BYTES : MAX_URL_MEDIA_BYTES;
-    if (known && declared > cap) {
+    if (!(Number.isFinite(declared) && declared > 0)) {
+      void res.body?.cancel();
+      throw new ValidationError(
+        'The host did not say how large the file is (no Content-Length); host it somewhere that does.'
+      );
+    }
+    const isImage = IMAGE_EXTENSIONS.has(ext);
+    const cap = isImage ? MAX_URL_IMAGE_BYTES : MAX_URL_MEDIA_BYTES;
+    if (declared > cap) {
       void res.body?.cancel();
       throw new ValidationError(
         `The file is over ${cap / 1024 / 1024} MB, the limit for this upload.`
       );
     }
     const { bucket, path } = uploadTarget(use, teamId, args.sequenceId, ext);
-    if (image) {
+    if (isImage) {
       const bytes = new Uint8Array(await res.arrayBuffer());
       if (bytes.byteLength > cap) {
         throw new ValidationError(
@@ -897,14 +931,6 @@ export async function storeUpload(args: {
       });
       stored = { url: result.publicUrl, mediaType, bytes: bytes.byteLength };
     } else {
-      // A clip is streamed into the bucket, never held in the isolate; that
-      // needs its length up front (`uploadResponse` buffers without one).
-      if (!known) {
-        void res.body?.cancel();
-        throw new ValidationError(
-          'The host did not say how large the file is (no Content-Length); host it somewhere that does.'
-        );
-      }
       const result = await uploadResponse(res, bucket, path, {
         contentType: mediaType,
       });

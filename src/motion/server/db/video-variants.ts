@@ -23,6 +23,7 @@
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { ConflictError, NotFoundError } from '@/platform/errors';
 import {
   renderSegments,
   shots,
@@ -100,19 +101,19 @@ export function createVideoVariantsMethods(db: Database) {
       .from(videoVariants)
       .where(eq(videoVariants.id, versionId));
     if (!version) {
-      throw new Error(`VideoVariant ${versionId} not found`);
+      throw new NotFoundError(`VideoVariant ${versionId} not found`);
     }
     // Only a finished render may become a segment's chosen video — mirroring a
     // pending/failed version would blank a good video.
     if (version.status !== 'completed') {
-      throw new Error(
+      throw new ConflictError(
         `VideoVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished video`
       );
     }
     // A completed version must carry its output, or selecting it would
     // project a null video over a good one.
     if (!version.url || !version.storagePath) {
-      throw new Error(
+      throw new ConflictError(
         `VideoVariant ${versionId} is 'completed' but missing its url/storagePath — cannot select`
       );
     }
@@ -125,7 +126,7 @@ export function createVideoVariantsMethods(db: Database) {
       .from(shots)
       .where(eq(shots.id, shotId));
     if (!shot) {
-      throw new Error(`Shot ${shotId} not found`);
+      throw new NotFoundError(`Shot ${shotId} not found`);
     }
     const [segment] = await db
       .select({

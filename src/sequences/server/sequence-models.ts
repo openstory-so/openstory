@@ -48,7 +48,11 @@ import type {
   MusicWorkflowInput,
 } from '@/platform/server/workflow/types';
 import { getLogger } from '@/platform/logger';
-import { ConflictError, ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
@@ -218,7 +222,7 @@ export async function addModelToSequence(
       isPrimary: false,
       workflowRunId: null,
     });
-    if (!variantId) throw new Error('Sequence not found');
+    if (!variantId) throw new NotFoundError('Sequence not found');
     try {
       return await releaseReservationOnThrow(
         scopedDb,

@@ -203,16 +203,26 @@ const toolsListSchema = z.looseObject({
  */
 export async function withToolViews(response: Response): Promise<Response> {
   // Never fails the list: an unexpected shape loses the view links, logged.
-  if (!response.headers.get('content-type')?.includes('application/json')) {
-    logger.warn('MCP tools/list not JSON; views not linked');
-    return response;
+  // The legacy transport answers as one SSE event whose data lines hold the
+  // JSON; the data line is replaced and the framing kept.
+  const sse =
+    response.headers.get('content-type')?.includes('text/event-stream') ??
+    false;
+  const lines = (await response.clone().text()).split('\n');
+  const dataAt = lines.findIndex((line) => line.startsWith('data:'));
+  const text = sse
+    ? lines
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .join('')
+    : lines.join('\n');
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // reported below
   }
-  const parsed = toolsListSchema.safeParse(
-    await response
-      .clone()
-      .json()
-      .catch(() => null)
-  );
+  const parsed = toolsListSchema.safeParse(body);
   if (!parsed.success) {
     logger.warn('MCP tools/list shape unexpected; views not linked');
     return response;
@@ -226,10 +236,16 @@ export async function withToolViews(response: Response): Promise<Response> {
       'ui/resourceUri': resourceUri,
     };
   }
+  const linked = JSON.stringify(parsed.data);
   const headers = new Headers(response.headers);
   headers.delete('content-length');
-  return new Response(JSON.stringify(parsed.data), {
-    status: response.status,
-    headers,
-  });
+  return new Response(
+    sse
+      ? lines
+          .map((line, i) => (i === dataAt ? `data: ${linked}` : line))
+          .filter((line, i) => i === dataAt || !line.startsWith('data:'))
+          .join('\n')
+      : linked,
+    { status: response.status, headers }
+  );
 }

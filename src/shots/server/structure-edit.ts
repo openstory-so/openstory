@@ -196,14 +196,3 @@ export async function setShotUseStartFrame(
   }
   return await scopedDb.shots.update(shot.id, { useStartFrame });
 }
-
-/** The shot's anchor frame (its image surface), created if a legacy shot lacks one. */
-export async function anchorFrameOf(scopedDb: ScopedDb, shot: Shot) {
-  let frame = await scopedDb.frames.getAnchorByShot(shot.id);
-  if (!frame) {
-    await scopedDb.shots.ensureAnchorFrames([shot]);
-    frame = await scopedDb.frames.getAnchorByShot(shot.id);
-  }
-  if (!frame) throw new NotFoundError('Shot is missing its anchor frame');
-  return frame;
-}

@@ -312,6 +312,24 @@ describe('music claim lifecycle (#1115)', () => {
     );
   });
 
+  it('refuses to discard the track playing', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const id = await methods.claimMusic({
+      sequenceId,
+      ...track,
+      isPrimary: true,
+      workflowRunId: null,
+    });
+    if (!id) throw new Error('claim returned null');
+    await methods.completeMusicClaim(id, landing('/r2/audio/live.mp3'));
+    expect((await readSequence()).selectedMusicVariantId).toBe(id);
+
+    await expect(methods.discardMusicVariant(id)).rejects.toThrow(
+      /Cannot discard the selected/
+    );
+    expect((await methods.getMusicById(id))?.discardedAt).toBeNull();
+  });
+
   it('a retried claim with the same id returns its own row, not busy', async () => {
     const methods = createSequenceVariantsMethods(db);
     const id = generateId();

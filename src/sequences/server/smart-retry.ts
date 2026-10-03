@@ -52,6 +52,7 @@ import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   releaseReservationOnThrow,
   reserveRunCredits,
+  type Provider,
 } from '@/billing/server/preflight';
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
@@ -201,6 +202,10 @@ export async function executeSmartRetry(
     musicPrompt: false,
     estimateMicros: ZERO_MICROS,
   };
+  // Whose keys waive a balance check of the whole plan (#1461): the
+  // strictest set any item below reserves with, so a plan the check passes
+  // cannot fail a reservation part-way.
+  let creditProviders: Provider[] = ['fal'];
 
   // A sequence marked failed does NOT imply its workflow tree is dead —
   // children outlive a timed-out parent (#839). Reject every retry shape
@@ -316,6 +321,7 @@ export async function executeSmartRetry(
       targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
       pricing: await getEffectiveFalPricing(),
     });
+    creditProviders = ['fal', 'openrouter'];
     const fullResult = {
       retryType: 'full' as const,
       retriedItems: ['full storyboard'],
@@ -324,10 +330,11 @@ export async function executeSmartRetry(
         retryType: 'full' as const,
         estimateMicros: fullCost,
       },
+      creditProviders,
     };
     if (dryRun) return fullResult;
     const reservationId = await reserveRunCredits(context.scopedDb, fullCost, {
-      providers: ['fal', 'openrouter'],
+      providers: creditProviders,
       errorMessage: 'Insufficient credits to retry storyboard',
       sequenceId: sequence.id,
     });
@@ -648,12 +655,15 @@ export async function executeSmartRetry(
     );
     planned.music = true;
     planned.estimateMicros = addMicros(planned.estimateMicros, musicCost);
+    // Native ElevenLabs always spends the platform key.
+    const musicProviders: Provider[] =
+      musicModel === 'elevenlabs_music' ? [] : ['fal'];
+    if (musicProviders.length === 0) creditProviders = [];
     if (!dryRun) {
       const reservationId =
         musicCost > 0
           ? await reserveRunCredits(context.scopedDb, musicCost, {
-              // Native ElevenLabs always spends the platform key.
-              providers: musicModel === 'elevenlabs_music' ? [] : ['fal'],
+              providers: musicProviders,
               errorMessage: 'Insufficient credits to retry failed items',
               sequenceId: sequence.id,
             })
@@ -762,7 +772,12 @@ export async function executeSmartRetry(
   }
 
   if (dryRun) {
-    return { retryType: 'smart' as const, retriedItems: retried, planned };
+    return {
+      retryType: 'smart' as const,
+      retriedItems: retried,
+      planned,
+      creditProviders,
+    };
   }
 
   // Clear the sequence-level 'failed' flag now that retries are in flight.
@@ -795,5 +810,10 @@ export async function executeSmartRetry(
     }
   }
 
-  return { retryType: 'smart' as const, retriedItems: retried, planned };
+  return {
+    retryType: 'smart' as const,
+    retriedItems: retried,
+    planned,
+    creditProviders,
+  };
 }

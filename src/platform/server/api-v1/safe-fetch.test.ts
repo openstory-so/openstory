@@ -5,6 +5,7 @@ import {
   MAX_IMAGE_REDIRECTS,
   assertSafeImageUrl,
   ingestImageToBucket,
+  openSafeUrl,
 } from './safe-fetch';
 
 const { uploadFileMock } = vi.hoisted(() => ({
@@ -99,6 +100,43 @@ describe('ingestImageToBucket', () => {
       );
       return true;
     });
+  });
+
+  it('stops the clock once the headers arrive, so a slow body still reads', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: RequestInfo, init?: RequestInit) => {
+          signal = init?.signal ?? undefined;
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              signal?.addEventListener('abort', () =>
+                controller.error(signal?.reason)
+              );
+              setTimeout(() => {
+                controller.enqueue(new Uint8Array([1, 2, 3, 4]));
+                controller.close();
+              }, IMAGE_FETCH_TIMEOUT_MS * 2);
+            },
+          });
+          return Promise.resolve(
+            new Response(body, { headers: { 'content-type': 'video/mp4' } })
+          );
+        })
+      );
+
+      const res = await openSafeUrl('https://cdn.example.com/clip.mp4');
+      expect(vi.getTimerCount()).toBe(1); // only the body's own timer
+      await vi.advanceTimersByTimeAsync(IMAGE_FETCH_TIMEOUT_MS * 2);
+      expect(signal?.aborted).toBe(false);
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(
+        new Uint8Array([1, 2, 3, 4])
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('follows a bounded redirect to a still-safe host', async () => {

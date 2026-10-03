@@ -171,13 +171,16 @@ function resourceError(uri: string, error: unknown): Error {
   );
 }
 
-/** Serve one authenticated `resources/*` request. */
+/**
+ * Serve one authenticated `resources/*` request. A 2025-era client (Claude's
+ * connector) is served statelessly, a fresh server per request, as the tools
+ * handler does (`sessions: 'stateless'` in server.ts).
+ */
 export function serveResourceRequest(
   request: Request,
   context: OpenStoryMcpContext
 ): Promise<Response> {
   return createMcpHandler(() => buildResourceServer(context), {
-    legacy: 'reject',
     keepAliveMs: 0,
     onerror: (error) =>
       logger.error('MCP resource handler error: {message}', {

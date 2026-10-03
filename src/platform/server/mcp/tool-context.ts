@@ -73,12 +73,24 @@ function toolError(
   };
 }
 
+const logger = getLogger(['openstory', 'mcp']);
+
+/** The schema under `.optional()` / `.nullable()` / `.default()`. */
+function unwrapped(field: z.ZodType): z.ZodType {
+  return field instanceof z.ZodOptional ||
+    field instanceof z.ZodNullable ||
+    field instanceof z.ZodDefault
+    ? unwrapped(field.unwrap())
+    : field;
+}
+
 /**
  * Some clients (Claude's connector among them) send every scalar argument as a
- * string. A top-level string the schema rejects is retried as the boolean or
- * number it spells, and kept only if the schema then accepts it, so unions
+ * string. A string the schema rejects is retried as the boolean or number it
+ * spells, and kept only if the schema then accepts it, so unions
  * (`number | 'auto'`) and literals (`confirm: true`) work as well as plain
- * numbers and booleans. A string the schema already accepts, such as
+ * numbers and booleans; an object field (`replaceWritten: { visual: 'true' }`)
+ * is coerced the same way. A string the schema already accepts, such as
  * `'auto'`, is left alone; anything else is left for zod to reject.
  */
 export function coerceScalars(schema: z.ZodObject, input: unknown): unknown {
@@ -86,9 +98,18 @@ export function coerceScalars(schema: z.ZodObject, input: unknown): unknown {
   const out: Record<string, unknown> = { ...input };
   for (const [key, value] of Object.entries(out)) {
     const field = schema.shape[key];
-    if (typeof value !== 'string' || !field || field.safeParse(value).success) {
+    if (!field) continue;
+    const inner = unwrapped(field);
+    if (
+      inner instanceof z.ZodObject &&
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value)
+    ) {
+      out[key] = coerceScalars(inner, value);
       continue;
     }
+    if (typeof value !== 'string' || field.safeParse(value).success) continue;
     const text = value.trim();
     const candidates = [
       text === 'true' ? true : text === 'false' ? false : undefined,
@@ -103,59 +124,112 @@ export function coerceScalars(schema: z.ZodObject, input: unknown): unknown {
   return out;
 }
 
+/** The ids a result carries at its top level (`id`, `*Id`, `*Ids`). */
+function topLevelIds(data: unknown): Record<string, unknown> {
+  if (typeof data !== 'object' || data === null) return {};
+  return Object.fromEntries(
+    Object.entries(data).filter(
+      ([key, value]) =>
+        /^id$|Ids?$/.test(key) &&
+        (typeof value === 'string' || Array.isArray(value))
+    )
+  );
+}
+
 /**
- * Run one read and bound its response, including opt-in prompts, without
+ * A write that ran but whose result cannot be returned as a success: the SDK
+ * validates a success envelope's `structuredContent` against the output
+ * schema, so the only envelope that carries anything else is an error one.
+ * Its text says the work is done and never asks for a retry (a retry of a
+ * `generate` tool would spend twice); `details.ids` are the top-level ids and
+ * `json`, when it fits, the whole result as text.
+ */
+function unreportedWrite(
+  name: string,
+  data: unknown,
+  reason: string,
+  json?: string
+): CallToolResult {
+  const result = toolError(
+    `openstory.${name} completed, but its result could not be returned: ${reason}. Do not call it again; read the entity back with the matching read tool.`,
+    'RESULT_NOT_RETURNED',
+    { ids: topLevelIds(data) }
+  );
+  if (json !== undefined) result.content.push({ type: 'text', text: json });
+  return result;
+}
+
+/**
+ * Run one tool and bound its response, including opt-in prompts, without
  * silently cutting data. Input is parsed with zod here (the SDK only checks
  * the JSON Schema, so it applies no defaults); output is parsed against the
  * advertised schema, and a mismatch is our bug, so it is logged, not returned
- * as a validation error.
+ * as a validation error. A write that ran is never answered with a retry.
  */
 async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>,
   input: unknown,
   context: () => ReadToolContext
 ): Promise<CallToolResult> {
+  // The SDK checks the advertised JSON Schema; refinements, defaults and the
+  // discriminated unions it cannot express are checked by zod here. Some
+  // tools parse the caller's input again inside `run` (Studio's mapped
+  // request, a library kind's parent), so a ZodError from there is the
+  // caller's too (the catch below).
+  const parsed = spec.inputSchema.safeParse(
+    coerceScalars(spec.inputSchema, input)
+  );
+  if (!parsed.success) {
+    return toolError(z.prettifyError(parsed.error), 'VALIDATION_ERROR');
+  }
+  const written = !spec.annotations.readOnlyHint;
   try {
-    const { data, summary } = await spec.run(
-      spec.inputSchema.parse(coerceScalars(spec.inputSchema, input)),
-      context()
-    );
-    const parsed = spec.outputSchema.safeParse(data);
-    if (!parsed.success) {
+    const { data, summary } = await spec.run(parsed.data, context());
+    const output = spec.outputSchema.safeParse(data);
+    if (!output.success && !written) {
       throw new Error(`openstory.${spec.name} output failed its schema`, {
-        cause: parsed.error,
+        cause: output.error,
+      });
+    }
+    if (!output.success) {
+      logger.error('MCP tool output failed its schema', {
+        tool: spec.name,
+        err: toErrorPayload(output.error),
       });
     }
     // Through JSON so an `undefined` optional field is dropped: the SDK's
     // output validator rejects the key, and the call failed after it ran.
-    const json = JSON.stringify(parsed.data);
-    const result: CallToolResult = {
-      content: [
-        {
-          type: 'text',
-          text: summary.length > 500 ? `${summary.slice(0, 500)}…` : summary,
-        },
-        { type: 'text', text: json },
-      ],
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parsed output, round-tripped through JSON
-      structuredContent: JSON.parse(json) as Record<string, unknown>,
-    };
+    const json = JSON.stringify(output.success ? output.data : data);
+    const result: CallToolResult = output.success
+      ? {
+          content: [
+            {
+              type: 'text',
+              text:
+                summary.length > 500 ? `${summary.slice(0, 500)}…` : summary,
+            },
+            { type: 'text', text: json },
+          ],
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parsed output, round-tripped through JSON
+          structuredContent: JSON.parse(json) as Record<string, unknown>,
+        }
+      : unreportedWrite(spec.name, data, 'its shape was unexpected', json);
     if (overResponseCap(JSON.stringify(result))) {
-      return toolError(
-        'Response exceeds 256 KiB. Retry the collection with a smaller limit, disable optional prompts/assets, or use the entity/version document read with a smaller length.'
-      );
+      return written
+        ? unreportedWrite(spec.name, data, 'it exceeds 256 KiB')
+        : toolError(
+            'Response exceeds 256 KiB. Retry the collection with a smaller limit, disable optional prompts/assets, or use the entity/version document read with a smaller length.'
+          );
     }
     return result;
   } catch (error) {
-    // The SDK checks the advertised JSON Schema; refinements and the
-    // discriminated unions it cannot express are checked by zod here.
     if (error instanceof z.ZodError) {
       return toolError(z.prettifyError(error), 'VALIDATION_ERROR');
     }
     if (error instanceof OpenStoryError && error.statusCode < 500) {
       return toolError(error.message, error.code, error.details);
     }
-    getLogger(['openstory', 'mcp']).error('MCP tool failed', {
+    logger.error('MCP tool failed', {
       tool: spec.name,
       err: toErrorPayload(error),
     });

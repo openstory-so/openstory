@@ -244,9 +244,11 @@ export async function recastCharacter(
     { markGenerating: true }
   );
 
-  await getGenerationChannel(character.sequenceId).emit(
-    'generation.character-sheet:progress',
-    { characterId: data.characterId, status: 'generating' }
+  await emitProgress(character.sequenceId, (channel) =>
+    channel.emit('generation.character-sheet:progress', {
+      characterId: data.characterId,
+      status: 'generating',
+    })
   );
 
   // Freeze every regenerate-shots input here, at the trigger. The workflow
@@ -456,18 +458,15 @@ export async function regenerateLocationSheet(
 }
 
 /**
- * Recast a location with a library location reference. Triggers location
- * reference regeneration and shot regeneration.
+ * Recast a location with a library location: its reference image and
+ * description drive the new sheet (read from the library row, never sent by
+ * the caller). Triggers location reference regeneration and shot
+ * regeneration.
  */
 export async function recastLocation(
   scopedDb: ScopedDb,
   actor: Actor,
-  data: {
-    locationId: string;
-    libraryLocationId: string;
-    referenceImageUrl: string;
-    description?: string;
-  }
+  data: { locationId: string; libraryLocationId: string }
 ) {
   const location = await scopedDb.sequenceLocations.getById(data.locationId);
   if (!location) {
@@ -499,6 +498,11 @@ export async function recastLocation(
   if (!libraryLocation) {
     throw new NotFoundError('Library location not found');
   }
+  if (!libraryLocation.referenceImageUrl) {
+    throw new ValidationError(
+      'That library location has no reference image to cast from.'
+    );
+  }
   await scopedDb.sequenceLocations.update(data.locationId, {
     libraryLocationId: data.libraryLocationId,
   });
@@ -517,9 +521,11 @@ export async function recastLocation(
     { markGenerating: true }
   );
 
-  await getGenerationChannel(location.sequenceId).emit(
-    'generation.location-sheet:progress',
-    { locationId: data.locationId, status: 'generating' }
+  await emitProgress(location.sequenceId, (channel) =>
+    channel.emit('generation.location-sheet:progress', {
+      locationId: data.locationId,
+      status: 'generating',
+    })
   );
 
   const affectedShotIds =
@@ -549,8 +555,8 @@ export async function recastLocation(
     sequenceId: location.sequenceId,
     teamId: scopedDb.teamId,
     userId: actor.userId,
-    referenceImageUrl: data.referenceImageUrl,
-    libraryLocationDescription: data.description,
+    referenceImageUrl: libraryLocation.referenceImageUrl,
+    libraryLocationDescription: libraryLocation.description ?? undefined,
     libraryLocationId: data.libraryLocationId,
     libraryLocationReferenceHash: libraryLocation.referenceInputHash,
     referenceVersionId,

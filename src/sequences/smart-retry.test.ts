@@ -1149,6 +1149,8 @@ describe('executeSmartRetry — planned retry (#1461)', () => {
     expect(plan.planned.images).toEqual([
       { shotId: 'shot-1', model: expect.any(String) },
     ]);
+    // Images reserve against fal, so a fal key waives the plan's check.
+    expect(plan.creditProviders).toEqual(['fal']);
     expect(launched).toEqual(['image-run-1']);
   });
 
@@ -1178,6 +1180,8 @@ describe('executeSmartRetry — planned retry (#1461)', () => {
     );
     const plan = await executeSmartRetry(context, { dryRun: true });
     expect(plan.planned.music).toBe(true);
+    // ElevenLabs music spends the platform key: no team key waives the plan.
+    expect(plan.creditProviders).toEqual([]);
     expect(claimMusic).not.toHaveBeenCalled();
     expect(createReservation).not.toHaveBeenCalled();
     expect(reserveRunCreditsMock).not.toHaveBeenCalled();

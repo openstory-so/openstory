@@ -12,10 +12,10 @@
 import { base64ToBytes, bytesToBase64 } from '@/platform/base64';
 import { z } from 'zod';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { Style } from '@/platform/server/db/schema/libraries';
 import { ValidationError } from '@/platform/errors';
-import type { ShotReadiness } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
+import type { ShotProductionReadiness } from '@/sequences/server/db/sequences';
+import { buildProductionStatus } from '@/sequences/server/production-status';
 import { createSequenceLink } from './discovery';
 import { API_V1_BASE, getLink, halLinksSchema, withLinks } from './hal';
 import {
@@ -90,20 +90,61 @@ export function decodeCursor(raw: string): SequenceCursor {
   return { updatedAt: new Date(ms), id };
 }
 
-function buildListItem(
-  sequence: Sequence,
-  shots: ShotReadiness[],
-  style: Style | null,
-  origin: string
-): SequenceListPage['sequences'][number] {
-  const item = buildSequenceSummary({
-    sequence,
-    style,
-    counts: summarizeShotCounts(shots),
-    origin,
-  });
-  return withLinks(item, {
-    self: getLink(`${API_V1_BASE}/sequences/${item.id}`, 'Sequence status'),
+/** The reads a page of summaries needs; the MCP and REST lists share them. */
+export type SequencePageDb = {
+  sequences: Pick<ScopedDb['sequences'], 'listShotReadinessByIds'>;
+  styles: Pick<ScopedDb['styles'], 'listByIds'>;
+};
+
+/**
+ * Each sequence's summary with its production status and counts, from one
+ * batched shot fetch and one batched style fetch across the whole page rather
+ * than N round-trips per sequence. The summary's own `counts` are the REST
+ * four; `status` and `counts` are `buildProductionStatus`'s, which the MCP
+ * list reports.
+ */
+export async function summarizeSequencePage(params: {
+  scopedDb: SequencePageDb;
+  sequences: Sequence[];
+  origin: string;
+}) {
+  const { scopedDb, sequences, origin } = params;
+  const [allShots, allStyles] = await Promise.all([
+    // Readiness only, NOT the full `ShotView`: this document reports a few
+    // integers per sequence, and materialising every shot's metadata and
+    // prompts to get them is what let a page of 100 sequences approach the
+    // 128 MB isolate ceiling (#1161).
+    scopedDb.sequences.listShotReadinessByIds(sequences.map((s) => s.id)),
+    scopedDb.styles.listByIds([...new Set(sequences.map((s) => s.styleId))]),
+  ]);
+
+  // Frameless shots are deliberately kept by the batch read (as they are by
+  // `shotViewMissingFrame` on the full path) — they still count as shots.
+  const shotsById = new Map<string, ShotProductionReadiness[]>();
+  for (const shot of allShots) {
+    const bucket = shotsById.get(shot.sequenceId);
+    if (bucket) bucket.push(shot);
+    else shotsById.set(shot.sequenceId, [shot]);
+  }
+  const styleById = new Map(allStyles.map((style) => [style.id, style]));
+
+  return sequences.map((sequence) => {
+    const shots = shotsById.get(sequence.id) ?? [];
+    const production = buildProductionStatus(
+      sequence,
+      { rows: shots, exports: [], failedFrames: [] },
+      false
+    );
+    return {
+      summary: buildSequenceSummary({
+        sequence,
+        style: styleById.get(sequence.styleId) ?? null,
+        counts: summarizeShotCounts(shots),
+        origin,
+      }),
+      status: production.status,
+      counts: production.counts,
+    };
   });
 }
 
@@ -114,15 +155,7 @@ function buildListItem(
  * entry. `origin` absolutizes stored media URLs (see `buildSequenceState`).
  */
 export async function buildSequenceListPage(params: {
-  scopedDb: {
-    // Only the readiness fields `counts` derive from — the read returns more.
-    sequences: {
-      listShotReadinessByIds: (
-        sequenceIds: string[]
-      ) => Promise<Array<ShotReadiness & { sequenceId: string }>>;
-    };
-    styles: Pick<ScopedDb['styles'], 'listByIds'>;
-  };
+  scopedDb: SequencePageDb;
   sequences: Sequence[];
   hasMore: boolean;
   limit: number;
@@ -130,34 +163,15 @@ export async function buildSequenceListPage(params: {
 }): Promise<SequenceListPage> {
   const { scopedDb, sequences, hasMore, limit, origin } = params;
 
-  // One batched shot fetch and one batched style fetch across the whole page,
-  // rather than N round-trips per sequence.
-  const [allShots, allStyles] = await Promise.all([
-    // Readiness only, NOT the full `ShotView`: this document reports four
-    // integers per sequence, and materialising every shot's metadata and
-    // prompts to get them is what let a page of 100 sequences approach the
-    // 128 MB isolate ceiling (#1161).
-    scopedDb.sequences.listShotReadinessByIds(sequences.map((s) => s.id)),
-    scopedDb.styles.listByIds(sequences.map((s) => s.styleId)),
-  ]);
-
-  // Frameless shots are deliberately kept by the batch read (as they are by
-  // `shotViewMissingFrame` on the full path) — they still count as shots.
-  const shotsById = new Map<string, ShotReadiness[]>();
-  for (const shot of allShots) {
-    const bucket = shotsById.get(shot.sequenceId);
-    if (bucket) bucket.push(shot);
-    else shotsById.set(shot.sequenceId, [shot]);
-  }
-  const styleById = new Map(allStyles.map((style) => [style.id, style]));
-
-  const items = sequences.map((sequence) =>
-    buildListItem(
-      sequence,
-      shotsById.get(sequence.id) ?? [],
-      styleById.get(sequence.styleId) ?? null,
-      origin
-    )
+  const items = (
+    await summarizeSequencePage({ scopedDb, sequences, origin })
+  ).map(({ summary }) =>
+    withLinks(summary, {
+      self: getLink(
+        `${API_V1_BASE}/sequences/${summary.id}`,
+        'Sequence status'
+      ),
+    })
   );
 
   const last = sequences.at(-1);

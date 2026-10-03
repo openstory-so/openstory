@@ -5,15 +5,17 @@
  * context (`loadShotTarget`); MCP adds only the parent-chain check.
  */
 import { z } from 'zod';
-import { ValidationError } from '@/platform/errors';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { projectRead } from '@/platform/server/read-projection';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { dbSceneId } from '@/shots/scene-id';
 import { productionAccess } from '@/sequences/server/production-access';
 import { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import {
   discardShotDialogueSection,
   listShotDialogueReadings,
+  saveShotDialogue,
   selectShotDialogueSection,
   selectShotDialogueVersion,
 } from '@/shots/server/dialogue-edit';
@@ -52,16 +54,20 @@ export async function shotEdit(
   userId: string,
   input: { sequenceId: string; shotId: string }
 ): Promise<ShotEditContext> {
-  const shot = await productionAccess(scopedDb).shot(
-    input.sequenceId,
-    input.shotId
-  );
-  return {
-    ...(await loadShotTarget(scopedDb, shot.sequenceId, shot.id)),
-    scopedDb,
-    user: { id: userId },
-    teamId: scopedDb.teamId,
-  };
+  await productionAccess(scopedDb).sequence(input.sequenceId);
+  const target = await loadShotTarget(scopedDb, input.sequenceId, input.shotId);
+  // The editor loads deleted shots (restore); MCP shows only live ones, and
+  // a shot under a deleted scene is not live.
+  const scene = target.shot.sceneId
+    ? await scopedDb.scenes.getById(dbSceneId(target.shot.sceneId))
+    : null;
+  if (
+    target.shot.deletedAt ||
+    (target.shot.sceneId && (!scene || scene.deletedAt))
+  ) {
+    throw new NotFoundError('Shot not found in this sequence.');
+  }
+  return { ...target, scopedDb, user: { id: userId }, teamId: scopedDb.teamId };
 }
 
 const specVerdict = z
@@ -279,14 +285,8 @@ const updateShotDialogue = openstoryTool({
   outputSchema: z.object({ versionId: z.string().nullable() }),
   run: async (input, { scopedDb, userId }) => {
     const context = await shotEdit(scopedDb, userId, input);
-    const version = await scopedDb.shotDialogue.write(
-      context.shot.id,
-      input.lines,
-      'user-edit',
-      { createdBy: userId }
-    );
     return {
-      data: { versionId: version?.id ?? null },
+      data: await saveShotDialogue(context, input.lines),
       summary: `Saved ${input.lines.length} dialogue line(s).`,
     };
   },

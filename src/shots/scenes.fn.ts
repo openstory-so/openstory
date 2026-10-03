@@ -74,20 +74,20 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(updateSceneScriptSchema))
   .handler(async ({ data, context }) => {
     const { sequence, scopedDb, user } = context;
-    const sceneId = dbSceneId(data.sceneId);
-    await updateScene(
+    const { scene } = await updateScene(
       scopedDb,
       { userId: user.id },
       {
         sequenceId: sequence.id,
-        sceneId,
+        sceneId: dbSceneId(data.sceneId),
         scriptExtract: data.extract,
         narrative: {},
       }
     );
-    const selected = await scopedDb.sceneScriptVersions.getSelected(sceneId);
-    if (!selected) throw new Error('Scene has no script to edit');
-    return { sceneId: data.sceneId, script: selected.content };
+    return {
+      sceneId: data.sceneId,
+      scriptVersionId: scene.selectedScriptVersionId,
+    };
   });
 
 // ============================================================================

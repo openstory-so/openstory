@@ -15,13 +15,9 @@ import {
   reserveRunCredits,
 } from '@/billing/server/preflight';
 import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
-import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
 import { VARIANT_TYPES } from '@/platform/server/db/schema/shot-variants';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import {
-  createSequenceSchema,
-  updateSequenceSchema,
-} from '@/sequences/server/sequence.schemas';
+import { createSequenceSchema } from '@/sequences/server/sequence.schemas';
 import {
   triggerContinue,
   triggerStoryboard,
@@ -56,9 +52,8 @@ import {
 import { createSequences } from '@/sequences/server/create-sequences';
 import {
   archiveSequence,
-  renameSequence,
   unarchiveSequence,
-  updateSequence,
+  updateSequenceSettings,
 } from '@/sequences/server/sequence-edit';
 
 export const getSequencesFn = createServerFn({ method: 'GET' })
@@ -239,24 +234,10 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
     );
   });
 
-/**
- * Update a sequence.
- * Triggers storyboard regeneration if script/style/aspectRatio/model changes.
- */
-export const updateSequenceFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(
-    zodValidator(updateSequenceSchema.extend({ sequenceId: ulidSchema }))
-  )
-  .handler(async ({ data, context }) => {
-    const { sequenceId: _sequenceId, ...update } = data;
-    return await updateSequence(
-      context.scopedDb,
-      { userId: context.user.id, teamId: context.teamId },
-      context.sequence,
-      { ...update, aspectRatio: update.aspectRatio ?? DEFAULT_ASPECT_RATIO }
-    );
-  });
+// There is no general update fn: a script, style, aspect ratio or analysis
+// model change is a regenerate, which creates a NEW sequence from this one
+// (`createSequenceFn` with `sourceSequenceId`, as `script-view.tsx` does).
+// Each setting below is its own minimal write.
 
 // ============================================================================
 // Set Music Preference (theatre playback + MP4 export)
@@ -269,11 +250,7 @@ const setSequenceMusicInputSchema = z.object({
 
 /**
  * Persist the per-sequence "include music in playback + export" toggle (#834).
- *
- * Deliberately separate from {@link updateSequenceFn}: that path force-defaults
- * `aspectRatio` and runs regeneration/credit logic, so reusing it for a
- * music-only write would silently reset a non-16:9 sequence's aspect ratio.
- * This is a minimal preference write with no side effects.
+ * A minimal preference write with no side effects.
  */
 export const setSequenceMusicFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -288,8 +265,7 @@ export const setSequenceMusicFn = createServerFn({ method: 'POST' })
 /**
  * Persist the film-length target (#1593): seconds, or null for auto. The
  * pipeline never reads it (a scene's length is its script label); it is the
- * enhance target, the credit estimate's duration and the rail chip. Separate
- * from {@link updateSequenceFn} for the reasons {@link setSequenceMusicFn} is.
+ * enhance target, the credit estimate's duration and the rail chip.
  */
 export const setSequenceTargetDurationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -311,8 +287,7 @@ export const setSequenceTargetDurationFn = createServerFn({ method: 'POST' })
 /**
  * Persist the sequence video-model default. Ungenerated shots inherit this
  * as the sequence tier, and Sequence settings reads it as the Video badge
- * until a clip exists. Separate from {@link updateSequenceFn} for the
- * reasons {@link setSequenceMusicFn} is.
+ * until a clip exists.
  *
  * The generate-shots picker writes this on change so the inspector, packing
  * preview, and settings row agree before anyone clicks Generate. Batch
@@ -349,23 +324,16 @@ const renameSequenceInputSchema = z.object({
   title: z.string().trim().min(1).max(500),
 });
 
-/**
- * Rename a sequence. Deliberately separate from {@link updateSequenceFn} for
- * the same reason as {@link setSequenceMusicFn}: that path force-defaults
- * `aspectRatio` and treats its mere presence as a regeneration trigger, so a
- * title-only write through it would either reset a non-16:9 sequence's aspect
- * ratio or charge credits and wipe the storyboard. Minimal write, no side
- * effects beyond the event.
- */
+/** Rename a sequence: a minimal write, no side effect beyond the event. */
 export const renameSequenceFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(renameSequenceInputSchema))
   .handler(async ({ data, context }) =>
-    renameSequence(
+    updateSequenceSettings(
       context.scopedDb,
       { userId: context.user.id },
       context.sequence,
-      data.title
+      { title: data.title }
     )
   );
 

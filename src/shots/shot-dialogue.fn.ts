@@ -43,6 +43,7 @@ import {
   currentSourceKeys,
   discardShotDialogueSection,
   listShotDialogueReadings,
+  saveShotDialogue,
   selectShotDialogueSection,
   selectShotDialogueVersion,
 } from '@/shots/server/dialogue-edit';
@@ -86,11 +87,7 @@ export const listShotDialogueVersionsFn = createServerFn({ method: 'GET' })
       await context.scopedDb.shotDialogue.listVersions(context.shot.id)
   );
 
-/**
- * Edit what this shot says (#1773): character, words, tone. Appends a
- * `user-edit` version of THIS shot's lines and nothing else — no prompt row,
- * no other shot. `write` hands back the selected row when nothing moved.
- */
+/** Edit what this shot says (#1773): a `user-edit` version of its lines. */
 export const saveShotDialogueFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(
@@ -98,15 +95,7 @@ export const saveShotDialogueFn = createServerFn({ method: 'POST' })
       shotInput.extend({ lines: storedMotionDialogueSchema.shape.lines })
     )
   )
-  .handler(async ({ context, data }) => {
-    const version = await context.scopedDb.shotDialogue.write(
-      context.shot.id,
-      data.lines,
-      'user-edit',
-      { createdBy: context.user.id }
-    );
-    return { versionId: version?.id ?? null };
-  });
+  .handler(({ context, data }) => saveShotDialogue(context, data.lines));
 
 /**
  * Point the shot back at an earlier set of lines. The pointer is the whole

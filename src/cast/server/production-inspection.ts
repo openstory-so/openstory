@@ -333,7 +333,11 @@ const deletedAtOf = (row: { deletedAt: Date | null }) => {
   return row.deletedAt.toISOString();
 };
 
-/** A sequence's soft-deleted characters, locations and elements, newest first. */
+/**
+ * A sequence's soft-deleted characters, locations and elements, newest first.
+ * Ids are the database ids every other tool takes; `token` is the script
+ * token (`char_*`, `loc_*`, an element's name).
+ */
 export async function listDeletedCast(scopedDb: ScopedDb, sequenceId: string) {
   const sequence = await productionAccess(scopedDb).sequence(sequenceId);
   const [characters, locations, elements] = await Promise.all([
@@ -343,19 +347,19 @@ export async function listDeletedCast(scopedDb: ScopedDb, sequenceId: string) {
   ]);
   return {
     characters: characters.map((row) => ({
-      id: row.id,
-      characterId: row.characterId,
+      characterId: row.id,
+      token: row.characterId,
       name: row.name,
       deletedAt: deletedAtOf(row),
     })),
     locations: locations.map((row) => ({
-      id: row.id,
-      locationId: row.locationId,
+      locationId: row.id,
+      token: row.locationId,
       name: row.name,
       deletedAt: deletedAtOf(row),
     })),
     elements: elements.map((row) => ({
-      id: row.id,
+      elementId: row.id,
       token: row.token,
       kind: row.kind,
       deletedAt: deletedAtOf(row),

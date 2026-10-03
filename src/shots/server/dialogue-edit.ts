@@ -30,6 +30,8 @@ import {
 } from '@/billing/server/preflight';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
 import { ValidationError } from '@/platform/errors';
+import type { z } from 'zod';
+import type { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { DialogueAudioWorkflowInput } from '@/platform/server/workflow/types';
 import { loadSceneContextBySequence } from './scene-script';
@@ -43,6 +45,8 @@ import {
 } from './shot-dialogue';
 
 const logger = getLogger(['openstory', 'shots', 'dialogue-edit']);
+
+type ShotDialogueLines = z.infer<typeof storedMotionDialogueSchema>['lines'];
 
 type DialogueEditContext = Pick<
   ShotEditContext,
@@ -111,8 +115,6 @@ const wordsOfKey = (key: string): string =>
     .split('\n')
     .map((line) => line.slice(line.indexOf('\t') + 1))
     .join('\n');
-
-/** This shot's readings, newest first; discarded ones omitted. */
 
 /** This shot's readings, newest first; discarded ones omitted. */
 export async function listShotDialogueReadings(
@@ -241,6 +243,24 @@ export async function selectShotDialogueSection(
     sectionId: section.id,
   });
   return { sectionId: section.id, clip };
+}
+
+/**
+ * Edit what this shot says (#1773): character, words, tone. Appends a
+ * `user-edit` version of THIS shot's lines and nothing else — no prompt row,
+ * no other shot. `write` hands back the selected row when nothing moved.
+ */
+export async function saveShotDialogue(
+  context: Pick<ShotEditContext, 'scopedDb' | 'shot' | 'user'>,
+  lines: ShotDialogueLines
+): Promise<{ versionId: string | null }> {
+  const version = await context.scopedDb.shotDialogue.write(
+    context.shot.id,
+    lines,
+    'user-edit',
+    { createdBy: context.user.id }
+  );
+  return { versionId: version?.id ?? null };
 }
 
 /**

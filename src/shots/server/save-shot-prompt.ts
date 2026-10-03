@@ -19,6 +19,7 @@ import { loadShotPromptDialogue } from './shot-dialogue';
 import { rescanContinuityFromPrompt } from './rescan-continuity-from-prompt';
 import { dbSceneId } from '@/shots/scene-id';
 import { getLogger } from '@/platform/logger';
+import { ValidationError } from '@/platform/errors';
 
 const logger = getLogger(['openstory', 'server', 'save-shot-prompt']);
 
@@ -38,7 +39,7 @@ export async function saveShotPrompt(
   let scene = context.scene;
   const text = data.text.trim();
   if (!text) {
-    throw new Error('Cannot save an empty prompt');
+    throw new ValidationError('Cannot save an empty prompt');
   }
 
   // No-op guard: don't append a `user-edit` identical to the live prompt —

@@ -85,7 +85,7 @@ flowchart TD
 The pipeline starts from server handlers in `src/sequences/sequences.fn.ts`:
 
 1. **`createSequenceFn`** — Creates a new sequence record, then calls `triggerWorkflow('/storyboard', input)`
-2. **`updateSequenceFn`** — If script, style, aspect ratio, or analysis model changed, triggers the same workflow
+2. **Regenerate** — a changed script, style, aspect ratio or analysis model creates a NEW sequence from the old one (`createSequenceFn` with `sourceSequenceId`; the MCP `regenerate_storyboard` tool builds the same input with `regenerateInput`), which triggers the same workflow
 3. **`retryStoryboardFn`** — Retries a failed sequence (resets status to `processing`, re-triggers)
 
 All three use `triggerWorkflow()` from `src/platform/server/workflow/client.ts`, which:

@@ -135,7 +135,7 @@ export async function deleteCharacter(
     actorId: actor.userId,
   });
   await releaseCharacterVoice(scopedDb, existing, actor.userId);
-  return { characterId, deletedAt };
+  return { characterId, name: existing.name, deletedAt };
 }
 
 export async function restoreCharacter(
@@ -171,7 +171,7 @@ export async function setCharacterVoiceEnabled(
   if (!enabled) {
     await releaseCharacterVoice(scopedDb, character, actor.userId);
   }
-  return { characterId: character.id, useVoice: enabled };
+  return { characterId: character.id, name: character.name, useVoice: enabled };
 }
 
 /**
@@ -191,7 +191,11 @@ export async function selectCharacterVoiceVersion(
     versionId
   );
   await releaseReplacedVoice(scopedDb, character.voiceId, updated.voiceId);
-  return { characterId: character.id, voiceId: updated.voiceId };
+  return {
+    characterId: character.id,
+    name: character.name,
+    voiceId: updated.voiceId,
+  };
 }
 
 export async function selectCharacterSheetVersion(
@@ -213,7 +217,11 @@ export async function selectCharacterSheetVersion(
       { characterId: character.id, status: 'completed' }
     )
   );
-  return { versionId: version.id, characterId: character.id };
+  return {
+    versionId: version.id,
+    characterId: character.id,
+    name: character.name,
+  };
 }
 
 /** A sheet version of a character of this sequence. */
@@ -336,11 +344,11 @@ export async function deleteLocation(
   sequenceId: string,
   locationDbId: string
 ) {
-  await requireLocation(scopedDb, sequenceId, locationDbId);
+  const location = await requireLocation(scopedDb, sequenceId, locationDbId);
   const deletedAt = await scopedDb.sequenceLocations.softDelete(locationDbId, {
     actorId: actor.userId,
   });
-  return { locationDbId, deletedAt };
+  return { locationDbId, name: location.name, deletedAt };
 }
 
 export async function restoreLocation(
@@ -374,7 +382,11 @@ export async function selectLocationSheetVersion(
       { locationId: location.id, status: 'completed' }
     )
   );
-  return { versionId: version.id, locationDbId: location.id };
+  return {
+    versionId: version.id,
+    locationDbId: location.id,
+    name: location.name,
+  };
 }
 
 /** A reference version of a location of this sequence. */
@@ -459,11 +471,11 @@ export async function deleteElement(
   sequenceId: string,
   elementId: string
 ) {
-  await requireElement(scopedDb, sequenceId, elementId);
+  const element = await requireElement(scopedDb, sequenceId, elementId);
   const deletedAt = await scopedDb.sequenceElements.softDelete(elementId, {
     actorId: actor.userId,
   });
-  return { success: true, deletedAt };
+  return { success: true, token: element.token, deletedAt };
 }
 
 export async function restoreElement(

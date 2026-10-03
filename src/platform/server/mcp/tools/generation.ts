@@ -42,10 +42,11 @@ const operationSchema = z.object({
   pollAfterSeconds: z.number(),
 });
 
+// No length cap: a plan of 200 shot ids encodes past 4 KiB, and decode
+// zod-parses the token anyway.
 const planToken = z
   .string()
   .min(1)
-  .max(4096)
   .describe('The planToken from plan_generation or retry_failed_work.');
 
 function planSummary(plan: z.output<typeof planOutput>) {
@@ -179,7 +180,9 @@ export const getOperationStatusTool = readToolDefinition({
   description:
     'Poll the runs execute_generation returned: running or unknown (keep polling every pollAfterSeconds; if unknown persists, check get_sequence_status), or terminal completed, partially_failed (what is failed, per shot) or failed. Reports those runs, not the whole sequence.',
   inputSchema: sequenceInput.extend({
-    workflowRunIds: z.array(z.string().min(1)).min(1).max(50),
+    // A retry starts one image run per failed shot, plus a motion batch and
+    // music runs: the cap must hold what execute_generation can return.
+    workflowRunIds: z.array(z.string().min(1)).min(1).max(1000),
   }),
   outputSchema: operationSchema.extend({
     state: z.string(),

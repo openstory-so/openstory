@@ -182,9 +182,7 @@ type Prepared = {
   /** Whose keys waive the check; the editor's rule for the same run. */
   creditProviders: readonly Provider[];
   hasWork: boolean;
-  /** A live storyboard run blocks it; reported by plan, refused by execute. */
-  needsIdleSequence: boolean;
-  work: () => Promise<PlanWork>;
+  work: PlanWork;
   /**
    * Start the work under `runKey` (deduplication id), reporting each run as
    * it starts so a throw part-way still names the runs that did.
@@ -195,6 +193,7 @@ type Prepared = {
   ) => Promise<void>;
 };
 
+/** The sequence is already loaded by `prepare`: only the ids are checked. */
 async function shotIdsFor(
   scopedDb: ScopedDb,
   sequenceId: string,
@@ -203,10 +202,10 @@ async function shotIdsFor(
   const access = productionAccess(scopedDb);
   if (target.kind === 'sequence') return undefined;
   if (target.kind === 'shots') {
-    for (const id of target.shotIds) await access.shot(sequenceId, id);
+    for (const id of target.shotIds) await access.shotIn(sequenceId, id);
     return target.shotIds;
   }
-  for (const id of target.sceneIds) await access.scene(sequenceId, id);
+  for (const id of target.sceneIds) await access.sceneIn(sequenceId, id);
   const sceneIds = new Set(target.sceneIds);
   return (await scopedDb.shots.listBySequence(sequenceId))
     .filter((shot) => shot.sceneId !== null && sceneIds.has(shot.sceneId))
@@ -273,9 +272,11 @@ async function prepareGeneration(
   request: Extract<GenerationRequest, { mode: 'stale' | 'missing' }>
 ): Promise<Prepared> {
   const shotIds = await shotIdsFor(scopedDb, sequence.id, request.target);
-  const inFlight = async () => [
+  // Computed once: the planners below take it instead of walking D1 again.
+  const generationPlan = await computeGenerationPlan(scopedDb, sequence.id);
+  const inFlight = [
     ...new Set(
-      (await computeGenerationPlan(scopedDb, sequence.id))
+      generationPlan
         .filter(
           (u) => u.state === 'running' && (!shotIds || shotIds.includes(u.id))
         )
@@ -294,6 +295,7 @@ async function prepareGeneration(
       sequence,
       depth: request.depth,
       shotIds,
+      generationPlan,
     });
     const estimateMicros = buildUpdateStalePreview(
       plan,
@@ -308,8 +310,7 @@ async function prepareGeneration(
       creditCheckMicros: creditFloorMicros,
       creditProviders: UPDATE_STALE_CREDIT_PROVIDERS,
       hasWork: hasWork(plan),
-      needsIdleSequence: false,
-      work: async () => summarize(plan, await inFlight()),
+      work: summarize(plan, inFlight),
       launch: async (runKey, onLaunched) => {
         await onLaunched(
           await launchUpdateStale({
@@ -339,6 +340,7 @@ async function prepareGeneration(
       generateVoices: sequence.generateVoices,
     },
     draftMotion: sequence.draftMotion,
+    generationPlan,
   });
   const plan = await computePlan({
     scopedDb,
@@ -354,9 +356,7 @@ async function prepareGeneration(
     creditCheckMicros: estimate.micros,
     creditProviders: CONTINUE_CREDIT_PROVIDERS,
     hasWork: hasWork(plan),
-    // prepareContinue refused a running sequence; execute re-prepares.
-    needsIdleSequence: false,
-    work: async () => summarize(plan, await inFlight()),
+    work: summarize(plan, inFlight),
     // The storyboard mutex is the launch-once guard here: a repeat while the
     // run is live is GENERATION_IN_PROGRESS, and after it PLAN_CHANGED.
     launch: async (_runKey, onLaunched) => {
@@ -386,7 +386,8 @@ async function prepareRetry(
     scopedDb,
   };
   const smartOnly = request.retry === 'smart';
-  const { planned } = await executeSmartRetry(context, {
+  // The dry run reads the storyboard mutex: a live run throws here.
+  const { planned, creditProviders } = await executeSmartRetry(context, {
     dryRun: true,
     smartOnly,
   });
@@ -396,10 +397,11 @@ async function prepareRetry(
     digestMaterial: planned,
     estimateMicros,
     creditCheckMicros: estimateMicros,
-    creditProviders: ['fal', 'openrouter'],
+    // The strictest set the launch reserves with, so the check it passes
+    // cannot fail a reservation part-way.
+    creditProviders,
     hasWork: true,
-    needsIdleSequence: true,
-    work: async () => work,
+    work,
     launch: async (runKey, onLaunched) => {
       await executeSmartRetry(context, { smartOnly, onLaunched, runKey });
     },
@@ -472,14 +474,7 @@ export async function planGeneration(
   request: GenerationRequest
 ) {
   const prepared = await prepare(scopedDb, actor, sequenceId, request);
-  const work = await prepared.work();
   const blockers: { code: string; message: string }[] = [];
-  if (prepared.needsIdleSequence && prepared.sequence.status === 'processing') {
-    blockers.push({
-      code: 'GENERATION_IN_PROGRESS',
-      message: 'A run is generating this sequence; execute after it finishes.',
-    });
-  }
   if (!prepared.hasWork) {
     blockers.push({ code: 'NOTHING_TO_DO', message: 'Nothing to generate.' });
   }
@@ -503,7 +498,7 @@ export async function planGeneration(
       usd:
         prepared.estimateMicros === null ? null : prepared.estimateMicros / 1e6,
     },
-    work,
+    work: prepared.work,
     blockers,
   };
 }
@@ -530,13 +525,6 @@ export async function executeGeneration(
     );
   }
   if (!prepared.hasWork) throw new ValidationError('Nothing to generate.');
-  if (prepared.needsIdleSequence && prepared.sequence.status === 'processing') {
-    throw new OpenStoryError(
-      'A run is generating this sequence; execute after it finishes.',
-      'GENERATION_IN_PROGRESS',
-      409
-    );
-  }
   await checkCredits(scopedDb, prepared);
 
   // Every run this plan starts carries the sequence id (status requires it
@@ -665,25 +653,19 @@ export async function startExportOperation(
   sequenceId: string
 ) {
   const cut = await resolveExportCut(scopedDb, sequenceId);
-  const preview = await previewExport(scopedDb, sequenceId, cut);
-  if (preview.action === 'busy_other_cut') {
-    throw new OpenStoryError(
-      'An export of an earlier cut is rendering; start this one after it finishes.',
-      'EXPORT_BUSY',
-      409
-    );
-  }
-  const { row, workflowRunId } = await startExport(scopedDb, {
+  // One decision: the refusal and the reported action are the start's own.
+  const { row, workflowRunId, action } = await startExport(scopedDb, {
     userId: actor.userId,
     teamId: actor.teamId,
     sequenceId,
     cut,
+    refuseOtherCut: true,
   });
   return {
     sequenceId,
     exportId: row.id,
     status: row.status,
-    action: preview.action,
+    action,
     workflowRunId,
   };
 }

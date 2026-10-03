@@ -147,7 +147,7 @@ export const productionReadTools = [
       const [frame] = await withImageAttempts(scopedDb, [
         await productionAccess(scopedDb).frame(input.sequenceId, input.frameId),
       ]);
-      if (!frame) throw new Error(`Frame ${input.frameId} not found`);
+      if (!frame) throw new NotFoundError('Frame not found');
       return { frame: projectRead(frameReadSchema, frame, origin) };
     }
   ),

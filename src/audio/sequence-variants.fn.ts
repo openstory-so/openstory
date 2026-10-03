@@ -19,7 +19,6 @@ import {
 } from '@/platform/middleware.fn';
 import { NotFoundError } from '@/platform/errors';
 import {
-  assertSequenceVariantPromotable,
   discardMusicTrack,
   selectMusicTrack,
   undiscardMusicTrack,
@@ -62,14 +61,9 @@ export const promoteSequenceMusicVariantFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
-    const { sequence, scopedDb } = context;
-    assertSequenceVariantPromotable(
-      await scopedDb.sequenceVariants.getMusicById(data.variantId),
-      sequence.id
-    );
     const selected = await selectMusicTrack(
-      scopedDb,
-      sequence.id,
+      context.scopedDb,
+      context.sequence.id,
       data.variantId
     );
     return { sequence: selected.sequence, variantId: selected.variant.id };

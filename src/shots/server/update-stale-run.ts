@@ -19,6 +19,7 @@ import { ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
+import type { PlanUnit } from '@/sequences/generation-plan';
 import { planUpdateAll, type UpdateStalePlan } from './update-stale-plan';
 
 const logger = getLogger(['openstory', 'update-stale-run']);
@@ -74,6 +75,8 @@ export async function prepareUpdateStale(args: {
   sceneId?: string;
   shotId?: string;
   shotIds?: readonly string[];
+  /** The live plan, when the caller already computed it (agent plans). */
+  generationPlan?: readonly PlanUnit[];
 }): Promise<{ plan: UpdateStalePlan; creditFloorMicros: Microdollars }> {
   const { scopedDb, sequence, depth } = args;
   if (sequence.status === 'processing') {
@@ -100,6 +103,7 @@ export async function prepareUpdateStale(args: {
     shotIds: args.shotIds,
     depth,
     userId: args.userId,
+    generationPlan: args.generationPlan,
   });
   return { plan, creditFloorMicros };
 }

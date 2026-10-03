@@ -124,6 +124,8 @@ export async function prepareContinue(args: {
   stopAt: GenerationStage;
   requested: { generateStartFrames: boolean; generateVoices: boolean };
   draftMotion: boolean;
+  /** The live plan under the saved switches, when already computed. */
+  generationPlan?: readonly PlanUnit[];
 }) {
   const { scopedDb, sequence, requested } = args;
   await getSequenceRejectingActiveRun(scopedDb, sequence.id);
@@ -131,7 +133,8 @@ export async function prepareContinue(args: {
     generateStartFrames: sequence.generateStartFrames,
     generateVoices: sequence.generateVoices,
   };
-  const current = await computeGenerationPlan(scopedDb, sequence.id);
+  const current =
+    args.generationPlan ?? (await computeGenerationPlan(scopedDb, sequence.id));
   const next =
     saved.generateStartFrames === requested.generateStartFrames &&
     saved.generateVoices === requested.generateVoices

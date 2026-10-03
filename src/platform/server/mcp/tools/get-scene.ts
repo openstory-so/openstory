@@ -5,7 +5,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { readToolDefinition, sequenceInput } from '../tool-context';
 import { productionAccess } from '@/sequences/server/production-access';
 
-/** The scene projection get_scene returns; update_scene returns it too (#1459). */
+/** The scene projection get_scene and the scene resource return (#1462). */
 export async function readSceneDetail(
   scopedDb: ScopedDb,
   sequenceId: string,

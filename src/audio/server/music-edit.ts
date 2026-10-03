@@ -33,34 +33,6 @@ const logger = getLogger(['openstory', 'audio', 'music-edit']);
 
 type Actor = { userId: string };
 
-/**
- * Shape needed to decide whether a variant is promotable. Music variant rows
- * satisfy this — the precondition checks are: cross-sequence, live-ness,
- * asset-presence.
- */
-export type SequenceVariantPromoteCandidate = {
-  id: string;
-  sequenceId: string;
-  divergedAt: Date | null;
-  discardedAt: Date | null;
-  url: string | null;
-};
-
-/** Throw if `variant` is not a promotable live divergent alternate of `sequenceId`. */
-export function assertSequenceVariantPromotable<
-  T extends SequenceVariantPromoteCandidate,
->(variant: T | null, sequenceId: string): asserts variant is T {
-  if (!variant || variant.sequenceId !== sequenceId) {
-    throw new NotFoundError('Variant not found for this sequence');
-  }
-  if (variant.divergedAt === null || variant.discardedAt !== null) {
-    throw new ValidationError('Variant is not a live divergent alternate');
-  }
-  if (!variant.url) {
-    throw new ValidationError('Variant has no asset to promote');
-  }
-}
-
 /** A music track of this sequence. */
 async function requireMusicTrack(
   scopedDb: ScopedDb,
@@ -213,7 +185,7 @@ export async function generateMusic(
   actor: Actor,
   sequence: Sequence,
   data: { prompt?: string; tags?: string; model?: string; duration?: number }
-): Promise<{ success: true; variantId: string | null }> {
+): Promise<{ variantId: string | null }> {
   const effectivePrompt = data.prompt ?? sequence.musicPrompt;
   const effectiveTags = data.tags ?? sequence.musicTags;
 
@@ -267,7 +239,7 @@ export async function generateMusic(
     workflowRunId: null,
     ifPendingIs: sequence.pendingPromoteMusicVariantId,
   });
-  if (!variantId) return { success: true, variantId: null };
+  if (!variantId) return { variantId: null };
 
   try {
     await triggerWorkflow('/music', { ...musicInput, variantId });
@@ -279,7 +251,7 @@ export async function generateMusic(
     throw error;
   }
 
-  return { success: true, variantId };
+  return { variantId };
 }
 
 /** Stable deduplication ID for music-prompt regeneration. */

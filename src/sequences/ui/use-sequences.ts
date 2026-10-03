@@ -311,9 +311,8 @@ function invalidateSequenceLists(
 
 /**
  * Rename a sequence (#1108 Phase 4) — title-only write via the dedicated
- * `renameSequenceFn` (never `updateSequenceFn`, whose aspect-ratio handling
- * makes it unsafe for partial writes). Refreshes the detail (breadcrumb +
- * header) and the sequences list.
+ * `renameSequenceFn`. Refreshes the detail (breadcrumb + header) and the
+ * sequences list.
  */
 export function useRenameSequence(sequenceId: string) {
   const queryClient = useQueryClient();

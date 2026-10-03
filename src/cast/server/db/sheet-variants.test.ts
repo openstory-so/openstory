@@ -343,6 +343,27 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     expect(restored?.discardedAt).toBeNull();
   });
 
+  it('refuses to discard the selected sheet version', async () => {
+    const methods = createCharacterSheetVariantsMethods(db);
+    const variant = await methods.insertDivergent({
+      characterId,
+      model: 'flux-pro',
+      url: 'https://example.com/live.png',
+      status: 'completed',
+      inputHash: characterSheetInputHash('hash-live'),
+      divergedAt: new Date('2026-04-29T00:00:00Z'),
+    });
+    await db
+      .update(characters)
+      .set({ selectedSheetVersionId: variant.id })
+      .where(eq(characters.id, characterId));
+
+    await expect(methods.discard(variant.id)).rejects.toThrow(
+      /Cannot discard the selected/
+    );
+    expect((await methods.getById(variant.id))?.discardedAt).toBeNull();
+  });
+
   it('listDivergentActiveByCharacter excludes discarded rows', async () => {
     const methods = createCharacterSheetVariantsMethods(db);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
@@ -391,6 +412,33 @@ describe('location-sheet-variants discard / promote', () => {
       parentId
     );
     expect(active).toHaveLength(0);
+  });
+
+  it('refuses to discard a sequence location’s selected reference', async () => {
+    const methods = createLocationSheetVariantsMethods(db);
+    const [location] = await db
+      .insert(sequenceLocations)
+      .values({ sequenceId, locationId: 'loc_001', legacyName: 'Harbour' })
+      .returning();
+    if (!location) throw new Error('location insert returned nothing');
+    const variant = await methods.insertDivergent({
+      parentType: 'sequence_location',
+      parentId: location.id,
+      model: 'flux-pro',
+      url: 'https://example.com/live.png',
+      status: 'completed',
+      inputHash: locationSheetInputHash('hash-live'),
+      divergedAt: new Date('2026-04-29T00:00:00Z'),
+    });
+    await db
+      .update(sequenceLocations)
+      .set({ selectedReferenceVersionId: variant.id })
+      .where(eq(sequenceLocations.id, location.id));
+
+    await expect(methods.discard(variant.id)).rejects.toThrow(
+      /Cannot discard the selected/
+    );
+    expect((await methods.getById(variant.id))?.discardedAt).toBeNull();
   });
 });
 

@@ -765,8 +765,7 @@ export function createSequencesMethods(
       generationStopAt?: GenerationStage;
       /**
        * Continue-from before Images (#1698): the create-time default can
-       * still change because no stills exist yet. The general
-       * `updateSequenceFn` path still omits this field.
+       * still change because no stills exist yet.
        */
       generateStartFrames?: boolean;
       /** Continue-from before Dialogue (#1698). */

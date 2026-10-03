@@ -99,10 +99,10 @@ const listCharacterVoices = productionRead(
     )
 );
 
-const deletedRow = { id: z.string(), deletedAt: z.string() };
+const deletedRow = { token: z.string(), deletedAt: z.string() };
 const listDeletedCastTool = productionRead(
   'list_deleted_cast',
-  'List a sequence’s deleted characters, locations and elements, most recently deleted first, so they can be restored with restore_character / restore_location / restore_element.',
+  'List a sequence’s deleted characters, locations and elements, most recently deleted first. characterId / locationId / elementId are the database ids restore_character / restore_location / restore_element take; token is the script token.',
   z.strictObject({ sequenceId }),
   z.object({
     characters: z.array(
@@ -112,7 +112,7 @@ const listDeletedCastTool = productionRead(
       z.object({ ...deletedRow, locationId: z.string(), name: z.string() })
     ),
     elements: z.array(
-      z.object({ ...deletedRow, token: z.string(), kind: z.string() })
+      z.object({ ...deletedRow, elementId: z.string(), kind: z.string() })
     ),
   }),
   (input, { scopedDb }) => listDeletedCast(scopedDb, input.sequenceId)
@@ -154,7 +154,7 @@ const createCharacterTool = openstoryTool({
 const updateCharacterTool = openstoryTool({
   name: 'update_character',
   description:
-    'Edit a character’s bible (read it with get_character). Only the sent fields change; an empty string clears a text field. voiceOnly is required: true means the character is only heard, never seen. The character’s sheet and the prompts that use it become stale; no generation starts.',
+    'Edit a character’s bible (read it with get_character). An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. The character’s sheet and the prompts that use it become stale; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: characterBibleFieldsSchema
@@ -166,17 +166,17 @@ const updateCharacterTool = openstoryTool({
     { sequenceId: id, characterId: charId, ...fields },
     { scopedDb, userId }
   ) => {
-    const character = await productionAccess(scopedDb).character(id, charId);
-    await updateCharacter(
+    const sequence = await productionAccess(scopedDb).sequence(id);
+    const character = await updateCharacter(
       scopedDb,
       { userId },
-      character.sequenceId,
-      character.id,
+      sequence.id,
+      charId,
       fields
     );
     return {
       data: { characterId: character.id },
-      summary: `Updated character ${fields.name ?? character.name}.`,
+      summary: `Updated character ${character.name}.`,
     };
   },
 });
@@ -190,19 +190,18 @@ const deleteCharacterTool = openstoryTool({
   inputSchema: characterInput,
   outputSchema: characterResult,
   run: async (input, { scopedDb, userId }) => {
-    const character = await productionAccess(scopedDb).character(
-      input.sequenceId,
-      input.characterId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
-    await deleteCharacter(
+    const deleted = await deleteCharacter(
       scopedDb,
       { userId },
-      character.sequenceId,
-      character.id
+      sequence.id,
+      input.characterId
     );
     return {
-      data: { characterId: character.id },
-      summary: `Deleted character ${character.name}.`,
+      data: { characterId: deleted.characterId },
+      summary: `Deleted character ${deleted.name}.`,
     };
   },
 });
@@ -241,20 +240,19 @@ const setCharacterVoiceEnabledTool = openstoryTool({
   inputSchema: characterInput.extend({ enabled: z.boolean() }),
   outputSchema: z.object({ characterId: z.string(), useVoice: z.boolean() }),
   run: async (input, { scopedDb, userId }) => {
-    const character = await productionAccess(scopedDb).character(
-      input.sequenceId,
-      input.characterId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
-    const result = await setCharacterVoiceEnabled(
+    const { name, ...result } = await setCharacterVoiceEnabled(
       scopedDb,
       { userId },
-      character.sequenceId,
-      character.id,
+      sequence.id,
+      input.characterId,
       input.enabled
     );
     return {
       data: result,
-      summary: `Voice ${input.enabled ? 'on' : 'off'} for ${character.name}.`,
+      summary: `Voice ${input.enabled ? 'on' : 'off'} for ${name}.`,
     };
   },
 });
@@ -271,19 +269,18 @@ const selectCharacterVoiceVersionTool = openstoryTool({
     voiceId: z.string().nullable(),
   }),
   run: async (input, { scopedDb }) => {
-    const character = await productionAccess(scopedDb).character(
-      input.sequenceId,
-      input.characterId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
-    const result = await selectCharacterVoiceVersion(
+    const { name, ...result } = await selectCharacterVoiceVersion(
       scopedDb,
-      character.sequenceId,
-      character.id,
+      sequence.id,
+      input.characterId,
       input.versionId
     );
     return {
       data: result,
-      summary: `Selected the voice for ${character.name}.`,
+      summary: `Selected the voice for ${name}.`,
     };
   },
 });
@@ -297,20 +294,19 @@ const selectCharacterSheetVersionTool = openstoryTool({
   inputSchema: characterInput.extend({ versionId: ulidSchema }),
   outputSchema: versionResult.extend({ characterId: z.string() }),
   run: async (input, { scopedDb, userId }) => {
-    const character = await productionAccess(scopedDb).character(
-      input.sequenceId,
-      input.characterId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
-    const result = await selectCharacterSheetVersion(
+    const { name, ...result } = await selectCharacterSheetVersion(
       scopedDb,
       { userId },
-      character.sequenceId,
-      character.id,
+      sequence.id,
+      input.characterId,
       input.versionId
     );
     return {
       data: result,
-      summary: `Selected the sheet for ${character.name}.`,
+      summary: `Selected the sheet for ${name}.`,
     };
   },
 });
@@ -323,7 +319,7 @@ const sheetVersionInput = z.strictObject({
 const discardCharacterSheetVersionTool = openstoryTool({
   name: 'discard_character_sheet_version',
   description:
-    'Hide a character sheet version from its history (list_versions with includeDiscarded shows it). undiscard_character_sheet_version brings it back.',
+    'Hide a character sheet version from its history (list_versions with includeDiscarded shows it). Refused for the selected version. undiscard_character_sheet_version brings it back.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: sheetVersionInput,
@@ -408,7 +404,7 @@ const LOCATION_FIELDS = [
 const updateLocationTool = openstoryTool({
   name: 'update_location',
   description:
-    'Edit a location’s bible (read it with get_location). Only the sent fields change; an empty string clears a text field. Its reference image and the prompts that use it become stale; no generation starts.',
+    'Edit a location’s bible (read it with get_location). An unsent field keeps its value; an empty string clears a text field; type (an enum) cannot be cleared, only set. Its reference image and the prompts that use it become stale; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: locationBibleFieldsSchema
@@ -422,17 +418,17 @@ const updateLocationTool = openstoryTool({
     { sequenceId: id, locationId: locId, ...fields },
     { scopedDb, userId }
   ) => {
-    const location = await productionAccess(scopedDb).location(id, locId);
-    await updateLocation(
+    const sequence = await productionAccess(scopedDb).sequence(id);
+    const location = await updateLocation(
       scopedDb,
       { userId },
-      location.sequenceId,
-      location.id,
+      sequence.id,
+      locId,
       fields
     );
     return {
       data: { locationId: location.id },
-      summary: `Updated location ${fields.name ?? location.name}.`,
+      summary: `Updated location ${location.name}.`,
     };
   },
 });
@@ -446,19 +442,18 @@ const deleteLocationTool = openstoryTool({
   inputSchema: locationInput,
   outputSchema: locationResult,
   run: async (input, { scopedDb, userId }) => {
-    const location = await productionAccess(scopedDb).location(
-      input.sequenceId,
-      input.locationId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
-    await deleteLocation(
+    const deleted = await deleteLocation(
       scopedDb,
       { userId },
-      location.sequenceId,
-      location.id
+      sequence.id,
+      input.locationId
     );
     return {
-      data: { locationId: location.id },
-      summary: `Deleted location ${location.name}.`,
+      data: { locationId: deleted.locationDbId },
+      summary: `Deleted location ${deleted.name}.`,
     };
   },
 });
@@ -496,20 +491,22 @@ const selectLocationSheetVersionTool = openstoryTool({
   inputSchema: locationInput.extend({ versionId: ulidSchema }),
   outputSchema: versionResult.extend({ locationId: z.string() }),
   run: async (input, { scopedDb, userId }) => {
-    const location = await productionAccess(scopedDb).location(
-      input.sequenceId,
-      input.locationId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
-    const { versionId } = await selectLocationSheetVersion(
+    const selected = await selectLocationSheetVersion(
       scopedDb,
       { userId },
-      location.sequenceId,
-      location.id,
+      sequence.id,
+      input.locationId,
       input.versionId
     );
     return {
-      data: { versionId, locationId: location.id },
-      summary: `Selected the reference for ${location.name}.`,
+      data: {
+        versionId: selected.versionId,
+        locationId: selected.locationDbId,
+      },
+      summary: `Selected the reference for ${selected.name}.`,
     };
   },
 });
@@ -517,7 +514,7 @@ const selectLocationSheetVersionTool = openstoryTool({
 const discardLocationSheetVersionTool = openstoryTool({
   name: 'discard_location_sheet_version',
   description:
-    'Hide a location reference version from its history (list_versions with includeDiscarded shows it). undiscard_location_sheet_version brings it back.',
+    'Hide a location reference version from its history (list_versions with includeDiscarded shows it). Refused for the selected version. undiscard_location_sheet_version brings it back.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: sheetVersionInput,
@@ -572,14 +569,13 @@ const setElementDescriptionTool = openstoryTool({
   inputSchema: elementInput.extend({ description: z.string().max(2000) }),
   outputSchema: elementResult.extend({ description: z.string().nullable() }),
   run: async (input, { scopedDb }) => {
-    const element = await productionAccess(scopedDb).element(
-      input.sequenceId,
-      input.elementId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
     const updated = await setElementDescription(
       scopedDb,
-      element.sequenceId,
-      element.id,
+      sequence.id,
+      input.elementId,
       input.description
     );
     return {
@@ -598,14 +594,18 @@ const deleteElementTool = openstoryTool({
   inputSchema: elementInput,
   outputSchema: elementResult,
   run: async (input, { scopedDb, userId }) => {
-    const element = await productionAccess(scopedDb).element(
-      input.sequenceId,
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
+    const deleted = await deleteElement(
+      scopedDb,
+      { userId },
+      sequence.id,
       input.elementId
     );
-    await deleteElement(scopedDb, { userId }, element.sequenceId, element.id);
     return {
-      data: { elementId: element.id },
-      summary: `Deleted element ${element.token}.`,
+      data: { elementId: input.elementId },
+      summary: `Deleted element ${deleted.token}.`,
     };
   },
 });
@@ -647,14 +647,13 @@ const renameElementTokenTool = openstoryTool({
     scriptUpdated: z.boolean(),
   }),
   run: async (input, { scopedDb }) => {
-    const element = await productionAccess(scopedDb).element(
-      input.sequenceId,
-      input.elementId
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
     );
     const result = await renameElementToken(
       scopedDb,
-      element.sequenceId,
-      element.id,
+      sequence.id,
+      input.elementId,
       input.token
     );
     return {
@@ -760,7 +759,7 @@ const selectMusicTrackTool = openstoryTool({
 const discardMusicTrackTool = openstoryTool({
   name: 'discard_music_track',
   description:
-    'Hide a music track from the sequence’s history (list_versions with includeDiscarded shows it). undiscard_music_track brings it back.',
+    'Hide a music track from the sequence’s history (list_versions with includeDiscarded shows it). Refused for the track playing. undiscard_music_track brings it back.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: musicTrackInput,

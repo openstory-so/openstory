@@ -2,164 +2,88 @@
  * Sequence-level edits shared by the editor's server fns and the MCP tools,
  * so both write the same rows, events and side effects.
  */
-import type { z } from 'zod';
+import type { AspectRatio } from '@/models/aspect-ratios';
 import {
-  DEFAULT_IMAGE_MODEL,
-  DEFAULT_MUSIC_MODEL,
-  DEFAULT_VIDEO_MODEL,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/models/models';
-import {
-  releaseReservationOnThrow,
-  reserveRunCredits,
-} from '@/billing/server/preflight';
-import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-cost';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { bumpStylePopularity } from '@/look/server/bump-style-popularity';
 import { releaseCharacterVoice } from '@/cast/server/voice/release-voice';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
-import { triggerStoryboard } from '@/sequences/server/launchers';
-import type { updateSequenceSchema } from '@/sequences/server/sequence.schemas';
 import {
-  allowsUnfundedGeneration,
-  flagsFromStopAt,
-  resolveStopAt,
-} from '@/sequences/pipeline';
+  createSequenceSchema,
+  type CreateSequenceInput,
+} from '@/sequences/server/sequence.schemas';
+import { resolveStopAt } from '@/sequences/pipeline';
 
-type Actor = { userId: string; teamId: string };
+/** What a regenerate may change; everything else comes from the source. */
+type StoryboardChange = {
+  script?: string;
+  styleId?: string;
+  aspectRatio?: AspectRatio;
+  analysisModel?: string;
+};
 
-export type SequenceUpdate = z.infer<typeof updateSequenceSchema>;
-
-/** Fields whose change re-runs the whole storyboard. */
-function updateNeedsStoryboard(update: SequenceUpdate): boolean {
-  return (
-    update.script !== undefined ||
-    update.styleId !== undefined ||
-    update.aspectRatio !== undefined ||
-    update.analysisModel !== undefined
-  );
+/**
+ * The create input for a regenerate, built the way the editor's Generate
+ * builds it (`script-view.tsx`): the source sequence's settings with the
+ * change applied, and `sourceSequenceId` so its elements are copied. A
+ * regenerate is a NEW sequence; the source is left as it is.
+ */
+export function regenerateInput(
+  source: Sequence,
+  change: StoryboardChange
+): CreateSequenceInput {
+  const videoModel = safeImageToVideoModel(source.videoModel);
+  const musicModel = safeAudioModel(source.musicModel);
+  return createSequenceSchema.parse({
+    script: change.script ?? source.script,
+    styleId: change.styleId ?? source.styleId,
+    aspectRatio: change.aspectRatio ?? source.aspectRatio,
+    resolution: source.resolution,
+    analysisModels: [change.analysisModel ?? source.analysisModel],
+    imageModels: [safeTextToImageModel(source.imageModel)],
+    videoModel,
+    videoModels: [videoModel],
+    stopAt: resolveStopAt({ generationStopAt: source.generationStopAt }),
+    generateStartFrames: source.generateStartFrames,
+    generateVoices: source.generateVoices,
+    draftMotion: source.draftMotion,
+    musicModel,
+    audioModels: [musicModel],
+    targetDurationSeconds: source.targetDurationSeconds ?? undefined,
+    sourceSequenceId: source.id,
+  });
 }
 
 /**
- * Write a sequence update; a script, style, aspect ratio or analysis model
- * change re-runs the storyboard (credits reserved first, unless the stop-at
- * runs unfunded). Only the fields present are written.
+ * Settings write, one UPDATE; a changed title also records
+ * `sequence.renamed`. Only the fields present are written.
  */
-export async function updateSequence(
-  scopedDb: ScopedDb,
-  actor: Actor,
-  previous: Sequence,
-  update: SequenceUpdate
-): Promise<Sequence> {
-  const sequenceId = previous.id;
-  // No eager 'processing' write: `triggerStoryboard` owns the status flip
-  // below, so a rejected trigger (mutex held, no script) leaves the sequence
-  // in its real state instead of a spinner that never resolves.
-  const sequence = await scopedDb.sequences.update({
-    id: sequenceId,
-    ...update,
-  });
-
-  // sequences.styleId is `.notNull() + onDelete: 'set null'` — TS types it as
-  // non-null but the runtime value can be null after the parent style is
-  // deleted. Keep the runtime guard despite what the type says.
-  if (
-    update.styleId !== undefined &&
-    update.styleId !== previous.styleId &&
-    sequence.styleId
-  ) {
-    bumpStylePopularity({
-      scopedDb,
-      styleId: sequence.styleId,
-      sequenceIds: [sequence.id],
-      teamId: actor.teamId,
-      userId: actor.userId,
-    });
-  }
-
-  if (!updateNeedsStoryboard(update)) return sequence;
-
-  const stopAt = resolveStopAt({
-    generationStopAt: sequence.generationStopAt,
-  });
-  const reservationId = allowsUnfundedGeneration(stopAt)
-    ? undefined
-    : await reserveRunCredits(
-        scopedDb,
-        estimateStoryboardPreflightCost({
-          script: sequence.script ?? '',
-          imageModel: safeTextToImageModel(
-            sequence.imageModel,
-            DEFAULT_IMAGE_MODEL
-          ),
-          aspectRatio: sequence.aspectRatio,
-          resolution: sequence.resolution,
-          stopAt,
-          videoModels: [
-            safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-          ],
-          audioModels: [
-            safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL),
-          ],
-          referenceOnly: !sequence.generateStartFrames,
-          generateVoices: sequence.generateVoices,
-          draftMotion: sequence.draftMotion,
-          targetDurationSeconds: sequence.targetDurationSeconds ?? undefined,
-          pricing: await getEffectiveFalPricing(),
-        }),
-        {
-          providers: ['fal', 'openrouter'],
-          errorMessage: 'Insufficient credits to regenerate storyboard',
-          sequenceId,
-        }
-      );
-
-  // Owns the generation mutex, the 'processing' status write, the run-id
-  // persistence (#839), and the trigger-time content snapshot. Regeneration
-  // used to trigger `/storyboard` raw, so it both bypassed the mutex and
-  // left the workflow to re-derive the payload mid-run.
-  await releaseReservationOnThrow(scopedDb, reservationId, () =>
-    triggerStoryboard(scopedDb, {
-      userId: actor.userId,
-      teamId: actor.teamId,
-      sequenceId,
-      reservationId,
-      options: {
-        shotsPerScene: 3,
-        generateThumbnails: true,
-        generateDescriptions: true,
-        aiProvider: 'openrouter',
-        regenerateAll: true,
-      },
-      ...flagsFromStopAt(stopAt),
-      stopAt,
-    })
-  );
-  return sequence;
-}
-
-/** Rename, recording the event only when the title changed. */
-export async function renameSequence(
+export async function updateSequenceSettings(
   scopedDb: ScopedDb,
   actor: { userId: string },
   previous: Sequence,
-  title: string
+  settings: {
+    title?: string;
+    targetDurationSeconds?: number | null;
+    includeMusic?: boolean;
+    videoModel?: string;
+  }
 ): Promise<Sequence> {
   const sequence = await scopedDb.sequences.update({
     id: previous.id,
-    title,
+    ...settings,
   });
-  if (title !== previous.title) {
+  if (settings.title !== undefined && settings.title !== previous.title) {
     await scopedDb.sequenceEvents.record({
       sequenceId: previous.id,
       actorId: actor.userId,
       kind: 'sequence.renamed',
       targetType: 'sequence',
       targetId: previous.id,
-      summary: `Renamed sequence to ${title}`,
+      summary: `Renamed sequence to ${settings.title}`,
       data: { prevTitle: previous.title },
     });
   }

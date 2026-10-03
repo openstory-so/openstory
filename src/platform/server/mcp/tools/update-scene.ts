@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
-import { sceneDetailSchema } from '@/shots/inspection.schema';
 import { dbSceneId } from '@/shots/scene-id';
 import { sceneNarrativeFieldsSchema } from '@/shots/scene-narrative';
 import { updateScene } from '@/shots/server/scene-edit';
@@ -10,7 +9,6 @@ import {
 } from '@/shots/server/production-context';
 import { productionAccess } from '@/sequences/server/production-access';
 import { openstoryTool } from '../tool-context';
-import { readSceneDetail } from './get-scene';
 
 const narrative = sceneNarrativeFieldsSchema.shape;
 const MUTATION_FIELDS = [
@@ -56,7 +54,7 @@ const updateSceneInput = z
 export const updateSceneTool = openstoryTool({
   name: 'update_scene',
   description:
-    'Edit one scene’s script text and narrative fields (title, location, timeOfDay, storyBeat, continuity tags). Omitted fields are unchanged; an empty string clears a narrative field. Pass expectedScriptVersionId from get_scene so a stale edit is refused. Shot duration, starting frames, prompts and models are not scene fields. Writes a new selected script version; starts no generation. Returns the updated scene (same shape as get_scene) and the first page of its shots’ staleness.',
+    'Edit one scene’s script text and narrative fields (title, location, timeOfDay, storyBeat, continuity tags). Omitted fields are unchanged; an empty string clears a narrative field. Pass expectedScriptVersionId from get_scene so a stale edit is refused. Shot duration, starting frames, prompts and models are not scene fields. Writes a new selected script version; starts no generation. Returns the scene id, its selected script version id (the next expectedScriptVersionId), its shot ids and the first page of its shots’ staleness; read the scene back with get_scene.',
   scope: 'sequences:write',
   annotations: {
     readOnlyHint: false,
@@ -65,7 +63,13 @@ export const updateSceneTool = openstoryTool({
     openWorldHint: false,
   },
   inputSchema: updateSceneInput,
-  outputSchema: sceneDetailSchema.extend({
+  outputSchema: z.object({
+    sceneId: z.string(),
+    scriptVersionId: z
+      .string()
+      .nullable()
+      .describe('The selected script version after the edit.'),
+    shotIds: z.array(z.string()).describe('The scene’s shots, in order.'),
     changed: z
       .boolean()
       .describe('False when the input matched the scene: nothing written.'),
@@ -78,12 +82,12 @@ export const updateSceneTool = openstoryTool({
         'Downstream effect on this scene’s shots. Continue with list_shot_staleness and the sceneId.'
       ),
   }),
-  run: async (input, { scopedDb, origin, userId }) => {
+  run: async (input, { scopedDb, userId }) => {
     // Team ownership; the service checks the scene belongs to it.
     const sequence = await productionAccess(scopedDb).sequence(
       input.sequenceId
     );
-    const { changed } = await updateScene(
+    const { scene, changed } = await updateScene(
       scopedDb,
       { userId },
       {
@@ -100,8 +104,8 @@ export const updateSceneTool = openstoryTool({
         expectedScriptVersionId: input.expectedScriptVersionId,
       }
     );
-    const [scene, staleness] = await Promise.all([
-      readSceneDetail(scopedDb, sequence.id, input.sceneId, origin),
+    const [shots, staleness] = await Promise.all([
+      scopedDb.shots.listBySequence(sequence.id, { sceneId: scene.id }),
       listShotStaleness(scopedDb, {
         sequenceId: sequence.id,
         sceneId: input.sceneId,
@@ -109,9 +113,15 @@ export const updateSceneTool = openstoryTool({
       }),
     ]);
     return {
-      data: { ...scene, changed, staleness },
+      data: {
+        sceneId: input.sceneId,
+        scriptVersionId: scene.selectedScriptVersionId,
+        shotIds: shots.map((shot) => shot.id),
+        changed,
+        staleness,
+      },
       summary: changed
-        ? `Updated scene ${scene.title ?? input.sceneId}; script version ${scene.script?.id ?? 'none'}.`
+        ? `Updated scene ${scene.title ?? input.sceneId}; script version ${scene.selectedScriptVersionId ?? 'none'}.`
         : 'No change: the scene already matched.',
     };
   },

@@ -21,7 +21,6 @@ import {
 } from '@/cast/seed-voice';
 import { generateMusic, rewriteMusicPrompt } from '@/audio/server/music-edit';
 import { AUDIO_MODELS } from '@/models/models';
-import { ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { productionAccess } from '@/sequences/server/production-access';
 import {
@@ -260,22 +259,10 @@ const recastLocationTool = openstoryTool({
       input.sequenceId,
       input.locationId
     );
-    // What the editor's picker sends: the library row's own reference.
-    const library = await scopedDb.locations.getById(input.libraryLocationId);
-    if (!library?.referenceImageUrl) {
-      throw new ValidationError(
-        'That library location has no reference image to cast from.'
-      );
-    }
     const result = await recastLocation(
       scopedDb,
       { userId },
-      {
-        locationId: location.id,
-        libraryLocationId: library.id,
-        referenceImageUrl: library.referenceImageUrl,
-        description: library.description ?? undefined,
-      }
+      { locationId: location.id, libraryLocationId: input.libraryLocationId }
     );
     return {
       data: result,

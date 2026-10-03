@@ -44,6 +44,9 @@ export function productionAccess(scopedDb: ScopedDb) {
   }
   return {
     sequence,
+    /** For a caller that already loaded the sequence: no re-read per id. */
+    sceneIn,
+    shotIn,
     async scene(sequenceId: string, id: string) {
       await sequence(sequenceId);
       return sceneIn(sequenceId, id);

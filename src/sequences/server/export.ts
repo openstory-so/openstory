@@ -10,7 +10,7 @@
  */
 
 import { generateId } from '@/platform/id';
-import { ValidationError } from '@/platform/errors';
+import { OpenStoryError, ValidationError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { SequenceExport } from '@/platform/server/db/schema';
 import { decideExistingExport } from '@/platform/server/api-v1/export-reuse';
@@ -123,9 +123,19 @@ export async function previewExport(
   return { action: 'render' as const, exportId: null };
 }
 
+export type StartedExport = {
+  row: SequenceExport;
+  workflowRunId: string | null;
+  /** What this start did, from its own decision. */
+  action: 'reuse_ready' | 'join_in_flight' | 'render';
+};
+
 /**
  * Start (or reuse) the export of `cut`. `ready` is a reused MP4; `processing`
  * is either a new render (`workflowRunId` set) or the live one it joined.
+ * With `refuseOtherCut`, a live render of a different cut is `EXPORT_BUSY`
+ * instead of joined (MCP: joining it would hand back an MP4 without the
+ * latest edits).
  */
 export async function startExport(
   scopedDb: ScopedDb,
@@ -134,19 +144,28 @@ export async function startExport(
     teamId: string;
     sequenceId: string;
     cut: ExportCut;
+    refuseOtherCut?: boolean;
   }
-): Promise<{ row: SequenceExport; workflowRunId: string | null }> {
+): Promise<StartedExport> {
   const { sequenceId, cut } = input;
+  const join = (row: SequenceExport): StartedExport => {
+    if (input.refuseOtherCut && row.sourceShotsHash !== cut.sourceShotsHash) {
+      throw new OpenStoryError(
+        'An export of an earlier cut is rendering; start this one after it finishes.',
+        'EXPORT_BUSY',
+        409
+      );
+    }
+    return { row, workflowRunId: null, action: 'join_in_flight' };
+  };
   // Content-addressed reuse (#1402): a ready MP4 of this exact cut is
   // served as-is. Otherwise coalesce onto a live processing row, or fail a
   // stale one so it stops blocking new exports.
   const decision = await decide(scopedDb, sequenceId, cut.sourceShotsHash);
-  if (
-    decision.action === 'return-ready' ||
-    decision.action === 'return-processing'
-  ) {
-    return { row: decision.row, workflowRunId: null };
+  if (decision.action === 'return-ready') {
+    return { row: decision.row, workflowRunId: null, action: 'reuse_ready' };
   }
+  if (decision.action === 'return-processing') return join(decision.row);
   if (decision.action === 'fail-stale-processing') {
     await scopedDb.sequenceExports.markFailed(
       decision.row.id,
@@ -165,7 +184,7 @@ export async function startExport(
     storagePath: path,
     sourceShotsHash: cut.sourceShotsHash,
   });
-  if (!created) return { row, workflowRunId: null };
+  if (!created) return join(row);
 
   let workflowRunId: string;
   try {
@@ -200,7 +219,7 @@ export async function startExport(
     .catch((err: unknown) =>
       logger.error('Export run id not recorded', { err, exportId: row.id })
     );
-  return { row, workflowRunId };
+  return { row, workflowRunId, action: 'render' };
 }
 
 /** The public export document; the URL is absolute and only set when ready. */

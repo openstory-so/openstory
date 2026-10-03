@@ -225,12 +225,11 @@ The finalize logic lives in `src/shots/server/media-upload.ts`, shared with the 
 
 ## 4. Traps for future editors
 
-- **`updateSequenceFn` is not a general update** — it force-defaults
-  `aspectRatio` and treats field presence as a regeneration trigger (credits +
-  storyboard wipe). That is why `renameSequenceFn` / `setSequenceMusicFn` exist
-  as separate minimal writes. Documented, not fixed: route any new
-  single-field sequence write around it, never through it
-  (`src/sequences/sequences.fn.ts`).
+- **There is no general sequence update fn.** A script, style, aspect ratio
+  or analysis model change is a regenerate: a NEW sequence created from the
+  old one (`createSequenceFn` with `sourceSequenceId`). Every other setting is
+  its own minimal write (`renameSequenceFn`, `setSequenceMusicFn`, …) in
+  `src/sequences/sequences.fn.ts`.
 - **Integer timestamp columns round-trip at SECOND precision.** Two writes
   40ms apart store the SAME value — which is why the scene cascade restore
   matches by the event's recorded `shotIds`, not by timestamp equality (that

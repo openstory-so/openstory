@@ -1,4 +1,3 @@
-import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import { isValidTextToImageModel } from '@/models/models';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { locationBibleFieldsSchema } from './bible-field';
@@ -149,8 +148,6 @@ export const getShotIdsForLocationFn = createServerFn({ method: 'GET' })
 const recastLocationInputSchema = z.object({
   locationId: z.string().min(1),
   libraryLocationId: z.string().min(1),
-  referenceImageUrl: mediaUrlSchema,
-  description: z.string().optional(),
 });
 
 export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })

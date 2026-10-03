@@ -7,7 +7,6 @@
  * MCP adds only the parent-chain check.
  */
 import { z } from 'zod';
-import { measureStoredMediaDuration } from '@/cast/server/sequence-elements/media-duration';
 import {
   attachElementUpload,
   replaceElementUpload,
@@ -44,6 +43,7 @@ import { ValidationError } from '@/platform/errors';
 import { VARIANT_TYPES } from '@/platform/server/db/schema/shot-variants';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
+  fromShareableUrl,
   r2KeyFromUrl,
   toShareableUrl,
 } from '@/platform/server/storage/buckets';
@@ -96,20 +96,18 @@ const uploadRef = z
   .describe('The upload value upload_media returned.');
 const runResult = z.object({ workflowRunId: z.string(), shotId: z.string() });
 
-/** The stored `/r2/` form of an upload reference; attach validates the rest. */
+/**
+ * The stored `/r2/` form of an upload reference (`upload`, or the `url` read
+ * back from upload_media); attach validates the rest.
+ */
 function storedUpload(upload: string): string {
-  const key = r2KeyFromUrl(upload);
+  const key = r2KeyFromUrl(fromShareableUrl(upload));
   if (!key) {
     throw new ValidationError(
       'upload must be the value upload_media returned.'
     );
   }
   return `/r2/${key}`;
-}
-
-/** Seconds of a stored clip or track, read from its container. */
-function storedDuration(upload: string): Promise<number | null> {
-  return measureStoredMediaDuration(upload.slice('/r2/'.length));
 }
 
 // ── Reads ───────────────────────────────────────────────────────────────────
@@ -604,17 +602,14 @@ const setShotVideoFromUploadTool = openstoryTool({
   }),
   run: async ({ upload, ...input }, { scopedDb, userId }) => {
     const context = await shotEdit(scopedDb, userId, input);
-    const publicUrl = storedUpload(upload);
-    const durationSeconds = await storedDuration(publicUrl);
     const result = await setShotVideoFromUpload(context, {
-      publicUrl,
-      durationSeconds: durationSeconds ?? undefined,
+      publicUrl: storedUpload(upload),
     });
     return {
       data: {
         shotId: result.shotId,
         versionId: result.versionId,
-        durationSeconds,
+        durationSeconds: result.durationSeconds,
       },
       summary: 'Set the shot’s video.',
     };
@@ -631,11 +626,9 @@ const setMusicFromUploadTool = openstoryTool({
   outputSchema: z.object({ variantId: z.string() }),
   run: async ({ upload, sequenceId: id }, { scopedDb, userId }) => {
     const sequence = await productionAccess(scopedDb).sequence(id);
-    const publicUrl = storedUpload(upload);
-    const durationSeconds = await storedDuration(publicUrl);
     const result = await setSequenceMusicFromUpload(
       { scopedDb, user: { id: userId }, teamId: scopedDb.teamId, sequence },
-      { publicUrl, durationSeconds: durationSeconds ?? undefined }
+      { publicUrl: storedUpload(upload) }
     );
     return {
       data: { variantId: result.variantId },
