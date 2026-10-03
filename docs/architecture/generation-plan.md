@@ -356,7 +356,8 @@ or empty still results never start a grid; Continue and Update retain their exis
 
 MCP's `plan_generation` / `execute_generation` / `get_operation_status`
 (`src/sequences/server/generation-operations.ts`) are a third caller of the
-same plan, not a second planner.
+same plan, not a second planner. Nothing is stored: a plan is a token the
+agent hands back, and the launched runs are the operation.
 
 - **Modes.** `stale` is Update all (`planUpdateAll` up to a depth) for the
   sequence, an explicit list of scene IDs or an explicit list of shot IDs
@@ -366,13 +367,14 @@ same plan, not a second planner.
   refused with an actionable `VALIDATION_ERROR`. Failed-item retry is #1461.
 - **No side effects.** Planning prices with the editor's preview/estimate
   and reports insufficient credits, a running sequence or nothing-to-do as
-  `blockers`; it starts nothing. The one write is the `generation_plans` row
-  (and `computePlan`'s existing anchor-frame repair). Rows stay until their
-  sequence is deleted.
-- **The row is the handle and the operation.** It holds the request, the
-  digest, the approved estimate (`null` when a component has no price; it
-  is not a cap on what the run spends), what it targets per stage, a
-  30-minute expiry and the launched run ids.
+  `blockers`; it starts nothing and writes nothing (bar `computePlan`'s
+  existing anchor-frame repair).
+- **The token is the plan.** `planToken` is unsigned base64url JSON: the
+  sequence id, the request, the digest and a random 12-hex-char key. It is
+  not signed because it can only name work its holder could plan directly,
+  and execute re-plans and re-checks everything in it. There is no expiry:
+  live pricing is in the digest, so a price change already fails the
+  compare.
 - **Digest.** It covers the request, every target (ids, flags, pinned
   version ids, input hashes, models), music, skips, the render-affecting
   sequence settings and the estimate. Display fields (the sequence title,
@@ -383,30 +385,35 @@ same plan, not a second planner.
   of its estimate (as `continueGenerationFn`). These paths hold no
   reservation, as in the editor.
 - **Execute** re-plans and requires the same digest, then rejects a live run
-  (`getSequenceRejectingActiveRun`, `GENERATION_IN_PROGRESS`) and a short
-  balance — all before the claim, so a refusal leaves the plan executable.
-  Then it takes the row `planned` → `executing` in one guarded UPDATE and
-  launches through the editor's launchers: `launchUpdateStale` with run key
-  `<sequenceId>-plan-<planId>`, or `triggerContinue` (which holds the
-  storyboard mutex). A repeated or concurrent execute finds the row taken and
-  returns the same operation: one launch, one spend.
-- **Dispatch failure.** Only a launch that throws marks the row
-  `dispatch_failed`; it is never retried. A failure to record a run that
-  did start is not a dispatch failure. A row left `executing` with no run id
-  for two minutes lost its dispatch: Update all reads `dispatch_lost` and
-  calling `execute_generation` again re-sends it with the same run key (the
-  trigger reuses a live or finished instance; one guarded UPDATE lets one
-  caller re-send). Continue reads `dispatch_unknown` and is not re-sent,
-  because its mutex claim id is per call: check `get_sequence_status`, then
-  plan again.
-- **Status** reads the operation's own run, never a sequence aggregate:
-  Update all from its result (per-shot failures and skips); Continue from the
-  run's outcome plus the current failures of the shots it targeted. Poll
-  every 15 s. Terminal: `completed`, `partially_failed`, `failed`,
-  `dispatch_failed`, `dispatch_unknown`, and `unknown` a day after launch.
-  Non-terminal: `not_started`, `dispatching`, `dispatch_lost`, `running`,
-  `unknown`.
-- **Scopes.** Plan and execute need OAuth `generate`; polling needs
-  `sequences:read`. API keys stay unscoped. `confirm: true` is the caller's
-  assertion that a human approved the plan; scope, digest, expiry, credits
-  and the guarded claim are what the server enforces.
+  (`GENERATION_IN_PROGRESS`), a blocker and a short balance, and launches
+  through the editor's launchers with `<sequenceId>-plan-<key>` as the
+  deduplication id: `launchUpdateStale`'s run key, and `executeSmartRetry`'s
+  `runKey`, which keys each image run (`-<hash of the shot id>`, hashed so
+  the id fits the instance-id limit without truncation), the motion batch
+  (`-motion`) and the music prompt (`-music-prompt`), and releases this
+  call's credit hold when the trigger reused a run. Continue goes through
+  `triggerContinue`, whose storyboard mutex is its launch-once guard. **A
+  repeat of the same token is safe:** it re-sends the same ids and the
+  trigger hands back the live or finished runs (`triggerCfWorkflow`), so it
+  returns the same `workflowRunIds` and spends nothing. Once the launched
+  work has moved the sequence on (claims taken, shots no longer stale or
+  failed), the re-plan no longer matches and the repeat is `PLAN_CHANGED`
+  (Continue: `GENERATION_IN_PROGRESS` while its run is live): the earlier
+  call started it, and the agent checks `get_sequence_status`.
+- **Launch part-way.** A launch that throws after some runs started is
+  `LAUNCH_INCOMPLETE` with `details.workflowRunIds`: those runs are running
+  and paid for, so the agent polls them and does not plan the same work
+  again.
+- **Status** takes the `workflowRunIds` an execute returned and reads those
+  runs, never a sequence aggregate. Every id this feature mints embeds the
+  sequence id, and status requires it before reading a caller-supplied id
+  (as `readUpdateStaleRun` always has). Update all reports its own per-shot
+  failures and skips; Continue and retry runs report run-level success, so
+  what is failed on the sequence now is listed for the agent to plan a
+  retry. Poll every 15 s. Terminal: `completed`, `partially_failed`,
+  `failed`. Not terminal: `running`, `unknown` (a run could not be read).
+- **Scopes.** Plan and execute need OAuth `generate`; polling and
+  `plan_export` need `sequences:read`, `start_export` `sequences:write`.
+  API keys stay unscoped. `confirm: true` is the caller's assertion that a
+  human approved the plan; scope, digest and credits are what the server
+  enforces.

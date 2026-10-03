@@ -1,13 +1,14 @@
 /**
- * Agent plan → execute → status (#1460) on migrated SQLite, so the plan row's
- * `planned` → `executing` step is the real guarded UPDATE. The editor's
- * planners, pricing, credit check and launchers are mocked: their behaviour
- * has its own tests; these pin the contract around them.
+ * Agent plan → execute → status (#1460) on migrated SQLite, so sequence,
+ * scene and shot access is the real team scope. The editor's planners,
+ * pricing, credit check and launchers are mocked: their behaviour has its
+ * own tests; these pin the contract around them.
  */
 
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
+import { eq } from 'drizzle-orm';
 import {
   afterAll,
   beforeAll,
@@ -22,7 +23,6 @@ import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
-  generationPlans,
   scenes,
   sequences,
   shots,
@@ -31,7 +31,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
-// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real team-scoped plan rows, not mocked authorization
+// oxlint-disable-next-line boundaries/no-scoped-factory -- exercise the real team scope, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
 import { dbSceneId } from '@/shots/scene-id';
 import { asStub } from '@/test/as-stub';
@@ -44,6 +44,7 @@ const planUpdateAll = vi.fn();
 const computePlan = vi.fn();
 const launchUpdateStale = vi.fn();
 const readUpdateStaleRun = vi.fn();
+const getWorkflowRunOutcome = vi.fn();
 const triggerContinue = vi.fn();
 const requireCredits = vi.fn();
 const continueFromPlan = vi.fn();
@@ -61,13 +62,19 @@ vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: vi.fn(async () => ({})),
 }));
 vi.doMock('@/billing/server/preflight', () => ({ requireCredits }));
+vi.doMock('@/platform/server/workflow/run-outcome', () => ({
+  getWorkflowRunOutcome,
+}));
 vi.doMock('@/shots/server/update-stale-run', () => ({
   launchUpdateStale,
   readUpdateStaleRun,
 }));
 const getSequenceRejectingActiveRun = vi.fn();
 const readProductionStatus = vi.fn();
+const realLaunchers =
+  await vi.importActual<typeof import('./launchers')>('./launchers');
 vi.doMock('./launchers', () => ({
+  ...realLaunchers,
   triggerContinue,
   getSequenceRejectingActiveRun,
 }));
@@ -94,6 +101,9 @@ let userId: string;
 let sequenceId: string;
 let sceneId: string;
 let shotId: string;
+/** Run ids as the launchers mint them: workflow name, then a suffix with the sequence id. */
+let updateAllRun: string;
+let storyboardRun: string;
 
 function stalePlan(over: Record<string, unknown> = {}): UpdateStalePlan {
   return asStub<UpdateStalePlan>({
@@ -120,6 +130,11 @@ const stale = {
   depth: 'images' as const,
   target: { kind: 'sequence' as const },
 };
+const missing = {
+  mode: 'missing' as const,
+  stopAt: 'images' as const,
+  target: { kind: 'sequence' as const },
+};
 
 beforeAll(async () => {
   client = createClient({ url: ':memory:' });
@@ -136,6 +151,8 @@ beforeEach(async () => {
   sequenceId = generateId();
   sceneId = generateId();
   shotId = generateId();
+  updateAllRun = `local_update-stale-shots_${sequenceId}-plan-k`;
+  storyboardRun = `local_storyboard_storyboard-${sequenceId}-k`;
   const styleId = generateId();
   await db.insert(teams).values({ id: teamId, name: 'T', slug: teamId });
   await db
@@ -172,11 +189,22 @@ beforeEach(async () => {
     shotNumber: 1,
   });
   planUpdateAll.mockImplementation(async () => stalePlan());
-  launchUpdateStale.mockResolvedValue(`run-${sequenceId}`);
+  launchUpdateStale.mockImplementation(async () => updateAllRun);
+  continueFromPlan.mockReturnValue({
+    work: [{ kind: 'still', id: shotId }],
+    stopAt: 'images',
+  });
+  computePlan.mockImplementation(async () => stalePlan());
+  triggerContinue.mockImplementation(async () => ({
+    workflowRunId: storyboardRun,
+  }));
+  readProductionStatus.mockResolvedValue({ failures: [] });
 });
 
 const scoped = () => createScopedDb(teamId, userId);
 const actor = () => ({ userId, teamId });
+const execute = (planToken: string, db = scoped()) =>
+  executeGeneration(db, actor(), sequenceId, planToken);
 
 describe('plan_generation', () => {
   it('is deterministic, writes no generation, and reports blockers instead of throwing', async () => {
@@ -184,14 +212,23 @@ describe('plan_generation', () => {
     const first = await planGeneration(scoped(), actor(), sequenceId, stale);
     const second = await planGeneration(scoped(), actor(), sequenceId, stale);
     expect(first.digest).toBe(second.digest);
-    expect(first.planId).not.toBe(second.planId);
-    expect(first.estimate).toEqual({
-      micros: 2_500_000,
-      usd: 2.5,
-    });
-    expect(first.work.stages.images).toEqual([shotId]);
+    // Same work, a different key: each approval launches its own runs.
+    expect(first.planToken).not.toBe(second.planToken);
+    expect(first.estimate).toEqual({ micros: 2_500_000, usd: 2.5 });
+    expect(first.work).toMatchObject({ stages: { images: [shotId] } });
     expect(first.blockers.map((b) => b.code)).toEqual(['INSUFFICIENT_CREDITS']);
     expect(launchUpdateStale).not.toHaveBeenCalled();
+  });
+
+  it('reports a processing sequence as a blocker, not a throw', async () => {
+    await db
+      .update(sequences)
+      .set({ status: 'processing' })
+      .where(eq(sequences.id, sequenceId));
+    const plan = await planGeneration(scoped(), actor(), sequenceId, stale);
+    expect(plan.blockers.map((b) => b.code)).toEqual([
+      'GENERATION_IN_PROGRESS',
+    ]);
   });
 
   it('expands scene targets to their shots and rejects foreign or wrong-type IDs', async () => {
@@ -224,207 +261,13 @@ describe('plan_generation', () => {
   it('refuses missing (Continue) work for anything but the whole sequence', async () => {
     await expect(
       planGeneration(scoped(), actor(), sequenceId, {
-        mode: 'missing',
-        stopAt: 'images',
+        ...missing,
         target: { kind: 'shots', shotIds: [shotId] },
       })
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
-});
 
-describe('execute_generation', () => {
-  it('launches once for repeated and concurrent executes and returns one operation', async () => {
-    const { planId } = await planGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      stale
-    );
-    const [a, b] = await Promise.all([
-      executeGeneration(scoped(), actor(), sequenceId, planId),
-      executeGeneration(scoped(), actor(), sequenceId, planId),
-    ]);
-    const again = await executeGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      planId
-    );
-    expect(launchUpdateStale).toHaveBeenCalledTimes(1);
-    expect(launchUpdateStale).toHaveBeenCalledWith(
-      expect.objectContaining({ runKey: `${sequenceId}-plan-${planId}` })
-    );
-    for (const op of [a, b, again]) expect(op.operationId).toBe(planId);
-    expect(again).toMatchObject({
-      status: 'launched',
-      workflowRunIds: [`run-${sequenceId}`],
-    });
-  });
-
-  it('tolerates a moved timestamp but refuses changed work, expiry and other callers', async () => {
-    const { planId } = await planGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      stale
-    );
-    planUpdateAll.mockResolvedValueOnce(
-      stalePlan({ plannedAt: new Date(Date.now() + 60_000) })
-    );
-    await expect(
-      executeGeneration(
-        scoped(),
-        { userId: generateId(), teamId },
-        sequenceId,
-        planId
-      )
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    await expect(
-      executeGeneration(
-        createScopedDb(teamId, userId),
-        actor(),
-        generateId(),
-        planId
-      )
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    expect(
-      await executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).toMatchObject({ status: 'launched' });
-
-    const moved = await planGeneration(scoped(), actor(), sequenceId, stale);
-    planUpdateAll.mockResolvedValueOnce(
-      stalePlan({
-        targets: stalePlan().targets.map((t) => ({
-          ...t,
-          imageLiveHash: 'hash-b',
-        })),
-      })
-    );
-    await expect(
-      executeGeneration(scoped(), actor(), sequenceId, moved.planId)
-    ).rejects.toMatchObject({
-      code: 'CONFLICT',
-      details: { code: 'PLAN_CHANGED' },
-    });
-
-    const old = await planGeneration(scoped(), actor(), sequenceId, stale);
-    await db
-      .update(generationPlans)
-      .set({ expiresAt: new Date(Date.now() - 1000) });
-    await expect(
-      executeGeneration(scoped(), actor(), sequenceId, old.planId)
-    ).rejects.toMatchObject({ code: 'PLAN_EXPIRED' });
-    expect(launchUpdateStale).toHaveBeenCalledTimes(1);
-  });
-
-  it('rechecks credits at execute and launches nothing when they fall short', async () => {
-    const { planId } = await planGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      stale
-    );
-    requireCredits.mockRejectedValueOnce(new InsufficientCreditsError());
-    await expect(
-      executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).rejects.toMatchObject({ code: 'INSUFFICIENT_CREDITS' });
-    expect(launchUpdateStale).not.toHaveBeenCalled();
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({ state: 'not_started', terminal: false });
-  });
-
-  it('records a failed dispatch and never relaunches it', async () => {
-    const { planId } = await planGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      stale
-    );
-    launchUpdateStale.mockRejectedValueOnce(new Error('binding down'));
-    await expect(
-      executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).rejects.toThrow('binding down');
-    expect(
-      await executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).toMatchObject({ status: 'dispatch_failed', workflowRunIds: [] });
-    expect(launchUpdateStale).toHaveBeenCalledTimes(1);
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({
-      state: 'dispatch_failed',
-      terminal: true,
-      error: 'binding down',
-    });
-  });
-
-  it('runs Continue work through the storyboard launcher', async () => {
-    continueFromPlan.mockReturnValue({
-      work: [{ kind: 'still', id: shotId }],
-      stopAt: 'images',
-    });
-    computePlan.mockResolvedValue(stalePlan());
-    triggerContinue.mockResolvedValue({ workflowRunId: 'storyboard-run' });
-    const { planId } = await planGeneration(scoped(), actor(), sequenceId, {
-      mode: 'missing',
-      stopAt: 'images',
-      target: { kind: 'sequence' },
-    });
-    expect(
-      await executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).toMatchObject({ workflowRunIds: ['storyboard-run'] });
-    expect(triggerContinue).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ stopAt: 'images' })
-    );
-  });
-});
-
-describe('get_operation_status', () => {
-  it('reports this run’s per-shot outcome and hides other sequences’ operations', async () => {
-    const { planId } = await planGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      stale
-    );
-    await executeGeneration(scoped(), actor(), sequenceId, planId);
-    readUpdateStaleRun.mockResolvedValueOnce({ state: 'running' });
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({
-      state: 'running',
-      terminal: false,
-      pollAfterSeconds: 15,
-    });
-    readUpdateStaleRun.mockResolvedValueOnce({
-      state: 'complete',
-      result: {
-        failures: [{ shotId, stage: 'image', error: 'safety' }],
-        skipped: [],
-      },
-    });
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({
-      state: 'partially_failed',
-      terminal: true,
-      failures: [{ shotId, stage: 'image' }],
-      targeted: { targetShotIds: [shotId] },
-    });
-    await expect(
-      getOperationStatus(
-        createScopedDb(generateId(), userId),
-        sequenceId,
-        planId
-      )
-    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
-  });
-});
-
-describe('review fixes (#1460)', () => {
   it('credit-checks the one-image floor when the estimate has no price', async () => {
-    planUpdateAll.mockImplementation(async () => stalePlan());
     const preview = await import('@/shots/server/update-stale-preview');
     vi.spyOn(preview, 'buildUpdateStalePreview').mockReturnValue(
       asStub({ costByLevel: { images: null } })
@@ -438,9 +281,86 @@ describe('review fixes (#1460)', () => {
     );
     vi.mocked(preview.buildUpdateStalePreview).mockRestore();
   });
+});
 
-  it('a mutex refusal before the claim leaves the plan executable', async () => {
-    const { planId } = await planGeneration(
+describe('execute_generation', () => {
+  it('launches under the plan key, and a repeat re-sends the same key so the trigger reuses the runs', async () => {
+    const { planToken } = await planGeneration(
+      scoped(),
+      actor(),
+      sequenceId,
+      stale
+    );
+    const [a, b] = await Promise.all([execute(planToken), execute(planToken)]);
+    const again = await execute(planToken);
+    const keys = launchUpdateStale.mock.calls.map(([input]) => input.runKey);
+    expect(keys).toHaveLength(3);
+    expect(new Set(keys).size).toBe(1);
+    expect(keys[0]).toMatch(new RegExp(`^${sequenceId}-plan-[0-9a-f]{12}$`));
+    for (const op of [a, b, again]) {
+      expect(op).toEqual({
+        sequenceId,
+        workflowRunIds: [updateAllRun],
+        pollAfterSeconds: 15,
+      });
+    }
+  });
+
+  it('tolerates a moved timestamp but refuses changed work, a foreign token and garbage', async () => {
+    const { planToken } = await planGeneration(
+      scoped(),
+      actor(),
+      sequenceId,
+      stale
+    );
+    planUpdateAll.mockResolvedValueOnce(
+      stalePlan({ plannedAt: new Date(Date.now() + 60_000) })
+    );
+    expect(await execute(planToken)).toMatchObject({
+      workflowRunIds: [updateAllRun],
+    });
+
+    planUpdateAll.mockResolvedValueOnce(
+      stalePlan({
+        targets: stalePlan().targets.map((t) => ({
+          ...t,
+          imageLiveHash: 'hash-b',
+        })),
+      })
+    );
+    await expect(execute(planToken)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      details: { code: 'PLAN_CHANGED' },
+    });
+
+    await expect(
+      executeGeneration(scoped(), actor(), generateId(), planToken)
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(execute('not-a-token')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    await expect(
+      execute(planToken, createScopedDb(generateId(), userId))
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(launchUpdateStale).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks credits at execute and launches nothing when they fall short', async () => {
+    const { planToken } = await planGeneration(
+      scoped(),
+      actor(),
+      sequenceId,
+      stale
+    );
+    requireCredits.mockRejectedValueOnce(new InsufficientCreditsError());
+    await expect(execute(planToken)).rejects.toMatchObject({
+      code: 'INSUFFICIENT_CREDITS',
+    });
+    expect(launchUpdateStale).not.toHaveBeenCalled();
+  });
+
+  it('gives the mutex refusal a code and stays executable after it', async () => {
+    const { planToken } = await planGeneration(
       scoped(),
       actor(),
       sequenceId,
@@ -449,76 +369,148 @@ describe('review fixes (#1460)', () => {
     getSequenceRejectingActiveRun.mockRejectedValueOnce(
       new Error('A generation is already running')
     );
-    await expect(
-      executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).rejects.toMatchObject({ code: 'GENERATION_IN_PROGRESS' });
-    expect(
-      await executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).toMatchObject({ status: 'launched' });
+    await expect(execute(planToken)).rejects.toMatchObject({
+      code: 'GENERATION_IN_PROGRESS',
+    });
+    expect(launchUpdateStale).not.toHaveBeenCalled();
+    expect(await execute(planToken)).toMatchObject({
+      workflowRunIds: [updateAllRun],
+    });
   });
 
-  it('a bookkeeping failure after launch is not a failed dispatch, and the lost run is re-sent with the same key', async () => {
-    const { planId } = await planGeneration(
+  it('runs Continue through the storyboard launcher and gives its mutex refusal a code', async () => {
+    const { planToken } = await planGeneration(
+      scoped(),
+      actor(),
+      sequenceId,
+      missing
+    );
+    expect(await execute(planToken)).toMatchObject({
+      workflowRunIds: [storyboardRun],
+    });
+    expect(triggerContinue).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ stopAt: 'images' })
+    );
+    // A repeat while that run is live: the mutex, as a code the agent reads.
+    triggerContinue.mockRejectedValueOnce(
+      new realLaunchers.GenerationInProgressError()
+    );
+    await expect(execute(planToken)).rejects.toMatchObject({
+      code: 'GENERATION_IN_PROGRESS',
+    });
+    expect(triggerContinue).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes a launch failure through, with no run to name', async () => {
+    const { planToken } = await planGeneration(
       scoped(),
       actor(),
       sequenceId,
       stale
     );
-    const db1 = scoped();
-    vi.spyOn(db1.generationPlans, 'addRun').mockRejectedValueOnce(
-      new Error('D1 blip')
-    );
-    await expect(
-      executeGeneration(db1, actor(), sequenceId, planId)
-    ).rejects.toThrow('D1 blip');
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({ state: 'dispatching', terminal: false });
-    await db
-      .update(generationPlans)
-      .set({ executedAt: new Date(Date.now() - 10 * 60_000) });
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({ state: 'dispatch_lost', terminal: false });
-    expect(
-      await executeGeneration(scoped(), actor(), sequenceId, planId)
-    ).toMatchObject({
-      status: 'launched',
-      workflowRunIds: [`run-${sequenceId}`],
+    launchUpdateStale.mockRejectedValueOnce(new Error('binding down'));
+    await expect(execute(planToken)).rejects.toThrow('binding down');
+  });
+});
+
+describe('get_operation_status', () => {
+  const status = (runIds: string[], db = scoped()) =>
+    getOperationStatus(db, sequenceId, runIds);
+
+  it('reports an Update all run’s own per-shot outcome', async () => {
+    readUpdateStaleRun.mockResolvedValueOnce({ state: 'running' });
+    expect(await status([updateAllRun])).toMatchObject({
+      state: 'running',
+      terminal: false,
+      pollAfterSeconds: 15,
     });
-    const keys = launchUpdateStale.mock.calls.map(([input]) => input.runKey);
-    expect(keys).toEqual([keys[0], keys[0]]);
+    readUpdateStaleRun.mockResolvedValueOnce({
+      state: 'complete',
+      result: {
+        failures: [{ shotId, stage: 'image', error: 'safety' }],
+        skipped: [{ shotId: 'other', reason: 'in flight' }],
+      },
+    });
+    expect(await status([updateAllRun])).toMatchObject({
+      state: 'partially_failed',
+      terminal: true,
+      failures: [{ shotId, stage: 'image' }],
+      skipped: [{ shotId: 'other' }],
+    });
+    expect(readUpdateStaleRun).toHaveBeenCalledWith(sequenceId, updateAllRun);
+    expect(getWorkflowRunOutcome).not.toHaveBeenCalled();
   });
 
-  it('reports a Continue run’s failed targets from their state', async () => {
-    continueFromPlan.mockReturnValue({
-      work: [{ kind: 'still', id: shotId }],
-      stopAt: 'images',
-    });
-    computePlan.mockResolvedValue(stalePlan());
-    triggerContinue.mockResolvedValue({ workflowRunId: 'storyboard-run' });
-    readProductionStatus.mockResolvedValue({
-      failures: [
-        { stage: 'image', id: 'f1', shotId, error: 'safety' },
-        { stage: 'image', id: 'f2', shotId: generateId(), error: 'other shot' },
-      ],
-    });
-    const { planId } = await planGeneration(scoped(), actor(), sequenceId, {
-      mode: 'missing',
-      stopAt: 'images',
-      target: { kind: 'sequence' },
-    });
-    await executeGeneration(scoped(), actor(), sequenceId, planId);
-    const runOutcome = await import('@/platform/server/workflow/run-outcome');
-    vi.spyOn(runOutcome, 'getWorkflowRunOutcome').mockResolvedValue({
+  it('refuses a run id that is not this sequence’s, and another team’s sequence', async () => {
+    await expect(
+      status([`local_update-stale-shots_${generateId()}-plan-k`])
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(
+      status([updateAllRun], createScopedDb(generateId(), userId))
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    expect(readUpdateStaleRun).not.toHaveBeenCalled();
+  });
+
+  it('reports a Continue run from its outcome plus what is failed on the sequence now', async () => {
+    getWorkflowRunOutcome.mockResolvedValueOnce({
       state: 'complete',
       output: null,
     });
-    expect(
-      await getOperationStatus(scoped(), sequenceId, planId)
-    ).toMatchObject({
+    readProductionStatus.mockResolvedValueOnce({
+      failures: [
+        { stage: 'image', id: 'f1', shotId, error: 'safety' },
+        { stage: 'sequence', id: sequenceId, error: 'ignored: no shot' },
+      ],
+    });
+    expect(await status([storyboardRun])).toMatchObject({
       state: 'partially_failed',
+      terminal: true,
       failures: [{ shotId, stage: 'image', error: 'safety' }],
+    });
+    getWorkflowRunOutcome.mockResolvedValueOnce({
+      state: 'complete',
+      output: null,
+    });
+    expect(await status([storyboardRun])).toMatchObject({
+      state: 'completed',
+      terminal: true,
+      failures: [],
+    });
+  });
+
+  it('aggregates several runs: any running wins, then unknown, all failed is failed', async () => {
+    const image = `local_image_${sequenceId}-plan-k-h1`;
+    const motion = `local_motion-batch_${sequenceId}-plan-k-motion`;
+    getWorkflowRunOutcome
+      .mockResolvedValueOnce({ state: 'failed', error: 'boom' })
+      .mockResolvedValueOnce({ state: 'running' });
+    expect(await status([image, motion])).toMatchObject({
+      state: 'running',
+      terminal: false,
+    });
+    getWorkflowRunOutcome
+      .mockResolvedValueOnce({ state: 'unknown' })
+      .mockResolvedValueOnce({ state: 'complete', output: null });
+    expect(await status([image, motion])).toMatchObject({
+      state: 'unknown',
+      terminal: false,
+    });
+    getWorkflowRunOutcome
+      .mockResolvedValueOnce({ state: 'failed', error: 'boom' })
+      .mockResolvedValueOnce({ state: 'complete', output: null });
+    expect(await status([image, motion])).toMatchObject({
+      state: 'partially_failed',
+      terminal: true,
+      error: 'boom',
+    });
+    getWorkflowRunOutcome
+      .mockResolvedValueOnce({ state: 'failed', error: 'boom' })
+      .mockResolvedValueOnce({ state: 'failed', error: 'bang' });
+    expect(await status([image, motion])).toMatchObject({
+      state: 'failed',
+      terminal: true,
+      error: 'boom; bang',
     });
   });
 });

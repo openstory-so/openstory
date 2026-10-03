@@ -24,7 +24,6 @@ import {
   scenes,
   sequenceLocations,
   sequenceStyleVersions,
-  generationPlans,
   sequences,
   session,
   styles,
@@ -174,7 +173,6 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
   const db = getDb();
   const ids = db.select({ id: sequences.id }).from(sequences).where(where);
   await db.batch([
-    db.delete(generationPlans).where(inArray(generationPlans.sequenceId, ids)),
     db
       .delete(sequenceStyleVersions)
       .where(inArray(sequenceStyleVersions.sequenceId, ids)),

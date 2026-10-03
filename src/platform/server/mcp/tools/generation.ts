@@ -15,12 +15,45 @@ import {
   sequenceInput,
 } from '../tool-context';
 
-const paidAnnotations = {
+const writeAnnotations = {
   readOnlyHint: false,
   destructiveHint: false,
   idempotentHint: false,
-  openWorldHint: true,
+  openWorldHint: false,
 };
+
+const planOutput = z.object({
+  planToken: z.string(),
+  sequenceId: z.string(),
+  digest: z.string(),
+  estimate: z.object({
+    micros: z.number().nullable(),
+    usd: z.number().nullable(),
+  }),
+  work: generationWorkSchema,
+  blockers: z.array(z.object({ code: z.string(), message: z.string() })),
+});
+
+const operationSchema = z.object({
+  sequenceId: z.string(),
+  workflowRunIds: z.array(z.string()),
+  pollAfterSeconds: z.number(),
+});
+
+const planToken = z
+  .string()
+  .min(1)
+  .max(4096)
+  .describe('The planToken from plan_generation.');
+
+function planSummary(plan: z.output<typeof planOutput>) {
+  const cost =
+    plan.estimate.usd === null ? 'unknown' : `$${plan.estimate.usd.toFixed(2)}`;
+  const blocked = plan.blockers.length
+    ? `; blocked: ${plan.blockers.map((b) => b.code).join(', ')}`
+    : '';
+  return `Plan: ${plan.work.targetShotIds.length} shots, estimate ${cost}${blocked}. Show it to the user before starting it.`;
+}
 
 const planInput = sequenceInput
   .extend({
@@ -55,9 +88,7 @@ const planInput = sequenceInput
   })
   .refine(
     (i) => (i.mode === 'stale' ? i.depth && !i.stopAt : i.stopAt && !i.depth),
-    {
-      message: 'mode "stale" takes depth; mode "missing" takes stopAt.',
-    }
+    { message: 'mode "stale" takes depth; mode "missing" takes stopAt.' }
   );
 
 function toRequest(input: z.output<typeof planInput>): GenerationRequest {
@@ -78,22 +109,11 @@ function toRequest(input: z.output<typeof planInput>): GenerationRequest {
 export const planGenerationTool = openstoryTool({
   name: 'plan_generation',
   description:
-    'Plan paid generation without starting it. Returns the work per stage (shot IDs), what is skipped or already in flight, effective models, an estimate (null = a component has no price) and blockers, plus a planId valid for 30 minutes. Show the user this plan and get approval, then call execute_generation with the planId.',
+    'Plan paid generation without starting it. Returns the work per stage (shot IDs), what is skipped or already in flight, effective models, an estimate (null = a component has no price), blockers and a planToken. Show the user this plan and get approval, then call execute_generation with the planToken.',
   scope: 'generate',
-  annotations: { ...paidAnnotations, openWorldHint: false },
+  annotations: writeAnnotations,
   inputSchema: planInput,
-  outputSchema: z.object({
-    planId: z.string(),
-    sequenceId: z.string(),
-    digest: z.string(),
-    expiresAt: z.string(),
-    estimate: z.object({
-      micros: z.number().nullable(),
-      usd: z.number().nullable(),
-    }),
-    work: generationWorkSchema,
-    blockers: z.array(z.object({ code: z.string(), message: z.string() })),
-  }),
+  outputSchema: planOutput,
   run: async (input, { scopedDb, userId }) => {
     const plan = await planGeneration(
       scopedDb,
@@ -101,42 +121,32 @@ export const planGenerationTool = openstoryTool({
       input.sequenceId,
       toRequest(input)
     );
-    return {
-      data: plan,
-      summary: `Plan ${plan.planId}: ${plan.work.targetShotIds.length} shots, estimate ${plan.estimate.usd === null ? 'unknown' : `$${plan.estimate.usd.toFixed(2)}`}${plan.blockers.length ? `; blocked: ${plan.blockers.map((b) => b.code).join(', ')}` : ''}.`,
-    };
+    return { data: plan, summary: planSummary(plan) };
   },
-});
-
-const operationSchema = z.object({
-  operationId: z.string(),
-  sequenceId: z.string(),
-  status: z.string(),
-  workflowRunIds: z.array(z.string()),
-  pollAfterSeconds: z.number(),
 });
 
 export const executeGenerationTool = openstoryTool({
   name: 'execute_generation',
   description:
-    'Start an approved plan from plan_generation. confirm: true asserts the user approved that plan; the server still re-plans, refuses a plan whose work or cost changed (PLAN_CHANGED) or expired (PLAN_EXPIRED), and rechecks credits. Calling it again for the same plan returns the same operation and never starts or charges twice. Poll get_operation_status with the operationId.',
+    'Start an approved plan from plan_generation. confirm: true asserts the user approved that plan; the server still re-plans, refuses a plan whose work or cost changed (PLAN_CHANGED) and rechecks credits. Safe to call again after a timeout: a repeat returns the same runs and never charges twice; PLAN_CHANGED or GENERATION_IN_PROGRESS on a repeat means the earlier call started it — check get_sequence_status. Poll get_operation_status with the workflowRunIds.',
   scope: 'generate',
-  annotations: { ...paidAnnotations, idempotentHint: true },
-  inputSchema: sequenceInput.extend({
-    planId: ulidSchema,
-    confirm: z.literal(true),
-  }),
+  annotations: {
+    ...writeAnnotations,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  inputSchema: sequenceInput.extend({ planToken, confirm: z.literal(true) }),
   outputSchema: operationSchema,
   run: async (input, { scopedDb, userId }) => {
     const operation = await executeGeneration(
       scopedDb,
       { userId, teamId: scopedDb.teamId },
       input.sequenceId,
-      input.planId
+      input.planToken
     );
     return {
       data: operation,
-      summary: `Operation ${operation.operationId}: ${operation.status}. Poll get_operation_status in ${operation.pollAfterSeconds}s.`,
+      summary: `Started ${operation.workflowRunIds.length} run(s). Poll get_operation_status in ${operation.pollAfterSeconds}s.`,
     };
   },
 });
@@ -144,13 +154,14 @@ export const executeGenerationTool = openstoryTool({
 export const getOperationStatusTool = readToolDefinition({
   name: 'get_operation_status',
   description:
-    'Poll one operation from execute_generation by its operationId: not_started, dispatching, running or unknown (keep polling every pollAfterSeconds), or terminal completed, partially_failed (per-shot failures), failed, dispatch_failed or dispatch_unknown. Reports that run only, not the whole sequence.',
-  inputSchema: sequenceInput.extend({ operationId: ulidSchema }),
+    'Poll the runs execute_generation returned: running or unknown (keep polling every pollAfterSeconds; if unknown persists, check get_sequence_status), or terminal completed, partially_failed (what is failed, per shot) or failed. Reports those runs, not the whole sequence.',
+  inputSchema: sequenceInput.extend({
+    workflowRunIds: z.array(z.string().min(1)).min(1).max(50),
+  }),
   outputSchema: operationSchema.extend({
     state: z.string(),
     terminal: z.boolean(),
-    targeted: generationWorkSchema,
-    error: z.string().nullable().optional(),
+    error: z.string().optional(),
     failures: z
       .array(
         z.object({ shotId: z.string(), stage: z.string(), error: z.string() })
@@ -159,17 +170,16 @@ export const getOperationStatusTool = readToolDefinition({
     skipped: z
       .array(z.object({ shotId: z.string(), reason: z.string() }))
       .optional(),
-    result: z.record(z.string(), z.unknown()).optional(),
   }),
   run: async (input, { scopedDb }) => {
     const status = await getOperationStatus(
       scopedDb,
       input.sequenceId,
-      input.operationId
+      input.workflowRunIds
     );
     return {
       data: status,
-      summary: `Operation ${status.operationId}: ${status.state}${status.terminal ? '' : `; poll again in ${status.pollAfterSeconds}s`}.`,
+      summary: `Operation: ${status.state}${status.terminal ? '' : `; poll again in ${status.pollAfterSeconds}s`}.`,
     };
   },
 });

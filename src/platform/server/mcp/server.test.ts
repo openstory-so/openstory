@@ -391,7 +391,7 @@ describe('generation tool authorization', () => {
       const args =
         name === 'plan_generation'
           ? { mode: 'stale', depth: 'images' }
-          : { planId: '01J00000000000000000000001', confirm: true };
+          : { planToken: 'opaque', confirm: true };
       const { body } = await rpc(
         'tools/call',
         {
@@ -416,11 +416,8 @@ describe('generation tool authorization', () => {
 
   it('refuses execute without confirm: true and mixed targets', async () => {
     for (const [name, args] of [
-      ['execute_generation', { planId: '01J00000000000000000000001' }],
-      [
-        'execute_generation',
-        { planId: '01J00000000000000000000001', confirm: false },
-      ],
+      ['execute_generation', { planToken: 'opaque' }],
+      ['execute_generation', { planToken: 'opaque', confirm: false }],
       [
         'plan_generation',
         {
