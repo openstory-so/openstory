@@ -191,16 +191,16 @@ prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
   and a line per blocked noun,
   `blockedLines`) shows when the
   plan's first work is before Motion.
-- **A switch shows only when it changes a step the run takes.** Voices from
-  References (voices ride that step), Start frames from Images, Draft first
-  from Motion, Music at the Music stop. Turning on one that was skipped caps
+- **A switch shows only when it changes a step the run takes.** Start frames
+  from Images, Draft first from Motion, Music at the Music stop. Voices has no
+  switch (#2004): a new sequence records dialogue wherever voice design is
+  configured, and a voice is turned off on the character. Turning on one that was skipped caps
   the thumb at its step (Images / Dialogue; `switchStopAt`, shared by the
   footer and the server, so the label, the quote and the run agree) only when
   a later unit is already done or stale. Nothing past that step yet — no clip,
   no track — and the thumb can still run on to Motion. The cap is derived,
-  never written: turning the switch off again frees the thumb to where it was. Voices is locked on once a shot has a recording
-  (`switchLocks`; a `blocked` unit does not count as existing): the recording
-  would still ride the clip. Start frames can always turn off — the stills
+  never written: turning the switch off again frees the thumb to where it was.
+  Start frames can always turn off — the stills
   stay, shots render from references, and their motion prompts go stale. Draft
   first is changeable until every clip exists, then shown read-only. With
   the switches flipped the footer asks the plan as if they were saved

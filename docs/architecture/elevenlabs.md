@@ -54,12 +54,14 @@ playing the older model's audio.
 Native music returns inline bytes, so `generateMusic` parks the MP3 in R2
 before the workflow step returns (Cloudflare Workflows' 1 MiB `step.do` cap).
 
-**Character voices (#1553).** `sequences.generateVoices` (Generate dialog
-"Voices" switch — on for a new sequence in the composer (#2004), off when
-the public API omits it) is the sequence default; `characters.useVoice`
-overrides it per character (NULL = inherit) — resolve with `usesVoice()`.
-The launcher refuses the flag when `isElevenLabsConfigured()` is false and
-the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
+**Character voices (#1553).** `sequences.generateVoices` is the sequence
+default; `characters.useVoice` overrides it per character (NULL = inherit) —
+resolve with `usesVoice()`. There is no sequence-level switch (#2004): a new
+sequence is on wherever voice design is configured
+(`getVoiceDesignAvailableFn`), the public API included unless it sends
+`false`, and a voice is turned off on the character. Older sequences keep
+what they stored. The launcher refuses the flag when
+`isElevenLabsConfigured()` is false.
 In-flight Voice Design is a stills-style husk (#1715): a
 `character_voice_versions` row with `status: 'generating'` (no `voiceId` /
 previews yet) and `characters.pendingPromoteVoiceVersionId` pointing at it.

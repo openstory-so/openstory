@@ -368,7 +368,6 @@ export const ScriptView: FC<{
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
     generateStartFrames: boolean;
-    generateVoices: boolean;
     draftMotion: boolean;
     audioModels: AudioModel[];
   }>(() => ({
@@ -392,9 +391,6 @@ export const ScriptView: FC<{
     generateStartFrames: isEditing
       ? sequence.generateStartFrames
       : savedSettings.generateStartFrames,
-    generateVoices: isEditing
-      ? sequence.generateVoices
-      : savedSettings.generateVoices,
     draftMotion: isEditing ? sequence.draftMotion : savedSettings.draftMotion,
     audioModels:
       isEditing && sequence.musicModel
@@ -408,10 +404,12 @@ export const ScriptView: FC<{
     videoModels,
     stopAt,
     generateStartFrames,
-    generateVoices,
     draftMotion,
     audioModels,
   } = genSettings;
+  // Not a choice (#2004): every new sequence records dialogue wherever this
+  // deployment can design a voice. A character is turned off on the character.
+  const generateVoices = voiceDesignAvailable !== false;
   // Draft first (#1756) is offered while a chosen model has a draft mode and
   // this team reaches Ark (a team on its own fal key does not, and a draft
   // submit there refuses). The remembered setting is kept either way; only
@@ -760,7 +758,6 @@ export const ScriptView: FC<{
         videoModels: savedSettings.videoModels,
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
-        generateVoices: savedSettings.generateVoices,
         draftMotion: savedSettings.draftMotion,
         audioModels: savedSettings.audioModels,
       });
@@ -933,15 +930,10 @@ export const ScriptView: FC<{
   const executeRegeneration = (
     run: Pick<
       typeof genSettings,
-      'stopAt' | 'generateStartFrames' | 'generateVoices' | 'videoModels'
+      'stopAt' | 'generateStartFrames' | 'videoModels'
     > = genSettings
   ) => {
-    const {
-      stopAt: runUntil,
-      generateStartFrames,
-      generateVoices,
-      videoModels,
-    } = run;
+    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
     if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
       showGate();
       return;
@@ -1000,13 +992,10 @@ export const ScriptView: FC<{
 
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
-    // Generate (the credit gate still runs on confirm). Same when Voices is
-    // on but this deployment cannot design one (#1553): the launcher would
-    // refuse, and the dialog is the only place the flag can be turned off.
+    // Generate (the credit gate still runs on confirm).
     if (
       savedSettings.rememberStopAt &&
-      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt)) &&
-      !(generateVoices && voiceDesignAvailable === false)
+      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
     ) {
       executeRegeneration();
       return;
@@ -1844,7 +1833,6 @@ export const ScriptView: FC<{
         onConfirm={({
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,
-          generateVoices: nextVoices,
           draftMotion: nextDraft,
           remember,
         }) => {
@@ -1852,7 +1840,6 @@ export const ScriptView: FC<{
             {
               ...genSettings,
               stopAt: nextStopAt,
-              generateVoices: nextVoices,
               draftMotion: nextDraft,
             },
             nextStartFrames

@@ -317,18 +317,16 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     nextStage ?? DEFAULT_GENERATION_STOP_AT
   );
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
-  const [draftVoices, setDraftVoices] = useState(generateVoices);
   useEffect(() => {
     if (nextStage) setContinueStopAt(nextStage);
   }, [nextStage]);
   useEffect(() => {
     setDraftStartFrames(generateStartFrames);
   }, [generateStartFrames]);
-  useEffect(() => {
-    setDraftVoices(generateVoices);
-  }, [generateVoices]);
   const voicesUnavailable = useVoiceDesignAvailable() === false;
-  const voices = voicesUnavailable ? false : draftVoices;
+  // No switch (#2004): the sequence's own setting, off where this deployment
+  // cannot design a voice. A character is turned off on the character.
+  const voices = voicesUnavailable ? false : generateVoices;
   // Draft first (#1756): one local switch for the batch footer and the
   // continue slider, seeded from the sequence and persisted by either click.
   const [draftBatch, setDraftBatch] = useState(draftMotion);
@@ -721,11 +719,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         onChange={setContinueStopAt}
         minStage={minStage ?? undefined}
         maxStage={maxStage}
-        voicesLocked={locks.voices}
         generateStartFrames={draftStartFrames}
         onGenerateStartFramesChange={setDraftStartFrames}
         generateVoices={voices}
-        onGenerateVoicesChange={voicesUnavailable ? undefined : setDraftVoices}
         includeMusic={includeMusic}
         onIncludeMusicChange={onIncludeMusicChange}
         draftFirst={draftFirst}

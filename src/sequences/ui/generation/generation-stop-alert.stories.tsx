@@ -10,7 +10,7 @@ function OpenAlert() {
       onOpenChange={setOpen}
       stopAt="music"
       generateStartFrames={false}
-      generateVoices={false}
+      generateVoices
       draftMotion={true}
       offerDraftMotion={true}
       remember={false}

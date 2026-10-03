@@ -8,8 +8,6 @@ import {
   stopAtFromSliderIndex,
 } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
-import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
-import { microsToDisplayUsd } from '@/billing/money';
 import { Label } from '@/ui/shadcn/label';
 import { Slider } from '@/ui/shadcn/slider';
 import { Switch } from '@/ui/shadcn/switch';
@@ -33,11 +31,11 @@ type GenerationStopSliderProps = {
    */
   generateStartFrames?: boolean;
   onGenerateStartFramesChange?: (value: boolean) => void;
-  /** Design a voice per speaking character (#1553); offered like start frames. */
+  /**
+   * The run records dialogue. Not a switch (#2004): on wherever voice design
+   * is configured, and turned off per character.
+   */
   generateVoices?: boolean;
-  onGenerateVoicesChange?: (value: boolean) => void;
-  /** Recordings exist: Voices can turn on, never off (#1817). */
-  voicesLocked?: boolean;
   /**
    * Draft first (#1756): the motion pass renders 480p drafts and the run
    * stops there; the 1080p finals are rendered from the scene list once the
@@ -77,8 +75,6 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
   generateStartFrames = true,
   onGenerateStartFramesChange,
   generateVoices = false,
-  onGenerateVoicesChange,
-  voicesLocked = false,
   draftFirst = false,
   onDraftFirstChange,
   draftFirstLocked = false,
@@ -231,36 +227,6 @@ export const GenerationStopSlider: FC<GenerationStopSliderProps> = ({
             {generateStartFrames
               ? 'Each shot’s video starts from a generated still.'
               : 'Video is generated straight from the reference sheets.'}
-          </p>
-        </div>
-      )}
-      {onGenerateVoicesChange && includesStage(selected, 'references') && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="generate-voices"
-              checked={generateVoices}
-              onCheckedChange={(next) => {
-                onGenerateVoicesChange(next);
-                const nextStages = sliderStages(!generateStartFrames, next);
-                const moved = stopAtFromSliderIndex(
-                  sliderThumbIndex(value, nextStages),
-                  nextStages
-                );
-                if (moved !== value) onChange(moved);
-              }}
-              disabled={disabled || (voicesLocked && generateVoices)}
-            />
-            <Label htmlFor="generate-voices" className="text-sm">
-              Voices
-            </Label>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {voicesLocked && generateVoices
-              ? 'Shots have recorded dialogue, so voices stay on.'
-              : generateVoices
-                ? `Each speaking character gets a designed voice (${microsToDisplayUsd(VOICE_ESTIMATE_COST)} each).`
-                : 'Characters have no voice.'}
           </p>
         </div>
       )}

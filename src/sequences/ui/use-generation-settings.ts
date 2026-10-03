@@ -41,7 +41,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v5 → v6: voices on, stop at dialogue, Seedance 2.5 — #2004. v4 → v5:
+// (v5 → v6: stop at dialogue, Seedance 2.5 — #2004. v4 → v5:
 // Turbo is the product default. Stop-at is migrated from
 // auto-generate flags when loading a v5 snapshot — #1408). Adding a FIELD is
 // not a reason to bump — `loadSettings` falls back per-field, so an older
@@ -65,8 +65,6 @@ type GenerationSettings = {
   rememberStopAt: boolean;
   /** Render a still per shot first (the frame-based workflow); off = reference-only. */
   generateStartFrames: boolean;
-  /** Design a voice per speaking character (#1553). */
-  generateVoices: boolean;
   /** Render motion as Ark drafts (#1756); only Seedance 2.5 honours it. */
   draftMotion: boolean;
   musicModel: AudioModel;
@@ -115,7 +113,6 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // Off by default: a new sequence renders reference-only; start frames are
   // the opt-in for steerable composition.
   generateStartFrames: false,
-  generateVoices: true,
   // On by default: only Seedance 2.5 honours it, and there a 480p look
   // before the 1080p spend is the cheaper first run (#1756).
   draftMotion: true,
@@ -280,10 +277,6 @@ function loadSettings(): GenerationSettings {
         'generateStartFrames' in parsed &&
         typeof parsed.generateStartFrames === 'boolean'
           ? parsed.generateStartFrames
-          : false,
-      generateVoices:
-        'generateVoices' in parsed && typeof parsed.generateVoices === 'boolean'
-          ? parsed.generateVoices
           : false,
       draftMotion:
         'draftMotion' in parsed && typeof parsed.draftMotion === 'boolean'

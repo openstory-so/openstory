@@ -149,7 +149,7 @@ async function resolveStoryboardPayload(
   // choke point every run passes, rather than fail the bible stage mid-run.
   if (sequence.generateVoices && !isElevenLabsConfigured()) {
     throw new ValidationError(
-      'Voice design is not configured on this deployment. Turn Voices off to generate.'
+      'Voice design is not configured on this deployment.'
     );
   }
 
