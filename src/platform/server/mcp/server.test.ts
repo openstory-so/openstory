@@ -229,28 +229,63 @@ describe('tools/list and whoami', () => {
     });
   });
 
-  it('rejects a 2025-era initialize (legacy: reject)', async () => {
-    const res = await serveMcpRequest(
+  describe('a 2025-era client (sessions: stateless)', () => {
+    const legacyPost = (method: string, params: Record<string, unknown>) =>
       new Request('https://openstory.test/mcp', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           accept: 'application/json, text/event-stream',
+          'mcp-protocol-version': '2025-11-25',
         },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2025-11-25',
-            capabilities: {},
-            clientInfo: { name: 'legacy', version: '0' },
-          },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+
+    // The legacy transport may answer as JSON or as one SSE event.
+    const readRpc = async (res: Response) => {
+      const text = await res.text();
+      const data = res.headers
+        .get('content-type')
+        ?.includes('text/event-stream')
+        ? text
+            .split('\n')
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trim())
+            .join('')
+        : text;
+      return rpcEnvelope.parse(JSON.parse(data));
+    };
+
+    it('initializes without opening a session', async () => {
+      const res = await serveMcpRequest(
+        legacyPost('initialize', {
+          protocolVersion: '2025-11-25',
+          capabilities: {},
+          clientInfo: { name: 'legacy', version: '0' },
         }),
-      }),
-      auth
-    );
-    expect(res.status).toBeGreaterThanOrEqual(400);
+        auth
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get('mcp-session-id')).toBeNull();
+      const body = await readRpc(res);
+      expect(body.error).toBeUndefined();
+      expect(
+        z.object({ protocolVersion: z.string() }).parse(body.result)
+          .protocolVersion
+      ).toBe('2025-11-25');
+    });
+
+    it('calls a tool with no session, on any isolate', async () => {
+      const res = await serveMcpRequest(
+        legacyPost('tools/call', { name: 'whoami', arguments: {} }),
+        auth
+      );
+      expect(res.status).toBe(200);
+      const body = await readRpc(res);
+      expect(whoamiResult.parse(body.result).structuredContent.team.id).toBe(
+        'team_1'
+      );
+    });
   });
 });
 

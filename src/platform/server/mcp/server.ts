@@ -14,6 +14,7 @@ import { toolDefinition } from '@tanstack/ai';
 import { createMCPServer } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
 import { AuthenticationError } from '@/platform/errors';
+import { getLogger, toErrorPayload } from '@/platform/logger';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import type { McpAuthContext } from './auth';
 import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
@@ -31,6 +32,8 @@ import { libraryReadTools } from './tools/library-reads';
 
 export const MCP_SERVER_NAME = 'openstory';
 export const MCP_SERVER_VERSION = '0.1.0';
+
+const logger = getLogger(['openstory', 'mcp']);
 
 const whoami = toolDefinition({
   name: 'whoami',
@@ -78,9 +81,14 @@ export const mcpServer = createMCPServer({
     ...contextReadTools,
     ...libraryReadTools,
   ],
-  // Many Worker isolates: a 2025 session opened here is not found on the
-  // next request, so 2025 clients get the SDK rejection, as before.
-  sessions: 'reject',
+  // Many Worker isolates: a 2025 session opened here would not be found on
+  // the next request, so a 2025 client gets a fresh server per request and
+  // no session (2026 clients are stateless by spec).
+  sessions: 'stateless',
+  // Transport and protocol errors the SDK answers itself, so they never
+  // reach a tool's catch or `handle.ts`.
+  onerror: (error) =>
+    logger.error('MCP protocol error', { err: toErrorPayload(error) }),
 });
 
 /**

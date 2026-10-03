@@ -127,7 +127,7 @@
     "@tanstack/ai-fal": "^0.15.4",
     "@tanstack/ai-gemini": "^0.34.2",
     "@tanstack/ai-grok": "^0.20.4",
-    "@tanstack/ai-mcp": "0.6.0",
+    "@tanstack/ai-mcp": "0.7.0",
     "@tanstack/ai-openai": "^0.26.0",
     "@tanstack/ai-openrouter": "^0.20.2",
     "@tanstack/highlight": "0.1.0",
