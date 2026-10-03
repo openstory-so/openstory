@@ -46,6 +46,30 @@ A missing scope is a tool error with code `INSUFFICIENT_SCOPE` and `details.scop
 - `get_production_bible` returns style, cast, locations, elements and every scene's narrative in one call. When it cannot include everything, a `*Truncated` field names the list tool (and cursor) that continues it.
 - A successful result has structured content and the same JSON as text; a coded error carries `structuredContent.error` (`code`, `message`, `details`). A read over 256 KiB is refused with a message telling you to page; nothing is silently cut. A write whose result cannot be returned answers `RESULT_NOT_RETURNED` with the ids it did write: the work is done, so do not call it again; read the entity back.
 
+### Review rendered video without downloading it
+
+Call `get_shot_frames({ sequenceId })` to receive JPEG frames directly in the
+MCP response. This works even when your sandbox cannot connect to the media
+host. It returns up to 3 shots per page; pass `nextCursor` as `cursor` to
+continue. A 9-shot sequence takes 3 calls.
+
+For a closer look, send `shotId` (or up to 3 `shotIds`). `count` defaults to 4
+and accepts 2–8 frames; `maxWidth` defaults to 512 and accepts 128–768 pixels.
+Alternatively, specify `timestampsMs: [0, 1000, 2500]` to inspect particular
+moments within the shot. Each image has a corresponding `imageIndex` and
+timestamp in the returned metadata. The current motion prompt is context;
+it may have changed since the selected video was rendered.
+
+Unavailable renders or failed extractions are identified per shot, so check
+`status` before judging the output. Legacy clips without shot timing are
+labelled `whole_clip`. This feature requires Cloudflare media transformations
+for stored video; local-only storage and external provider URLs report that
+limitation. Still frames can show visual defects but do not establish smooth
+motion or lip-sync. Use `get_shot_audio` for dialogue timing alongside them.
+
+Text retains the 256 KiB limit; responses with images may total up to 4 MiB.
+If a frame exceeds its size limit, retry with a smaller `maxWidth`.
+
 ### Resources
 
 For hosts that attach context rather than call tools:

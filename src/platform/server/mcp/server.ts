@@ -28,6 +28,7 @@ import { listScenes } from './tools/list-scenes';
 import { getScene } from './tools/get-scene';
 import { listShots } from './tools/list-shots';
 import { getShot } from './tools/get-shot';
+import { getShotFrames } from './tools/get-shot-frames';
 import { updateSceneTool } from './tools/update-scene';
 import { structureEditTools } from './tools/structure-edits';
 import { shotContentTools } from './tools/shot-content-edits';
@@ -94,6 +95,7 @@ export const mcpServer = createMCPServer({
     getScene,
     listShots,
     getShot,
+    getShotFrames,
     ...castReadTools,
     ...productionReadTools,
     ...contextReadTools,

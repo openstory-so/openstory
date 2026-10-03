@@ -58,6 +58,19 @@ export function videoPosterUrl(src: string, width = 640): string | undefined {
   return buildMediaUrl(`mode=frame,time=0s,format=jpg,width=${width}`, src);
 }
 
+/** A bounded JPEG review frame, extracted at a clip-relative timestamp. */
+export function videoReviewFrameUrl(
+  src: string,
+  maxWidth: number,
+  timestampMs: number
+): string | undefined {
+  if (!isTransformableVideoUrl(src)) return undefined;
+  return buildMediaUrl(
+    `mode=frame,time=${timestampMs / 1000}s,format=jpg,width=${maxWidth},height=${maxWidth},fit=contain`,
+    src
+  );
+}
+
 /**
  * A downscaled, re-encoded MP4 sized to `width` — much smaller than the master
  * clip for grid-cell playback. Returns the original URL unchanged for
