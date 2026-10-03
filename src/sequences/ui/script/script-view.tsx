@@ -958,7 +958,10 @@ export const ScriptView: FC<{
       autoGenerateMusic: flags.autoGenerateMusic,
       generateStartFrames,
       generateVoices,
-      draftMotion: draftFirst,
+      // The choice, gated on the route only: a sequence started on a model
+      // without a draft mode still drafts once one is picked. The server
+      // ignores it for a model that has none.
+      draftMotion: draftMotion && viaAvailability.byteplus,
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
       targetDurationSeconds: enhancedTarget ?? undefined,

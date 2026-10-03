@@ -439,7 +439,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         videoModel,
         // Always on for the batch; a single shot can turn it off (scene editor).
         generateAudio: true,
-        draftMotion: draftFirst,
+        draftMotion: draftChoice,
       })
     );
   };
@@ -448,6 +448,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // Draft first applies to the model this footer would send (#1756).
   const offerDraftFirst = supportsDraftMode(videoModel) && draftAvailable;
   const draftFirst = draftBatch && offerDraftFirst;
+  // What is saved on the sequence is the choice, not whether today's model
+  // can honour it: gated on the route only, so it is still on when a
+  // draft-capable model is picked later. The server ignores it for a model
+  // without a draft mode.
+  const draftChoice = draftBatch && draftAvailable;
   const showMotionFooter =
     !hideBatchButton &&
     !isMotionInProgress &&
@@ -544,7 +549,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         stopAt: continueStopAtClamped,
         generateStartFrames: draftStartFrames,
         generateVoices: voices,
-        draftMotion: draftFirst,
+        draftMotion: draftChoice,
       })
     );
   };
