@@ -1,5 +1,4 @@
 import { BillingGateDialog } from '@/billing/ui/billing-gate-dialog';
-import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { OpenStoryLogo } from '@/ui/icons/openstory-logo';
 import { PageContainer } from '@/ui/layout/page-container';
 import { PageIntro } from '@/ui/typography/page-intro';
@@ -315,7 +314,6 @@ export function NewSequencePage({
               {SITE_CONFIG.taglineSub}
             </p>
           </div>
-          <SignInButton />
         </div>
         {/* `#compose` target: the gallery "Try" links navigate here so the
             router scrolls the composer into view (scrollRestoration handles

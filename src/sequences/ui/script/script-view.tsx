@@ -1640,11 +1640,17 @@ export const ScriptView: FC<{
                 <Button
                   type="submit"
                   disabled={isDisabled}
-                  className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
+                  className={cn(
+                    'group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden',
+                    // Logged-out front page: this button is the sign-in control.
+                    !isAuthenticated &&
+                      'motion-safe:animate-pulse motion-safe:hover:animate-none'
+                  )}
                 >
                   <span className="relative z-10">
                     <InButtonCost
-                      estimate={storyboardCostEstimate}
+                      estimate={isAuthenticated ? storyboardCostEstimate : null}
+                      hideLoggedOutPrice
                       amountWidth={
                         includesStage(stopAt, 'motion') ? 'double' : 'single'
                       }
@@ -1658,9 +1664,11 @@ export const ScriptView: FC<{
                         ? 'Generating…'
                         : isElementBusy
                           ? 'Analyzing elements…'
-                          : isEditing
-                            ? 'Generate Copy'
-                            : 'Generate'}
+                          : !isAuthenticated
+                            ? 'Sign in to Generate'
+                            : isEditing
+                              ? 'Generate Copy'
+                              : 'Generate'}
                     </InButtonCost>
                   </span>
                   {/* Shine effect */}
