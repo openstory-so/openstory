@@ -186,7 +186,7 @@ Shot duration and starting-frame mode (`shots.fn.ts`), prompts (`prompt-variants
 
 ## Authorization and read-only behavior
 
-Every tool runs through `runTool` (`tool-context.ts`). Some clients, Claude's connector among them, send every scalar as a string, so a top-level field typed as a number or boolean has its string parsed back before zod runs; anything that does not parse still fails validation. The result goes through JSON before it is returned, because the SDK's output validator rejects an `undefined` field and would fail a call that already ran (a create that reported an error).
+Every tool runs through `runTool` (`tool-context.ts`). Some clients, Claude's connector among them, send every scalar as a string, so a top-level string the schema rejects is retried as the number or boolean it spells and kept only if the schema then accepts it (this covers `duration: number | 'auto'` and `confirm: true`; `'auto'` itself is left alone). Anything else still fails validation. The result goes through JSON before it is returned, because the SDK's output validator rejects an `undefined` field and would fail a call that already ran (a create that reported an error).
 
 The MCP server is a request composition boundary. Its narrow `no-scoped-factory` exception permits `createScopedDb(auth.teamId, auth.user.id)` after checking the tool's OAuth scope. It has no raw-DB or SQL exception. Discovery and `whoami` do not create a scoped DB.
 

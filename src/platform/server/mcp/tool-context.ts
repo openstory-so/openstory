@@ -73,33 +73,32 @@ function toolError(
   };
 }
 
-const WRAPPERS = new Set(['optional', 'nullable', 'default', 'prefault']);
-
 /**
  * Some clients (Claude's connector among them) send every scalar argument as a
- * string. A top-level field the schema types as a number or boolean gets its
- * string parsed back; anything that does not parse is left for zod to reject.
+ * string. A top-level string the schema rejects is retried as the boolean or
+ * number it spells, and kept only if the schema then accepts it, so unions
+ * (`number | 'auto'`) and literals (`confirm: true`) work as well as plain
+ * numbers and booleans. A string the schema already accepts, such as
+ * `'auto'`, is left alone; anything else is left for zod to reject.
  */
-function coerceScalars(schema: z.ZodObject, input: unknown): unknown {
+export function coerceScalars(schema: z.ZodObject, input: unknown): unknown {
   if (typeof input !== 'object' || input === null) return input;
   const out: Record<string, unknown> = { ...input };
   for (const [key, value] of Object.entries(out)) {
-    let field = schema.shape[key];
-    if (typeof value !== 'string' || !field) continue;
-    while (WRAPPERS.has(field.def.type) && 'innerType' in field.def) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every wrapper's innerType is a zod schema
-      field = field.def.innerType as z.ZodType;
+    const field = schema.shape[key];
+    if (typeof value !== 'string' || !field || field.safeParse(value).success) {
+      continue;
     }
     const text = value.trim();
-    if (field.def.type === 'boolean' && (text === 'true' || text === 'false')) {
-      out[key] = text === 'true';
-    } else if (
-      field.def.type === 'number' &&
-      text !== '' &&
-      Number.isFinite(Number(text))
-    ) {
-      out[key] = Number(text);
-    }
+    const candidates = [
+      text === 'true' ? true : text === 'false' ? false : undefined,
+      text !== '' && Number.isFinite(Number(text)) ? Number(text) : undefined,
+    ];
+    const spelled = candidates.find(
+      (candidate) =>
+        candidate !== undefined && field.safeParse(candidate).success
+    );
+    if (spelled !== undefined) out[key] = spelled;
   }
   return out;
 }
