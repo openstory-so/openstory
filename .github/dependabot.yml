@@ -72,7 +72,7 @@ updates:
         patterns: ['*']
         update-types: ['major']
     ignore:
-      # Engines pin Node 24; types for Node 26 would lie about the runtime.
+      # Engines pin Node 26; types for a future major would lie about the runtime.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
       # Hard-pinned to the exact version @tanstack/ai-openrouter depends on
@@ -107,6 +107,6 @@ updates:
       video-export:
         patterns: ['*']
     ignore:
-      # Dockerfile is node:22-bookworm-slim — keep types on the Node 22 line.
+      # Dockerfile is node:26-bookworm-slim — keep types on the Node 26 line.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']

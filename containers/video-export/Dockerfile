@@ -7,7 +7,7 @@
 #
 # Package manager: bun. Runtime: Node (the repo convention — "Node is the
 # runtime"), so we `bun run build` (tsc) and launch `node dist/server.js`.
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 
 ENV BUN_INSTALL=/usr/local
 WORKDIR /app
