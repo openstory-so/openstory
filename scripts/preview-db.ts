@@ -3,8 +3,8 @@
  * the last successfully promoted PR database, which stays intact after close.
  * No production database is ever read or written here.
  *
- * CI serializes fork and promotion jobs (cf-preview-db). Do not run concurrent
- * invocations outside that lock: D1's query API has no cross-request lock.
+ * Promotions use one conditional D1 UPDATE. Forks snapshot the base revision;
+ * a concurrent promotion leaves their data intact but makes them stale.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -80,11 +80,20 @@ async function registry(): Promise<string> {
   const listed = await api<{ uuid: string }[]>(`${root}?name=${REGISTRY_NAME}`);
   let id = listed[0]?.uuid;
   if (!id) {
-    const created = await api<{ uuid: string }>(root, {
-      method: 'POST',
-      body: JSON.stringify({ name: REGISTRY_NAME }),
-    });
-    id = created.uuid;
+    try {
+      const created = await api<{ uuid: string }>(root, {
+        method: 'POST',
+        body: JSON.stringify({ name: REGISTRY_NAME }),
+      });
+      id = created.uuid;
+    } catch (error) {
+      // Another preview may have created the registry after our list request.
+      const raced = await api<{ uuid: string }[]>(
+        `${root}?name=${REGISTRY_NAME}`
+      );
+      id = raced[0]?.uuid;
+      if (!id) throw error;
+    }
   }
   await query(
     id,
@@ -216,7 +225,7 @@ export async function promote(pr: number): Promise<void> {
       `Preview DB conflict: PR ${pr} forked revision ${forked.revision}, but the base is now revision ${current.revision}. The PR database is preserved; reconcile manually before promoting.`
     );
   }
-  // Serialized by CI. A conditional UPDATE guards accidental duplicate runs.
+  // A single D1 UPDATE is the compare-and-swap between concurrent merges.
   const result = await api<QueryResult[]>(`${root}/${db}/query`, {
     method: 'POST',
     body: JSON.stringify({

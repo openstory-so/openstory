@@ -32,10 +32,6 @@ jobs:
   # ── PR preview deploy ─────────────────────────────────────────────
   deploy-preview:
     needs: check-secrets
-    concurrency:
-      # Serializes snapshots with promotions across PRs.
-      group: cf-preview-db
-      cancel-in-progress: false
     if: >-
       needs.check-secrets.outputs.has-cf-token == 'true'
       && github.event_name == 'pull_request'
@@ -359,9 +355,6 @@ jobs:
   # ── Cleanup on PR close ───────────────────────────────────────────
   cleanup-preview:
     needs: check-secrets
-    concurrency:
-      group: cf-preview-db
-      cancel-in-progress: false
     if: >-
       needs.check-secrets.outputs.has-cf-token == 'true'
       && github.event_name == 'pull_request'
