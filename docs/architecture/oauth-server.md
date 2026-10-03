@@ -1,5 +1,12 @@
 # OAuth authorization server ("login with OpenStory", #1456)
 
+Inline video review (#2009) adds `openstory.get_shot_frames`, a
+`sequences:read` tool returning bounded JPEG image blocks through MCP. It uses
+the existing team-scoped production access checks before media I/O. Text and
+structured data retain the 256 KiB cap; only results with inline images have
+a separate 4 MiB total cap. See `mcp-capability-map.md` § Inline video review
+for pagination, render timing, limits and deployment requirements.
+
 OpenStory is an OAuth 2.1 authorization server, built on Better Auth's `jwt()` + `@better-auth/mcp` (= `@better-auth/oauth-provider` preconfigured for MCP). Three kinds of clients: hosted MCP clients (discover via RFC 9728/8414, self-register via RFC 7591 DCR, consent screen — nobody registers apps by hand), forks/self-hosts (the OpenRouter pattern inverted: the fork is the client, upstream is the server, the grant is a team credential — **not** SSO), and anything else that can do auth-code + PKCE. Skills/CLIs keep the device-code login (`/api/v1/device/*` → `osk_` key).
 
 - **Config:** `src/platform/server/auth/oauth-provider.ts` (issuer = `VITE_APP_URL` origin, HTTPS or loopback only; two RFC 8707 resources: `…/mcp` and `…/api/v1`; scopes `sequences:read|write`, `generate`, `credits:read`). The plugins are spread into `config.ts`.

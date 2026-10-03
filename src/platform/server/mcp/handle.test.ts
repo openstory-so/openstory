@@ -140,6 +140,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.get_scene',
       'openstory.list_shots',
       'openstory.get_shot',
+      'openstory.get_shot_frames',
       'openstory.list_characters',
       'openstory.get_character',
       'openstory.list_locations',

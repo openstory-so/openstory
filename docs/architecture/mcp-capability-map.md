@@ -1,6 +1,45 @@
 # MCP capability map
 
-`/mcp` serves **58 read tools, `whoami`, and the write tools below** (#1459 onwards). It expands [#1458](https://github.com/openstory-so/openstory/issues/1458) from sequence/scene/shot inspection to the active sequence production graph, Studio, Gallery and asset libraries. Every production read requires `sequences:read` for OAuth and each write tool its own scope; existing API keys retain their unscoped semantics. A missing scope is an `INSUFFICIENT_SCOPE` tool error (403-class) whose `details.scope` names the scope.
+`/mcp` serves **59 read tools, `whoami`, and the write tools below** (#1459 onwards). It expands [#1458](https://github.com/openstory-so/openstory/issues/1458) from sequence/scene/shot inspection to the active sequence production graph, Studio, Gallery and asset libraries. Every production read requires `sequences:read` for OAuth and each write tool its own scope; existing API keys retain their unscoped semantics. A missing scope is an `INSUFFICIENT_SCOPE` tool error (403-class) whose `details.scope` names the scope.
+
+## Inline video review (#2009)
+
+`openstory.get_shot_frames` returns selected video frames as MCP `image` blocks,
+so the agent needs no network access to the media host. It requires
+`sequences:read` and uses the same sequence/shot authorization and story-order
+pagination as `get_shot` / `list_shots`. It reads existing renders only.
+
+- Supply `sequenceId` and optionally `shotId` or `shotIds` (up to 3). Without
+  shot IDs it pages 3 shots by default; pass `nextCursor` as `cursor` until null.
+  A rendered 9-shot sequence is reviewable in 3 calls.
+- `count` defaults to 4 (2–8), including the first and last visible frame.
+  `maxWidth` defaults to 512 (128–768) and bounds both dimensions without
+  cropping. `timestampsMs` (1–8 values) overrides count and is relative to
+  each shot's video window, not the sequence timeline.
+- Metadata includes selected video version, current working motion prompt,
+  measured window duration, clip-relative and shot-relative sampling times,
+  and zero-based `imageIndex` among image blocks. Sampling times are seek
+  targets, not decoder-reported presentation timestamps. Images follow the
+  metadata's shot/frame order and are not duplicated in JSON.
+- Packed renders use their immutable manifest's ordered duration snapshots,
+  not the shot timings edited since that render. These are intended shot
+  boundaries, not detected cuts. The last window ends at the measured clip
+  duration. A legacy empty manifest is explicitly labelled `whole_clip`.
+- R2 range reads measure duration; Cloudflare Media Transformations decodes
+  and resizes the video using the same zone as the existing sample posters.
+  The Worker buffers only JPEGs, capped at 96 KiB each, with a 20-second
+  timeout and redirects disabled. Up to 8 frames run concurrently for one
+  shot; at most 3 shots are processed per call. No writes, new dependencies,
+  Container changes, or video bytes in MCP responses.
+- The existing 256 KiB text/structured-data cap remains. Results carrying
+  inline images have a separate 4 MiB total cap. An oversized frame requests
+  a smaller `maxWidth`; missing renders and extraction failures return
+  `status: unavailable` per shot without losing successful sibling shots.
+- Requires stored videos on the configured Cloudflare transformation zone.
+  Local-only R2, external provider URLs and deployments without that media
+  edge return an explicit unavailable reason. The tool never substitutes a
+  start image for a video frame. Contact sheets and inline audio are separate
+  future surfaces.
 
 ## Registered tools
 

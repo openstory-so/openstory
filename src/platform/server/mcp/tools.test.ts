@@ -90,6 +90,15 @@ import {
   sceneDetailSchema,
 } from '@/shots/inspection.schema';
 import { serializeShot } from '@/shots/server/inspection';
+import {
+  prepareReviewVideo,
+  readReviewFrame,
+} from '@/motion/server/review-frames';
+vi.mock('@/motion/server/review-frames', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/motion/server/review-frames')>()),
+  prepareReviewVideo: vi.fn(),
+  readReviewFrame: vi.fn(),
+}));
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 let client: Client;
@@ -151,7 +160,14 @@ async function call(name: string, args: Record<string, unknown> = {}) {
         .object({
           isError: z.boolean().optional(),
           structuredContent: z.record(z.string(), z.unknown()).optional(),
-          content: z.array(z.object({ type: z.string(), text: z.string() })),
+          content: z.array(
+            z.object({
+              type: z.string(),
+              text: z.string().optional(),
+              data: z.string().optional(),
+              mimeType: z.string().optional(),
+            })
+          ),
         })
         .optional(),
       error: z.unknown().optional(),
@@ -319,6 +335,284 @@ beforeEach(async () => {
   queries.length = 0;
 });
 
+describe('inline shot review frames (#2009)', () => {
+  beforeEach(() => {
+    vi.mocked(prepareReviewVideo).mockReset().mockResolvedValue({
+      url: 'https://storage.openstory.so/clip.mp4',
+      durationMs: 4000,
+    });
+    vi.mocked(readReviewFrame).mockReset().mockResolvedValue({
+      type: 'image',
+      mimeType: 'image/jpeg',
+      data: '/9j/2Q==',
+    });
+  });
+  it('returns real MCP image blocks with timestamps and text context, without writes', async () => {
+    const result = await call('get_shot_frames', { sequenceId, shotId });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      sequenceId,
+      nextCursor: null,
+      shots: [
+        {
+          shotId,
+          videoVersionId: videoId,
+          currentMotionPrompt: 'Motion prompt',
+          status: 'ready',
+          window: { durationMs: 4000, source: 'whole_clip' },
+          frames: [0, 1333, 2666, 3999].map((time, imageIndex) => ({
+            imageIndex,
+            timestampMs: time,
+            clipTimestampMs: time,
+          })),
+        },
+      ],
+    });
+    expect(
+      result.content.filter((block) => block.type === 'image')
+    ).toHaveLength(4);
+    expect(result.content[2]).toMatchObject({
+      type: 'image',
+      mimeType: 'image/jpeg',
+      data: '/9j/2Q==',
+    });
+    expect(JSON.parse(result.content[1]?.text ?? '')).toEqual(
+      result.structuredContent
+    );
+    expect(JSON.stringify(result.structuredContent)).not.toContain('/9j/2Q==');
+    expect(
+      queries.filter((q) => /^\s*(insert|update|delete)/i.test(q))
+    ).toEqual([]);
+  });
+  it('reviews nine selected videos in exactly three calls', async () => {
+    const ids = [shotId];
+    for (let number = 2; number <= 9; number++) {
+      const id = await addShot(sceneId, number);
+      const segment = generateId();
+      const video = generateId();
+      await db.insert(renderSegments).values({
+        id: segment,
+        sequenceId,
+        sceneId,
+        selectedVideoVersionId: video,
+      });
+      await db.insert(videoVariants).values({
+        id: video,
+        sequenceId,
+        renderSegmentId: segment,
+        model: 'wan_i2v',
+        manifest: [],
+        status: 'completed',
+        url: `/r2/videos/${video}.mp4`,
+      });
+      await db
+        .update(shots)
+        .set({ renderSegmentId: segment })
+        .where(eq(shots.id, id));
+      ids.push(id);
+    }
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let i = 0; i < 3; i++) {
+      const result = await call('get_shot_frames', {
+        sequenceId,
+        ...(cursor ? { cursor } : {}),
+      });
+      expect(result.isError).not.toBe(true);
+      const page = z
+        .object({
+          shots: z.array(
+            z.object({ shotId: z.string(), status: z.literal('ready') })
+          ),
+          nextCursor: z.string().nullable(),
+        })
+        .parse(result.structuredContent);
+      expect(
+        result.content.filter((block) => block.type === 'image')
+      ).toHaveLength(12);
+      seen.push(...page.shots.map((shot) => shot.shotId));
+      cursor = page.nextCursor ?? undefined;
+    }
+    expect(seen).toEqual(ids);
+    expect(cursor).toBeUndefined();
+  });
+  it('samples a packed shot using its render snapshot after its working timing changes', async () => {
+    const second = await addShot();
+    await db
+      .update(shots)
+      .set({ renderSegmentId: segmentId, durationMs: 9999 })
+      .where(eq(shots.id, second));
+    await db
+      .update(videoVariants)
+      .set({
+        manifest: [shotId, second].map((id) => ({
+          shotId: id,
+          durationMs: 3000,
+          motionPromptVersionId: null,
+          frameVersionId: null,
+          usesStartFrame: false,
+          audioClipIds: [],
+          audioSourceKey: null,
+          dialogueKey: null,
+          referenceKeys: [],
+        })),
+      })
+      .where(eq(videoVariants.id, videoId));
+    vi.mocked(prepareReviewVideo).mockResolvedValue({
+      url: 'https://storage.openstory.so/clip.mp4',
+      durationMs: 6500,
+    });
+    const result = await data('get_shot_frames', {
+      sequenceId,
+      shotId: second,
+      timestampsMs: [0, 1000],
+    });
+    expect(result).toMatchObject({
+      shots: [
+        {
+          window: {
+            startMs: 3000,
+            durationMs: 3500,
+            source: 'render_manifest',
+          },
+          frames: [
+            { timestampMs: 0, clipTimestampMs: 3000 },
+            { timestampMs: 1000, clipTimestampMs: 4000 },
+          ],
+        },
+      ],
+    });
+    expect(readReviewFrame).toHaveBeenCalledWith(
+      'https://storage.openstory.so/clip.mp4',
+      3000,
+      512
+    );
+    expect(readReviewFrame).toHaveBeenCalledWith(
+      'https://storage.openstory.so/clip.mp4',
+      4000,
+      512
+    );
+  });
+  it('supports custom times and isolates partial failures without orphan images', async () => {
+    const second = await addShot();
+    await db
+      .update(shots)
+      .set({ renderSegmentId: segmentId })
+      .where(eq(shots.id, second));
+    vi.mocked(readReviewFrame)
+      .mockResolvedValueOnce({
+        type: 'image',
+        mimeType: 'image/jpeg',
+        data: '/9j/2Q==',
+      })
+      .mockRejectedValueOnce(new Error('private URL diagnostic'));
+    const result = await call('get_shot_frames', {
+      sequenceId,
+      shotIds: [shotId, second],
+      timestampsMs: [0, 1000],
+    });
+    expect(result.structuredContent).toMatchObject({
+      shots: [
+        {
+          shotId,
+          status: 'unavailable',
+          frames: [],
+          error: 'Frame extraction failed. Retry this shot.',
+        },
+        {
+          shotId: second,
+          status: 'ready',
+          frames: [{ imageIndex: 0 }, { imageIndex: 1 }],
+        },
+      ],
+    });
+    expect(
+      result.content.filter((block) => block.type === 'image')
+    ).toHaveLength(2);
+    expect(JSON.stringify(result)).not.toContain('private URL');
+  });
+  it('checks all explicit IDs before media I/O and rejects deleted children', async () => {
+    expect(
+      (
+        await call('get_shot_frames', {
+          sequenceId,
+          shotIds: [shotId, generateId()],
+        })
+      ).isError
+    ).toBe(true);
+    expect(prepareReviewVideo).not.toHaveBeenCalled();
+    await db
+      .update(shots)
+      .set({ deletedAt: new Date() })
+      .where(eq(shots.id, shotId));
+    expect(
+      (await call('get_shot_frames', { sequenceId, shotId })).isError
+    ).toBe(true);
+    expect(prepareReviewVideo).not.toHaveBeenCalled();
+  });
+  it('reports unrendered shots explicitly', async () => {
+    const missing = await addShot();
+    expect(
+      await data('get_shot_frames', { sequenceId, shotId: missing })
+    ).toMatchObject({
+      shots: [
+        {
+          status: 'unavailable',
+          error: 'No usable selected video for this shot.',
+          frames: [],
+        },
+      ],
+    });
+    expect(prepareReviewVideo).not.toHaveBeenCalled();
+  });
+  it.each([
+    { count: 9 },
+    { count: 1 },
+    { maxWidth: 1024 },
+    { limit: 4 },
+    { timestampsMs: [-1] },
+    { shotId: 'bad' },
+    { cursor: 'bad' },
+  ])('rejects invalid input %j', async (input) => {
+    expect(
+      (await call('get_shot_frames', { sequenceId, ...input })).isError
+    ).toBe(true);
+    expect(readReviewFrame).not.toHaveBeenCalled();
+  });
+  it('refuses conflicting selectors and timestamps outside the measured window', async () => {
+    expect(
+      (await call('get_shot_frames', { sequenceId, shotId, shotIds: [shotId] }))
+        .isError
+    ).toBe(true);
+    expect(
+      await data('get_shot_frames', {
+        sequenceId,
+        shotId,
+        timestampsMs: [4000],
+      })
+    ).toMatchObject({ shots: [{ status: 'unavailable', frames: [] }] });
+    expect(readReviewFrame).not.toHaveBeenCalled();
+  });
+  it('preserves the text cap and applies a separate image cap', async () => {
+    vi.mocked(readReviewFrame).mockResolvedValue({
+      type: 'image',
+      mimeType: 'image/jpeg',
+      data: 'a'.repeat(80 * 1024),
+    });
+    expect(
+      (await call('get_shot_frames', { sequenceId, shotId })).isError
+    ).not.toBe(true);
+    vi.mocked(readReviewFrame).mockResolvedValue({
+      type: 'image',
+      mimeType: 'image/jpeg',
+      data: 'a'.repeat(1024 * 1024),
+    });
+    expect(await call('get_shot_frames', { sequenceId, shotId })).toMatchObject(
+      { isError: true, content: [{ text: expect.stringContaining('4 MiB') }] }
+    );
+  });
+});
+
 describe('entity identity and team ownership', () => {
   it.each([
     'get_sequence',
@@ -327,6 +621,7 @@ describe('entity identity and team ownership', () => {
     'get_scene',
     'list_shots',
     'get_shot',
+    'get_shot_frames',
   ])('%s rejects a foreign team before child reads', async (name) => {
     scopedDb = createScopedDb(generateId(), generateId());
     const args = {

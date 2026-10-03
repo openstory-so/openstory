@@ -192,7 +192,7 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
   const written = !spec.annotations.readOnlyHint;
   try {
-    const { data, summary } = await spec.run(parsed.data, context());
+    const { data, summary, images } = await spec.run(parsed.data, context());
     const output = spec.outputSchema.safeParse(data);
     if (!output.success && !written) {
       throw new Error(`openstory.${spec.name} output failed its schema`, {
@@ -229,6 +229,21 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
             'Response exceeds 256 KiB. Retry the collection with a smaller limit, disable optional prompts/assets, or use the entity/version document read with a smaller length.'
           );
     }
+    // Images travel only as MCP content, never duplicated in structured data
+    // or JSON text. The existing 256 KiB cap above still bounds all text.
+    if (images?.length) {
+      result.content.push(...images);
+      if (
+        new TextEncoder().encode(JSON.stringify(result)).length >
+        4 * 1024 * 1024
+      ) {
+        return written
+          ? unreportedWrite(spec.name, data, 'its images exceed 4 MiB')
+          : toolError(
+              'Image response exceeds 4 MiB. Retry with fewer shots, fewer frames, or a smaller maxWidth.'
+            );
+      }
+    }
     return result;
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -261,7 +276,11 @@ type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   run: (
     input: z.output<I>,
     ctx: ReadToolContext
-  ) => Promise<{ data: z.input<O>; summary: string }>;
+  ) => Promise<{
+    data: z.input<O>;
+    summary: string;
+    images?: Extract<CallToolResult['content'][number], { type: 'image' }>[];
+  }>;
 };
 
 /** One `openstory.*` tool as a `toolDefinition().server()`. */

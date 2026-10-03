@@ -138,6 +138,7 @@ describe('tools/list and whoami', () => {
       'openstory.get_scene',
       'openstory.list_shots',
       'openstory.get_shot',
+      'openstory.get_shot_frames',
       'openstory.list_characters',
       'openstory.get_character',
       'openstory.list_locations',
@@ -923,6 +924,27 @@ describe('generation tool authorization', () => {
 });
 
 describe('export tool authorization', () => {
+  it('refuses inline media without sequences:read before creating a DB', async () => {
+    const createDb = vi.spyOn(dbModule, 'createScopedDb');
+    const { body } = await rpc(
+      'tools/call',
+      {
+        name: 'openstory.get_shot_frames',
+        arguments: { sequenceId: '01J00000000000000000000000' },
+      },
+      { ...auth, kind: 'oauth', scopes: [] }
+    );
+    expect(body.result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: 'INSUFFICIENT_SCOPE',
+          details: { scope: 'sequences:read' },
+        },
+      },
+    });
+    expect(createDb).not.toHaveBeenCalled();
+  });
   it('refuses start_export without sequences:write, before any db', async () => {
     const createDb = vi.spyOn(dbModule, 'createScopedDb');
     const { body } = await rpc(
