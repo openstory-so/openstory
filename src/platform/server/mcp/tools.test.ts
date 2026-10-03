@@ -50,7 +50,7 @@ import {
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { mcpServer, serveMcpRequest } from './server';
 import {
@@ -2215,6 +2215,28 @@ describe('update_scene continuity (#1459)', () => {
 });
 
 describe('structure edits (#1979)', () => {
+  it('apply_sequence_edits runs several writes and stops before a generation tool', async () => {
+    const result = await data('apply_sequence_edits', {
+      sequenceId,
+      changes: [
+        { tool: 'update_sequence', arguments: { title: 'Batch title' } },
+        { tool: 'update_sequence', arguments: { includeMusic: false } },
+        { tool: 'generate_shot_video', arguments: { shotId, prompt: 'no' } },
+      ],
+    });
+    expect(result).toMatchObject({
+      sequenceId,
+      applied: [
+        { tool: 'update_sequence', data: { title: 'Batch title' } },
+        { tool: 'update_sequence', data: { includeMusic: false } },
+      ],
+      stoppedAt: { index: 2, tool: 'generate_shot_video' },
+    });
+    expect(await data('get_sequence', { sequenceId })).toMatchObject({
+      title: 'Batch title',
+    });
+  });
+
   it('update_sequence renames with an event and writes only the sent settings', async () => {
     const updated = await data('update_sequence', {
       sequenceId,
@@ -2232,7 +2254,12 @@ describe('structure edits (#1979)', () => {
     const [event] = await db
       .select()
       .from(sequenceEvents)
-      .where(eq(sequenceEvents.kind, 'sequence.renamed'));
+      .where(
+        and(
+          eq(sequenceEvents.kind, 'sequence.renamed'),
+          eq(sequenceEvents.targetId, sequenceId)
+        )
+      );
     expect(event).toMatchObject({ actorId, targetId: sequenceId });
     expect(
       await data('update_sequence', { sequenceId, targetDurationSeconds: null })

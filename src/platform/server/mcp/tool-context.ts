@@ -255,6 +255,22 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
 }
 
+const registeredWrites = new Map<
+  string,
+  (input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>
+>();
+
+/**
+ * Run a registered `sequences:write` tool by its unprefixed name. Generation
+ * tools are omitted: one approval must not spend credits. Returns null when
+ * the name is not an edit.
+ */
+export function runRegisteredWrite(
+  name: string
+): ((input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>) | null {
+  return registeredWrites.get(name) ?? null;
+}
+
 type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   name: string;
   /** The OAuth scope the tool needs (`osk_` keys are unscoped). */
@@ -283,6 +299,14 @@ type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
 export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>
 ) {
+  if (
+    spec.scope === 'sequences:write' &&
+    spec.name !== 'apply_sequence_edits'
+  ) {
+    registeredWrites.set(spec.name, (input, ctx) =>
+      runTool(spec, input, () => ctx)
+    );
+  }
   return toolDefinition({
     name: `openstory.${spec.name}` as const,
     description: spec.description,

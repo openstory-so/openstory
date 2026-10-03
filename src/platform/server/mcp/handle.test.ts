@@ -199,6 +199,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.reorder_shots',
       'openstory.delete_shot',
       'openstory.restore_shot',
+      'openstory.apply_sequence_edits',
       'openstory.get_shot_spec',
       'openstory.list_shot_dialogue',
       'openstory.update_shot_prompt',
