@@ -17,7 +17,8 @@ permissions:
 
 concurrency:
   group: cf-deploy-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # A close must not cancel an in-flight fork or promotion.
+  cancel-in-progress: false
 
 jobs:
   check-secrets:
@@ -31,6 +32,10 @@ jobs:
   # ── PR preview deploy ─────────────────────────────────────────────
   deploy-preview:
     needs: check-secrets
+    concurrency:
+      # Serializes snapshots with promotions across PRs.
+      group: cf-preview-db
+      cancel-in-progress: false
     if: >-
       needs.check-secrets.outputs.has-cf-token == 'true'
       && github.event_name == 'pull_request'
@@ -69,7 +74,7 @@ jobs:
             -H "Authorization: Bearer $CF_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/d1/database?name=$DB_NAME")
 
-          existing=$(echo "$list_response" | jq -r '.result[0].uuid // empty')
+          existing=$(echo "$list_response" | jq -er --arg name "$DB_NAME" '.result[] | select(.name == $name) | .uuid' || true)
 
           if [ -n "$existing" ]; then
             echo "Found existing D1 database: $existing"
@@ -179,7 +184,15 @@ jobs:
             fs.writeFileSync('wrangler.jsonc', JSON.stringify(obj, null, 2));
           "
           echo "Patched wrangler.jsonc:"
-          cat wrangler.jsonc | head -30
+           cat wrangler.jsonc | head -30
+
+      - name: Fork preview base (new PR databases only)
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database-id }}
+        run: bun scripts/preview-db.ts fork "$PR_NUMBER" "$D1_DATABASE_ID"
 
       # Runs after the patch so wrangler resolves the PR's own D1 (the
       # binding's database_id was just rewritten). Seeding happens at
@@ -293,6 +306,14 @@ jobs:
           jq -n 'env | with_entries(select(.key | startswith("SECRET_"))) | with_entries(.key |= ltrimstr("SECRET_")) | with_entries(select(.value != ""))' \
             | bunx wrangler secret bulk --name "pr-${PR_NUMBER}"
 
+      - name: Mark preview D1 ready for promotion
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          D1_DATABASE_ID: ${{ steps.d1.outputs.database-id }}
+        run: bun scripts/preview-db.ts ready "$PR_NUMBER" "$D1_DATABASE_ID"
+
       - name: Find existing PR comment
         uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
         id: find-comment
@@ -321,6 +342,9 @@ jobs:
   # ── Cleanup on PR close ───────────────────────────────────────────
   cleanup-preview:
     needs: check-secrets
+    concurrency:
+      group: cf-preview-db
+      cancel-in-progress: false
     if: >-
       needs.check-secrets.outputs.has-cf-token == 'true'
       && github.event_name == 'pull_request'
@@ -343,6 +367,10 @@ jobs:
             -H "Authorization: Bearer $CF_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/scripts/$WORKER_NAME")
           echo "Delete worker $WORKER_NAME response: $status"
+          if [ "$status" != 200 ] && [ "$status" != 204 ] && [ "$status" != 404 ]; then
+            echo "::error::Could not stop preview writes; refusing to promote its database"
+            exit 1
+          fi
 
       - name: Delete preview workflows
         env:
@@ -430,7 +458,37 @@ jobs:
             echo "Delete container application $APP_NAME ($id) response: $status"
           done
 
-      - name: Delete D1 database
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Promote merged preview database
+        if: github.event.pull_request.merged == true
+        id: promotion
+        continue-on-error: true
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: bun scripts/preview-db.ts promote "$PR_NUMBER"
+
+      - name: Report promotion conflict or failure
+        if: github.event.pull_request.merged == true && steps.promotion.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo '::error::Preview DB promotion failed. The PR database is preserved for manual reconciliation.'
+          gh pr comment "$PR_NUMBER" -R "$GITHUB_REPOSITORY" --body "Preview DB promotion failed (see [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)). The preview D1 is preserved; another PR may have advanced the base. Reconcile manually before promoting it. Production D1 is unaffected."
+          exit 1
+
+      - name: Delete unmerged D1 database
+        if: github.event.pull_request.merged != true
         env:
           CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -442,7 +500,7 @@ jobs:
           uuid=$(curl -sf \
             -H "Authorization: Bearer $CF_API_TOKEN" \
             "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/d1/database?name=$DB_NAME" \
-            | jq -r '.result[0].uuid // empty')
+            | jq -r --arg name "$DB_NAME" '.result[] | select(.name == $name) | .uuid')
 
           if [ -n "$uuid" ]; then
             status=$(curl -sw '%{http_code}' -o /dev/null \
@@ -460,12 +518,6 @@ jobs:
       # longer touches pr-* groups at all (#1756). A skipped or failed step
       # leaves an empty group (previews run BYTEPLUS_ASSET_SLOTS=0) until
       # someone runs `bun scripts/delete-preview-byteplus-group.ts --pr <n>`.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: 1.3.14
-
       - name: Delete BytePlus Ark PR asset group
         continue-on-error: true
         env:
@@ -473,7 +525,6 @@ jobs:
           BYTEPLUS_SECRET_KEY: ${{ secrets.BYTEPLUS_SECRET_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          bun install
           bun scripts/delete-preview-byteplus-group.ts --pr "$PR_NUMBER"
 
       - name: Find existing PR comment
@@ -492,6 +543,6 @@ jobs:
           edit-mode: replace
           body: |
             <!-- cf-preview -->
-            **Cloudflare Preview** torn down
+            **Cloudflare Preview** torn down${{ github.event.pull_request.merged && ' — D1 promoted as the next preview base' || '' }}
 
-            Worker `pr-${{ github.event.pull_request.number }}`, D1 database `openstory-pr-${{ github.event.pull_request.number }}`, preview workflows, container application `pr-${{ github.event.pull_request.number }}-videoexportcontainer`, and BytePlus Ark group `openstory-virtual-pr-${{ github.event.pull_request.number }}-*` have been deleted.
+            Worker `pr-${{ github.event.pull_request.number }}`, preview workflows, container application `pr-${{ github.event.pull_request.number }}-videoexportcontainer`, and BytePlus Ark group `openstory-virtual-pr-${{ github.event.pull_request.number }}-*` have been deleted. D1 `openstory-pr-${{ github.event.pull_request.number }}` was ${{ github.event.pull_request.merged && 'retained as the next preview base' || 'deleted' }}.
