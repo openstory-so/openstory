@@ -206,7 +206,7 @@ prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
   the switches flipped the footer asks the plan as if they were saved
   (`getGenerationPlanFn` overrides) and the continue waits for that plan.
 - **The footer picks the models (#2004).** Under the slider, one picker per
-  kind of model the run will use: text (`spec`, `prompt:music`), image
+  kind of model the run will use: text (`voice`, `spec`, `prompt:music`), image
   (sheets, stills), video (`prompt:motion`, clips), music. A pick saves on
   change as the sequence's default (`setSequenceModelsFn`) — the last model
   chosen for that kind — and the plan and the quote are re-asked. Continue

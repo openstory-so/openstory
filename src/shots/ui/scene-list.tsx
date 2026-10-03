@@ -759,7 +759,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       {/* A picker per kind of model the run will use (#2004). */}
       {offerContinue && onModelsChange && (
         <>
-          {continueUses('spec', 'prompt:music') && (
+          {/* Voice design writes its description and range script with it. */}
+          {continueUses('voice', 'spec', 'prompt:music') && (
             <ModelSelector
               selectedModels={[
                 isValidAnalysisModelId(analysisModel)
