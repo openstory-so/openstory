@@ -58,7 +58,7 @@ For hosts that attach context rather than call tools:
 
 ### Inline views (MCP Apps)
 
-`get_sequence` links an MCP Apps view (`ui://openstory/sequence-card.html`): hosts that render MCP Apps show the poster, status, counts and music inline. Hosts without MCP Apps get the plain structured result; the view changes nothing in it.
+`get_sequence` links an MCP Apps view (`ui://openstory/sequence-card.html`): hosts that render MCP Apps show the poster, status, counts and music inline, with a link that opens the sequence in the app. While the run is processing the card updates itself and, when it ends, posts a message into the chat so the agent picks up without polling. Hosts without MCP Apps get the plain structured result; the view changes nothing in it.
 
 ## The production workflow
 

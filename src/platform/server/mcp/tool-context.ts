@@ -73,6 +73,37 @@ function toolError(
   };
 }
 
+const WRAPPERS = new Set(['optional', 'nullable', 'default', 'prefault']);
+
+/**
+ * Some clients (Claude's connector among them) send every scalar argument as a
+ * string. A top-level field the schema types as a number or boolean gets its
+ * string parsed back; anything that does not parse is left for zod to reject.
+ */
+function coerceScalars(schema: z.ZodObject, input: unknown): unknown {
+  if (typeof input !== 'object' || input === null) return input;
+  const out: Record<string, unknown> = { ...input };
+  for (const [key, value] of Object.entries(out)) {
+    let field = schema.shape[key];
+    if (typeof value !== 'string' || !field) continue;
+    while (WRAPPERS.has(field.def.type) && 'innerType' in field.def) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every wrapper's innerType is a zod schema
+      field = field.def.innerType as z.ZodType;
+    }
+    const text = value.trim();
+    if (field.def.type === 'boolean' && (text === 'true' || text === 'false')) {
+      out[key] = text === 'true';
+    } else if (
+      field.def.type === 'number' &&
+      text !== '' &&
+      Number.isFinite(Number(text))
+    ) {
+      out[key] = Number(text);
+    }
+  }
+  return out;
+}
+
 /**
  * Run one read and bound its response, including opt-in prompts, without
  * silently cutting data. Input is parsed with zod here (the SDK only checks
@@ -87,7 +118,7 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
 ): Promise<CallToolResult> {
   try {
     const { data, summary } = await spec.run(
-      spec.inputSchema.parse(input),
+      spec.inputSchema.parse(coerceScalars(spec.inputSchema, input)),
       context()
     );
     const parsed = spec.outputSchema.safeParse(data);
@@ -96,15 +127,19 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
         cause: parsed.error,
       });
     }
+    // Through JSON so an `undefined` optional field is dropped: the SDK's
+    // output validator rejects the key, and the call failed after it ran.
+    const json = JSON.stringify(parsed.data);
     const result: CallToolResult = {
       content: [
         {
           type: 'text',
           text: summary.length > 500 ? `${summary.slice(0, 500)}…` : summary,
         },
-        { type: 'text', text: JSON.stringify(parsed.data) },
+        { type: 'text', text: json },
       ],
-      structuredContent: parsed.data,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the parsed output, round-tripped through JSON
+      structuredContent: JSON.parse(json) as Record<string, unknown>,
     };
     if (overResponseCap(JSON.stringify(result))) {
       return toolError(

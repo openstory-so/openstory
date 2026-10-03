@@ -72,7 +72,7 @@ const settingsOf = (row: Sequence) => ({
 const createSequenceTool = openstoryTool({
   name: 'create_sequence',
   description:
-    'Create a sequence from a script and start its storyboard (script analysis, then generation up to the stop-at implied by motion/music). Spends credits. Same input as POST /api/v1/sequences: style by id or name, cast and locations by library id/name or inline with hosted reference image URLs, elements by image URL. Short scripts are enhanced unless enhance is "off". Poll get_sequence_status with each returned id.',
+    'Create a sequence from a script and start its storyboard (script analysis, then generation up to the stop-at implied by motion/music). Spends credits. Same input as POST /api/v1/sequences: style by id or name, cast and locations by library id/name or inline with hosted reference image URLs, elements by image URL. Short scripts are enhanced unless enhance is "off". Poll get_sequence_status with each returned id; give the user each appUrl.',
   scope: 'generate',
   annotations: { ...writeAnnotations, openWorldHint: true },
   inputSchema: apiCreateSequenceSchema,
@@ -82,11 +82,12 @@ const createSequenceTool = openstoryTool({
         id: z.string(),
         status: z.string(),
         workflowRunId: z.string(),
+        appUrl: z.string(),
       })
     ),
     enhancedScript: z.string().optional(),
   }),
-  run: async (input, { scopedDb, userId, request }) => {
+  run: async (input, { scopedDb, userId, request, origin }) => {
     const result = await runOneShotCreate(input, {
       scopedDb,
       user: { id: userId },
@@ -97,6 +98,8 @@ const createSequenceTool = openstoryTool({
       id,
       status,
       workflowRunId,
+      // The editor's default tab, as get_sequence links it.
+      appUrl: `${origin}/sequences/${id}/script`,
     }));
     return {
       data: { sequences, enhancedScript: result.enhancedScript },

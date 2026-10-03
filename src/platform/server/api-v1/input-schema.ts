@@ -127,7 +127,7 @@ export const apiCreateSequenceSchema = z
       .optional()
       .meta({
         description:
-          'Target video length in seconds (max 5 minutes), applied whenever enhancement runs.',
+          'Target video length in seconds (max 5 minutes), applied whenever enhancement runs. Omit to match the script.',
         examples: [30],
       }),
 
@@ -137,7 +137,7 @@ export const apiCreateSequenceSchema = z
       .optional()
       .meta({
         description:
-          'Style by id, name, or slugified name. Omit to auto-pick the most popular available style.',
+          'Style by id, name, or slugified name. Omit (or "auto") for Match script: a style derived from the script.',
         examples: ['Cinematic Noir'],
       }),
     aspectRatio: aspectRatioSchema.optional().meta({

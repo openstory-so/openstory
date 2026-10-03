@@ -10,6 +10,7 @@ import {
 } from './server';
 import type { User } from '@/platform/server/auth/config';
 import { asStub } from '@/test/as-stub';
+import * as createModule from '@/platform/server/api-v1/create';
 
 const user = {
   id: 'user_1',
@@ -963,5 +964,37 @@ describe('withToolViews passthrough', () => {
       headers: { 'content-type': 'application/json' },
     });
     expect(await withToolViews(broken)).toBe(broken);
+  });
+});
+
+describe('tool argument and result shapes', () => {
+  it('takes scalars sent as strings and drops undefined result fields', async () => {
+    vi.spyOn(dbModule, 'createScopedDb').mockReturnValue(
+      asStub<ScopedDb>({ teamId: 'team_1' })
+    );
+    const create = vi.spyOn(createModule, 'runOneShotCreate').mockResolvedValue(
+      asStub<createModule.OneShotResult>({
+        sequences: [{ id: 'S', status: 'processing', workflowRunId: 'W' }],
+        enhancedScript: undefined,
+      })
+    );
+    const { body } = await rpc('tools/call', {
+      name: 'openstory.create_sequence',
+      arguments: {
+        script: 'A lighthouse keeper befriends a whale.',
+        motion: 'true',
+        targetSeconds: '30',
+      },
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ motion: true, targetSeconds: 30 }),
+      expect.anything()
+    );
+    expect(body.result).toMatchObject({
+      structuredContent: {
+        sequences: [{ id: 'S', status: 'processing', workflowRunId: 'W' }],
+      },
+    });
+    expect(body.result).not.toHaveProperty('isError');
   });
 });

@@ -5,6 +5,9 @@ type FakeElement = {
   textContent: string;
   hidden: boolean;
   src?: string;
+  href?: string;
+  onClick?: (event: { preventDefault: () => void }) => void;
+  addEventListener: (type: string, fn: FakeElement['onClick']) => void;
   children: FakeElement[];
   replaceChildren: () => void;
   append: (...children: FakeElement[]) => void;
@@ -14,6 +17,9 @@ const element = (): FakeElement => {
   const el: FakeElement = {
     textContent: '',
     hidden: true,
+    addEventListener: (_, fn) => {
+      el.onClick = fn;
+    },
     children: [],
     replaceChildren: () => {
       el.children = [];
@@ -51,6 +57,13 @@ function mount() {
     parent.postMessage.mock.calls.map(([message]) => message as unknown);
   return { els, send, sent };
 }
+
+type Posted = { id?: number; method?: string; params?: unknown };
+const isPosted = (m: unknown): m is Posted =>
+  typeof m === 'object' && m !== null;
+/** The requests the card posted with this method. */
+const posted = (messages: unknown[], method: string) =>
+  messages.filter(isPosted).filter((m) => m.method === method);
 
 const toolResult = (params: unknown) => ({
   jsonrpc: '2.0',
@@ -122,5 +135,119 @@ describe('sequence card bridge', () => {
     const before = sent().length;
     send({ jsonrpc: '2.0', id: 10, method: 'ping' }, {});
     expect(sent()).toHaveLength(before);
+  });
+
+  it('polls status through the host and announces the end of the run once', async () => {
+    vi.useFakeTimers();
+    try {
+      const { els, send, sent } = mount();
+      send({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { hostCapabilities: { serverTools: {} } },
+      });
+      send(
+        toolResult({
+          structuredContent: {
+            id: 'SEQ',
+            title: 'Sea',
+            status: 'processing',
+            sequenceStatus: 'processing',
+            counts: { shots: 2, videosReady: 0 },
+          },
+        })
+      );
+      const calls = () => posted(sent(), 'tools/call');
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(calls()).toHaveLength(1);
+      expect(calls()[0]?.params).toEqual({
+        name: 'openstory.get_sequence_status',
+        arguments: { sequenceId: 'SEQ' },
+      });
+      const status = (sequenceStatus: string, videosReady: number) => ({
+        structuredContent: {
+          status: sequenceStatus,
+          sequenceStatus,
+          counts: { shots: 2, videosReady },
+        },
+      });
+      send({
+        jsonrpc: '2.0',
+        id: calls()[0]?.id,
+        result: status('processing', 1),
+      });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(calls()).toHaveLength(2);
+      send({
+        jsonrpc: '2.0',
+        id: calls()[1]?.id,
+        result: status('completed', 2),
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(calls()).toHaveLength(2);
+      expect(els.meta?.textContent).toBe('completed');
+      const messages = posted(sent(), 'ui/message');
+      expect(messages).toEqual([
+        expect.objectContaining({
+          params: {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'OpenStory: "Sea" (SEQ) finished: completed. 2/2 videos ready.',
+              },
+            ],
+          },
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not poll on a host without server tools', async () => {
+    vi.useFakeTimers();
+    try {
+      const { send, sent } = mount();
+      send({ jsonrpc: '2.0', id: 1, result: {} });
+      send(
+        toolResult({
+          structuredContent: { id: 'SEQ', sequenceStatus: 'processing' },
+        })
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(posted(sent(), 'tools/call')).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('opens the sequence in the app through the host', () => {
+    const { els, send, sent } = mount();
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      result: { hostCapabilities: { openLinks: {} } },
+    });
+    send(
+      toolResult({
+        structuredContent: {
+          id: 'SEQ',
+          appUrl: 'https://app.test/sequences/SEQ/script',
+        },
+      })
+    );
+    expect(els.open).toMatchObject({
+      href: 'https://app.test/sequences/SEQ/script',
+      hidden: false,
+    });
+    const preventDefault = vi.fn();
+    els.open?.onClick?.({ preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(posted(sent(), 'ui/open-link')).toEqual([
+      expect.objectContaining({
+        params: { url: 'https://app.test/sequences/SEQ/script' },
+      }),
+    ]);
   });
 });
