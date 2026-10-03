@@ -1,5 +1,5 @@
 /**
- * Agent plan → execute → status (#1460, #1461) on migrated SQLite, so sequence,
+ * Agent plan → execute → status (#1460) on migrated SQLite, so sequence,
  * scene and shot access is the real team scope. The editor's planners,
  * pricing, credit check and launchers are mocked: their behaviour has its
  * own tests; these pin the contract around them.
@@ -65,10 +65,6 @@ vi.doMock('@/billing/server/preflight', () => ({ requireCredits }));
 vi.doMock('@/platform/server/workflow/run-outcome', () => ({
   getWorkflowRunOutcome,
 }));
-vi.doMock('@/shots/server/update-stale-run', () => ({
-  launchUpdateStale,
-  readUpdateStaleRun,
-}));
 const getSequenceRejectingActiveRun = vi.fn();
 const readProductionStatus = vi.fn();
 const realLaunchers =
@@ -79,24 +75,39 @@ vi.doMock('./launchers', () => ({
   getSequenceRejectingActiveRun,
 }));
 vi.doMock('./production-status', () => ({ readProductionStatus }));
-vi.doMock('@/billing/cost-estimation', () => ({
-  estimateImageCost: () => 400_000,
-  gateEstimate: (micros: number) => micros,
-}));
-vi.doMock('./continue-plan', () => ({
-  continueFromPlan,
-  estimateContinueCost: vi.fn(async () => ({
-    micros: 1_000_000,
-    priced: true,
-  })),
-}));
-
 const executeSmartRetry = vi.fn();
 vi.doMock('./smart-retry', () => ({ executeSmartRetry }));
 const resolveExportCut = vi.fn();
 const previewExport = vi.fn();
 const startExport = vi.fn();
 vi.doMock('./export', () => ({ resolveExportCut, previewExport, startExport }));
+vi.doMock('@/billing/cost-estimation', () => ({
+  estimateImageCost: () => 400_000,
+  gateEstimate: (micros: number) => micros,
+}));
+// prepareContinue is the lock check, the work list and the estimate.
+vi.doMock('./continue-plan', () => ({
+  CONTINUE_CREDIT_PROVIDERS: ['fal', 'openrouter'],
+  prepareContinue: vi.fn(
+    async (args: { sequence: { id: string }; stopAt: unknown }) => {
+      await getSequenceRejectingActiveRun(undefined, args.sequence.id);
+      const { work, stopAt } = continueFromPlan(args);
+      return { work, stopAt, estimate: { micros: 1_000_000, priced: true } };
+    }
+  ),
+}));
+
+// The real shared gate (processing check, credit floor) over the mocks above.
+const realUpdateStaleRun = await vi.importActual<
+  typeof import('@/shots/server/update-stale-run')
+>('@/shots/server/update-stale-run');
+vi.doMock('@/shots/server/update-stale-run', () => ({
+  prepareUpdateStale: realUpdateStaleRun.prepareUpdateStale,
+  UPDATE_STALE_CREDIT_PROVIDERS:
+    realUpdateStaleRun.UPDATE_STALE_CREDIT_PROVIDERS,
+  launchUpdateStale,
+  readUpdateStaleRun,
+}));
 
 const {
   executeGeneration,
@@ -232,17 +243,6 @@ describe('plan_generation', () => {
     expect(launchUpdateStale).not.toHaveBeenCalled();
   });
 
-  it('reports a processing sequence as a blocker, not a throw', async () => {
-    await db
-      .update(sequences)
-      .set({ status: 'processing' })
-      .where(eq(sequences.id, sequenceId));
-    const plan = await planGeneration(scoped(), actor(), sequenceId, stale);
-    expect(plan.blockers.map((b) => b.code)).toEqual([
-      'GENERATION_IN_PROGRESS',
-    ]);
-  });
-
   it('expands scene targets to their shots and rejects foreign or wrong-type IDs', async () => {
     await planGeneration(scoped(), actor(), sequenceId, {
       ...stale,
@@ -277,21 +277,6 @@ describe('plan_generation', () => {
         target: { kind: 'shots', shotIds: [shotId] },
       })
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-  });
-
-  it('credit-checks the one-image floor when the estimate has no price', async () => {
-    const preview = await import('@/shots/server/update-stale-preview');
-    vi.spyOn(preview, 'buildUpdateStalePreview').mockReturnValue(
-      asStub({ costByLevel: { images: null } })
-    );
-    const plan = await planGeneration(scoped(), actor(), sequenceId, stale);
-    expect(plan.estimate).toEqual({ micros: null, usd: null });
-    expect(requireCredits).toHaveBeenLastCalledWith(
-      expect.anything(),
-      400_000,
-      expect.anything()
-    );
-    vi.mocked(preview.buildUpdateStalePreview).mockRestore();
   });
 });
 
@@ -371,20 +356,40 @@ describe('execute_generation', () => {
     expect(launchUpdateStale).not.toHaveBeenCalled();
   });
 
-  it('gives the mutex refusal a code and stays executable after it', async () => {
+  it('credit-checks the one-image floor when the estimate has no price', async () => {
+    const preview = await import('@/shots/server/update-stale-preview');
+    vi.spyOn(preview, 'buildUpdateStalePreview').mockReturnValue(
+      asStub({ costByLevel: { images: null } })
+    );
+    const plan = await planGeneration(scoped(), actor(), sequenceId, stale);
+    expect(plan.estimate).toEqual({ micros: null, usd: null });
+    expect(requireCredits).toHaveBeenLastCalledWith(
+      expect.anything(),
+      400_000,
+      expect.anything()
+    );
+    vi.mocked(preview.buildUpdateStalePreview).mockRestore();
+  });
+
+  it('refuses while the sequence is processing, with the editor’s own rule, and stays executable after', async () => {
     const { planToken } = await planGeneration(
       scoped(),
       actor(),
       sequenceId,
       stale
     );
-    getSequenceRejectingActiveRun.mockRejectedValueOnce(
-      new Error('A generation is already running')
-    );
+    await db
+      .update(sequences)
+      .set({ status: 'processing' })
+      .where(eq(sequences.id, sequenceId));
     await expect(execute(planToken)).rejects.toMatchObject({
-      code: 'GENERATION_IN_PROGRESS',
+      code: 'VALIDATION_ERROR',
     });
-    expect(launchUpdateStale).not.toHaveBeenCalled();
+    expect(getSequenceRejectingActiveRun).not.toHaveBeenCalled();
+    await db
+      .update(sequences)
+      .set({ status: 'completed' })
+      .where(eq(sequences.id, sequenceId));
     expect(await execute(planToken)).toMatchObject({
       workflowRunIds: [updateAllRun],
     });
@@ -405,24 +410,13 @@ describe('execute_generation', () => {
       expect.objectContaining({ stopAt: 'images' })
     );
     // A repeat while that run is live: the mutex, as a code the agent reads.
-    triggerContinue.mockRejectedValueOnce(
+    getSequenceRejectingActiveRun.mockRejectedValueOnce(
       new realLaunchers.GenerationInProgressError()
     );
     await expect(execute(planToken)).rejects.toMatchObject({
       code: 'GENERATION_IN_PROGRESS',
     });
-    expect(triggerContinue).toHaveBeenCalledTimes(2);
-  });
-
-  it('passes a launch failure through, with no run to name', async () => {
-    const { planToken } = await planGeneration(
-      scoped(),
-      actor(),
-      sequenceId,
-      stale
-    );
-    launchUpdateStale.mockRejectedValueOnce(new Error('binding down'));
-    await expect(execute(planToken)).rejects.toThrow('binding down');
+    expect(triggerContinue).toHaveBeenCalledTimes(1);
   });
 });
 

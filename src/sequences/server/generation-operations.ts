@@ -34,28 +34,27 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
 import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
-import { requireCredits } from '@/billing/server/preflight';
+import { requireCredits, type Provider } from '@/billing/server/preflight';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import type { Microdollars } from '@/billing/money';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { sha256Hex } from '@/shots/input-hash';
-import { planUpdateAll, computePlan } from '@/shots/server/update-stale-plan';
+import { computePlan } from '@/shots/server/update-stale-plan';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { buildUpdateStalePreview } from '@/shots/server/update-stale-preview';
 import {
   launchUpdateStale,
+  prepareUpdateStale,
+  UPDATE_STALE_CREDIT_PROVIDERS,
   readUpdateStaleRun,
 } from '@/shots/server/update-stale-run';
 import { UPDATE_STALE_DEPTHS } from '@/shots/update-stale-depth';
 import { GENERATION_STAGES } from '@/sequences/pipeline';
 import { productionAccess } from './production-access';
 import { computeGenerationPlan } from './generation-plan';
-import { continueFromPlan, estimateContinueCost } from './continue-plan';
+import { CONTINUE_CREDIT_PROVIDERS, prepareContinue } from './continue-plan';
 import {
   GenerationInProgressError,
   GenerationStatusUnknownError,
-  getSequenceRejectingActiveRun,
   triggerContinue,
 } from './launchers';
 import { readProductionStatus } from './production-status';
@@ -180,7 +179,11 @@ type Prepared = {
   estimateMicros: Microdollars | null;
   /** What the balance must cover: the known parts, never skipped. */
   creditCheckMicros: Microdollars;
+  /** Whose keys waive the check; the editor's rule for the same run. */
+  creditProviders: readonly Provider[];
   hasWork: boolean;
+  /** A live storyboard run blocks it; reported by plan, refused by execute. */
+  needsIdleSequence: boolean;
   work: () => Promise<PlanWork>;
   /**
    * Start the work under `runKey` (deduplication id), reporting each run as
@@ -208,18 +211,6 @@ async function shotIdsFor(
   return (await scopedDb.shots.listBySequence(sequenceId))
     .filter((shot) => shot.sceneId !== null && sceneIds.has(shot.sceneId))
     .map((shot) => shot.id);
-}
-
-/** Update all's floor (as `updateStaleShotsFn`): one image of the sequence model. */
-async function oneImageFloor(sequence: Sequence): Promise<Microdollars> {
-  const model = safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL);
-  return gateEstimate(
-    estimateImageCost(model, sequence.aspectRatio, 1, {
-      pricing: await getEffectiveFalPricing(),
-      resolution: sequence.resolution,
-    }),
-    { model, operation: 'update-stale-shots' }
-  );
 }
 
 function summarize(plan: UpdateStalePlan, inFlightShotIds: string[]) {
@@ -274,13 +265,6 @@ function planMaterial(plan: UpdateStalePlan) {
   };
 }
 
-function hasWork(plan: UpdateStalePlan) {
-  return (
-    plan.targets.length > 0 ||
-    (plan.music !== null && (plan.music.regenPrompt || plan.music.regenTrack))
-  );
-}
-
 /** Update all / Continue: freeze the plan and price it as the editor does. */
 async function prepareGeneration(
   scopedDb: ScopedDb,
@@ -298,29 +282,33 @@ async function prepareGeneration(
         .map((u) => u.id)
     ),
   ];
+  const hasWork = (plan: UpdateStalePlan) =>
+    plan.targets.length > 0 ||
+    (plan.music !== null && (plan.music.regenPrompt || plan.music.regenTrack));
 
   if (request.mode === 'stale') {
-    const plan = await planUpdateAll({
+    // The editor's own gate and plan: processing check and credit floor.
+    const { plan, creditFloorMicros } = await prepareUpdateStale({
       scopedDb,
-      sequenceId: sequence.id,
-      shotIds,
-      depth: request.depth,
       userId: actor.userId,
+      sequence,
+      depth: request.depth,
+      shotIds,
     });
     const estimateMicros = buildUpdateStalePreview(
       plan,
       await getEffectiveFalPricing(),
       sequence.musicModel
     ).costByLevel[request.depth];
-    const floor =
-      request.depth === 'prompts' ? 0 : await oneImageFloor(sequence);
     return {
       sequence,
       digestMaterial: planMaterial(plan),
       estimateMicros,
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- max of two Microdollars
-      creditCheckMicros: Math.max(estimateMicros ?? 0, floor) as Microdollars,
+      // The editor's rule: the floor, not the estimate.
+      creditCheckMicros: creditFloorMicros,
+      creditProviders: UPDATE_STALE_CREDIT_PROVIDERS,
       hasWork: hasWork(plan),
+      needsIdleSequence: false,
       work: async () => summarize(plan, await inFlight()),
       launch: async (runKey, onLaunched) => {
         await onLaunched(
@@ -341,40 +329,33 @@ async function prepareGeneration(
       'mode "missing" (Continue) plans the whole sequence. Omit sceneIds/shotIds, or use mode "stale" for scenes or shots.'
     );
   }
-  const generationPlan = await computeGenerationPlan(scopedDb, sequence.id);
-  const switches = {
-    generateStartFrames: sequence.generateStartFrames,
-    generateVoices: sequence.generateVoices,
-  };
-  const { work, stopAt } = continueFromPlan({
-    current: generationPlan,
-    next: generationPlan,
-    saved: switches,
-    requested: switches,
+  // The editor's gate and work list, with the switches as saved.
+  const { work, stopAt, estimate } = await prepareContinue({
+    scopedDb,
+    sequence,
     stopAt: request.stopAt,
-  });
-  const [plan, estimate] = await Promise.all([
-    computePlan({
-      scopedDb,
-      sequenceId: sequence.id,
-      units: work.map(({ kind, id }) => ({ kind, id })),
-      userId: actor.userId,
-    }),
-    estimateContinueCost({
-      sequence,
-      shots: await scopedDb.shots.listBySequence(sequence.id),
-      work,
+    requested: {
       generateStartFrames: sequence.generateStartFrames,
-      draftMotion: sequence.draftMotion,
-    }),
-  ]);
+      generateVoices: sequence.generateVoices,
+    },
+    draftMotion: sequence.draftMotion,
+  });
+  const plan = await computePlan({
+    scopedDb,
+    sequenceId: sequence.id,
+    units: work.map(({ kind, id }) => ({ kind, id })),
+    userId: actor.userId,
+  });
   return {
     sequence,
     digestMaterial: { ...planMaterial(plan), stopAt },
     estimateMicros: estimate.priced ? estimate.micros : null,
     // The editor checks the partial sum when a part has no price; so do we.
     creditCheckMicros: estimate.micros,
+    creditProviders: CONTINUE_CREDIT_PROVIDERS,
     hasWork: hasWork(plan),
+    // prepareContinue refused a running sequence; execute re-prepares.
+    needsIdleSequence: false,
     work: async () => summarize(plan, await inFlight()),
     // The storyboard mutex is the launch-once guard here: a repeat while the
     // run is live is GENERATION_IN_PROGRESS, and after it PLAN_CHANGED.
@@ -415,7 +396,9 @@ async function prepareRetry(
     digestMaterial: planned,
     estimateMicros,
     creditCheckMicros: estimateMicros,
+    creditProviders: ['fal', 'openrouter'],
     hasWork: true,
+    needsIdleSequence: true,
     work: async () => work,
     launch: async (runKey, onLaunched) => {
       await executeSmartRetry(context, { smartOnly, onLaunched, runKey });
@@ -435,20 +418,6 @@ async function withRunCodes<T>(work: () => Promise<T>): Promise<T> {
       throw new OpenStoryError(error.message, 'GENERATION_IN_PROGRESS', 409);
     }
     throw error;
-  }
-}
-
-/** The pre-launch check: any refusal here is a live run, by the editor's rule. */
-async function rejectActiveRun(scopedDb: ScopedDb, sequenceId: string) {
-  try {
-    await getSequenceRejectingActiveRun(scopedDb, sequenceId);
-  } catch (error) {
-    if (error instanceof OpenStoryError) throw error;
-    throw new OpenStoryError(
-      error instanceof Error ? error.message : String(error),
-      'GENERATION_IN_PROGRESS',
-      409
-    );
   }
 }
 
@@ -485,10 +454,15 @@ function digestOf(request: GenerationRequest, prepared: Prepared) {
   return sha256Hex(JSON.parse(material));
 }
 
-function checkCredits(scopedDb: ScopedDb, prepared: Prepared) {
-  return requireCredits(scopedDb, prepared.creditCheckMicros, {
-    providers: ['fal', 'openrouter'],
-  });
+async function checkCredits(
+  scopedDb: ScopedDb,
+  prepared: Pick<Prepared, 'creditCheckMicros' | 'creditProviders'>
+) {
+  if (prepared.creditCheckMicros > 0) {
+    await requireCredits(scopedDb, prepared.creditCheckMicros, {
+      providers: [...prepared.creditProviders],
+    });
+  }
 }
 
 export async function planGeneration(
@@ -500,7 +474,7 @@ export async function planGeneration(
   const prepared = await prepare(scopedDb, actor, sequenceId, request);
   const work = await prepared.work();
   const blockers: { code: string; message: string }[] = [];
-  if (prepared.sequence.status === 'processing') {
+  if (prepared.needsIdleSequence && prepared.sequence.status === 'processing') {
     blockers.push({
       code: 'GENERATION_IN_PROGRESS',
       message: 'A run is generating this sequence; execute after it finishes.',
@@ -556,8 +530,13 @@ export async function executeGeneration(
     );
   }
   if (!prepared.hasWork) throw new ValidationError('Nothing to generate.');
-  // Refusals before the launch leave the plan executable.
-  await rejectActiveRun(scopedDb, sequenceId);
+  if (prepared.needsIdleSequence && prepared.sequence.status === 'processing') {
+    throw new OpenStoryError(
+      'A run is generating this sequence; execute after it finishes.',
+      'GENERATION_IN_PROGRESS',
+      409
+    );
+  }
   await checkCredits(scopedDb, prepared);
 
   // Every run this plan starts carries the sequence id (status requires it
