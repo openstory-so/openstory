@@ -30,7 +30,6 @@ import {
   type Resolution,
 } from '@/models/resolutions';
 import {
-  DEFAULT_GENERATION_STOP_AT,
   isGenerationStage,
   stopAtFromFlags,
   type GenerationStage,
@@ -42,14 +41,15 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 
 // Bump when product defaults change so prior localStorage snapshots are ignored
-// (v4 → v5: Turbo is the product default. Stop-at is migrated from
+// (v5 → v6: voices on, stop at dialogue, Seedance 2.5 — #2004. v4 → v5:
+// Turbo is the product default. Stop-at is migrated from
 // auto-generate flags when loading a v5 snapshot — #1408). Adding a FIELD is
 // not a reason to bump — `loadSettings` falls back per-field, so an older
 // snapshot still loads. Bumping strands e2e's pinned settings
 // (`GENERATION_SETTINGS_KEY` in e2e/fixtures/test-utils.ts mirrors this
 // literal), which silently reverts the recorded pipeline to Turbo defaults and
 // fails as an aimock fixture miss.
-const STORAGE_KEY = 'openstory:generation-settings:v5';
+const STORAGE_KEY = 'openstory:generation-settings:v6';
 
 type GenerationSettings = {
   generationMode: GenerationMode;
@@ -94,6 +94,9 @@ function withMode(settings: GenerationSettings): GenerationSettings {
   };
 }
 
+/** What a new sequence renders motion with (#2004). */
+export const NEW_SEQUENCE_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2_5';
+
 const DEFAULT_SETTINGS: GenerationSettings = withMode({
   generationMode: DEFAULT_GENERATION_MODE,
   aspectRatio: DEFAULT_ASPECT_RATIO,
@@ -101,16 +104,18 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   analysisModels: [TURBO_DEFAULT_ANALYSIS],
   imageModel: TURBO_DEFAULT_IMAGE,
   imageModels: [TURBO_DEFAULT_IMAGE],
-  motionModel: TURBO_DEFAULT_VIDEO,
-  videoModels: [TURBO_DEFAULT_VIDEO],
-  // Motion + music on by default so the first Generate is a short film aha
-  // (#1140).
-  stopAt: DEFAULT_GENERATION_STOP_AT,
+  // Seedance 2.5, drafted first (#2004). The composer swaps it for the Turbo
+  // default where the team cannot reach BytePlus.
+  motionModel: NEW_SEQUENCE_VIDEO_MODEL,
+  videoModels: [NEW_SEQUENCE_VIDEO_MODEL],
+  // Stop once the dialogue is recorded (#2004): hear the film before paying
+  // for motion.
+  stopAt: 'dialogue',
   rememberStopAt: false,
   // Off by default: a new sequence renders reference-only; start frames are
   // the opt-in for steerable composition.
   generateStartFrames: false,
-  generateVoices: false,
+  generateVoices: true,
   // On by default: only Seedance 2.5 honours it, and there a 480p look
   // before the 1080p spend is the cheaper first run (#1756).
   draftMotion: true,

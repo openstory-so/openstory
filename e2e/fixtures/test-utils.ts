@@ -17,7 +17,7 @@ const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
 /** Mirrors `STORAGE_KEY` in src/sequences/ui/use-generation-settings.ts — bump both
  *  together, or the pin lands under a key the app never reads and the recorded
  *  pipeline silently reverts to Turbo defaults. */
-const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
+const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v6';
 
 /**
  * Catalog the recorded full-pipeline fal fixtures were captured against.

@@ -24,7 +24,10 @@ export type GenerationStage = (typeof GENERATION_STAGES)[number];
 
 export const generationStageSchema = z.enum(GENERATION_STAGES);
 
-/** Product default: stills + motion + music (the short-film aha). */
+/**
+ * The stop when a caller names none (public API, MCP, old rows): the whole
+ * film. The composer's own default is in `use-generation-settings.ts`.
+ */
 export const DEFAULT_GENERATION_STOP_AT: GenerationStage = 'music';
 
 export const GENERATION_STAGE_META: Record<

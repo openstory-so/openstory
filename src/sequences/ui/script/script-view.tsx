@@ -3,7 +3,10 @@ import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { InButtonCost } from '@/billing/ui/action-cost';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
-import { useViaAvailability } from '@/models/ui/use-via-availability';
+import {
+  useViaAvailability,
+  viaAvailabilityQueryOptions,
+} from '@/models/ui/use-via-availability';
 import { DRAFT_FINAL_RESOLUTION } from '@/motion/draft-mode';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
@@ -47,7 +50,10 @@ import { useAutoScroll } from '@/ui/use-auto-scroll';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { BILLING_TRANSACTIONS_KEY } from '@/billing/ui/use-billing-balance-realtime';
 import { useBillingGate } from '@/billing/ui/use-billing-gate';
-import { useGenerationSettings } from '@/sequences/ui/use-generation-settings';
+import {
+  NEW_SEQUENCE_VIDEO_MODEL,
+  useGenerationSettings,
+} from '@/sequences/ui/use-generation-settings';
 import {
   allowsUnfundedGeneration,
   DEFAULT_GENERATION_STOP_AT,
@@ -78,7 +84,7 @@ import {
   TITLE_CARD_NOTE,
 } from '@/models/enhance-duration';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   parkCreatingSequence,
@@ -89,6 +95,7 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -100,6 +107,7 @@ import {
 } from '@/models/models';
 import {
   applyGenerationMode,
+  TURBO_DEFAULT_VIDEO,
   type GenerationMode,
 } from '@/models/generation-mode';
 import {
@@ -269,6 +277,9 @@ export const ScriptView: FC<{
   const isEditing = !!sequence?.id;
   const voiceDesignAvailable = useVoiceDesignAvailable();
   const viaAvailability = useViaAvailability();
+  // Observes the cache only: unanswered for a visitor and while it loads.
+  const viasKnown =
+    useQuery({ ...viaAvailabilityQueryOptions, enabled: false }).data != null;
   const { data: composedScriptData } = useComposedScript(sequence?.id);
   const composedScript = composedScriptData?.script;
   // Analyzed sequences derive the document from scene versions (#1030), so the
@@ -796,9 +807,20 @@ export const ScriptView: FC<{
 
   // Auto-fallback motion models when style changes away from a required
   // category — any selected model whose requiredStyleCategory no longer matches
-  // is swapped for the default; the result is deduped.
+  // is swapped for the default; the result is deduped. A new sequence also
+  // swaps the Seedance 2.5 default for the Turbo one where this team cannot
+  // reach BytePlus (#2004) — only once the server has answered, so the
+  // conservative stand-in is never remembered as their pick.
   useEffect(() => {
     const coerced = videoModels.map((m) => {
+      if (
+        !isEditing &&
+        viasKnown &&
+        m === NEW_SEQUENCE_VIDEO_MODEL &&
+        !isOfferedVideoModel(m, viaAvailability)
+      ) {
+        return TURBO_DEFAULT_VIDEO;
+      }
       const model = IMAGE_TO_VIDEO_MODELS[m];
       return 'requiredStyleCategory' in model &&
         model.requiredStyleCategory !== styleCategory
@@ -812,7 +834,7 @@ export const ScriptView: FC<{
     ) {
       updateGen('videoModels', deduped);
     }
-  }, [styleCategory, videoModels]);
+  }, [styleCategory, videoModels, isEditing, viasKnown, viaAvailability]);
 
   const [targetDuration, setTargetDuration] = useState(30);
   // Only Enhance sets the sequence's target (#1593): a pasted script's length
