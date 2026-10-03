@@ -252,7 +252,7 @@ async function main(): Promise<void> {
   const pr = Number(rawPr);
   if (!account || !token || !Number.isSafeInteger(pr) || pr <= 0) {
     throw new Error(
-      'Usage: preview-db.ts fork <pr> <database-uuid> | promote <pr> (requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN)'
+      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr> (requires CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN)'
     );
   }
   if (mode === 'fork' && databaseId && /^[0-9a-f-]{36}$/.test(databaseId)) {
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
     await markReady(pr, databaseId);
   } else {
     throw new Error(
-      'Usage: preview-db.ts fork <pr> <database-uuid> | promote <pr>'
+      'Usage: preview-db.ts fork <pr> <database-uuid> | ready <pr> <database-uuid> | promote <pr>'
     );
   }
 }

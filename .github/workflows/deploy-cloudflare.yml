@@ -184,7 +184,7 @@ jobs:
             fs.writeFileSync('wrangler.jsonc', JSON.stringify(obj, null, 2));
           "
           echo "Patched wrangler.jsonc:"
-           cat wrangler.jsonc | head -30
+          cat wrangler.jsonc | head -30
 
       - name: Fork preview base (new PR databases only)
         env:
