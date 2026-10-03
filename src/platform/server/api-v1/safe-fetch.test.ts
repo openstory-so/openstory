@@ -163,10 +163,12 @@ describe('ingestImageToBucket', () => {
       );
 
       const res = await openSafeUrl('https://cdn.example.com/clip.mp4');
-      const read = res.arrayBuffer();
+      // The expectation is attached before the clock moves, so the rejection
+      // is handled the moment it happens.
+      const read = expect(res.arrayBuffer()).rejects.toThrow();
       await vi.advanceTimersByTimeAsync(MEDIA_BODY_TIMEOUT_MS);
       expect(signal?.aborted).toBe(true);
-      await expect(read).rejects.toThrow();
+      await read;
     } finally {
       vi.useRealTimers();
     }
