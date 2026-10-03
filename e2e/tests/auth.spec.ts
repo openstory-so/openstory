@@ -25,8 +25,12 @@ baseTest.describe('Route Protection', () => {
           'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
-      // Same Sign in control as /sequences, between the subtitle and the prompt.
-      await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+      // The composer generate button is the sign-in control. The mid-page
+      // Sign in button is gone; the sidebar still has its own.
+      await expect(
+        page.getByRole('button', { name: 'Sign in to Generate' })
+      ).toBeVisible();
+      await expect(page.getByText('~$x.xx')).toHaveCount(0);
     }
   );
 

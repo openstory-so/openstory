@@ -3,8 +3,9 @@
  *
  * Opens the login dialog (`explicit`, not an action gate) and renders nothing
  * once a session is present. Library pages put it in the empty-state action,
- * under the copy. The front page puts it under the subtitle. Hidden while the
- * session query is still unresolved so a signed-in visit does not flash it.
+ * under the copy. The front page uses the composer generate button instead.
+ * Hidden while the session query is still unresolved so a signed-in visit
+ * does not flash it.
  */
 
 import { useAuthGate } from './auth-gate-provider';
