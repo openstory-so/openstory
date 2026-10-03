@@ -1,4 +1,5 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
+import { isValidAnalysisModelId } from '@/models/models.config';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
 import {
   DEFAULT_IMAGE_MODEL,
@@ -486,35 +487,53 @@ export const setSequenceTargetDurationFn = createServerFn({ method: 'POST' })
     });
   });
 
+const sequenceModelsSchema = z.object({
+  analysisModel: z
+    .string()
+    .refine(isValidAnalysisModelId, { message: 'Invalid analysis model' })
+    .optional(),
+  imageModel: z
+    .string()
+    .refine(isValidTextToImageModel, { message: 'Invalid image model' })
+    .optional(),
+  videoModel: z
+    .string()
+    .refine(isValidImageToVideoModel, { message: 'Invalid video model' })
+    .optional(),
+  musicModel: z
+    .string()
+    .refine(isValidAudioModel, { message: 'Invalid music model' })
+    .optional(),
+});
+
 /**
- * Persist the sequence video-model default. Ungenerated shots inherit this
- * as the sequence tier, and Sequence settings reads it as the Video badge
- * until a clip exists. Separate from {@link updateSequenceFn} for the
+ * Persist the sequence's model defaults — the last model picked for each kind
+ * (#2004). Work not yet made inherits them; anything already made keeps the
+ * model it was made with. Separate from {@link updateSequenceFn} for the
  * reasons {@link setSequenceMusicFn} is.
  *
- * The generate-shots picker writes this on change so the inspector, packing
- * preview, and settings row agree before anyone clicks Generate. Batch
- * generate still writes it too, as a safety net.
+ * The footer pickers write on change, so the plan, the quote, the inspector
+ * and the next run all read the same pick. Batch generate still writes the
+ * video and music models too, as a safety net.
  */
-export const setSequenceVideoModelFn = createServerFn({ method: 'POST' })
+export const setSequenceModelsFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
-    zodValidator(
-      z.object({
-        sequenceId: ulidSchema,
-        videoModel: z.string().refine(isValidImageToVideoModel, {
-          message: 'Invalid video model',
-        }),
-      })
-    )
+    zodValidator(sequenceModelsSchema.extend({ sequenceId: ulidSchema }))
   )
   .handler(async ({ data, context }) => {
-    if (data.videoModel === context.sequence.videoModel) {
-      return context.sequence;
-    }
+    const { sequenceId, ...models } = data;
+    const { sequence } = context;
+    const moved =
+      (models.analysisModel ?? sequence.analysisModel) !==
+        sequence.analysisModel ||
+      (models.imageModel ?? sequence.imageModel) !== sequence.imageModel ||
+      (models.videoModel ?? sequence.videoModel) !== sequence.videoModel ||
+      (models.musicModel ?? sequence.musicModel) !== sequence.musicModel;
+    if (!moved) return sequence;
     return await context.scopedDb.sequences.update({
-      id: data.sequenceId,
-      videoModel: data.videoModel,
+      id: sequenceId,
+      ...models,
     });
   });
 
