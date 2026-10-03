@@ -4143,3 +4143,121 @@ describe('official MCP client transport (#1463)', () => {
     await readOnly.close();
   });
 });
+
+describe('inline review frames', () => {
+  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
+
+  async function frames(name: string, args: Record<string, unknown>) {
+    const original = globalThis.fetch;
+    vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', 'storage.openstory.so');
+    globalThis.fetch = async (input) => {
+      const href =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      expect(href.startsWith('https://assets.openstory.so/cdn-cgi/')).toBe(
+        true
+      );
+      expect(href).toContain('https://storage.openstory.so/');
+      return new Response(jpeg, { headers: { 'content-type': 'image/jpeg' } });
+    };
+    try {
+      const response = await mcpServer.handle(
+        new Request('https://openstory.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            'mcp-protocol-version': '2026-07-28',
+            'mcp-method': 'tools/call',
+            'mcp-name': `openstory.${name}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: {
+              name: `openstory.${name}`,
+              arguments: { sequenceId, ...args },
+              _meta: {
+                'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+                'io.modelcontextprotocol/clientInfo': {
+                  name: 'vitest',
+                  version: '1',
+                },
+                'io.modelcontextprotocol/clientCapabilities': {},
+              },
+            },
+          }),
+        }),
+        {
+          context: {
+            scoped: () => ({
+              scopedDb,
+              origin: 'https://openstory.test',
+              userId: actorId,
+              request: {},
+            }),
+          },
+        }
+      );
+      return z
+        .object({
+          result: z.object({
+            isError: z.boolean().optional(),
+            structuredContent: z.record(z.string(), z.unknown()).optional(),
+            content: z.array(
+              z.object({
+                type: z.string(),
+                text: z.string().optional(),
+                data: z.string().optional(),
+                mimeType: z.string().optional(),
+              })
+            ),
+          }),
+        })
+        .parse(await response.json()).result;
+    } finally {
+      globalThis.fetch = original;
+      vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', undefined);
+    }
+  }
+
+  it('returns sampled JPEGs without a storage URL', async () => {
+    const result = await frames('get_shot_frames', { shotId });
+    expect(result.isError).not.toBe(true);
+    const images = result.content.filter((block) => block.type === 'image');
+    expect(images).toHaveLength(4);
+    expect(images[0]).toMatchObject({ mimeType: 'image/jpeg' });
+    expect(result.structuredContent).toMatchObject({
+      shotId,
+      frames: [{ timestampMs: 0 }, {}, {}, { timestampMs: 2950 }],
+      unavailable: null,
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toContain(
+      'openstory.so'
+    );
+  });
+
+  it('pages a contact sheet of three shots', async () => {
+    await addShot(sceneId, 2);
+    await addShot(sceneId, 3);
+    await addShot(sceneId, 4);
+    const result = await frames('get_sequence_contact_sheet', {});
+    expect(result.isError).not.toBe(true);
+    const body = z
+      .object({
+        shots: z.array(z.object({ kind: z.string(), shotId: z.string() })),
+        nextCursor: z.string().nullable(),
+      })
+      .parse(result.structuredContent);
+    expect(body.shots).toHaveLength(3);
+    expect(body.shots[0]).toMatchObject({ shotId, kind: 'spritesheet' });
+    expect(body.nextCursor).toEqual(expect.any(String));
+    expect(
+      result.content.filter((block) => block.type === 'image')
+    ).toHaveLength(1);
+  });
+});
