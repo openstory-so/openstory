@@ -65,6 +65,12 @@ type GenerationSettings = {
   rememberStopAt: boolean;
   /** Render a still per shot first (the frame-based workflow); off = reference-only. */
   generateStartFrames: boolean;
+  /**
+   * ponytail: no UI sets this (#2004 removed the Voices switch); it exists so
+   * e2e can pin voices off. Drop it once the recorded pipeline has voice
+   * fixtures.
+   */
+  generateVoices: boolean;
   /** Render motion as Ark drafts (#1756); only Seedance 2.5 honours it. */
   draftMotion: boolean;
   musicModel: AudioModel;
@@ -113,6 +119,7 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   // Off by default: a new sequence renders reference-only; start frames are
   // the opt-in for steerable composition.
   generateStartFrames: false,
+  generateVoices: true,
   // On by default: only Seedance 2.5 honours it, and there a 480p look
   // before the 1080p spend is the cheaper first run (#1756).
   draftMotion: true,
@@ -278,6 +285,9 @@ function loadSettings(): GenerationSettings {
         typeof parsed.generateStartFrames === 'boolean'
           ? parsed.generateStartFrames
           : false,
+      generateVoices: !(
+        'generateVoices' in parsed && parsed.generateVoices === false
+      ),
       draftMotion:
         'draftMotion' in parsed && typeof parsed.draftMotion === 'boolean'
           ? parsed.draftMotion

@@ -39,6 +39,9 @@ export const RECORDED_PIPELINE_SETTINGS = {
   // The fixtures were recorded on the frame-based workflow; reference-only
   // is the product default now, so opt back in explicitly.
   generateStartFrames: true,
+  // No voice-design fixtures were recorded; the app has no switch for this
+  // (#2004), so the pin is the only way to keep the replay off that call.
+  generateVoices: false,
   musicModel: 'elevenlabs_music',
   audioModels: ['elevenlabs_music'],
   autoGenerateMusic: true,

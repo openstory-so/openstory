@@ -349,7 +349,7 @@ export function useSetSequenceTargetDuration(sequenceId: string) {
 
 /** The sequence's model defaults: the last pick for each kind (#2004). */
 export type SequenceModels = Partial<
-  Pick<Sequence, 'analysisModel' | 'imageModel' | 'videoModel' | 'musicModel'>
+  Record<'analysisModel' | 'imageModel' | 'videoModel' | 'musicModel', string>
 >;
 
 /**

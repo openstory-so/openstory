@@ -409,7 +409,8 @@ export const ScriptView: FC<{
   } = genSettings;
   // Not a choice (#2004): every new sequence records dialogue wherever this
   // deployment can design a voice. A character is turned off on the character.
-  const generateVoices = voiceDesignAvailable !== false;
+  const generateVoices =
+    voiceDesignAvailable !== false && savedSettings.generateVoices;
   // Draft first (#1756) is offered while a chosen model has a draft mode and
   // this team reaches Ark (a team on its own fal key does not, and a draft
   // submit there refuses). The remembered setting is kept either way; only
