@@ -17,6 +17,8 @@ import {
   characterLooks,
   characterSheetVariants,
   characters,
+  sceneScriptVersions,
+  scenes,
   locationLibrary,
   locationSheetVariants,
   sequenceLocations,
@@ -550,6 +552,99 @@ describe('look sheet claims (#2015)', () => {
     expect(await landCharacter(run, undefined, null, true, gala.id)).toBe(
       'parked'
     );
+  });
+
+  it('writes analysed looks, matching a re-analysis by name so ids hold', async () => {
+    const first = await looks().syncFromAnalysis(characterId, [
+      { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
+      {
+        lookId: 'c:gala',
+        name: 'Gala gown',
+        clothing: 'red gown',
+        styling: '',
+      },
+    ]);
+    // The default look keeps the character's id and takes the name; its
+    // clothing came in with the character's upsert.
+    expect(first['c:default']).toBe(characterId);
+    const row = await character();
+    expect(row.lookName).toBe('Office');
+    expect(row.standardClothing).toBe('grey suit');
+    const galaId = first['c:gala'];
+    if (!galaId) throw new Error('gala not written');
+    expect((await lookOf(galaId)).clothing).toBe('red gown');
+    const run = await claim(galaId);
+
+    // The script is re-analysed: same outfit under the same name (any case),
+    // new wording, plus one more.
+    const second = await looks().syncFromAnalysis(characterId, [
+      { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
+      {
+        lookId: 'c:gala_gown',
+        name: 'gala GOWN',
+        clothing: 'blue gown',
+        styling: 'hair up',
+      },
+      {
+        lookId: 'c:pyjamas',
+        name: 'Pyjamas',
+        clothing: 'striped',
+        styling: '',
+      },
+    ]);
+    expect(second['c:gala_gown']).toBe(galaId);
+    expect(await lookOf(galaId)).toMatchObject({
+      clothing: 'blue gown',
+      styling: 'hair up',
+    });
+    // The moved clothing revoked the gown's sheet claim.
+    expect(await landCharacter(run, undefined, null, true, galaId)).toBe(
+      'parked'
+    );
+    expect(await looks().listByCharacter(characterId)).toHaveLength(3);
+
+    // Only the name's case moves this time: one version, for the rename.
+    const versions = (await looks().listVersions(galaId)).length;
+    await looks().syncFromAnalysis(characterId, [
+      { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
+      {
+        lookId: 'c:gala_gown',
+        name: 'Gala gown',
+        clothing: 'blue gown',
+        styling: 'hair up',
+      },
+    ]);
+    expect(await looks().listVersions(galaId)).toHaveLength(versions + 1);
+  });
+
+  it('refuses to remove a look a scene still wears, naming the scene', async () => {
+    const gala = await addLook();
+    const [scene] = await db
+      .insert(scenes)
+      .values({ sequenceId, orderIndex: 1 })
+      .returning();
+    if (!scene) throw new Error('setup');
+    await db.insert(sceneScriptVersions).values({
+      id: 'ssv-1',
+      sceneId: scene.id,
+      content: { extract: 'x', dialogue: [] },
+      continuity: {
+        characterTags: ['sam'],
+        characterLooks: { sam: gala.id },
+        environmentTag: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
+      source: 'split',
+    });
+    await db
+      .update(scenes)
+      .set({ selectedScriptVersionId: 'ssv-1' })
+      .where(eq(scenes.id, scene.id));
+    await expect(looks().remove(gala.id, { actorId: userId })).rejects.toThrow(
+      'Gala gown is worn in scene 2. Pick another look there first.'
+    );
+    expect((await lookOf(gala.id)).deletedAt).toBeNull();
   });
 
   it('fills in the default look of a character an older worker wrote', async () => {

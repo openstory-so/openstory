@@ -55,6 +55,18 @@ describe('findMissingElementEntries', () => {
   });
 });
 
+// Each analysed look lands on a `character_looks` row (#2015); the stub
+// answers with the id the look was given.
+const syncFromAnalysis = vi.fn(
+  async (characterId: string, looks: { lookId: string }[]) =>
+    Object.fromEntries(
+      looks.map((look, i) => [
+        look.lookId,
+        i === 0 ? characterId : `db-${look.lookId}`,
+      ])
+    )
+);
+
 describe('createCastRecords', () => {
   test('creates cast and locations pending, and image-less element rows', async () => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
@@ -64,6 +76,7 @@ describe('createCastRecords', () => {
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
+      characterLooks: { syncFromAnalysis },
       sequenceLocations: { createBulk: locationCreateBulk },
       sequenceElements: { create: elementCreate },
       liveRead: { sequenceElements: { getByToken } },
@@ -204,6 +217,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
+      characterLooks: { syncFromAnalysis },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
@@ -240,6 +254,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
+      characterLooks: { syncFromAnalysis },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
@@ -267,6 +282,7 @@ describe('createCastRecords (voice only, #1585)', () => {
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
+      characterLooks: { syncFromAnalysis },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
@@ -312,6 +328,7 @@ describe('createCastRecords (voice only, #1585)', () => {
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
+      characterLooks: { syncFromAnalysis },
       sequenceLocations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },

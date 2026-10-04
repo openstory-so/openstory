@@ -21,6 +21,7 @@ const scriptEntry: CharacterBibleEntry = {
   ethnicity: 'Caucasian',
   physicalDescription: 'Tall, blonde hair, blue eyes',
   standardClothing: 'Dark trench coat, badge on belt',
+  looks: [],
   distinguishingFeatures: 'Small scar on left cheek',
   personality: '',
   movement: '',
@@ -38,6 +39,7 @@ const talentMetadata: CharacterBibleEntry = {
   ethnicity: 'White',
   physicalDescription: 'Dark hair, sideburns, athletic build',
   standardClothing: 'White jumpsuit',
+  looks: [],
   distinguishingFeatures: 'Signature sideburns',
   personality: '',
   movement: '',
@@ -244,6 +246,7 @@ describe('buildCastCharacterBible', () => {
     ethnicity: 'Asian',
     physicalDescription: 'Short, dark hair',
     standardClothing: 'Grey suit',
+    looks: [],
     distinguishingFeatures: 'Glasses',
     personality: '',
     movement: '',
@@ -281,6 +284,8 @@ describe('buildCastCharacterBible', () => {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      // The role's looks ride through a cast untouched (#2015).
+      looks: [],
       ...expected,
     });
     expect(cast.physicalDescription).toBe(

@@ -22,6 +22,7 @@ import type {
   SheetStatus,
 } from '@/platform/server/db/schema';
 import type { ReferenceStatus } from '@/platform/server/db/schema/sequence-locations';
+import { withBibleLooks } from '@/cast/bible-looks';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import type {
@@ -165,13 +166,18 @@ export async function createCastRecords(
       Pick<SequenceElementMinimal, 'id' | 'token' | 'imageUrl'>
     >;
   }
-): Promise<{ elements: SequenceElementMinimal[] }> {
+): Promise<{
+  elements: SequenceElementMinimal[];
+  /** Each bible look id → the `character_looks.id` it landed on (#2015). */
+  lookIds: Record<string, string>;
+}> {
   const { sequenceId } = args;
   const talentByCharacter = new Map(
     args.talentMatches.map((m) => [m.characterId, m])
   );
+  const lookIds: Record<string, string> = {};
   for (const character of args.characterBible) {
-    await scopedDb.characters.create(
+    const created = await scopedDb.characters.create(
       buildCharacterInsert({
         sequenceId,
         character,
@@ -179,6 +185,15 @@ export async function createCastRecords(
         sheetStatus: 'pending',
       }),
       { source: 'analysis', createdBy: null }
+    );
+    // A voice-only character is never seen, so it wears nothing to track.
+    if (character.voiceOnly) continue;
+    Object.assign(
+      lookIds,
+      await scopedDb.characterLooks.syncFromAnalysis(
+        created.id,
+        withBibleLooks(character).looks
+      )
     );
   }
 
@@ -234,5 +249,5 @@ export async function createCastRecords(
       durationSeconds: row.durationSeconds,
     });
   }
-  return { elements };
+  return { elements, lookIds };
 }

@@ -648,6 +648,7 @@ describe('prompt input hashes', () => {
     ethnicity: '',
     physicalDescription: '',
     standardClothing: '',
+    looks: [],
     distinguishingFeatures: '',
     personality: '',
     movement: '',
@@ -656,6 +657,41 @@ describe('prompt input hashes', () => {
     isPerson: true,
     consistencyTag: '',
   };
+
+  it("reads the worn look's styling only when it is set, so a prompt stamped before looks stays fresh (#2015)", async () => {
+    const hashOf = (character: CharacterBibleEntry) =>
+      Promise.all([
+        hashVisualPromptInput({ ...sceneCtx, characterBible: [character] }),
+        hashMotionPromptInput({ ...sceneCtx, characterBible: [character] }),
+      ]);
+    const look = (styling: string, clothing = '') => ({
+      lookId: 'L1',
+      name: 'Default',
+      clothing,
+      styling,
+    });
+    // An entry stored before #2015 has no `looks` key at all.
+    const { looks: _looks, ...stored } = aliceCharacter;
+    const before = await hashOf(asStub<CharacterBibleEntry>(stored));
+    expect(await hashOf(aliceCharacter)).toEqual(before);
+    expect(await hashOf({ ...aliceCharacter, looks: [look('  ')] })).toEqual(
+      before
+    );
+    // Another look the character owns but is not wearing moves nothing.
+    expect(
+      await hashOf({
+        ...aliceCharacter,
+        looks: [look(''), { ...look('split lip', 'gown'), lookId: 'L2' }],
+      })
+    ).toEqual(before);
+
+    const styled = await hashOf({
+      ...aliceCharacter,
+      looks: [look('split lip')],
+    });
+    expect(styled[0]).not.toBe(before[0]);
+    expect(styled[1]).not.toBe(before[1]);
+  });
 
   const beachLocation: LocationBibleEntry = {
     locationId: 'l1',

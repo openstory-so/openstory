@@ -119,8 +119,34 @@ export type SceneSplitScenesResult = z.infer<
   typeof sceneSplitScenesResultSchema
 >;
 
+/**
+ * A look as the bibles call sends it (#2015). Kept lean for the grammar
+ * budget (#1035): no id (the name is the identity, slugged server-side) and
+ * no separate list of picks — `lines` says where it is worn. The call runs
+ * beside the scenes call and knows no scene ids, so it names each scene by a
+ * gutter line inside it, as `firstMention` does. The guidance lives in the
+ * `phase/scene-bibles-chat` prompt.
+ */
+const wireLookSchema = z.object({
+  name: z.string(),
+  clothing: z.string(),
+  styling: z.string(),
+  lines: z.array(z.number()),
+});
+
+/**
+ * Required on the wire; a response recorded before looks parses to none, and
+ * `bibleFromWire` gives the character a default look.
+ */
+const characterBibleWireEntrySchema = characterBibleEntrySchema.extend({
+  looks: z.preprocess((value) => value ?? [], z.array(wireLookSchema)),
+});
+export type CharacterBibleWireEntry = z.infer<
+  typeof characterBibleWireEntrySchema
+>;
+
 export const sceneSplitBiblesResultSchema = z.object({
-  characterBible: z.array(characterBibleEntrySchema),
+  characterBible: z.array(characterBibleWireEntrySchema),
   locationBible: z.array(locationBibleEntrySchema),
   elementBible: z.array(elementBibleEntrySchema),
 });

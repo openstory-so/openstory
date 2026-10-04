@@ -8,7 +8,12 @@
 
 import { and, asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
-import { NotFoundError, ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
+import { loadSceneContextBySequenceFromDb } from '@/shots/server/scene-script';
 import { generateId } from '@/platform/id';
 import type { Database } from '@/platform/server/db/client';
 import type {
@@ -340,6 +345,93 @@ export function createCharacterLooksMethods(db: Database) {
           asc(characterLookVersions.id)
         ),
 
+    /**
+     * Write a character's analysed looks (#2015), the default first, and say
+     * which look each analysis id landed on. A look is matched by NAME to a
+     * live look of the character, so a re-analysis keeps its id, its sheet
+     * and the scenes that pick it; one the character does not have yet is
+     * added. The default look takes the first entry's name and styling (its
+     * clothing came in with the character's upsert). Looks the script no
+     * longer names are left alone: a person may have made them.
+     */
+    syncFromAnalysis: async (
+      characterId: string,
+      analysed: readonly {
+        lookId: string;
+        name: string;
+        clothing: string;
+        styling: string;
+      }[]
+    ): Promise<Record<string, string>> => {
+      const opts = { source: 'analysis' as const, createdBy: null };
+      const defaultLook = await requireLook(db, characterId);
+      const live = await selectLooks(db).where(
+        and(
+          eq(characterLooks.characterId, characterId),
+          sql`${characterLooks.deletedAt} IS NULL`
+        )
+      );
+      const sameName = (a: string, b: string) =>
+        a.trim().toLowerCase() === b.trim().toLowerCase();
+      const ids: Record<string, string> = {};
+      for (const [index, look] of analysed.entries()) {
+        const definition = {
+          name: look.name.trim() || DEFAULT_LOOK_NAME,
+          clothing: look.clothing.trim() || null,
+          styling: look.styling.trim() || null,
+        };
+        if (index === 0) {
+          const { statements } = lookDefinitionWrite(
+            db,
+            defaultLook,
+            // Clothing is the character upsert's: a talent match may have
+            // kept the role's wardrobe, and that write already landed.
+            { name: definition.name, styling: definition.styling },
+            opts
+          );
+          const [first, ...rest] = statements;
+          if (first) await db.batch([first, ...rest]);
+          ids[look.lookId] = defaultLook.id;
+          continue;
+        }
+        const existing = live.find(
+          (row) => !row.isDefault && sameName(row.name, definition.name)
+        );
+        if (existing) {
+          const { statements } = lookDefinitionWrite(
+            db,
+            existing,
+            definition,
+            opts
+          );
+          const [first, ...rest] = statements;
+          if (first) await db.batch([first, ...rest]);
+          ids[look.lookId] = existing.id;
+          continue;
+        }
+        const id = generateId();
+        const versionId = generateId();
+        await db.batch([
+          db.insert(characterLooks).values({
+            id,
+            characterId,
+            isDefault: false,
+            sortOrder: live.length + index,
+            selectedLookVersionId: versionId,
+            sheetStatus: 'pending',
+          }),
+          db.insert(characterLookVersions).values({
+            id: versionId,
+            lookId: id,
+            ...definition,
+            ...opts,
+          }),
+        ]);
+        ids[look.lookId] = id;
+      }
+      return ids;
+    },
+
     /** Add a look to a character. It has no sheet until someone asks for one. */
     create: async (
       characterId: string,
@@ -483,8 +575,9 @@ export function createCharacterLooksMethods(db: Database) {
 
     /**
      * Soft-remove a look (undoable). The default look is refused: every
-     * character wears something. Scenes that pick the look are not touched,
-     * so restore is lossless. Returns the timestamp for the toast Undo.
+     * character wears something. So is a look a scene still picks: the
+     * error names the scenes, and nothing is quietly re-dressed. Returns the
+     * timestamp for the toast Undo.
      */
     remove: async (
       lookId: string,
@@ -496,6 +589,21 @@ export function createCharacterLooksMethods(db: Database) {
       }
       if (look.deletedAt) return look.deletedAt;
       const owner = await ownerOf(db, look.characterId);
+      const wornIn = [
+        ...(
+          await loadSceneContextBySequenceFromDb(db, owner.sequenceId)
+        ).values(),
+      ]
+        .filter(({ scene }) =>
+          Object.values(scene.continuity?.characterLooks ?? {}).includes(lookId)
+        )
+        .sort((a, b) => a.scene.orderIndex - b.scene.orderIndex)
+        .map(({ scene }) => `scene ${scene.orderIndex + 1}`);
+      if (wornIn.length > 0) {
+        throw new ConflictError(
+          `${look.name} is worn in ${wornIn.join(', ')}. Pick another look there first.`
+        );
+      }
       const deletedAt = new Date();
       await db.batch([
         db

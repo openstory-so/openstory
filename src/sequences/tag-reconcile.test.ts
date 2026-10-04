@@ -37,6 +37,7 @@ const characterBible = [
     ethnicity: '',
     physicalDescription: '',
     standardClothing: '',
+    looks: [],
     distinguishingFeatures: '',
     personality: '',
     movement: '',

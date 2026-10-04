@@ -112,6 +112,7 @@ const entry = (
   ethnicity: '',
   physicalDescription: '',
   standardClothing: '',
+  looks: [],
   distinguishingFeatures: '',
   personality: '',
   movement: '',
@@ -423,6 +424,9 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
     // the insert row plus the read-side sheet fields
     const stored = asStub<Parameters<typeof characterToBible>[0]>({
       ...row,
+      lookId: row.id,
+      lookName: 'Default',
+      looks: [],
       sheetImageUrl: null,
       sheetImagePath: null,
       sheetGeneratedAt: null,

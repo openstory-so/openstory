@@ -25,6 +25,7 @@ import {
   type SceneSplittingScene,
 } from './streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
+import { bibleFromWire } from '@/cast/bible-looks';
 import { buildCastCharacterBible } from '@/cast/character-prompt';
 
 const OPENROUTER_DIR = resolve(
@@ -142,9 +143,7 @@ export function recordedSplitScenes(recording: Recording = 'original'): {
 export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   script: string;
   scenes: SceneSplittingScene[];
-  characterBible: z.infer<
-    typeof sceneSplitBiblesResultSchema
-  >['characterBible'];
+  characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
 } {
@@ -180,8 +179,11 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     })
   );
 
+  // The recording predates looks (#2015): every character parses to none
+  // and gets its default look here, as the live join does.
+  const analysed = bibleFromWire(bibles.characterBible, sceneIdForLine);
   const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
-    characterBible: bibles.characterBible,
+    characterBible: analysed.characterBible,
     locationBible,
     elementBible,
   });
@@ -211,7 +213,7 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     })
     .parse(parseJson(responseContent('talent-cast/talent-cast.json')));
   const characterBible = buildCastCharacterBible(
-    bibles.characterBible,
+    analysed.characterBible,
     talentCast.matches.map((match) => ({
       characterId: match.characterId,
       talentName: 'Sienna Blake',

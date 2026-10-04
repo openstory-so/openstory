@@ -239,9 +239,9 @@ export async function recastCharacter(
     throw new NotFoundError('Character not found');
   }
 
-  // The recast redraws the default look's sheet (#2015), so it re-renders the
-  // shots that wear it. A scene in another look keeps that look's sheet,
-  // which reads stale until it is regenerated.
+  // The recast workflow redraws the default look's sheet (#2015) and
+  // re-renders the shots that wear it. The other looks in use are redrawn
+  // below, each as its own sheet run.
   const look = await scopedDb.characterLooks.ensureDefault(data.characterId);
   const affectedShotIds = await scopedDb.characters.getShotIdsForCharacter(
     character.sequenceId,
@@ -300,8 +300,16 @@ export async function recastCharacter(
       isPerson: updatedCharacter.isPerson,
       voiceDescription: character.voiceDescription ?? '',
       ...castingAttrs,
-      // The look owns clothing (#2015).
+      // The look owns clothing (#2015): the entry wears the look being drawn.
       standardClothing: look.clothing ?? '',
+      looks: [
+        {
+          lookId: look.id,
+          name: look.name,
+          clothing: look.clothing ?? '',
+          styling: look.styling ?? '',
+        },
+      ],
     },
     sequenceId: character.sequenceId,
     teamId: scopedDb.teamId,
@@ -341,6 +349,23 @@ export async function recastCharacter(
     '/recast-character',
     workflowInput
   );
+
+  // A recast changes the face on every sheet, so every other look a live
+  // scene wears is redrawn too (#2015); its shots read stale once the new
+  // sheet lands. A look nobody wears stays stale until asked for.
+  for (const other of updatedCharacter.looks) {
+    if (other.isDefault || other.deletedAt) continue;
+    const worn = await scopedDb.characters.getShotIdsForCharacter(
+      character.sequenceId,
+      data.characterId,
+      { wearing: other.id }
+    );
+    if (worn.length === 0) continue;
+    await regenerateCharacterSheet(scopedDb, actor, sequence, {
+      characterId: data.characterId,
+      lookId: other.id,
+    });
+  }
 
   return {
     character: updatedCharacter,

@@ -41,8 +41,8 @@ export const characterSheetVariants = snakeCase.table(
     characterId: text()
       .notNull()
       .references(() => characters.id, { onDelete: 'cascade' }),
-    // The look this sheet draws (#2015). No FK, like the pointers that name
-    // these rows. Null only on a row an older worker wrote during the #2015
+    // The look this sheet draws (#2015). No FK yet: adding one to an existing
+    // table is a rebuild, so #2017's hand-applied rebuild adds it. Null only on a row an older worker wrote during the #2015
     // deploy: it is a sheet of the character's default look.
     lookId: text(),
 

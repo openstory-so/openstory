@@ -485,6 +485,14 @@ export type SceneSplitWorkflowResult = {
   title: string;
   shotMapping: ShotMapping;
   characterBible: CharacterBibleEntry[];
+  /**
+   * The look each scene dresses a character in, where it is not the default
+   * (#2015): scene id → (character tag → look id). The look ids are the bible
+   * entries' slugs; analyze-script swaps them for `character_looks.id` once
+   * the cast is persisted and writes them onto the scenes. Absent only on a
+   * result cached before #2015.
+   */
+  sceneLooks: Record<string, Record<string, string>>;
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
   /**

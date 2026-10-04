@@ -15,6 +15,7 @@
  * § "What goes into the hash" for the per-artifact input surface.
  */
 
+import { wornStyling } from '@/cast/bible-looks';
 import { z } from 'zod';
 
 /**
@@ -886,7 +887,12 @@ function sceneInputContext(scene: Scene, kind: PromptHashKind) {
  * The LLM still receives the full entries; only the hash is the projection.
  */
 function projectCharacterForPrompt(c: CharacterBibleEntry) {
+  // The look the shot's scene dresses the character in (#2015): its clothing
+  // is `standardClothing`, and its styling joins only when set, so no digest
+  // stamped before looks moves. The other looks are not this shot's.
+  const styling = trim(wornStyling(c));
   return {
+    ...(styling ? { styling } : {}),
     age: trim(c.age),
     gender: trim(c.gender),
     ethnicity: trim(c.ethnicity),

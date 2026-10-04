@@ -7,6 +7,7 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
+import { wearBibleLooks } from '@/cast/bible-looks';
 import { dressForScene } from '@/cast/character-looks';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -178,7 +179,12 @@ export function narrowShotPromptContext<T extends VisualPromptHashInput>(
   const continuity = scene.continuity;
   const resolved = resolveShotReferences(
     {
-      characters: [...ctx.characterBible],
+      // Each entry in the look this scene picks for it (#2015). A context
+      // loaded from D1 is dressed already; one frozen on a payload is not.
+      characters: wearBibleLooks(
+        ctx.characterBible,
+        continuity?.characterLooks
+      ),
       locations: [...ctx.locationBible],
       elements: [...ctx.elementBible],
     },

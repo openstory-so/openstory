@@ -22,6 +22,8 @@ import {
   GENERATION_STAGE_META,
   type GenerationStage,
 } from '@/sequences/pipeline';
+import { dbSceneId } from '@/shots/scene-id';
+import { relabelBibleLooks, relabelLookPicks } from '@/cast/bible-looks';
 import { createCastRecords } from '@/cast/server/workflows/cast-records';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
 import { persistShotSpec } from '@/shots/server/persist-shot-spec';
@@ -227,7 +229,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       timeout: '45 minutes',
     });
 
-    const { scenes, shotMapping, characterBible, locationBible, elementBible } =
+    const { shotMapping, characterBible, locationBible, elementBible } =
       sceneSplitResult;
 
     // Claimed only now: the split is in D1, so a style failure fails a run
@@ -305,15 +307,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     // Derive and hash against the same cast attributes persisted below, so
     // live verification agrees with the first prompts from analysis.
-    const castCharacterBible = buildCastCharacterBible(
+    const analysedCastBible = buildCastCharacterBible(
       characterBible,
       talentCharacterMatches
     );
     // Cast, locations and script-detected elements land NOW, sheet-less, so a
     // run stopped at Script shows the whole bible for review before any
     // reference image is billed. The executor later fills their selected sheets.
-    await step.do('create-cast-records', async () => {
-      if (!sequenceId) return { elements: [] };
+    const castRecords = await step.do('create-cast-records', async () => {
+      if (!sequenceId) return { elements: [], lookIds: {} };
       return createCastRecords(scopedDb, {
         sequenceId,
         characterBible,
@@ -323,6 +325,34 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         elementBible,
         existingElements: elementsMinimal,
       });
+    });
+    // Looks (#2015): the bibles call named each outfit by a slug. The cast is
+    // persisted now, so swap the slugs for `character_looks.id` on the bible
+    // the prompts read and on the scenes that pick a non-default look, and
+    // write those picks onto the scenes. Only persisted ids are ever stored.
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a step result cached before #2015
+    const lookIds = castRecords.lookIds ?? {};
+    const castCharacterBible = relabelBibleLooks(analysedCastBible, lookIds);
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a split result cached before #2015
+    const sceneLooks = sceneSplitResult.sceneLooks ?? {};
+    const scenes = sceneSplitResult.scenes.map((scene) => {
+      const picks = relabelLookPicks(sceneLooks[scene.sceneId] ?? {}, lookIds);
+      return Object.keys(picks).length > 0 && scene.continuity
+        ? {
+            ...scene,
+            continuity: { ...scene.continuity, characterLooks: picks },
+          }
+        : scene;
+    });
+    await step.do('persist-scene-looks', async () => {
+      for (const scene of scenes) {
+        if (!scene.continuity?.characterLooks) continue;
+        await scopedDb.scenes.updateContinuity(
+          dbSceneId(scene.sceneId),
+          scene.continuity,
+          { actorId: null }
+        );
+      }
     });
     // Each shot's spec lands as its first version, with the prompts derived
     // from it (#1915). Derivation reads only the spec and the frozen bibles.

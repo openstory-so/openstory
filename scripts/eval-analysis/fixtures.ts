@@ -66,6 +66,7 @@ export const TALENT_CASE = {
       physicalDescription:
         '5\'6", lean, shoulder-length dark brown hair, olive-tan skin, dark brown eyes.',
       standardClothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
+      looks: [],
       distinguishingFeatures:
         'Signature glossy coral lipstick, gold hoop earrings.',
       personality: 'Sharp, self-possessed, performs ease for the camera.',
@@ -84,6 +85,7 @@ export const TALENT_CASE = {
       physicalDescription:
         '6\'1", broad-shouldered, salt-and-pepper stubble, short grey-brown hair.',
       standardClothing: 'Navy chore coat over a faded tee, work jeans.',
+      looks: [],
       distinguishingFeatures:
         'Scar through the left eyebrow, scuffed silver watch.',
       personality: 'Guarded, dry, slow to trust.',

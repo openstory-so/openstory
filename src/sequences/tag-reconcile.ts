@@ -57,10 +57,16 @@ export type TagReconcileStats = {
 
 export function reconcileSceneTags(
   scenes: SceneSplittingScene[],
-  bibles: Pick<
-    SceneSplitBiblesResult,
-    'characterBible' | 'locationBible' | 'elementBible'
-  >
+  bibles: Pick<SceneSplitBiblesResult, 'locationBible' | 'elementBible'> & {
+    // Only the name and tag are read, so the wire entries and the bible
+    // entries made from them (#2015) both fit.
+    characterBible: ReadonlyArray<
+      Pick<
+        SceneSplitBiblesResult['characterBible'][number],
+        'name' | 'consistencyTag'
+      >
+    >;
+  }
 ): { scenes: SceneSplittingScene[]; stats: TagReconcileStats } {
   const stats: TagReconcileStats = {
     assignedCharacterTags: 0,

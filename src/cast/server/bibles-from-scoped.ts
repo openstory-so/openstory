@@ -1,5 +1,6 @@
 import type {
   CharacterBibleEntry,
+  CharacterLookEntry,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
@@ -9,9 +10,34 @@ import type {
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
 
+/**
+ * A character's looks as bible looks (#2015), the one it is wearing first.
+ * A character with no look row yet lists the one it wears.
+ */
+function looksToBible(c: CharacterWithSheet): CharacterLookEntry[] {
+  const worn: CharacterLookEntry = {
+    lookId: c.lookId,
+    name: c.lookName,
+    clothing: c.standardClothing ?? '',
+    styling: c.styling ?? '',
+  };
+  return [
+    worn,
+    ...c.looks
+      .filter((look) => look.id !== c.lookId && !look.deletedAt)
+      .map((look) => ({
+        lookId: look.id,
+        name: look.name,
+        clothing: look.clothing ?? '',
+        styling: look.styling ?? '',
+      })),
+  ];
+}
+
 /** Nullable columns read as `''` — a bible entry's fields are all required. */
 export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
   return {
+    looks: looksToBible(c),
     characterId: c.characterId,
     name: c.name,
     age: c.age ?? '',
