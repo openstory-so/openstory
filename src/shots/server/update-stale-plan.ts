@@ -226,8 +226,8 @@ export type PlanTarget = {
     elementTags?: string[];
     /**
      * The scene's look picks (#2015), so a reference-only clip attaches the
-     * sheet of the look the scene dresses each character in. Absent only on
-     * a plan frozen before #2015.
+     * sheet of the look the scene dresses each character in; null when the
+     * scene picks none.
      */
     characterLooks: Record<string, string> | null;
     environmentTag?: string;

@@ -3,7 +3,6 @@
  * edit or user pick demotes, completion promotes only while the claim holds
  * and otherwise parks, and a failure clears only its own claim.
  */
-import { asStub } from '@/test/as-stub';
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -516,22 +515,16 @@ describe('look sheet claims (#2015)', () => {
     ).toBe(false);
   });
 
-  it('takes the claim for a cast character from a payload that names no talent', async () => {
-    // A plan an older worker froze has no `talentId` (or bible version) on
-    // its sheet payloads. The character here IS cast: absent must not read
-    // as "not cast".
-    expect((await character()).talentId).toBe(talentId);
-    const { lookVersionId } = await snapshotOf(characterId);
-    const { versionId, held } = await looks().claimSheet(
-      characterId,
-      // an old payload: only what it carried
-      asStub<Parameters<ReturnType<typeof looks>['claimSheet']>[1]>({
-        lookVersionId,
-      }),
-      { markGenerating: true }
-    );
-    expect(held).toBe(true);
-    expect(await landCharacter(versionId)).toBe('promoted');
+  it('fails a claim by its own id, and only while that run holds it', async () => {
+    const older = await claim();
+    const newer = await claim();
+    await looks().failSheetClaimByVersion(older, 'boom');
+    expect((await character()).pendingPromoteSheetVersionId).toBe(newer);
+    expect((await character()).sheetStatus).toBe('generating');
+    await looks().failSheetClaimByVersion(newer, 'boom');
+    const row = await character();
+    expect(row.pendingPromoteSheetVersionId).toBeNull();
+    expect(row.sheetStatus).toBe('failed');
   });
 
   it('clears only its own look on failure', async () => {

@@ -42,7 +42,7 @@ vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: vi.fn(async () => ({})),
 }));
 
-const createCastRecords = vi.fn(async () => ({ elements: [] }));
+const createCastRecords = vi.fn(async () => ({ elements: [], lookIds: {} }));
 vi.doMock('@/cast/server/workflows/cast-records', () => ({
   ...realCastRecords,
   createCastRecords,

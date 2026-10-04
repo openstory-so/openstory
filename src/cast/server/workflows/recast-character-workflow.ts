@@ -25,9 +25,8 @@ import { computeRegenerateShotsBatchHash } from '@/shots/server/workflows/regene
 import { mergeRecastSheetIntoSnapshots } from './recast-snapshot';
 import {
   computeCharacterSheetHashFromDto,
-  sheetLookId,
+  assertQueuedWithLooks,
 } from './sheet-snapshots';
-import { DEFAULT_LOOK_NAME } from '@/platform/server/db/schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
@@ -149,6 +148,7 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
     _scopedDb: WorkflowScopedDb
   ): Promise<RecastCharacterWorkflowResult> {
     const input = event.payload;
+    assertQueuedWithLooks(input);
 
     // Step 1: Build the character-sheet payload. Captured into a const so the
     // spawn below reuses the cached step result on replay instead of
@@ -165,17 +165,10 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           'snapshotInputHash'
         > = {
           characterDbId: input.characterDbId,
-          // A recast queued before #2015 names no look: the default look and
-          // its first version both took the character's id.
-          lookId: sheetLookId(input),
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
-          lookVersionId: input.lookVersionId ?? input.characterDbId,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
-          lookName: input.lookName ?? DEFAULT_LOOK_NAME,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
-          lookStyling: input.lookStyling ?? null,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
-          talentId: input.talentId ?? null,
+          lookId: input.lookId,
+          lookVersionId: input.lookVersionId,
+          lookStyling: input.lookStyling,
+          talentId: input.talentId,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,
           sequenceId: input.sequenceId,
@@ -252,12 +245,21 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<RecastCharacterWorkflowInput>>;
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
+    if (!input.lookId) {
+      // No sheet child was spawned to clear the claim the trigger took.
+      await scopedDb.characterLooks.failSheetClaimByVersion(
+        input.sheetVersionId,
+        error
+      );
+    }
 
     await getGenerationChannel(input.sequenceId).emit(
       'generation.recast:failed',

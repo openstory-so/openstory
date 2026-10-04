@@ -34,9 +34,17 @@ versions, and a claim.
 
 **A default look's id is its character's id.** The backfill had to reuse a
 ULID (SQL cannot mint one) and every new character keeps the rule. So a sheet
-row, a payload or a plan frozen before looks — which name only a character —
-name its default look. Look it up through `isDefault`; lean on the id only
-for those old shapes (`sheetLookId`, `requireCharacterLook`).
+row stored before looks — which names only a character — names its default
+look. Look it up through `isDefault`; lean on the id only for those stored
+rows (`requireCharacterLook`).
+
+**A run from before looks is failed, not patched.** A payload queued, a plan
+frozen or a step result cached before #2015 names no look. Each workflow that
+can receive one checks once, at the top (`assertQueuedWithLooks` /
+`queuedBeforeLooks` in `sheet-snapshots.ts`), and fails with "Queued before
+character looks shipped. Run it again." No field is defaulted further down.
+The sheet and recast runs clear the claim their trigger took by the claim's
+own id (`characterLooks.failSheetClaimByVersion`), never by a guessed look.
 
 ## One source
 
@@ -74,7 +82,7 @@ look's clothing.
 ## Sheets and claims
 
 `CharacterSheetWorkflow` draws one look. The payload snapshots it at the
-trigger (`lookId`, `lookVersionId`, `lookName`, `lookStyling`, the clothing as
+trigger (`lookId`, `lookVersionId`, `lookStyling`, the clothing as
 `characterMetadata.standardClothing`); the run never reads the look.
 
 Claim → demote → guarded promote → fail, on the cast look of the sequence
@@ -91,9 +99,8 @@ that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
   that is not taken still returns an id, and the run parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
-- A payload an older worker froze names no cast talent (or, before #1600, no
-  bible version). Absent is "unknown", not "none": `claimSheet` skips that
-  part of the condition instead of refusing every cast character.
+- A payload frozen before #1600 names no bible version. Absent is "unknown",
+  not "none": `claimSheet` skips that part of the condition.
 - The reconcile cron (`reconcileLookSheetClaimsPass`, pass
   `character_looks.claims`, over the cast looks) settles the two states no
   run will: a claim whose row already exists as a plain completed sheet is

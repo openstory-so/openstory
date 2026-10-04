@@ -78,12 +78,16 @@ function makeStep(): WorkflowStep {
 const mockPromoteIfPending = vi.fn();
 const mockUpdateSheetStatus = vi.fn();
 const mockFailSheetClaim = vi.fn();
+const mockFailSheetClaimByVersion = vi.fn();
 
 function makeScopedDb(): WorkflowScopedDb {
   // stub covering only the scoped-db surface runImpl touches
   return asStub<WorkflowScopedDb>({
     characters: { updateSheetStatus: mockUpdateSheetStatus },
-    characterLooks: { failSheetClaim: mockFailSheetClaim },
+    characterLooks: {
+      failSheetClaim: mockFailSheetClaim,
+      failSheetClaimByVersion: mockFailSheetClaimByVersion,
+    },
     characterSheetVariants: { promoteIfPending: mockPromoteIfPending },
     provenance: {},
     liveRead: {},
@@ -119,7 +123,6 @@ async function makeEvent(
     characterDbId: 'char-1',
     lookId: 'look-1',
     lookVersionId: 'lookver-1',
-    lookName: 'Gala gown',
     lookStyling: null,
     talentId: null,
     bibleVersionId: null,
@@ -271,8 +274,7 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
     expect(result.lookId).toBe('look-1');
   });
 
-  it("lands a run queued before #2015 on the character's default look", async () => {
-    mockPromoteIfPending.mockResolvedValue('promoted');
+  it('fails a run queued before #2015, and clears its claim by the claim id', async () => {
     const legacy = await makeEvent();
     // a pre-#2015 payload names no look
     const payload = asStub<Partial<CharacterSheetWorkflowInput>>(
@@ -282,12 +284,13 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
     delete payload.lookVersionId;
     delete payload.lookStyling;
 
-    await makeWorkflow().runBody(legacy, makeStep(), makeScopedDb());
-    // The default look's id is the character's.
-    expect(mockPromoteIfPending).toHaveBeenCalledWith(
-      expect.objectContaining({ lookId: 'char-1', lookVersionId: null })
-    );
+    await expect(
+      makeWorkflow().runBody(legacy, makeStep(), makeScopedDb())
+    ).rejects.toThrow('Queued before character looks shipped. Run it again.');
+    expect(mockPromoteIfPending).not.toHaveBeenCalled();
+    // No look is guessed: the claim is found by its own id.
     await makeWorkflow().failBody(legacy, makeScopedDb());
-    expect(mockFailSheetClaim).toHaveBeenCalledWith('char-1', 'ver-1', 'boom');
+    expect(mockFailSheetClaim).not.toHaveBeenCalled();
+    expect(mockFailSheetClaimByVersion).toHaveBeenCalledWith('ver-1', 'boom');
   });
 });

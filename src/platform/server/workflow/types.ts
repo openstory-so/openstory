@@ -489,8 +489,7 @@ export type SceneSplitWorkflowResult = {
    * The look each scene dresses a character in, where it is not the default
    * (#2015): scene id → (character tag → look id). The look ids are the bible
    * entries' slugs; analyze-script swaps them for `character_looks.id` once
-   * the cast is persisted and writes them onto the scenes. Absent only on a
-   * result cached before #2015.
+   * the cast is persisted and writes them onto the scenes.
    */
   sceneLooks: Record<string, Record<string, string>>;
   locationBible: LocationBibleEntry[];
@@ -786,9 +785,8 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** sequence_characters.id */
   characterDbId: string;
   /**
-   * The look this sheet draws (#2015) — one run makes one look's sheet. Absent
-   * only on a run queued before #2015, whose sheet is the default look's
-   * (`sheetLookId`).
+   * The look this sheet draws (#2015) — one run makes one look's sheet. A run
+   * without one is failed on arrival (`assertQueuedWithLooks`).
    */
   lookId: string;
   /**
@@ -797,8 +795,6 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * only while the look still points at it.
    */
   lookVersionId: string;
-  /** The look's name, for logs and stale causes. */
-  lookName: string;
   /** The look's hair / makeup / injury notes; null when it changes none. */
   lookStyling: string | null;
   /**
@@ -981,7 +977,7 @@ export interface RecastCharacterWorkflowInput
     SequenceWorkflowContext,
     Pick<
       CharacterSheetWorkflowInput,
-      'lookId' | 'lookVersionId' | 'lookName' | 'lookStyling' | 'talentId'
+      'lookId' | 'lookVersionId' | 'lookStyling' | 'talentId'
     > {
   /** Character database ID. The sheet redrawn is its default look's (#2015). */
   characterDbId: string;

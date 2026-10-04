@@ -295,7 +295,6 @@ export async function recastCharacter(
     characterDbId: data.characterId,
     lookId: look.id,
     lookVersionId: look.lookVersionId,
-    lookName: look.name,
     lookStyling: look.styling,
     talentId: data.talentId,
     // The recast bible version the metadata below spells out (#1600).

@@ -7,6 +7,7 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import type {
@@ -330,11 +331,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // persisted now, so swap the slugs for `character_looks.id` on the bible
     // the prompts read and on the scenes that pick a non-default look, and
     // write those picks onto the scenes. Only persisted ids are ever stored.
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a step result cached before #2015
-    const lookIds = castRecords.lookIds ?? {};
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: step results cached by a run that started before #2015
+    if (!castRecords.lookIds || !sceneSplitResult.sceneLooks) {
+      throw queuedBeforeLooks();
+    }
+    const lookIds = castRecords.lookIds;
     const castCharacterBible = relabelBibleLooks(analysedCastBible, lookIds);
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a split result cached before #2015
-    const sceneLooks = sceneSplitResult.sceneLooks ?? {};
+    const sceneLooks = sceneSplitResult.sceneLooks;
     const scenes = sceneSplitResult.scenes.map((scene) => {
       const picks = relabelLookPicks(sceneLooks[scene.sceneId] ?? {}, lookIds);
       return Object.keys(picks).length > 0 && scene.continuity
