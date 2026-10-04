@@ -7,7 +7,7 @@ import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Client, createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
@@ -375,7 +375,7 @@ describe('character sheet claims', () => {
 
   it('is revoked by a style change on the sequence', async () => {
     const versionId = await claim();
-    await db.batch(demoteSequenceSheetClaims(db, sequenceId));
+    await db.batch(demoteSequenceSheetClaims(db, sequenceId, sql`1`));
     expect(await landCharacter(versionId)).toBe('parked');
   });
 });
@@ -814,6 +814,44 @@ describe('sequence location claims', () => {
       libraryLocationReferenceInputHash('c'.repeat(64))
     );
     expect(await landLocation(versionId)).toBe('parked');
+  });
+
+  // The bible parent's claim (#1863): taken only while the snapshot is live.
+  const snapshot = async () => {
+    const row = await locs().getById(locationId);
+    if (!row?.selectedBibleVersionId) throw new Error('no bible version');
+    return {
+      bibleVersionId: row.selectedBibleVersionId,
+      libraryLocationId: row.libraryLocationId,
+    };
+  };
+
+  it('a conditional claim is held while the bible and link are live', async () => {
+    const claim = await locs().claimReferenceIfUnmoved(
+      locationId,
+      await snapshot()
+    );
+    expect(claim.held).toBe(true);
+    expect(await landLocation(claim.versionId)).toBe('promoted');
+  });
+
+  it('a conditional claim is not taken after a bible edit, and the run parks', async () => {
+    const before = await snapshot();
+    await locs().updateBible(
+      locationId,
+      { keyFeatures: 'neon sign' },
+      { actorId: userId }
+    );
+    const claim = await locs().claimReferenceIfUnmoved(locationId, before);
+    expect(claim.held).toBe(false);
+    expect(await landLocation(claim.versionId)).toBe('parked');
+  });
+
+  it('a conditional claim is not taken after a relink', async () => {
+    const before = await snapshot();
+    await locs().update(locationId, { libraryLocationId: null });
+    const claim = await locs().claimReferenceIfUnmoved(locationId, before);
+    expect(claim.held).toBe(false);
   });
 });
 

@@ -509,6 +509,37 @@ export function createSequenceLocationsMethods(db: Database) {
       return versionId;
     },
 
+    /**
+     * The bible parent's claim (#1863): pointer-only, and taken only while the
+     * bible version and library link the run snapshotted are still live. An
+     * edit that landed between the upsert and this write found no claim to
+     * revoke, so the claim is not taken and the run parks. One guarded UPDATE.
+     */
+    claimReferenceIfUnmoved: async (
+      id: string,
+      snapshot: { bibleVersionId: string; libraryLocationId: string | null }
+    ): Promise<{ versionId: string; held: boolean }> => {
+      const versionId = generateId();
+      const result = await db
+        .update(sequenceLocations)
+        .set({
+          pendingPromoteReferenceVersionId: versionId,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(sequenceLocations.id, id),
+            eq(
+              sequenceLocations.selectedBibleVersionId,
+              snapshot.bibleVersionId
+            ),
+            sql`${sequenceLocations.libraryLocationId} IS ${snapshot.libraryLocationId}`
+          )
+        );
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
+      return { versionId, held: (result.rowsAffected ?? 0) > 0 };
+    },
+
     /** The twin of `characters.failSheetClaim`. */
     failReferenceClaim: async (
       id: string,

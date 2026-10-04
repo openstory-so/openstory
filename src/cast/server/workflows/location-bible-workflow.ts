@@ -98,15 +98,25 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     const locationIdToDbId = new Map<string, string>(
       createdLocations.map((loc) => [loc.locationId, loc.id])
     );
-    // The bible version each row landed on (#1600). A step result cached
-    // before #1600 has none.
-    const bibleVersionByDbId = new Map<string, string | null>(
-      createdLocations.map((loc) => [
-        loc.id,
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
-        loc.selectedBibleVersionId ?? null,
-      ])
-    );
+    // What each row's upsert landed on: the bible version (#1600) and the
+    // library link. The sheet claim is taken against both (#1863). A step
+    // result cached before #1600 names no bible version; it is failed here,
+    // once, rather than claimed unguarded further down.
+    const snapshotByDbId = new Map<
+      string,
+      { bibleVersionId: string; libraryLocationId: string | null }
+    >();
+    for (const loc of createdLocations) {
+      if (!loc.selectedBibleVersionId) {
+        throw new WorkflowValidationError(
+          'Queued before bible versions shipped. Run it again.'
+        );
+      }
+      snapshotByDbId.set(loc.id, {
+        bibleVersionId: loc.selectedBibleVersionId,
+        libraryLocationId: loc.libraryLocationId,
+      });
+    }
 
     const childBinding = this.env.LOCATION_SHEET_WORKFLOW;
 
@@ -119,7 +129,8 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     const spawnAwaitPromises = input.locationBible.map(
       async (location, index) => {
         const locationDbId = locationIdToDbId.get(location.locationId);
-        if (!locationDbId) {
+        const snapshot = locationDbId && snapshotByDbId.get(locationDbId);
+        if (!locationDbId || !snapshot) {
           throw new NonRetryableError(
             `[LocationBibleWorkflow:cf] could not resolve dbId for location ${location.locationId}`
           );
@@ -133,7 +144,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           sequenceId,
           reservationId: input.reservationId,
           locationDbId,
-          bibleVersionId: bibleVersionByDbId.get(locationDbId) ?? null,
+          bibleVersionId: snapshot.bibleVersionId,
           locationName: location.name,
           locationMetadata: location,
           imageModel: model,
@@ -144,7 +155,9 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
             libraryMatch?.referenceInputHash ?? null,
         };
         // Tracked like any other sheet (#1113): hashed, and landed through a
-        // claim a bible edit revokes.
+        // claim a bible edit revokes. The claim is taken only while the bible
+        // and library link the upsert returned are still live (#1863): an edit
+        // that landed since had no claim to revoke, so the child parks.
         const unclaimed = {
           ...unclaimedFields,
           snapshotInputHash:
@@ -152,10 +165,19 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         };
         const referenceVersionId = await step.do(
           `claim-location-sheet-${index}`,
-          async () =>
-            await scopedDb.sequenceLocations.claimReference(locationDbId, {
-              markGenerating: false,
-            })
+          async () => {
+            const claim =
+              await scopedDb.sequenceLocations.claimReferenceIfUnmoved(
+                locationDbId,
+                snapshot
+              );
+            if (!claim.held) {
+              logger.warn(
+                `[LocationBibleWorkflow:cf] Location ${locationDbId} moved before the claim; its sheet parks`
+              );
+            }
+            return claim.versionId;
+          }
         );
         const childPayload: LocationSheetWorkflowInput = {
           ...unclaimed,
