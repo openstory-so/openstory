@@ -12,6 +12,7 @@
  * `CharacterBibleWorkflow`; triggered by Generate on the character card.
  */
 
+import { withoutLooks } from '@/cast/bible-looks';
 import { base64ToBytes } from '@/platform/base64';
 import {
   voiceDescriptionSchema,
@@ -104,7 +105,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             phase: { number: 3, name: 'Designing voices…' },
             promptName: 'phase/voice-design-chat',
             promptVariables: {
-              character: JSON.stringify(characterBible, null, 2),
+              // A voice is not dressed: no outfits in this prompt (#2015).
+              character: JSON.stringify(withoutLooks(characterBible), null, 2),
             },
             modelId: input.analysisModelId,
             responseSchema: voiceDescriptionSchema,
@@ -323,7 +325,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         phase: { number: 3, name: 'Designing voices…' },
         promptName: 'phase/voice-range-script-chat',
         promptVariables: {
-          character: JSON.stringify(characterBible, null, 2),
+          // A voice is not dressed: no outfits in this prompt (#2015).
+          character: JSON.stringify(withoutLooks(characterBible), null, 2),
           voiceDescription,
         },
         modelId: input.analysisModelId,

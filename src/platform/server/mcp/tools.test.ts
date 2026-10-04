@@ -3098,6 +3098,32 @@ describe('cast and music edits (#1979)', () => {
       continuity: { characterLooks: { mia_vale: lookId } },
     });
 
+    // The pick is filed under the character's own tag, whatever key was sent.
+    const [stored] = await db
+      .select({ continuity: sceneScriptVersions.continuity })
+      .from(sceneScriptVersions)
+      .innerJoin(
+        scenes,
+        eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
+      )
+      .where(eq(scenes.id, sceneId));
+    expect(Object.values(stored?.continuity?.characterLooks ?? {})).toEqual([
+      lookId,
+    ]);
+    expect(Object.keys(stored?.continuity?.characterLooks ?? {})).not.toEqual([
+      'mia_vale',
+    ]);
+    // A second look with the same name is refused.
+    expect(
+      await call('create_character_look', {
+        sequenceId,
+        characterId,
+        name: 'gala gown',
+        clothing: null,
+        styling: null,
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+
     // Worn: it cannot be removed, and neither can the default look.
     expect(
       await call('remove_character_look', { sequenceId, characterId, lookId })
@@ -3114,9 +3140,26 @@ describe('cast and music edits (#1979)', () => {
       sequenceId,
       sceneId,
       expectedScriptVersionId: await scriptId(),
-      continuity: { characterLooks: {} },
+      // A patch: null puts this character back in its default look.
+      continuity: { characterLooks: { 'Mia Vale': null } },
     });
     await data('remove_character_look', { sequenceId, characterId, lookId });
+    // A removed look is not edited or drawn until it is restored.
+    expect(
+      await call('update_character_look', {
+        sequenceId,
+        characterId,
+        lookId,
+        clothing: 'green gown',
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('regenerate_character_sheet', {
+        sequenceId,
+        characterId,
+        lookId,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
     expect(
       (await read()).looks.find((look) => look.id === lookId)?.deletedAt
     ).not.toBeNull();

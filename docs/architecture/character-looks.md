@@ -130,14 +130,37 @@ look a slug id and builds the picks; `create-cast-records` writes the looks
 each look's id, sheet and picks) and analyze-script swaps slugs for row ids
 before `persist-scene-looks` writes the picks. Only persisted ids are stored.
 
+- An analysis scene's `sceneId` is not its row's id. `persistSceneLooks`
+  finds each row by its position, the way the split does, and
+  `scenes.updateContinuity` throws on a row that is not there.
+- A `lines` entry outside the script is dropped: the line → scene lookup
+  clamps, and a clamped line would dress the wrong scene.
+- The default outfit is asked for twice (`standardClothing` and the first
+  look); a blank first look keeps `standardClothing`.
+- A repeated look name in one response gets a number (`Gala`, `Gala 2`).
+- After a re-analysis, a look the script no longer names is soft-removed
+  only when nothing is lost: every version of it came from analysis, it has
+  no sheet and no scene wears it. A look a person made or edited, one with a
+  sheet, and one a scene wears are never touched. A removed look the script
+  names again comes back as the same row.
+- Voice design sees no outfits (`withoutLooks`); the shot rewrite sees only
+  the look worn in that shot's scene (`wornLookOnly`).
+
 ## Editing
 
 - Remove is soft and undoable. The default look cannot be removed. A look a
   live scene still picks cannot be removed either: the `ConflictError` names
   the scenes. A scene that already points at a removed look keeps wearing it.
-- A scene's picks are set through the scene update
-  (`continuity.characterLooks`, sent whole) and are checked against the
-  sequence's live looks.
+- A scene's picks are set through the scene update as a **per-character
+  patch** (`continuity.characterLooks`: a look id sets that character's look,
+  `null` puts it back in its default, characters not named keep theirs).
+  `applyLookPatch` (`scene-edit.ts`) checks only the ids being set, files
+  each pick under its character's own tag, and stores a default look as no
+  pick. So a scene that still wears a removed look can have its other picks
+  changed.
+- Two live looks of one character never share a name.
+- A removed look can be read and restored, but not edited, drawn or uploaded
+  to (`requireLiveLook`).
 - UI: the character panel has a row of looks; picking one shows that look's
   sheet, versions, staleness and divergence. A scene's cast card has a look
   picker. MCP: see `mcp-capability-map.md`.

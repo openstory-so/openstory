@@ -18,12 +18,58 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { SceneRow } from '@/platform/server/db/schema';
+import type { CharacterWithSheet, SceneRow } from '@/platform/server/db/schema';
+import { canonicalBibleTag } from '@/cast/bible-field';
+import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import type { DbSceneId } from '@/shots/scene-id';
 import type { sceneNarrativeFieldsSchema } from '@/shots/scene-narrative';
 import { rescanContinuityFromPrompt } from './rescan-continuity-from-prompt';
 
 type NarrativeInput = z.output<typeof sceneNarrativeFieldsSchema>;
+
+/**
+ * Apply a per-character patch to a scene's look picks (#2015). A look id
+ * dresses the character that look belongs to; `null` puts the character the
+ * key names back in its default look. Characters the patch does not mention
+ * keep what they wear — including a removed look an older edit left there,
+ * which is never re-validated. A pick is stored under its character's own
+ * tag, one per character, and a default look is stored as no pick at all.
+ */
+export function applyLookPatch(
+  current: Readonly<Record<string, string>>,
+  patch: Readonly<Record<string, string | null>>,
+  characters: readonly Pick<
+    CharacterWithSheet,
+    'name' | 'characterId' | 'consistencyTag' | 'looks'
+  >[]
+): Record<string, string> {
+  const next = { ...current };
+  /** Drop whatever this character wears now. */
+  const undress = (character: (typeof characters)[number]) => {
+    const own = new Set(character.looks.map((look) => look.id));
+    for (const [tag, id] of Object.entries(next)) {
+      if (own.has(id)) delete next[tag];
+    }
+  };
+  for (const [key, lookId] of Object.entries(patch)) {
+    if (lookId === null) {
+      delete next[key];
+      const named = characters.find((c) => matchCharacterToShotTags(c, [key]));
+      if (named) undress(named);
+      continue;
+    }
+    const character = characters.find((c) =>
+      c.looks.some((look) => look.id === lookId && !look.deletedAt)
+    );
+    if (!character) {
+      throw new ValidationError(`No such look in this sequence: ${lookId}`);
+    }
+    undress(character);
+    const look = character.looks.find((l) => l.id === lookId);
+    if (!look?.isDefault) next[canonicalBibleTag(character)] = lookId;
+  }
+  return next;
+}
 
 export type SceneEditInput = {
   sequenceId: string;
@@ -52,9 +98,11 @@ export async function updateScene(
     throw new NotFoundError('Scene not found in this sequence');
   }
 
-  const { continuity: continuityPatch, ...fields } = input.narrative;
+  const { continuity: continuityInput, ...fields } = input.narrative;
+  const { characterLooks: lookPatch, ...continuityPatch } =
+    continuityInput ?? {};
   // Only the keys sent change; omitted keys are absent after zod parsing.
-  let continuity: SceneRow['continuity'] | undefined = continuityPatch
+  let continuity: SceneRow['continuity'] | undefined = continuityInput
     ? {
         characterTags: [],
         environmentTag: '',
@@ -64,27 +112,17 @@ export async function updateScene(
         styleTag: '',
         ...existing.continuity,
         ...continuityPatch,
+        ...(lookPatch
+          ? {
+              characterLooks: applyLookPatch(
+                existing.continuity?.characterLooks ?? {},
+                lookPatch,
+                await scopedDb.characters.list(input.sequenceId)
+              ),
+            }
+          : {}),
       }
     : undefined;
-
-  // A pick must name a live look of a character of this sequence (#2015):
-  // an id that names nothing would quietly dress the character in its
-  // default.
-  if (continuityPatch?.characterLooks) {
-    const live = new Set(
-      (await scopedDb.characters.list(input.sequenceId)).flatMap((character) =>
-        character.looks.filter((look) => !look.deletedAt).map((look) => look.id)
-      )
-    );
-    const unknown = Object.values(continuityPatch.characterLooks).filter(
-      (lookId) => !live.has(lookId)
-    );
-    if (unknown.length > 0) {
-      throw new ValidationError(
-        `No such look in this sequence: ${unknown.join(', ')}`
-      );
-    }
-  }
 
   let extract: string | undefined;
   if (input.scriptExtract !== undefined) {

@@ -22,7 +22,7 @@ import {
   GENERATION_STAGE_META,
   type GenerationStage,
 } from '@/sequences/pipeline';
-import { dbSceneId } from '@/shots/scene-id';
+import { persistSceneLooks } from '@/sequences/server/scene-persistence';
 import { relabelBibleLooks, relabelLookPicks } from '@/cast/bible-looks';
 import { createCastRecords } from '@/cast/server/workflows/cast-records';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
@@ -345,14 +345,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         : scene;
     });
     await step.do('persist-scene-looks', async () => {
-      for (const scene of scenes) {
-        if (!scene.continuity?.characterLooks) continue;
-        await scopedDb.scenes.updateContinuity(
-          dbSceneId(scene.sceneId),
-          scene.continuity,
-          { actorId: null }
-        );
-      }
+      if (sequenceId) await persistSceneLooks(scopedDb, sequenceId, scenes);
     });
     // Each shot's spec lands as its first version, with the prompts derived
     // from it (#1915). Derivation reads only the spec and the frozen bibles.

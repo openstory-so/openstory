@@ -21,12 +21,16 @@ type LookFields = {
   styling: string | null;
 };
 
-function refresh(queryClient: QueryClient) {
-  void queryClient.invalidateQueries({ queryKey: sequenceCharacterKeys.all });
+/**
+ * Resolves once the cast list has refetched, so a caller's own `onSuccess`
+ * (which runs after the hook's) sees the new look in it.
+ */
+async function refresh(queryClient: QueryClient) {
   void queryClient.invalidateQueries({
     queryKey: ['character-sheet-variants'],
   });
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+  await queryClient.invalidateQueries({ queryKey: sequenceCharacterKeys.all });
 }
 
 export function useCreateCharacterLook() {
@@ -61,5 +65,5 @@ export async function restoreCharacterLook(
   data: LookRef
 ) {
   await restoreCharacterLookFn({ data });
-  refresh(queryClient);
+  await refresh(queryClient);
 }

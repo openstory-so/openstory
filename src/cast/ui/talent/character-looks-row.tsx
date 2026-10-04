@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import type { z } from 'zod';
 import { BibleField } from '@/cast/ui/bible-field';
 import { lookFieldsSchema } from '@/cast/look-field';
 import {
@@ -37,6 +38,16 @@ function parseLookForm(form: HTMLFormElement) {
     clothing: fields.clothing || null,
     styling: fields.styling || null,
   });
+}
+
+/** What is wrong with the form, in the field's own words. */
+function lookFormError(error: z.ZodError): string {
+  const issue = error.issues[0];
+  const field = issue?.path[0];
+  if (field === 'name') return 'A look needs a name, up to 255 characters.';
+  if (field === 'clothing') return 'Clothing is too long.';
+  if (field === 'styling') return 'Hair, makeup, injuries is too long.';
+  return issue?.message ?? 'Check the fields and try again.';
 }
 
 const LookFields: React.FC<{ idPrefix: string; look?: LookRowItem }> = ({
@@ -94,7 +105,9 @@ export const CharacterLooksRow: React.FC<{
     event.preventDefault();
     const parsed = parseLookForm(event.currentTarget);
     if (!parsed.success) {
-      toast.error('A look needs a name');
+      toast.error('Look not saved', {
+        description: lookFormError(parsed.error),
+      });
       return;
     }
     createLook.mutate(
@@ -117,7 +130,9 @@ export const CharacterLooksRow: React.FC<{
     if (!active) return;
     const parsed = parseLookForm(event.currentTarget);
     if (!parsed.success) {
-      toast.error('A look needs a name');
+      toast.error('Look not saved', {
+        description: lookFormError(parsed.error),
+      });
       return;
     }
     updateLook.mutate(
@@ -253,9 +268,8 @@ export const CharacterLooksRow: React.FC<{
             {active.isDefault ? null : (
               <Button
                 type="button"
-                variant="outline"
+                variant="destructive"
                 size="sm"
-                className="text-destructive hover:text-destructive"
                 disabled={removeLook.isPending}
                 onClick={() => onRemove(active)}
               >

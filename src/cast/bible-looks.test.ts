@@ -8,6 +8,8 @@ import {
   relabelLookPicks,
   wearBibleLooks,
   withBibleLooks,
+  withoutLooks,
+  wornLookOnly,
   wornStyling,
 } from './bible-looks';
 
@@ -54,7 +56,8 @@ describe('bibleFromWire', () => {
   it('gives each look a slug id and turns its lines into scene picks', () => {
     const { characterBible, sceneLooks } = bibleFromWire(
       [mia, wire({ characterId: 'char_sam' })],
-      sceneIdForLine
+      sceneIdForLine,
+      30
     );
     expect(characterBible[0]?.looks).toEqual([
       {
@@ -81,7 +84,8 @@ describe('bibleFromWire', () => {
   it('gives a character with no looks a default look from its clothing', () => {
     const { characterBible, sceneLooks } = bibleFromWire(
       [wire({ characterId: 'char_sam', standardClothing: 'overalls' })],
-      sceneIdForLine
+      sceneIdForLine,
+      30
     );
     expect(characterBible[0]?.looks).toEqual([
       {
@@ -111,12 +115,76 @@ describe('bibleFromWire', () => {
           looks: [{ name: 'Day', clothing: 'suit', styling: '', lines: [] }],
         }),
       ],
-      sceneIdForLine
+      sceneIdForLine,
+      30
     );
     expect(characterBible[0]?.standardClothing).toBe('jeans');
     expect(characterBible.flatMap((c) => c.looks.map((l) => l.lookId))).toEqual(
       ['a:default', 'a:night', 'a:night_2', 'b:default']
     );
+  });
+
+  it('drops a line that is not in the script instead of dressing a scene with it', () => {
+    const { sceneLooks } = bibleFromWire(
+      [
+        {
+          ...mia,
+          looks: [
+            mia.looks[0] ?? { name: '', clothing: '', styling: '', lines: [] },
+            {
+              name: 'Gala gown',
+              clothing: 'red gown',
+              styling: '',
+              // Only 12 is a line of this 30-line script.
+              lines: [0, -4, 12, 12.5, Number.NaN, 31, 99],
+            },
+          ],
+        },
+      ],
+      sceneIdForLine,
+      30
+    );
+    expect(sceneLooks).toEqual({ scene_2: { mia: 'char_mia:gala_gown' } });
+  });
+
+  it('keeps the analysed clothing when the first look leaves it blank', () => {
+    const { characterBible } = bibleFromWire(
+      [
+        wire({
+          characterId: 'char_sam',
+          standardClothing: 'grey suit',
+          looks: [{ name: 'Default', clothing: '  ', styling: '', lines: [] }],
+        }),
+      ],
+      sceneIdForLine,
+      30
+    );
+    expect(characterBible[0]).toMatchObject({
+      standardClothing: 'grey suit',
+      looks: [{ clothing: 'grey suit' }],
+    });
+  });
+
+  it('numbers a repeated look name, so each name is one look', () => {
+    const { characterBible } = bibleFromWire(
+      [
+        wire({
+          characterId: 'a',
+          looks: [
+            { name: 'Day', clothing: 'jeans', styling: '', lines: [] },
+            { name: 'Gala', clothing: 'red', styling: '', lines: [] },
+            { name: 'gala', clothing: 'blue', styling: '', lines: [] },
+          ],
+        }),
+      ],
+      sceneIdForLine,
+      30
+    );
+    expect(characterBible[0]?.looks.map((look) => look.name)).toEqual([
+      'Day',
+      'Gala',
+      'gala 2',
+    ]);
   });
 
   it('parses a bibles response recorded before looks', () => {
@@ -128,14 +196,14 @@ describe('bibleFromWire', () => {
     });
     expect(parsed.characterBible[0]?.looks).toEqual([]);
     expect(
-      bibleFromWire(parsed.characterBible, sceneIdForLine).characterBible[0]
+      bibleFromWire(parsed.characterBible, sceneIdForLine, 30).characterBible[0]
         ?.looks
     ).toHaveLength(1);
   });
 });
 
 describe('wearing a look', () => {
-  const [entry] = bibleFromWire([mia], sceneIdForLine).characterBible;
+  const [entry] = bibleFromWire([mia], sceneIdForLine, 30).characterBible;
   if (!entry) throw new Error('setup');
 
   it('puts the look a scene picks first, with its clothing', () => {
@@ -166,6 +234,15 @@ describe('wearing a look', () => {
       wearBibleLooks(relabelled ? [relabelled] : [], { mia: 'L2' })[0]
         ?.standardClothing
     ).toBe('red gown');
+  });
+
+  it('shows a shot prompt only the worn look, and a voice prompt none', () => {
+    const [dressed] = wearBibleLooks([entry], { mia: 'char_mia:gala_gown' });
+    if (!dressed) throw new Error('setup');
+    expect(wornLookOnly([dressed])[0]?.looks.map((l) => l.name)).toEqual([
+      'Gala gown',
+    ]);
+    expect(withoutLooks(dressed)).not.toHaveProperty('looks');
   });
 
   it('an entry stored before looks reads as wearing its clothing', () => {

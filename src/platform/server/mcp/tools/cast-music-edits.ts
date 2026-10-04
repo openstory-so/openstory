@@ -7,6 +7,7 @@
  * `@/audio/server/music-edit`); MCP adds only the parent-chain check. None
  * starts a generation or spends credits.
  */
+import { NotFoundError } from '@/platform/errors';
 import { z } from 'zod';
 import {
   characterBibleFieldsSchema,
@@ -379,6 +380,9 @@ const listCharacterLookVersionsTool = productionRead(
       input.sequenceId,
       input.lookId
     );
+    if (look.characterId !== input.characterId) {
+      throw new NotFoundError('Look not found for this character');
+    }
     const versions = await scopedDb.characterLooks.listVersions(look.id);
     return {
       lookId: look.id,

@@ -636,6 +636,73 @@ describe('look sheet claims (#2015)', () => {
     expect(await looks().listVersions(galaId)).toHaveLength(versions + 1);
   });
 
+  it('retires a look the script dropped only when nothing is lost, and brings it back by name', async () => {
+    const analysedLook = (name: string, clothing: string) => ({
+      lookId: `c:${name}`,
+      name,
+      clothing,
+      styling: '',
+    });
+    const office = analysedLook('Office', 'x');
+    const first = await looks().syncFromAnalysis(characterId, [
+      office,
+      analysedLook('Gala gown', 'red gown'),
+      analysedLook('Pyjamas', 'striped'),
+    ]);
+    const galaId = first['c:Gala gown'] ?? '';
+    const pyjamasId = first['c:Pyjamas'] ?? '';
+    // A person's look, and an analysed look that has a sheet.
+    const mine = await looks().create(
+      characterId,
+      { name: 'Raincoat', clothing: 'yellow', styling: null },
+      { source: 'edit', actorId: userId }
+    );
+    await charVersions().applyConvergent({
+      lookId: pyjamasId,
+      url: '/r2/pyjamas.png',
+      storagePath: '/pyjamas.png',
+      inputHash: HASH,
+      model: 'm',
+    });
+
+    // The script is re-analysed and names only the default outfit.
+    await looks().syncFromAnalysis(characterId, [office]);
+    expect((await lookOf(galaId)).deletedAt).not.toBeNull();
+    expect((await lookOf(pyjamasId)).deletedAt).toBeNull();
+    expect((await lookOf(mine.id)).deletedAt).toBeNull();
+
+    // Named again: the same row comes back, not a twin.
+    const again = await looks().syncFromAnalysis(characterId, [
+      office,
+      analysedLook('gala gown', 'red gown'),
+    ]);
+    expect(again['c:gala gown']).toBe(galaId);
+    expect((await lookOf(galaId)).deletedAt).toBeNull();
+  });
+
+  it('refuses a second look with a name the character already has', async () => {
+    const gala = await addLook();
+    await expect(addLook()).rejects.toThrow('already has a look named');
+    const other = await looks().create(
+      characterId,
+      { name: 'Pyjamas', clothing: null, styling: null },
+      { source: 'edit', actorId: userId }
+    );
+    await expect(
+      looks().update(
+        other.id,
+        { name: 'gala GOWN' },
+        { source: 'edit', actorId: userId }
+      )
+    ).rejects.toThrow('already has a look named');
+    // Renaming a look to its own name in another case is fine.
+    await looks().update(
+      gala.id,
+      { name: 'Gala Gown' },
+      { source: 'edit', actorId: userId }
+    );
+  });
+
   it('refuses to remove a look a scene still wears, naming the scene', async () => {
     const gala = await addLook();
     const [scene] = await db

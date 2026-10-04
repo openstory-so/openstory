@@ -107,8 +107,8 @@ export function useUpdateScene(sequenceId: string) {
         lightingSetup?: string;
         colorPalette?: string;
         environmentTag?: string;
-        /** Character tag → look id (#2015), sent whole. */
-        characterLooks?: Record<string, string>;
+        /** A patch (#2015): tag → look id, or null for the default look. */
+        characterLooks?: Record<string, string | null>;
       };
     }) => updateSceneFn({ data: { sequenceId, ...input } }),
     onSuccess: () =>

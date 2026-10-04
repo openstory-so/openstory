@@ -5,7 +5,10 @@
  * `media-upload.fn.ts` for the staleness and DAG contracts.
  */
 import { wearLook } from '@/cast/character-looks';
-import { requireCharacterLook } from '@/cast/server/character-look';
+import {
+  requireCharacterLook,
+  requireLiveLook,
+} from '@/cast/server/character-look';
 import {
   computeCharacterSheetInputHash,
   computeLocationSheetInputHash,
@@ -571,7 +574,9 @@ export async function setCharacterSheetFromUpload(
   }
   // The sheet is one look's (#2015): the hash below reads that look's
   // clothing and styling, as a generated sheet's would.
-  const look = await requireCharacterLook(scopedDb, owner, data.lookId);
+  const look = requireLiveLook(
+    await requireCharacterLook(scopedDb, owner, data.lookId)
+  );
   const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(
     character.isPerson,

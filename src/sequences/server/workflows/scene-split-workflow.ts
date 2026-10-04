@@ -875,7 +875,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // the cast is persisted, and only persisted ids are stored on a scene.
     const { characterBible, sceneLooks } = bibleFromWire(
       biblesResult.characterBible,
-      sceneIdForLine
+      sceneIdForLine,
+      script.split('\n').length
     );
     // sceneId first: downstream prompt interpolation serializes these entries
     // with JSON.stringify, and the aimock fixtures match on that text — keep

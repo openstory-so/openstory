@@ -1,4 +1,4 @@
-import { NotFoundError } from '@/platform/errors';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import type {
   CharacterLook,
   CharacterWithSheet,
@@ -23,6 +23,20 @@ export async function requireCharacterLook(
   if (!look) {
     throw new NotFoundError(
       `Look ${lookId} not found for character ${character.id}`
+    );
+  }
+  return look;
+}
+
+/**
+ * A look that can be written to (#2015). A removed look is still read — a
+ * scene may wear it, and restore finds it — but it is not edited, drawn or
+ * uploaded to until it is restored: nobody could pick the result.
+ */
+export function requireLiveLook(look: CharacterLook): CharacterLook {
+  if (look.deletedAt) {
+    throw new ValidationError(
+      `${look.name} was removed. Restore the look first.`
     );
   }
   return look;

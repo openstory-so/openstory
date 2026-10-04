@@ -13,7 +13,10 @@ import { ConflictError, NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { requireCharacterLook } from '@/cast/server/character-look';
+import {
+  requireCharacterLook,
+  requireLiveLook,
+} from '@/cast/server/character-look';
 import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
 import type { LocationBibleUpdate } from '@/cast/server/db/sequence-locations';
 import {
@@ -316,7 +319,9 @@ export async function updateCharacterLook(
   patch: Partial<LookInput>
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
-  const look = await requireCharacterLook(scopedDb, character, lookId);
+  const look = requireLiveLook(
+    await requireCharacterLook(scopedDb, character, lookId)
+  );
   const updated = await scopedDb.characterLooks.update(
     look.id,
     {
@@ -373,7 +378,9 @@ export async function selectCharacterLookVersion(
   versionId: string
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
-  const look = await requireCharacterLook(scopedDb, character, lookId);
+  const look = requireLiveLook(
+    await requireCharacterLook(scopedDb, character, lookId)
+  );
   const updated = await scopedDb.characterLooks.selectVersion(
     look.id,
     versionId,

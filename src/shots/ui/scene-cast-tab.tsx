@@ -80,26 +80,21 @@ const SceneLookPicker: React.FC<{
     (look) => !look.deletedAt || look.id === wornLookId
   );
   if (looks.length < 2) return null;
-  const ownIds = new Set(character.looks.map((look) => look.id));
   return (
     <Select
       value={wornLookId}
       disabled={update.isPending}
       onValueChange={(lookId) => {
         if (!lookId) return;
-        const others = Object.fromEntries(
-          Object.entries(scene.continuity?.characterLooks ?? {}).filter(
-            ([, id]) => !ownIds.has(id)
-          )
-        );
+        // A patch for this character only; the default look is "no pick".
         update.mutate(
           {
             sceneId: scene.id,
             continuity: {
-              characterLooks:
-                lookId === character.lookId
-                  ? others
-                  : { ...others, [canonicalBibleTag(character)]: lookId },
+              characterLooks: {
+                [canonicalBibleTag(character)]:
+                  lookId === character.lookId ? null : lookId,
+              },
             },
           },
           {

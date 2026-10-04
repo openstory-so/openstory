@@ -5,6 +5,7 @@
  * prompts are rebuilt from it. No mid-run reads.
  */
 
+import { wornLookOnly } from '@/cast/bible-looks';
 import { durableLLMCallCf } from '@/models/server/llm-call-helper';
 import {
   getGenerationChannel,
@@ -47,7 +48,9 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
           lines: JSON.stringify(input.lines),
           currentSpec: JSON.stringify(input.currentSpec),
           siblings: JSON.stringify(input.siblingSpecs),
-          characterBible: JSON.stringify(input.characterBible),
+          // Each character in the outfit this shot's scene dresses it in,
+          // not its whole wardrobe (#2015).
+          characterBible: JSON.stringify(wornLookOnly(input.characterBible)),
           locationBible: JSON.stringify(input.locationBible),
           elementBible: JSON.stringify(input.elementBible),
         },

@@ -26,6 +26,10 @@ import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import {
+  requireCharacterLook,
+  requireLiveLook,
+} from '@/cast/server/character-look';
+import {
   buildRegenerateLocationSheetPayload,
   toLocationMetadata,
 } from '@/cast/server/sheets/location-sheet-trigger';
@@ -86,6 +90,8 @@ export async function regenerateCharacterSheet(
     data.characterId
   );
 
+  // A removed look is not drawn: nobody could pick the sheet.
+  requireLiveLook(await requireCharacterLook(scopedDb, character, data.lookId));
   const payload = await buildRegenerateCharacterSheetPayload({
     scopedDb,
     userId: actor.userId,
@@ -355,6 +361,10 @@ export async function recastCharacter(
   // A recast changes the face on every sheet, so every other look a live
   // scene wears is redrawn too (#2015); its shots read stale once the new
   // sheet lands. A look nobody wears stays stale until asked for.
+  // The recast itself has started by now, so one look's sheet failing to
+  // start must not read as "recast failed": that look's sheet is marked
+  // failed (by `regenerateCharacterSheet`) and named in the result.
+  const failedLookIds: string[] = [];
   for (const other of updatedCharacter.looks) {
     if (other.isDefault || other.deletedAt) continue;
     const worn = await scopedDb.characters.getShotIdsForCharacter(
@@ -363,16 +373,27 @@ export async function recastCharacter(
       { wearing: other.id }
     );
     if (worn.length === 0) continue;
-    await regenerateCharacterSheet(scopedDb, actor, sequence, {
-      characterId: data.characterId,
-      lookId: other.id,
-    });
+    try {
+      await regenerateCharacterSheet(scopedDb, actor, sequence, {
+        characterId: data.characterId,
+        lookId: other.id,
+      });
+    } catch (error) {
+      logger.error('Recast: a look sheet did not start', {
+        err: error,
+        characterId: data.characterId,
+        lookId: other.id,
+      });
+      failedLookIds.push(other.id);
+    }
   }
 
   return {
     character: updatedCharacter,
     talentId: data.talentId,
     sheetWorkflowRunId: workflowRunId,
+    /** Other worn looks whose sheet could not be started (#2015). */
+    failedLookIds,
     // The shots actually queued — a shot with no selected image prompt is
     // dropped by the snapshot builder rather than failing the recast.
     affectedShotIds: shotSnapshots.map((s) => s.shotId),

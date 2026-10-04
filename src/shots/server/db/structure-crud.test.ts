@@ -5,6 +5,8 @@
  * with the real migrations.
  */
 
+import { persistSceneLooks } from '@/sequences/server/scene-persistence';
+import { dbSceneId } from '@/shots/scene-id';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
@@ -435,6 +437,54 @@ describe('narrative writes carry the live script (#1600)', () => {
         lightingSetup: '',
       },
     });
+  });
+
+  it("writes analysed look picks onto the scene ROWS, not the analysis scenes' ids (#2015)", async () => {
+    const sceneMethods = createScenesMethods(db);
+    const { scene: first } = await seedScene(0);
+    const { scene: second } = await seedScene(1);
+    const continuity = {
+      characterTags: ['mia'],
+      environmentTag: '',
+      lightingSetup: '',
+      styleTag: '',
+    };
+    // Analysis scenes carry the ids the parser mints (`scene_1`, …), which
+    // are never the rows' ULIDs: the rows are found by position.
+    const analysed = [
+      { sceneId: 'scene_1', continuity },
+      {
+        sceneId: 'scene_2',
+        continuity: { ...continuity, characterLooks: { mia: 'look-gala' } },
+      },
+    ].map((scene, index) => ({
+      ...scene,
+      sceneNumber: index + 1,
+      originalScript: { extract: '', dialogue: [] },
+    }));
+
+    await persistSceneLooks({ scenes: sceneMethods }, sequenceId, analysed);
+
+    expect(
+      (await sceneMethods.getById(second.id))?.continuity?.characterLooks
+    ).toEqual({ mia: 'look-gala' });
+    // A scene with no pick is not rewritten.
+    expect((await sceneMethods.getById(first.id))?.continuity).toBeNull();
+  });
+
+  it('a continuity write to a scene that is not there throws', async () => {
+    await expect(
+      createScenesMethods(db).updateContinuity(
+        dbSceneId(generateId()),
+        {
+          characterTags: [],
+          environmentTag: '',
+          lightingSetup: '',
+          styleTag: '',
+        },
+        { actorId }
+      )
+    ).rejects.toThrow('not found');
   });
 
   it('a continuity rescan keeps the selected script and the other fields; a narrative edit keeps the tags', async () => {

@@ -182,7 +182,11 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
 
   // The recording predates looks (#2015): every character parses to none
   // and gets its default look here, as the live join does.
-  const analysed = bibleFromWire(bibles.characterBible, sceneIdForLine);
+  const analysed = bibleFromWire(
+    bibles.characterBible,
+    sceneIdForLine,
+    script.split('\n').length
+  );
   const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
     characterBible: analysed.characterBible,
     locationBible,

@@ -77,11 +77,16 @@ export const sceneNarrativeFieldsSchema = z.object({
   continuity: z
     .object({
       characterTags: z.array(z.string().trim().max(200)).max(100).optional(),
-      // The look each character wears in this scene (#2015): character tag
-      // → look id. Sent whole: a character left out wears its default look.
+      // A patch to the looks the scene's characters wear (#2015).
       characterLooks: z
-        .record(z.string().trim().max(200), z.string().trim().max(64))
-        .optional(),
+        .record(
+          z.string().trim().max(200),
+          z.string().trim().max(64).nullable()
+        )
+        .optional()
+        .describe(
+          'Which look (outfit) each character wears in this scene, as a patch: { "<character tag or name>": "<look id from get_character looks[].id>" }. Only the characters you send change; the others keep their look. null puts that character back in its default look. A look id must be a live look of a character of this sequence.'
+        ),
       environmentTag: z.string().trim().max(200).optional(),
       elementTags: z.array(z.string().trim().max(200)).max(100).optional(),
       lightingSetup: z.string().trim().max(2000).optional(),

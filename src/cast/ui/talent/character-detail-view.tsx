@@ -169,10 +169,14 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   );
 
   // Track regenerating state from realtime events
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  // Set while a content-flag retry is in flight so the spinner says so
-  // instead of reading as a hang; cleared with every non-retry event.
-  const [retryLabel, setRetryLabel] = useState<string | null>(null);
+  // Whether a look is generating is its own `sheetStatus`, read off the
+  // list — never a flag kept here, which would stick when the look on show
+  // changes mid-run (#2015). Only the retry caption is event-only state, and
+  // it is kept with the look it belongs to.
+  const [retry, setRetry] = useState<{ lookId: string; label: string } | null>(
+    null
+  );
+  const retryLabel = retry?.lookId === activeLookId ? retry.label : null;
 
   // Handle realtime events for character sheet progress
   const handleRealtimeEvent = useCallback(
@@ -196,38 +200,41 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           status: data.status,
         };
 
-        // Only handle events for this character, and the look on show.
+        // Only handle events for this character — every look of it.
         if (payload.characterId !== characterId) return;
-        if (
-          'lookId' in data &&
-          typeof data.lookId === 'string' &&
-          data.lookId !== activeLookId
-        ) {
-          return;
-        }
-
-        if (payload.status === 'generating') {
-          setIsRegenerating(true);
-          setRetryLabel(
-            !('phase' in data) || data.phase !== 'retrying'
+        // A default look's id is its character's, which is what an event
+        // from before looks carries.
+        const lookId =
+          'lookId' in data && typeof data.lookId === 'string'
+            ? data.lookId
+            : characterId;
+        const label =
+          payload.status !== 'generating' ||
+          !('phase' in data) ||
+          data.phase !== 'retrying'
+            ? null
+            : 'promptSoftened' in data && data.promptSoftened === true
+              ? 'Retrying with a rewritten prompt…'
+              : 'attempt' in data &&
+                  'maxAttempts' in data &&
+                  typeof data.attempt === 'number' &&
+                  typeof data.maxAttempts === 'number'
+                ? `Retrying (${data.attempt}/${data.maxAttempts})…`
+                : 'Retrying…';
+        setRetry((current) =>
+          label
+            ? { lookId, label }
+            : current?.lookId === lookId
               ? null
-              : 'promptSoftened' in data && data.promptSoftened === true
-                ? 'Retrying with a rewritten prompt…'
-                : 'attempt' in data &&
-                    'maxAttempts' in data &&
-                    typeof data.attempt === 'number' &&
-                    typeof data.maxAttempts === 'number'
-                  ? `Retrying (/)…`
-                  : 'Retrying…'
-          );
-        } else {
-          setIsRegenerating(false);
-          setRetryLabel(null);
-          // The sheet and its version strip are separate queries. A completed
-          // run appends a version after the kickoff mutation has returned.
-          void queryClient.invalidateQueries({
-            queryKey: sequenceCharacterKeys.list(sequenceId),
-          });
+              : current
+        );
+        // The look's status and sheet come from the list.
+        void queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.list(sequenceId),
+        });
+        if (payload.status !== 'generating') {
+          // The version strip is a separate query. A completed run appends a
+          // version after the kickoff mutation has returned.
           void queryClient.invalidateQueries({
             queryKey: characterSheetVariantKeys.history(
               sequenceId,
@@ -237,7 +244,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         }
       }
     },
-    [activeLookId, characterId, queryClient, sequenceId]
+    [characterId, queryClient, sequenceId]
   );
 
   // Subscribe to realtime events
@@ -333,7 +340,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   // Determine if currently regenerating (from realtime or mutation pending)
   const isSheetGenerating =
-    isRegenerating ||
     recastCharacter.isPending ||
     regenerateSheet.isPending ||
     character?.sheetStatus === 'generating';

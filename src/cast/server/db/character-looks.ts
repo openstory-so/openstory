@@ -239,6 +239,33 @@ export const lookDefinitionWrite = (
 };
 
 /**
+ * Two live looks of one character never share a name: the name is what a
+ * person picks by, and what a re-analysis matches on.
+ */
+const requireFreeName = async (
+  db: Database,
+  characterId: string,
+  name: string,
+  exceptLookId: string | null
+): Promise<void> => {
+  const taken = await selectLooks(db).where(
+    and(
+      eq(characterLooks.characterId, characterId),
+      sql`${characterLooks.deletedAt} IS NULL`
+    )
+  );
+  const wanted = name.trim().toLowerCase();
+  if (
+    taken.some(
+      (row) =>
+        row.id !== exceptLookId && row.name.trim().toLowerCase() === wanted
+    )
+  ) {
+    throw new ConflictError(`This character already has a look named ${name}.`);
+  }
+};
+
+/**
  * Delete every look of the characters `where` matches. Looks RESTRICT their
  * character's delete (the #612 rebuild trap), so these two statements go
  * before it, in the same batch.
@@ -347,12 +374,21 @@ export function createCharacterLooksMethods(db: Database) {
 
     /**
      * Write a character's analysed looks (#2015), the default first, and say
-     * which look each analysis id landed on. A look is matched by NAME to a
-     * live look of the character, so a re-analysis keeps its id, its sheet
-     * and the scenes that pick it; one the character does not have yet is
-     * added. The default look takes the first entry's name and styling (its
-     * clothing came in with the character's upsert). Looks the script no
-     * longer names are left alone: a person may have made them.
+     * which look each analysis id landed on.
+     *
+     * A look is matched by NAME (case-blind) to a look of the character, so
+     * a re-analysis keeps its id, its sheet and its history; a removed look
+     * the script names again comes back. Each row is matched at most once,
+     * and a new one is added for a name the character does not have. The
+     * default look takes the first entry's name and styling (its clothing
+     * came in with the character's upsert); a look that already had that
+     * name is the same outfit, so it is retired below rather than left as a
+     * twin.
+     *
+     * A look this analysis no longer names is soft-removed only when nothing
+     * is lost: every version of it came from analysis, it has no sheet, and
+     * no scene wears it. A look a person made or edited, one with a sheet,
+     * and one a scene wears are never touched.
      */
     syncFromAnalysis: async (
       characterId: string,
@@ -365,14 +401,19 @@ export function createCharacterLooksMethods(db: Database) {
     ): Promise<Record<string, string>> => {
       const opts = { source: 'analysis' as const, createdBy: null };
       const defaultLook = await requireLook(db, characterId);
-      const live = await selectLooks(db).where(
-        and(
-          eq(characterLooks.characterId, characterId),
-          sql`${characterLooks.deletedAt} IS NULL`
-        )
-      );
-      const sameName = (a: string, b: string) =>
-        a.trim().toLowerCase() === b.trim().toLowerCase();
+      const others = (
+        await selectLooks(db).where(eq(characterLooks.characterId, characterId))
+      ).filter((row) => !row.isDefault);
+      const write = async (
+        look: CharacterLook,
+        patch: Partial<LookDefinition>
+      ) => {
+        const { statements } = lookDefinitionWrite(db, look, patch, opts);
+        const [first, ...rest] = statements;
+        if (first) await db.batch([first, ...rest]);
+      };
+      const key = (name: string) => name.trim().toLowerCase();
+      const matched = new Set<string>();
       const ids: Record<string, string> = {};
       for (const [index, look] of analysed.entries()) {
         const definition = {
@@ -381,31 +422,28 @@ export function createCharacterLooksMethods(db: Database) {
           styling: look.styling.trim() || null,
         };
         if (index === 0) {
-          const { statements } = lookDefinitionWrite(
-            db,
-            defaultLook,
-            // Clothing is the character upsert's: a talent match may have
-            // kept the role's wardrobe, and that write already landed.
-            { name: definition.name, styling: definition.styling },
-            opts
-          );
-          const [first, ...rest] = statements;
-          if (first) await db.batch([first, ...rest]);
+          // Clothing is the character upsert's: a talent match may have
+          // kept the role's wardrobe, and that write already landed.
+          await write(defaultLook, {
+            name: definition.name,
+            styling: definition.styling,
+          });
           ids[look.lookId] = defaultLook.id;
           continue;
         }
-        const existing = live.find(
-          (row) => !row.isDefault && sameName(row.name, definition.name)
+        const existing = others.find(
+          (row) =>
+            !matched.has(row.id) && key(row.name) === key(definition.name)
         );
         if (existing) {
-          const { statements } = lookDefinitionWrite(
-            db,
-            existing,
-            definition,
-            opts
-          );
-          const [first, ...rest] = statements;
-          if (first) await db.batch([first, ...rest]);
+          matched.add(existing.id);
+          await write(existing, definition);
+          if (existing.deletedAt) {
+            await db
+              .update(characterLooks)
+              .set({ deletedAt: null, updatedAt: new Date() })
+              .where(eq(characterLooks.id, existing.id));
+          }
           ids[look.lookId] = existing.id;
           continue;
         }
@@ -416,7 +454,7 @@ export function createCharacterLooksMethods(db: Database) {
             id,
             characterId,
             isDefault: false,
-            sortOrder: live.length + index,
+            sortOrder: others.length + index,
             selectedLookVersionId: versionId,
             sheetStatus: 'pending',
           }),
@@ -427,7 +465,57 @@ export function createCharacterLooksMethods(db: Database) {
             ...opts,
           }),
         ]);
+        matched.add(id);
         ids[look.lookId] = id;
+      }
+
+      // Retire what this analysis left behind, where nothing is lost.
+      const stale = others.filter(
+        (row) =>
+          !matched.has(row.id) &&
+          !row.deletedAt &&
+          !row.selectedSheetVersionId &&
+          !row.sheetImageUrl &&
+          row.sheetStatus !== 'generating' &&
+          !row.pendingPromoteSheetVersionId
+      );
+      if (stale.length > 0) {
+        const owner = await ownerOf(db, characterId);
+        const worn = new Set(
+          [
+            ...(
+              await loadSceneContextBySequenceFromDb(db, owner.sequenceId)
+            ).values(),
+          ].flatMap(({ scene }) =>
+            Object.values(scene.continuity?.characterLooks ?? {})
+          )
+        );
+        for (const row of stale) {
+          if (worn.has(row.id)) continue;
+          const authored = await db
+            .select({ source: characterLookVersions.source })
+            .from(characterLookVersions)
+            .where(eq(characterLookVersions.lookId, row.id));
+          if (authored.some((version) => version.source !== 'analysis')) {
+            continue;
+          }
+          const deletedAt = new Date();
+          await db.batch([
+            db
+              .update(characterLooks)
+              .set({ deletedAt, updatedAt: deletedAt })
+              .where(eq(characterLooks.id, row.id)),
+            buildEventInsert(db, {
+              sequenceId: owner.sequenceId,
+              actorId: null,
+              kind: 'look.removed',
+              targetType: 'character',
+              targetId: characterId,
+              summary: `Removed look ${row.name} of ${owner.name}: the script no longer has it`,
+              data: { lookId: row.id, name: row.name, by: 'analysis' },
+            }),
+          ]);
+        }
       }
       return ids;
     },
@@ -442,6 +530,7 @@ export function createCharacterLooksMethods(db: Database) {
       // A character with no look yet gets its default first, so the new one
       // is never the only look and never mistaken for the default.
       await backfillDefaultLook(db, characterId);
+      await requireFreeName(db, characterId, definition.name, null);
       const [last] = await db
         .select({ sortOrder: characterLooks.sortOrder })
         .from(characterLooks)
@@ -491,6 +580,9 @@ export function createCharacterLooksMethods(db: Database) {
       opts: { source: LookVersionSource; actorId: string | null }
     ): Promise<CharacterLook> => {
       const look = await requireLook(db, lookId);
+      if (patch.name !== undefined) {
+        await requireFreeName(db, look.characterId, patch.name, look.id);
+      }
       const { moved, statements } = lookDefinitionWrite(db, look, patch, {
         source: opts.source,
         createdBy: opts.actorId,
@@ -630,6 +722,7 @@ export function createCharacterLooksMethods(db: Database) {
     ): Promise<CharacterLook> => {
       const look = await requireLook(db, lookId);
       if (!look.deletedAt) return look;
+      await requireFreeName(db, look.characterId, look.name, look.id);
       const owner = await ownerOf(db, look.characterId);
       await db.batch([
         db

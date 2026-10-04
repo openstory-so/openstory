@@ -87,7 +87,9 @@ export function wearBibleLooks<T extends CharacterBibleEntry>(
  */
 export function bibleFromWire(
   wire: readonly CharacterBibleWireEntry[],
-  sceneIdForLine: (lineNumber: number) => string
+  sceneIdForLine: (lineNumber: number) => string,
+  /** Lines in the script: a `lines` entry outside 1..lineCount is dropped. */
+  lineCount: number
 ): {
   characterBible: CharacterBibleEntry[];
   sceneLooks: Record<string, Record<string, string>>;
@@ -96,15 +98,28 @@ export function bibleFromWire(
   const characterBible = wire.map((entry) => {
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a bibles result cached before #2015 has no looks
     const given = entry.looks ?? [];
-    const taken = new Set<string>();
+    const slugs = new Set<string>();
+    const names = new Set<string>();
     const looks = given.map((look, index) => {
-      const base = index === 0 ? 'default' : slugifyTag(look.name) || 'look';
+      // Two looks of one character never share a name: the name is how a
+      // re-analysis finds the look again, so a repeat gets a number.
+      const baseName = look.name.trim() || DEFAULT_LOOK_NAME;
+      let name = baseName;
+      for (let n = 2; names.has(name.toLowerCase()); n++) {
+        name = `${baseName} ${n}`;
+      }
+      names.add(name.toLowerCase());
+      const base = index === 0 ? 'default' : slugifyTag(name) || 'look';
       let slug = base;
-      for (let n = 2; taken.has(slug); n++) slug = `${base}_${n}`;
-      taken.add(slug);
+      for (let n = 2; slugs.has(slug); n++) slug = `${base}_${n}`;
+      slugs.add(slug);
       const lookId = `${entry.characterId}:${slug}`;
       if (index > 0) {
         for (const line of look.lines) {
+          // A line that is not in the script names no scene. The line → scene
+          // lookup clamps, which would dress the first or last scene in an
+          // outfit the script never put there.
+          if (!Number.isInteger(line) || line < 1 || line > lineCount) continue;
           const sceneId = sceneIdForLine(line);
           if (sceneId) {
             (sceneLooks[sceneId] ??= {})[canonicalBibleTag(entry)] = lookId;
@@ -113,14 +128,45 @@ export function bibleFromWire(
       }
       return {
         lookId,
-        name: look.name,
-        clothing: look.clothing,
+        name,
+        // The default outfit is asked for twice (`standardClothing` and the
+        // first look). One left blank must not wipe the other.
+        clothing:
+          index === 0
+            ? look.clothing.trim() || entry.standardClothing
+            : look.clothing,
         styling: look.styling,
       };
     });
     return withBibleLooks({ ...entry, looks });
   });
   return { characterBible, sceneLooks };
+}
+
+/**
+ * An entry as a prompt that has no use for outfits sees it (voice design):
+ * no `looks` key at all, which is also the text such a prompt had before
+ * looks existed.
+ */
+export function withoutLooks(
+  entry: CharacterBibleEntry
+): Omit<CharacterBibleEntry, 'looks'> {
+  const { looks: _looks, ...rest } = entry;
+  return rest;
+}
+
+/**
+ * Entries as a shot's prompt sees them: each with only the look it wears in
+ * that shot's scene (the first), never the character's other outfits.
+ */
+export function wornLookOnly(
+  entries: readonly CharacterBibleEntry[]
+): CharacterBibleEntry[] {
+  return entries.map((entry) => ({
+    ...entry,
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: an entry frozen before #2015 has no looks
+    looks: (entry.looks ?? []).slice(0, 1),
+  }));
 }
 
 /** Entries with their look ids swapped for the persisted ones. */
