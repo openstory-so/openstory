@@ -57,13 +57,24 @@ export const demoteTalentSheetClaim = (db: Database, talentId: string) =>
       and(eq(talent.id, talentId), isNotNull(talent.pendingPromoteSheetId))
     );
 
-/** Every sheet claim in a sequence: its style is an input to all of them. */
-export const demoteSequenceSheetClaims = (db: Database, sequenceId: string) =>
+/**
+ * Every sheet claim in a sequence: its style is an input to all of them.
+ * Each statement evaluates `styleMoved` itself, so the caller's batch revokes
+ * only when its style write changes the snapshot (#1863).
+ */
+export const demoteSequenceSheetClaims = (
+  db: Database,
+  sequenceId: string,
+  styleMoved: SQL
+) =>
   [
-    demoteCharacterSheetClaims(db, eq(characters.sequenceId, sequenceId)),
+    demoteCharacterSheetClaims(
+      db,
+      sql`${eq(characters.sequenceId, sequenceId)} and ${styleMoved}`
+    ),
     demoteLocationReferenceClaims(
       db,
-      eq(sequenceLocations.sequenceId, sequenceId)
+      sql`${eq(sequenceLocations.sequenceId, sequenceId)} and ${styleMoved}`
     ),
   ] as const;
 

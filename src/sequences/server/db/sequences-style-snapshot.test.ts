@@ -5,8 +5,15 @@
 import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
-import { sequences, styles, teams, user } from '@/platform/server/db/schema';
+import {
+  sequenceLocations,
+  sequences,
+  styles,
+  teams,
+  user,
+} from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
+import { createSequenceLocationsMethods } from '@/cast/server/db/sequence-locations';
 import { createSequencesMethods } from './sequences';
 import { isStyleConfigV2, parseStyleConfig } from '@/look/style-config';
 import { type Client, createClient } from '@libsql/client';
@@ -48,6 +55,7 @@ afterAll(() => {
 
 beforeEach(async () => {
   await clearVersionRows(db);
+  await db.delete(sequenceLocations);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -144,6 +152,56 @@ describe('createSequencesMethods style snapshot', () => {
     ]);
     expect(updated.selectedStyleVersionId).toBe(versions[1]?.id);
     expect(parseStyleConfig(versions[0]?.config).look.mood).toBe(V1_A.mood);
+  });
+
+  // Sheet claims go only when the style write moves the snapshot (#1863).
+  async function claimedLocation(styleId: string) {
+    const methods = createSequencesMethods(db, teamId, userId);
+    const sequence = await methods.create({
+      generationStopAt: 'images',
+      title: 'S',
+      styleId,
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
+    const locations = createSequenceLocationsMethods(db);
+    const location = await locations.create(
+      { sequenceId: sequence.id, locationId: 'loc_001', name: 'Diner' },
+      { source: 'analysis', createdBy: null }
+    );
+    const claim = await locations.claimReference(location.id, {
+      markGenerating: true,
+    });
+    const liveClaim = async () =>
+      (await locations.getById(location.id))?.pendingPromoteReferenceVersionId;
+    return { methods, sequence, claim, liveClaim };
+  }
+
+  it('keeps sheet claims when the same style is saved again', async () => {
+    const style = await insertStyle('Noir', V1_A);
+    const { methods, sequence, claim, liveClaim } = await claimedLocation(
+      style.id
+    );
+    await methods.update({ id: sequence.id, styleId: style.id, title: 'T' });
+    expect(await liveClaim()).toBe(claim);
+  });
+
+  it('revokes sheet claims when the style switches', async () => {
+    const styleA = await insertStyle('Noir', V1_A);
+    const styleB = await insertStyle('Product', V1_B);
+    const { methods, sequence, liveClaim } = await claimedLocation(styleA.id);
+    await methods.update({ id: sequence.id, styleId: styleB.id });
+    expect(await liveClaim()).toBeNull();
+  });
+
+  it('revokes sheet claims when the same style is re-saved with an edited recipe', async () => {
+    const style = await insertStyle('Noir', V1_A);
+    const { methods, sequence, liveClaim } = await claimedLocation(style.id);
+    await db
+      .update(styles)
+      .set({ config: V1_B })
+      .where(eq(styles.id, style.id));
+    await methods.update({ id: sequence.id, styleId: style.id });
+    expect(await liveClaim()).toBeNull();
   });
 
   it('a deferred snapshot has no version until the automatic style lands', async () => {

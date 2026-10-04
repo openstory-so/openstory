@@ -107,6 +107,9 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         loc.selectedBibleVersionId ?? null,
       ])
     );
+    const libraryLinkByDbId = new Map<string, string | null>(
+      createdLocations.map((loc) => [loc.id, loc.libraryLocationId ?? null])
+    );
 
     const childBinding = this.env.LOCATION_SHEET_WORKFLOW;
 
@@ -127,13 +130,14 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
 
         const libraryMatch = matchMap.get(location.locationId);
 
+        const bibleVersionId = bibleVersionByDbId.get(locationDbId) ?? null;
         const unclaimedFields: SheetPayload<LocationSheetWorkflowInput> = {
           userId: input.userId,
           teamId,
           sequenceId,
           reservationId: input.reservationId,
           locationDbId,
-          bibleVersionId: bibleVersionByDbId.get(locationDbId) ?? null,
+          bibleVersionId,
           locationName: location.name,
           locationMetadata: location,
           imageModel: model,
@@ -144,7 +148,9 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
             libraryMatch?.referenceInputHash ?? null,
         };
         // Tracked like any other sheet (#1113): hashed, and landed through a
-        // claim a bible edit revokes.
+        // claim a bible edit revokes. The claim is taken only while the bible
+        // and library link the upsert returned are still live (#1863): an edit
+        // that landed since had no claim to revoke, so the child parks.
         const unclaimed = {
           ...unclaimedFields,
           snapshotInputHash:
@@ -152,10 +158,30 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         };
         const referenceVersionId = await step.do(
           `claim-location-sheet-${index}`,
-          async () =>
-            await scopedDb.sequenceLocations.claimReference(locationDbId, {
-              markGenerating: false,
-            })
+          async () => {
+            // A step result cached before #1600 names no bible version.
+            if (!bibleVersionId) {
+              return await scopedDb.sequenceLocations.claimReference(
+                locationDbId,
+                { markGenerating: false }
+              );
+            }
+            const claim =
+              await scopedDb.sequenceLocations.claimReferenceIfUnmoved(
+                locationDbId,
+                {
+                  bibleVersionId,
+                  libraryLocationId:
+                    libraryLinkByDbId.get(locationDbId) ?? null,
+                }
+              );
+            if (!claim.held) {
+              logger.warn(
+                `[LocationBibleWorkflow:cf] Location ${locationDbId} moved before the claim; its sheet parks`
+              );
+            }
+            return claim.versionId;
+          }
         );
         const childPayload: LocationSheetWorkflowInput = {
           ...unclaimed,

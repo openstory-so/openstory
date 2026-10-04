@@ -93,6 +93,7 @@ import {
   isNull,
   lt,
   not,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
@@ -793,8 +794,27 @@ export function createSequencesMethods(
         }
         // A style switch is a new snapshot (#1600): its version row, the
         // pointer, and — since the style feeds every sheet in the sequence —
-        // the revoked sheet claims (#1113), in one batch.
+        // the revoked sheet claims (#1113), in one batch. The claims go only
+        // when the style moved (#1863): a save that re-sends the same style
+        // with the same recipe leaves runs in flight alone. The demotes run
+        // before the pointer moves, so they compare against the live snapshot.
         const styleVersionId = generateId();
+        const styleMoved = notExists(
+          db
+            .select({ one: sql`1` })
+            .from(sequences)
+            .innerJoin(
+              sequenceStyleVersions,
+              eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
+            )
+            .where(
+              and(
+                eq(sequences.id, id),
+                eq(sequences.styleId, params.styleId),
+                eq(sequenceStyleVersions.config, styleConfig)
+              )
+            )
+        );
         await db.batch([
           insertStyleVersion(db, {
             id: styleVersionId,
@@ -804,11 +824,11 @@ export function createSequencesMethods(
             source: 'switched',
             createdBy: userId,
           }),
+          ...demoteSequenceSheetClaims(db, id, styleMoved),
           db
             .update(sequences)
             .set({ ...values, selectedStyleVersionId: styleVersionId })
             .where(scoped),
-          ...demoteSequenceSheetClaims(db, id),
         ]);
       } else {
         const [updated] = await db
