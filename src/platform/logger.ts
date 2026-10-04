@@ -1,9 +1,9 @@
 /**
  * LogTape configuration + helpers — the canonical logger for OpenStory.
  *
- * Server: logs one object per record. Cloudflare Workers Logs reads an object's
- * fields, and its log export (`observability.logs.destinations`) sends them to
- * PostHog Logs. A JSON string would arrive as one unreadable body (#2028).
+ * Server: emits one JSON line per record to console.log. Cloudflare Workers
+ * Observability picks these up and forwards to PostHog Logs via the
+ * dashboard-configured destination.
  *
  * Browser: forwards to posthog.captureLog when available. Falls back to a
  * pretty console in dev.
@@ -23,6 +23,7 @@ import {
   type LogLevel,
   type LogRecord,
   type Sink,
+  type TextFormatter,
 } from '@logtape/logtape';
 // Pretty formatter for dev. Static ESM import — @logtape/pretty is marked
 // `sideEffects: false`, so Vite tree-shakes it out of the prod worker bundle
@@ -107,7 +108,7 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
   // `dev` is statically known at build time (via process.env.NODE_ENV
   // replacement), so the unused branch is dropped and only the live
   // formatter's dependency stays in the bundle.
-  const formatter = dev
+  const formatter: TextFormatter = dev
     ? redactByPattern(
         // One clean pretty line per record.
         // - timestamp: 'time' → wall-clock per record (HH:MM:SS.sss) to help
@@ -116,7 +117,7 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
         // - properties: false → don't print the structured-field block. The
         //   noisy request/serverFn logs interpolate their values into the
         //   message via `{placeholder}`, so re-listing them is redundant; the
-        //   prod object sink (below) still keeps every field for PostHog.
+        //   prod JSON-lines sink (below) still keeps every field for PostHog.
         // - wordWrap: false → no hanging-indent continuation. `bun --parallel`
         //   (`bun dev:all`) re-prefixes wrapped lines with `dev:app | `,
         //   making the default auto-wrap ragged; let the terminal hard-wrap
@@ -128,39 +129,10 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
         }),
         SECRET_PATTERNS
       )
-    : objectFormatter;
+    : redactByPattern(getJsonLinesFormatter(), SECRET_PATTERNS);
 
   return { console: getConsoleSink({ formatter }) };
 }
-
-const redactedJsonLine = redactByPattern(
-  getJsonLinesFormatter(),
-  SECRET_PATTERNS
-);
-
-/**
- * One object per record, already redacted. Redaction runs on the whole JSON
- * line and the line is parsed back, not on the object: the patterns need to see
- * a key next to its value (`"token":"…"`), and walking an object skips an
- * `Error`. `message` and `logger` are written last so a property of the same
- * name cannot replace them.
- */
-export const objectFormatter: ConsoleFormatter = (record) => {
-  const line = redactedJsonLine(record);
-  try {
-    const parsed: {
-      message: string;
-      logger: string;
-      properties: Record<string, unknown>;
-    } = JSON.parse(line);
-    return [
-      { ...parsed.properties, message: parsed.message, logger: parsed.logger },
-    ];
-  } catch {
-    // A replacement broke the JSON. Log the redacted line as it is.
-    return [line];
-  }
-};
 
 function buildBrowserSinks(dev: boolean): Record<string, Sink> {
   if (dev) {

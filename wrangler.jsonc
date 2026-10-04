@@ -357,7 +357,9 @@
       // merged), so logs are restated. Traces also go to PostHog Tracing via
       // the `posthog-traces-openstory-prd` destination (Cloudflare dashboard →
       // Workers → Observability → Destinations). Logs stay on the tail
-      // forwarder: the native logs destination shipped LogTape JSON as a blob.
+      // forwarder: the native logs destination ships any log with fields as one
+      // JSON body and no attributes, object or string (retested 2026-10-05,
+      // #2028; table in workers/posthog-log-forwarder/README.md).
       // Traces sample 100% so every error has a trace. Every span is a billed
       // event from 2026-10-01; ~4M/month measured (Sep 2026) vs 20M included.
       "observability": {

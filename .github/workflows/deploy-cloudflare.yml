@@ -163,11 +163,13 @@ jobs:
               { tag: 'v2', new_sqlite_classes: ['VideoExportContainer'] },
               ...migrations.filter((m) => m.tag !== 'v1')
             ];
-            // Preview logs go to PostHog Staging through Cloudflare's own
-            // log export (#2028). 'posthog-openstory-stg' is a destination on
-            // the Cloudflare account (Workers > Observability > Destinations).
-            obj.observability.logs.destinations = ['posthog-openstory-stg'];
-            obj.tail_consumers = [];
+            // Tail-consume preview logs into the staging log forwarder
+            // (workers/posthog-log-forwarder), which transforms our LogTape
+            // JSON into proper OTLP log records and POSTs to PostHog. The
+            // forwarder must be deployed as 'openstory-log-forwarder-stg'
+            // before preview deploys can reference it. See PR #765 /
+            // issue #754 / workers/posthog-log-forwarder/README.md.
+            obj.tail_consumers = [{ service: 'openstory-log-forwarder-stg' }];
             // NOTE: triggers.crons retained on previews so the reconciler
             // sweep can be tested end-to-end. Each preview has its own
             // isolated D1, so the sweep operates on preview rows only. See

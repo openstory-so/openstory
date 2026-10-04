@@ -143,10 +143,6 @@ interface WorkerEnv {
 
 const exportedHandler: ExportedHandler<WorkerEnv> = {
   async fetch(request, env) {
-    // TEMP #2028 probe: an uncaught throw. Removed before merge.
-    if (new URL(request.url).pathname === '/__log_probe_throw') {
-      throw new Error('probe I uncaught throw');
-    }
     // Before any await, so the line is on this request when the isolate dies.
     logIsolateStamp();
     const { pathname } = new URL(request.url);

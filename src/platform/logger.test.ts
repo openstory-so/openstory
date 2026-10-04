@@ -8,7 +8,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  objectFormatter,
   SECRET_PATTERNS,
   type SerializedError,
   serializeError,
@@ -142,36 +141,5 @@ describe('SECRET_PATTERNS', () => {
     const token = `eyJhbGciOiJIUzI1NiJ9.${'a1B2c3D4'.repeat(8)}`;
 
     expect(redact(token)).toContain('[REDACTED]');
-  });
-});
-
-describe('objectFormatter', () => {
-  it('logs one object with the rendered message, and redacts secrets in it', () => {
-    const out = objectFormatter({
-      category: ['openstory', 'workflow'],
-      level: 'info',
-      message: ['step ', 'motion', ' started'],
-      rawMessage: 'step {step} started',
-      timestamp: 0,
-      properties: {
-        step: 'motion',
-        message: 'not the headline',
-        nested: { key: 'fal_abcdefghijklmnopqrstuvwxyz' },
-        // Only a secret because of the key it sits under.
-        token: 'a1B2c3D4e5'.repeat(4),
-        err: new Error('bad key fal_abcdefghijklmnopqrstuvwxyz'),
-      },
-    });
-
-    expect(out).toEqual([
-      {
-        step: 'motion',
-        message: 'step "motion" started',
-        logger: 'openstory.workflow',
-        nested: { key: '[REDACTED]' },
-        token: '[REDACTED]',
-        err: expect.objectContaining({ message: 'bad key [REDACTED]' }),
-      },
-    ]);
   });
 });
