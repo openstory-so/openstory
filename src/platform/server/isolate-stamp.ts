@@ -26,6 +26,19 @@ export function getIsolateId(): string {
 /** `label` names invocations that carry no URL: `cron`, `workflow:<Class>`. */
 export function logIsolateStamp(label?: string): void {
   const isolateId = getIsolateId();
+  // TEMP #2028 probe: which console shape gives PostHog a clean body. Removed before merge.
+  if (!label) {
+    console.log('probe A string only');
+    console.log('probe B string then object', { probeKey: 'b', n: 1 });
+    console.log({ message: 'probe C object', probeKey: 'c', nested: { n: 1 } });
+    console.log(
+      JSON.stringify({ message: 'probe D json string', probeKey: 'd' })
+    );
+    console.log({ msg: 'probe E msg key', probeKey: 'e' });
+    console.log({ body: 'probe F body key', probeKey: 'f' });
+    console.error({ message: 'probe G error level', probeKey: 'g' });
+    console.error(new Error('probe H error object'));
+  }
   logger.info(
     label ? `[isolate] ${isolateId} ${label}` : `[isolate] ${isolateId}`,
     {
