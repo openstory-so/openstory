@@ -3106,7 +3106,7 @@ describe('cast and music edits (#1979)', () => {
         scenes,
         eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
       )
-      .where(eq(scenes.id, sceneId));
+      .where(eq(scenes.id, dbSceneId(sceneId)));
     expect(Object.values(stored?.continuity?.characterLooks ?? {})).toEqual([
       lookId,
     ]);
