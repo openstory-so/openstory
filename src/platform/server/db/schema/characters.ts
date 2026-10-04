@@ -61,20 +61,28 @@ export const characters = snakeCase.table(
       .notNull(),
     // The team that owns the character (#2017). Null only on a row a worker
     // older than #2017 wrote during the deploy; the reconcile cron fills it
-    // (`backfillCastStatements`). NOT NULL comes with the column drop.
+    // (`backfillCast`). NOT NULL comes with the column drop.
     teamId: text().references(() => teams.id),
     // In the team library: offered to new sequences. A character that is not
     // lives only as long as some sequence casts it.
     inLibrary: integer({ mode: 'boolean' }).default(false).notNull(),
     // LEGACY cast columns (#2017). Which sequence a character is in, under
     // which script id, cast with which talent and whether it is removed all
-    // live on `sequence_cast` (the talent on the pinned bible version). These
-    // are still WRITTEN, because `sequence_id` and `character_id` are NOT
-    // NULL and a worker older than #2017 reads all four during the deploy,
-    // and are READ only to give a character that worker wrote its cast link
-    // (`cast/server/db/sequence-cast.ts`). The `legacy` names keep the SQL
-    // column names but make every raw reader a compile error. The drop is a
-    // table rebuild, so it lands on its own, by hand.
+    // live on `sequence_cast` (the talent on the pinned bible version).
+    //
+    // All four are still WRITTEN. `sequence_id` and `character_id` are NOT
+    // NULL and carry the legacy unique index. `talent_id` and `deleted_at`
+    // are written for two reasons only: a worker older than #2017 reads them
+    // until the deploy finishes, and they are what a rollback to that worker
+    // would read. Nothing in this worker reads either as the cast or the
+    // removal. The writes are removed in the column-drop PR.
+    //
+    // They are READ only to give a character that older worker wrote its
+    // cast link: `backfillCast` (`platform/server/db/sequence-cast-backfill.ts`)
+    // and the lookup in `characters.create` that finds such a row. The
+    // `legacy` names keep the SQL column names but make every raw reader a
+    // compile error. The drop is a table rebuild, so it lands on its own, by
+    // hand.
     legacySequenceId: text('sequence_id')
       .notNull()
       .references(() => sequences.id, { onDelete: 'cascade' }),
@@ -147,7 +155,8 @@ export const characters = snakeCase.table(
       'pending_promote_sheet_version_id'
     ),
     // LEGACY (#2017), see the cast columns above: the soft-remove is
-    // `sequence_cast.removedAt`.
+    // `sequence_cast.removedAt`. Still written, for the older worker and a
+    // rollback; removed in the column-drop PR.
     legacyDeletedAt: integer('deleted_at', { mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
@@ -311,7 +320,8 @@ export type NewCharacter = Omit<
   // The scoped module's own team.
   | 'teamId'
 > &
-  // The sequence that casts it, and how (#2017).
+  // The sequence that casts it, and how (#2017). On a re-analysis a talent
+  // left out keeps the cast and `null` uncasts.
   Pick<CharacterCast, 'sequenceId' | 'characterId'> &
   Partial<Pick<CharacterCast, 'talentId'>> &
   Pick<CharacterBible, 'name'> &

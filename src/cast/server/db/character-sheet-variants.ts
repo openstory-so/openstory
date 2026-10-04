@@ -24,6 +24,7 @@ import {
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
 import { liveLookSheetVersionId, requireLook } from './character-looks';
+import { onlyLink } from './sequence-cast';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
@@ -46,7 +47,19 @@ const ofLook = (lookId: string) =>
     )
   );
 
-export function createCharacterSheetVariantsMethods(db: Database) {
+export function createCharacterSheetVariantsMethods(
+  db: Database,
+  teamId: string
+) {
+  /** Sheets of the team's characters: every read and write here carries it. */
+  const ofTeam = () =>
+    inArray(
+      characterSheetVariants.characterId,
+      db
+        .select({ id: characters.id })
+        .from(characters)
+        .where(eq(characters.teamId, teamId))
+    );
   return {
     /** Every attempt (any status), oldest-first; discarded rows on request. */
     listByLook: async (
@@ -56,6 +69,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       return await pageOf(
         db.select().from(characterSheetVariants).$dynamic(),
         and(
+          ofTeam(),
           ofLook(lookId),
           options?.includeDiscarded
             ? undefined
@@ -81,6 +95,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             ofLook(lookId),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
@@ -100,6 +115,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`
           )
@@ -119,6 +135,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
@@ -136,6 +153,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             inArray(characterSheetVariants.characterId, characterIds),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
@@ -159,7 +177,10 @@ export function createCharacterSheetVariantsMethods(db: Database) {
             .select()
             .from(characterSheetVariants)
             .where(
-              inArray(characterSheetVariants.id, variantIds.slice(i, i + 80))
+              and(
+                ofTeam(),
+                inArray(characterSheetVariants.id, variantIds.slice(i, i + 80))
+              )
             ))
         );
       return rows;
@@ -171,7 +192,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const result = await db
         .select()
         .from(characterSheetVariants)
-        .where(eq(characterSheetVariants.id, variantId));
+        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
       return result[0] ?? null;
     },
 
@@ -196,7 +217,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     }): Promise<{ version: CharacterSheetVariant }> => {
       const { lookId, url, storagePath, inputHash, model, workflowRunId } =
         args;
-      const look = await requireLook(db, lookId);
+      const look = await requireLook(db, teamId, lookId);
 
       const now = new Date();
       const [version] = await db
@@ -249,6 +270,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             eq(characterSheetVariants.id, versionId),
             eq(characterSheetVariants.characterId, characterId)
           )
@@ -269,8 +291,8 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         );
       }
 
-      const look = await requireLook(db, version.lookId ?? characterId);
-      const [existing] = await db
+      const look = await requireLook(db, teamId, version.lookId ?? characterId);
+      const owners = await db
         .select({
           sequenceId: sequenceCast.sequenceId,
           name: characterBibleColumns.name,
@@ -281,7 +303,13 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           characterBibleVersions,
           eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
         )
-        .where(eq(sequenceCast.characterId, characterId));
+        .where(
+          and(
+            eq(sequenceCast.characterId, characterId),
+            eq(characters.teamId, teamId)
+          )
+        );
+      const existing = onlyLink(owners, `Character ${characterId}`);
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
       }
@@ -330,7 +358,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     promoteIfPending: async (
       args: Omit<Parameters<typeof landCharacterSheet>[1], 'castLookId'>
     ) => {
-      const look = await requireLook(db, args.lookId);
+      const look = await requireLook(db, teamId, args.lookId);
       return await landCharacterSheet(db, {
         ...args,
         castLookId: look.castLookId,
@@ -430,7 +458,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt, updatedAt: discardedAt })
-        .where(eq(characterSheetVariants.id, variantId))
+        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
         .returning();
       if (result.length === 0) {
         throw new Error(`CharacterSheetVariant ${variantId} not found`);
@@ -442,7 +470,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt: null, updatedAt: new Date() })
-        .where(eq(characterSheetVariants.id, variantId))
+        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
         .returning();
       if (result.length === 0) {
         throw new Error(`CharacterSheetVariant ${variantId} not found`);

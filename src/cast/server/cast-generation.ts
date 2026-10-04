@@ -198,9 +198,8 @@ export async function recastCharacter(
     movement: talentWithSheets.movement ?? '',
   });
 
-  // Update talent assignment AND physical attributes from talent
-  await scopedDb.characters.updateTalent(data.characterId, data.talentId);
-  // The talent's appearance becomes a 'recast' bible version (#1600).
+  // The talent and its appearance become ONE 'recast' bible version (#1600,
+  // #2017).
   await scopedDb.characters.updateBible(
     data.characterId,
     {
@@ -216,7 +215,7 @@ export async function recastCharacter(
         talentWithSheets.isHuman
       ),
     },
-    { actorId: actor.userId, source: 'recast' }
+    { actorId: actor.userId, source: 'recast', talentId: data.talentId }
   );
   // Cast copies the talent's voice (#1553): its own history row, labelled
   // 'library' because that voice came from the talent, not this role's

@@ -150,8 +150,14 @@ beforeEach(async () => {
 });
 
 const chars = () => createCharactersMethods(db, teamId);
-const looks = () => createCharacterLooksMethods(db);
-const charVersions = () => createCharacterSheetVariantsMethods(db);
+const castWith = (to: string | null) =>
+  chars().updateBible(
+    characterId,
+    {},
+    { actorId: null, source: 'recast', talentId: to }
+  );
+const looks = () => createCharacterLooksMethods(db, teamId);
+const charVersions = () => createCharacterSheetVariantsMethods(db, teamId);
 const locs = () => createSequenceLocationsMethods(db);
 const locVersions = () => createLocationSheetVariantsMethods(db);
 const library = () => createLocationsMethods(db, teamId, userId);
@@ -351,7 +357,7 @@ describe('character sheet claims', () => {
 
   it('is revoked by a recast and by a change to the cast talent', async () => {
     let versionId = await claim();
-    await chars().updateTalent(characterId, talentId);
+    await castWith(talentId);
     expect(await landCharacter(versionId)).toBe('parked');
 
     versionId = await claim();
@@ -508,7 +514,7 @@ describe('look sheet claims (#2015)', () => {
     ).toBe(false);
 
     const recast = await snapshotOf(characterId);
-    await chars().updateTalent(characterId, null);
+    await castWith(null);
     expect(
       (await looks().claimSheet(characterId, recast, { markGenerating: true }))
         .held

@@ -55,7 +55,8 @@ export const characterLooks = snakeCase.table(
     // status belong to the sequence that uses it and live on
     // `sequence_cast_looks`. These are written only where NOT NULL forces a
     // value on insert, and read only to give a look a worker older than #2017
-    // wrote its cast look (`cast/server/db/sequence-cast.ts`).
+    // wrote its cast look (`backfillCast`,
+    // `platform/server/db/sequence-cast-backfill.ts`).
     legacySelectedSheetVersionId: text('selected_sheet_version_id'),
     legacyPendingPromoteSheetVersionId: text(
       'pending_promote_sheet_version_id'

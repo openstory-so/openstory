@@ -229,7 +229,6 @@ vi.doMock('@/platform/server/db/scoped/admin', () => ({
 const mockCharactersGetById = vi.fn();
 const mockCharactersListWithTalent = vi.fn();
 const mockCharactersListWithSheets = vi.fn();
-const mockCharactersUpdateTalent = vi.fn();
 const mockCharactersGetShotIdsForCharacter = vi.fn();
 
 vi.doMock('@/cast/server/db/characters', () => ({
@@ -237,7 +236,6 @@ vi.doMock('@/cast/server/db/characters', () => ({
     getById: mockCharactersGetById,
     listWithTalent: mockCharactersListWithTalent,
     listWithSheets: mockCharactersListWithSheets,
-    updateTalent: mockCharactersUpdateTalent,
     getShotIdsForCharacter: mockCharactersGetShotIdsForCharacter,
   })),
 }));
@@ -345,7 +343,6 @@ describe('createScopedDb', () => {
       mockCharactersGetById,
       mockCharactersListWithTalent,
       mockCharactersListWithSheets,
-      mockCharactersUpdateTalent,
       mockCharactersGetShotIdsForCharacter,
       mockSeqLocationsGetById,
       mockSeqLocationsList,
@@ -695,20 +692,6 @@ describe('createScopedDb', () => {
       const result = await db.characters.listWithSheets('seq_01');
 
       expect(mockCharactersListWithSheets).toHaveBeenCalledWith('seq_01');
-      expect(result).toEqual(sentinel);
-    });
-
-    it('updateTalent() delegates to sub-module', async () => {
-      const sentinel = { id: 'char_01', talentId: 'talent_01' };
-      mockCharactersUpdateTalent.mockResolvedValue(sentinel);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.characters.updateTalent('char_01', 'talent_01');
-
-      expect(mockCharactersUpdateTalent).toHaveBeenCalledWith(
-        'char_01',
-        'talent_01'
-      );
       expect(result).toEqual(sentinel);
     });
 

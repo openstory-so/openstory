@@ -20,6 +20,37 @@ import {
 } from '@/platform/server/db/schema';
 
 /**
+ * The id-only methods on characters and looks resolve "the character's cast
+ * link" and write through it. That is only right while a character is in one
+ * sequence, so a second link is refused here rather than answered with
+ * whichever row came back first. They take the sequence in the PR that lets
+ * a second sequence cast a character.
+ */
+const MORE_THAN_ONE_LINK =
+  'is cast in more than one sequence; this read does not say which';
+
+/** The one row an id resolved to, or none. Throws on more than one link. */
+export function onlyLink<T>(rows: readonly T[], what: string): T | undefined {
+  if (rows.length > 1) throw new Error(`${what} ${MORE_THAN_ONE_LINK}`);
+  return rows[0];
+}
+
+/** `rows` as they are, unless an id came back through two links. */
+export function oneLinkEach<T extends { id: string }>(
+  rows: T[],
+  what: string
+): T[] {
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (seen.has(row.id)) {
+      throw new Error(`${what} ${row.id} ${MORE_THAN_ONE_LINK}`);
+    }
+    seen.add(row.id);
+  }
+  return rows;
+}
+
+/**
  * The cast links played by a talent: the ones whose pinned bible version
  * names it. For `demoteCharacterSheetClaims`.
  */

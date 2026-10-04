@@ -3,7 +3,6 @@
  * real scoped repositories and the migrated SQLite schema. Workflow triggers
  * and realtime are mocked; nothing reaches a provider.
  */
-import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import {
   afterAll,
   beforeAll,
@@ -24,10 +23,10 @@ import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
 // oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
+import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
-  characters,
   frames,
   frameVariants,
   locationLibrary,
@@ -68,6 +67,12 @@ let shotId: string;
 let frameId: string;
 let actorId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
+/** A character as analysis writes it: bible version, cast link, default look. */
+const castCharacter = (character: NewCharacter) =>
+  createScopedDb(teamId, actorId).characters.create(character, {
+    source: 'analysis',
+    createdBy: null,
+  });
 
 async function call(name: string, args: Record<string, unknown>) {
   const response = await server.handle(
@@ -280,13 +285,12 @@ describe('shot dialogue and pending artifacts', () => {
 describe('cast', () => {
   it('cancels no voice when none is generating', async () => {
     const characterId = generateId();
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
-      legacySequenceId: sequenceId,
-      legacyCharacterId: 'char_001',
-      legacyName: 'Ada',
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
     });
-    await backfillCast(db);
     expect(
       await data('cancel_character_voice', { sequenceId, characterId })
     ).toEqual({ cancelled: false });
@@ -294,14 +298,13 @@ describe('cast', () => {
 
   it('refuses to recast a voice-only character', async () => {
     const characterId = generateId();
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
-      legacySequenceId: sequenceId,
-      legacyCharacterId: 'char_001',
-      legacyName: 'Narrator',
-      legacyVoiceOnly: true,
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Narrator',
+      voiceOnly: true,
     });
-    await backfillCast(db);
     expect(
       await call('recast_character', {
         sequenceId,

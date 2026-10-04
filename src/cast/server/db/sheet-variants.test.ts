@@ -142,7 +142,7 @@ beforeEach(async () => {
 
 describe('character-sheet-variants insertDivergent', () => {
   it('is idempotent on (characterId, model, inputHash) — retry returns the existing row', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
     const first = await methods.insertDivergent({
@@ -171,7 +171,7 @@ describe('character-sheet-variants insertDivergent', () => {
   });
 
   it('writes a second divergent row when inputHash differs', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
     await methods.insertDivergent({
@@ -203,7 +203,7 @@ describe('character-sheet-variants insertDivergent', () => {
     // "the engine retried the same step" path. The post-collision retry path
     // is exercised separately at the helper level (see `insertDivergentRaceTolerant`
     // tests below).
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
 
     const [existingRow] = await db
@@ -327,7 +327,7 @@ describe('talent-sheet-variants insertDivergent', () => {
 
 describe('character-sheet-variants discard / undiscard / promote', () => {
   it('discard sets discardedAt and undiscard clears it', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const variant = await methods.insertDivergent({
       characterId,
@@ -353,7 +353,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
   });
 
   it('refuses to discard the selected sheet version', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const variant = await methods.insertDivergent({
       characterId,
       lookId: characterId,
@@ -363,7 +363,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       inputHash: characterSheetInputHash('hash-live'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
-    await createCharacterLooksMethods(db).ensureDefault(characterId);
+    await createCharacterLooksMethods(db, team.id).ensureDefault(characterId);
     await db
       .update(sequenceCastLooks)
       .set({ selectedSheetVersionId: variant.id })
@@ -376,7 +376,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
   });
 
   it('listDivergentActiveByCharacter excludes discarded rows', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const a = await methods.insertDivergent({
       characterId,
@@ -647,7 +647,7 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
 
 describe('sheet-variants list filters and empty-input short-circuits', () => {
   it('character listDivergentActiveByCharacters returns [] for empty input (no SQL roundtrip)', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     expect(await methods.listDivergentActiveByCharacters([])).toEqual([]);
   });
 
@@ -711,7 +711,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
   });
 
   it('character listDivergentActiveByCharacter excludes discarded rows but keeps all-divergent on listDivergentByCharacter', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const v1 = await methods.insertDivergent({
       characterId,
@@ -796,7 +796,7 @@ describe('talent-sheet-variants promoteAtomically negative cases', () => {
 
 describe('character sheet versions (append + select)', () => {
   it('applyConvergent appends a version and points at it, keeping history', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     // The pre-versioning sheet, as the #1419 backfill left it: a 'prior'
     // version keyed to the character's own id, with the pointer still null.
     await db.insert(characterSheetVariants).values({
@@ -836,7 +836,7 @@ describe('character sheet versions (append + select)', () => {
   });
 
   it('select repoints the parent without discarding the previous version', async () => {
-    const methods = createCharacterSheetVariantsMethods(db);
+    const methods = createCharacterSheetVariantsMethods(db, team.id);
     const first = await methods.applyConvergent({
       lookId: characterId,
       url: 'https://example.com/a.png',

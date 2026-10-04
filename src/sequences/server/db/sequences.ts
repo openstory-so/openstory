@@ -65,6 +65,7 @@ import {
 import { ValidationError } from '@/platform/errors';
 import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
 import { deleteLooksOfCharacters } from '@/cast/server/db/character-looks';
+import { backfillCastOfSequence } from '@/platform/server/db/sequence-cast-backfill';
 import {
   charactersOnlyIn,
   deleteCastStatements,
@@ -896,6 +897,9 @@ export function createSequencesMethods(
     },
 
     delete: async (sequenceId: string): Promise<void> => {
+      // A character a worker older than #2017 wrote during the deploy has
+      // no cast link yet: give it one, so it is deleted with the rest.
+      await backfillCastOfSequence(db, sequenceId);
       // A character belongs to the team (#2017): the sequence's cast links
       // go, and with them only the characters nothing else holds.
       const theirs = await charactersOnlyIn(db, sequenceId);

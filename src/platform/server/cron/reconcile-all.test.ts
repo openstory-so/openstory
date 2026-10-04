@@ -170,6 +170,8 @@ describe('reconcileAllStuckJobs — pass isolation', () => {
     expect(counts['frame_variants.status']).toBe(PASS_ERRORED);
     expect(counts['sequence_music_variants.claims']).toBeGreaterThan(0);
     expect(counts['sequence_elements.vision']).toBeGreaterThan(0);
+    // The #2017 cast backfill runs with the rest.
+    expect(counts).toHaveProperty('sequence_cast.backfill');
   });
 });
 

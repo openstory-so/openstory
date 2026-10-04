@@ -70,9 +70,19 @@ the character or look id alone.
 
 **Not done yet:** the methods that take only a character id or a look id
 (`getById`, `updateBible`, `softDelete`, `claimSheet`, …) resolve the
-character's one cast link. That holds while each character has one. The PR
+character's one cast link. They **throw** when a character has more than one
+(`onlyLink` / `oneLinkEach` in `src/cast/server/db/sequence-cast.ts`), so a
+second link cannot be read or written through the wrong episode. A sequence's
+own list throws too, because looks are still read by character id. The PR
 that lets a second sequence cast a character must give those methods the
 sequence first.
+
+A link whose pinned bible version does not exist throws on read. The pin has
+no FK, so this is the check.
+
+The looks and sheet-variant modules are scoped to the team like the
+characters module. The voice-version methods are not yet: they are reached
+only after the character has been read.
 
 ## Writes
 
@@ -82,8 +92,11 @@ sequence first.
 - **Bible edit** (`bibleWrite`): appends a version carrying the talent, moves
   the current pointer and the link's pin, and revokes the cast's sheet claims
   when a field the sheets read moved.
-- **Recast** (`updateTalent`): a bible version with the new talent, through
-  the same writer. The claims are revoked whether or not the talent moved.
+- **Recast** (`updateBible` with `source: 'recast'` and the `talentId`): ONE
+  bible version, by the person who recast, carrying the new talent and the
+  appearance copied from it. The claims are revoked whether or not the
+  talent moved. `bibleWrite` takes the talent as a required argument, so
+  every writer says who plays the character.
 - **Look edit** (`lookDefinitionWrite`): appends a look version, moves the
   look's current pointer and the cast look's pin.
 - **Remove / restore**: the link's `removedAt`.
@@ -102,14 +115,21 @@ sequence first.
 sheet state on `character_looks` are `legacy*` in Drizzle. The SQL names are
 unchanged.
 
-- The four on `characters` are **still written** on every create, recast,
-  remove and restore. `sequence_id` and `character_id` are NOT NULL, the
-  unique index on them is still there, and a worker older than this reads
-  all four until the deploy finishes.
+- `sequence_id` and `character_id` are **still written** on every create:
+  they are NOT NULL and the legacy unique index is on them.
+- `talent_id` and `deleted_at` are **still written** on every create,
+  recast, remove and restore, for two reasons only: a worker older than this
+  reads them until the deploy finishes, and they are what a rollback to that
+  worker would read. Nothing in this worker reads them as the cast or the
+  removal. The writes are removed in the column-drop PR.
 - The sheet state on `character_looks` is written only at insert, where NOT
-  NULL forces `sheet_status`.
-- Nothing reads any of them except `backfillCast`
-  (`src/platform/server/db/sequence-cast-backfill.ts`).
+  NULL forces `sheet_status`. A rollback would therefore read stale sheet
+  state there.
+- Two places read the legacy columns, both only to place a row the older
+  worker wrote: `backfillCast` / `backfillCastOfSequence`
+  (`src/platform/server/db/sequence-cast-backfill.ts`), and the lookup in
+  `characters.create` that finds such a row by `sequence_id` and
+  `character_id`.
 
 Dropping `sequence_id` and `talent_id` is a table rebuild, and
 `character_sheet_variants` and `character_voice_versions` cascade from
@@ -124,8 +144,13 @@ still writes the old columns.
 - **A character or look it creates** has no cast link or cast look. The
   reconcile cron's `sequence_cast.backfill` pass (`backfillCast`, every five
   minutes) gives it one, with the same statements as the migration. Until
-  then the character is missing from its sequence. `characters.create` and
-  `requireLook` run the same backfill when they meet such a row first.
+  then the character is missing from its sequence, and a write to such a
+  look is "not found".
+- Two writes cannot wait for the cron and run the same backfill themselves:
+  `characters.create`, when a re-analysis lands on such a character (the
+  legacy unique index would refuse a second row), and a sequence delete,
+  when the sequence holds one (the legacy cascade would reach it and its
+  bible versions would refuse).
 - **A sheet it lands** on the look's old columns is promoted by the
   `character_looks.claims` pass, which now reads the cast looks.
 - **An edit it makes to an existing character** in that minute (a bible
@@ -148,3 +173,12 @@ hand-written data SQL. Both run on every automatic path.
   null: who played the character then was never recorded.
 - A character with no bible version gets one first, as the #1600 backfill
   made them, so `sequence_cast.bibleVersionId` can be NOT NULL.
+
+## Open question
+
+Deleting a talent sets `character_bible_versions.talent_id` to null on every
+version that named it (`ON DELETE SET NULL`), pinned and historical alike. A
+sequence sees what it saw before: the character is uncast. But it rewrites
+rows that are otherwise append-only, and history loses who played the
+character. Unchanged here; Tom to decide between keeping it, a pointer with
+no FK, or refusing the delete while a version names the talent.

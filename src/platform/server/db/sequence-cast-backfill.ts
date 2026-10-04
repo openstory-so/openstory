@@ -2,7 +2,7 @@
  * The #2017 cast backfill, for rows written after the migration ran.
  */
 
-import { count, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import {
   characterLooks,
@@ -19,10 +19,11 @@ import {
  * only touches rows that have none yet, and a link or cast look reuses its
  * character's or look's id.
  *
- * This is the ONLY reader of the legacy cast columns on `characters` and
- * `character_looks`. It runs from the reconcile cron, and on the two write
- * paths that can meet such a row before the cron has. It goes when those
- * columns do.
+ * This file and the lookup in `characters.create` are the only readers of
+ * the legacy cast columns on `characters` and `character_looks`. It runs from
+ * the reconcile cron, and from the two writes that can meet such a row before
+ * the cron has: `characters.create` and a sequence delete. It assumes one
+ * link per character, and goes when those columns do.
  *
  * Returns how many characters and looks had no place yet; nothing is written
  * when that is none.
@@ -90,4 +91,25 @@ export async function backfillCast(db: Database): Promise<number> {
     LEFT JOIN sequence_cast_looks x ON x.look_id = l.id
     WHERE x.id IS NULL`);
   return found;
+}
+
+/**
+ * {@link backfillCast}, when this sequence holds a character with no cast
+ * link. A sequence delete finds its characters through their links; one it
+ * cannot see would be reached by the legacy cascade and stopped by its own
+ * bible versions.
+ */
+export async function backfillCastOfSequence(
+  db: Database,
+  sequenceId: string
+): Promise<void> {
+  const [unlinked] = await db
+    .select({ id: characters.id })
+    .from(characters)
+    .leftJoin(sequenceCast, eq(sequenceCast.characterId, characters.id))
+    .where(
+      and(eq(characters.legacySequenceId, sequenceId), isNull(sequenceCast.id))
+    )
+    .limit(1);
+  if (unlinked) await backfillCast(db);
 }
