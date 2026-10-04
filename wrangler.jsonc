@@ -36,16 +36,19 @@
       "head_sampling_rate": 1,
     },
   },
-  // PostHog log forwarder — receives this Worker's streaming tail events,
+  // PostHog log forwarder — receives every tail event from this Worker,
   // transforms our LogTape JSON lines into proper OTLP log records, and POSTs
   // them to PostHog's /i/v1/logs endpoint. The forwarder is its own Worker
   // (workers/posthog-log-forwarder/) and must be deployed first.
-  // streaming_tail_consumers is NON-inheritable, so each env block declares its own:
+  // tail_consumers is NON-inheritable, so each env block declares its own:
   // [env.production] uses the -prd forwarder, PR previews patch this default
   // block to the -stg forwarder in deploy-cloudflare.yml, and the default
   // stays empty so local dev and Deploy-to-Cloudflare button deploys don't
   // reference a forwarder Worker that doesn't exist on the account.
-  "streaming_tail_consumers": [],
+  // Not streaming_tail_consumers: from 2026-10-02 to 10-05 Cloudflare called
+  // a streaming consumer zero times from prod or any preview, even after
+  // redeploying both sides, and prod logs were lost (#1974).
+  "tail_consumers": [],
   // ─────────────────────────────────────────────────────────────────────────
   // DEFAULT env = local dev. The D1 here uses a placeholder `database_id` so
   // it can ONLY resolve to a local Miniflare D1 — there is no real Cloudflare
@@ -651,8 +654,8 @@
         "crons": ["*/5 * * * *", "17 3 * * *", "37 * * * *", "53 * * * *"],
       },
       // Same forwarder as the top-level default — redeclared because
-      // streaming_tail_consumers is non-inheritable across env blocks.
-      "streaming_tail_consumers": [
+      // tail_consumers is non-inheritable across env blocks.
+      "tail_consumers": [
         {
           "service": "openstory-log-forwarder-prd",
         },
@@ -937,9 +940,9 @@
         },
       ],
       // Explicit empty array opts out of inheritance and silences wrangler's
-      // "streaming_tail_consumers not on env.test" warning. We don't want e2e runs
+      // "tail_consumers not on env.test" warning. We don't want e2e runs
       // forwarding LogTape JSON into the prod PostHog log pipeline.
-      "streaming_tail_consumers": [],
+      "tail_consumers": [],
     },
   },
 }
