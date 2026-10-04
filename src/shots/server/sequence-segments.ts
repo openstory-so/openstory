@@ -39,7 +39,6 @@ export async function loadSequenceSegments(
     shots,
     characters,
     scriptBySceneId,
-    frames,
     sequence
   );
   // Versions are oldest-first here (listBySequence orders by ULID).

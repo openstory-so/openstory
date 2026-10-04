@@ -10,7 +10,6 @@ import {
   voicedDialogueLines,
   type VoiceCharacter,
 } from '@/motion/dialogue-tts';
-import { isElementVoiceToken } from '@/motion/dialogue-tts';
 import { liveReferenceIdentity } from '@/motion/reference-provenance';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
@@ -31,7 +30,6 @@ export async function loadLiveShotInputs(
     | 'shotPromptVersions'
     | 'sequenceLocations'
     | 'sequenceElements'
-    | 'framePromptVersions'
   >,
   sequenceId: string,
   shots: readonly Shot[],
@@ -44,8 +42,7 @@ export async function loadLiveShotInputs(
     sheetImageUrl: string | null;
   })[],
   scriptBySceneId: ReadonlyMap<string, SceneContext>,
-  frames?: readonly { id: string; shotId: string }[],
-  sequence?: StartFrameSequence
+  sequence: StartFrameSequence
 ): Promise<LoadedShotInputs> {
   const [linesByShotId, selectedMotionByShot, locations, elements] =
     await Promise.all([
@@ -68,6 +65,7 @@ export async function loadLiveShotInputs(
 
   const audioSourceKeyByShot = new Map<string, string | null>();
   const dialogueKeyByShot = new Map<string, string | null>();
+  const referencedEntitiesByShot = new Map<string, ReadonlySet<string>>();
   for (const shot of shots) {
     dialogueKeyByShot.set(shot.id, dialogueLinesKey(dialogueOf(shot)));
     audioSourceKeyByShot.set(
@@ -76,51 +74,32 @@ export async function loadLiveShotInputs(
         voicedDialogueLines(dialogueOf(shot), characters)
       )
     );
-  }
-
-  let referencedEntitiesByShot: Map<string, ReadonlySet<string>> | undefined;
-  if (frames && frames.length > 0 && sequence) {
-    const prompts = await scopedDb.framePromptVersions.getSelectedByFrameIds(
-      frames.map((frame) => frame.id)
+    // The motion render resolves its references from the motion prompt
+    // (`buildMotionReferenceImages`); so does this compare (#2012).
+    const ctx = shot.sceneId ? scriptBySceneId.get(shot.sceneId) : undefined;
+    const resolved = resolveShotReferences(
+      { characters: [...characters], locations, elements },
+      {
+        characterTags: ctx?.scene.continuity?.characterTags,
+        environmentTag: ctx?.scene.continuity?.environmentTag,
+        sceneLocation: ctx?.scene.location,
+        elementTags: ctx?.scene.continuity?.elementTags,
+        sceneExtract: ctx?.script?.extract,
+      },
+      {
+        channel: 'motion',
+        prompt: selectedMotionByShot.get(shot.id)?.text ?? null,
+        referenceOnly: rendersReferenceOnly(shot, sequence),
+      }
     );
-    const visualByShot = new Map(
-      frames.map((frame) => [frame.shotId, prompts.get(frame.id)?.text ?? ''])
+    referencedEntitiesByShot.set(
+      shot.id,
+      new Set([
+        ...resolved.characters.map((c) => `character:${c.id}`),
+        ...resolved.locations.map((l) => `location:${l.id}`),
+        ...resolved.elements.map((e) => `element:${e.id}`),
+      ])
     );
-    referencedEntitiesByShot = new Map();
-    for (const shot of shots) {
-      const ctx = shot.sceneId ? scriptBySceneId.get(shot.sceneId) : undefined;
-      const lines = dialogueOf(shot).lines;
-      const resolved = resolveShotReferences(
-        {
-          characters: [...characters],
-          locations,
-          elements,
-        },
-        {
-          characterTags: ctx?.scene.continuity?.characterTags,
-          environmentTag: ctx?.scene.continuity?.environmentTag,
-          sceneLocation: ctx?.scene.location,
-          elementTags: ctx?.scene.continuity?.elementTags,
-          sceneExtract: ctx?.script?.extract,
-          visualPrompt: visualByShot.get(shot.id),
-          motionPrompt: selectedMotionByShot.get(shot.id)?.text,
-          voiceTokens: lines.flatMap((line) =>
-            line.voiceToken && isElementVoiceToken(line.voiceToken)
-              ? [line.voiceToken]
-              : []
-          ),
-          referenceOnly: rendersReferenceOnly(shot, sequence),
-        }
-      );
-      referencedEntitiesByShot.set(
-        shot.id,
-        new Set([
-          ...resolved.characters.map((c) => `character:${c.id}`),
-          ...resolved.locations.map((l) => `location:${l.id}`),
-          ...resolved.elements.map((e) => `element:${e.id}`),
-        ])
-      );
-    }
   }
 
   return {

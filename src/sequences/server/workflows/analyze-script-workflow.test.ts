@@ -343,7 +343,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
           framing: {
             shotSize: 'wide',
             angle: 'eye level',
-            composition: '',
+            composition: 'ADA in the doorway',
             subjectStartState: '',
           },
           action: 'opens the door',
@@ -359,7 +359,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
             shotSize: 'medium',
             angle: 'eye level',
             composition: '',
-            subjectStartState: '',
+            subjectStartState: 'ADA mid-stride',
           },
           action: 'cut to the hallway',
           cameraMovement: { move: 'truck', pacing: 'smooth' },
@@ -419,19 +419,23 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
       // the cast bible (#867). Stamping the raw pre-cast bible — which the
       // derived path did until #1517's call site was fixed — left every
       // multi-shot scene's image prompt stale the moment the run finished.
+      // The digest narrows its bibles by the text it was written with (#2012).
       const hashWith = (characterBible: CharacterBibleEntry[]) =>
         hashVisualPromptInput(
-          narrowShotPromptContext({
-            scene: item.scene,
-            styleConfig: event.payload.styleConfig,
-            characterBible,
-            locationBible: SPLIT.locationBible,
-            elementBible: SPLIT.elementBible,
-            aspectRatio: event.payload.aspectRatio,
-            analysisModel: event.payload.analysisModelId,
-            // The spec is in the digest (#1923).
-            spec: storedShotSpec(spec),
-          })
+          narrowShotPromptContext(
+            {
+              scene: item.scene,
+              styleConfig: event.payload.styleConfig,
+              characterBible,
+              locationBible: SPLIT.locationBible,
+              elementBible: SPLIT.elementBible,
+              aspectRatio: event.payload.aspectRatio,
+              analysisModel: event.payload.analysisModelId,
+              // The spec is in the digest (#1923).
+              spec: storedShotSpec(spec),
+            },
+            { channel: 'visual', prompt: written.text }
+          )
         );
       const verifyHash = await hashWith(
         buildCastCharacterBible([RAW_ADA], [TALENT_MATCH])
@@ -448,24 +452,38 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
         source: 'derived',
         specVersionId: `spec-${item.mapping.shotId}`,
       });
-      expect(writeMotionPrompt.mock.calls[index]?.[0]).toMatchObject({
+      const motionWritten = writeMotionPrompt.mock.calls[index]?.[0];
+      if (!motionWritten) {
+        throw new Error(`missing derived motion write at ${index}`);
+      }
+      expect(motionWritten).toMatchObject({
         shotId: item.mapping.shotId,
         source: 'derived',
         specVersionId: `spec-${item.mapping.shotId}`,
         inputHash: await hashMotionPromptInput(
-          narrowShotPromptContext({
-            scene: item.scene,
-            styleConfig: event.payload.styleConfig,
-            characterBible: buildCastCharacterBible([RAW_ADA], [TALENT_MATCH]),
-            locationBible: SPLIT.locationBible,
-            elementBible: SPLIT.elementBible,
-            aspectRatio: event.payload.aspectRatio,
-            analysisModel: event.payload.analysisModelId,
-            startingFrameImageUrl: null,
-            referenceOnly: false,
-            dialogue: { presence: false, lines: [] },
-            spec: storedShotSpec(spec),
-          })
+          narrowShotPromptContext(
+            {
+              scene: item.scene,
+              styleConfig: event.payload.styleConfig,
+              characterBible: buildCastCharacterBible(
+                [RAW_ADA],
+                [TALENT_MATCH]
+              ),
+              locationBible: SPLIT.locationBible,
+              elementBible: SPLIT.elementBible,
+              aspectRatio: event.payload.aspectRatio,
+              analysisModel: event.payload.analysisModelId,
+              startingFrameImageUrl: null,
+              referenceOnly: false,
+              dialogue: { presence: false, lines: [] },
+              spec: storedShotSpec(spec),
+            },
+            {
+              channel: 'motion',
+              prompt: motionWritten.text,
+              referenceOnly: false,
+            }
+          )
         ),
       });
     }

@@ -33,6 +33,8 @@ export async function buildUserEditProvenance(
     >;
     sequence: ShotPromptContextSequence;
     scene: Scene | null;
+    /** The edited text. The digest narrows its bibles by it (#2012). */
+    prompt: string;
   } & (
     | { kind: 'visual' }
     | {
@@ -47,12 +49,20 @@ export async function buildUserEditProvenance(
   const { scopedDb, sequence, scene } = args;
   if (!scene) return { inputHash: null, analysisModel: null };
   try {
-    const ctx = await loadNarrowShotPromptContext({
+    const { shot: ctx } = await loadNarrowShotPromptContext({
       scopedDb,
       sequence,
       scene,
       startingFrameImageUrl:
         args.kind === 'motion' ? args.startingFrameImageUrl : undefined,
+      view:
+        args.kind === 'motion'
+          ? {
+              channel: 'motion',
+              prompt: args.prompt,
+              referenceOnly: sequence.referenceOnly,
+            }
+          : { channel: 'visual', prompt: args.prompt },
     });
     return {
       inputHash:

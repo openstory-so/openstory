@@ -157,21 +157,10 @@ describe('completeDerivedPrompts', () => {
     expect(visuals[0]?.source).toBe('derived');
   });
 
-  it('skips a written still and does not stamp over the claim hash', async () => {
-    const { db, visuals, motions } = recordingDb();
+  it('skips a written still and stamps the digest of the text it wrote, not the claim hash (#2012)', async () => {
+    const { db, visuals, motions, stamps } = recordingDb();
     await completeDerivedPrompts(db, { ...base, visualWritten: true });
     expect(visuals).toHaveLength(0);
-    expect(motions).toHaveLength(1);
-    expect(motions[0]).not.toHaveProperty('stampHash');
-  });
-
-  it('stamps the new spec digest only when asked', async () => {
-    const { db, motions, stamps } = recordingDb();
-    await completeDerivedPrompts(db, {
-      ...base,
-      stampHashes: true,
-      visualWritten: true,
-    });
     expect(stamps).toEqual([['spec-1', 'currency-1']]);
     const motion = motions[0];
     if (!motion) throw new Error('motion prompt was not written');

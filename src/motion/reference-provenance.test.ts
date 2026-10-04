@@ -21,6 +21,14 @@ describe('reference provenance (#1657)', () => {
     ],
     elements: [{ id: 'e1', imageUrl: '/r2/beach.mp4' }],
   });
+  /** Every entity a render of the shot would be sent now. */
+  const all = new Set([
+    'character:c1',
+    'character:c2',
+    'location:l1',
+    'element:e1',
+    'location:gone',
+  ]);
 
   it('prefers the selected version id and falls back to the url', () => {
     expect(live.get('character:c1')).toBe('character:c1:csv-2');
@@ -44,33 +52,36 @@ describe('reference provenance (#1657)', () => {
       referenceProvenanceKey('character', 'c1', 'csv-2'),
       referenceProvenanceKey('element', 'e1', '/r2/beach.mp4'),
     ];
-    expect(referenceKeysMoved(stamped, live)).toBe(false);
+    expect(referenceKeysMoved(stamped, live, all)).toBe(false);
     expect(
       referenceKeysMoved(
         [referenceProvenanceKey('character', 'c1', 'csv-1')],
-        live
+        live,
+        all
       )
     ).toBe(true);
     expect(
       referenceKeysMoved(
         [referenceProvenanceKey('element', 'e1', '/r2/old.mp4')],
-        live
+        live,
+        all
       )
     ).toBe(true);
     expect(
       referenceKeysMoved(
         [referenceProvenanceKey('location', 'gone', 'x')],
-        live
+        live,
+        all
       )
     ).toBe(true);
   });
 
   it('treats an absent stamp as unknown, never stale', () => {
-    expect(referenceKeysMoved(undefined, live)).toBe(false);
-    expect(referenceKeysMoved([], live)).toBe(false);
+    expect(referenceKeysMoved(undefined, live, all)).toBe(false);
+    expect(referenceKeysMoved([], live, all)).toBe(false);
   });
 
-  it('ignores a stamped reference the shot does not use (#2012)', () => {
+  it('does not compare a stamped reference a render would no longer send (#2012)', () => {
     const stamped = [
       referenceProvenanceKey('character', 'c1', 'csv-1'),
       referenceProvenanceKey('character', 'c2', '/r2/b.png'),
@@ -80,6 +91,14 @@ describe('reference provenance (#1657)', () => {
     expect(
       referenceKeysMoved(
         [referenceProvenanceKey('character', 'c2', 'old-sheet')],
+        live,
+        onlyC2
+      )
+    ).toBe(true);
+    // A stamped entity that no longer exists is stale whatever the set says.
+    expect(
+      referenceKeysMoved(
+        [referenceProvenanceKey('location', 'gone', 'x')],
         live,
         onlyC2
       )

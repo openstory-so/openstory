@@ -16,32 +16,15 @@ import type {
   VisualPromptHashInput,
 } from '@/shots/input-hash';
 import {
-  matchCharactersToScene,
-  matchElementsToScene,
-  matchLocationsToScene,
   resolveShotReferences,
+  type ShotPromptView,
 } from '@/shots/scene-matching';
 
 /**
  * Everything a prompt hash reads except the shot's lines, which the motion
  * hash takes separately (`dialogue`, #1784) — the caller resolves them.
  */
-export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'> & {
-  /**
-   * Scene-tag narrowing of the same inputs (#2012). Present when a shot
-   * view was applied. Verify accepts this digest so prompts stamped before
-   * per-shot scope stay fresh. The hash assembler strips the field.
-   */
-  sceneScope?: Omit<MotionPromptHashInput, 'dialogue'>;
-};
-
-/** The shot's own prompts. Absent text means "no prompt yet" — tags apply. */
-export type ShotReferenceView = {
-  visualPrompt?: string | null;
-  motionPrompt?: string | null;
-  voiceTokens?: readonly string[];
-  referenceOnly: boolean;
-};
+export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'>;
 
 export type ShotPromptContextSequence = {
   id: string;
@@ -146,15 +129,11 @@ export async function loadShotPromptContext(args: {
 }
 
 /**
- * Same as `loadShotPromptContext` but narrows the character / location /
- * element bibles down to the entries this scene actually references — i.e. the
- * inputs that would actually change the regenerated prompt. Used when stamping
- * or comparing `visualPromptInputHash` / `motionPromptInputHash` so unrelated
- * sequence entities don't poison the hash.
- *
- * Matching mirrors the same logic that decides reference-image attachment at
- * generation time (`scene-matching.ts`), so if the hash flips, regeneration
- * really would see different inputs.
+ * `loadShotPromptContext` narrowed to what one prompt of the shot references
+ * (`shot`), plus the same inputs narrowed by the scene roster
+ * (`sceneRoster`). Only `shot` is stamped. `sceneRoster` is what every digest
+ * written before #2012 hashed; verify accepts it so those rows stay fresh
+ * until an input moves. Delete it with `LEGACY_HASH_UNTIL`.
  */
 export async function loadNarrowShotPromptContext(args: {
   scopedDb: Pick<
@@ -166,54 +145,37 @@ export async function loadNarrowShotPromptContext(args: {
   analysisModelOverride?: string | null;
   startingFrameImageUrl?: string | null;
   refs?: ShotPromptContextRefs;
-  /** Per-shot prompts. Omit to narrow by the scene roster only. */
-  shot?: ShotReferenceView;
-}): Promise<ShotPromptContext> {
-  const { shot, ...rest } = args;
+  view: ShotPromptView;
+}): Promise<{ shot: ShotPromptContext; sceneRoster: ShotPromptContext }> {
+  const { view, ...rest } = args;
   const full = await loadShotPromptContext(rest);
-  return narrowShotPromptContext(full, shot);
+  return {
+    shot: narrowShotPromptContext(full, view),
+    sceneRoster: narrowShotPromptContext(full, { ...view, prompt: null }),
+  };
 }
 
 /**
- * Filter an already-built prompt context down to the entities this scene's
- * `continuity` references. Pure function — exposed so workflows that already
- * received full bibles as inputs (visual/motion prompt scene workflows) can
- * narrow without re-fetching from the DB. Generic so a visual-only bag
+ * Narrow a prompt context's bibles to what this prompt of the shot references
+ * (#2012, `resolveShotReferences`). Pure, so workflows that received full
+ * bibles on their payload narrow without a read. Generic so a visual-only bag
  * (no start-frame) narrows without dummy motion channels.
+ *
+ * The view is required: the hash of a prompt stamped against the wrong set
+ * reads stale (or fresh) forever, and the compiler is the only thing that
+ * tells a stamp site from a verify site.
  */
 export function narrowShotPromptContext<T extends VisualPromptHashInput>(
   ctx: T,
-  shot?: ShotReferenceView
-): T & { sceneScope?: T } {
+  view: ShotPromptView
+): T {
   const { scene } = ctx;
   const continuity = scene.continuity;
-  if (!continuity && !shot) return ctx;
-
-  if (!shot) {
-    if (!continuity) return ctx;
-    const characterBible = matchCharactersToScene(
-      [...ctx.characterBible],
-      continuity.characterTags
-    );
-    const locationBible = matchLocationsToScene(
-      [...ctx.locationBible],
-      continuity.environmentTag,
-      scene.metadata?.location ?? '',
-      scene.originalScript.extract
-    );
-    const elementBible = matchElementsToScene(
-      [...(ctx.elementBible ?? [])],
-      continuity.elementTags ?? [],
-      scene.originalScript.extract
-    );
-    return { ...ctx, characterBible, locationBible, elementBible };
-  }
-
   const resolved = resolveShotReferences(
     {
       characters: [...ctx.characterBible],
       locations: [...ctx.locationBible],
-      elements: [...(ctx.elementBible ?? [])],
+      elements: [...ctx.elementBible],
     },
     {
       characterTags: continuity?.characterTags,
@@ -221,18 +183,13 @@ export function narrowShotPromptContext<T extends VisualPromptHashInput>(
       sceneLocation: scene.metadata?.location,
       elementTags: continuity?.elementTags,
       sceneExtract: scene.originalScript.extract,
-      visualPrompt: shot.visualPrompt,
-      motionPrompt: shot.motionPrompt,
-      voiceTokens: shot.voiceTokens,
-      referenceOnly: shot.referenceOnly,
-    }
+    },
+    view
   );
-  const sceneScope = narrowShotPromptContext(ctx);
   return {
     ...ctx,
     characterBible: resolved.characters,
     locationBible: resolved.locations,
     elementBible: resolved.elements,
-    sceneScope,
   };
 }

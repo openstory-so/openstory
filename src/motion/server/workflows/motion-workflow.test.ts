@@ -1005,6 +1005,7 @@ describe('fresh MiniMax packed videos (#1720)', () => {
               ])
             ),
             referenceIdentity: new Map(),
+            referencedEntitiesByShot: new Map(),
             durationMsByShot: new Map(
               members.map((member) => [member.shotId, member.duration * 1000])
             ),

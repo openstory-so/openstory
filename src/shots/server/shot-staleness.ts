@@ -22,18 +22,11 @@ import {
   hashShotSpecInput,
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
-import { isElementVoiceToken } from '@/motion/dialogue-tts';
 import { resolveShotReferences } from '@/shots/scene-matching';
 import {
-  restoreOffShotCharacters,
-  restoreOffShotLocations,
-} from '@/shots/restore-off-shot-bibles';
-import {
   loadNarrowShotPromptContext,
-  type ShotPromptContext,
   type ShotPromptContextRefs,
   type ShotPromptContextSequence,
-  type ShotReferenceView,
 } from './prompt-context';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
@@ -612,26 +605,16 @@ export async function computeShotStaleness(args: {
       const latest = reads
         ? (reads.latestPromptByFrame.get(frame.id) ?? null)
         : await scopedDb.framePromptVersions.getLatest(frame.id);
-      const motionForScope = reads
-        ? (reads.selectedMotionByShot.get(shot.id) ?? null)
-        : await scopedDb.shotPromptVersions.getSelectedMotion(shot.id);
       const loaded = await loadNarrowShotPromptContext({
         scopedDb,
         sequence: motionSequence,
         scene,
         analysisModelOverride: latest?.analysisModel ?? null,
         refs,
-        shot: shotReferenceView({
-          visualPrompt: selectedPrompt?.text,
-          motionPrompt: motionForScope?.text,
-          dialogue,
-          referenceOnly: motionSequence.referenceOnly,
-        }),
+        view: { channel: 'visual', prompt: selectedPrompt?.text ?? null },
       });
-      const ctx = {
-        ...loaded,
-        spec: selectedSpec?.spec ?? null,
-      };
+      const spec = selectedSpec?.spec ?? null;
+      const ctx = { ...loaded.shot, spec };
       const liveHash = await hashVisualPromptInput(ctx);
       liveHashes.visualPrompt = liveHash;
       if (selectedPrompt?.source === 'user-edit') {
@@ -641,34 +624,18 @@ export async function computeShotStaleness(args: {
         // A prompt built from an older spec must not match a pre-spec digest.
         const acceptLegacy =
           (reference?.specVersionId ?? null) === (selectedSpec?.id ?? null);
-        visualPrompt =
-          referenceHash === liveHash ||
-          (await visualPromptInputHashMatches(referenceHash, ctx, {
+        const matches = async (input: typeof ctx) =>
+          visualPromptInputHashMatches(referenceHash, input, {
             voiceOnlyMoved: await voiceOnlyMoved(
               reference?.createdAt ?? new Date(0)
             ),
             acceptLegacy,
-          })) ||
-          (await legacySceneScopeMatches({
-            acceptLegacy,
-            sceneScope: loaded.sceneScope
-              ? { ...loaded.sceneScope, spec: ctx.spec }
-              : undefined,
-            shotCharacters: loaded.characterBible,
-            shotLocations: loaded.locationBible,
-            at: reference?.createdAt ?? new Date(0),
-            refs,
-            history: reads
-              ? await reads.inputHistory()
-              : await loadInputHistory(scopedDb, sequence.id),
-            matches: async (input) =>
-              visualPromptInputHashMatches(referenceHash, input, {
-                voiceOnlyMoved: await voiceOnlyMoved(
-                  reference?.createdAt ?? new Date(0)
-                ),
-                acceptLegacy,
-              }),
-          }))
+          });
+        visualPrompt =
+          referenceHash === liveHash ||
+          (await matches(ctx)) ||
+          // Stamped on the scene roster, before #2012.
+          (acceptLegacy && (await matches({ ...loaded.sceneRoster, spec })))
             ? 'fresh'
             : 'stale';
       }
@@ -708,39 +675,31 @@ export async function computeShotStaleness(args: {
       const latest = reads
         ? (reads.latestMotionByShot.get(shot.id) ?? null)
         : await scopedDb.shotPromptVersions.getLatest(shot.id, 'motion');
-      const contextWithFrame = async (startingFrameImageUrl: string | null) => {
-        const loaded = await loadNarrowShotPromptContext({
-          scopedDb,
-          sequence: motionSequence,
-          scene,
-          analysisModelOverride: latest?.analysisModel ?? null,
-          startingFrameImageUrl,
-          refs,
-          shot: shotReferenceView({
-            visualPrompt: selectedPrompt?.text,
-            motionPrompt: selectedMotion?.text,
-            dialogue,
-            referenceOnly: motionSequence.referenceOnly,
-          }),
-        });
-        return {
-          ctx: {
-            ...loaded,
-            dialogue: dialogue.dialogue,
-            spec: selectedSpec?.spec ?? null,
-          },
-          sceneScope: loaded.sceneScope,
-        };
-      };
       // The current digest ignores the still. An old LLM stamp still carries
       // it, so only that row is verified against the rendered URL (#1923).
       const derived = reference?.source === 'derived';
       const written = selectedMotion?.source === 'user-edit';
-      const { ctx, sceneScope } = await contextWithFrame(
-        written || derived || motionSequence.referenceOnly
-          ? null
-          : motionStartingFrameUrl
-      );
+      const loaded = await loadNarrowShotPromptContext({
+        scopedDb,
+        sequence: motionSequence,
+        scene,
+        analysisModelOverride: latest?.analysisModel ?? null,
+        startingFrameImageUrl:
+          written || derived || motionSequence.referenceOnly
+            ? null
+            : motionStartingFrameUrl,
+        refs,
+        view: {
+          channel: 'motion',
+          prompt: selectedMotion?.text ?? null,
+          referenceOnly: motionSequence.referenceOnly,
+        },
+      });
+      const channels = {
+        dialogue: dialogue.dialogue,
+        spec: selectedSpec?.spec ?? null,
+      };
+      const ctx = { ...loaded.shot, ...channels };
       const liveHash = await hashMotionPromptInput(ctx);
       liveHashes.motionPrompt = liveHash;
       if (written) {
@@ -748,45 +707,20 @@ export async function computeShotStaleness(args: {
       } else if (referenceHash) {
         const acceptLegacy =
           (reference?.specVersionId ?? null) === (selectedSpec?.id ?? null);
-        motionPrompt =
-          referenceHash === liveHash ||
-          (await motionPromptInputHashMatches(referenceHash, ctx, {
+        const matches = async (input: typeof ctx) =>
+          motionPromptInputHashMatches(referenceHash, input, {
             legacyScriptDialogue: !dialogue.onNode,
             voiceOnlyMoved: await voiceOnlyMoved(
               reference?.createdAt ?? new Date(0)
             ),
             acceptLegacy,
-          })) ||
-          (await legacySceneScopeMatches({
-            acceptLegacy,
-            sceneScope: sceneScope
-              ? {
-                  ...sceneScope,
-                  spec: ctx.spec,
-                  startingFrameImageUrl: ctx.startingFrameImageUrl,
-                  referenceOnly: ctx.referenceOnly,
-                }
-              : undefined,
-            shotCharacters: ctx.characterBible,
-            shotLocations: ctx.locationBible,
-            at: reference?.createdAt ?? new Date(0),
-            refs,
-            history: reads
-              ? await reads.inputHistory()
-              : await loadInputHistory(scopedDb, sequence.id),
-            matches: async (input) =>
-              motionPromptInputHashMatches(
-                referenceHash,
-                { ...input, dialogue: dialogue.dialogue },
-                {
-                  legacyScriptDialogue: !dialogue.onNode,
-                  voiceOnlyMoved: await voiceOnlyMoved(
-                    reference?.createdAt ?? new Date(0)
-                  ),
-                  acceptLegacy,
-                }
-              ),
-          }))
+          });
+        motionPrompt =
+          referenceHash === liveHash ||
+          (await matches(ctx)) ||
+          // Stamped on the scene roster, before #2012.
+          (acceptLegacy &&
+            (await matches({ ...loaded.sceneRoster, ...channels })))
             ? 'fresh'
             : 'stale';
       }
@@ -913,10 +847,9 @@ export async function computeShotStaleness(args: {
         selectedImage,
         sceneContext: reads?.sceneContext,
         settingsEvents: reads?.settingsEvents,
-        visualPrompt: selectedPrompt?.text,
-        motionPrompt: selectedMotion?.text,
+        visualPrompt: selectedPrompt?.text ?? null,
+        motionPrompt: selectedMotion?.text ?? null,
         referenceOnly: motionSequence.referenceOnly,
-        voiceTokens: voiceTokensOf(dialogue),
         inputHistory: reads
           ? await reads.inputHistory()
           : await loadInputHistory(scopedDb, sequence.id),
@@ -1101,76 +1034,6 @@ function sceneCauses(
   return causes;
 }
 
-function voiceTokensOf(dialogue: ShotPromptDialogue): string[] {
-  return dialogue.dialogue.lines.flatMap((line) =>
-    line.voiceToken && isElementVoiceToken(line.voiceToken)
-      ? [line.voiceToken]
-      : []
-  );
-}
-
-function shotReferenceView(args: {
-  visualPrompt?: string | null;
-  motionPrompt?: string | null;
-  dialogue: ShotPromptDialogue;
-  referenceOnly: boolean;
-}): ShotReferenceView {
-  return {
-    visualPrompt: args.visualPrompt,
-    motionPrompt: args.motionPrompt,
-    voiceTokens: voiceTokensOf(args.dialogue),
-    referenceOnly: args.referenceOnly,
-  };
-}
-
-/**
- * A prompt stamped on the scene roster (#2012) still matches while only
- * off-shot bibles moved. The scene-scoped digest covers "nothing moved".
- * Restoring off-shot entries to the stamp-time version covers an edit the
- * shot does not reference.
- */
-async function legacySceneScopeMatches(args: {
-  acceptLegacy: boolean;
-  sceneScope: ShotPromptContext | undefined;
-  shotCharacters: readonly { characterId: string }[];
-  shotLocations: readonly { locationId: string }[];
-  at: Date;
-  refs: ShotStalenessRefs | undefined;
-  history: InputHistory;
-  matches: (input: ShotPromptContext) => Promise<boolean>;
-}): Promise<boolean> {
-  if (!args.acceptLegacy || !args.sceneScope) return false;
-  if (await args.matches(args.sceneScope)) return true;
-  if (!args.refs) return false;
-  const characterHistory = new Map(
-    args.refs.characters.flatMap((row) => {
-      const versions = args.history.characters.get(row.id);
-      return versions ? [[row.characterId, versions] as const] : [];
-    })
-  );
-  const locationHistory = new Map(
-    args.refs.locations.flatMap((row) => {
-      const versions = args.history.locations.get(row.id);
-      return versions ? [[row.locationId, versions] as const] : [];
-    })
-  );
-  return args.matches({
-    ...args.sceneScope,
-    characterBible: restoreOffShotCharacters(
-      args.sceneScope.characterBible,
-      new Set(args.shotCharacters.map((c) => c.characterId)),
-      characterHistory,
-      args.at.getTime()
-    ),
-    locationBible: restoreOffShotLocations(
-      args.sceneScope.locationBible,
-      new Set(args.shotLocations.map((l) => l.locationId)),
-      locationHistory,
-      args.at.getTime()
-    ),
-  });
-}
-
 /** `Character "Jack": clothing, sheet` — or the bare label when unknown. */
 function namedCause(
   label: string,
@@ -1198,10 +1061,10 @@ async function findStalenessCauses(args: {
   /** When each stale artifact was generated; absent → that artifact isn't stale. */
   generatedAt: { thumbnail?: Date; visualPrompt?: Date; motionPrompt?: Date };
   selectedImage: FrameVariant | null;
-  visualPrompt?: string | null;
-  motionPrompt?: string | null;
+  /** The shot's selected prompts: causes name only what they reference (#2012). */
+  visualPrompt: string | null;
+  motionPrompt: string | null;
   referenceOnly: boolean;
-  voiceTokens?: readonly string[];
   /** Present on the batched read — skips the per-shot scene and event queries. */
   sceneContext?: ReadonlyMap<string, SceneContext>;
   settingsEvents?: readonly SequenceEvent[];
@@ -1218,11 +1081,6 @@ async function findStalenessCauses(args: {
     settingsEvents,
     inputHistory,
   } = args;
-  let { characters, locations, elements } = {
-    characters: [...refs.characters],
-    locations: [...refs.locations],
-    elements: [...refs.elements],
-  };
   const times = [
     generatedAt.thumbnail,
     generatedAt.visualPrompt,
@@ -1232,34 +1090,42 @@ async function findStalenessCauses(args: {
   const at = Math.min(...times);
   const causes: string[] = [];
 
+  let ctx: SceneContext | undefined;
   if (shot.sceneId) {
     const sceneId = dbSceneId(shot.sceneId);
-    const ctx = sceneContext
+    ctx = sceneContext
       ? sceneContext.get(sceneId)
       : await loadSceneContext(scopedDb, sceneId);
     if (ctx) {
       causes.push(...sceneCauses(inputHistory.scenes.get(sceneId), ctx, at));
-      if (ctx.scene.continuity) {
-        const resolved = resolveShotReferences(
-          { characters, locations, elements },
-          {
-            characterTags: ctx.scene.continuity.characterTags,
-            environmentTag: ctx.scene.continuity.environmentTag,
-            sceneLocation: ctx.scene.location,
-            elementTags: ctx.scene.continuity.elementTags,
-            sceneExtract: ctx.script?.extract,
-            visualPrompt: args.visualPrompt,
-            motionPrompt: args.motionPrompt,
-            voiceTokens: args.voiceTokens,
-            referenceOnly: args.referenceOnly,
-          }
-        );
-        characters = resolved.characters;
-        locations = resolved.locations;
-        elements = resolved.elements;
-      }
     }
   }
+  // Only what this shot's prompts reference (#2012): the union of the two
+  // channels, the same resolution each prompt hash and the clip compare use.
+  const sceneRefs = {
+    characterTags: ctx?.scene.continuity?.characterTags,
+    environmentTag: ctx?.scene.continuity?.environmentTag,
+    sceneLocation: ctx?.scene.location,
+    elementTags: ctx?.scene.continuity?.elementTags,
+    sceneExtract: ctx?.script?.extract,
+  };
+  const all = {
+    characters: [...refs.characters],
+    locations: [...refs.locations],
+    elements: [...refs.elements],
+  };
+  const visual = resolveShotReferences(all, sceneRefs, {
+    channel: 'visual',
+    prompt: args.visualPrompt,
+  });
+  const motion = resolveShotReferences(all, sceneRefs, {
+    channel: 'motion',
+    prompt: args.motionPrompt,
+    referenceOnly: args.referenceOnly,
+  });
+  const characters = [...new Set([...visual.characters, ...motion.characters])];
+  const locations = [...new Set([...visual.locations, ...motion.locations])];
+  const elements = [...new Set([...visual.elements, ...motion.elements])];
 
   const events =
     settingsEvents ??

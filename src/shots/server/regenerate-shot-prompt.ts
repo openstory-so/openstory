@@ -127,13 +127,22 @@ export async function regenerateShotPrompt(
     scene,
     startingFrameImageUrl: null,
   });
-  const narrowed = narrowShotPromptContext({
+  const full = {
     ...ctx,
     startingFrameImageUrl: null,
     dialogue: promptDialogue.dialogue,
     referenceOnly: shotReferenceOnly,
     spec: selectedSpec?.spec ?? null,
-  });
+  };
+  // A digest narrows its bibles by the prompt text it belongs to (#2012).
+  const narrowVisual = (prompt: string | null) =>
+    narrowShotPromptContext(full, { channel: 'visual', prompt });
+  const narrowMotion = (prompt: string | null) =>
+    narrowShotPromptContext(full, {
+      channel: 'motion',
+      prompt,
+      referenceOnly: shotReferenceOnly,
+    });
   const analysisModel =
     getAnalysisModelById(ctx.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL;
   const visualSelected = await scopedDb.framePromptVersions.getSelected(
@@ -153,8 +162,18 @@ export async function regenerateShotPrompt(
       selectedSpec.id,
       currencyHash
     );
-    const visualHash = await hashVisualPromptInput(narrowed);
-    const motionHash = await hashMotionPromptInput(narrowed);
+    const stillText = deriveStillPrompt(
+      selectedSpec.spec,
+      scene,
+      ctx.styleConfig
+    );
+    const motion = deriveMotionPrompt(selectedSpec.spec, {
+      referenceOnly: shotReferenceOnly,
+    });
+    const narrowedVisual = narrowVisual(stillText);
+    const narrowedMotion = narrowMotion(motion.text);
+    const visualHash = await hashVisualPromptInput(narrowedVisual);
+    const motionHash = await hashMotionPromptInput(narrowedMotion);
     const writeVisual = !shotReferenceOnly && !visualKept;
     const writeMotion = !motionKept;
     if (!writeVisual && !writeMotion) return result({ alreadyUpToDate: true });
@@ -167,7 +186,7 @@ export async function regenerateShotPrompt(
         (visualSelected?.source !== 'user-edit' &&
           (await visualPromptInputHashMatches(
             visualSelected?.inputHash ?? null,
-            narrowed,
+            narrowedVisual,
             {
               voiceOnlyMoved: voiceOnlyMovedSince(
                 voiceHistory,
@@ -182,7 +201,7 @@ export async function regenerateShotPrompt(
         (motionSelected?.source !== 'user-edit' &&
           (await motionPromptInputHashMatches(
             motionSelected?.inputHash ?? null,
-            narrowed,
+            narrowedMotion,
             {
               legacyScriptDialogue: !promptDialogue.onNode,
               voiceOnlyMoved: voiceOnlyMovedSince(
@@ -201,16 +220,13 @@ export async function regenerateShotPrompt(
         frameId: frame.id,
         source: 'derived',
         specVersionId: selectedSpec.id,
-        text: deriveStillPrompt(selectedSpec.spec, scene, ctx.styleConfig),
+        text: stillText,
         inputHash: visualHash,
         analysisModel,
         createdBy: user.id,
       });
     }
     if (writeMotion) {
-      const motion = deriveMotionPrompt(selectedSpec.spec, {
-        referenceOnly: shotReferenceOnly,
-      });
       await scopedDb.shotPromptVersions.write({
         shotId: shot.id,
         promptType: 'motion',
@@ -227,8 +243,15 @@ export async function regenerateShotPrompt(
     return result({ rebuilt: true });
   }
 
-  const visualHash = await hashVisualPromptInput(narrowed);
-  const motionHash = await hashMotionPromptInput(narrowed);
+  // The claim's pending hash is what the verdict computes from the selected
+  // text, so the 'updating' overlay and the plan's claim reuse find it. The
+  // rewrite stamps its own hash from the text it writes.
+  const visualHash = await hashVisualPromptInput(
+    narrowVisual(visualSelected?.text ?? null)
+  );
+  const motionHash = await hashMotionPromptInput(
+    narrowMotion(motionSelected?.text ?? null)
+  );
   const claimId = await scopedDb.shotSpecVersions.claim(shot.id);
   let visualClaimId: string | null = null;
   let motionClaimId: string | null = null;

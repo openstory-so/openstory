@@ -37,6 +37,7 @@ import { liveReferenceIdentity } from '@/motion/reference-provenance';
 import { assembleSequenceSegments } from '@/shots/scene-segments';
 import { dialogueLinesKey } from '@/shots/shot-dialogue';
 import { rendersReferenceOnly } from '@/shots/use-start-frame';
+import { resolveShotReferences } from '@/shots/scene-matching';
 import { readReferenceStaleness } from '@/cast/server/production-staleness';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import {
@@ -195,6 +196,7 @@ type World = {
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   visualPrompt: string;
+  motionPrompt: string;
   still: { id: string; url: string };
   motionVersionId: string;
   durationMs: number;
@@ -217,6 +219,7 @@ const BASE: World = {
   locations: [BEACH],
   elements: [LANTERN],
   visualPrompt: 'Alice walks along the beach at dawn, holding the LANTERN.',
+  motionPrompt: 'Alice lifts the LANTERN and walks on.',
   still: { id: 'still-1', url: '/r2/still-1.png' },
   motionVersionId: 'motion-1',
   durationMs: 5000,
@@ -261,7 +264,11 @@ function shotDb(
     },
     shotPromptVersions: {
       getSelectedMotion: () =>
-        Promise.resolve({ inputHash: stamps.motionPrompt, createdAt: AT }),
+        Promise.resolve({
+          text: world.motionPrompt,
+          inputHash: stamps.motionPrompt,
+          createdAt: AT,
+        }),
       getLatest: () => Promise.resolve({ analysisModel: ANALYSIS_MODEL }),
       getLatestWithInputHash: none,
       getLivePending: none,
@@ -385,10 +392,39 @@ function clipIsStale(world: World): boolean {
         ['shot-1', dialogueLinesKey(world.dialogue)],
       ]),
       referenceIdentity: liveReferenceIdentity(world),
+      referencedEntitiesByShot: new Map([['shot-1', wouldBeSent(world)]]),
     },
   });
   if (!segment) throw new Error('test setup: no segment');
   return segment.stale;
+}
+
+/** What a render of shot-1 would be sent now, as `loadLiveShotInputs` resolves it. */
+function wouldBeSent(world: World): ReadonlySet<string> {
+  const sent = resolveShotReferences(
+    {
+      characters: world.characters,
+      locations: world.locations,
+      elements: world.elements,
+    },
+    {
+      characterTags: world.scene.continuity?.characterTags,
+      environmentTag: world.scene.continuity?.environmentTag,
+      sceneLocation: world.scene.metadata?.location,
+      elementTags: world.scene.continuity?.elementTags,
+      sceneExtract: world.scene.originalScript.extract,
+    },
+    {
+      channel: 'motion',
+      prompt: world.motionPrompt,
+      referenceOnly: rendersReferenceOnly(world.shot, world.sequence),
+    }
+  );
+  return new Set([
+    ...sent.characters.map((c) => `character:${c.id}`),
+    ...sent.locations.map((l) => `location:${l.id}`),
+    ...sent.elements.map((e) => `element:${e.id}`),
+  ]);
 }
 
 type ShotArtifact = 'still' | 'visualPrompt' | 'motionPrompt' | 'clip';
@@ -557,8 +593,9 @@ const SHOT_MATRIX: ShotRow[] = [
   {
     mutation: 'Bob tagged into the scene continuity',
     apply: (w) => withContinuity(w, { characterTags: ['alice', 'bob'] }),
-    // The still attaches the sheets its prompt names (#1432): still Alice's.
-    stale: ['visualPrompt', 'motionPrompt'],
+    // Both prompts are written and neither names Bob: the tags no longer
+    // pick anyone (#2012). The still attaches what its prompt names (#1432).
+    stale: [],
   },
   // --- characters ----------------------------------------------------------
   {

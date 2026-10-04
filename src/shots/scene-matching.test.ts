@@ -287,30 +287,41 @@ describe('matchCharactersToShotImage', () => {
   });
 
   it('does not inherit the scene cast when the prompt names nobody (#2012)', () => {
-    const resolved = resolveShotReferences(
-      {
-        characters: [scarlett, jack],
-        locations: [
-          {
-            locationId: 'living',
-            name: 'Living room',
-            consistencyTag: 'living',
-          },
-          { locationId: 'bath', name: 'Bathroom', consistencyTag: 'bath' },
-        ],
-        elements: [],
-      },
-      {
-        characterTags: ['Scarlett', 'Jack'],
-        environmentTag: '',
-        sceneLocation: '',
-        sceneExtract: 'They start in the bathroom, then the living room.',
-        visualPrompt: 'Close on the vase in the LIVING ROOM.',
-        referenceOnly: false,
-      }
-    );
-    expect(resolved.characters).toEqual([]);
-    expect(resolved.locations.map((l) => l.locationId)).toEqual(['living']);
+    const all = {
+      characters: [scarlett, jack],
+      locations: [
+        { locationId: 'living', name: 'Living room', consistencyTag: 'living' },
+        { locationId: 'bath', name: 'Bathroom', consistencyTag: 'bath' },
+      ],
+      elements: [],
+    };
+    const scene = {
+      characterTags: ['Scarlett', 'Jack'],
+      environmentTag: '',
+      sceneLocation: '',
+      sceneExtract: 'They start in the bathroom, then the living room.',
+    };
+    const vase = resolveShotReferences(all, scene, {
+      channel: 'visual',
+      prompt: 'Close on the vase in the LIVING ROOM.',
+    });
+    expect(vase.characters).toEqual([]);
+    expect(vase.locations.map((l) => l.locationId)).toEqual(['living']);
+    // The motion prompt is its own channel: it names Jack, so the clip does.
+    const clip = resolveShotReferences(all, scene, {
+      channel: 'motion',
+      prompt: 'JACK turns from the window.',
+      referenceOnly: false,
+    });
+    expect(clip.characters).toEqual([jack]);
+    // No prompt yet: the continuity tags are the only word on the cast.
+    const unwritten = resolveShotReferences(all, scene, {
+      channel: 'visual',
+      prompt: null,
+    });
+    expect(unwritten.characters).toEqual([scarlett, jack]);
+    // The extract names both rooms; the most specific name wins.
+    expect(unwritten.locations.map((l) => l.locationId)).toEqual(['living']);
   });
 
   it('matches characterId and consistencyTag slug in the prompt', () => {

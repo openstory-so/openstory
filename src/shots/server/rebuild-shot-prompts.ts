@@ -92,11 +92,6 @@ export type CompleteDerivedPromptsInput = {
   motionWritten: boolean;
   /** Fills a null currency stamp on the spec row. A set stamp is left alone. */
   currencyHash?: string | null;
-  /**
-   * Rewrite stamps the digest of the spec it just wrote. Rebuild leaves this
-   * unset so the claim's pending hash (the spec the click saw) wins.
-   */
-  stampHashes?: boolean;
 };
 
 export async function completeDerivedPrompts(
@@ -113,7 +108,7 @@ export async function completeDerivedPrompts(
     );
   }
 
-  const narrowed = narrowShotPromptContext({
+  const full = {
     scene: input.scene,
     styleConfig: input.styleConfig,
     characterBible: input.characterBible,
@@ -125,11 +120,28 @@ export async function completeDerivedPrompts(
     dialogue: input.dialogue,
     referenceOnly: input.referenceOnly,
     spec: input.spec,
-  } satisfies MotionPromptHashInput);
-
-  const visualHash = await hashVisualPromptInput(narrowed);
-  const motionHash = await hashMotionPromptInput(narrowed);
-  const stamp = input.stampHashes === true;
+  } satisfies MotionPromptHashInput;
+  // The digest narrows its bibles by the text being written (#2012), so the
+  // text comes first and the stamp always carries this hash: the claim's
+  // pending hash was taken from the text this run replaces.
+  const stillText = deriveStillPrompt(
+    input.spec,
+    input.scene,
+    input.styleConfig
+  );
+  const motion = deriveMotionPrompt(input.spec, {
+    referenceOnly: input.referenceOnly,
+  });
+  const visualHash = await hashVisualPromptInput(
+    narrowShotPromptContext(full, { channel: 'visual', prompt: stillText })
+  );
+  const motionHash = await hashMotionPromptInput(
+    narrowShotPromptContext(full, {
+      channel: 'motion',
+      prompt: motion.text,
+      referenceOnly: input.referenceOnly,
+    })
+  );
 
   let visualVersionId: string | null = null;
   const writeStill =
@@ -141,9 +153,9 @@ export async function completeDerivedPrompts(
     const completed = await db.framePromptVersions.completePendingAiVersion({
       versionId: input.visualClaimId,
       frameId: input.frameId,
-      text: deriveStillPrompt(input.spec, input.scene, input.styleConfig),
+      text: stillText,
       inputHash: visualHash,
-      ...(stamp ? { stampHash: visualHash } : {}),
+      stampHash: visualHash,
       analysisModel: input.analysisModel,
       source: 'derived',
       specVersionId: input.specVersionId,
@@ -153,9 +165,6 @@ export async function completeDerivedPrompts(
 
   let motionVersionId: string | null = null;
   if (!input.motionWritten && input.motionClaimId) {
-    const motion = deriveMotionPrompt(input.spec, {
-      referenceOnly: input.referenceOnly,
-    });
     const completed = await db.shotPromptVersions.completePendingAiVersion({
       versionId: input.motionClaimId,
       shotId: input.shotId,
@@ -163,7 +172,7 @@ export async function completeDerivedPrompts(
       audio: motion.audio,
       usesStartFrame: !input.referenceOnly,
       inputHash: motionHash,
-      ...(stamp ? { stampHash: motionHash } : {}),
+      stampHash: motionHash,
       analysisModel: input.analysisModel,
       source: 'derived',
       specVersionId: input.specVersionId,

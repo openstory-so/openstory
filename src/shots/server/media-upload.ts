@@ -284,7 +284,10 @@ export async function replaceFrameContent(
         startingFrameImageUrl: await getFrameImageUrl(scopedDb, frame.id),
       });
       promptInputHash = await hashVisualPromptInput(
-        narrowShotPromptContext(ctx)
+        narrowShotPromptContext(ctx, {
+          channel: 'visual',
+          prompt: newPromptText,
+        })
       );
       analysisModel = ctx.analysisModel;
     } catch (error) {

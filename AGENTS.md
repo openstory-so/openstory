@@ -271,9 +271,14 @@ changing the area, and update it in the same PR.**
   and the interactive page `/docs/dependency-graph`
   (`src/ui/docs/dependency-graph.ts`). They show the same graph. A change to
   what a hash or a pointer compare reads updates both in the same PR.
-  Prompt hashes, causes and clip `referenceKeys` resolve references per shot
-  (`resolveShotReferences` in `src/shots/scene-matching.ts`), not from the
-  scene roster. Design rationale:
+  Prompt hashes (stamp and verify), causes, clip `referenceKeys` and the
+  motion render all resolve references per shot and per prompt channel
+  through `resolveShotReferences` (`src/shots/scene-matching.ts`), never
+  from the scene roster; `narrowShotPromptContext` takes a required
+  `ShotPromptView` so a stamp site cannot hash the wrong set. Continuity
+  tags apply only while the prompt is unwritten. A digest stamped on the
+  scene roster before #2012 is accepted until `LEGACY_HASH_UNTIL`. Design
+  rationale:
   `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
 - **Generation plan, stop-at and continue (#1408, #1816)** —
   `docs/architecture/generation-plan.md`. What a sequence still owes is the

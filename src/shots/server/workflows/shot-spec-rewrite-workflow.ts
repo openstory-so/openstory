@@ -96,7 +96,6 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         visualWritten: input.visualWritten,
         motionWritten: input.motionWritten,
         currencyHash: input.specInputHash,
-        stampHashes: true,
       });
 
       if (input.sequenceId) {

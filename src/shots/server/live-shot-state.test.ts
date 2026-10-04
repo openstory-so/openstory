@@ -51,14 +51,16 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
     new Map([
       [
         'scene-1',
-        // only `script.dialogue` is read
+        // `script.dialogue` and the scene's reference fields are read
         asStub<never>({
+          scene: { continuity: null, location: '' },
           script: {
             dialogue: [{ ...line('Ana', 'From the script.'), shotNumber: 2 }],
           },
         }),
       ],
-    ])
+    ]),
+    { generateStartFrames: true }
   );
 
 describe('loadLiveShotInputs — dialogue (#1657)', () => {

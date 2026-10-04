@@ -317,6 +317,7 @@ function clipIsStale(
       dialogueKeyByShot: new Map(),
       audioClipIdsByShot: new Map(),
       referenceIdentity: new Map(),
+      referencedEntitiesByShot: new Map(),
       durationMsByShot: new Map(),
       audioSecondsByShot: new Map(),
     }
