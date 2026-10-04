@@ -17,6 +17,7 @@ import {
   configureSync,
   defaultConsoleFormatter,
   getConsoleSink,
+  getJsonLinesFormatter,
   getLogger,
   type ConsoleFormatter,
   type LogLevel,
@@ -127,22 +128,39 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
         }),
         SECRET_PATTERNS
       )
-    : redactByPattern(objectFormatter, SECRET_PATTERNS);
+    : objectFormatter;
 
   return { console: getConsoleSink({ formatter }) };
 }
 
+const redactedJsonLine = redactByPattern(
+  getJsonLinesFormatter(),
+  SECRET_PATTERNS
+);
+
 /**
- * One object per record. `message` and `logger` are written last so a property
- * of the same name cannot replace them.
+ * One object per record, already redacted. Redaction runs on the whole JSON
+ * line and the line is parsed back, not on the object: the patterns need to see
+ * a key next to its value (`"token":"…"`), and walking an object skips an
+ * `Error`. `message` and `logger` are written last so a property of the same
+ * name cannot replace them.
  */
-export const objectFormatter: ConsoleFormatter = (record) => [
-  {
-    ...record.properties,
-    message: renderMessage(record.message),
-    logger: record.category.join('.'),
-  },
-];
+export const objectFormatter: ConsoleFormatter = (record) => {
+  const line = redactedJsonLine(record);
+  try {
+    const parsed: {
+      message: string;
+      logger: string;
+      properties: Record<string, unknown>;
+    } = JSON.parse(line);
+    return [
+      { ...parsed.properties, message: parsed.message, logger: parsed.logger },
+    ];
+  } catch {
+    // A replacement broke the JSON. Log the redacted line as it is.
+    return [line];
+  }
+};
 
 function buildBrowserSinks(dev: boolean): Record<string, Sink> {
   if (dev) {

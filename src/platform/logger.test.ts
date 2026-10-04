@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { redactByPattern } from '@logtape/redaction';
 import {
   objectFormatter,
   SECRET_PATTERNS,
@@ -148,8 +147,7 @@ describe('SECRET_PATTERNS', () => {
 
 describe('objectFormatter', () => {
   it('logs one object with the rendered message, and redacts secrets in it', () => {
-    const format = redactByPattern(objectFormatter, SECRET_PATTERNS);
-    const out = format({
+    const out = objectFormatter({
       category: ['openstory', 'workflow'],
       level: 'info',
       message: ['step ', 'motion', ' started'],
@@ -159,15 +157,20 @@ describe('objectFormatter', () => {
         step: 'motion',
         message: 'not the headline',
         nested: { key: 'fal_abcdefghijklmnopqrstuvwxyz' },
+        // Only a secret because of the key it sits under.
+        token: 'a1B2c3D4e5'.repeat(4),
+        err: new Error('bad key fal_abcdefghijklmnopqrstuvwxyz'),
       },
     });
 
     expect(out).toEqual([
       {
         step: 'motion',
-        message: 'step motion started',
+        message: 'step "motion" started',
         logger: 'openstory.workflow',
         nested: { key: '[REDACTED]' },
+        token: '[REDACTED]',
+        err: expect.objectContaining({ message: 'bad key [REDACTED]' }),
       },
     ]);
   });
