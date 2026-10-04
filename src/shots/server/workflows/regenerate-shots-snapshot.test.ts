@@ -229,7 +229,6 @@ describe('buildRegenerateShotSnapshot', () => {
         makeCharacter({
           sheetInputHash: 'jack-hash-v1',
           selectedSheetVersionId: 'version-ulid-2',
-          selectedBibleVersionId: null,
           pendingPromoteSheetVersionId: null,
         }),
       ],
