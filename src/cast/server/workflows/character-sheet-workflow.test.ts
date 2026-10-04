@@ -123,7 +123,6 @@ async function makeEvent(
     characterDbId: 'char-1',
     lookId: 'look-1',
     lookVersionId: 'lookver-1',
-    lookName: 'Gala gown',
     lookStyling: null,
     talentId: null,
     bibleVersionId: null,

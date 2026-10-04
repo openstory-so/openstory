@@ -44,7 +44,6 @@ describe('character-sheet hash', () => {
     characterDbId: 'c1',
     lookId: 'c1',
     lookVersionId: 'c1',
-    lookName: 'Default',
     lookStyling: null,
     talentId: null,
     bibleVersionId: null,
