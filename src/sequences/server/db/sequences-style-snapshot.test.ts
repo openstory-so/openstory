@@ -157,12 +157,13 @@ describe('createSequencesMethods style snapshot', () => {
   });
 
   // Sheet claims go only when the style write moves the snapshot (#1863).
-  async function claimedLocation(styleId: string) {
+  async function claimedLocation(styleId: string, deferStyleSnapshot = false) {
     const methods = createSequencesMethods(db, teamId, userId);
     const sequence = await methods.create({
       generationStopAt: 'images',
       title: 'S',
       styleId,
+      deferStyleSnapshot,
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
     const locations = createSequenceLocationsMethods(db);
@@ -200,6 +201,36 @@ describe('createSequencesMethods style snapshot', () => {
     });
     return { methods, sequence, claim, liveClaim };
   }
+
+  it('revokes sheet claims taken before the automatic style lands', async () => {
+    // A character and a location added by hand, their sheets generating
+    // against the placeholder recipe, while the first analysis derives the
+    // real one.
+    const style = await insertStyle('Auto', V1_A);
+    const { methods, sequence, claim, liveClaim } = await claimedLocation(
+      style.id,
+      true
+    );
+    expect(await liveClaim()).toEqual(claim);
+    expect(
+      await methods.snapshotAutoStyle({ id: sequence.id, styleId: style.id })
+    ).toBe(true);
+    expect(await liveClaim()).toEqual({ location: null, sheet: null });
+  });
+
+  it('keeps sheet claims when the automatic style no longer lands', async () => {
+    // The sequence was re-styled mid-run: the derived recipe is not
+    // snapshotted, so it revokes nothing.
+    const auto = await insertStyle('Auto', V1_A);
+    const picked = await insertStyle('Product', V1_B);
+    const { methods, sequence, claim, liveClaim } = await claimedLocation(
+      picked.id
+    );
+    expect(
+      await methods.snapshotAutoStyle({ id: sequence.id, styleId: auto.id })
+    ).toBe(false);
+    expect(await liveClaim()).toEqual(claim);
+  });
 
   it('keeps sheet claims when the same style is saved again', async () => {
     const style = await insertStyle('Noir', V1_A);

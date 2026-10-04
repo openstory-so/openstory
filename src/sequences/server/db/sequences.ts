@@ -95,6 +95,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNull,
@@ -599,6 +600,34 @@ export function createSequencesMethods(
   teamId: string,
   userId: string
 ) {
+  /**
+   * True while writing this style and recipe would change the sequence's
+   * live snapshot (#1863): a different style id, a different recipe, or no
+   * snapshot yet. For `demoteSequenceSheetClaims`, evaluated inside each
+   * demote before the pointer moves.
+   */
+  const styleMovesTo = (
+    sequenceId: string,
+    styleId: string,
+    styleConfig: StoredStyleConfig
+  ) =>
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(sequences)
+        .innerJoin(
+          sequenceStyleVersions,
+          eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
+        )
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.styleId, styleId),
+            eq(sequenceStyleVersions.config, styleConfig)
+          )
+        )
+    );
+
   return {
     ...createSequencesReadMethods(db, teamId),
 
@@ -806,22 +835,7 @@ export function createSequencesMethods(
         // with the same recipe leaves runs in flight alone. The demotes run
         // before the pointer moves, so they compare against the live snapshot.
         const styleVersionId = generateId();
-        const styleMoved = notExists(
-          db
-            .select({ one: sql`1` })
-            .from(sequences)
-            .innerJoin(
-              sequenceStyleVersions,
-              eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
-            )
-            .where(
-              and(
-                eq(sequences.id, id),
-                eq(sequences.styleId, params.styleId),
-                eq(sequenceStyleVersions.config, styleConfig)
-              )
-            )
-        );
+        const styleMoved = styleMovesTo(id, params.styleId, styleConfig);
         await db.batch([
           insertStyleVersion(db, {
             id: styleVersionId,
@@ -894,8 +908,20 @@ export function createSequencesMethods(
       // The derived recipe is a snapshot like any other (#1600). The pointer
       // moves only while the sequence still points at this style; a pick that
       // lands between the read and the batch leaves the row as history.
+      //
+      // It revokes sheet claims like a style switch (#1863). A sheet run can
+      // be in flight here: a character or location added by hand before the
+      // first analysis can have its sheet generated against the placeholder
+      // recipe while this run derives the real one. The demotes run before
+      // the pointer moves, and only while it is going to move.
       const styleVersionId = generateId();
-      const [, rows] = await db.batch([
+      const lands = sql`${exists(
+        db
+          .select({ one: sql`1` })
+          .from(sequences)
+          .where(still)
+      )} and ${styleMovesTo(params.id, params.styleId, styleConfig)}`;
+      const [, , , rows] = await db.batch([
         insertStyleVersion(db, {
           id: styleVersionId,
           sequenceId: params.id,
@@ -904,6 +930,7 @@ export function createSequencesMethods(
           source: 'derived',
           createdBy: null,
         }),
+        ...demoteSequenceSheetClaims(db, params.id, lands),
         db
           .update(sequences)
           .set({

@@ -75,6 +75,9 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'characterSheetVariants.promoteIfPending',
     userSelect: 'characterSheetVariants.select',
   },
+  // The bible parent claims through the conditional twin,
+  // `sequenceLocations.claimReferenceIfUnmoved` (#1863): taken only while
+  // the bible version and library link its upsert returned still hold.
   'location sheets': {
     tables: ['location_sheet_variants'],
     claim: 'sequenceLocations.claimReference',
