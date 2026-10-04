@@ -270,6 +270,12 @@ Key consequences of the shape:
   hashes still read the bible's values — but a stale artifact's cause now
   names the fields that moved (`Character "Jack": clothing`) instead of any
   row touched after it.
+- **A sequence reads the versions it pins (#2017).** The bible a shot's
+  hashes read is the version the sequence's cast link pins
+  (`sequence_cast.bibleVersionId`), and a look's clothing, styling and sheet
+  pointer are its cast look's (`sequence_cast_looks`). Today those are the
+  character's and the look's current versions, so no digest moved. See
+  `team-characters.md`.
 - **Clothing belongs to a look, and a scene picks the look (#2015).** A
   character has one or more looks (`character_looks`, versioned in
   `character_look_versions`), each with its own sheet; a scene's

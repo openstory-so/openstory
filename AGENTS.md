@@ -287,6 +287,13 @@ changing the area, and update it in the same PR.**
   return the cast dressed. A default look's id is its character's id. Look
   sheets land only through `characterLooks.claimSheet`, which is conditional
   on the snapshot. Never read the `legacy*` sheet or clothing columns.
+- **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
+  character belongs to the team; a sequence uses it through a `sequence_cast`
+  link that pins its bible version, and `sequence_cast_looks` pins each look
+  and holds its sheet pointer and claim. Reads return the character as its
+  sequence casts it; writes key on `castId` / `castLookId`. Never read the
+  `legacy*` cast columns on `characters` or `character_looks`: they are
+  written only for a worker older than #2017.
 - **Generation plan, stop-at and continue (#1408, #1816)** —
   `docs/architecture/generation-plan.md`. What a sequence still owes is the
   generation plan, derived from live D1 — never a stored stage. `stopAt` is the

@@ -15,11 +15,14 @@ versions, and a claim.
 - **`character_looks`** — the look.
   - Identity: `characterId` (FK, `restrict`), `isDefault` (one per character,
     partial unique index), `sortOrder`, `deletedAt`, and
-    `selectedLookVersionId` (the live definition).
-  - Per-sequence state: `selectedSheetVersionId`,
-    `pendingPromoteSheetVersionId` (the sheet claim), `sheetStatus`,
-    `sheetError`. **#2017 moves this group onto `sequence_cast_looks`.** Keep
-    identity free of anything a sequence decides.
+    `selectedLookVersionId` (the look's current definition).
+  - Keep identity free of anything a sequence decides.
+- **`sequence_cast_looks`** (#2017) — the look as one sequence uses it: the
+  look version it pins (`lookVersionId`), `selectedSheetVersionId`,
+  `pendingPromoteSheetVersionId` (the sheet claim), `sheetStatus`,
+  `sheetError`. Every look read comes through it and carries those fields.
+  The same columns on `character_looks` are `legacy*` and unread. See
+  `team-characters.md`.
 - **`character_look_versions`** — the definition: `name`, `clothing`,
   `styling`, `source` (`backfill` | `analysis` | `edit`). Never rewritten.
 - **`character_sheet_variants`** carries `lookId` and `lookVersionId` (the
@@ -74,16 +77,17 @@ look's clothing.
 trigger (`lookId`, `lookVersionId`, `lookName`, `lookStyling`, the clothing as
 `characterMetadata.standardClothing`); the run never reads the look.
 
-Claim → demote → guarded promote → fail, on the look
-(`characterLooks.claimSheet` / `failSheetClaim`,
+Claim → demote → guarded promote → fail, on the cast look of the sequence
+that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
 `characterSheetVariants.promoteIfPending`):
 
 - A look edit that moves clothing or styling demotes that look's claim in the
   same batch. A rename does not.
 - A bible edit to a field the sheets read, a recast and a style change demote
   **every** look's claim.
-- The claim is **conditional**: it is taken only while the look version, the
-  bible version and the cast talent on the payload are still live. A claim
+- The claim is **conditional**: it is taken only while the look version and
+  bible version the sequence pins, and that bible version's talent, are
+  still the ones on the payload. A claim
   that is not taken still returns an id, and the run parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
@@ -91,10 +95,10 @@ Claim → demote → guarded promote → fail, on the look
   bible version). Absent is "unknown", not "none": `claimSheet` skips that
   part of the condition instead of refusing every cast character.
 - The reconcile cron (`reconcileLookSheetClaimsPass`, pass
-  `character_looks.claims`) settles the two states no run will: a claim whose
-  row already exists as a plain completed sheet is promoted (only a worker
-  from before looks leaves that, by landing on the character's legacy columns
-  mid-deploy), and a claim older than an hour is failed.
+  `character_looks.claims`, over the cast looks) settles the two states no
+  run will: a claim whose row already exists as a plain completed sheet is
+  promoted (only an older worker leaves that, by landing on the legacy
+  columns mid-deploy), and a claim older than an hour is failed.
 
 The References stage makes one sheet per look some scene uses: a
 `sheet:character` plan unit is a look id — each character's default look
