@@ -1,8 +1,11 @@
 /**
- * Build a CharacterSheetWorkflow payload from the live character row —
- * regenerate-from-bible, no talent picker, no shot regen.
+ * Build a CharacterSheetWorkflow payload from the live character row and one
+ * of its looks (#2015) — regenerate-from-bible, no talent picker, no shot
+ * regen.
  */
 
+import { wearLook } from '@/cast/character-looks';
+import { NotFoundError } from '@/platform/errors';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
@@ -61,10 +64,25 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     imageModel: string | null;
   };
   character: CharacterWithSheet;
+  /** The look to draw. The character's default look is `character.lookId`. */
+  lookId: string;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
 }): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
-  const { scopedDb, userId, teamId, sequence, character } = params;
+  const { scopedDb, userId, teamId, sequence } = params;
+  // A character an older worker wrote has no look yet; its default look
+  // takes the character's id.
+  const look =
+    params.character.looks.find((l) => l.id === params.lookId) ??
+    (params.lookId === params.character.id
+      ? await scopedDb.characterLooks.ensureDefault(params.character.id)
+      : null);
+  if (!look) {
+    throw new NotFoundError(
+      `Look ${params.lookId} not found for character ${params.character.id}`
+    );
+  }
+  const character = wearLook(params.character, look);
   // The UI hides the button; this is the guard for every other caller.
   if (character.voiceOnly) {
     throw new Error(
@@ -96,7 +114,13 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     teamId,
     sequenceId: sequence.id,
     characterDbId: character.id,
+    lookId: look.id,
+    lookVersionId: look.lookVersionId,
+    lookName: look.name,
+    lookStyling: look.styling,
+    talentId: character.talentId,
     characterName: character.name,
+    // Dressed: `standardClothing` is this look's clothing.
     characterMetadata: characterToBible(character),
     bibleVersionId: character.selectedBibleVersionId,
     imageModel: resolveSheetImageModel({

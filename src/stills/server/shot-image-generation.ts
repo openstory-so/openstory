@@ -214,6 +214,7 @@ export async function generateShotImageVariants(
   const characterReferences = buildCharacterReferenceImages(
     matchCharactersToShotImage(allCharacters, {
       characterTags: scene?.continuity?.characterTags,
+      characterLooks: scene?.continuity?.characterLooks,
       visualPrompt: selectedPrompt?.text,
     })
   );
@@ -333,6 +334,7 @@ export async function selectShotImageVariant(
   const characterReferences = buildCharacterReferenceImages(
     matchCharactersToShotImage(allCharacters, {
       characterTags: scene?.continuity?.characterTags,
+      characterLooks: scene?.continuity?.characterLooks,
       visualPrompt: selectedPrompt?.text,
     })
   );

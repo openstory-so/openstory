@@ -392,7 +392,8 @@ const VERSION_KINDS = {
   character_sheet: versionKind({
     parent: (access, i) => access.character(i.sequenceId, i.entityId),
     list: (db, character, options) =>
-      db.characterSheetVariants.listByCharacter(character.id, options),
+      // The character's own sheets are its default look's (#2015).
+      db.characterSheetVariants.listByLook(character.lookId, options),
     get: async (db, character, id) => {
       const row = await db.characterSheetVariants.getById(id);
       return row?.characterId === character.id ? row : null;

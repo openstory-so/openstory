@@ -2912,7 +2912,8 @@ describe('cast and music edits (#1979)', () => {
       characterId: 'char_ada',
       legacyName: 'Ada',
       selectedVoiceVersionId: newer,
-      selectedSheetVersionId: sheetB,
+      // No look row: the shape a worker older than #2015 leaves.
+      legacySelectedSheetVersionId: sheetB,
     });
     await db.insert(characterVoiceVersions).values([
       {

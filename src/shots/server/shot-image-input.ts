@@ -204,6 +204,7 @@ export async function prepareShotImageWorkflowInput(args: {
 
   const matchedCharacters = matchCharactersToShotImage(allCharacters, {
     characterTags: continuity?.characterTags,
+    characterLooks: continuity?.characterLooks,
     visualPrompt: prompt,
   });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);

@@ -10,7 +10,15 @@
  * together or not at all.
  */
 
-import { and, eq, isNotNull, isNull, notExists, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  sql,
+} from 'drizzle-orm';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type {
@@ -21,6 +29,7 @@ import type {
 } from 'drizzle-orm/sqlite-core';
 import type { Database } from '@/platform/server/db/client';
 import {
+  characterLooks,
   characterSheetVariants,
   characters,
   locationSheetVariants,
@@ -32,12 +41,24 @@ import type {
   LocationSheetInputHash,
 } from '@/shots/input-hash';
 
-/** Clear every character sheet claim matching `where`. */
+/**
+ * Clear the sheet claim of every look (#2015) of the characters matching
+ * `where`: the bible, the cast talent and the style feed all of a
+ * character's sheets.
+ */
 export const demoteCharacterSheetClaims = (db: Database, where: SQL) =>
   db
-    .update(characters)
+    .update(characterLooks)
     .set({ pendingPromoteSheetVersionId: null })
-    .where(and(where, isNotNull(characters.pendingPromoteSheetVersionId)));
+    .where(
+      and(
+        isNotNull(characterLooks.pendingPromoteSheetVersionId),
+        inArray(
+          characterLooks.characterId,
+          db.select({ id: characters.id }).from(characters).where(where)
+        )
+      )
+    );
 
 /** Clear every sequence-location reference claim matching `where`. */
 export const demoteLocationReferenceClaims = (db: Database, where: SQL) =>
@@ -177,23 +198,31 @@ const versionRow = <H>(args: LandArgs<H>, now: Date) => ({
   bibleVersionId: args.bibleVersionId,
 });
 
-/** Land a character sheet run's result: {@link landSheetVersion}. */
+/**
+ * Land a look's sheet run (#2015): {@link landSheetVersion}, with the look as
+ * the parent. The caller makes sure the look exists (`requireLook`).
+ */
 export function landCharacterSheet(
   db: Database,
-  args: LandArgs<CharacterSheetInputHash> & { characterId: string }
+  args: LandArgs<CharacterSheetInputHash> & {
+    characterId: string;
+    lookId: string;
+    /** The look version the run read; null when unknown. */
+    lookVersionId: string | null;
+  }
 ): Promise<SheetLanding> {
-  const { characterId, versionId } = args;
+  const { characterId, lookId, versionId } = args;
   const now = new Date();
   const twin = alias(characterSheetVariants, 'twin');
   return landSheetVersion(
     db,
     {
-      entity: `Character ${characterId}`,
-      parent: characters,
-      isParent: eq(characters.id, characterId),
-      selected: characters.selectedSheetVersionId,
-      claim: characters.pendingPromoteSheetVersionId,
-      isGenerating: eq(characters.sheetStatus, 'generating'),
+      entity: `Look ${lookId}`,
+      parent: characterLooks,
+      isParent: eq(characterLooks.id, lookId),
+      selected: characterLooks.selectedSheetVersionId,
+      claim: characterLooks.pendingPromoteSheetVersionId,
+      isGenerating: eq(characterLooks.sheetStatus, 'generating'),
       promote: {
         selectedSheetVersionId: versionId,
         pendingPromoteSheetVersionId: null,
@@ -203,7 +232,12 @@ export function landCharacterSheet(
       },
       settle: { sheetStatus: 'completed', sheetError: null, updatedAt: now },
       variants: characterSheetVariants,
-      version: { ...versionRow(args, now), characterId },
+      version: {
+        ...versionRow(args, now),
+        characterId,
+        lookId,
+        lookVersionId: args.lookVersionId,
+      },
       versionIdColumn: characterSheetVariants.id,
       divergedAt: characterSheetVariants.divergedAt,
       park: { divergedAt: now, updatedAt: now },
@@ -212,7 +246,7 @@ export function landCharacterSheet(
         .from(twin)
         .where(
           and(
-            eq(twin.characterId, characterId),
+            eq(twin.lookId, lookId),
             eq(twin.model, args.model),
             eq(twin.inputHash, sql`${characterSheetVariants.inputHash}`),
             isNotNull(twin.divergedAt)

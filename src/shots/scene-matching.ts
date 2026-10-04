@@ -10,6 +10,7 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
+import { dressForScene, type SceneLookPicks } from '@/cast/character-looks';
 
 type CharacterMatchInput = Pick<
   CharacterMinimal,
@@ -154,14 +155,21 @@ export function characterMentionedInPrompt(
  * arrivals. Legacy prompts with no identifiable subject still use tags.
  * Update all's chained stills skip `rescanContinuityFromPrompt`, so this is
  * also the path that selects references for regenerated prompts.
+ *
+ * Each comes back wearing the look the scene picks for it (#2015): its
+ * clothing and sheet are that look's. `characterLooks` is required so no
+ * call site attaches the default sheet to a scene that picked another.
  */
 export function matchCharactersToShotImage<T extends CharacterMatchInput>(
-  allCharacters: T[],
+  everyCharacter: T[],
   args: {
     characterTags?: string[] | null;
     visualPrompt?: string | null;
+    /** The scene's `continuity.characterLooks`. */
+    characterLooks: SceneLookPicks;
   }
 ): T[] {
+  const allCharacters = dressForScene(everyCharacter, args.characterLooks);
   const tagged = matchCharactersToScene(
     allCharacters,
     args.characterTags ?? []
@@ -421,6 +429,11 @@ export function matchElementsToMotion<T extends ElementMatchInput>(
 /** The scene fields a shot's references are resolved against. */
 export type ShotReferenceScene = {
   characterTags?: string[] | null;
+  /**
+   * The scene's `continuity.characterLooks` (#2015). Required, so no call
+   * site resolves a shot's cast in the wrong outfit.
+   */
+  characterLooks: SceneLookPicks;
   environmentTag?: string | null;
   sceneLocation?: string | null;
   elementTags?: string[] | null;
@@ -450,6 +463,9 @@ export type ShotPromptView =
  * For locations, text falls through to the scene slugline when the prompt
  * names no room, and the scene extract is read only while there is no prompt:
  * it names every room in the scene.
+ *
+ * Characters come back wearing the look the scene picks for them (#2015), as
+ * new objects: compare them by id, not by reference.
  */
 export function resolveShotReferences<
   C extends CharacterMatchInput,
@@ -461,9 +477,10 @@ export function resolveShotReferences<
   view: ShotPromptView
 ): { characters: C[]; locations: L[]; elements: E[] } {
   const text = (view.prompt ?? '').trim();
+  const dressed = dressForScene(all.characters, scene.characterLooks);
   const characters = text
-    ? all.characters.filter((c) => characterMentionedInPrompt(c, text))
-    : matchCharactersToScene(all.characters, scene.characterTags ?? []);
+    ? dressed.filter((c) => characterMentionedInPrompt(c, text))
+    : matchCharactersToScene(dressed, scene.characterTags ?? []);
   const locations = matchLocationsToScene(
     all.locations,
     scene.environmentTag ?? '',

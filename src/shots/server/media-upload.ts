@@ -584,6 +584,7 @@ export async function setCharacterSheetFromUpload(
       distinguishingFeatures: character.distinguishingFeatures,
       consistencyTag: character.consistencyTag,
     },
+    styling: character.styling,
     talentSheetHash: cast.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(cast),
     styleConfigHash,
@@ -605,7 +606,8 @@ export async function setCharacterSheetFromUpload(
   // inputs didn't change.
   const { version: variant } =
     await scopedDb.characterSheetVariants.applyConvergent({
-      characterId: character.id,
+      // The character's own sheet is its default look's (#2015).
+      lookId: character.lookId,
       url: data.publicUrl,
       storagePath,
       inputHash,

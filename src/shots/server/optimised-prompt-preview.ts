@@ -147,6 +147,7 @@ export type PackedPreviewMember = {
 type SceneReferenceInput = {
   continuity?: {
     characterTags?: string[];
+    characterLooks?: Record<string, string>;
     elementTags?: string[] | null;
     environmentTag?: string | null;
     lightingSetup?: string;

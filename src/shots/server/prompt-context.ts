@@ -7,6 +7,7 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
+import { dressForScene } from '@/cast/character-looks';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
@@ -118,7 +119,11 @@ export async function loadShotPromptContext(args: {
       snapshot: sequence.styleConfig,
       live: style?.config,
     }),
-    characterBible: charactersToBible(characters),
+    // Each character in the outfit this scene picks for it (#2015): the
+    // prompt, and its hash, read that look's clothing.
+    characterBible: charactersToBible(
+      dressForScene(characters, scene.continuity?.characterLooks)
+    ),
     locationBible: sequenceLocationsToBible(locations),
     elementBible: sequenceElementsToBible(elements),
     aspectRatio: sequence.aspectRatio,
@@ -179,6 +184,7 @@ export function narrowShotPromptContext<T extends VisualPromptHashInput>(
     },
     {
       characterTags: continuity?.characterTags,
+      characterLooks: continuity?.characterLooks,
       environmentTag: continuity?.environmentTag,
       sceneLocation: scene.metadata?.location,
       elementTags: continuity?.elementTags,

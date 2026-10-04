@@ -210,6 +210,7 @@ describe('computeCharacterSheetInputHash', () => {
       distinguishingFeatures: 'scar above right eye',
       consistencyTag: 'sarah_blonde_30s',
     },
+    styling: null,
     talentSheetHash: 'talent-sha',
     talent: null,
     styleConfigHash: 'style-sha',
@@ -318,6 +319,85 @@ describe('computeCharacterSheetInputHash', () => {
     expect(flagged).toBe(a);
   });
 
+  describe('looks (#2015)', () => {
+    // What the pre-#2015 hasher stamped for `base` — the bible feeding
+    // `standardClothing` — uncast and cast. Computed from the hasher as it
+    // stood before looks; a sheet in production carries digests like these.
+    const STAMPED_UNCAST =
+      'dabf0070f773be94373d504301941eea66b1e8ec992b472901151f3d99a5c54c';
+    const STAMPED_CAST =
+      'fa5b8e2b4f453a14df6000d93f2ca9ddc31998542c57b55a5e1ca85616c8850f';
+    const castTalent = {
+      description: 'A weathered sailor',
+      sheetImageUrl: '/r2/talent/sheet.png',
+      sheetLook: {
+        age: '40s',
+        gender: 'female',
+        ethnicity: null,
+        physicalDescription: 'broad',
+      },
+    };
+
+    it('a backfilled default look hashes to the digest its sheet was stamped with', async () => {
+      // The backfill copies the bible's clothing onto the look verbatim and
+      // leaves `styling` NULL; the look now feeds `standardClothing`.
+      const look = { clothing: 'dark trench coat', styling: null };
+      const fromLook: CharacterSheetHashInput = {
+        ...base,
+        characterBible: {
+          ...base.characterBible,
+          standardClothing: look.clothing,
+        },
+        styling: look.styling,
+      };
+      expect(await computeCharacterSheetInputHash(fromLook)).toBe(
+        STAMPED_UNCAST
+      );
+      expect(
+        await computeCharacterSheetInputHash({
+          ...fromLook,
+          talent: castTalent,
+        })
+      ).toBe(STAMPED_CAST);
+      expect(
+        await characterSheetInputHashMatches(STAMPED_UNCAST, fromLook)
+      ).toBe(true);
+    });
+
+    it('adds styling to the digest only when it is set', async () => {
+      const none = await computeCharacterSheetInputHash(base);
+      for (const blank of ['', '   ']) {
+        expect(
+          await computeCharacterSheetInputHash({ ...base, styling: blank })
+        ).toBe(none);
+      }
+      const bruised = await computeCharacterSheetInputHash({
+        ...base,
+        styling: 'split lip, hair down',
+      });
+      expect(bruised).not.toBe(none);
+      expect(
+        await characterSheetInputHashMatches(none, {
+          ...base,
+          styling: 'split lip, hair down',
+        })
+      ).toBe(false);
+      // An edit to the styling moves it again.
+      expect(
+        await computeCharacterSheetInputHash({ ...base, styling: 'hair up' })
+      ).not.toBe(bruised);
+    });
+
+    it('moves with the clothing of the look', async () => {
+      expect(
+        await computeCharacterSheetInputHash({
+          ...base,
+          characterBible: { ...base.characterBible, standardClothing: 'gown' },
+        })
+      ).not.toBe(STAMPED_UNCAST);
+    });
+  });
+
   it('rejects omitted talentSheetHash; null is the explicit empty', async () => {
     const nullHash = await computeCharacterSheetInputHash({
       ...base,
@@ -327,6 +407,7 @@ describe('computeCharacterSheetInputHash', () => {
       computeCharacterSheetInputHash(
         incomplete<CharacterSheetHashInput>({
           characterBible: base.characterBible,
+          styling: null,
           styleConfigHash: base.styleConfigHash,
           imageModel: base.imageModel,
         })
@@ -501,6 +582,7 @@ describe('canonical serialization', () => {
         distinguishingFeatures: 'scar',
         consistencyTag: 'alice_30s',
       },
+      styling: null,
       talentSheetHash: 'talent',
       talent: null,
       styleConfigHash: 'style',
@@ -510,6 +592,7 @@ describe('canonical serialization', () => {
     const shuffled = await computeCharacterSheetInputHash({
       imageModel: 'flux-pro',
       styleConfigHash: 'style',
+      styling: null,
       talentSheetHash: 'talent',
       talent: null,
       characterBible: {

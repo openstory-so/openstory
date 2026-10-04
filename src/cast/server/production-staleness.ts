@@ -1,3 +1,4 @@
+import { wearLook } from '@/cast/character-looks';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { productionAccess } from '@/sequences/server/production-access';
 import { buildRegenerateCharacterSheetPayload } from './sheets/character-sheet-trigger';
@@ -18,7 +19,9 @@ export async function readReferenceStaleness(
   scopedDb: ScopedDb,
   sequenceId: string,
   kind: 'character' | 'location',
-  entityId: string
+  entityId: string,
+  /** A character's look other than its default (#2015). */
+  lookId?: string
 ): Promise<{ status: SheetStaleness; applicable: boolean }> {
   const access = productionAccess(scopedDb);
   const context = {
@@ -29,15 +32,23 @@ export async function readReferenceStaleness(
   };
 
   if (kind === 'character') {
-    const character = await access.character(sequenceId, entityId);
-    if (character.voiceOnly) return { status: 'untracked', applicable: false };
+    const owner = await access.character(sequenceId, entityId);
+    if (owner.voiceOnly) return { status: 'untracked', applicable: false };
+    // One look's sheet (#2015). Off the read the character already wears its
+    // default look, so only another look needs dressing.
+    const look =
+      lookId === undefined || lookId === owner.lookId
+        ? undefined
+        : owner.looks.find((l) => l.id === lookId);
+    const character = look ? wearLook(owner, look) : owner;
     const stored = character.sheetInputHash;
     if (character.sheetStatus === 'generating')
       return { status: 'generating', applicable: true };
     if (!stored) return { status: 'untracked', applicable: true };
     const payload = await buildRegenerateCharacterSheetPayload({
       ...context,
-      character,
+      character: owner,
+      lookId: character.lookId,
     });
     if (!payload.snapshotInputHash)
       return { status: 'untracked', applicable: true };

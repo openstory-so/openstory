@@ -96,6 +96,7 @@ export async function buildShotImageWorkflowInput(opts: {
 
   const matchedCharacters = matchCharactersToShotImage(characters, {
     characterTags: continuity?.characterTags,
+    characterLooks: continuity?.characterLooks,
     visualPrompt: prompt,
   });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);

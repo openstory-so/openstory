@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import type { CharacterBible } from './bible-versions';
+import type { CharacterLook, CharacterLookMinimal } from './character-looks';
 import { sequences } from './sequences';
 import { talent } from './talent';
 
@@ -108,24 +109,23 @@ export const characters = snakeCase.table(
     firstMentionSceneId: text(),
     firstMentionText: text(),
     firstMentionLine: integer(),
-    // Generation lifecycle. NOT a mirror of the version row's status: these
-    // are stamped when no variant exists yet — 'generating' at trigger time,
-    // 'failed' when the workflow dies (#1419). Frames solved the same gap by
-    // opening a primary row before the status flips (#1942).
-    sheetStatus: text().$type<SheetStatus>().default('pending').notNull(),
-    sheetError: text(),
-    // Soft pointer to the live `character_sheet_variants` row (#1108 sheet
-    // versions). No FK — same cycle-avoidance as frames.selectedImageVersionId.
-    // Null on rows the #1419 backfill snapshotted rather than a user
-    // selecting: for those the live version is the one keyed to this row's own
-    // id, and it fills in the first time anyone re-rolls or selects.
-    selectedSheetVersionId: text(),
-    // The sheet claim (#1113): the id the in-flight sheet run's version row
-    // will carry. Set at the trigger (last kickoff wins); cleared by every
-    // write that changes a sheet input or picks a sheet. The run promotes its
-    // row only while this still names it, else parks it as divergent. Null
-    // when no run holds the pointer.
-    pendingPromoteSheetVersionId: text(),
+    // LEGACY sheet columns (#2015). The sheet belongs to a look
+    // (`character_looks`): its status, pointer and claim live there, and "the
+    // character's sheet" is its default look's. These are read only as the
+    // fallback for a character an older worker wrote with no look
+    // (`cast/server/db/characters.ts`) and are never written. The `legacy`
+    // names keep the SQL column names but make every raw reader a compile
+    // error. Drop them once a deploy has run with no writer and a second
+    // backfill.
+    legacySheetStatus: text('sheet_status')
+      .$type<SheetStatus>()
+      .default('pending')
+      .notNull(),
+    legacySheetError: text('sheet_error'),
+    legacySelectedSheetVersionId: text('selected_sheet_version_id'),
+    legacyPendingPromoteSheetVersionId: text(
+      'pending_promote_sheet_version_id'
+    ),
     // Soft-remove from the sequence (#1108 Phase 2, undoable). Deleted rows
     // are excluded from default lists / prompt-context bibles but keep their
     // sheet + bible fields, so restore is lossless. Continuity tags on scenes
@@ -173,14 +173,47 @@ export type LegacyCharacterBibleColumn =
   | 'legacyIsPerson'
   | 'legacyConsistencyTag';
 
+/** The legacy sheet columns (#2015) — never read outside the resolver. */
+export type LegacyCharacterSheetColumn =
+  | 'legacySheetStatus'
+  | 'legacySheetError'
+  | 'legacySelectedSheetVersionId'
+  | 'legacyPendingPromoteSheetVersionId';
+
+/**
+ * What a character shows of the look it is wearing (#2015). Off a scoped read
+ * that is its default look; `wearLook` swaps in the look a scene picks. The
+ * names are the ones the character's own columns had, so "the character's
+ * sheet" still reads the same everywhere.
+ */
+export type CharacterWornLook = {
+  /** The look these fields belong to. */
+  lookId: string;
+  lookName: string;
+  standardClothing: string | null;
+  /** Hair, makeup, injuries. */
+  styling: string | null;
+  sheetStatus: SheetStatus;
+  sheetError: string | null;
+  selectedSheetVersionId: string | null;
+  pendingPromoteSheetVersionId: string | null;
+};
+
 /**
  * A character with its bible resolved from the selected
  * `character_bible_versions` row (#1600). Carries no sheet image — see
  * {@link CharacterWithSheet}.
  */
-export type Character = Omit<CharacterRow, LegacyCharacterBibleColumn> &
+export type Character = Omit<
+  CharacterRow,
+  LegacyCharacterBibleColumn | LegacyCharacterSheetColumn
+> &
   CharacterBible &
-  CharacterVoice;
+  CharacterWornLook &
+  CharacterVoice & {
+    /** Every look, default first; removed ones included (`deletedAt`). */
+    looks: CharacterLook[];
+  };
 
 /**
  * A character's voice, resolved from the selected `character_voice_versions`
@@ -221,10 +254,15 @@ export type CharacterWithSheet = Character & {
  */
 export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
-  LegacyCharacterBibleColumn | 'selectedBibleVersionId'
+  | LegacyCharacterBibleColumn
+  | LegacyCharacterSheetColumn
+  | 'selectedBibleVersionId'
 > &
   Pick<CharacterBible, 'name'> &
   Partial<Omit<CharacterBible, 'name'>> &
+  // The default look's clothing and sheet lifecycle (#2015). `sheetStatus`
+  // defaults to 'pending', as the column did.
+  Partial<Pick<CharacterWornLook, 'standardClothing' | 'sheetStatus'>> &
   Partial<Pick<CharacterVoice, 'voiceId' | 'voiceDescription'>>;
 
 export type CharacterMinimal = Pick<
@@ -240,9 +278,13 @@ export type CharacterMinimal = Pick<
   | 'voiceOnly'
   | 'isPerson'
   | 'consistencyTag'
+  | 'lookId'
+  | 'lookName'
 > & {
   /** Designed ElevenLabs voice, when the row has one (#1554). */
   voiceId?: string | null;
+  /** The looks a scene can pick from (`dressForScene`). */
+  looks: CharacterLookMinimal[];
 };
 
 // Composite types for API responses

@@ -36,6 +36,11 @@ function character(
     sheetStatus: 'completed',
     sheetError: null,
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
     selectedBibleVersionId: null,
     pendingPromoteSheetVersionId: null,
     deletedAt: null,

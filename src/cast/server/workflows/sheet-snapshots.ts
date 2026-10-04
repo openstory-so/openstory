@@ -67,6 +67,16 @@ export type SheetPayload<T> = Omit<
   | 'snapshotInputHash'
 >;
 
+/**
+ * The look a sheet run draws. A payload queued before #2015 names none: its
+ * sheet is the character's default look's, whose id is the character's.
+ */
+export const sheetLookId = (
+  input: Pick<CharacterSheetWorkflowInput, 'lookId' | 'characterDbId'>
+): string =>
+  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015 has no look
+  input.lookId ?? input.characterDbId;
+
 /** The payload fields a cast talent supplies to a character sheet. */
 export type CastTalentFields = Pick<
   CharacterSheetWorkflowInput,
@@ -141,6 +151,8 @@ function characterSheetHashInput(
 ) {
   return {
     characterBible: characterBibleFields(input.characterMetadata),
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015 has no look
+    styling: input.lookStyling ?? null,
     talentSheetHash: input.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(input),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
@@ -282,6 +294,11 @@ function sortedRefHashes(values: Array<string | null | undefined>): string[] {
  * image re-stales stills even with identical bible inputs), else the parent
  * `sheetInputHash` / `referenceInputHash`; plus element `imageUrl`.
  *
+ * A character's sheet is the one of the look the scene picks for it (#2015):
+ * the returned characters are dressed, so `lookId` names that look. Editing a
+ * look moves only the shots of the scenes that pick it, and switching a
+ * scene's look moves only that scene's shots.
+ *
  * Character and element matching use the still's visual prompt when
  * `visualPrompt` is passed (the same text the image model generated from)
  * so a regenerated prompt that names `SCARLETT` still attaches her sheet
@@ -301,6 +318,7 @@ export function resolveSceneShotImageReferences(params: {
   scene: {
     continuity?: {
       characterTags?: string[];
+      characterLooks?: Record<string, string>;
       environmentTag?: string;
       elementTags?: string[] | null;
     } | null;
@@ -327,6 +345,7 @@ export function resolveSceneShotImageReferences(params: {
   const { scene, visualPrompt, characters, locations, elements } = params;
   const matchedCharacters = matchCharactersToShotImage(characters, {
     characterTags: scene?.continuity?.characterTags,
+    characterLooks: scene?.continuity?.characterLooks,
     visualPrompt,
   });
   const matchedLocations = matchLocationsToScene(

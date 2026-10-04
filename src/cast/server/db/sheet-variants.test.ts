@@ -27,6 +27,8 @@ import {
 } from '@/shots/input-hash';
 import {
   characterSheetVariants,
+  characterLookVersions,
+  characterLooks,
   characters,
   locationLibrary,
   locationSheetVariants,
@@ -41,6 +43,7 @@ import {
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
+import { createCharacterLooksMethods } from './character-looks';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { createCharactersMethods } from './characters';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
@@ -58,6 +61,8 @@ let talentSheetId = '';
 
 async function seed() {
   await db.delete(characterSheetVariants);
+  await db.delete(characterLookVersions);
+  await db.delete(characterLooks);
   await db.delete(locationSheetVariants);
   await db.delete(talentSheetVariants);
   await db.delete(talentSheets);
@@ -145,6 +150,7 @@ describe('character-sheet-variants insertDivergent', () => {
 
     const first = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/divergent-1.png',
       status: 'completed',
@@ -154,6 +160,7 @@ describe('character-sheet-variants insertDivergent', () => {
 
     const second = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/divergent-1.png',
       status: 'completed',
@@ -172,6 +179,7 @@ describe('character-sheet-variants insertDivergent', () => {
 
     await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/divergent-a.png',
       status: 'completed',
@@ -180,6 +188,7 @@ describe('character-sheet-variants insertDivergent', () => {
     });
     await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/divergent-b.png',
       status: 'completed',
@@ -204,6 +213,7 @@ describe('character-sheet-variants insertDivergent', () => {
       .insert(characterSheetVariants)
       .values({
         characterId,
+        lookId: characterId,
         model: 'flux-pro',
         url: 'https://example.com/winner.png',
         status: 'completed',
@@ -216,6 +226,7 @@ describe('character-sheet-variants insertDivergent', () => {
 
     const result = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/loser.png',
       status: 'completed',
@@ -323,6 +334,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const variant = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
@@ -347,16 +359,18 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     const methods = createCharacterSheetVariantsMethods(db);
     const variant = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/live.png',
       status: 'completed',
       inputHash: characterSheetInputHash('hash-live'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
+    await createCharacterLooksMethods(db).ensureDefault(characterId);
     await db
-      .update(characters)
+      .update(characterLooks)
       .set({ selectedSheetVersionId: variant.id })
-      .where(eq(characters.id, characterId));
+      .where(eq(characterLooks.id, characterId));
 
     await expect(methods.discard(variant.id)).rejects.toThrow(
       /Cannot discard the selected/
@@ -369,6 +383,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const a = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/a.png',
       status: 'completed',
@@ -377,6 +392,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     });
     await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/b.png',
       status: 'completed',
@@ -702,6 +718,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     const divergedAt = new Date('2026-04-29T00:00:00Z');
     const v1 = await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/a.png',
       status: 'completed',
@@ -710,6 +727,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     });
     await methods.insertDivergent({
       characterId,
+      lookId: characterId,
       model: 'flux-pro',
       url: 'https://example.com/b.png',
       status: 'completed',
@@ -795,7 +813,7 @@ describe('character sheet versions (append + select)', () => {
     });
 
     const { version } = await methods.applyConvergent({
-      characterId,
+      lookId: characterId,
       url: 'https://example.com/new.png',
       storagePath: '/new.png',
       inputHash: characterSheetInputHash('hash-new'),
@@ -809,7 +827,7 @@ describe('character sheet versions (append + select)', () => {
     expect(live?.sheetImageUrl).toBe('https://example.com/new.png');
     expect(live?.sheetInputHash).toBe('hash-new');
 
-    const history = await methods.listHistoryByCharacter(characterId);
+    const history = await methods.listHistoryByLook(characterId);
     expect(history).toHaveLength(2);
     expect(history.map((row) => row.url)).toEqual([
       'https://example.com/old.png',
@@ -821,14 +839,14 @@ describe('character sheet versions (append + select)', () => {
   it('select repoints the parent without discarding the previous version', async () => {
     const methods = createCharacterSheetVariantsMethods(db);
     const first = await methods.applyConvergent({
-      characterId,
+      lookId: characterId,
       url: 'https://example.com/a.png',
       storagePath: '/a.png',
       inputHash: characterSheetInputHash('hash-a'),
       model: 'nano_banana_2',
     });
     const second = await methods.applyConvergent({
-      characterId,
+      lookId: characterId,
       url: 'https://example.com/b.png',
       storagePath: '/b.png',
       inputHash: characterSheetInputHash('hash-b'),
@@ -842,15 +860,15 @@ describe('character sheet versions (append + select)', () => {
     await methods.select(characterId, first.version.id, { actorId: null });
     const [after] = await db
       .select()
-      .from(characters)
-      .where(eq(characters.id, characterId));
+      .from(characterLooks)
+      .where(eq(characterLooks.id, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     // Reads follow the pointer, not a mirror column (#1419).
     const live = await createCharactersMethods(db).getById(characterId);
     expect(live?.sheetImageUrl).toBe('https://example.com/a.png');
     expect(live?.sheetInputHash).toBe('hash-a');
 
-    const history = await methods.listHistoryByCharacter(characterId);
+    const history = await methods.listHistoryByLook(characterId);
     expect(history).toHaveLength(2);
     expect(history.map((row) => row.id)).toEqual([
       first.version.id,

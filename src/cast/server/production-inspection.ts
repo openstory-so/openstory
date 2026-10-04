@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
 import {
   characterBibleVersions,
+  characterLookVersions,
+  characterLooks,
   characterVoiceVersions,
   characters,
   locationBibleVersions,
@@ -66,10 +68,18 @@ export const characterReadSchema = createSelectSchema(characters)
     firstMentionSceneId: true,
     firstMentionText: true,
     firstMentionLine: true,
-    sheetStatus: true,
-    sheetError: true,
-    selectedSheetVersionId: true,
     selectedVoiceVersionId: true,
+  })
+  // The sheet and the clothing are the character's default look's (#2015).
+  .extend(
+    createSelectSchema(characterLooks).pick({
+      sheetStatus: true,
+      sheetError: true,
+      selectedSheetVersionId: true,
+    }).shape
+  )
+  .extend({
+    standardClothing: createSelectSchema(characterLookVersions).shape.clothing,
   })
   // The bible lives on its version row (#1600).
   .extend(
@@ -79,7 +89,6 @@ export const characterReadSchema = createSelectSchema(characters)
       gender: true,
       ethnicity: true,
       physicalDescription: true,
-      standardClothing: true,
       distinguishingFeatures: true,
       personality: true,
       movement: true,

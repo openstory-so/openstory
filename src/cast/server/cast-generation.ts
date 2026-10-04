@@ -73,7 +73,12 @@ export async function regenerateCharacterSheet(
   scopedDb: ScopedDb,
   actor: Actor,
   sequence: Sequence,
-  data: { characterId: string; imageModel?: string }
+  data: {
+    characterId: string;
+    /** A look other than the character's default (#2015). */
+    lookId?: string;
+    imageModel?: string;
+  }
 ): Promise<{ characterId: string; workflowRunId: string }> {
   const character = await requireCharacter(
     scopedDb,
@@ -87,14 +92,16 @@ export async function regenerateCharacterSheet(
     teamId: scopedDb.teamId,
     sequence,
     character,
+    lookId: data.lookId ?? character.lookId,
     imageModel: data.imageModel,
   });
 
-  // The claim (#1113): last kickoff wins, and any edit to the character's
-  // sheet inputs before this run lands revokes it.
-  const sheetVersionId = await scopedDb.characters.claimSheet(character.id, {
-    markGenerating: true,
-  });
+  // The claim (#1113): last kickoff wins, and any edit to the look's sheet
+  // inputs before this run lands revokes it.
+  const { versionId: sheetVersionId } =
+    await scopedDb.characterLooks.claimSheet(payload.lookId, payload, {
+      markGenerating: true,
+    });
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: character.id,
@@ -116,8 +123,8 @@ export async function regenerateCharacterSheet(
       // new run.
     });
   } catch (error) {
-    await scopedDb.characters.failSheetClaim(
-      character.id,
+    await scopedDb.characterLooks.failSheetClaim(
+      payload.lookId,
       sheetVersionId,
       error instanceof Error ? error.message : String(error)
     );
@@ -232,17 +239,28 @@ export async function recastCharacter(
     throw new NotFoundError('Character not found');
   }
 
+  // The recast redraws the default look's sheet (#2015), so it re-renders the
+  // shots that wear it. A scene in another look keeps that look's sheet,
+  // which reads stale until it is regenerated.
+  const look = await scopedDb.characterLooks.ensureDefault(data.characterId);
   const affectedShotIds = await scopedDb.characters.getShotIdsForCharacter(
     character.sequenceId,
-    data.characterId
+    data.characterId,
+    { wearing: look.id }
   );
 
   // Always generate a character sheet showing the talent in costume. The
   // claim is taken after the cast writes above, which revoke older ones.
-  const sheetVersionId = await scopedDb.characters.claimSheet(
-    data.characterId,
-    { markGenerating: true }
-  );
+  const { versionId: sheetVersionId } =
+    await scopedDb.characterLooks.claimSheet(
+      look.id,
+      {
+        lookVersionId: look.lookVersionId,
+        bibleVersionId: updatedCharacter.selectedBibleVersionId,
+        talentId: data.talentId,
+      },
+      { markGenerating: true }
+    );
 
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
@@ -267,6 +285,11 @@ export async function recastCharacter(
 
   const workflowInput: RecastCharacterWorkflowInput = {
     characterDbId: data.characterId,
+    lookId: look.id,
+    lookVersionId: look.lookVersionId,
+    lookName: look.name,
+    lookStyling: look.styling,
+    talentId: data.talentId,
     // The recast bible version the metadata below spells out (#1600).
     bibleVersionId: updatedCharacter.selectedBibleVersionId,
     characterName: character.name,
@@ -277,6 +300,8 @@ export async function recastCharacter(
       isPerson: updatedCharacter.isPerson,
       voiceDescription: character.voiceDescription ?? '',
       ...castingAttrs,
+      // The look owns clothing (#2015).
+      standardClothing: look.clothing ?? '',
     },
     sequenceId: character.sequenceId,
     teamId: scopedDb.teamId,
@@ -292,7 +317,7 @@ export async function recastCharacter(
     reuseTalentSheet: Boolean(
       defaultSheet?.imageUrl &&
       shouldReuseTalentSheet({
-        characterClothing: character.standardClothing,
+        characterClothing: look.clothing,
         characterFeatures: character.distinguishingFeatures,
         talentClothing: defaultSheet.metadata?.standardClothing,
         talentFeatures: defaultSheet.metadata?.distinguishingFeatures,

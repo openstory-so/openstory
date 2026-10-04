@@ -777,9 +777,33 @@ type PackedMotionCoveredShot = {
 export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** sequence_characters.id */
   characterDbId: string;
+  /**
+   * The look this sheet draws (#2015) — one run makes one look's sheet. Absent
+   * only on a run queued before #2015, whose sheet is the default look's
+   * (`sheetLookId`).
+   */
+  lookId: string;
+  /**
+   * The `character_look_versions` row the look was read from, snapshotted at
+   * the trigger and stamped on the sheet's version row. The claim is taken
+   * only while the look still points at it.
+   */
+  lookVersionId: string;
+  /** The look's name, for logs and stale causes. */
+  lookName: string;
+  /** The look's hair / makeup / injury notes; null when it changes none. */
+  lookStyling: string | null;
+  /**
+   * The cast talent at the snapshot; null when not cast. The claim is taken
+   * only while the character is still cast with it.
+   */
+  talentId: string | null;
   /** Character name for logging */
   characterName: string;
-  /** Character metadata from script analysis */
+  /**
+   * The character's bible at the trigger. `standardClothing` is the LOOK's
+   * clothing (#2015), not a field of the bible.
+   */
   characterMetadata: CharacterBibleEntry;
   /** Image model to use (defaults to nano_banana_2) */
   imageModel?: TextToImageModel;
@@ -814,7 +838,7 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   snapshotInputHash: CharacterSheetInputHash;
   /**
    * The sheet claim (#1113): the id this run's version row will carry, taken at the trigger
-   * (`characters.claimSheet`). The run lands only while the claim still names it,
+   * (`characterLooks.claimSheet`). The run lands only while the claim still names it,
    * else it parks as divergent. Absent only on a run queued before #1113,
    * which lands unconditionally.
    */
@@ -944,8 +968,14 @@ export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
  * Recast character workflow input
  * Orchestrates character sheet generation + shot regeneration for recast
  */
-export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
-  /** Character database ID */
+export interface RecastCharacterWorkflowInput
+  extends
+    SequenceWorkflowContext,
+    Pick<
+      CharacterSheetWorkflowInput,
+      'lookId' | 'lookVersionId' | 'lookName' | 'lookStyling' | 'talentId'
+    > {
+  /** Character database ID. The sheet redrawn is its default look's (#2015). */
   characterDbId: string;
   /** Character name for logging */
   characterName: string;
@@ -1206,6 +1236,8 @@ export interface MotionWorkflowResult {
 export interface CharacterSheetWorkflowResult {
   sheetImageUrl: string;
   characterDbId?: string;
+  /** The look the sheet is of (#2015). */
+  lookId: string;
   sheetImagePath?: string;
   /**
    * The live `character_sheet_variants` row selected on a convergent write.

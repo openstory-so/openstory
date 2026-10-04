@@ -62,11 +62,14 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   },
   // Sheets (#1113): pointer claims on the parent row naming the id the run's
   // result will carry. The row is appended at completion (no pending row),
-  // so a claim miss parks it as divergent in the same batch.
+  // so a claim miss parks it as divergent in the same batch. A character's
+  // sheets belong to its looks (#2015): the pointer and the claim are on
+  // `character_looks`, one per look, and the claim is taken only while the
+  // look, bible and cast the run was snapshotted from still hold (#1863).
   'character sheets': {
-    tables: ['character_sheet_variants'],
-    claim: 'characters.claimSheet',
-    clear: 'characters.failSheetClaim',
+    tables: ['character_sheet_variants', 'character_looks'],
+    claim: 'characterLooks.claimSheet',
+    clear: 'characterLooks.failSheetClaim',
     promote: 'characterSheetVariants.promoteIfPending',
     userSelect: 'characterSheetVariants.select',
   },
@@ -181,6 +184,9 @@ const EXCEPTIONS: Record<string, string> = {
   // edit and a recast each append; nothing is generated into it async.
   character_bible_versions: 'authored; analysis and edits append',
   location_bible_versions: 'authored; analysis and edits append',
+  // Look definitions (#2015): authored like a bible. The look's SHEET is the
+  // generated thing, and it lands through the `character sheets` claim.
+  character_look_versions: 'authored; analysis and edits append',
   // Style snapshots (#1600): copied from the catalog on create, switch and
   // automatic derivation; a snapshot, not a generation.
   sequence_style_versions: 'snapshot of the catalog style; appended on change',

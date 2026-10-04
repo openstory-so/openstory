@@ -29,6 +29,7 @@ import {
   type PlanUnitRef,
 } from '@/sequences/generation-plan';
 import { useGenerationPlan } from '@/sequences/ui/use-generation-plan';
+import { sheetLookName } from '@/cast/character-looks';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
 import { useHydrated } from '@/ui/use-hydrated';
@@ -533,9 +534,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const nameOf = (ref: PlanUnitRef) =>
     ref.kind === 'sheet:location'
       ? planLocations?.find((l) => l.id === ref.id)?.name
-      : ref.kind === 'sheet:character' || ref.kind === 'voice'
+      : ref.kind === 'voice'
         ? planCharacters?.find((c) => c.id === ref.id)?.name
-        : undefined;
+        : ref.kind === 'sheet:character'
+          ? sheetLookName(planCharacters ?? [], ref.id)
+          : undefined;
   const continueBlocked = blockedLines(
     footerPlan,
     continueStopAtClamped,

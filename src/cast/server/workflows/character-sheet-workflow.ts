@@ -31,15 +31,19 @@ import type {
 } from '@/platform/server/workflow/types';
 import { landSheetRun } from './sheet-divergence';
 import type { SheetRunOutcome } from './sheet-divergence';
-import { characterSheetHashMatchesStored } from './sheet-snapshots';
+import {
+  characterSheetHashMatchesStored,
+  sheetLookId,
+} from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 
 /**
- * Land the sheet through the claim the trigger took (#1113): select it only
- * while the claim still names it, else park it as divergent and tell the UI.
+ * Land the sheet on its look (#2015) through the claim the trigger took
+ * (#1113): select it only while the claim still names it, else park it as
+ * divergent and tell the UI.
  * A run queued before #1113 carries no claim: it lands only while no newer run
  * holds one, and otherwise parks instead of revoking that run's claim.
  */
@@ -63,6 +67,9 @@ async function landSheet(
     land: () =>
       scopedDb.characterSheetVariants.promoteIfPending({
         characterId: input.characterDbId,
+        lookId: sheetLookId(input),
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
+        lookVersionId: input.lookVersionId ?? null,
         versionId,
         claimed,
         url: stored.url,
@@ -168,6 +175,7 @@ async function persistReusedTalentSheet(params: {
       sheetImageUrl: storageResult.url,
       sheetImagePath: storageResult.path,
       characterDbId,
+      lookId: sheetLookId(input),
       diverged: true,
     };
   }
@@ -187,6 +195,7 @@ async function persistReusedTalentSheet(params: {
     sheetImageUrl: storageResult.url,
     sheetImagePath: storageResult.path,
     characterDbId,
+    lookId: sheetLookId(input),
     sheetVersionId: reconcileOutcome.versionId,
   };
 }
@@ -264,7 +273,9 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         const { prompt, referenceUrls } = buildCharacterSheetPrompt(
           input.characterMetadata,
           talentOverrides,
-          input.styleConfig
+          input.styleConfig,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
+          input.lookStyling ?? null
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
@@ -420,6 +431,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sheetImageUrl,
         sheetImagePath,
         characterDbId: input.characterDbId,
+        lookId: sheetLookId(input),
         diverged: true,
       };
     }
@@ -441,6 +453,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       sheetImageUrl,
       sheetImagePath,
       characterDbId: input.characterDbId,
+      lookId: sheetLookId(input),
       sheetVersionId,
     };
 
@@ -458,11 +471,11 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   }): Promise<void> {
     const input = event.payload;
 
-    // Mark character sheet as failed — through the claim, so a newer run's
+    // Mark the look's sheet as failed — through the claim, so a newer run's
     // claim and `generating` status survive this one's failure (#1113).
     if (input.characterDbId) {
-      await scopedDb.characters.failSheetClaim(
-        input.characterDbId,
+      await scopedDb.characterLooks.failSheetClaim(
+        sheetLookId(input),
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         input.sheetVersionId ?? null,
         error

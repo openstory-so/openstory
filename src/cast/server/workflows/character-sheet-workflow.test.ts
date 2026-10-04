@@ -82,10 +82,8 @@ const mockFailSheetClaim = vi.fn();
 function makeScopedDb(): WorkflowScopedDb {
   // stub covering only the scoped-db surface runImpl touches
   return asStub<WorkflowScopedDb>({
-    characters: {
-      updateSheetStatus: mockUpdateSheetStatus,
-      failSheetClaim: mockFailSheetClaim,
-    },
+    characters: { updateSheetStatus: mockUpdateSheetStatus },
+    characterLooks: { failSheetClaim: mockFailSheetClaim },
     characterSheetVariants: { promoteIfPending: mockPromoteIfPending },
     provenance: {},
     liveRead: {},
@@ -118,6 +116,11 @@ async function makeEvent(
     teamId: 'team-1',
     sequenceId: 'seq-1',
     characterDbId: 'char-1',
+    lookId: 'look-1',
+    lookVersionId: 'lookver-1',
+    lookName: 'Gala gown',
+    lookStyling: null,
+    talentId: null,
     bibleVersionId: null,
     characterName: 'Sam',
     characterMetadata,
@@ -240,13 +243,50 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
     delete asStub<Partial<CharacterSheetWorkflowInput>>(legacy.payload)
       .sheetVersionId;
     await makeWorkflow().failBody(legacy, makeScopedDb());
-    expect(mockFailSheetClaim).toHaveBeenCalledWith('char-1', null, 'boom');
+    expect(mockFailSheetClaim).toHaveBeenCalledWith('look-1', null, 'boom');
     expect(mockUpdateSheetStatus).not.toHaveBeenCalled();
   });
 
-  it('fails only its own claim', async () => {
+  it('fails only its own claim, on its own look', async () => {
     await makeWorkflow().failBody(await makeEvent(), makeScopedDb());
-    expect(mockFailSheetClaim).toHaveBeenCalledWith('char-1', 'ver-1', 'boom');
+    expect(mockFailSheetClaim).toHaveBeenCalledWith('look-1', 'ver-1', 'boom');
     expect(mockUpdateSheetStatus).not.toHaveBeenCalled();
+  });
+
+  it('lands on the look the payload names, stamping its version (#2015)', async () => {
+    mockPromoteIfPending.mockResolvedValue('promoted');
+    const result = await makeWorkflow().runBody(
+      await makeEvent(),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(mockPromoteIfPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        characterId: 'char-1',
+        lookId: 'look-1',
+        lookVersionId: 'lookver-1',
+      })
+    );
+    expect(result.lookId).toBe('look-1');
+  });
+
+  it("lands a run queued before #2015 on the character's default look", async () => {
+    mockPromoteIfPending.mockResolvedValue('promoted');
+    const legacy = await makeEvent();
+    // a pre-#2015 payload names no look
+    const payload = asStub<Partial<CharacterSheetWorkflowInput>>(
+      legacy.payload
+    );
+    delete payload.lookId;
+    delete payload.lookVersionId;
+    delete payload.lookStyling;
+
+    await makeWorkflow().runBody(legacy, makeStep(), makeScopedDb());
+    // The default look's id is the character's.
+    expect(mockPromoteIfPending).toHaveBeenCalledWith(
+      expect.objectContaining({ lookId: 'char-1', lookVersionId: null })
+    );
+    await makeWorkflow().failBody(legacy, makeScopedDb());
+    expect(mockFailSheetClaim).toHaveBeenCalledWith('char-1', 'ver-1', 'boom');
   });
 });

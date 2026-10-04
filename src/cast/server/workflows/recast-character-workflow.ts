@@ -23,7 +23,11 @@ import type {
 } from '@/platform/server/workflow/types';
 import { computeRegenerateShotsBatchHash } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { mergeRecastSheetIntoSnapshots } from './recast-snapshot';
-import { computeCharacterSheetHashFromDto } from './sheet-snapshots';
+import {
+  computeCharacterSheetHashFromDto,
+  sheetLookId,
+} from './sheet-snapshots';
+import { DEFAULT_LOOK_NAME } from '@/platform/server/db/schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
@@ -161,6 +165,17 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           'snapshotInputHash'
         > = {
           characterDbId: input.characterDbId,
+          // A recast queued before #2015 names no look: the default look and
+          // its first version both took the character's id.
+          lookId: sheetLookId(input),
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
+          lookVersionId: input.lookVersionId ?? input.characterDbId,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
+          lookName: input.lookName ?? DEFAULT_LOOK_NAME,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
+          lookStyling: input.lookStyling ?? null,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
+          talentId: input.talentId ?? null,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,
           sequenceId: input.sequenceId,

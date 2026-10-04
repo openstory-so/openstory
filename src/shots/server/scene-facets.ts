@@ -58,6 +58,7 @@ export async function loadSceneFacets(scopedDb: ScopedDb, sequence: Sequence) {
 
     characterIdsByShot[shot.id] = matchCharactersToShotImage(characters, {
       characterTags: scene?.continuity?.characterTags,
+      characterLooks: scene?.continuity?.characterLooks,
       visualPrompt: promptByShotId.get(shot.id),
     }).map((c) => c.id);
 

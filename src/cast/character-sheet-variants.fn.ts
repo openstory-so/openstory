@@ -38,8 +38,8 @@ export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
       throw new Error('Character not found in this sequence');
     }
     const rows =
-      await context.scopedDb.characterSheetVariants.listHistoryByCharacter(
-        character.id
+      await context.scopedDb.characterSheetVariants.listHistoryByLook(
+        character.lookId
       );
     return {
       selectedSheetVersionId: character.selectedSheetVersionId,

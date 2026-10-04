@@ -2,9 +2,9 @@
  * Character sheet versions (append-only) plus mid-flight divergence parking.
  *
  * Each row is one sheet image — a generated take, an upload, or a snapshot of
- * a pre-versioning primary. The live sheet is whichever row
- * `characters.selectedSheetVersionId` points at; `characters.sheetImageUrl` is
- * a denormalized mirror. Re-rolls accumulate; they never overwrite.
+ * a pre-versioning primary — of one look of a character (#2015). The live
+ * sheet is whichever row the look's `selectedSheetVersionId` points at.
+ * Re-rolls accumulate; they never overwrite.
  *
  * `divergedAt IS NOT NULL` still marks a mid-flight output whose inputs moved
  * (the workflow finished against a snapshot that no longer matches live).
@@ -41,6 +41,10 @@ export const characterSheetVariants = snakeCase.table(
     characterId: text()
       .notNull()
       .references(() => characters.id, { onDelete: 'cascade' }),
+    // The look this sheet draws (#2015). No FK, like the pointers that name
+    // these rows. Null only on a row an older worker wrote during the #2015
+    // deploy: it is a sheet of the character's default look.
+    lookId: text(),
 
     model: text({ length: 100 }).notNull(),
 
@@ -60,6 +64,10 @@ export const characterSheetVariants = snakeCase.table(
     // the trigger. Null on rows from before bible history and on uploads,
     // which read no bible.
     bibleVersionId: text(),
+    // The `character_look_versions` row the run read (#2015), snapshotted at
+    // the trigger. Null on rows from before looks and on uploads, which read
+    // no look.
+    lookVersionId: text(),
     divergedAt: integer({ mode: 'timestamp' }),
     // Soft-delete marker; preserves the artifact for the toast Undo.
     discardedAt: integer({ mode: 'timestamp' }),
@@ -73,10 +81,11 @@ export const characterSheetVariants = snakeCase.table(
   },
   (table) => [
     index('idx_character_sheet_variants_character').on(table.characterId),
-    // One parked divergent per (character, model, input hash). History rows
+    index('idx_character_sheet_variants_look').on(table.lookId),
+    // One parked divergent per (look, model, input hash). History rows
     // (divergedAt IS NULL) are unrestricted so same-input re-rolls accumulate.
-    uniqueIndex('character_sheet_variants_divergent_key')
-      .on(table.characterId, table.model, table.inputHash)
+    uniqueIndex('character_sheet_variants_look_divergent_key')
+      .on(table.lookId, table.model, table.inputHash)
       .where(sql`${table.divergedAt} IS NOT NULL`),
   ]
 );

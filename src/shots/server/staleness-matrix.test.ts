@@ -23,6 +23,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
+  CharacterLook,
   CharacterWithSheet,
   Frame,
   FrameVariant,
@@ -74,9 +75,37 @@ const STYLE: StyleConfig = {
 };
 
 type CharacterRow = CharacterWithSheet;
+/**
+ * A character as a scoped read returns it (#2015): wearing its default look,
+ * whose id is the character's. `withLooks` lists that look the way the read
+ * does, from the row's own fields, plus any others a test adds.
+ */
+const defaultLookOf = (c: CharacterRow): CharacterLook =>
+  asStub<CharacterLook>({
+    id: c.id,
+    characterId: c.id,
+    isDefault: true,
+    deletedAt: null,
+    lookVersionId: `lookver-${c.id}`,
+    name: 'Default',
+    clothing: c.standardClothing,
+    styling: c.styling,
+    sheetStatus: c.sheetStatus,
+    sheetImageUrl: c.sheetImageUrl,
+    sheetInputHash: c.sheetInputHash,
+    selectedSheetVersionId: c.selectedSheetVersionId,
+  });
+const withLooks = (c: CharacterRow, others: CharacterLook[] = []) => ({
+  ...c,
+  looks: [defaultLookOf(c), ...others],
+});
 const character = (fields: Partial<CharacterRow>): CharacterRow =>
   asStub<CharacterRow>({
     sequenceId: 'seq',
+    lookId: fields.id,
+    lookName: 'Default',
+    styling: null,
+    looks: [],
     age: '30',
     gender: null,
     ethnicity: null,
@@ -409,6 +438,7 @@ function wouldBeSent(world: World): ReadonlySet<string> {
     },
     {
       characterTags: world.scene.continuity?.characterTags,
+      characterLooks: world.scene.continuity?.characterLooks,
       environmentTag: world.scene.continuity?.environmentTag,
       sceneLocation: world.scene.metadata?.location,
       elementTags: world.scene.continuity?.elementTags,
@@ -797,6 +827,104 @@ describe('staleness matrix — a shot and its clip', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Looks (#2015) — a scene dresses each character in one look. The still
+// follows that look's sheet and the prompts its clothing, so a look edit
+// reaches only the scenes that wear it.
+// ---------------------------------------------------------------------------
+
+const GALA = asStub<CharacterLook>({
+  id: 'look-gala',
+  characterId: 'c-alice',
+  isDefault: false,
+  deletedAt: null,
+  lookVersionId: 'lookver-gala-1',
+  name: 'Gala gown',
+  clothing: 'red gown',
+  styling: null,
+  sheetStatus: 'completed',
+  sheetImageUrl: '/r2/alice-gala.png',
+  sheetInputHash: 'alice-gala-sheet-hash',
+  selectedSheetVersionId: 'csv-alice-gala-1',
+});
+/** Alice owns a gala look; whether a scene wears it is the scene's pick. */
+const withGala = (w: World, gala: CharacterLook = GALA): World => ({
+  ...w,
+  characters: w.characters.map((c) =>
+    c.id === 'c-alice' ? withLooks(c, [gala]) : c
+  ),
+});
+const inGala = (w: World): World =>
+  withContinuity(w, { characterLooks: { alice: 'look-gala' } });
+
+describe('staleness matrix — looks (#2015)', () => {
+  const verdictsOf = async (world: World, stamps: Stamps) => {
+    const v = await shotVerdicts(world, stamps);
+    return {
+      still: v.thumbnail,
+      visualPrompt: v.visualPrompt,
+      motionPrompt: v.motionPrompt,
+    };
+  };
+  const FRESH = {
+    still: 'fresh',
+    visualPrompt: 'fresh',
+    motionPrompt: 'fresh',
+  };
+  const galaEdited: CharacterLook = {
+    ...GALA,
+    lookVersionId: 'lookver-gala-2',
+    clothing: 'blue gown',
+  };
+  const galaRedrawn: CharacterLook = {
+    ...galaEdited,
+    selectedSheetVersionId: 'csv-alice-gala-2',
+  };
+
+  it('a look no scene wears changes nothing', async () => {
+    expect(await verdictsOf(withGala(BASE), await stampShot())).toEqual(FRESH);
+  });
+
+  it('switching the scene to another look stales its still and prompts', async () => {
+    expect(await verdictsOf(inGala(withGala(BASE)), await stampShot())).toEqual(
+      { still: 'stale', visualPrompt: 'stale', motionPrompt: 'stale' }
+    );
+  });
+
+  it('editing a look leaves a scene that does not wear it fresh', async () => {
+    const stamps = await stampShot(withGala(BASE));
+    expect(await verdictsOf(withGala(BASE, galaRedrawn), stamps)).toEqual(
+      FRESH
+    );
+  });
+
+  it('editing a look stales the prompts of a scene that wears it, and its still once the sheet is redrawn', async () => {
+    const stamps = await stampShot(inGala(withGala(BASE)));
+    expect(await verdictsOf(inGala(withGala(BASE)), stamps)).toEqual(FRESH);
+    // The clothing moved: the prompts read it. The still attaches the sheet,
+    // which is stale on its own row until it is redrawn.
+    expect(
+      await verdictsOf(inGala(withGala(BASE, galaEdited)), stamps)
+    ).toEqual({ still: 'fresh', visualPrompt: 'stale', motionPrompt: 'stale' });
+    expect(
+      await verdictsOf(inGala(withGala(BASE, galaRedrawn)), stamps)
+    ).toEqual({ still: 'stale', visualPrompt: 'stale', motionPrompt: 'stale' });
+  });
+
+  it('editing the default look leaves a scene in another look fresh', async () => {
+    const stamps = await stampShot(inGala(withGala(BASE)));
+    const defaultEdited = inGala(
+      withGala(
+        withCharacter(BASE, 'c-alice', {
+          standardClothing: 'grey overalls',
+          selectedSheetVersionId: 'csv-alice-2',
+        })
+      )
+    );
+    expect(await verdictsOf(defaultEdited, stamps)).toEqual(FRESH);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Reference sheets — `readReferenceStaleness`, stamped by the regenerate
 // payload builder, the writer a Generate click uses.
 // ---------------------------------------------------------------------------
@@ -854,7 +982,7 @@ function castDb(world: CastWorld) {
     userId: 'user-1',
     teamId: 'team-1',
     sequences: { getById: () => Promise.resolve(world.sequence) },
-    characters: { getById: () => Promise.resolve(world.alice) },
+    characters: { getById: () => Promise.resolve(withLooks(world.alice)) },
     sequenceLocations: { getById: () => Promise.resolve(world.beach) },
     talent: { getWithRelations: () => Promise.resolve(world.talent) },
     locations: { getById: () => Promise.resolve(world.library) },
@@ -878,7 +1006,8 @@ async function stampSheets(): Promise<CastWorld> {
   const [sheet, reference] = await Promise.all([
     buildRegenerateCharacterSheetPayload({
       ...context,
-      character: CAST_BASE.alice,
+      character: withLooks(CAST_BASE.alice),
+      lookId: CAST_BASE.alice.lookId,
     }),
     buildRegenerateLocationSheetPayload({
       ...context,
@@ -913,6 +1042,27 @@ const SHEET_MATRIX: SheetRow[] = [
       alice: { ...w.alice, physicalDescription: 'short, red hair' },
     }),
     character: 'stale',
+    location: 'fresh',
+  },
+  {
+    mutation: "Alice's default look's clothing edited (#2015)",
+    apply: (w) => ({
+      ...w,
+      alice: { ...w.alice, standardClothing: 'red raincoat' },
+    }),
+    character: 'stale',
+    location: 'fresh',
+  },
+  {
+    mutation: "Alice's default look given styling notes (#2015)",
+    apply: (w) => ({ ...w, alice: { ...w.alice, styling: 'split lip' } }),
+    character: 'stale',
+    location: 'fresh',
+  },
+  {
+    mutation: "Alice's default look renamed (a label, #2015)",
+    apply: (w) => ({ ...w, alice: { ...w.alice, lookName: 'Office' } }),
+    character: 'fresh',
     location: 'fresh',
   },
   {
@@ -1055,6 +1205,52 @@ describe('staleness matrix — reference sheets', () => {
     const stamped = await stampSheets();
     expect(await verdict(stamped, 'character')).toBe('fresh');
     expect(await verdict(stamped, 'location')).toBe('fresh');
+  });
+
+  it("verifies each look's sheet against its own clothing (#2015)", async () => {
+    const stamped = await stampSheets();
+    // Alice with a second look, its sheet stamped from that look.
+    const aliceWith = (gala: CharacterLook) => withLooks(stamped.alice, [gala]);
+    const db = (gala: CharacterLook) =>
+      asStub<ScopedDb>({
+        ...castDb(stamped),
+        characters: { getById: () => Promise.resolve(aliceWith(gala)) },
+      });
+    const { snapshotInputHash } = await buildRegenerateCharacterSheetPayload({
+      scopedDb: db(GALA),
+      userId: 'user-1',
+      teamId: 'team-1',
+      sequence: stamped.sequence,
+      character: aliceWith(GALA),
+      lookId: GALA.id,
+    });
+    const gala = { ...GALA, sheetInputHash: snapshotInputHash };
+    const galaVerdict = async (look: CharacterLook) =>
+      (
+        await readReferenceStaleness(
+          db(look),
+          'seq',
+          'character',
+          'c-alice',
+          GALA.id
+        )
+      ).status;
+
+    expect(await galaVerdict(gala)).toBe('fresh');
+    expect(await galaVerdict({ ...gala, clothing: 'blue gown' })).toBe('stale');
+    // The gown's edit leaves the default look's sheet alone.
+    expect(
+      (
+        await readReferenceStaleness(
+          db({ ...gala, clothing: 'blue gown' }),
+          'seq',
+          'character',
+          'c-alice'
+        )
+      ).status
+    ).toBe('fresh');
+    // The two looks are different sheets: different digests.
+    expect(snapshotInputHash).not.toBe(stamped.alice.sheetInputHash);
   });
 
   it.each(SHEET_MATRIX)(

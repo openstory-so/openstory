@@ -16,6 +16,7 @@
  */
 
 import { computeShotImageInputHash } from '@/shots/input-hash';
+import { withLookSheet } from '@/cast/character-looks';
 import type { TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -100,12 +101,12 @@ export async function buildRecastRegenerateSnapshots(params: {
     subject.kind === 'character'
       ? [
           ...characters.filter((c) => c.id !== subject.character.id),
-          {
-            ...subject.character,
+          // The recast redraws the default look's sheet (#2015).
+          withLookSheet(subject.character, subject.character.lookId, {
             sheetImageUrl: PENDING_SHEET_URL,
             sheetInputHash: PENDING_SHEET_HASH,
             selectedSheetVersionId: null,
-          },
+          }),
         ]
       : characters;
   const resolvedLocations =

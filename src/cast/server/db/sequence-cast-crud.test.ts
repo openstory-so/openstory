@@ -41,6 +41,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createCharacterLooksMethods } from './character-looks';
 import { createCharactersMethods } from './characters';
 import { createSequenceElementsMethods } from './sequence-elements';
 import { createSequenceLocationsMethods } from './sequence-locations';
@@ -1179,12 +1180,16 @@ describe('bible history (#1600)', () => {
     const [first] = await characterVersions(created.id);
     expect(first).toMatchObject({
       name: 'Ada',
-      standardClothing: 'coat',
       voiceOnly: false,
       isPerson: true,
       source: 'analysis',
     });
     expect(created.selectedBibleVersionId).toBe(first?.id);
+    // The clothing is its default look's (#2015), not the bible's.
+    expect(created).toMatchObject({
+      standardClothing: 'coat',
+      looks: [{ id: created.id, isDefault: true, clothing: 'coat' }],
+    });
   });
 
   it('a re-analysis appends only when a field moved, keeping what it left out', async () => {
@@ -1220,10 +1225,10 @@ describe('bible history (#1600)', () => {
     );
     const edited = await m.updateBible(
       created.id,
-      { standardClothing: 'dress' },
+      { age: '40s' },
       { actorId, source: 'edit' }
     );
-    expect(edited.standardClothing).toBe('dress');
+    expect(edited.age).toBe('40s');
     const versions = await characterVersions(created.id);
     expect(versions).toHaveLength(2);
     expect(
@@ -1232,10 +1237,55 @@ describe('bible history (#1600)', () => {
 
     await m.updateBible(
       created.id,
-      { standardClothing: 'dress' },
+      { age: '40s' },
       { actorId, source: 'edit' }
     );
     expect(await characterVersions(created.id)).toHaveLength(2);
+  });
+
+  it('a clothing edit appends a look version, not a bible version (#2015)', async () => {
+    const m = createCharactersMethods(db);
+    const looks = createCharacterLooksMethods(db);
+    const created = await m.create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const edited = await m.updateBible(
+      created.id,
+      { standardClothing: 'dress' },
+      { actorId, source: 'edit' }
+    );
+    expect(edited.standardClothing).toBe('dress');
+    expect(await characterVersions(created.id)).toHaveLength(1);
+    const versions = await looks.listVersions(created.lookId);
+    expect(versions).toHaveLength(2);
+    expect(versions[0]).toMatchObject({
+      clothing: 'dress',
+      source: 'edit',
+      createdBy: actorId,
+    });
+
+    await m.updateBible(
+      created.id,
+      { standardClothing: 'dress' },
+      { actorId, source: 'edit' }
+    );
+    expect(await looks.listVersions(created.lookId)).toHaveLength(2);
+
+    // A re-analysis that moves the clothing appends one too.
+    await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'gown',
+      },
+      analysis
+    );
+    expect((await looks.listVersions(created.lookId))[0]).toMatchObject({
+      clothing: 'gown',
+      source: 'analysis',
+    });
   });
 
   it('a row with no version reads its old columns, and its first edit versions it', async () => {
@@ -1260,13 +1310,15 @@ describe('bible history (#1600)', () => {
       { age: '50s' },
       { actorId, source: 'edit' }
     );
-    expect(edited).toMatchObject({ name: 'Old', standardClothing: 'coat' });
-    const [version] = await characterVersions(id);
-    expect(version).toMatchObject({
+    // The clothing moved onto a default look (#2015) before the bible
+    // version, which no longer carries it, was appended.
+    expect(edited).toMatchObject({
       name: 'Old',
-      age: '50s',
       standardClothing: 'coat',
+      looks: [{ id, isDefault: true, clothing: 'coat' }],
     });
+    const [version] = await characterVersions(id);
+    expect(version).toMatchObject({ name: 'Old', age: '50s' });
   });
 
   it('locations: create, bulk re-analysis and edits append the same way', async () => {

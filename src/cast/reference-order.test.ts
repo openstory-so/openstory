@@ -19,6 +19,10 @@ it('binds shuffled bible references by logical identity without mutating inputs'
     sheetStatus: 'completed',
     sheetInputHash: null,
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
     physicalDescription: '',
     voiceOnly: false,
     isPerson: true,

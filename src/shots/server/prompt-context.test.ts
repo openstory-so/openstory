@@ -513,6 +513,11 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     sheetError: null,
     sheetInputHash: null,
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
     selectedBibleVersionId: null,
     pendingPromoteSheetVersionId: null,
     deletedAt: null,

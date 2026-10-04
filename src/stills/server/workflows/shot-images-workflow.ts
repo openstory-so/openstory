@@ -229,6 +229,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         // snapshot, never a scene-keyed map whose last shot wins for everyone.
         matchCharactersToShotImage(charactersWithSheets, {
           characterTags: scene.continuity?.characterTags,
+          characterLooks: scene.continuity?.characterLooks,
           visualPrompt,
         })
       );

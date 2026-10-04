@@ -397,6 +397,11 @@ const continuitySchema = z.object({
     description:
       "Snake_case slug of each character's name as written in the script (e.g., 'GIRL ONE' → 'girl_one'). Optional descriptive context may be appended after the name slug (e.g., 'girl_one_bathroom_morning'). One entry per character appearing in the scene.",
   }),
+  // The look each character wears in this scene (#2015): character tag →
+  // `character_looks.id`. A character with no entry wears its default look,
+  // so a scene stored before looks — which has no map at all — is every
+  // character in its default.
+  characterLooks: z.record(z.string(), z.string()).optional(),
   environmentTag: z.string().meta({
     description:
       'Snake_case tag matching the location bible consistencyTag format',

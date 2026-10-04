@@ -47,7 +47,11 @@ export const characterBibleVersions = snakeCase.table(
     gender: text(),
     ethnicity: text(),
     physicalDescription: text(),
-    standardClothing: text(),
+    // LEGACY (#2015): clothing belongs to the character's looks
+    // (`character_look_versions.clothing`). Read only as the fallback for a
+    // character with no look, and to say what a sheet made before looks was
+    // drawn in; never written.
+    legacyStandardClothing: text('standard_clothing'),
     distinguishingFeatures: text(),
     personality: text(),
     movement: text(),
@@ -114,7 +118,6 @@ export const CHARACTER_BIBLE_FIELDS = [
   'gender',
   'ethnicity',
   'physicalDescription',
-  'standardClothing',
   'distinguishingFeatures',
   'personality',
   'movement',

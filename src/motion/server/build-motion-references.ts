@@ -42,6 +42,8 @@ import {
 type SceneReferenceInput = {
   continuity?: {
     characterTags?: string[];
+    /** Character tag → look id (#2015); absent = everyone in their default. */
+    characterLooks?: Record<string, string>;
     elementTags?: string[] | null;
     environmentTag?: string | null;
   } | null;
@@ -99,6 +101,7 @@ export function buildMotionReferenceImages(params: {
     },
     {
       characterTags: scene?.continuity?.characterTags,
+      characterLooks: scene?.continuity?.characterLooks,
       environmentTag: scene?.continuity?.environmentTag,
       sceneLocation: scene?.metadata?.location,
       elementTags: scene?.continuity?.elementTags,
@@ -138,6 +141,7 @@ export function buildShotImageReferenceImages(params: {
 
   const matchedCharacters = matchCharactersToShotImage(characters, {
     characterTags: scene?.continuity?.characterTags,
+    characterLooks: scene?.continuity?.characterLooks,
     visualPrompt,
   });
   const matchedLocations = matchLocationsToScene(

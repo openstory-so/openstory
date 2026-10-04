@@ -256,6 +256,22 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.talent.id,
     }),
     sheetVariants: r.many.characterSheetVariants(),
+    looks: r.many.characterLooks(),
+  },
+
+  characterLooks: {
+    character: r.one.characters({
+      from: r.characterLooks.characterId,
+      to: r.characters.id,
+    }),
+    versions: r.many.characterLookVersions(),
+  },
+
+  characterLookVersions: {
+    look: r.one.characterLooks({
+      from: r.characterLookVersions.lookId,
+      to: r.characterLooks.id,
+    }),
   },
 
   characterVoiceVersions: {

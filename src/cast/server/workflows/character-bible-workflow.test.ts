@@ -50,9 +50,36 @@ function makeStep(): WorkflowStep {
   });
 }
 
+// The upsert's row, as a scoped read returns it: wearing its default look,
+// which takes the character's own id (#2015).
 const characterCreate = vi.fn(
-  async (row: { id: string; characterId: string }) => row
+  async (row: {
+    id: string;
+    characterId: string;
+    standardClothing?: string | null;
+    talentId?: string | null;
+  }) => ({
+    ...row,
+    talentId: row.talentId ?? null,
+    selectedBibleVersionId: `bible-${row.id}`,
+    lookId: row.id,
+    lookName: 'Default',
+    looks: [
+      {
+        id: row.id,
+        isDefault: true,
+        lookVersionId: `lookver-${row.id}`,
+        name: 'Default',
+        clothing: row.standardClothing ?? null,
+        styling: null,
+      },
+    ],
+  })
 );
+const claimSheet = vi.fn(async (lookId: string) => ({
+  versionId: `ver-${lookId}`,
+  held: true,
+}));
 const createPendingVoiceClaim = vi.fn(
   async (): Promise<{
     version: { id: string; workflowRunId: string | null };
@@ -69,10 +96,10 @@ function makeScopedDb(): WorkflowScopedDb {
   return asStub<WorkflowScopedDb>({
     characters: {
       create: characterCreate,
-      claimSheet: vi.fn(async (id: string) => `ver-${id}`),
       createPendingVoiceClaim,
       markVoiceClaimTerminal,
     },
+    characterLooks: { claimSheet },
   });
 }
 
@@ -375,6 +402,21 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
 
     expect(childPayload.sheetVersionId).toBe(`ver-${row.id}`);
     expect(childPayload.snapshotInputHash).toBeDefined();
+    // The claim names what the run was snapshotted from, so it is taken only
+    // while that still holds (#1863).
+    expect(childPayload).toMatchObject({
+      lookId: row.id,
+      lookVersionId: `lookver-${row.id}`,
+    });
+    expect(claimSheet).toHaveBeenCalledWith(
+      row.id,
+      expect.objectContaining({
+        lookVersionId: `lookver-${row.id}`,
+        bibleVersionId: `bible-${row.id}`,
+        talentId: null,
+      }),
+      { markGenerating: false }
+    );
 
     // The staleness check hashes the stored row, not the LLM entry: a
     // pipeline sheet must not read "stale" the moment it lands.

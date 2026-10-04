@@ -65,6 +65,11 @@ function makeCharacter(
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
     selectedBibleVersionId: null,
     pendingPromoteSheetVersionId: null,
     talentId: null,

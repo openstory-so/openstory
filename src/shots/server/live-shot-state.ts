@@ -81,6 +81,7 @@ export async function loadLiveShotInputs(
       { characters: [...characters], locations, elements },
       {
         characterTags: ctx?.scene.continuity?.characterTags,
+        characterLooks: ctx?.scene.continuity?.characterLooks,
         environmentTag: ctx?.scene.continuity?.environmentTag,
         sceneLocation: ctx?.scene.location,
         elementTags: ctx?.scene.continuity?.elementTags,

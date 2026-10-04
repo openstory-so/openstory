@@ -63,6 +63,7 @@ import {
 } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
 import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
+import { deleteLooksOfCharacters } from '@/cast/server/db/character-looks';
 
 /**
  * {@link ShotReadiness} plus the scalars a production status derives from: which
@@ -890,8 +891,9 @@ export function createSequencesMethods(
     },
 
     delete: async (sequenceId: string): Promise<void> => {
-      // The #1600 version tables RESTRICT their parents' delete (the #612
-      // rebuild trap), so they go first, in the same batch as the cascade.
+      // The #1600 version tables and the #2015 looks RESTRICT their parents'
+      // delete (the #612 rebuild trap), so they go first, in the same batch
+      // as the cascade.
       await db.batch([
         db
           .delete(sequenceStyleVersions)
@@ -907,6 +909,7 @@ export function createSequencesMethods(
                 .where(eq(characters.sequenceId, sequenceId))
             )
           ),
+        ...deleteLooksOfCharacters(db, eq(characters.sequenceId, sequenceId)),
         db
           .delete(locationBibleVersions)
           .where(

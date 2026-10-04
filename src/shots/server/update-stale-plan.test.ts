@@ -514,7 +514,12 @@ describe('claimTargets (#1085)', () => {
       staleVideoVersionId: null,
       referenceIds: [],
       attachSceneHeader: false,
-      motionRender: { packedScene: {}, description: '', selectedModel: null },
+      motionRender: {
+        packedScene: {},
+        description: '',
+        selectedModel: null,
+        characterLooks: null,
+      },
       dialogue: { presence: false, lines: [] },
       dialogueContext: [],
       ...overrides,

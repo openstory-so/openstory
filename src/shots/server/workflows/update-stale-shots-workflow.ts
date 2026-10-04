@@ -47,6 +47,8 @@
  * are skipped, not rendered from stale inputs.
  */
 
+import { withLookSheet } from '@/cast/character-looks';
+import { sheetLookId } from '@/cast/server/workflows/sheet-snapshots';
 import { generateId } from '@/platform/id';
 import {
   DEFAULT_MUSIC_MODEL,
@@ -396,11 +398,33 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       };
       await Promise.allSettled([
         ...references.characterSheets.map(async (payload) => {
-          const id = payload.characterDbId;
+          // One sheet per look (#2015). A default look's id is its
+          // character's, so a plan frozen before looks replays the same
+          // step names.
+          const id = sheetLookId(payload);
           let sheetVersionId: string;
           try {
-            sheetVersionId = await step.do(`claim-character-sheet-${id}`, () =>
-              scopedDb.characters.claimSheet(id, { markGenerating: true })
+            // Conditional (#1863): the payload was built at the click, and an
+            // edit since then found no claim to revoke. The claim is taken
+            // only while the look, the bible and the cast it was built from
+            // still hold; otherwise the run parks its sheet.
+            sheetVersionId = await step.do(
+              `claim-character-sheet-${id}`,
+              async () =>
+                (
+                  await scopedDb.characterLooks.claimSheet(
+                    id,
+                    {
+                      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
+                      lookVersionId: payload.lookVersionId ?? id,
+                      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #1600
+                      bibleVersionId: payload.bibleVersionId ?? null,
+                      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
+                      talentId: payload.talentId ?? null,
+                    },
+                    { markGenerating: true }
+                  )
+                ).versionId
             );
           } catch (error) {
             failReference(id, 'reference', error);
@@ -433,7 +457,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // A child that never started has no onFailure to clear the
             // claim; the guarded clear is a no-op when one did.
             await step.do(`fail-character-sheet-claim-${id}`, () =>
-              scopedDb.characters.failSheetClaim(
+              scopedDb.characterLooks.failSheetClaim(
                 id,
                 sheetVersionId,
                 error instanceof Error ? error.message : String(error)
@@ -577,16 +601,23 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // Frozen click-time rows, overlaid only with this run's child results.
     // A concurrent sheet selection cannot change a render already requested.
     const renderRefs: ShotImageRefs = {
-      characters: plan.renderRefs.characters.map((row) => {
-        const generated = generatedCharacters.get(row.id);
-        return generated
-          ? {
-              ...row,
-              sheetImageUrl: generated.sheetImageUrl,
-              selectedSheetVersionId: generated.sheetVersionId ?? null,
-            }
-          : row;
-      }),
+      // Each sheet this run made lands on its look (#2015), so a scene
+      // dressed in that look renders from it.
+      characters: plan.renderRefs.characters.map((row) =>
+        [...generatedCharacters].reduce(
+          (character, [lookId, generated]) =>
+            // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: rows frozen before #2015 have no looks; their sheet is under the character's id
+            (character.looks ?? []).some((look) => look.id === lookId) ||
+            // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: as above
+            (character.lookId ?? character.id) === lookId
+              ? withLookSheet(character, lookId, {
+                  sheetImageUrl: generated.sheetImageUrl,
+                  selectedSheetVersionId: generated.sheetVersionId ?? null,
+                })
+              : character,
+          row
+        )
+      ),
       locations: plan.renderRefs.locations.map((row) => {
         const generated = generatedLocations.get(row.id);
         return generated
@@ -1036,6 +1067,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             scene: {
               continuity: {
                 characterTags: target.motionRender.characterTags,
+                // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
+                characterLooks: target.motionRender.characterLooks ?? undefined,
                 elementTags: target.motionRender.elementTags,
                 environmentTag: target.motionRender.environmentTag,
               },

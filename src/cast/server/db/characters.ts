@@ -14,9 +14,9 @@ import {
   inArray,
   isNotNull,
   isNull,
-  or,
   sql,
 } from 'drizzle-orm';
+import type { SQL } from 'drizzle-orm';
 import type { Database } from '@/platform/server/db/client';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -29,17 +29,21 @@ import type {
   CharacterVoice,
   CharacterVoiceVersionSource,
   LegacyCharacterBibleColumn,
+  LegacyCharacterSheetColumn,
+  LookVersionSource,
   CharacterWithTalent,
   Shot,
   NewCharacter,
-  SheetStatus,
   VoicePreview,
   VoicePreviewUnusable,
   CharacterVoiceVersionStatus,
 } from '@/platform/server/db/schema';
 import {
   CHARACTER_BIBLE_FIELDS,
+  DEFAULT_LOOK_NAME,
   characterBibleVersions,
+  characterLookVersions,
+  characterLooks,
   characterSheetVariants,
   characterVoiceVersions,
   characters,
@@ -59,9 +63,18 @@ import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import {
   characterBibleChanged,
   characterBibleColumns,
+  legacyBibleClothing,
   pickCharacterBible,
   mergeDefined,
 } from './bible-versions';
+import {
+  createCharacterLooksMethods,
+  deleteLooksOfCharacters,
+  lookDefinitionWrite,
+  requireLook,
+} from './character-looks';
+import { demoteCharacterSheetClaims } from './sheet-claims';
+import { pickedLook, wearLook } from '@/cast/character-looks';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
@@ -71,7 +84,6 @@ const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
   gender: null,
   ethnicity: null,
   physicalDescription: null,
-  standardClothing: null,
   distinguishingFeatures: null,
   personality: null,
   movement: null,
@@ -87,7 +99,6 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
   gender: data.gender,
   ethnicity: data.ethnicity,
   physicalDescription: data.physicalDescription,
-  standardClothing: data.standardClothing,
   distinguishingFeatures: data.distinguishingFeatures,
   personality: data.personality,
   movement: data.movement,
@@ -95,6 +106,10 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
   isPerson: data.isPerson,
   consistencyTag: data.consistencyTag,
 });
+
+/** A look version says who wrote it; a recast is a person's edit. */
+const lookSource = (source: BibleVersionSource): LookVersionSource =>
+  source === 'recast' ? 'edit' : source;
 
 const mergeBible = (base: CharacterBible, patch: Partial<CharacterBible>) =>
   mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
@@ -146,48 +161,30 @@ const VOICE_FIELDS = [
   'useVoice',
 ] as const satisfies readonly (keyof CharacterVoiceUpdate)[];
 /**
- * The row's own columns, minus `useVoice` (see {@link CharacterVoiceUpdate})
- * and the bible, which only moves through {@link appendBible} (#1600).
+ * The row's own columns, minus `useVoice` (see {@link CharacterVoiceUpdate}),
+ * the bible, which only moves through {@link appendBible} (#1600), and the
+ * sheet state, which lives on the character's looks (#2015).
  */
 type CharacterUpdate = Partial<
   Omit<
     typeof characters.$inferInsert,
-    'useVoice' | LegacyCharacterBibleColumn | 'selectedBibleVersionId'
+    | 'useVoice'
+    | LegacyCharacterBibleColumn
+    | LegacyCharacterSheetColumn
+    | 'selectedBibleVersionId'
   >
 >;
 
 /**
- * The character's live sheet version (#1419 PR B).
- *
- * The explicit selection when there is one, else the row the #1419 backfill
- * keyed to the character's own id — the snapshot of the pre-versioning sheet
- * that used to live in the mirror columns. Both branches are a primary-key
- * lookup on `character_sheet_variants`.
- *
- * The pointer stays NULL on those legacy rows on purpose. It feeds the shot
- * thumbnail hash as `selectedSheetVersionId ?? sheetInputHash`
- * (`workflows/sheet-snapshots.ts`), so filling it would move the ingredient
- * for ~1,600 characters and read every shot referencing one as stale. It gets
- * set the first time anyone re-rolls or selects a version, through
- * `applyConvergent` / `select` — so the NULL drains as characters are touched
- * rather than being a permanent second class.
+ * The live sheet of a character with NO look (#2015) — one an older worker
+ * wrote during the deploy. The explicit selection when there is one, else the
+ * row the #1419 backfill keyed to the character's own id. Every other
+ * character's sheet resolves through its default look.
  */
-const liveSheetVersionId = sql`COALESCE(${characters.selectedSheetVersionId}, ${characters.id})`;
+const legacyLiveSheetVersionId = sql`COALESCE(${characters.legacySelectedSheetVersionId}, ${characters.id})`;
 
-/**
- * Character columns with the four sheet mirrors resolved from that live
- * version instead of read off the row (#1419). Same field names, so callers
- * are unchanged and PR C can drop the physical columns — at which point any
- * call site still reading them off a raw `Character` fails to compile, which
- * is how we find the ones that never came through here.
- *
- * `sheetStatus` and `sheetError` are NOT in this list. They are character-level
- * generation lifecycle, not version mirrors: `generating` is stamped at trigger
- * time and `failed` on workflow failure, both when no variant row exists to
- * carry them. (Frames solved the same gap by opening a primary row before the
- * status flips, #1942.)
- */
-// The row's own columns: the legacy bible is read only through the fallback.
+// The row's own columns: the legacy bible and sheet state are read only
+// through the fallbacks below.
 const {
   legacyName: _name,
   legacyAge: _age,
@@ -201,16 +198,34 @@ const {
   legacyVoiceOnly: _voiceOnly,
   legacyIsPerson: _isPerson,
   legacyConsistencyTag: _consistencyTag,
+  legacySheetStatus: _sheetStatus,
+  legacySheetError: _sheetError,
+  legacySelectedSheetVersionId: _selectedSheetVersionId,
+  legacyPendingPromoteSheetVersionId: _pendingPromoteSheetVersionId,
   ...characterRowColumns
 } = getTableColumns(characters);
 
-const charactersWithLiveSheet = {
+/**
+ * What a character with no look wears: the bible's old clothing and the
+ * row's own sheet state (#2015). {@link resolveLooks} strips these.
+ */
+const legacyLookColumns = {
+  legacyStandardClothing: legacyBibleClothing,
+  legacySheetStatus: characters.legacySheetStatus,
+  legacySheetError: characters.legacySheetError,
+  legacySelectedSheetVersionId: characters.legacySelectedSheetVersionId,
+  legacyPendingPromoteSheetVersionId:
+    characters.legacyPendingPromoteSheetVersionId,
+  legacySheetImageUrl: characterSheetVariants.url,
+  legacySheetImagePath: characterSheetVariants.storagePath,
+  legacySheetGeneratedAt: characterSheetVariants.generatedAt,
+  legacySheetInputHash: characterSheetVariants.inputHash,
+};
+
+const characterColumns = {
   ...characterRowColumns,
   ...characterBibleColumns,
-  sheetImageUrl: characterSheetVariants.url,
-  sheetImagePath: characterSheetVariants.storagePath,
-  sheetGeneratedAt: characterSheetVariants.generatedAt,
-  sheetInputHash: characterSheetVariants.inputHash,
+  ...legacyLookColumns,
   // The voice IS the selected version row (#1788); all null without one.
   voiceId: characterVoiceVersions.voiceId,
   voiceDescription: characterVoiceVersions.description,
@@ -229,10 +244,12 @@ const LIVE_VOICE_CLAIM_STATUSES = [
 ] as const satisfies readonly CharacterVoiceVersionStatus[];
 
 export function createCharactersMethods(db: Database) {
-  /** `select(charactersWithLiveSheet)` + the joins it depends on. */
-  const selectWithLiveSheet = () =>
+  const looks = createCharacterLooksMethods(db);
+
+  /** The character rows and the joins they depend on, looks not yet resolved. */
+  const selectRows = () =>
     db
-      .select(charactersWithLiveSheet)
+      .select(characterColumns)
       .from(characters)
       .leftJoin(
         characterBibleVersions,
@@ -240,21 +257,79 @@ export function createCharactersMethods(db: Database) {
       )
       .leftJoin(
         characterSheetVariants,
-        eq(characterSheetVariants.id, liveSheetVersionId)
+        eq(characterSheetVariants.id, legacyLiveSheetVersionId)
       )
       .leftJoin(
         characterVoiceVersions,
         eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
       );
+  type Row = Awaited<ReturnType<typeof selectRows>>[number];
 
-  /** A write's row, re-read so it carries the resolved bible, sheet and voice. */
+  /**
+   * Rows as every read returns them (#2015): each with its looks, wearing its
+   * default — clothing and sheet under the names the character's own columns
+   * had. A character with no look wears its legacy columns.
+   */
+  const resolveLooks = async (
+    rows: readonly Row[]
+  ): Promise<CharacterWithSheet[]> => {
+    if (rows.length === 0) return [];
+    const all = await looks.listByCharacters(rows.map((row) => row.id));
+    return rows.map((row) => {
+      const {
+        legacyStandardClothing,
+        legacySheetStatus,
+        legacySheetError,
+        legacySelectedSheetVersionId,
+        legacyPendingPromoteSheetVersionId,
+        legacySheetImageUrl,
+        legacySheetImagePath,
+        legacySheetGeneratedAt,
+        legacySheetInputHash,
+        ...character
+      } = row;
+      const own = all.filter((look) => look.characterId === row.id);
+      const worn = own.find((look) => look.isDefault);
+      if (worn) {
+        return {
+          ...wearLook({ ...character, looks: own }, worn),
+          sheetImagePath: worn.sheetImagePath,
+          sheetGeneratedAt: worn.sheetGeneratedAt,
+          sheetError: worn.sheetError,
+          pendingPromoteSheetVersionId: worn.pendingPromoteSheetVersionId,
+        };
+      }
+      return {
+        ...character,
+        looks: own,
+        lookId: row.id,
+        lookName: DEFAULT_LOOK_NAME,
+        standardClothing: legacyStandardClothing,
+        styling: null,
+        sheetStatus: legacySheetStatus,
+        sheetError: legacySheetError,
+        selectedSheetVersionId: legacySelectedSheetVersionId,
+        pendingPromoteSheetVersionId: legacyPendingPromoteSheetVersionId,
+        sheetImageUrl: legacySheetImageUrl,
+        sheetImagePath: legacySheetImagePath,
+        sheetGeneratedAt: legacySheetGeneratedAt,
+        sheetInputHash: legacySheetInputHash,
+      };
+    });
+  };
+
+  /** Resolved characters matching `where`. */
+  const selectCharacters = async (
+    where: SQL | undefined
+  ): Promise<CharacterWithSheet[]> =>
+    await resolveLooks(await selectRows().where(where));
+
+  /** A write's row, re-read so it carries the resolved bible, looks and voice. */
   const reread = async (
     row: Pick<CharacterRow, 'id'> | undefined
   ): Promise<CharacterWithSheet> => {
     if (!row) throw new Error('SequenceCharacter not found');
-    const [character] = await selectWithLiveSheet().where(
-      eq(characters.id, row.id)
-    );
+    const [character] = await selectCharacters(eq(characters.id, row.id));
     if (!character) throw new Error(`SequenceCharacter ${row.id} not found`);
     return character;
   };
@@ -262,9 +337,9 @@ export function createCharactersMethods(db: Database) {
   /**
    * The one writer of a bible (#1600): the statements that append a version
    * row and point the character at it, for the caller's own `db.batch`. A
-   * change to a field the sheet reads revokes the in-flight sheet run's claim
-   * (#1113) in the same batch. Empty when nothing moved and the row already
-   * has a version.
+   * change to a field the sheets read revokes the in-flight sheet claim of
+   * every look (#1113, #2015) in the same batch. Empty when nothing moved and
+   * the row already has a version.
    */
   const bibleWrite = (
     existing: Character,
@@ -290,19 +365,16 @@ export function createCharactersMethods(db: Database) {
         }),
         db
           .update(characters)
-          .set({
-            selectedBibleVersionId: versionId,
-            ...(touchesSheet(moved)
-              ? { pendingPromoteSheetVersionId: null }
-              : {}),
-            updatedAt: new Date(),
-          })
+          .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
           .where(eq(characters.id, existing.id)),
+        ...(touchesSheet(moved)
+          ? [demoteCharacterSheetClaims(db, eq(characters.id, existing.id))]
+          : []),
       ],
     };
   };
 
-  // Private update helper used by updateSheetStatus and updateSheet. Voice
+  // Private update helper. Voice
   // fields are NOT writable here — a new value goes through `updateVoice`,
   // which appends the history row and moves the pointer (#1657).
   const update = async (
@@ -345,7 +417,7 @@ export function createCharactersMethods(db: Database) {
     /** Who did this — required so no writer forgets; null when nobody did. */
     createdBy: string | null
   ): Promise<Character> => {
-    const [existing] = await selectWithLiveSheet().where(eq(characters.id, id));
+    const [existing] = await selectCharacters(eq(characters.id, id));
     if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
     const versionId = generateId();
     const [, updatedRows] = await db.batch([
@@ -380,9 +452,37 @@ export function createCharactersMethods(db: Database) {
     return await reread(updatedRows[0]);
   };
 
+  /** The live shots whose scene tags this character, optionally in one look. */
+  const shotsOf = async (
+    sequenceId: string,
+    characterId: string,
+    wearing?: string
+  ): Promise<Shot[]> => {
+    const [character] = await selectCharacters(eq(characters.id, characterId));
+    if (!character || character.sequenceId !== sequenceId) return [];
+    const [allShots, sceneContext] = await Promise.all([
+      db
+        .select()
+        .from(shots)
+        .where(
+          and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
+        ) as Promise<Shot[]>,
+      loadSceneContextBySequenceFromDb(db, sequenceId),
+    ]);
+    return allShots.filter((shot) => {
+      const continuity = resolveSceneForShot(shot, sceneContext).scene
+        ?.continuity;
+      if (!matchCharacterToShotTags(character, continuity?.characterTags ?? []))
+        return false;
+      if (wearing === undefined) return true;
+      const picked = pickedLook(character, continuity?.characterLooks);
+      return (picked?.id ?? character.lookId) === wearing;
+    });
+  };
+
   return {
     getById: async (id: string): Promise<CharacterWithSheet | null> => {
-      const result = await selectWithLiveSheet().where(eq(characters.id, id));
+      const result = await selectCharacters(eq(characters.id, id));
       return result[0] ?? null;
     },
 
@@ -390,7 +490,7 @@ export function createCharactersMethods(db: Database) {
       sequenceId: string,
       characterId: string
     ): Promise<CharacterWithSheet | null> => {
-      const result = await selectWithLiveSheet().where(
+      const result = await selectCharacters(
         and(
           eq(characters.sequenceId, sequenceId),
           eq(characters.characterId, characterId)
@@ -407,27 +507,31 @@ export function createCharactersMethods(db: Database) {
       sequenceId: string,
       page?: PageOptions
     ): Promise<CharacterWithSheet[]> => {
-      return await pageOf(
-        selectWithLiveSheet().$dynamic(),
-        and(
-          eq(characters.sequenceId, sequenceId),
-          isNull(characters.deletedAt)
-        ),
-        characters.id,
-        page
+      return await resolveLooks(
+        await pageOf(
+          selectRows().$dynamic(),
+          and(
+            eq(characters.sequenceId, sequenceId),
+            isNull(characters.deletedAt)
+          ),
+          characters.id,
+          page
+        )
       );
     },
 
     /** Soft-deleted characters of the sequence, most recently deleted first. */
     listDeleted: async (sequenceId: string): Promise<CharacterWithSheet[]> =>
-      await selectWithLiveSheet()
-        .where(
-          and(
-            eq(characters.sequenceId, sequenceId),
-            isNotNull(characters.deletedAt)
+      await resolveLooks(
+        await selectRows()
+          .where(
+            and(
+              eq(characters.sequenceId, sequenceId),
+              isNotNull(characters.deletedAt)
+            )
           )
-        )
-        .orderBy(desc(characters.deletedAt)),
+          .orderBy(desc(characters.deletedAt))
+      ),
 
     /**
      * Every bible version of the sequence's characters, oldest first (#1600).
@@ -453,7 +557,7 @@ export function createCharactersMethods(db: Database) {
     ): Promise<CharacterWithTalent[]> => {
       const results = await db
         .select({
-          character: charactersWithLiveSheet,
+          character: characterColumns,
           talent: {
             id: talent.id,
             name: talent.name,
@@ -468,7 +572,7 @@ export function createCharactersMethods(db: Database) {
         )
         .leftJoin(
           characterSheetVariants,
-          eq(characterSheetVariants.id, liveSheetVersionId)
+          eq(characterSheetVariants.id, legacyLiveSheetVersionId)
         )
         .leftJoin(
           characterVoiceVersions,
@@ -481,26 +585,30 @@ export function createCharactersMethods(db: Database) {
           )
         );
 
-      return results.map((row) => ({
-        ...row.character,
-        talent: row.talent?.id ? row.talent : null,
-      }));
+      const resolved = await resolveLooks(results.map((row) => row.character));
+      return resolved.map((character, index) => {
+        const cast = results[index]?.talent;
+        return { ...character, talent: cast?.id ? cast : null };
+      });
     },
 
     getByIds: async (ids: string[]): Promise<CharacterWithSheet[]> => {
       if (ids.length === 0) return [];
-      return await selectWithLiveSheet().where(inArray(characters.id, ids));
+      return await selectCharacters(inArray(characters.id, ids));
     },
 
     listWithSheets: async (
       sequenceId: string
     ): Promise<CharacterWithSheet[]> => {
-      return await selectWithLiveSheet().where(
-        and(
-          eq(characters.sequenceId, sequenceId),
-          eq(characters.sheetStatus, 'completed'),
-          isNull(characters.deletedAt)
-        )
+      // A character counts once any of its looks has a finished sheet: a
+      // scene may pick a look other than the default (#2015).
+      const live = await selectCharacters(
+        and(eq(characters.sequenceId, sequenceId), isNull(characters.deletedAt))
+      );
+      return live.filter(
+        (character) =>
+          character.sheetStatus === 'completed' ||
+          character.looks.some((look) => look.sheetStatus === 'completed')
       );
     },
 
@@ -508,14 +616,18 @@ export function createCharactersMethods(db: Database) {
      * Insert, or re-analyse onto, the character keyed by
      * `(sequenceId, characterId)`. The bible lands as a version row (#1600),
      * appended only when a field moved, so an identical re-analysis adds no
-     * history and keeps an in-flight sheet claim. A move of a field the sheet
-     * reads, or of the cast talent, revokes it (#1113).
+     * history and keeps an in-flight sheet claim. A move of a field the
+     * sheets read, or of the cast talent, revokes every look's (#1113).
+     *
+     * `standardClothing` and `sheetStatus` are its default look's (#2015): a
+     * new character gets one, under the character's own id, and a re-analysis
+     * that moved the clothing appends a look version.
      */
     create: async (
       data: NewCharacter,
       opts: { source: BibleVersionSource; createdBy: string | null }
     ): Promise<Character> => {
-      const [existing] = await selectWithLiveSheet().where(
+      const [existing] = await selectCharacters(
         and(
           eq(characters.sequenceId, data.sequenceId),
           eq(characters.characterId, data.characterId)
@@ -527,7 +639,8 @@ export function createCharactersMethods(db: Database) {
         gender: _g,
         ethnicity: _e,
         physicalDescription: _pd,
-        standardClothing: _sc,
+        standardClothing: clothing,
+        sheetStatus,
         distinguishingFeatures: _df,
         personality: _p,
         movement: _m,
@@ -557,6 +670,12 @@ export function createCharactersMethods(db: Database) {
       const revokeClaim = !!existing && (touchesSheet(moved) || talentMoved);
       const id = existing?.id ?? data.id ?? generateId();
       const versionId = generateId();
+      const lookVersionId = generateId();
+      // An existing character with no look yet (an older worker's) gets its
+      // default filled in first.
+      const defaultLook = existing
+        ? await requireLook(db, existing.lookId)
+        : null;
       const pointer = appendVersion
         ? { selectedBibleVersionId: versionId }
         : {};
@@ -569,12 +688,8 @@ export function createCharactersMethods(db: Database) {
             // Sheet OUTPUT is not re-written here (#1419). A re-analysis used
             // to blank `sheetImageUrl` while leaving the version rows intact,
             // so the character rendered sheet-less until it regenerated.
-            // `sheetStatus` stays: both callers pass an explicit lifecycle
-            // value ('generating' for re-analysis, 'pending' for a manual add).
-            sheetStatus: data.sheetStatus,
             talentId: data.talentId,
             ...pointer,
-            ...(revokeClaim ? { pendingPromoteSheetVersionId: null } : {}),
             // A re-analysis re-extracting a soft-deleted character revives it —
             // the script says the character exists again (#1108).
             deletedAt: null,
@@ -594,6 +709,50 @@ export function createCharactersMethods(db: Database) {
               }),
             ]
           : []),
+        ...(defaultLook
+          ? [
+              // `sheetStatus` is the default look's: both callers pass an
+              // explicit lifecycle value ('generating' for re-analysis,
+              // 'pending' for a manual add).
+              ...(sheetStatus === undefined
+                ? []
+                : [
+                    db
+                      .update(characterLooks)
+                      .set({ sheetStatus, updatedAt: new Date() })
+                      .where(eq(characterLooks.id, defaultLook.id)),
+                  ]),
+              ...lookDefinitionWrite(
+                db,
+                defaultLook,
+                { clothing },
+                { source: lookSource(opts.source), createdBy: opts.createdBy }
+              ).statements,
+              ...(revokeClaim
+                ? [demoteCharacterSheetClaims(db, eq(characters.id, id))]
+                : []),
+            ]
+          : [
+              // The default look reuses the character's id, as the backfill's
+              // do, so a character has one whoever wrote it.
+              db.insert(characterLooks).values({
+                id,
+                characterId: id,
+                isDefault: true,
+                sortOrder: 0,
+                selectedLookVersionId: lookVersionId,
+                sheetStatus: sheetStatus ?? 'pending',
+              }),
+              db.insert(characterLookVersions).values({
+                id: lookVersionId,
+                lookId: id,
+                name: DEFAULT_LOOK_NAME,
+                clothing: clothing ?? null,
+                styling: null,
+                source: lookSource(opts.source),
+                createdBy: opts.createdBy,
+              }),
+            ]),
       ]);
       const character = await reread({ id });
       // The voice the cast arrived with fills only what the character does
@@ -634,9 +793,7 @@ export function createCharactersMethods(db: Database) {
       generatedVoiceId: string,
       reason: VoicePreviewUnusable
     ): Promise<Character> => {
-      const [existing] = await selectWithLiveSheet().where(
-        eq(characters.id, id)
-      );
+      const [existing] = await selectCharacters(eq(characters.id, id));
       if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
       const next = markPreviewUnusable(
         existing.voicePreviews ?? [],
@@ -803,13 +960,14 @@ export function createCharactersMethods(db: Database) {
       return (chars?.n ?? 0) + (tal?.n ?? 0);
     },
 
-    // Bible versions RESTRICT the parent delete (#1600, the #612 rebuild
-    // trap), so they go first in the same batch.
+    // Bible versions and looks RESTRICT the parent delete (#1600, #2015, the
+    // #612 rebuild trap), so they go first in the same batch.
     delete: async (id: string): Promise<boolean> => {
-      const [, result] = await db.batch([
+      const [, , , result] = await db.batch([
         db
           .delete(characterBibleVersions)
           .where(eq(characterBibleVersions.characterId, id)),
+        ...deleteLooksOfCharacters(db, eq(characters.id, id)),
         db.delete(characters).where(eq(characters.id, id)),
       ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
@@ -817,7 +975,7 @@ export function createCharactersMethods(db: Database) {
     },
 
     deleteBySequence: async (sequenceId: string): Promise<number> => {
-      const [, result] = await db.batch([
+      const [, , , result] = await db.batch([
         db
           .delete(characterBibleVersions)
           .where(
@@ -829,75 +987,11 @@ export function createCharactersMethods(db: Database) {
                 .where(eq(characters.sequenceId, sequenceId))
             )
           ),
+        ...deleteLooksOfCharacters(db, eq(characters.sequenceId, sequenceId)),
         db.delete(characters).where(eq(characters.sequenceId, sequenceId)),
       ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return result.rowsAffected ?? 0;
-    },
-
-    /**
-     * Take the sheet claim (#1113): mint the id the run's version row will
-     * carry and point the claim at it. Last kickoff wins. Returns the id.
-     * `markGenerating: false` moves only the pointer: the bible path's
-     * upsert already set `generating`, and a bible parent replaying across
-     * the #1113 deploy re-runs this step after its child finished — setting
-     * the status there would leave the sheet stuck on `generating`.
-     */
-    claimSheet: async (
-      id: string,
-      opts: { markGenerating: boolean }
-    ): Promise<string> => {
-      const versionId = generateId();
-      await update(id, {
-        pendingPromoteSheetVersionId: versionId,
-        ...(opts.markGenerating
-          ? { sheetStatus: 'generating' as const, sheetError: null }
-          : {}),
-      });
-      return versionId;
-    },
-
-    /**
-     * A sheet run failed (#1113): clear its claim and mark the sheet failed —
-     * only while it still holds the claim, or nobody does. A newer run's claim
-     * and its `generating` status are left alone. `versionId` is null for a
-     * run queued before #1113, which holds no claim.
-     */
-    failSheetClaim: async (
-      id: string,
-      versionId: string | null,
-      error: string
-    ): Promise<void> => {
-      await db
-        .update(characters)
-        .set({
-          pendingPromoteSheetVersionId: null,
-          sheetStatus: 'failed',
-          sheetError: error,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(characters.id, id),
-            versionId === null
-              ? isNull(characters.pendingPromoteSheetVersionId)
-              : or(
-                  eq(characters.pendingPromoteSheetVersionId, versionId),
-                  isNull(characters.pendingPromoteSheetVersionId)
-                )
-          )
-        );
-    },
-
-    updateSheetStatus: async (
-      id: string,
-      status: SheetStatus,
-      error?: string
-    ): Promise<Character> => {
-      return await update(id, {
-        sheetStatus: status,
-        sheetError: error ?? null,
-      });
     },
 
     /**
@@ -910,9 +1004,7 @@ export function createCharactersMethods(db: Database) {
       createdBy: string | null,
       opts?: { workflowRunId?: string | null }
     ) => {
-      const [existing] = await selectWithLiveSheet().where(
-        eq(characters.id, characterId)
-      );
+      const [existing] = await selectCharacters(eq(characters.id, characterId));
       if (!existing)
         throw new Error(`SequenceCharacter ${characterId} not found`);
       const versionId = generateId();
@@ -1093,12 +1185,13 @@ export function createCharactersMethods(db: Database) {
     getNeedingSheets: async (
       sequenceId: string
     ): Promise<CharacterWithSheet[]> => {
-      return await selectWithLiveSheet().where(
-        and(
-          eq(characters.sequenceId, sequenceId),
-          inArray(characters.sheetStatus, ['pending', 'failed']),
-          isNull(characters.deletedAt)
-        )
+      const live = await selectCharacters(
+        and(eq(characters.sequenceId, sequenceId), isNull(characters.deletedAt))
+      );
+      return live.filter(
+        (character) =>
+          character.sheetStatus === 'pending' ||
+          character.sheetStatus === 'failed'
       );
     },
 
@@ -1118,9 +1211,7 @@ export function createCharactersMethods(db: Database) {
         source: Extract<BibleVersionSource, 'edit' | 'recast'>;
       }
     ): Promise<Character> => {
-      const [existing] = await selectWithLiveSheet().where(
-        eq(characters.id, id)
-      );
+      const [existing] = await selectCharacters(eq(characters.id, id));
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1129,13 +1220,28 @@ export function createCharactersMethods(db: Database) {
         if (value === undefined) continue;
         prev[key] = existing[key] ?? null;
       }
-      const { voiceDescription, ...bibleData } = data;
+      // A character an older worker wrote keeps its clothing on the legacy
+      // bible column, which the version appended below no longer carries
+      // (#2015): give it its default look first.
+      const defaultLook = await requireLook(db, existing.lookId);
+      const { voiceDescription, standardClothing, ...bibleData } = data;
       // Appends a version and moves the pointer (#1600); an edit to a field
       // the sheet reads also revokes an in-flight sheet run's claim (#1113).
       const { statements } = bibleWrite(existing, bibleData, {
         source: opts.source,
         createdBy: opts.actorId,
       });
+      // Clothing is the default look's (#2015): the same edit, written as a
+      // look version.
+      const look =
+        standardClothing === undefined
+          ? { statements: [] }
+          : lookDefinitionWrite(
+              db,
+              defaultLook,
+              { clothing: standardClothing },
+              { source: lookSource(opts.source), createdBy: opts.actorId }
+            );
       await db.batch([
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
@@ -1147,6 +1253,7 @@ export function createCharactersMethods(db: Database) {
           data: { prevState: prev },
         }),
         ...statements,
+        ...look.statements,
       ]);
       // `voiceDescription` is the selected voice version's, so an edit to it
       // is a voice write and belongs in the voice history (#1657). Only when it
@@ -1178,9 +1285,7 @@ export function createCharactersMethods(db: Database) {
       id: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const [existing] = await selectWithLiveSheet().where(
-        eq(characters.id, id)
-      );
+      const [existing] = await selectCharacters(eq(characters.id, id));
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1209,9 +1314,7 @@ export function createCharactersMethods(db: Database) {
       id: string,
       opts: { actorId: string | null }
     ): Promise<Character> => {
-      const [existing] = await selectWithLiveSheet().where(
-        eq(characters.id, id)
-      );
+      const [existing] = await selectCharacters(eq(characters.id, id));
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1239,16 +1342,16 @@ export function createCharactersMethods(db: Database) {
       characterId: string,
       talentId: string | null
     ): Promise<Character> => {
-      // The cast talent feeds the sheet: a recast revokes its claim (#1113).
-      const [character] = await db
-        .update(characters)
-        .set({
-          talentId,
-          pendingPromoteSheetVersionId: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(characters.id, characterId))
-        .returning({ id: characters.id });
+      // The cast talent feeds every look's sheet: a recast revokes their
+      // claims (#1113, #2015).
+      const [[character]] = await db.batch([
+        db
+          .update(characters)
+          .set({ talentId, updatedAt: new Date() })
+          .where(eq(characters.id, characterId))
+          .returning({ id: characters.id }),
+        demoteCharacterSheetClaims(db, eq(characters.id, characterId)),
+      ]);
 
       if (!character) {
         throw new Error(`Character ${characterId} not found`);
@@ -1260,65 +1363,19 @@ export function createCharactersMethods(db: Database) {
     getShotsForCharacter: async (
       sequenceId: string,
       characterId: string
-    ): Promise<Shot[]> => {
-      // Get the character to extract matching patterns
-      const charResult = await selectWithLiveSheet().where(
-        eq(characters.id, characterId)
-      );
-      const character = charResult[0] ?? null;
-      if (!character || character.sequenceId !== sequenceId) {
-        return [];
-      }
+    ): Promise<Shot[]> => await shotsOf(sequenceId, characterId),
 
-      const [allShots, sceneContext] = await Promise.all([
-        db
-          .select()
-          .from(shots)
-          .where(
-            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
-          ) as Promise<Shot[]>,
-        loadSceneContextBySequenceFromDb(db, sequenceId),
-      ]);
-
-      // Filter shots that contain this character
-      return allShots.filter((shot) => {
-        const scene = resolveSceneForShot(shot, sceneContext).scene;
-        const characterTags = scene?.continuity?.characterTags ?? [];
-        return matchCharacterToShotTags(character, characterTags);
-      });
-    },
-
+    /**
+     * The shots a character is in. `wearing` narrows them to the scenes that
+     * dress it in that look (#2015) — its default where a scene picks none.
+     */
     getShotIdsForCharacter: async (
       sequenceId: string,
-      characterId: string
-    ): Promise<string[]> => {
-      // Get the character to extract matching patterns
-      const charResult = await selectWithLiveSheet().where(
-        eq(characters.id, characterId)
-      );
-      const character = charResult[0] ?? null;
-      if (!character || character.sequenceId !== sequenceId) {
-        return [];
-      }
-
-      const [allShots, sceneContext] = await Promise.all([
-        db
-          .select()
-          .from(shots)
-          .where(
-            and(eq(shots.sequenceId, sequenceId), isNull(shots.deletedAt))
-          ) as Promise<Shot[]>,
-        loadSceneContextBySequenceFromDb(db, sequenceId),
-      ]);
-
-      // Filter shots that contain this character and return IDs
-      return allShots
-        .filter((shot) => {
-          const scene = resolveSceneForShot(shot, sceneContext).scene;
-          const characterTags = scene?.continuity?.characterTags ?? [];
-          return matchCharacterToShotTags(character, characterTags);
-        })
-        .map((f) => f.id);
-    },
+      characterId: string,
+      opts?: { wearing: string }
+    ): Promise<string[]> =>
+      (await shotsOf(sequenceId, characterId, opts?.wearing)).map(
+        (shot) => shot.id
+      ),
   };
 }

@@ -202,6 +202,10 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetStatus: 'completed',
       sheetInputHash: 'hash-jack',
       selectedSheetVersionId: null,
+      // Wearing its default look (#2015).
+      lookId: 'default-look',
+      lookName: 'Default',
+      looks: [],
       physicalDescription: 'tall',
       voiceOnly: false,
       isPerson: true,
@@ -238,6 +242,10 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetStatus: 'completed',
       sheetInputHash: 'hash-scarlett',
       selectedSheetVersionId: null,
+      // Wearing its default look (#2015).
+      lookId: 'default-look',
+      lookName: 'Default',
+      looks: [],
       physicalDescription: 'red coat',
       voiceOnly: false,
       isPerson: true,

@@ -9,6 +9,7 @@
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { DEFAULT_LOOK_NAME } from '@/platform/server/db/schema';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { buildCharacterInsert } from './cast-records';
 import { computeCharacterSheetHashFromDto } from './sheet-snapshots';
@@ -74,6 +75,11 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           id: string;
           characterId: string;
           bibleVersionId: string | null;
+          lookId: string;
+          lookVersionId: string;
+          lookName: string;
+          lookStyling: string | null;
+          talentId: string | null;
           voiceId: string | null;
           voiceDescription: string | null;
           useVoice: boolean | null;
@@ -88,10 +94,23 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             }),
             { source: 'analysis', createdBy: null }
           );
+          // The sheet this run draws is the default look's (#2015), which
+          // the upsert just wrote the analysed clothing onto.
+          const look = created.looks.find((l) => l.id === created.lookId);
+          if (!look) {
+            throw new WorkflowValidationError(
+              `Character ${created.id} has no default look`
+            );
+          }
           results.push({
             id: created.id,
             characterId: created.characterId,
             bibleVersionId: created.selectedBibleVersionId,
+            lookId: look.id,
+            lookVersionId: look.lookVersionId,
+            lookName: look.name,
+            lookStyling: look.styling,
+            talentId: created.talentId,
             voiceId: created.voiceId,
             voiceDescription: created.voiceDescription,
             useVoice: created.useVoice,
@@ -109,12 +128,20 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const characterIdToDbId = new Map<string, string>(
       createdCharacters.map((c) => [c.characterId, c.id])
     );
-    // The bible version each row landed on (#1600). A step result cached
-    // before #1600 has none.
-    const bibleVersionByDbId = new Map<string, string | null>(
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
-      createdCharacters.map((c) => [c.id, c.bibleVersionId ?? null])
-    );
+    // What each row landed on: its bible version (#1600) and default look
+    // (#2015). The sheet claim is taken only while both still hold.
+    const createdByDbId = new Map(createdCharacters.map((c) => [c.id, c]));
+    /** The returned row wears its default look, the one this run drew. */
+    const defaultLookOf = (characterDbId: string) => {
+      const created = createdByDbId.get(characterDbId);
+      return {
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        lookId: created?.lookId ?? characterDbId,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        lookName: created?.lookName ?? DEFAULT_LOOK_NAME,
+        looks: [],
+      };
+    };
 
     const characterSheetBinding = this.env.CHARACTER_SHEET_WORKFLOW;
 
@@ -156,13 +183,32 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // actually be billed — see `reusesTalentSheet`.
       const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
 
+      const created = createdByDbId.get(characterDbId);
+      if (!created) {
+        throw new WorkflowValidationError(
+          `[CharacterBibleWorkflow:cf] No created row for ${characterDbId}`
+        );
+      }
       const unclaimedFields: SheetPayload<CharacterSheetWorkflowInput> = {
         userId: input.userId,
         teamId: input.teamId,
         sequenceId: input.sequenceId,
         reservationId: input.reservationId,
         characterDbId,
-        bibleVersionId: bibleVersionByDbId.get(characterDbId) ?? null,
+        // A step result cached before #2015 has no look: the default look and
+        // its first version both took the character's id.
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        lookId: created.lookId ?? characterDbId,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        lookVersionId: created.lookVersionId ?? characterDbId,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        lookName: created.lookName ?? DEFAULT_LOOK_NAME,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        lookStyling: created.lookStyling ?? null,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
+        talentId: created.talentId ?? null,
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
+        bibleVersionId: created.bibleVersionId ?? null,
         characterName: character.name,
         // The cast bible the row holds (`buildCharacterInsert`), so the stamped
         // hash matches what a regenerate or a staleness check computes from the
@@ -187,7 +233,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         talentSheetInputHash: talentMatch?.sheetInputHash ?? null,
       };
       // A pipeline sheet is tracked like any other (#1113): stamped with its
-      // input hash, and landed through a claim a bible edit revokes.
+      // input hash, and landed through a claim a bible edit revokes. The
+      // claim is conditional (#1863): an edit between the snapshot above and
+      // this write found no claim to revoke, so the claim is not taken and
+      // the run parks its sheet.
       const unclaimed = {
         ...unclaimedFields,
         snapshotInputHash:
@@ -196,9 +245,13 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const sheetVersionId = await step.do(
         `claim-character-sheet-${index}`,
         async () =>
-          await scopedDb.characters.claimSheet(characterDbId, {
-            markGenerating: false,
-          })
+          (
+            await scopedDb.characterLooks.claimSheet(
+              unclaimedFields.lookId,
+              unclaimedFields,
+              { markGenerating: false }
+            )
+          ).versionId
       );
       const childPayload: CharacterSheetWorkflowInput = {
         ...unclaimed,
@@ -338,6 +391,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         const characterDbId = characterIdToDbId.get(character.characterId);
         if (!characterDbId) continue;
         seqCharacters.push({
+          ...defaultLookOf(characterDbId),
           id: characterDbId,
           characterId: character.characterId,
           name: character.name,
@@ -361,6 +415,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         outcome.value;
 
       seqCharacters.push({
+        ...defaultLookOf(characterDbId),
         id: characterDbId,
         characterId: character.characterId,
         name: character.name,
@@ -390,6 +445,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         );
       }
       seqCharacters.push({
+        ...defaultLookOf(characterDbId),
         id: characterDbId,
         characterId: character.characterId,
         name: character.name,

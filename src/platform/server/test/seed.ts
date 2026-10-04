@@ -10,6 +10,9 @@
 
 import { generateId } from '@/platform/id';
 import {
+  DEFAULT_LOOK_NAME,
+  characterLookVersions,
+  characterLooks,
   characterSheetVariants,
   characterBibleVersions,
   characters,
@@ -181,6 +184,32 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
       .where(
         inArray(
           characterBibleVersions.characterId,
+          db
+            .select({ id: characters.id })
+            .from(characters)
+            .where(inArray(characters.sequenceId, ids))
+        )
+      ),
+    db
+      .delete(characterLookVersions)
+      .where(
+        inArray(
+          characterLookVersions.lookId,
+          db
+            .select({ id: characterLooks.id })
+            .from(characterLooks)
+            .innerJoin(
+              characters,
+              eq(characters.id, characterLooks.characterId)
+            )
+            .where(inArray(characters.sequenceId, ids))
+        )
+      ),
+    db
+      .delete(characterLooks)
+      .where(
+        inArray(
+          characterLooks.characterId,
           db
             .select({ id: characters.id })
             .from(characters)
@@ -534,9 +563,29 @@ export async function createTestCharacter(
     legacyName: name,
     selectedBibleVersionId: id,
     talentId,
+    createdAt: now,
+    updatedAt: now,
+  });
+  // Its default look (#2015), keyed to the character's own id like the
+  // backfill.
+  await db.insert(characterLooks).values({
+    id,
+    characterId: id,
+    isDefault: true,
+    sortOrder: 0,
+    selectedLookVersionId: id,
     sheetStatus,
     createdAt: now,
     updatedAt: now,
+  });
+  await db.insert(characterLookVersions).values({
+    id,
+    lookId: id,
+    name: DEFAULT_LOOK_NAME,
+    clothing: null,
+    styling: null,
+    source: 'backfill',
+    createdAt: now,
   });
   await db.insert(characterBibleVersions).values({
     id,
@@ -556,6 +605,7 @@ export async function createTestCharacter(
     await db.insert(characterSheetVariants).values({
       id,
       characterId: id,
+      lookId: id,
       model: 'prior',
       url: sheetImageUrl,
       status: 'completed',
@@ -932,13 +982,14 @@ export async function getTestCharacter(characterId: string): Promise<{
       id: characters.id,
       name: characterBibleVersions.name,
       talentId: characters.talentId,
-      sheetStatus: characters.sheetStatus,
+      sheetStatus: characterLooks.sheetStatus,
     })
     .from(characters)
     .innerJoin(
       characterBibleVersions,
       eq(characterBibleVersions.id, characters.selectedBibleVersionId)
     )
+    .innerJoin(characterLooks, eq(characterLooks.id, characters.id))
     .where(eq(characters.id, characterId));
   return result ?? null;
 }

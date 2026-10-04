@@ -259,7 +259,9 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
       characterId: 'char_001',
       legacyName: 'Jack',
       legacyConsistencyTag: 'char_001: Jack-denim-jacket',
-      sheetStatus: 'completed',
+      // No look row: the shape a worker older than #2015 leaves, read
+      // through the legacy columns until its first write fills the look in.
+      legacySheetStatus: 'completed',
     })
     .returning();
   if (!row) throw new Error('test setup: character insert returned nothing');
