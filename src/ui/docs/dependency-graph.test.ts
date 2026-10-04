@@ -22,7 +22,7 @@ describe('dependency graph', () => {
 
   it('a script edit never re-stales a bible', () => {
     const after = ids(staleAfterEdit('script', 'start-frame'));
-    for (const bible of ['style', 'character', 'location', 'element']) {
+    for (const bible of ['style', 'character', 'look', 'location', 'element']) {
       expect(after).not.toContain(bible);
     }
     expect(after).toContain('visualPrompt');
@@ -52,6 +52,28 @@ describe('dependency graph', () => {
       (r) => r.id === 'still'
     );
     expect(still?.via.tracking).toBe('pointer');
+  });
+
+  it('a look edit reaches its sheet and the shots that wear it, and no bible (#2015)', () => {
+    expect(ids(staleAfterEdit('look', 'start-frame'))).toEqual([
+      'characterSheet',
+      'clip',
+      'export',
+      'motionPrompt',
+      'still',
+      'visualPrompt',
+    ]);
+    // A character edit does not re-stale a look: clothing is the look's own.
+    expect(ids(staleAfterEdit('character', 'start-frame'))).not.toContain(
+      'look'
+    );
+    // The scene's pick of a look decides which sheet a still attaches.
+    expect(
+      GRAPH_EDGES.some(
+        (e) =>
+          e.from === 'script' && e.to === 'still' && e.tracking === 'pointer'
+      )
+    ).toBe(true);
   });
 
   it('reference-only drops the still from the clip chain but keeps the prompt path', () => {
