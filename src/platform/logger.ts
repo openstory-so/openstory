@@ -1,9 +1,9 @@
 /**
  * LogTape configuration + helpers — the canonical logger for OpenStory.
  *
- * Server: emits one JSON line per record to console.log. Cloudflare Workers
- * Observability picks these up and forwards to PostHog Logs via the
- * dashboard-configured destination.
+ * Server: logs one object per record. Cloudflare Workers Logs reads an object's
+ * fields, and its log export (`observability.logs.destinations`) sends them to
+ * PostHog Logs. A JSON string would arrive as one unreadable body (#2028).
  *
  * Browser: forwards to posthog.captureLog when available. Falls back to a
  * pretty console in dev.
@@ -17,13 +17,11 @@ import {
   configureSync,
   defaultConsoleFormatter,
   getConsoleSink,
-  getJsonLinesFormatter,
   getLogger,
   type ConsoleFormatter,
   type LogLevel,
   type LogRecord,
   type Sink,
-  type TextFormatter,
 } from '@logtape/logtape';
 // Pretty formatter for dev. Static ESM import — @logtape/pretty is marked
 // `sideEffects: false`, so Vite tree-shakes it out of the prod worker bundle
@@ -108,7 +106,7 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
   // `dev` is statically known at build time (via process.env.NODE_ENV
   // replacement), so the unused branch is dropped and only the live
   // formatter's dependency stays in the bundle.
-  const formatter: TextFormatter = dev
+  const formatter = dev
     ? redactByPattern(
         // One clean pretty line per record.
         // - timestamp: 'time' → wall-clock per record (HH:MM:SS.sss) to help
@@ -117,7 +115,7 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
         // - properties: false → don't print the structured-field block. The
         //   noisy request/serverFn logs interpolate their values into the
         //   message via `{placeholder}`, so re-listing them is redundant; the
-        //   prod JSON-lines sink (below) still keeps every field for PostHog.
+        //   prod object sink (below) still keeps every field for PostHog.
         // - wordWrap: false → no hanging-indent continuation. `bun --parallel`
         //   (`bun dev:all`) re-prefixes wrapped lines with `dev:app | `,
         //   making the default auto-wrap ragged; let the terminal hard-wrap
@@ -129,10 +127,22 @@ function buildServerSinks(dev: boolean): Record<string, Sink> {
         }),
         SECRET_PATTERNS
       )
-    : redactByPattern(getJsonLinesFormatter(), SECRET_PATTERNS);
+    : redactByPattern(objectFormatter, SECRET_PATTERNS);
 
   return { console: getConsoleSink({ formatter }) };
 }
+
+/**
+ * One object per record. `message` and `logger` are written last so a property
+ * of the same name cannot replace them.
+ */
+export const objectFormatter: ConsoleFormatter = (record) => [
+  {
+    ...record.properties,
+    message: renderMessage(record.message),
+    logger: record.category.join('.'),
+  },
+];
 
 function buildBrowserSinks(dev: boolean): Record<string, Sink> {
   if (dev) {

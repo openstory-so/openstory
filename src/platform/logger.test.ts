@@ -7,7 +7,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { redactByPattern } from '@logtape/redaction';
 import {
+  objectFormatter,
   SECRET_PATTERNS,
   type SerializedError,
   serializeError,
@@ -141,5 +143,32 @@ describe('SECRET_PATTERNS', () => {
     const token = `eyJhbGciOiJIUzI1NiJ9.${'a1B2c3D4'.repeat(8)}`;
 
     expect(redact(token)).toContain('[REDACTED]');
+  });
+});
+
+describe('objectFormatter', () => {
+  it('logs one object with the rendered message, and redacts secrets in it', () => {
+    const format = redactByPattern(objectFormatter, SECRET_PATTERNS);
+    const out = format({
+      category: ['openstory', 'workflow'],
+      level: 'info',
+      message: ['step ', 'motion', ' started'],
+      rawMessage: 'step {step} started',
+      timestamp: 0,
+      properties: {
+        step: 'motion',
+        message: 'not the headline',
+        nested: { key: 'fal_abcdefghijklmnopqrstuvwxyz' },
+      },
+    });
+
+    expect(out).toEqual([
+      {
+        step: 'motion',
+        message: 'step motion started',
+        logger: 'openstory.workflow',
+        nested: { key: '[REDACTED]' },
+      },
+    ]);
   });
 });
