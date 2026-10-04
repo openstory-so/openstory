@@ -86,6 +86,7 @@ const SceneLookPicker: React.FC<{
       value={wornLookId}
       disabled={update.isPending}
       onValueChange={(lookId) => {
+        if (!lookId) return;
         const others = Object.fromEntries(
           Object.entries(scene.continuity?.characterLooks ?? {}).filter(
             ([, id]) => !ownIds.has(id)
