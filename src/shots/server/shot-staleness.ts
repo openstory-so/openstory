@@ -1090,7 +1090,7 @@ async function findStalenessCauses(args: {
   const at = Math.min(...times);
   const causes: string[] = [];
 
-  let ctx: SceneContext | undefined;
+  let ctx: SceneContext | null | undefined;
   if (shot.sceneId) {
     const sceneId = dbSceneId(shot.sceneId);
     ctx = sceneContext

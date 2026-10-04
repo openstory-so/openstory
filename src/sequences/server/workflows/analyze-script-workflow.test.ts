@@ -434,7 +434,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
               // The spec is in the digest (#1923).
               spec: storedShotSpec(spec),
             },
-            { channel: 'visual', prompt: written.text }
+            { channel: 'visual', prompt: written.text ?? null }
           )
         );
       const verifyHash = await hashWith(
@@ -480,7 +480,7 @@ describe('AnalyzeScriptWorkflow (a fresh run)', () => {
             },
             {
               channel: 'motion',
-              prompt: motionWritten.text,
+              prompt: motionWritten.text ?? null,
               referenceOnly: false,
             }
           )
