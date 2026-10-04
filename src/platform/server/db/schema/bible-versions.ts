@@ -17,6 +17,7 @@ import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { characters } from './characters';
 import { sequenceLocations } from './sequence-locations';
+import { talent } from './talent';
 
 /**
  * Why a bible row exists. `backfill` is the #1600 migration's snapshot of a
@@ -58,6 +59,10 @@ export const characterBibleVersions = snakeCase.table(
     voiceOnly: integer({ mode: 'boolean' }).notNull(),
     isPerson: integer({ mode: 'boolean' }).notNull(),
     consistencyTag: text(),
+    // Who plays the character in this version (#2017): a recast is a new
+    // version. Null when uncast. Not a bible field: it is not authored text
+    // and no bible diff names it.
+    talentId: text().references(() => talent.id, { onDelete: 'set null' }),
     source: text({ enum: BIBLE_VERSION_SOURCES }).notNull(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

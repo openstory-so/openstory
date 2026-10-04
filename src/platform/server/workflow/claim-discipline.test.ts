@@ -63,11 +63,13 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   // Sheets (#1113): pointer claims on the parent row naming the id the run's
   // result will carry. The row is appended at completion (no pending row),
   // so a claim miss parks it as divergent in the same batch. A character's
-  // sheets belong to its looks (#2015): the pointer and the claim are on
-  // `character_looks`, one per look, and the claim is taken only while the
-  // look, bible and cast the run was snapshotted from still hold (#1863).
+  // sheets belong to its looks (#2015), and the pointer and the claim to the
+  // sequence that uses the look (#2017): they are on `sequence_cast_looks`,
+  // one per look per sequence, and the claim is taken only while the look
+  // version, bible version and talent that sequence pins are still the ones
+  // the run was snapshotted from (#1863).
   'character sheets': {
-    tables: ['character_sheet_variants', 'character_looks'],
+    tables: ['character_sheet_variants', 'sequence_cast_looks'],
     claim: 'characterLooks.claimSheet',
     clear: 'characterLooks.failSheetClaim',
     promote: 'characterSheetVariants.promoteIfPending',

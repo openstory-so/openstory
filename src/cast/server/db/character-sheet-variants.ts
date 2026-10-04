@@ -19,6 +19,8 @@ import {
   characterLooks,
   characterSheetVariants,
   characters,
+  sequenceCast,
+  sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
 import { liveLookSheetVersionId, requireLook } from './character-looks';
@@ -217,7 +219,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       }
 
       await db
-        .update(characterLooks)
+        .update(sequenceCastLooks)
         .set({
           sheetStatus: 'completed',
           sheetError: null,
@@ -226,7 +228,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           pendingPromoteSheetVersionId: null,
           updatedAt: now,
         })
-        .where(eq(characterLooks.id, lookId));
+        .where(eq(sequenceCastLooks.id, look.castLookId));
       return { version };
     },
 
@@ -270,15 +272,16 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const look = await requireLook(db, version.lookId ?? characterId);
       const [existing] = await db
         .select({
-          sequenceId: characters.sequenceId,
+          sequenceId: sequenceCast.sequenceId,
           name: characterBibleColumns.name,
         })
-        .from(characters)
+        .from(sequenceCast)
+        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
         .leftJoin(
           characterBibleVersions,
-          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+          eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
         )
-        .where(eq(characters.id, characterId));
+        .where(eq(sequenceCast.characterId, characterId));
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
       }
@@ -286,7 +289,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const now = new Date();
       await db.batch([
         db
-          .update(characterLooks)
+          .update(sequenceCastLooks)
           .set({
             sheetStatus: 'completed',
             sheetError: null,
@@ -295,7 +298,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
             pendingPromoteSheetVersionId: null,
             updatedAt: now,
           })
-          .where(eq(characterLooks.id, look.id)),
+          .where(eq(sequenceCastLooks.id, look.castLookId)),
         db
           .update(characterSheetVariants)
           .set({ divergedAt: null, updatedAt: now })
@@ -325,10 +328,13 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      * as divergent. See {@link landCharacterSheet}.
      */
     promoteIfPending: async (
-      args: Parameters<typeof landCharacterSheet>[1]
+      args: Omit<Parameters<typeof landCharacterSheet>[1], 'castLookId'>
     ) => {
-      await requireLook(db, args.lookId);
-      return await landCharacterSheet(db, args);
+      const look = await requireLook(db, args.lookId);
+      return await landCharacterSheet(db, {
+        ...args,
+        castLookId: look.castLookId,
+      });
     },
 
     insert: async (
@@ -398,6 +404,10 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const [live] = await db
         .select({ id: characterLooks.id })
         .from(characterLooks)
+        .innerJoin(
+          sequenceCastLooks,
+          eq(sequenceCastLooks.lookId, characterLooks.id)
+        )
         .innerJoin(
           characterSheetVariants,
           eq(

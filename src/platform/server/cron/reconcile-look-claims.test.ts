@@ -1,7 +1,7 @@
 /**
- * The look sheet claim pass (#2015) against real SQLite: it promotes a sheet
- * an older worker landed on the character's legacy columns mid-deploy, and
- * fails a claim no run is behind.
+ * The look sheet claim pass (#2015) against real SQLite, on the cast looks
+ * that hold the claim (#2017): it promotes a sheet an older worker landed on
+ * the legacy columns mid-deploy, and fails a claim no run is behind.
  */
 import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { type Client, createClient } from '@libsql/client';
@@ -10,9 +10,8 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import type { Database } from '@/platform/server/db/client';
 import {
-  characterLookVersions,
-  characterLooks,
   characterSheetVariants,
+  sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { reconcileLookSheetClaimsPass } from './reconcile-all';
@@ -24,24 +23,22 @@ beforeAll(async () => {
   client = createClient({ url: ':memory:' });
   db = drizzle({ client, relations });
   await migrate(db, { migrationsFolder: './drizzle/migrations' });
-  // The looks' characters are outside this pass; they are not built.
+  // The cast looks' links and looks are outside this pass; they are not built.
   await client.execute('PRAGMA foreign_keys = OFF');
 });
 afterAll(() => client.close());
 beforeEach(async () => {
   await db.delete(characterSheetVariants);
-  await db.delete(characterLookVersions);
-  await db.delete(characterLooks);
+  await db.delete(sequenceCastLooks);
 });
 
 const HOUR = 60 * 60 * 1000;
 async function look(id: string, claim: string | null, ageMs: number) {
-  await db.insert(characterLooks).values({
+  await db.insert(sequenceCastLooks).values({
     id,
-    characterId: id,
-    isDefault: true,
-    sortOrder: 0,
-    selectedLookVersionId: id,
+    castId: id,
+    lookId: id,
+    lookVersionId: id,
     selectedSheetVersionId: null,
     pendingPromoteSheetVersionId: claim,
     sheetStatus: claim ? 'generating' : 'completed',
@@ -60,8 +57,8 @@ const sheet = (id: string, characterId: string, divergedAt: Date | null) =>
 const read = async (id: string) => {
   const [row] = await db
     .select()
-    .from(characterLooks)
-    .where(eq(characterLooks.id, id));
+    .from(sequenceCastLooks)
+    .where(eq(sequenceCastLooks.id, id));
   if (!row) throw new Error('look gone');
   return row;
 };

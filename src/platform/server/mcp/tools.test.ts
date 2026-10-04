@@ -10,6 +10,7 @@ import {
   vfx,
   user,
 } from '@/platform/server/db/schema';
+import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import { listFilesPage, uploadFile } from '#storage';
 vi.mock('#storage', () => ({
   listFilesPage: vi.fn(),
@@ -25,7 +26,9 @@ vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: vi.fn(),
 }));
 import {
+  characterBibleVersions,
   characters,
+  sequenceCast,
   characterSheetVariants,
   characterVoiceVersions,
   sequenceLocations,
@@ -768,13 +771,14 @@ describe('complete production reads', () => {
     musicPromptId = generateId();
     await db.insert(characters).values({
       id: characterId,
-      sequenceId,
-      characterId: 'char_001',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_001',
       legacyName: 'Ada',
       legacyPersonality: 'Curious',
       legacyConsistencyTag: 'ada',
       selectedVoiceVersionId: characterId,
     });
+    await backfillCast(db);
     await db.insert(characterVoiceVersions).values({
       id: characterId,
       characterId,
@@ -1008,10 +1012,11 @@ describe('complete production reads', () => {
   it('pages entities and binds cursors to collection, sequence, and reference target', async () => {
     await db.insert(characters).values({
       id: generateId(),
-      sequenceId,
-      characterId: 'char_002',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_002',
       legacyName: 'Other',
     });
+    await backfillCast(db);
     const pageSchema = z.object({
       characters: z.array(z.object({ id: z.string() })),
       nextCursor: z.string(),
@@ -1044,7 +1049,7 @@ describe('complete production reads', () => {
       })
     ).toMatchObject({ isError: true });
     expect(
-      queries.some((query) => /from "characters".*limit \?/i.test(query))
+      queries.some((query) => /from "sequence_cast".*limit \?/i.test(query))
     ).toBe(true);
   });
   it('uses effective style snapshots and reads original versus composed script with revision-safe windows', async () => {
@@ -1283,9 +1288,9 @@ describe('complete production reads', () => {
       })
     ).toMatchObject({ isError: true });
     await db
-      .update(characters)
-      .set({ deletedAt: new Date() })
-      .where(eq(characters.id, characterId));
+      .update(sequenceCast)
+      .set({ removedAt: new Date() })
+      .where(eq(sequenceCast.characterId, characterId));
     expect(await data('list_characters', { sequenceId })).toMatchObject({
       characters: [],
     });
@@ -1423,9 +1428,9 @@ describe('complete production reads', () => {
       queries.some((query) => /^(insert|update|delete)\b/i.test(query))
     ).toBe(false);
     await db
-      .update(characters)
-      .set({ legacyVoiceOnly: true })
-      .where(eq(characters.id, characterId));
+      .update(characterBibleVersions)
+      .set({ voiceOnly: true })
+      .where(eq(characterBibleVersions.characterId, characterId));
     expect(
       await data('get_reference_staleness', {
         sequenceId,
@@ -2161,11 +2166,12 @@ describe('update_scene continuity (#1459)', () => {
   it('rescans @-mentions into continuity, merges sent keys and records only moved fields', async () => {
     await db.insert(characters).values({
       id: generateId(),
-      sequenceId,
-      characterId: 'char_001',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_001',
       legacyName: 'Ada',
       legacyConsistencyTag: 'ada',
     });
+    await backfillCast(db);
     const read = z.object({ script: z.object({ id: z.string() }) });
     const written = z.object({ scriptVersionId: z.string() });
     const first = await data('update_scene', {
@@ -2908,13 +2914,14 @@ describe('cast and music edits (#1979)', () => {
     ];
     await db.insert(characters).values({
       id: characterId,
-      sequenceId,
-      characterId: 'char_ada',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_ada',
       legacyName: 'Ada',
       selectedVoiceVersionId: newer,
       // No look row: the shape a worker older than #2015 leaves.
       legacySelectedSheetVersionId: sheetB,
     });
+    await backfillCast(db);
     await db.insert(characterVoiceVersions).values([
       {
         id: older,
@@ -3376,10 +3383,11 @@ describe('cast and music edits (#1979)', () => {
     const track = generateId();
     await db.insert(characters).values({
       id: characterId,
-      sequenceId,
-      characterId: 'char_ada',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_ada',
       legacyName: 'Ada',
     });
+    await backfillCast(db);
     await db.insert(sequenceMusicVariants).values({
       id: track,
       sequenceId,
@@ -4087,12 +4095,13 @@ describe('production-context resources (#1462)', () => {
     await db.insert(characters).values(
       Array.from({ length: 30 }, (_, i) => ({
         id: generateId(),
-        sequenceId,
-        characterId: `char_${i}`,
+        legacySequenceId: sequenceId,
+        legacyCharacterId: `char_${i}`,
         legacyName: `C${i}`,
         legacyPersonality: 'x'.repeat(8000),
       }))
     );
+    await backfillCast(db);
     const bible = z
       .object({
         characters: z.array(z.unknown()),

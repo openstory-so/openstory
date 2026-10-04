@@ -64,7 +64,11 @@ function makeCharacter(
     lookName: 'Default',
     looks: [],
     styling: null,
-    selectedBibleVersionId: null,
+    // Cast in its sequence (#2017).
+    castId: 'cast-1',
+    teamId: 'team-1',
+    inLibrary: false,
+    selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
     pendingPromoteVoiceVersionId: null,

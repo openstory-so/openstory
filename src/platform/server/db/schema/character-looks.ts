@@ -46,23 +46,22 @@ export const characterLooks = snakeCase.table(
     // Soft remove, undoable. A scene that still picks a removed look keeps
     // wearing it, the same way continuity tags outlive a removed character.
     deletedAt: integer({ mode: 'timestamp' }),
-    // The live `character_look_versions` row: the look's definition IS that
-    // row. No FK, like `characters.selectedBibleVersionId`.
+    // The look's CURRENT `character_look_versions` row: the one a new
+    // sequence adopts (#2017). A sequence reads the version its cast look
+    // pins. No FK, like `characters.selectedBibleVersionId`.
     selectedLookVersionId: text().notNull(),
 
-    // ── Per-sequence state. #2017 moves this group, with the pin of the
-    // look version, onto `sequence_cast_looks` as a copy of pointers. ─────
-    // The live `character_sheet_variants` row. No FK. Null until a sheet
-    // lands — and on a backfilled default look whose character's sheet is
-    // the pre-#1419 row keyed to the character's own id.
-    selectedSheetVersionId: text(),
-    // The sheet claim (#1113, #1130): the id the in-flight run's version row
-    // will carry. Cleared by every write that changes a sheet input or picks
-    // a sheet. Null when no run holds the pointer.
-    pendingPromoteSheetVersionId: text(),
-    // Lifecycle before any sheet row exists (#1419), as on characters.
-    sheetStatus: text().$type<SheetStatus>().notNull(),
-    sheetError: text(),
+    // LEGACY per-sequence state (#2017). A look's sheet pointer, claim and
+    // status belong to the sequence that uses it and live on
+    // `sequence_cast_looks`. These are written only where NOT NULL forces a
+    // value on insert, and read only to give a look a worker older than #2017
+    // wrote its cast look (`cast/server/db/sequence-cast.ts`).
+    legacySelectedSheetVersionId: text('selected_sheet_version_id'),
+    legacyPendingPromoteSheetVersionId: text(
+      'pending_promote_sheet_version_id'
+    ),
+    legacySheetStatus: text('sheet_status').$type<SheetStatus>().notNull(),
+    legacySheetError: text('sheet_error'),
 
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -137,13 +136,31 @@ export type LookDefinition = Pick<
   (typeof LOOK_FIELDS)[number]
 >;
 
+/** The legacy per-sequence columns (#2017) — never read outside the cast backfill. */
+type LegacyLookCastColumn =
+  | 'legacySelectedSheetVersionId'
+  | 'legacyPendingPromoteSheetVersionId'
+  | 'legacySheetStatus'
+  | 'legacySheetError';
+
 /**
- * A look as every scoped read returns it: identity, the live definition, the
- * per-sequence sheet state, and the live sheet resolved from its pointer.
+ * A look as every scoped read returns it, through the sequence that uses it
+ * (#2017): identity, the definition that sequence pins, its sheet state
+ * there, and the live sheet resolved from its pointer.
  */
-export type CharacterLook = Omit<CharacterLookRow, 'selectedLookVersionId'> &
+export type CharacterLook = Omit<
+  CharacterLookRow,
+  'selectedLookVersionId' | LegacyLookCastColumn
+> &
   LookDefinition & {
+    /** The `sequence_cast_looks` row this read came through. */
+    castLookId: string;
+    /** The look version the sequence pins. */
     lookVersionId: string;
+    selectedSheetVersionId: string | null;
+    pendingPromoteSheetVersionId: string | null;
+    sheetStatus: SheetStatus;
+    sheetError: string | null;
     sheetImageUrl: string | null;
     sheetImagePath: string | null;
     sheetGeneratedAt: Date | null;

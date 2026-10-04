@@ -7,6 +7,8 @@ import {
   characterLooks,
   characterVoiceVersions,
   characters,
+  sequenceCast,
+  sequenceCastLooks,
   locationBibleVersions,
   sequenceLocations,
   sequenceElements,
@@ -58,18 +60,19 @@ export const characterVoiceVersionReadSchema = characterVoiceSchema
     releasedAt: readDate.nullable(),
     createdAt: readDate,
   });
+/** A look's sheet in the sequence that uses it (#2017). */
+const castLookSheetShape = createSelectSchema(sequenceCastLooks).pick({
+  sheetStatus: true,
+  sheetError: true,
+  selectedSheetVersionId: true,
+}).shape;
 /**
  * One outfit of a character (#2015). `versionId` is its live definition;
  * list its sheets with list_versions kind character_sheet and this id.
  */
 const characterLookReadSchema = createSelectSchema(characterLooks)
-  .pick({
-    id: true,
-    isDefault: true,
-    sheetStatus: true,
-    sheetError: true,
-    selectedSheetVersionId: true,
-  })
+  .pick({ id: true, isDefault: true })
+  .extend(castLookSheetShape)
   .extend(
     createSelectSchema(characterLookVersions).pick({
       name: true,
@@ -84,25 +87,25 @@ const characterLookReadSchema = createSelectSchema(characterLooks)
     deletedAt: readDate.nullable(),
   });
 export const characterReadSchema = createSelectSchema(characters)
-  .pick({
-    id: true,
-    sequenceId: true,
-    characterId: true,
-    talentId: true,
-    useVoice: true,
-    firstMentionSceneId: true,
-    firstMentionText: true,
-    firstMentionLine: true,
-    selectedVoiceVersionId: true,
+  .pick({ id: true })
+  // How the sequence casts it (#2017): its cast link, and the talent on the
+  // bible version that link pins.
+  .extend({
+    sequenceId: createSelectSchema(sequenceCast).shape.sequenceId,
+    characterId: createSelectSchema(sequenceCast).shape.scriptCharacterId,
+    talentId: createSelectSchema(characterBibleVersions).shape.talentId,
   })
-  // The sheet and the clothing are the character's default look's (#2015).
   .extend(
-    createSelectSchema(characterLooks).pick({
-      sheetStatus: true,
-      sheetError: true,
-      selectedSheetVersionId: true,
+    createSelectSchema(characters).pick({
+      useVoice: true,
+      firstMentionSceneId: true,
+      firstMentionText: true,
+      firstMentionLine: true,
+      selectedVoiceVersionId: true,
     }).shape
   )
+  // The sheet and the clothing are the character's default look's (#2015).
+  .extend(castLookSheetShape)
   .extend({
     standardClothing: createSelectSchema(characterLookVersions).shape.clothing,
   })

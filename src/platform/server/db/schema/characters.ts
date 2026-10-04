@@ -16,6 +16,7 @@ import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
 import { sequences } from './sequences';
 import { talent } from './talent';
+import { teams } from './teams';
 
 const SHEET_STATUSES = [
   'pending',
@@ -44,8 +45,12 @@ export type VoicePreview = {
 
 /**
  * Characters table
- * Stores characters extracted from a sequence's script with their generated reference sheets
- * and optional casting assignment to talent
+ *
+ * A character belongs to the team (#2017). A sequence uses one through a
+ * `sequence_cast` link, which pins the bible version it reads; the script id,
+ * the soft-remove and the cast talent are that link's (the talent is on the
+ * pinned bible version). The character keeps identity, its current bible
+ * version and its voice.
  */
 export const characters = snakeCase.table(
   'characters',
@@ -54,18 +59,33 @@ export const characters = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    sequenceId: text()
+    // The team that owns the character (#2017). Null only on a row a worker
+    // older than #2017 wrote during the deploy; the reconcile cron fills it
+    // (`backfillCastStatements`). NOT NULL comes with the column drop.
+    teamId: text().references(() => teams.id),
+    // In the team library: offered to new sequences. A character that is not
+    // lives only as long as some sequence casts it.
+    inLibrary: integer({ mode: 'boolean' }).default(false).notNull(),
+    // LEGACY cast columns (#2017). Which sequence a character is in, under
+    // which script id, cast with which talent and whether it is removed all
+    // live on `sequence_cast` (the talent on the pinned bible version). These
+    // are still WRITTEN, because `sequence_id` and `character_id` are NOT
+    // NULL and a worker older than #2017 reads all four during the deploy,
+    // and are READ only to give a character that worker wrote its cast link
+    // (`cast/server/db/sequence-cast.ts`). The `legacy` names keep the SQL
+    // column names but make every raw reader a compile error. The drop is a
+    // table rebuild, so it lands on its own, by hand.
+    legacySequenceId: text('sequence_id')
       .notNull()
       .references(() => sequences.id, { onDelete: 'cascade' }),
-    // Casting assignment (which talent plays this character)
-    talentId: text().references(() => talent.id, {
+    legacyTalentId: text('talent_id').references(() => talent.id, {
       onDelete: 'set null',
     }),
-    // From script analysis
-    characterId: text().notNull(), // e.g. "char_001" from script analysis
-    // The live `character_bible_versions` row (#1600): the bible IS that row.
-    // No FK (same cycle-avoidance as the sheet pointer). Null only on a row
-    // written by a worker older than #1600, which reads the legacy columns.
+    legacyCharacterId: text('character_id').notNull(),
+    // The character's CURRENT `character_bible_versions` row (#1600, #2017):
+    // the one a new sequence adopts. A sequence reads the version its cast
+    // link pins, not this. No FK (same cycle-avoidance as the sheet pointer).
+    // Null only on a row written by a worker older than #1600.
     selectedBibleVersionId: text(),
     // LEGACY bible columns (#1600). The bible lives in
     // `character_bible_versions`; these are read only as the fallback for a
@@ -126,11 +146,9 @@ export const characters = snakeCase.table(
     legacyPendingPromoteSheetVersionId: text(
       'pending_promote_sheet_version_id'
     ),
-    // Soft-remove from the sequence (#1108 Phase 2, undoable). Deleted rows
-    // are excluded from default lists / prompt-context bibles but keep their
-    // sheet + bible fields, so restore is lossless. Continuity tags on scenes
-    // are NOT stripped on delete (plan §1: leave tags + warning).
-    deletedAt: integer({ mode: 'timestamp' }),
+    // LEGACY (#2017), see the cast columns above: the soft-remove is
+    // `sequence_cast.removedAt`.
+    legacyDeletedAt: integer('deleted_at', { mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -140,13 +158,16 @@ export const characters = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_characters_sequence_id').on(table.sequenceId),
-    index('idx_characters_talent_id').on(table.talentId),
-    // Unique constraint: one character per sequence/characterId combination
+    index('idx_characters_sequence_id').on(table.legacySequenceId),
+    index('idx_characters_talent_id').on(table.legacyTalentId),
+    // LEGACY (#2017): a worker older than #2017 upserts on this during the
+    // deploy, so it stays until the columns go. It still holds: no character
+    // is in two sequences yet.
     uniqueIndex('characters_sequence_character_key').on(
-      table.sequenceId,
-      table.characterId
+      table.legacySequenceId,
+      table.legacyCharacterId
     ),
+    index('idx_characters_team').on(table.teamId),
   ]
 );
 
@@ -180,6 +201,31 @@ export type LegacyCharacterSheetColumn =
   | 'legacySelectedSheetVersionId'
   | 'legacyPendingPromoteSheetVersionId';
 
+/** The legacy cast columns (#2017) — never read outside the cast backfill. */
+export type LegacyCharacterCastColumn =
+  | 'legacySequenceId'
+  | 'legacyTalentId'
+  | 'legacyCharacterId'
+  | 'legacyDeletedAt';
+
+/**
+ * A character as one sequence casts it (#2017): the fields of its
+ * `sequence_cast` link, under the names the character's own columns had.
+ */
+export type CharacterCast = {
+  /** The `sequence_cast` row this read came through. */
+  castId: string;
+  sequenceId: string;
+  /** The script id in this sequence, e.g. "char_001". */
+  characterId: string;
+  /** The talent on the pinned bible version. */
+  talentId: string | null;
+  /** Removed from this sequence (`sequence_cast.removedAt`). */
+  deletedAt: Date | null;
+  /** The bible version this sequence pins. */
+  selectedBibleVersionId: string;
+};
+
 /**
  * What a character shows of the look it is wearing (#2015). Off a scoped read
  * that is its default look; `wearLook` swaps in the look a scene picks. The
@@ -206,8 +252,12 @@ export type CharacterWornLook = {
  */
 export type Character = Omit<
   CharacterRow,
-  LegacyCharacterBibleColumn | LegacyCharacterSheetColumn
+  | LegacyCharacterBibleColumn
+  | LegacyCharacterSheetColumn
+  | LegacyCharacterCastColumn
+  | 'selectedBibleVersionId'
 > &
+  CharacterCast &
   CharacterBible &
   CharacterWornLook &
   CharacterVoice & {
@@ -256,8 +306,14 @@ export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
+  | LegacyCharacterCastColumn
   | 'selectedBibleVersionId'
+  // The scoped module's own team.
+  | 'teamId'
 > &
+  // The sequence that casts it, and how (#2017).
+  Pick<CharacterCast, 'sequenceId' | 'characterId'> &
+  Partial<Pick<CharacterCast, 'talentId'>> &
   Pick<CharacterBible, 'name'> &
   Partial<Omit<CharacterBible, 'name'>> &
   // The default look's clothing and sheet lifecycle (#2015). `sheetStatus`

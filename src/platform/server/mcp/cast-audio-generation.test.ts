@@ -3,6 +3,7 @@
  * real scoped repositories and the migrated SQLite schema. Workflow triggers
  * and realtime are mocked; nothing reaches a provider.
  */
+import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import {
   afterAll,
   beforeAll,
@@ -281,10 +282,11 @@ describe('cast', () => {
     const characterId = generateId();
     await db.insert(characters).values({
       id: characterId,
-      sequenceId,
-      characterId: 'char_001',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_001',
       legacyName: 'Ada',
     });
+    await backfillCast(db);
     expect(
       await data('cancel_character_voice', { sequenceId, characterId })
     ).toEqual({ cancelled: false });
@@ -294,11 +296,12 @@ describe('cast', () => {
     const characterId = generateId();
     await db.insert(characters).values({
       id: characterId,
-      sequenceId,
-      characterId: 'char_001',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_001',
       legacyName: 'Narrator',
       legacyVoiceOnly: true,
     });
+    await backfillCast(db);
     expect(
       await call('recast_character', {
         sequenceId,

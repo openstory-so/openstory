@@ -18,6 +18,7 @@
  */
 
 import { getDb } from '#db-client';
+import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import {
   framePromptVersions,
   frameVariants,
@@ -30,8 +31,8 @@ import {
   sequenceMusicVariants,
   sequences,
   shotDialogueClaims,
-  characterLooks,
   characterSheetVariants,
+  sequenceCastLooks,
   characterVoiceVersions,
   characters,
   videoVariants,
@@ -103,6 +104,9 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
     // Look sheet claims (#2015): the sheet an older worker landed during the
     // deploy, and a run that died holding its claim.
     ['character_looks.claims', () => reconcileLookSheetClaimsPass(db)],
+    // Characters and looks a worker older than #2017 wrote during the
+    // deploy: give them their cast link and cast looks.
+    ['sequence_cast.backfill', () => backfillCast(db)],
     ['shot_variants.status', () => reconcileShotVariantsPass(db, 'primary')],
     [
       'shot_variants.shot_variant',
@@ -357,15 +361,15 @@ async function reconcileMusicClaimsPass(db: Database): Promise<number> {
 }
 
 /**
- * Settle look sheet claims no run will settle (#2015). A look holds a claim
- * on the id its sheet row will carry; the landing batch inserts that row and
- * clears the claim together, so a worker of this version never leaves the
- * two states below.
+ * Settle look sheet claims no run will settle (#2015). A sequence's cast look
+ * (#2017) holds a claim on the id its sheet row will carry; the landing batch
+ * inserts that row and clears the claim together, so a worker of this version
+ * never leaves the two states below.
  *
- * 1. The claimed row already exists as a plain completed sheet. Only a
- *    worker from before looks does that: it landed the run on the
- *    character's legacy columns after the #2015 backfill had copied the
- *    claim onto the look. Promote it, as that run meant to.
+ * 1. The claimed row already exists as a plain completed sheet. Only an
+ *    older worker does that: it landed the run on the character's or the
+ *    look's legacy columns after a backfill had copied the claim across.
+ *    Promote it, as that run meant to.
  * 2. The claim is older than any run can be. The run died without failing
  *    its claim; fail it, so the plan stops reading the sheet as running. A
  *    run that does come back lands with no claim and parks its sheet.
@@ -377,13 +381,16 @@ export async function reconcileLookSheetClaimsPass(
 ): Promise<number> {
   const landed = await db
     .select({
-      lookId: characterLooks.id,
-      claim: characterLooks.pendingPromoteSheetVersionId,
+      castLookId: sequenceCastLooks.id,
+      claim: sequenceCastLooks.pendingPromoteSheetVersionId,
     })
-    .from(characterLooks)
+    .from(sequenceCastLooks)
     .innerJoin(
       characterSheetVariants,
-      eq(characterSheetVariants.id, characterLooks.pendingPromoteSheetVersionId)
+      eq(
+        characterSheetVariants.id,
+        sequenceCastLooks.pendingPromoteSheetVersionId
+      )
     )
     .where(
       and(
@@ -398,7 +405,7 @@ export async function reconcileLookSheetClaimsPass(
   for (const row of landed) {
     if (!row.claim) continue;
     const promoted = await db
-      .update(characterLooks)
+      .update(sequenceCastLooks)
       .set({
         selectedSheetVersionId: row.claim,
         pendingPromoteSheetVersionId: null,
@@ -407,16 +414,16 @@ export async function reconcileLookSheetClaimsPass(
       })
       .where(
         and(
-          eq(characterLooks.id, row.lookId),
-          eq(characterLooks.pendingPromoteSheetVersionId, row.claim)
+          eq(sequenceCastLooks.id, row.castLookId),
+          eq(sequenceCastLooks.pendingPromoteSheetVersionId, row.claim)
         )
       )
-      .returning({ id: characterLooks.id });
+      .returning({ id: sequenceCastLooks.id });
     updated += promoted.length;
   }
 
   const died = await db
-    .update(characterLooks)
+    .update(sequenceCastLooks)
     .set({
       pendingPromoteSheetVersionId: null,
       sheetStatus: 'failed',
@@ -424,11 +431,14 @@ export async function reconcileLookSheetClaimsPass(
     })
     .where(
       and(
-        isNotNull(characterLooks.pendingPromoteSheetVersionId),
-        lt(characterLooks.updatedAt, new Date(Date.now() - LOOK_SHEET_DEAD_MS))
+        isNotNull(sequenceCastLooks.pendingPromoteSheetVersionId),
+        lt(
+          sequenceCastLooks.updatedAt,
+          new Date(Date.now() - LOOK_SHEET_DEAD_MS)
+        )
       )
     )
-    .returning({ id: characterLooks.id });
+    .returning({ id: sequenceCastLooks.id });
 
   return updated + died.length;
 }

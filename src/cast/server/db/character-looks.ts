@@ -30,24 +30,42 @@ import {
   characterLooks,
   characterSheetVariants,
   characters,
+  sequenceCast,
+  sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
+import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 
 /**
- * A look's live sheet version: the explicit selection, else — for a default
- * look only — the row the #1419 backfill keyed to the character's own id.
- * That pointer stays NULL on purpose (it feeds the shot hash as
- * `selectedSheetVersionId ?? sheetInputHash`), and the #2015 backfill copied
- * the NULL across with it.
+ * A look's live sheet version in the sequence that uses it (#2017): the cast
+ * look's explicit selection, else — for a default look only — the row the
+ * #1419 backfill keyed to the character's own id. That pointer stays NULL on
+ * purpose (it feeds the shot hash as `selectedSheetVersionId ??
+ * sheetInputHash`), and the #2015 and #2017 backfills copied the NULL across
+ * with it.
  */
-export const liveLookSheetVersionId = sql`COALESCE(${characterLooks.selectedSheetVersionId}, CASE WHEN ${characterLooks.isDefault} THEN ${characterLooks.characterId} END)`;
+export const liveLookSheetVersionId = sql`COALESCE(${sequenceCastLooks.selectedSheetVersionId}, CASE WHEN ${characterLooks.isDefault} THEN ${characterLooks.characterId} END)`;
 
-const { selectedLookVersionId: _pointer, ...lookRowColumns } =
-  getTableColumns(characterLooks);
+// The look's own columns: its current version pointer and the legacy
+// per-sequence state are not part of a read (#2017).
+const {
+  selectedLookVersionId: _pointer,
+  legacySelectedSheetVersionId: _selectedSheetVersionId,
+  legacyPendingPromoteSheetVersionId: _pendingPromoteSheetVersionId,
+  legacySheetStatus: _sheetStatus,
+  legacySheetError: _sheetError,
+  ...lookRowColumns
+} = getTableColumns(characterLooks);
 
 const lookColumns = {
   ...lookRowColumns,
+  // What the sequence decides (#2017): the pinned version and the sheet.
+  castLookId: sequenceCastLooks.id,
+  selectedSheetVersionId: sequenceCastLooks.selectedSheetVersionId,
+  pendingPromoteSheetVersionId: sequenceCastLooks.pendingPromoteSheetVersionId,
+  sheetStatus: sequenceCastLooks.sheetStatus,
+  sheetError: sequenceCastLooks.sheetError,
   lookVersionId: characterLookVersions.id,
   name: characterLookVersions.name,
   clothing: characterLookVersions.clothing,
@@ -71,13 +89,22 @@ export type LookSheetSnapshot = {
   talentId: string | null;
 };
 
+/**
+ * Looks as the sequence that uses them sees them (#2017): each joined to its
+ * cast look, and to the version that pins. A look with no cast look is not
+ * returned.
+ */
 const selectLooks = (db: Database) =>
   db
     .select(lookColumns)
     .from(characterLooks)
     .innerJoin(
+      sequenceCastLooks,
+      eq(sequenceCastLooks.lookId, characterLooks.id)
+    )
+    .innerJoin(
       characterLookVersions,
-      eq(characterLookVersions.id, characterLooks.selectedLookVersionId)
+      eq(characterLookVersions.id, sequenceCastLooks.lookVersionId)
     )
     .leftJoin(
       characterSheetVariants,
@@ -128,10 +155,10 @@ const backfillDefaultLook = async (
         isDefault: true,
         sortOrder: 0,
         selectedLookVersionId: legacy.id,
-        selectedSheetVersionId: legacy.selectedSheetVersionId,
-        pendingPromoteSheetVersionId: legacy.pendingPromoteSheetVersionId,
-        sheetStatus: legacy.sheetStatus,
-        sheetError: legacy.sheetError,
+        legacySelectedSheetVersionId: legacy.selectedSheetVersionId,
+        legacyPendingPromoteSheetVersionId: legacy.pendingPromoteSheetVersionId,
+        legacySheetStatus: legacy.sheetStatus,
+        legacySheetError: legacy.sheetError,
       })
       .onConflictDoNothing(),
     db
@@ -160,7 +187,8 @@ const getLook = async (
 /**
  * The look a write is about to touch. A character with no look yet answers
  * to its own id (the id its default look takes), so that case is filled in
- * here rather than at every writer.
+ * here rather than at every writer — and so is a look a worker older than
+ * #2017 wrote, which has no cast look yet.
  */
 export const requireLook = async (
   db: Database,
@@ -169,33 +197,72 @@ export const requireLook = async (
   const found = await getLook(db, id);
   if (found) return found;
   await backfillDefaultLook(db, id);
+  await backfillCast(db);
   const look = await getLook(db, id);
   if (!look) throw new NotFoundError(`Look ${id} not found`);
   return look;
 };
 
-/** The sequence and name of a look's character, for its events. */
+/**
+ * The cast link of a look's character (#2017): where its looks' cast looks
+ * go, and the sequence and name its events carry.
+ */
 const ownerOf = async (db: Database, characterId: string) => {
   const [owner] = await db
     .select({
-      sequenceId: characters.sequenceId,
+      castId: sequenceCast.id,
+      sequenceId: sequenceCast.sequenceId,
       name: characterBibleColumns.name,
     })
-    .from(characters)
+    .from(sequenceCast)
+    .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
     .leftJoin(
       characterBibleVersions,
-      eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+      eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
     )
-    .where(eq(characters.id, characterId));
+    .where(eq(sequenceCast.characterId, characterId));
   if (!owner) throw new NotFoundError(`Character ${characterId} not found`);
   return owner;
 };
 
 /**
+ * A new look and the cast look of the sequence adding it, for the caller's
+ * own `db.batch`. It has no sheet until someone asks for one.
+ */
+const newLookStatements = (
+  db: Database,
+  look: {
+    id: string;
+    versionId: string;
+    characterId: string;
+    castId: string;
+    sortOrder: number;
+  }
+) =>
+  [
+    db.insert(characterLooks).values({
+      id: look.id,
+      characterId: look.characterId,
+      isDefault: false,
+      sortOrder: look.sortOrder,
+      selectedLookVersionId: look.versionId,
+      // NOT NULL until the column is dropped (#2017).
+      legacySheetStatus: 'pending',
+    }),
+    db.insert(sequenceCastLooks).values({
+      castId: look.castId,
+      lookId: look.id,
+      lookVersionId: look.versionId,
+      sheetStatus: 'pending',
+    }),
+  ] as const;
+
+/**
  * The one writer of a look's definition: the statements that append a
- * version and point the look at it, for the caller's own `db.batch`. A
- * change to clothing or styling revokes the look's in-flight sheet claim
- * (#1113) in the same batch; a rename does not. Empty when nothing moved.
+ * version, make it the look's current one and pin the sequence to it
+ * (#2017), for the caller's own `db.batch`. A change to clothing or styling
+ * revokes the in-flight sheet claim (#1113) in the same batch; a rename does
+ * not. Empty when nothing moved.
  */
 export const lookDefinitionWrite = (
   db: Database,
@@ -228,12 +295,16 @@ export const lookDefinitionWrite = (
       }),
       db
         .update(characterLooks)
+        .set({ selectedLookVersionId: versionId, updatedAt: new Date() })
+        .where(eq(characterLooks.id, look.id)),
+      db
+        .update(sequenceCastLooks)
         .set({
-          selectedLookVersionId: versionId,
+          lookVersionId: versionId,
           ...(touchesSheet ? { pendingPromoteSheetVersionId: null } : {}),
           updatedAt: new Date(),
         })
-        .where(eq(characterLooks.id, look.id)),
+        .where(eq(sequenceCastLooks.id, look.castLookId)),
     ],
   };
 };
@@ -268,7 +339,8 @@ const requireFreeName = async (
 /**
  * Delete every look of the characters `where` matches. Looks RESTRICT their
  * character's delete (the #612 rebuild trap), so these two statements go
- * before it, in the same batch.
+ * before it, in the same batch — and after the cast looks that RESTRICT the
+ * looks' (`deleteCastStatements`).
  */
 export const deleteLooksOfCharacters = (
   db: Database,
@@ -362,11 +434,11 @@ export function createCharacterLooksMethods(db: Database) {
         .select(getTableColumns(characterLookVersions))
         .from(characterLookVersions)
         .innerJoin(
-          characterLooks,
-          eq(characterLooks.id, characterLookVersions.lookId)
+          sequenceCastLooks,
+          eq(sequenceCastLooks.lookId, characterLookVersions.lookId)
         )
-        .innerJoin(characters, eq(characters.id, characterLooks.characterId))
-        .where(eq(characters.sequenceId, sequenceId))
+        .innerJoin(sequenceCast, eq(sequenceCast.id, sequenceCastLooks.castId))
+        .where(eq(sequenceCast.sequenceId, sequenceId))
         .orderBy(
           asc(characterLookVersions.createdAt),
           asc(characterLookVersions.id)
@@ -401,6 +473,7 @@ export function createCharacterLooksMethods(db: Database) {
     ): Promise<Record<string, string>> => {
       const opts = { source: 'analysis' as const, createdBy: null };
       const defaultLook = await requireLook(db, characterId);
+      const owner = await ownerOf(db, characterId);
       const others = (
         await selectLooks(db).where(eq(characterLooks.characterId, characterId))
       ).filter((row) => !row.isDefault);
@@ -450,13 +523,12 @@ export function createCharacterLooksMethods(db: Database) {
         const id = generateId();
         const versionId = generateId();
         await db.batch([
-          db.insert(characterLooks).values({
+          ...newLookStatements(db, {
             id,
+            versionId,
             characterId,
-            isDefault: false,
+            castId: owner.castId,
             sortOrder: others.length + index,
-            selectedLookVersionId: versionId,
-            sheetStatus: 'pending',
           }),
           db.insert(characterLookVersions).values({
             id: versionId,
@@ -480,7 +552,6 @@ export function createCharacterLooksMethods(db: Database) {
           !row.pendingPromoteSheetVersionId
       );
       if (stale.length > 0) {
-        const owner = await ownerOf(db, characterId);
         const worn = new Set(
           [
             ...(
@@ -529,7 +600,7 @@ export function createCharacterLooksMethods(db: Database) {
       const owner = await ownerOf(db, characterId);
       // A character with no look yet gets its default first, so the new one
       // is never the only look and never mistaken for the default.
-      await backfillDefaultLook(db, characterId);
+      await requireLook(db, characterId);
       await requireFreeName(db, characterId, definition.name, null);
       const [last] = await db
         .select({ sortOrder: characterLooks.sortOrder })
@@ -540,13 +611,12 @@ export function createCharacterLooksMethods(db: Database) {
       const id = generateId();
       const versionId = generateId();
       await db.batch([
-        db.insert(characterLooks).values({
+        ...newLookStatements(db, {
           id,
+          versionId,
           characterId,
-          isDefault: false,
+          castId: owner.castId,
           sortOrder: (last?.sortOrder ?? 0) + 1,
-          selectedLookVersionId: versionId,
-          sheetStatus: 'pending',
         }),
         db.insert(characterLookVersions).values({
           id: versionId,
@@ -642,12 +712,16 @@ export function createCharacterLooksMethods(db: Database) {
       await db.batch([
         db
           .update(characterLooks)
+          .set({ selectedLookVersionId: version.id, updatedAt: new Date() })
+          .where(eq(characterLooks.id, lookId)),
+        db
+          .update(sequenceCastLooks)
           .set({
-            selectedLookVersionId: version.id,
+            lookVersionId: version.id,
             ...(sheetMoved ? { pendingPromoteSheetVersionId: null } : {}),
             updatedAt: new Date(),
           })
-          .where(eq(characterLooks.id, lookId)),
+          .where(eq(sequenceCastLooks.id, look.castLookId)),
         buildEventInsert(db, {
           sequenceId: owner.sequenceId,
           actorId: opts.actorId,
@@ -743,11 +817,13 @@ export function createCharacterLooksMethods(db: Database) {
     },
 
     /**
-     * Take a look's sheet claim (#1113): mint the id the run's version row
-     * will carry and point the claim at it. Last kickoff wins.
+     * Take a look's sheet claim (#1113), on the cast look of the sequence
+     * that uses it (#2017): mint the id the run's version row will carry and
+     * point the claim at it. Last kickoff wins.
      *
      * Taken only while the inputs the run was snapshotted from still hold —
-     * the same look version, bible version and cast talent (#1863). An edit
+     * the look version and bible version the sequence pins, and that bible
+     * version's talent (#1863). An edit
      * that landed between the snapshot and this write found no claim to
      * revoke, so the claim is not taken and the run parks its sheet as
      * divergent. The id is returned either way: the run still needs one.
@@ -763,7 +839,7 @@ export function createCharacterLooksMethods(db: Database) {
       const look = await requireLook(db, lookId);
       const versionId = generateId();
       const result = await db
-        .update(characterLooks)
+        .update(sequenceCastLooks)
         .set({
           pendingPromoteSheetVersionId: versionId,
           ...(opts.markGenerating
@@ -773,14 +849,14 @@ export function createCharacterLooksMethods(db: Database) {
         })
         .where(
           and(
-            eq(characterLooks.id, lookId),
-            eq(characterLooks.selectedLookVersionId, snapshot.lookVersionId),
+            eq(sequenceCastLooks.id, look.castLookId),
+            eq(sequenceCastLooks.lookVersionId, snapshot.lookVersionId),
             sql`EXISTS ${db
               .select({ one: sql`1` })
-              .from(characters)
+              .from(sequenceCast)
               .where(
                 and(
-                  eq(characters.id, look.characterId),
+                  eq(sequenceCast.id, sequenceCastLooks.castId),
                   // A payload an older worker froze does not say what it
                   // read: one from before #1600 names no bible version, one
                   // from before #2015 no cast talent. Absent is "unknown",
@@ -789,11 +865,11 @@ export function createCharacterLooksMethods(db: Database) {
                   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #1600
                   snapshot.bibleVersionId === undefined
                     ? undefined
-                    : sql`${characters.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`,
+                    : sql`${sequenceCast.bibleVersionId} IS ${snapshot.bibleVersionId}`,
                   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #2015
                   snapshot.talentId === undefined
                     ? undefined
-                    : sql`${characters.talentId} IS ${snapshot.talentId}`
+                    : sql`(SELECT ${characterBibleVersions.talentId} FROM ${characterBibleVersions} WHERE ${characterBibleVersions.id} = ${sequenceCast.bibleVersionId}) IS ${snapshot.talentId}`
                 )
               )}`
           )
@@ -812,9 +888,9 @@ export function createCharacterLooksMethods(db: Database) {
       versionId: string | null,
       error: string
     ): Promise<void> => {
-      await requireLook(db, lookId);
+      const look = await requireLook(db, lookId);
       await db
-        .update(characterLooks)
+        .update(sequenceCastLooks)
         .set({
           pendingPromoteSheetVersionId: null,
           sheetStatus: 'failed',
@@ -823,10 +899,10 @@ export function createCharacterLooksMethods(db: Database) {
         })
         .where(
           and(
-            eq(characterLooks.id, lookId),
+            eq(sequenceCastLooks.id, look.castLookId),
             versionId === null
-              ? sql`${characterLooks.pendingPromoteSheetVersionId} IS NULL`
-              : sql`(${characterLooks.pendingPromoteSheetVersionId} = ${versionId} OR ${characterLooks.pendingPromoteSheetVersionId} IS NULL)`
+              ? sql`${sequenceCastLooks.pendingPromoteSheetVersionId} IS NULL`
+              : sql`(${sequenceCastLooks.pendingPromoteSheetVersionId} = ${versionId} OR ${sequenceCastLooks.pendingPromoteSheetVersionId} IS NULL)`
           )
         );
     },

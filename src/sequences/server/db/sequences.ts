@@ -19,6 +19,7 @@ import {
   locationBibleVersions,
   renderSegments,
   scenes,
+  sequenceCast,
   sequenceLocations,
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
@@ -64,6 +65,10 @@ import {
 import { ValidationError } from '@/platform/errors';
 import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
 import { deleteLooksOfCharacters } from '@/cast/server/db/character-looks';
+import {
+  charactersOnlyIn,
+  deleteCastStatements,
+} from '@/cast/server/db/sequence-cast';
 
 /**
  * {@link ShotReadiness} plus the scalars a production status derives from: which
@@ -891,25 +896,27 @@ export function createSequencesMethods(
     },
 
     delete: async (sequenceId: string): Promise<void> => {
-      // The #1600 version tables and the #2015 looks RESTRICT their parents'
-      // delete (the #612 rebuild trap), so they go first, in the same batch
-      // as the cascade.
+      // A character belongs to the team (#2017): the sequence's cast links
+      // go, and with them only the characters nothing else holds.
+      const theirs = await charactersOnlyIn(db, sequenceId);
+      // The #1600 version tables, the #2015 looks and the #2017 cast links
+      // RESTRICT their parents' delete (the #612 rebuild trap), so they go
+      // first, in the same batch.
       await db.batch([
         db
           .delete(sequenceStyleVersions)
           .where(eq(sequenceStyleVersions.sequenceId, sequenceId)),
+        ...deleteCastStatements(db, eq(sequenceCast.sequenceId, sequenceId)),
         db
           .delete(characterBibleVersions)
           .where(
             inArray(
               characterBibleVersions.characterId,
-              db
-                .select({ id: characters.id })
-                .from(characters)
-                .where(eq(characters.sequenceId, sequenceId))
+              db.select({ id: characters.id }).from(characters).where(theirs)
             )
           ),
-        ...deleteLooksOfCharacters(db, eq(characters.sequenceId, sequenceId)),
+        ...deleteLooksOfCharacters(db, theirs),
+        db.delete(characters).where(theirs),
         db
           .delete(locationBibleVersions)
           .where(

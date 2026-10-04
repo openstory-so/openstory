@@ -16,6 +16,7 @@ import {
   characterBibleVersions,
   characterLookVersions,
   characterLooks,
+  sequenceCastLooks,
   characterSheetVariants,
   characters,
   sceneScriptVersions,
@@ -124,7 +125,7 @@ beforeEach(async () => {
   if (!lib || !tal) throw new Error('setup');
   libraryId = lib.id;
   talentId = tal.id;
-  const ch = await createCharactersMethods(db).create(
+  const ch = await createCharactersMethods(db, teamId).create(
     {
       sequenceId,
       characterId: 'char_001',
@@ -149,7 +150,7 @@ beforeEach(async () => {
   locationId = loc.id;
 });
 
-const chars = () => createCharactersMethods(db);
+const chars = () => createCharactersMethods(db, teamId);
 const looks = () => createCharacterLooksMethods(db);
 const charVersions = () => createCharacterSheetVariantsMethods(db);
 const locs = () => createSequenceLocationsMethods(db);
@@ -735,6 +736,7 @@ describe('look sheet claims (#2015)', () => {
 
   it('fills in the default look of a character an older worker wrote', async () => {
     // What a pre-#2015 worker leaves: no look, state on the legacy columns.
+    await db.delete(sequenceCastLooks);
     await db.delete(characterLookVersions);
     await db.delete(characterLooks);
     await db
@@ -1009,9 +1011,9 @@ describe('re-analysis upserts (#1113)', () => {
 
   it('a pointer-only claim leaves the status alone', async () => {
     await db
-      .update(characterLooks)
+      .update(sequenceCastLooks)
       .set({ sheetStatus: 'completed' })
-      .where(eq(characterLooks.id, characterId));
+      .where(eq(sequenceCastLooks.lookId, characterId));
     await looks().claimSheet(characterId, await snapshotOf(characterId), {
       markGenerating: false,
     });

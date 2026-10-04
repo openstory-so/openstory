@@ -27,11 +27,10 @@ import {
 } from '@/shots/input-hash';
 import {
   characterSheetVariants,
-  characterLookVersions,
-  characterLooks,
   characters,
   locationLibrary,
   locationSheetVariants,
+  sequenceCastLooks,
   sequenceLocations,
   sequences,
   styles,
@@ -42,6 +41,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import type { Database } from '@/platform/server/db/client';
 import { createCharacterLooksMethods } from './character-looks';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
@@ -61,8 +61,7 @@ let talentSheetId = '';
 
 async function seed() {
   await db.delete(characterSheetVariants);
-  await db.delete(characterLookVersions);
-  await db.delete(characterLooks);
+  await clearVersionRows(db);
   await db.delete(locationSheetVariants);
   await db.delete(talentSheetVariants);
   await db.delete(talentSheets);
@@ -103,12 +102,10 @@ async function seed() {
     .values([
       { id: sequenceId, teamId: team.id, title: 'S', styleId: style.id },
     ]);
-  const [character] = await db
-    .insert(characters)
-    .values({ sequenceId, characterId: 'char_001', legacyName: 'Alice' })
-    .returning();
-  if (!character)
-    throw new Error('test setup: character insert returned nothing');
+  const character = await createCharactersMethods(db, team.id).create(
+    { sequenceId, characterId: 'char_001', name: 'Alice' },
+    { source: 'analysis', createdBy: null }
+  );
   characterId = character.id;
   const [talentRow] = await db
     .insert(talent)
@@ -368,9 +365,9 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     });
     await createCharacterLooksMethods(db).ensureDefault(characterId);
     await db
-      .update(characterLooks)
+      .update(sequenceCastLooks)
       .set({ selectedSheetVersionId: variant.id })
-      .where(eq(characterLooks.id, characterId));
+      .where(eq(sequenceCastLooks.lookId, characterId));
 
     await expect(methods.discard(variant.id)).rejects.toThrow(
       /Cannot discard the selected/
@@ -822,7 +819,9 @@ describe('character sheet versions (append + select)', () => {
 
     // The parent's mirror columns are no longer written (#1419) — the live
     // sheet is whatever the pointer names.
-    const live = await createCharactersMethods(db).getById(characterId);
+    const live = await createCharactersMethods(db, team.id).getById(
+      characterId
+    );
     expect(live?.selectedSheetVersionId).toBe(version.id);
     expect(live?.sheetImageUrl).toBe('https://example.com/new.png');
     expect(live?.sheetInputHash).toBe('hash-new');
@@ -853,18 +852,20 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
     expect(
-      (await createCharactersMethods(db).getById(characterId))
+      (await createCharactersMethods(db, team.id).getById(characterId))
         ?.selectedSheetVersionId
     ).toBe(second.version.id);
 
     await methods.select(characterId, first.version.id, { actorId: null });
     const [after] = await db
       .select()
-      .from(characterLooks)
-      .where(eq(characterLooks.id, characterId));
+      .from(sequenceCastLooks)
+      .where(eq(sequenceCastLooks.lookId, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     // Reads follow the pointer, not a mirror column (#1419).
-    const live = await createCharactersMethods(db).getById(characterId);
+    const live = await createCharactersMethods(db, team.id).getById(
+      characterId
+    );
     expect(live?.sheetImageUrl).toBe('https://example.com/a.png');
     expect(live?.sheetInputHash).toBe('hash-a');
 

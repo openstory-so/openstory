@@ -11,6 +11,7 @@
  *       against the NEW prompt text), committed in one batch; video stale.
  */
 
+import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
@@ -37,6 +38,7 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import type { VideoManifest } from '@/platform/server/db/schema';
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
   computeUploadedStillInputHash,
@@ -89,6 +91,7 @@ async function seed() {
   await db.delete(frameVariants);
   await db.delete(framePromptVersions);
   await db.delete(frames);
+  await clearVersionRows(db);
   await db.delete(characters);
   await db.delete(shots);
   await db.delete(renderSegments);
@@ -255,8 +258,8 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
   const [row] = await db
     .insert(characters)
     .values({
-      sequenceId,
-      characterId: 'char_001',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_001',
       legacyName: 'Jack',
       legacyConsistencyTag: 'char_001: Jack-denim-jacket',
       // No look row: the shape a worker older than #2015 leaves, read
@@ -264,6 +267,7 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
       legacySheetStatus: 'completed',
     })
     .returning();
+  await backfillCast(db);
   if (!row) throw new Error('test setup: character insert returned nothing');
   // The live sheet is read from the version row, not the mirror (#1419) —
   // keyed to the character's own id, the shape the backfill produced.
@@ -277,7 +281,7 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
   });
   // Return the RESOLVED read — the sheet lives on the version row now (#1419),
   // and the staleness hash is computed from it.
-  const resolved = await createCharactersMethods(db).getById(row.id);
+  const resolved = await createCharactersMethods(db, teamId).getById(row.id);
   if (!resolved)
     throw new Error('test setup: character re-read returned nothing');
   return resolved;

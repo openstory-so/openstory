@@ -25,6 +25,7 @@ import {
   characterVoiceVersions,
   characters,
   locationBibleVersions,
+  sequenceCast,
   sequenceElements,
   sequenceEvents,
   sequenceLocations,
@@ -36,6 +37,7 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
+import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
@@ -50,6 +52,7 @@ import { createSequencesMethods } from '@/sequences/server/db/sequences';
 let client: Client;
 let db: Database;
 let sequenceId = '';
+let teamId = '';
 let actorId = '';
 
 async function seed() {
@@ -64,7 +67,7 @@ async function seed() {
   await db.delete(teams);
   await db.delete(user);
 
-  const teamId = generateId();
+  teamId = generateId();
   sequenceId = generateId();
   actorId = generateId();
   await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
@@ -130,7 +133,9 @@ const HASH_SCENE = {
  * must move this, and nothing in the write paths may stamp a hash itself.
  */
 async function liveVisualPromptHash(): Promise<string> {
-  const cast = await createCharactersMethods(db).listWithSheets(sequenceId);
+  const cast = await createCharactersMethods(db, teamId).listWithSheets(
+    sequenceId
+  );
   return await hashVisualPromptInput({
     scene: HASH_SCENE,
     styleConfig: STYLE_CONFIG,
@@ -158,7 +163,7 @@ beforeEach(async () => {
 
 describe('characters bible CRUD + soft-remove', () => {
   it('appends and can restore selected voice configurations', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -217,7 +222,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('stamps a take unusable without appending voice history (#1709)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -268,7 +273,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('creates a generating voice husk and points pending-promote at it (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -296,7 +301,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('returns the existing live husk instead of inserting a second (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -314,7 +319,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not touch the live voice while a husk is inserted or completed (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -354,7 +359,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('completes a live husk in place without appending history (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -390,7 +395,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not complete a husk that already failed (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -418,7 +423,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('clears pending-promote when selecting a different completed voice (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -452,7 +457,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('promotes a completed husk only while pending-promote still names it (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -493,7 +498,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not promote when the pointer moved mid-run (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -533,7 +538,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not promote a generating husk or a completed empty husk (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -556,7 +561,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('clears pending-promote on a library updateVoice (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -590,7 +595,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses to select a generating voice husk (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -609,7 +614,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses to select a completed husk with no voiceId (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -629,7 +634,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses a released voice version, across every character holding the id', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const maya = await methods.create(
       {
         sequenceId,
@@ -688,7 +693,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const cast = await methods.create(
       {
         sequenceId,
@@ -720,7 +725,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('a re-cast fills a voice id the selected version lacks, as a library version (#1788)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -750,7 +755,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('counts voice references through the selected version, soft-deleted included (#1788)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const shared = 'shared-voice';
     const live = await methods.create(
       { sequenceId, characterId: 'ref_live', name: 'A', voiceId: shared },
@@ -784,7 +789,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('update refuses a voice field, and a bible description edit records one', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -819,7 +824,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('updateBible writes the fields and an atomic character.updated event carrying prevState', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -851,7 +856,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -905,7 +910,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('derived staleness: a bible edit moves the visual-prompt hash, a consistencyTag edit does NOT (#867)', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -942,7 +947,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('derived staleness: soft-removing a character moves the visual-prompt hash; restore puts it back', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -966,7 +971,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('bible edit and soft-remove move the DERIVED live prompt hash; restore moves it back', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -997,7 +1002,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('a re-analysis upsert on the same characterId revives a soft-deleted character', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -1167,7 +1172,7 @@ describe('bible history (#1600)', () => {
   const analysis = { source: 'analysis', createdBy: null } as const;
 
   it('a create appends the first version and points at it', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -1193,7 +1198,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('a re-analysis appends only when a field moved, keeping what it left out', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const input = {
       sequenceId,
       characterId: 'char_001',
@@ -1218,7 +1223,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('an edit appends a version by its author; a no-op edit appends none', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       { sequenceId, characterId: 'char_001', name: 'Ada' },
       analysis
@@ -1244,7 +1249,7 @@ describe('bible history (#1600)', () => {
   });
 
   it('a clothing edit appends a look version, not a bible version (#2015)', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const looks = createCharacterLooksMethods(db);
     const created = await m.create(
       { sequenceId, characterId: 'char_001', name: 'Ada' },
@@ -1288,22 +1293,47 @@ describe('bible history (#1600)', () => {
     });
   });
 
-  it('a row with no version reads its old columns, and its first edit versions it', async () => {
+  it('a character an older worker wrote gets its cast link (#2017), and its first edit a look', async () => {
     const id = generateId();
-    // The shape a worker older than #1600 writes during the deploy window.
+    // The shape a worker older than #2015 and #2017 writes during the deploy:
+    // its own columns say which sequence it is in, its bible version holds
+    // the clothing, and it has no team, no look and no cast link.
     await db.insert(characters).values({
       id,
-      sequenceId,
-      characterId: 'char_old',
+      legacySequenceId: sequenceId,
+      legacyCharacterId: 'char_old',
       legacyName: 'Old',
-      legacyStandardClothing: 'coat',
+      selectedBibleVersionId: id,
     });
-    const m = createCharactersMethods(db);
+    await db.insert(characterBibleVersions).values({
+      id,
+      characterId: id,
+      name: 'Old',
+      legacyStandardClothing: 'coat',
+      voiceOnly: false,
+      isPerson: true,
+      source: 'analysis',
+    });
+    const m = createCharactersMethods(db, teamId);
+    expect(await m.getById(id)).toBeNull();
+
+    // A re-analysis that meets it before the reconcile cron has lands on the
+    // same row instead of tripping the legacy unique index.
+    const again = await m.create(
+      { sequenceId, characterId: 'char_old', name: 'Old' },
+      analysis
+    );
+    expect(again.id).toBe(id);
     expect(await m.getById(id)).toMatchObject({
       name: 'Old',
       standardClothing: 'coat',
-      selectedBibleVersionId: null,
+      teamId,
+      castId: id,
+      sequenceId,
+      characterId: 'char_old',
+      selectedBibleVersionId: id,
     });
+    expect(await backfillCast(db)).toBe(0);
 
     const edited = await m.updateBible(
       id,
@@ -1317,8 +1347,10 @@ describe('bible history (#1600)', () => {
       standardClothing: 'coat',
       looks: [{ id, isDefault: true, clothing: 'coat' }],
     });
-    const [version] = await characterVersions(id);
-    expect(version).toMatchObject({ name: 'Old', age: '50s' });
+    const versions = await characterVersions(id);
+    expect(
+      versions.find((v) => v.id === edited.selectedBibleVersionId)
+    ).toMatchObject({ name: 'Old', age: '50s' });
   });
 
   it('locations: create, bulk re-analysis and edits append the same way', async () => {
@@ -1359,7 +1391,7 @@ describe('bible history (#1600)', () => {
 
 describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
   it('characters, locations and the sequence delete with their versions', async () => {
-    const chars = createCharactersMethods(db);
+    const chars = createCharactersMethods(db, teamId);
     const locs = createSequenceLocationsMethods(db);
     const opts = { source: 'analysis' as const, createdBy: null };
     const [a, b] = await Promise.all(
@@ -1398,6 +1430,8 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     );
 
     expect(await db.select().from(characterBibleVersions)).toEqual([]);
+    expect(await db.select().from(sequenceCast)).toEqual([]);
+    expect(await db.select().from(characters)).toEqual([]);
     expect(await db.select().from(locationBibleVersions)).toEqual([]);
     expect(await db.select().from(sequenceStyleVersions)).toEqual([]);
     expect(await db.select().from(sequences)).toEqual([]);

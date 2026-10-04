@@ -57,7 +57,7 @@ export const relations = defineRelations(schema, (r) => ({
     renderSegments: r.many.renderSegments(),
     videoVariants: r.many.videoVariants(),
     events: r.many.sequenceEvents(),
-    characters: r.many.characters(),
+    cast: r.many.sequenceCast(),
     locations: r.many.sequenceLocations(),
     elements: r.many.sequenceElements(),
     musicPromptVariants: r.many.sequenceMusicPromptVersions(),
@@ -246,17 +246,34 @@ export const relations = defineRelations(schema, (r) => ({
 
   // ---- Characters ----
   characters: {
-    sequence: r.one.sequences({
-      from: r.characters.sequenceId,
-      to: r.sequences.id,
-    }),
     voiceVersions: r.many.characterVoiceVersions(),
-    talent: r.one.talent({
-      from: r.characters.talentId,
-      to: r.talent.id,
-    }),
     sheetVariants: r.many.characterSheetVariants(),
     looks: r.many.characterLooks(),
+    cast: r.many.sequenceCast(),
+  },
+
+  // ---- Sequence cast (#2017) ----
+  sequenceCast: {
+    sequence: r.one.sequences({
+      from: r.sequenceCast.sequenceId,
+      to: r.sequences.id,
+    }),
+    character: r.one.characters({
+      from: r.sequenceCast.characterId,
+      to: r.characters.id,
+    }),
+    looks: r.many.sequenceCastLooks(),
+  },
+
+  sequenceCastLooks: {
+    cast: r.one.sequenceCast({
+      from: r.sequenceCastLooks.castId,
+      to: r.sequenceCast.id,
+    }),
+    look: r.one.characterLooks({
+      from: r.sequenceCastLooks.lookId,
+      to: r.characterLooks.id,
+    }),
   },
 
   characterLooks: {
