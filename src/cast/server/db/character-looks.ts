@@ -688,8 +688,19 @@ export function createCharacterLooksMethods(db: Database) {
               .where(
                 and(
                   eq(characters.id, look.characterId),
-                  sql`${characters.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`,
-                  sql`${characters.talentId} IS ${snapshot.talentId}`
+                  // A payload an older worker froze does not say what it
+                  // read: one from before #1600 names no bible version, one
+                  // from before #2015 no cast talent. Absent is "unknown",
+                  // not "none", so that part of the guard is skipped —
+                  // reading it as null would refuse every cast character.
+                  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #1600
+                  snapshot.bibleVersionId === undefined
+                    ? undefined
+                    : sql`${characters.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`,
+                  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #2015
+                  snapshot.talentId === undefined
+                    ? undefined
+                    : sql`${characters.talentId} IS ${snapshot.talentId}`
                 )
               )}`
           )

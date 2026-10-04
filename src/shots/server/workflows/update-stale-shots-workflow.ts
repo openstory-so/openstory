@@ -417,10 +417,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     {
                       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
                       lookVersionId: payload.lookVersionId ?? id,
-                      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #1600
-                      bibleVersionId: payload.bibleVersionId ?? null,
-                      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
-                      talentId: payload.talentId ?? null,
+                      // Passed as frozen: a plan from before #1600 / #2015
+                      // has neither, and `claimSheet` skips what is absent.
+                      bibleVersionId: payload.bibleVersionId,
+                      talentId: payload.talentId,
                     },
                     { markGenerating: true }
                   )

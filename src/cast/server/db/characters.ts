@@ -34,6 +34,7 @@ import type {
   CharacterWithTalent,
   Shot,
   NewCharacter,
+  SheetStatus,
   VoicePreview,
   VoicePreviewUnusable,
   CharacterVoiceVersionStatus,
@@ -605,11 +606,25 @@ export function createCharactersMethods(db: Database) {
       const live = await selectCharacters(
         and(eq(characters.sequenceId, sequenceId), isNull(characters.deletedAt))
       );
-      return live.filter(
-        (character) =>
-          character.sheetStatus === 'completed' ||
-          character.looks.some((look) => look.sheetStatus === 'completed')
-      );
+      // A look whose sheet is not finished offers none: a scene that wears
+      // it attaches no sheet, exactly as a single-look character whose sheet
+      // is not finished is left out. Its hash fields are untouched.
+      const finished = <T extends { sheetStatus: SheetStatus }>(
+        look: T
+      ): T | (T & { sheetImageUrl: null }) =>
+        look.sheetStatus === 'completed'
+          ? look
+          : { ...look, sheetImageUrl: null };
+      return live
+        .filter(
+          (character) =>
+            character.sheetStatus === 'completed' ||
+            character.looks.some((look) => look.sheetStatus === 'completed')
+        )
+        .map((character) => ({
+          ...finished(character),
+          looks: character.looks.map(finished),
+        }));
     },
 
     /**

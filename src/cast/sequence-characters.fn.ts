@@ -35,7 +35,7 @@ import {
   type AssignableVoicePick,
 } from '@/cast/server/voice/elevenlabs-voice';
 import { voiceProviderOf, SEED_VOICE_MAX_TAKES } from '@/cast/seed-voice';
-import { readReferenceStaleness } from '@/cast/server/production-staleness';
+import { readLookSheetStaleness } from '@/cast/server/production-staleness';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
@@ -484,7 +484,8 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
       context.scopedDb,
       { userId: context.user.id },
       context.sequence,
-      data
+      // No look named: the default look, whose id is the character's.
+      { ...data, lookId: data.lookId ?? data.characterId }
     )
   );
 
@@ -497,12 +498,11 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
   .handler(
     async ({ context, data }): Promise<SheetStaleness> =>
       (
-        await readReferenceStaleness(
+        await readLookSheetStaleness(
           context.scopedDb,
           data.sequenceId,
-          'character',
           data.characterId,
-          data.lookId
+          data.lookId ?? data.characterId
         )
       ).status
   );

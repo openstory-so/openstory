@@ -553,8 +553,8 @@ export async function setCharacterSheetFromUpload(
   context: SequenceUploadContext,
   data: {
     characterId: string;
-    /** The look the sheet is of (#2015); the default look when omitted. */
-    lookId?: string;
+    /** The look the sheet is of (#2015). A character id names its default. */
+    lookId: string;
     publicUrl: string;
   }
 ) {
@@ -571,11 +571,7 @@ export async function setCharacterSheetFromUpload(
   }
   // The sheet is one look's (#2015): the hash below reads that look's
   // clothing and styling, as a generated sheet's would.
-  const look = await requireCharacterLook(
-    scopedDb,
-    owner,
-    data.lookId ?? owner.lookId
-  );
+  const look = await requireCharacterLook(scopedDb, owner, data.lookId);
   const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(
     character.isPerson,

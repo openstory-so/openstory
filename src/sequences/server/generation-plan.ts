@@ -8,7 +8,10 @@ import type { FreshPlanSequenceOverrides } from '@/shots/server/update-stale-pla
 
 import { wearLook } from '@/cast/character-looks';
 import { matchSpeaker, usesVoice } from '@/cast/voice';
-import { readReferenceStaleness } from '@/cast/server/production-staleness';
+import {
+  readLookSheetStaleness,
+  readReferenceStaleness,
+} from '@/cast/server/production-staleness';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import { NotFoundError } from '@/platform/errors';
@@ -292,10 +295,9 @@ async function loadPlanInput(
         .flatMap((c) => [
           c,
           ...c.looks
-            .filter(
-              (look) =>
-                !look.isDefault && !look.deletedAt && pickedLookIds.has(look.id)
-            )
+            // A removed look a scene still picks is still worn, so it still
+            // owes its sheet: the shots that wear it wait on this unit.
+            .filter((look) => !look.isDefault && pickedLookIds.has(look.id))
             .map((look) => wearLook(c, look)),
         ])
         .map(async (c) => ({
@@ -304,14 +306,7 @@ async function loadPlanInput(
             !!c.sheetImageUrl,
             c.sheetStatus === 'generating' ||
               c.pendingPromoteSheetVersionId != null,
-            () =>
-              readReferenceStaleness(
-                scopedDb,
-                sequence.id,
-                'character',
-                c.id,
-                c.lookId
-              )
+            () => readLookSheetStaleness(scopedDb, sequence.id, c.id, c.lookId)
           ),
         }))
     ),

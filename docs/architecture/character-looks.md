@@ -87,6 +87,14 @@ Claim → demote → guarded promote → fail, on the look
   that is not taken still returns an id, and the run parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
+- A payload an older worker froze names no cast talent (or, before #1600, no
+  bible version). Absent is "unknown", not "none": `claimSheet` skips that
+  part of the condition instead of refusing every cast character.
+- The reconcile cron (`reconcileLookSheetClaimsPass`, pass
+  `character_looks.claims`) settles the two states no run will: a claim whose
+  row already exists as a plain completed sheet is promoted (only a worker
+  from before looks leaves that, by landing on the character's legacy columns
+  mid-deploy), and a claim older than an hour is failed.
 
 The References stage makes one sheet per look some scene uses: a
 `sheet:character` plan unit is a look id — each character's default look

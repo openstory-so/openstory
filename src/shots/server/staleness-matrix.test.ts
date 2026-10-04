@@ -39,7 +39,10 @@ import { assembleSequenceSegments } from '@/shots/scene-segments';
 import { dialogueLinesKey } from '@/shots/shot-dialogue';
 import { rendersReferenceOnly } from '@/shots/use-start-frame';
 import { resolveShotReferences } from '@/shots/scene-matching';
-import { readReferenceStaleness } from '@/cast/server/production-staleness';
+import {
+  readLookSheetStaleness,
+  readReferenceStaleness,
+} from '@/cast/server/production-staleness';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import {
   buildRegenerateLocationSheetPayload,
@@ -1226,15 +1229,8 @@ describe('staleness matrix — reference sheets', () => {
     });
     const gala = { ...GALA, sheetInputHash: snapshotInputHash };
     const galaVerdict = async (look: CharacterLook) =>
-      (
-        await readReferenceStaleness(
-          db(look),
-          'seq',
-          'character',
-          'c-alice',
-          GALA.id
-        )
-      ).status;
+      (await readLookSheetStaleness(db(look), 'seq', 'c-alice', GALA.id))
+        .status;
 
     expect(await galaVerdict(gala)).toBe('fresh');
     expect(await galaVerdict({ ...gala, clothing: 'blue gown' })).toBe('stale');
@@ -1249,6 +1245,10 @@ describe('staleness matrix — reference sheets', () => {
         )
       ).status
     ).toBe('fresh');
+    // An id that is no look of hers is an error, not the default's verdict.
+    await expect(
+      readLookSheetStaleness(db(gala), 'seq', 'c-alice', 'no-such-look')
+    ).rejects.toThrow('not found');
     // The two looks are different sheets: different digests.
     expect(snapshotInputHash).not.toBe(stamped.alice.sheetInputHash);
   });

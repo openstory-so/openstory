@@ -390,7 +390,9 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     // claim falls on the default look, under the character's own id.
     expect(claimSheet).toHaveBeenCalledWith(
       'ravi',
-      { lookVersionId: 'ravi', bibleVersionId: null, talentId: null },
+      // No bible version or cast talent on the old payload: passed on as
+      // absent, so the claim does not read a cast character as uncast.
+      { lookVersionId: 'ravi', bibleVersionId: undefined, talentId: undefined },
       { markGenerating: true }
     );
     expect(result.failures).toEqual([]);

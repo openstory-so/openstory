@@ -30,6 +30,8 @@ import {
   sequenceMusicVariants,
   sequences,
   shotDialogueClaims,
+  characterLooks,
+  characterSheetVariants,
   characterVoiceVersions,
   characters,
   videoVariants,
@@ -46,6 +48,11 @@ const logger = getLogger(['openstory', 'cron', 'reconcile-all']);
 
 const BLIND_FAIL_THRESHOLD_MS = 30 * 60 * 1000;
 const MAX_ROWS_PER_PASS = 100;
+/**
+ * A sheet run and its retries finish well inside this (its parent waits 30
+ * minutes). A look still holding a claim past it has no run behind it.
+ */
+const LOOK_SHEET_DEAD_MS = 60 * 60 * 1000;
 
 type Database = ReturnType<typeof getDb>;
 type ReconcileCounts = Record<string, number>;
@@ -93,6 +100,9 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
       'character_voice_versions.claims',
       () => reconcileCharacterVoiceClaimsPass(db),
     ],
+    // Look sheet claims (#2015): the sheet an older worker landed during the
+    // deploy, and a run that died holding its claim.
+    ['character_looks.claims', () => reconcileLookSheetClaimsPass(db)],
     ['shot_variants.status', () => reconcileShotVariantsPass(db, 'primary')],
     [
       'shot_variants.shot_variant',
@@ -344,6 +354,83 @@ async function reconcileMusicClaimsPass(db: Database): Promise<number> {
   for (const row of orphaned) await clearPointer(row.id);
 
   return updated + orphaned.length;
+}
+
+/**
+ * Settle look sheet claims no run will settle (#2015). A look holds a claim
+ * on the id its sheet row will carry; the landing batch inserts that row and
+ * clears the claim together, so a worker of this version never leaves the
+ * two states below.
+ *
+ * 1. The claimed row already exists as a plain completed sheet. Only a
+ *    worker from before looks does that: it landed the run on the
+ *    character's legacy columns after the #2015 backfill had copied the
+ *    claim onto the look. Promote it, as that run meant to.
+ * 2. The claim is older than any run can be. The run died without failing
+ *    its claim; fail it, so the plan stops reading the sheet as running. A
+ *    run that does come back lands with no claim and parks its sheet.
+ *
+ * `updatedAt` is left alone on both writes, like every pass here.
+ */
+export async function reconcileLookSheetClaimsPass(
+  db: Database
+): Promise<number> {
+  const landed = await db
+    .select({
+      lookId: characterLooks.id,
+      claim: characterLooks.pendingPromoteSheetVersionId,
+    })
+    .from(characterLooks)
+    .innerJoin(
+      characterSheetVariants,
+      eq(characterSheetVariants.id, characterLooks.pendingPromoteSheetVersionId)
+    )
+    .where(
+      and(
+        eq(characterSheetVariants.status, 'completed'),
+        isNotNull(characterSheetVariants.url),
+        isNull(characterSheetVariants.divergedAt),
+        isNull(characterSheetVariants.discardedAt)
+      )
+    )
+    .limit(MAX_ROWS_PER_PASS);
+  let updated = 0;
+  for (const row of landed) {
+    if (!row.claim) continue;
+    const promoted = await db
+      .update(characterLooks)
+      .set({
+        selectedSheetVersionId: row.claim,
+        pendingPromoteSheetVersionId: null,
+        sheetStatus: 'completed',
+        sheetError: null,
+      })
+      .where(
+        and(
+          eq(characterLooks.id, row.lookId),
+          eq(characterLooks.pendingPromoteSheetVersionId, row.claim)
+        )
+      )
+      .returning({ id: characterLooks.id });
+    updated += promoted.length;
+  }
+
+  const died = await db
+    .update(characterLooks)
+    .set({
+      pendingPromoteSheetVersionId: null,
+      sheetStatus: 'failed',
+      sheetError: 'Generation died before completing',
+    })
+    .where(
+      and(
+        isNotNull(characterLooks.pendingPromoteSheetVersionId),
+        lt(characterLooks.updatedAt, new Date(Date.now() - LOOK_SHEET_DEAD_MS))
+      )
+    )
+    .returning({ id: characterLooks.id });
+
+  return updated + died.length;
 }
 
 /**

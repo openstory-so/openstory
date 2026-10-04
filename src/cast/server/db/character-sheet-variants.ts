@@ -393,10 +393,24 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      * first.
      */
     discard: async (variantId: string): Promise<Date> => {
+      // The variant's own look, by primary key; a row with no look is its
+      // character's default look's, whose id is the character's.
       const [live] = await db
         .select({ id: characterLooks.id })
         .from(characterLooks)
-        .where(eq(liveLookSheetVersionId, variantId));
+        .innerJoin(
+          characterSheetVariants,
+          eq(
+            characterLooks.id,
+            sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
+          )
+        )
+        .where(
+          and(
+            eq(characterSheetVariants.id, variantId),
+            eq(liveLookSheetVersionId, variantId)
+          )
+        );
       if (live) {
         throw new ConflictError(
           'Cannot discard the selected sheet version; select another first.'

@@ -94,7 +94,8 @@ const regenerateCharacterSheetTool = openstoryTool({
       sequence,
       {
         characterId: character.id,
-        lookId: input.lookId,
+        // No look named: the default look, whose id is the character's.
+        lookId: input.lookId ?? character.id,
         imageModel: input.imageModel,
       }
     );

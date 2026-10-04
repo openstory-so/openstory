@@ -206,7 +206,13 @@ const setCharacterSheetInput = z.object({
 export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(setCharacterSheetInput))
-  .handler(({ context, data }) => setCharacterSheetFromUpload(context, data));
+  .handler(({ context, data }) =>
+    setCharacterSheetFromUpload(context, {
+      ...data,
+      // No look named: the default look, whose id is the character's.
+      lookId: data.lookId ?? data.characterId,
+    })
+  );
 
 const locationSheetPresignInput = z.object({
   sequenceId: ulidSchema,

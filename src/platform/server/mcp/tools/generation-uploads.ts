@@ -666,7 +666,7 @@ const setCharacterSheetFromUploadTool = openstoryTool({
       { scopedDb, user: { id: userId }, teamId: scopedDb.teamId, sequence },
       {
         characterId: character.id,
-        lookId: input.lookId,
+        lookId: input.lookId ?? character.id,
         publicUrl: storedUpload(input.upload),
       }
     );

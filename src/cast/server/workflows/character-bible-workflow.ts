@@ -139,6 +139,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         lookId: created?.lookId ?? characterDbId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
         lookName: created?.lookName ?? DEFAULT_LOOK_NAME,
+        // The run draws the default look only, so the rows it hands back
+        // wear it and list no other: a scene that picks another look gets
+        // that look's sheet from the plan's references wave, which reads the
+        // looks from D1.
         looks: [],
       };
     };
@@ -205,8 +209,10 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         lookName: created.lookName ?? DEFAULT_LOOK_NAME,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
         lookStyling: created.lookStyling ?? null,
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #2015
-        talentId: created.talentId ?? null,
+        // A result cached before #2015 has no `talentId`; it is passed on as
+        // absent, and `claimSheet` skips the cast check rather than read it
+        // as "not cast".
+        talentId: created.talentId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
         bibleVersionId: created.bibleVersionId ?? null,
         characterName: character.name,

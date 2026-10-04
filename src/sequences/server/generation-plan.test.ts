@@ -14,6 +14,7 @@ const frame = { id: 'f1', shotId: 's1', pendingPromoteVersionId: null };
 let selectedStill: { url: string } | null = { url: 'https://x/still.jpg' };
 /** The one scene's look picks (#2015): character tag → look id. */
 let sceneLooks: Record<string, string> | null = null;
+let galaRemoved = false;
 /** Status of the anchor's newest primary `frame_variants` row (#1942). */
 let primaryImageStatus: string | null = null;
 
@@ -85,6 +86,7 @@ vi.doMock('@/audio/server/music-staleness', () => ({
 }));
 vi.doMock('@/cast/server/production-staleness', () => ({
   readReferenceStaleness: () => Promise.resolve({ status: 'fresh' }),
+  readLookSheetStaleness: () => Promise.resolve({ status: 'fresh' }),
 }));
 
 const { computeGenerationPlan } = await import('./generation-plan');
@@ -94,7 +96,8 @@ const mayaLook = (id: string, sheetImageUrl: string | null) => ({
   id,
   name: id,
   isDefault: id === 'maya',
-  deletedAt: null,
+  // Removed, but the scene still picks it: it is still worn.
+  deletedAt: id === 'gala' && galaRemoved ? new Date() : null,
   clothing: id,
   styling: null,
   sheetImageUrl,
@@ -217,6 +220,17 @@ describe('computeGenerationPlan', () => {
       expect(states).not.toHaveProperty(['sheet:character:unworn']);
     } finally {
       sceneLooks = null;
+    }
+  });
+
+  it('still owes the sheet of a removed look a scene picks', async () => {
+    sceneLooks = { maya: 'gala' };
+    galaRemoved = true;
+    try {
+      expect((await planStates(true))['sheet:character:gala']).toBe('missing');
+    } finally {
+      sceneLooks = null;
+      galaRemoved = false;
     }
   });
 

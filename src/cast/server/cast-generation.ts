@@ -75,8 +75,8 @@ export async function regenerateCharacterSheet(
   sequence: Sequence,
   data: {
     characterId: string;
-    /** A look other than the character's default (#2015). */
-    lookId?: string;
+    /** The look to draw (#2015). A character id names its default look. */
+    lookId: string;
     imageModel?: string;
   }
 ): Promise<{ characterId: string; workflowRunId: string }> {
@@ -92,7 +92,7 @@ export async function regenerateCharacterSheet(
     teamId: scopedDb.teamId,
     sequence,
     character,
-    lookId: data.lookId ?? character.lookId,
+    lookId: data.lookId,
     imageModel: data.imageModel,
   });
 
