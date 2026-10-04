@@ -48,7 +48,7 @@
  */
 
 import { withLookSheet } from '@/cast/character-looks';
-import { sheetLookId } from '@/cast/server/workflows/sheet-snapshots';
+import { assertQueuedWithLooks } from '@/cast/server/workflows/sheet-snapshots';
 import { generateId } from '@/platform/id';
 import {
   DEFAULT_MUSIC_MODEL,
@@ -245,6 +245,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         'Update-all plan predates frozen motion sources; re-trigger the update'
       );
     }
+    // Before any claim is taken, so nothing is left to clear.
+    assertQueuedWithLooks(
+      ...(plan.references?.characterSheets ?? []),
+      ...plan.renderRefs.characters
+    );
 
     const counters = {
       visualPrompts: 0,
@@ -398,10 +403,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       };
       await Promise.allSettled([
         ...references.characterSheets.map(async (payload) => {
-          // One sheet per look (#2015). A default look's id is its
-          // character's, so a plan frozen before looks replays the same
-          // step names.
-          const id = sheetLookId(payload);
+          // One sheet per look (#2015).
+          const id = payload.lookId;
           let sheetVersionId: string;
           try {
             // Conditional (#1863): the payload was built at the click, and an
@@ -415,10 +418,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   await scopedDb.characterLooks.claimSheet(
                     id,
                     {
-                      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
-                      lookVersionId: payload.lookVersionId ?? id,
-                      // Passed as frozen: a plan from before #1600 / #2015
-                      // has neither, and `claimSheet` skips what is absent.
+                      lookVersionId: payload.lookVersionId,
+                      // Passed as frozen: a plan from before #1600 has
+                      // none, and `claimSheet` skips what is absent.
                       bibleVersionId: payload.bibleVersionId,
                       talentId: payload.talentId,
                     },
@@ -606,10 +608,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       characters: plan.renderRefs.characters.map((row) =>
         [...generatedCharacters].reduce(
           (character, [lookId, generated]) =>
-            // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: rows frozen before #2015 have no looks; their sheet is under the character's id
-            (character.looks ?? []).some((look) => look.id === lookId) ||
-            // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: as above
-            (character.lookId ?? character.id) === lookId
+            character.looks.some((look) => look.id === lookId) ||
+            character.lookId === lookId
               ? withLookSheet(character, lookId, {
                   sheetImageUrl: generated.sheetImageUrl,
                   selectedSheetVersionId: generated.sheetVersionId ?? null,
@@ -1067,7 +1067,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             scene: {
               continuity: {
                 characterTags: target.motionRender.characterTags,
-                // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a plan frozen before #2015
                 characterLooks: target.motionRender.characterLooks ?? undefined,
                 elementTags: target.motionRender.elementTags,
                 environmentTag: target.motionRender.environmentTag,

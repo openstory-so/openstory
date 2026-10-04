@@ -30,6 +30,7 @@ import {
   type TalentSheetInputHash,
 } from '@/shots/input-hash';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { WorkflowValidationError } from '@/platform/server/workflow/errors';
 import { styleConfigHashBody } from '@/look/style-config';
 import type {
   CharacterMinimal,
@@ -68,14 +69,23 @@ export type SheetPayload<T> = Omit<
 >;
 
 /**
- * The look a sheet run draws. A payload queued before #2015 names none: its
- * sheet is the character's default look's, whose id is the character's.
+ * A run queued, or a step result cached, before character looks shipped
+ * (#2015) names no look. It is failed here, once, at the top of the run —
+ * never patched up field by field further down.
  */
-export const sheetLookId = (
-  input: Pick<CharacterSheetWorkflowInput, 'lookId' | 'characterDbId'>
-): string =>
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015 has no look
-  input.lookId ?? input.characterDbId;
+export function assertQueuedWithLooks(
+  ...carriers: readonly { lookId?: unknown }[]
+): void {
+  if (carriers.some((carrier) => typeof carrier.lookId !== 'string')) {
+    throw queuedBeforeLooks();
+  }
+}
+
+/** The failure `assertQueuedWithLooks` raises, for a check of another shape. */
+export const queuedBeforeLooks = () =>
+  new WorkflowValidationError(
+    'Queued before character looks shipped. Run it again.'
+  );
 
 /** The payload fields a cast talent supplies to a character sheet. */
 export type CastTalentFields = Pick<
@@ -151,8 +161,7 @@ function characterSheetHashInput(
 ) {
   return {
     characterBible: characterBibleFields(input.characterMetadata),
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015 has no look
-    styling: input.lookStyling ?? null,
+    styling: input.lookStyling,
     talentSheetHash: input.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(input),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,

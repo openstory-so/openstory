@@ -70,12 +70,10 @@ export function withLookSheet<
 ): T {
   return {
     ...character,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a character snapshotted on a payload before #2015 has no looks
-    looks: (character.looks ?? []).map((look) =>
+    looks: character.looks.map((look) =>
       look.id === lookId ? { ...look, ...sheet } : look
     ),
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: before #2015 a character's sheet was its own, under its own id
-    ...((character.lookId ?? lookId) === lookId ? sheet : {}),
+    ...(character.lookId === lookId ? sheet : {}),
   };
 }
 
@@ -104,8 +102,7 @@ const hasLooks = (
 /**
  * Each character wearing what this scene picks for it. A character with no
  * `looks` passes through: a bible entry in a prompt context was dressed when
- * the context was loaded, and a row snapshotted before #2015 has only its
- * default.
+ * the context was loaded.
  */
 export function dressForScene<T extends object>(
   characters: readonly T[],
@@ -119,16 +116,13 @@ export function dressForScene<T extends object>(
 
 /**
  * Is this character in its default look? True too for a character with no
- * looks listed: one snapshotted before #2015, or with no look row yet.
+ * looks listed: one a run hands back before its look rows are read.
  */
 export function wearsDefaultLook(character: {
   lookId: string;
   looks: readonly Pick<CharacterLookMinimal, 'id' | 'isDefault'>[];
 }): boolean {
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a character snapshotted on a payload before #2015 has no looks
-  const worn = (character.looks ?? []).find(
-    (look) => look.id === character.lookId
-  );
+  const worn = character.looks.find((look) => look.id === character.lookId);
   return worn?.isDefault ?? true;
 }
 

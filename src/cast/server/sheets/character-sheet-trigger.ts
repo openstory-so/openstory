@@ -109,7 +109,6 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     characterDbId: character.id,
     lookId: look.id,
     lookVersionId: look.lookVersionId,
-    lookName: look.name,
     lookStyling: look.styling,
     talentId: character.talentId,
     characterName: character.name,

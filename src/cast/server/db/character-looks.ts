@@ -781,19 +781,14 @@ export function createCharacterLooksMethods(db: Database) {
               .where(
                 and(
                   eq(characters.id, look.characterId),
-                  // A payload an older worker froze does not say what it
-                  // read: one from before #1600 names no bible version, one
-                  // from before #2015 no cast talent. Absent is "unknown",
-                  // not "none", so that part of the guard is skipped —
-                  // reading it as null would refuse every cast character.
+                  // A payload a worker froze before #1600 names no bible
+                  // version. Absent is "unknown", not "none", so that part
+                  // of the guard is skipped.
                   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #1600
                   snapshot.bibleVersionId === undefined
                     ? undefined
                     : sql`${characters.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`,
-                  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #2015
-                  snapshot.talentId === undefined
-                    ? undefined
-                    : sql`${characters.talentId} IS ${snapshot.talentId}`
+                  sql`${characters.talentId} IS ${snapshot.talentId}`
                 )
               )}`
           )
@@ -807,6 +802,26 @@ export function createCharacterLooksMethods(db: Database) {
      * and its `generating` status are left alone. `versionId` is null for a
      * run queued before #1113, which holds no claim.
      */
+    /**
+     * `failSheetClaim` for a run that names no look (one queued before
+     * #2015, which is failed on arrival): the claim is found by its own id.
+     * Nothing is written unless that run still holds it.
+     */
+    failSheetClaimByVersion: async (
+      versionId: string,
+      error: string
+    ): Promise<void> => {
+      await db
+        .update(characterLooks)
+        .set({
+          pendingPromoteSheetVersionId: null,
+          sheetStatus: 'failed',
+          sheetError: error,
+          updatedAt: new Date(),
+        })
+        .where(eq(characterLooks.pendingPromoteSheetVersionId, versionId));
+    },
+
     failSheetClaim: async (
       lookId: string,
       versionId: string | null,

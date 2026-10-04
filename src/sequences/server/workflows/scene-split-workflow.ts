@@ -57,6 +57,7 @@
  * JSON-stringified around the boundary for CF's `Rpc.Serializable<T>` check.
  */
 
+import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -873,6 +874,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // each scene dresses a character in where it is not the default. The
     // picks are kept beside the scenes, not on them: the ids are slugs until
     // the cast is persisted, and only persisted ids are stored on a scene.
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a bibles result cached by a run that started before #2015
+    if (biblesResult.characterBible.some((entry) => !entry.looks)) {
+      throw queuedBeforeLooks();
+    }
     const { characterBible, sceneLooks } = bibleFromWire(
       biblesResult.characterBible,
       sceneIdForLine,

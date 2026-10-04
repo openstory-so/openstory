@@ -525,6 +525,8 @@ describe('staleness causes (#1194)', () => {
           {
             name: 'Woman',
             characterId: 'woman',
+            lookId: 'c-woman',
+            looks: [],
             consistencyTag: null,
             updatedAt: afterGen,
             sheetGeneratedAt: null,
@@ -532,6 +534,8 @@ describe('staleness causes (#1194)', () => {
           {
             name: 'Man',
             characterId: 'man',
+            lookId: 'c-man',
+            looks: [],
             consistencyTag: null,
             updatedAt: before,
             sheetGeneratedAt: before,
@@ -870,6 +874,8 @@ describe('staleness causes (#1194)', () => {
           {
             id: 'c-woman',
             characterId: 'woman',
+            lookId: 'c-woman',
+            looks: [],
             name: 'Woman',
             consistencyTag: '',
             updatedAt: afterGen,

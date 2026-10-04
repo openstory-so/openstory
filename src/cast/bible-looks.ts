@@ -29,7 +29,7 @@ const DEFAULT_LOOK_NAME = 'Default';
 export function withBibleLooks(
   entry: CharacterBibleEntry
 ): CharacterBibleEntry {
-  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: an entry cached or stored before #2015 has no looks
+  // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a row stored before #2015 (a talent's metadata) has no looks
   const given = entry.looks ?? [];
   const looks: CharacterLookEntry[] =
     given.length > 0
@@ -96,8 +96,7 @@ export function bibleFromWire(
 } {
   const sceneLooks: Record<string, Record<string, string>> = {};
   const characterBible = wire.map((entry) => {
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a bibles result cached before #2015 has no looks
-    const given = entry.looks ?? [];
+    const given = entry.looks;
     const slugs = new Set<string>();
     const names = new Set<string>();
     const looks = given.map((look, index) => {
@@ -164,7 +163,7 @@ export function wornLookOnly(
 ): CharacterBibleEntry[] {
   return entries.map((entry) => ({
     ...entry,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: an entry frozen before #2015 has no looks
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: an entry stored before #2015 has no looks
     looks: (entry.looks ?? []).slice(0, 1),
   }));
 }

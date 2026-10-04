@@ -33,7 +33,7 @@ import { landSheetRun } from './sheet-divergence';
 import type { SheetRunOutcome } from './sheet-divergence';
 import {
   characterSheetHashMatchesStored,
-  sheetLookId,
+  assertQueuedWithLooks,
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
@@ -67,9 +67,8 @@ async function landSheet(
     land: () =>
       scopedDb.characterSheetVariants.promoteIfPending({
         characterId: input.characterDbId,
-        lookId: sheetLookId(input),
-        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
-        lookVersionId: input.lookVersionId ?? null,
+        lookId: input.lookId,
+        lookVersionId: input.lookVersionId,
         versionId,
         claimed,
         url: stored.url,
@@ -167,7 +166,7 @@ async function persistReusedTalentSheet(params: {
         'generation.character-sheet:progress',
         {
           characterId: characterDbId,
-          lookId: sheetLookId(input),
+          lookId: input.lookId,
           status: 'completed',
         }
       );
@@ -176,7 +175,7 @@ async function persistReusedTalentSheet(params: {
       sheetImageUrl: storageResult.url,
       sheetImagePath: storageResult.path,
       characterDbId,
-      lookId: sheetLookId(input),
+      lookId: input.lookId,
       diverged: true,
     };
   }
@@ -186,7 +185,7 @@ async function persistReusedTalentSheet(params: {
       'generation.character-sheet:progress',
       {
         characterId: characterDbId,
-        lookId: sheetLookId(input),
+        lookId: input.lookId,
         status: 'completed',
         sheetImageUrl: storageResult.url,
       }
@@ -197,7 +196,7 @@ async function persistReusedTalentSheet(params: {
     sheetImageUrl: storageResult.url,
     sheetImagePath: storageResult.path,
     characterDbId,
-    lookId: sheetLookId(input),
+    lookId: input.lookId,
     sheetVersionId: reconcileOutcome.versionId,
   };
 }
@@ -210,6 +209,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   ): Promise<CharacterSheetWorkflowResult> {
     const input = event.payload;
     const workflowRunId = event.instanceId;
+    assertQueuedWithLooks(input);
 
     // Validate the snapshot hash inside the workflow body: a tampered
     // payload must halt the run from inside a step, not silently.
@@ -232,7 +232,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
-            lookId: sheetLookId(input),
+            lookId: input.lookId,
             status: 'generating',
           }
         );
@@ -277,8 +277,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           input.characterMetadata,
           talentOverrides,
           input.styleConfig,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2015
-          input.lookStyling ?? null
+          input.lookStyling
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
@@ -336,7 +335,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
-            lookId: sheetLookId(input),
+            lookId: input.lookId,
             status: 'generating',
             phase: 'retrying',
             ...retry,
@@ -424,7 +423,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: characterDbId,
-            lookId: sheetLookId(input),
+            lookId: input.lookId,
             status: 'completed',
           }
         );
@@ -436,7 +435,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sheetImageUrl,
         sheetImagePath,
         characterDbId: input.characterDbId,
-        lookId: sheetLookId(input),
+        lookId: input.lookId,
         diverged: true,
       };
     }
@@ -447,7 +446,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
-            lookId: sheetLookId(input),
+            lookId: input.lookId,
             status: 'completed',
             sheetImageUrl,
           }
@@ -459,7 +458,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       sheetImageUrl,
       sheetImagePath,
       characterDbId: input.characterDbId,
-      lookId: sheetLookId(input),
+      lookId: input.lookId,
       sheetVersionId,
     };
 
@@ -479,9 +478,18 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // Mark the look's sheet as failed — through the claim, so a newer run's
     // claim and `generating` status survive this one's failure (#1113).
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
+    if (!input.lookId) {
+      // Its claim is found by the claim's own id, never by a guessed look.
+      await scopedDb.characterLooks.failSheetClaimByVersion(
+        input.sheetVersionId,
+        error
+      );
+      return;
+    }
     if (input.characterDbId) {
       await scopedDb.characterLooks.failSheetClaim(
-        sheetLookId(input),
+        input.lookId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         input.sheetVersionId ?? null,
         error
@@ -493,7 +501,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
-            lookId: sheetLookId(input),
+            lookId: input.lookId,
             status: 'failed',
             error,
           }

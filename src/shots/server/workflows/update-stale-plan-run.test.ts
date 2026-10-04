@@ -345,7 +345,16 @@ const payloadOf = (step: string) =>
     .childPayload;
 
 const references = {
-  characterSheets: [{ characterDbId: 'maya' }, { characterDbId: 'ravi' }],
+  characterSheets: [
+    { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
+    {
+      characterDbId: 'ravi',
+      lookId: 'ravi',
+      lookVersionId: 'lv-ravi',
+      bibleVersionId: 'bible-ravi',
+      talentId: null,
+    },
+  ],
   locationSheets: [{ locationDbId: 'hall' }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
   voices: [{ characterDbId: 'maya' }],
@@ -374,10 +383,13 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         'spawn-character-voice-maya',
       ].sort()
     );
-    expect(payloadOf('spawn-character-sheet-ravi')).toEqual({
-      characterDbId: 'ravi',
-      sheetVersionId: 'csv-ravi',
-    });
+    expect(payloadOf('spawn-character-sheet-ravi')).toEqual(
+      expect.objectContaining({
+        characterDbId: 'ravi',
+        lookId: 'ravi',
+        sheetVersionId: 'csv-ravi',
+      })
+    );
     expect(payloadOf('spawn-location-sheet-hall')).toEqual({
       locationDbId: 'hall',
       referenceVersionId: 'lrv-hall',
@@ -386,13 +398,14 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       characterDbId: 'maya',
       targetVersionId: 'husk-maya',
     });
-    // These payloads name no look, as a plan frozen before #2015 does: the
-    // claim falls on the default look, under the character's own id.
+    // The claim is taken on the look the payload names, as it was frozen.
     expect(claimSheet).toHaveBeenCalledWith(
       'ravi',
-      // No bible version or cast talent on the old payload: passed on as
-      // absent, so the claim does not read a cast character as uncast.
-      { lookVersionId: 'ravi', bibleVersionId: undefined, talentId: undefined },
+      {
+        lookVersionId: 'lv-ravi',
+        bibleVersionId: 'bible-ravi',
+        talentId: null,
+      },
       { markGenerating: true }
     );
     expect(result.failures).toEqual([]);
@@ -1000,7 +1013,9 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
     plan({
       // minimal child payloads
       references: asStub<never>({
-        characterSheets: [{ characterDbId: 'maya' }],
+        characterSheets: [
+          { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
+        ],
         locationSheets: [{ locationDbId: 'hall' }],
         elementSheets: null,
         voices: [],
@@ -1009,7 +1024,13 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
       // pending row identity and media are the exercised fields
       renderRefs: asStub<never>({
         characters: [
-          { id: 'maya', sheetImageUrl: null, selectedSheetVersionId: null },
+          {
+            id: 'maya',
+            lookId: 'maya',
+            looks: [],
+            sheetImageUrl: null,
+            selectedSheetVersionId: null,
+          },
         ],
         locations: [
           {
