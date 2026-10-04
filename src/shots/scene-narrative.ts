@@ -16,9 +16,23 @@ export const sceneNarrativeOf = (scene: SceneNarrative): SceneNarrative => ({
   continuity: scene.continuity,
 });
 
-/** Continuity as a key-order-free string, for comparing two narratives. */
-const continuityKey = (c: SceneNarrative['continuity']) =>
-  c ? JSON.stringify(c, Object.keys(c).sort()) : null;
+/**
+ * Continuity as a key-order-free string, for comparing two narratives. The
+ * look picks (#2015) are a nested map, which the key-list replacer below
+ * would empty, so they are keyed on their own; no picks and no map at all
+ * compare equal, since both mean "everyone in their default look".
+ */
+const continuityKey = (c: SceneNarrative['continuity']) => {
+  if (!c) return null;
+  const { characterLooks, ...tags } = c;
+  const picks = Object.entries(characterLooks ?? {}).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0
+  );
+  return (
+    JSON.stringify(tags, Object.keys(tags).sort()) +
+    (picks.length > 0 ? JSON.stringify(picks) : '')
+  );
+};
 
 /** The narrative fields that differ between two versions of a scene. */
 export function narrativeFieldsChanged(
@@ -63,6 +77,11 @@ export const sceneNarrativeFieldsSchema = z.object({
   continuity: z
     .object({
       characterTags: z.array(z.string().trim().max(200)).max(100).optional(),
+      // The look each character wears in this scene (#2015): character tag
+      // → look id. Sent whole: a character left out wears its default look.
+      characterLooks: z
+        .record(z.string().trim().max(200), z.string().trim().max(64))
+        .optional(),
       environmentTag: z.string().trim().max(200).optional(),
       elementTags: z.array(z.string().trim().max(200)).max(100).optional(),
       lightingSetup: z.string().trim().max(2000).optional(),

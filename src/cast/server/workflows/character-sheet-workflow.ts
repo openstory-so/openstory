@@ -167,6 +167,7 @@ async function persistReusedTalentSheet(params: {
         'generation.character-sheet:progress',
         {
           characterId: characterDbId,
+          lookId: sheetLookId(input),
           status: 'completed',
         }
       );
@@ -185,6 +186,7 @@ async function persistReusedTalentSheet(params: {
       'generation.character-sheet:progress',
       {
         characterId: characterDbId,
+        lookId: sheetLookId(input),
         status: 'completed',
         sheetImageUrl: storageResult.url,
       }
@@ -230,6 +232,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: sheetLookId(input),
             status: 'generating',
           }
         );
@@ -333,6 +336,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: sheetLookId(input),
             status: 'generating',
             phase: 'retrying',
             ...retry,
@@ -420,6 +424,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: characterDbId,
+            lookId: sheetLookId(input),
             status: 'completed',
           }
         );
@@ -442,6 +447,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: sheetLookId(input),
             status: 'completed',
             sheetImageUrl,
           }
@@ -487,6 +493,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: sheetLookId(input),
             status: 'failed',
             error,
           }

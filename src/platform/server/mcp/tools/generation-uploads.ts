@@ -640,7 +640,7 @@ const setMusicFromUploadTool = openstoryTool({
 const setCharacterSheetFromUploadTool = openstoryTool({
   name: 'set_character_sheet_from_upload',
   description:
-    'Make an uploaded image (upload_media use character_sheet) the character’s selected reference sheet. Stills of shots with the character become stale. Starts no generation.',
+    'Make an uploaded image (upload_media use character_sheet) the selected reference sheet of one look of a character (lookId; the default look if omitted). Stills of shots that wear the look become stale. Starts no generation.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z.strictObject({
@@ -648,6 +648,9 @@ const setCharacterSheetFromUploadTool = openstoryTool({
     characterId: ulidSchema.describe(
       'Database character ID (list_characters).'
     ),
+    lookId: ulidSchema
+      .optional()
+      .describe('Look ID (get_character looks[].id); default look if omitted.'),
     upload: uploadRef,
   }),
   outputSchema: z.object({ characterId: z.string() }),
@@ -661,7 +664,11 @@ const setCharacterSheetFromUploadTool = openstoryTool({
     );
     await setCharacterSheetFromUpload(
       { scopedDb, user: { id: userId }, teamId: scopedDb.teamId, sequence },
-      { characterId: character.id, publicUrl: storedUpload(input.upload) }
+      {
+        characterId: character.id,
+        lookId: input.lookId,
+        publicUrl: storedUpload(input.upload),
+      }
     );
     return {
       data: { characterId: character.id },

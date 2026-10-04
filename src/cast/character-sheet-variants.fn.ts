@@ -12,6 +12,7 @@ import {
   undiscardCharacterSheetVersion,
 } from '@/cast/server/cast-edit';
 
+import { requireCharacterLook } from '@/cast/server/character-look';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'character-sheet-variants']);
@@ -24,6 +25,8 @@ const variantInputSchema = z.object({
 const characterVersionsInput = z.object({
   sequenceId: ulidSchema,
   characterId: ulidSchema,
+  // The look whose sheets to list (#2015); the default look when omitted.
+  lookId: ulidSchema.optional(),
 });
 
 /** Completed, non-discarded sheet versions for the history list. */
@@ -37,12 +40,15 @@ export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
     if (!character || character.sequenceId !== context.sequence.id) {
       throw new Error('Character not found in this sequence');
     }
+    const look = await requireCharacterLook(
+      context.scopedDb,
+      character,
+      data.lookId ?? character.lookId
+    );
     const rows =
-      await context.scopedDb.characterSheetVariants.listHistoryByLook(
-        character.lookId
-      );
+      await context.scopedDb.characterSheetVariants.listHistoryByLook(look.id);
     return {
-      selectedSheetVersionId: character.selectedSheetVersionId,
+      selectedSheetVersionId: look.selectedSheetVersionId,
       versions: rows,
     };
   });
@@ -50,7 +56,11 @@ export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
 export const selectCharacterSheetVersionFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(
-    zodValidator(characterVersionsInput.extend({ versionId: ulidSchema }))
+    zodValidator(
+      characterVersionsInput
+        .omit({ lookId: true })
+        .extend({ versionId: ulidSchema })
+    )
   )
   .handler(
     async ({ context, data }) =>
@@ -126,6 +136,7 @@ export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
         'generation.character-sheet:progress',
         {
           characterId: variant.characterId,
+          lookId: variant.lookId ?? variant.characterId,
           status: 'completed',
         }
       );

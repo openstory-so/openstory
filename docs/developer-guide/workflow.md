@@ -412,7 +412,7 @@ See [Cloudflare's request cancellation documentation](https://developers.cloudfl
 | `generation.variant-image:progress`   | Variant workflow — generating/completed/failed     | `{ frameId, status, variantImageUrl? }`                                    |
 | `generation.video:progress`           | Motion workflow — generating/completed/failed      | `{ frameId, status, videoUrl? }`                                           |
 | `generation.audio:progress`           | Music workflow — generating/completed/failed       | `{ status, audioUrl?, model?, primary? }` (`primary: false` = added model) |
-| `generation.character-sheet:progress` | Character sheet — per look of a character (#2015)  | `{ characterId, status, sheetImageUrl? }`                                  |
+| `generation.character-sheet:progress` | Character sheet — per look of a character (#2015)  | `{ characterId, lookId, status, sheetImageUrl? }`                          |
 | `generation.location-sheet:progress`  | Location bible — per location                      | `{ locationId, status, referenceImageUrl? }`                               |
 | `generation.recast:start`             | Recast character — before regenerating frames      | `{ characterId, frameCount }`                                              |
 | `generation.recast:complete`          | Recast character — all frames regenerated          | `{ characterId, successCount, failedCount }`                               |

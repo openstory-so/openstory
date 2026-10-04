@@ -199,6 +199,8 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
 const setCharacterSheetInput = z.object({
   sequenceId: ulidSchema,
   characterId: ulidSchema,
+  // The look the sheet is of (#2015); the default look when omitted.
+  lookId: ulidSchema.optional(),
   publicUrl: mediaUrlSchema,
 });
 export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })

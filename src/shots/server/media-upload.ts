@@ -4,6 +4,8 @@
  * server fns (`media-upload.fn.ts`) and the MCP tools. See the header of
  * `media-upload.fn.ts` for the staleness and DAG contracts.
  */
+import { wearLook } from '@/cast/character-looks';
+import { requireCharacterLook } from '@/cast/server/character-look';
 import {
   computeCharacterSheetInputHash,
   computeLocationSheetInputHash,
@@ -549,7 +551,12 @@ async function resolveSheetHashContext(
  */
 export async function setCharacterSheetFromUpload(
   context: SequenceUploadContext,
-  data: { characterId: string; publicUrl: string }
+  data: {
+    characterId: string;
+    /** The look the sheet is of (#2015); the default look when omitted. */
+    lookId?: string;
+    publicUrl: string;
+  }
 ) {
   const { scopedDb, sequence, user } = context;
   const storagePath = requireUploadedStoragePath(
@@ -558,10 +565,18 @@ export async function setCharacterSheetFromUpload(
     context.teamId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
-  const character = await scopedDb.characters.getById(data.characterId);
-  if (!character || character.sequenceId !== sequence.id) {
+  const owner = await scopedDb.characters.getById(data.characterId);
+  if (!owner || owner.sequenceId !== sequence.id) {
     throw new NotFoundError('Character not found');
   }
+  // The sheet is one look's (#2015): the hash below reads that look's
+  // clothing and styling, as a generated sheet's would.
+  const look = await requireCharacterLook(
+    scopedDb,
+    owner,
+    data.lookId ?? owner.lookId
+  );
+  const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(
     character.isPerson,
     await likenessFromLedger(scopedDb, data.publicUrl)
@@ -606,8 +621,7 @@ export async function setCharacterSheetFromUpload(
   // inputs didn't change.
   const { version: variant } =
     await scopedDb.characterSheetVariants.applyConvergent({
-      // The character's own sheet is its default look's (#2015).
-      lookId: character.lookId,
+      lookId: look.id,
       url: data.publicUrl,
       storagePath,
       inputHash,
@@ -622,13 +636,18 @@ export async function setCharacterSheetFromUpload(
     targetType: 'character',
     targetId: character.id,
     summary: `Uploaded sheet for ${character.name}`,
-    data: { characterId: character.id, variantId: variant.id },
+    data: {
+      characterId: character.id,
+      lookId: look.id,
+      variantId: variant.id,
+    },
   });
   try {
     await getGenerationChannel(sequence.id).emit(
       'generation.character-sheet:progress',
       {
         characterId: character.id,
+        lookId: look.id,
         status: 'completed',
         sheetImageUrl: data.publicUrl,
       }

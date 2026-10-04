@@ -67,6 +67,25 @@ export async function updateScene(
       }
     : undefined;
 
+  // A pick must name a live look of a character of this sequence (#2015):
+  // an id that names nothing would quietly dress the character in its
+  // default.
+  if (continuityPatch?.characterLooks) {
+    const live = new Set(
+      (await scopedDb.characters.list(input.sequenceId)).flatMap((character) =>
+        character.looks.filter((look) => !look.deletedAt).map((look) => look.id)
+      )
+    );
+    const unknown = Object.values(continuityPatch.characterLooks).filter(
+      (lookId) => !live.has(lookId)
+    );
+    if (unknown.length > 0) {
+      throw new ValidationError(
+        `No such look in this sequence: ${unknown.join(', ')}`
+      );
+    }
+  }
+
   let extract: string | undefined;
   if (input.scriptExtract !== undefined) {
     const selected = await scopedDb.sceneScriptVersions.getSelected(

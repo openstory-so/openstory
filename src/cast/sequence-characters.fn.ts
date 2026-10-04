@@ -468,6 +468,8 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(
       characterIdInput.extend({
+        // A look other than the character's default (#2015).
+        lookId: ulidSchema.optional(),
         imageModel: z
           .string()
           .refine(isValidTextToImageModel, {
@@ -489,7 +491,9 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
 /** Live sheet staleness for the character detail banner. */
 export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput))
+  .validator(
+    zodValidator(characterIdInput.extend({ lookId: ulidSchema.optional() }))
+  )
   .handler(
     async ({ context, data }): Promise<SheetStaleness> =>
       (
@@ -497,7 +501,8 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
           context.scopedDb,
           data.sequenceId,
           'character',
-          data.characterId
+          data.characterId,
+          data.lookId
         )
       ).status
   );

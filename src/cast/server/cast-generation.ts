@@ -105,6 +105,7 @@ export async function regenerateCharacterSheet(
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: character.id,
+      lookId: payload.lookId,
       status: 'generating',
     })
   );
@@ -265,6 +266,7 @@ export async function recastCharacter(
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: data.characterId,
+      lookId: look.id,
       status: 'generating',
     })
   );

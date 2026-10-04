@@ -749,6 +749,10 @@ describe('executeSmartRetry — partial retry status reset', () => {
           sheetStatus: 'completed',
           sheetInputHash: 'hash',
           selectedSheetVersionId: 'sheet-1',
+          // Wearing its default look (#2015).
+          lookId: 'default-look',
+          lookName: 'Default',
+          looks: [],
           physicalDescription: 'Short dark hair',
           voiceOnly: false,
           isPerson: true,

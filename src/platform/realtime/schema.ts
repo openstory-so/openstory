@@ -251,6 +251,9 @@ export const realtimeSchema = {
     // Character sheet generation progress (during recasting)
     'character-sheet:progress': z.object({
       characterId: z.string(),
+      // The look whose sheet this is (#2015). A default look's id is its
+      // character's, which is what a run queued before looks reports.
+      lookId: z.string(),
       status: z.enum(['generating', 'completed', 'failed']),
       // In-flight content-flag retry (#882 shape): `status` stays
       // `generating`; absent on the first attempt and on terminal events.

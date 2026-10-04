@@ -5,7 +5,7 @@
  */
 
 import { wearLook } from '@/cast/character-looks';
-import { NotFoundError } from '@/platform/errors';
+import { requireCharacterLook } from '@/cast/server/character-look';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
@@ -70,18 +70,11 @@ export async function buildRegenerateCharacterSheetPayload(params: {
   imageModel?: string | null;
 }): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
   const { scopedDb, userId, teamId, sequence } = params;
-  // A character an older worker wrote has no look yet; its default look
-  // takes the character's id.
-  const look =
-    params.character.looks.find((l) => l.id === params.lookId) ??
-    (params.lookId === params.character.id
-      ? await scopedDb.characterLooks.ensureDefault(params.character.id)
-      : null);
-  if (!look) {
-    throw new NotFoundError(
-      `Look ${params.lookId} not found for character ${params.character.id}`
-    );
-  }
+  const look = await requireCharacterLook(
+    scopedDb,
+    params.character,
+    params.lookId
+  );
   const character = wearLook(params.character, look);
   // The UI hides the button; this is the guard for every other caller.
   if (character.voiceOnly) {
