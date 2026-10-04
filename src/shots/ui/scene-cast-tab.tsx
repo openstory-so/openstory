@@ -83,6 +83,8 @@ const SceneLookPicker: React.FC<{
   return (
     <Select
       value={wornLookId}
+      // The trigger shows the look's name, not its id.
+      items={Object.fromEntries(looks.map((look) => [look.id, look.name]))}
       disabled={update.isPending}
       onValueChange={(lookId) => {
         if (!lookId) return;

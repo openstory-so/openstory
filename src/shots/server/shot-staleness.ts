@@ -23,7 +23,7 @@ import {
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
 import { resolveShotReferences } from '@/shots/scene-matching';
-import { wearsDefaultLook } from '@/cast/character-looks';
+import { pickedLook, wearsDefaultLook } from '@/cast/character-looks';
 import {
   loadNarrowShotPromptContext,
   type ShotPromptContextRefs,
@@ -1023,15 +1023,24 @@ async function loadSceneContext(
  * for the narrative. A scene whose history does not reach back that far falls
  * back to the timestamp guess.
  */
+/** The scene version that was live at `at`, when its history reaches back. */
+function sceneVersionAt(
+  history: readonly SceneScriptVersion[] | undefined,
+  at: number
+): SceneScriptVersion | undefined {
+  let then: SceneScriptVersion | undefined;
+  for (const v of history ?? []) {
+    if (v.createdAt.getTime() <= at) then = v;
+  }
+  return then;
+}
+
 function sceneCauses(
   history: readonly SceneScriptVersion[] | undefined,
   live: SceneContext,
   at: number
 ): string[] {
-  let then: SceneScriptVersion | undefined;
-  for (const v of history ?? []) {
-    if (v.createdAt.getTime() <= at) then = v;
-  }
+  const then = sceneVersionAt(history, at);
   if (!then) {
     if (after(live.scriptCreatedAt, at)) return ['Script'];
     return after(live.scene.updatedAt, at) ? ['Scene details'] : [];
@@ -1117,13 +1126,16 @@ async function findStalenessCauses(args: {
   const causes: string[] = [];
 
   let ctx: SceneContext | null | undefined;
+  let sceneThen: SceneScriptVersion | undefined;
   if (shot.sceneId) {
     const sceneId = dbSceneId(shot.sceneId);
     ctx = sceneContext
       ? sceneContext.get(sceneId)
       : await loadSceneContext(scopedDb, sceneId);
     if (ctx) {
-      causes.push(...sceneCauses(inputHistory.scenes.get(sceneId), ctx, at));
+      const history = inputHistory.scenes.get(sceneId);
+      causes.push(...sceneCauses(history, ctx, at));
+      sceneThen = sceneVersionAt(history, at);
     }
   }
   // Only what this shot's prompts reference (#2012): the union of the two
@@ -1195,16 +1207,23 @@ async function findStalenessCauses(args: {
       characterBibleChanged(then, c).map((k) => CHARACTER_LABELS[k])
     );
     // A look added after the artifact has no version that old; the scene
-    // switching to it is the cause, and `sceneCauses` names that.
+    // switching to it is the cause.
     const look =
       bibleMoved(inputHistory.looks.get(c.lookId), at, (then) =>
         lookMoved(then, c)
       ) ?? [];
+    // The scene dressed this character in another look back then.
+    const wornThen =
+      sceneThen &&
+      (pickedLook(c, sceneThen.continuity?.characterLooks)?.id ??
+        c.looks.find((l) => l.isDefault)?.id ??
+        c.lookId);
+    const switched = wornThen && wornThen !== c.lookId ? ['look'] : [];
     const sheet = after(c.sheetGeneratedAt, at) ? ['sheet'] : [];
     const cause = namedCause(
       `Character "${c.name}"${wearsDefaultLook(c) ? '' : ` (${c.lookName})`}`,
       bible === null ? null : [...bible, ...look],
-      sheet,
+      [...switched, ...sheet],
       () => after(c.updatedAt, at)
     );
     if (cause) causes.push(cause);

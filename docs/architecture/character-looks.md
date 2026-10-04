@@ -118,6 +118,8 @@ stored URL). See `byteplus-ark.md` for slot pressure.
 - Editing a look stales that look's sheet and the shots of the scenes that
   wear it. Switching a scene's look stales that scene's shots only.
 - Causes name the look: `Character "Mia" (Gala gown): clothing`.
+  A scene that switched a character into another look since the artifact
+  adds `look` to that list (next to `Scene: cast and tags`).
 
 ## Script analysis
 

@@ -717,7 +717,10 @@ describe('staleness causes (#1194)', () => {
       updatedAt: before,
       sheetGeneratedAt: null,
     };
-    const run = async (sceneLooks: Record<string, string> | undefined) => {
+    const run = async (
+      sceneLooks: Record<string, string> | undefined,
+      sceneHistory: unknown[] = []
+    ) => {
       const scopedDb = makeScopedDb({
         motionSelectedHash: 'motion-stored',
         visualSelected: { text: 'WOMAN at the top of the stairs.' },
@@ -758,7 +761,7 @@ describe('staleness causes (#1194)', () => {
         },
         sceneScriptVersions: {
           getSelected: vi.fn().mockResolvedValue({ createdAt: before }),
-          listBySequence: vi.fn().mockResolvedValue([]),
+          listBySequence: vi.fn().mockResolvedValue(sceneHistory),
         },
         sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
       });
@@ -792,6 +795,19 @@ describe('staleness causes (#1194)', () => {
     ]);
     // A scene in her default look is not touched by the gown's edit.
     expect(await run(undefined)).toEqual([]);
+    // The scene switched her into the gown after the still: the look is named.
+    const causes = await run({ woman: 'gala' }, [
+      {
+        version: {
+          id: 'v1',
+          sceneId: 'scene-1',
+          content: { extract: '', dialogue: [] },
+          continuity: { characterTags: ['woman'] },
+          createdAt: before,
+        },
+      },
+    ]);
+    expect(causes).toContain('Character "Woman" (Gala gown): clothing, look');
   });
 
   it('names only the characters and locations this shot references (#2012)', async () => {

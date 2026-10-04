@@ -20,11 +20,16 @@ export const sceneNarrativeOf = (scene: SceneNarrative): SceneNarrative => ({
  * Continuity as a key-order-free string, for comparing two narratives. The
  * look picks (#2015) are a nested map, which the key-list replacer below
  * would empty, so they are keyed on their own; no picks and no map at all
- * compare equal, since both mean "everyone in their default look".
+ * compare equal, since both mean "everyone in their default look". An empty
+ * tag and a missing one compare equal too: an edit fills the tags a scene
+ * never had with '', so a look picked and then put back is no change.
  */
 const continuityKey = (c: SceneNarrative['continuity']) => {
   if (!c) return null;
-  const { characterLooks, ...tags } = c;
+  const { characterLooks, ...all } = c;
+  const tags = Object.fromEntries(
+    Object.entries(all).filter(([, v]) => v != null && v.length > 0)
+  );
   const picks = Object.entries(characterLooks ?? {}).sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0
   );
