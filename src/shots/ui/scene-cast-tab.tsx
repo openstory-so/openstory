@@ -16,7 +16,18 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import { canonicalBibleTag } from '@/cast/bible-field';
+import { dressForScene } from '@/cast/character-looks';
+import type { SceneWithScript } from './use-scenes';
+import { useUpdateScene } from './use-scene-structure';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
 import {
   restoreSequenceCharacter,
@@ -38,21 +49,97 @@ type SceneCastTabProps = {
   sequenceId: string;
   /** Shots in the current selection. `null` = whole sequence (show all). */
   shotIds: string[] | null;
+  /**
+   * The scene in focus, at scene scope only (#2015): each character's look
+   * is picked here, and the card shows the sheet of the look it wears.
+   */
+  scene?: SceneWithScript;
 };
 
 type CastCardProps = {
   character: CharacterWithSheet;
   sequenceId: string;
   onDelete: (character: CharacterWithSheet) => void;
+  scene?: SceneWithScript;
+};
+
+/**
+ * Which look a character wears in a scene (#2015). Writes the scene's
+ * `continuity.characterLooks`; the default look is "no pick", so choosing it
+ * removes the character's entry. Shown only when there is a choice to make.
+ */
+const SceneLookPicker: React.FC<{
+  sequenceId: string;
+  scene: SceneWithScript;
+  /** The character as read: `lookId` is its default look. */
+  character: CharacterWithSheet;
+  wornLookId: string;
+}> = ({ sequenceId, scene, character, wornLookId }) => {
+  const update = useUpdateScene(sequenceId);
+  const looks = character.looks.filter(
+    (look) => !look.deletedAt || look.id === wornLookId
+  );
+  if (looks.length < 2) return null;
+  const ownIds = new Set(character.looks.map((look) => look.id));
+  return (
+    <Select
+      value={wornLookId}
+      disabled={update.isPending}
+      onValueChange={(lookId) => {
+        const others = Object.fromEntries(
+          Object.entries(scene.continuity?.characterLooks ?? {}).filter(
+            ([, id]) => !ownIds.has(id)
+          )
+        );
+        update.mutate(
+          {
+            sceneId: scene.id,
+            continuity: {
+              characterLooks:
+                lookId === character.lookId
+                  ? others
+                  : { ...others, [canonicalBibleTag(character)]: lookId },
+            },
+          },
+          {
+            onError: (error) =>
+              toast.error('Could not change the look', {
+                description: errorMessage(error),
+              }),
+          }
+        );
+      }}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label={`Look ${character.name} wears in this scene`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {looks.map((look) => (
+          <SelectItem key={look.id} value={look.id}>
+            {look.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 };
 
 const CastCard: React.FC<CastCardProps> = ({
-  character,
+  character: owner,
   sequenceId,
   onDelete,
+  scene,
 }) => {
+  // In a scene, the card shows the character as that scene dresses it.
+  const [character = owner] = dressForScene(
+    [owner],
+    scene?.continuity?.characterLooks
+  );
   return (
-    <div className="group relative">
+    <div className="group relative flex flex-col gap-2">
       <Link
         to="/sequences/$id/cast/$characterId"
         params={{ id: sequenceId, characterId: character.id }}
@@ -128,6 +215,14 @@ const CastCard: React.FC<CastCardProps> = ({
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
+      {scene && !owner.voiceOnly ? (
+        <SceneLookPicker
+          sequenceId={sequenceId}
+          scene={scene}
+          character={owner}
+          wornLookId={character.lookId}
+        />
+      ) : null}
     </div>
   );
 };
@@ -147,6 +242,7 @@ const CastCardSkeleton: React.FC = () => (
 export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   sequenceId,
   shotIds,
+  scene,
 }) => {
   const { data: characters, isLoading } = useSequenceCharacters(sequenceId);
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
@@ -247,6 +343,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             character={character}
             sequenceId={sequenceId}
             onDelete={setPendingDelete}
+            scene={scene}
           />
         ))}
       </div>

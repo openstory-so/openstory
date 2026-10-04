@@ -57,6 +57,7 @@ describe('character-sheet hash', () => {
       ethnicity: '',
       physicalDescription: '',
       standardClothing: '',
+      looks: [],
       distinguishingFeatures: '',
       personality: '',
       movement: '',

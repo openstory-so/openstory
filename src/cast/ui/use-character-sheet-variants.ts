@@ -45,14 +45,21 @@ export function useCharacterDivergentVariants(
   });
 }
 
+/** One look's sheet versions (#2015); the default look's when `lookId` is omitted. */
 export function useCharacterSheetVersions(
   sequenceId: string,
-  characterId: string
+  characterId: string,
+  lookId?: string
 ) {
   return useQuery({
-    queryKey: characterSheetVariantKeys.history(sequenceId, characterId),
+    queryKey: [
+      ...characterSheetVariantKeys.history(sequenceId, characterId),
+      lookId ?? 'default',
+    ],
     queryFn: () =>
-      listCharacterSheetVersionsFn({ data: { sequenceId, characterId } }),
+      listCharacterSheetVersionsFn({
+        data: { sequenceId, characterId, lookId },
+      }),
     enabled: !!sequenceId && !!characterId,
     staleTime: 15_000,
   });

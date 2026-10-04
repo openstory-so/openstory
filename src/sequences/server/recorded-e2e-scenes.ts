@@ -17,6 +17,7 @@ import {
 import { attachShotLists } from '@/shots/shot-list-pass';
 import { shotListPassResultSchema } from '@/shots/shot-list.schema';
 import type {
+  CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';

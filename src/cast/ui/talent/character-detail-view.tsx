@@ -4,6 +4,8 @@ import { UploadMediaButton } from '@/shots/ui/upload-media-button';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { SheetVersionStrip } from '@/cast/ui/sheets/sheet-version-strip';
+import { wearLook } from '@/cast/character-looks';
+import { CharacterLooksRow } from '@/cast/ui/talent/character-looks-row';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
@@ -91,13 +93,26 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const regenerateSheet = useRegenerateCharacterSheet();
   const { data: sequence } = useSequence(sequenceId);
   const [sheetModel, setSheetModel] = useState<TextToImageModel | null>(null);
+  // The look whose sheet the panel shows (#2015); null is the default look.
+  const [pickedLookId, setPickedLookId] = useState<string | null>(null);
+  const owner = characters?.find((c) => c.id === characterId);
+  const liveLooks = (owner?.looks ?? []).filter((look) => !look.deletedAt);
+  const activeLook =
+    liveLooks.find((look) => look.id === pickedLookId) ??
+    liveLooks.find((look) => look.isDefault);
+  const activeLookId = activeLook?.id ?? characterId;
+  // Everything below reads the character wearing that look: its sheet,
+  // status, versions and staleness are the look's.
+  const character = owner && activeLook ? wearLook(owner, activeLook) : owner;
   const { data: sheetStaleness } = useCharacterSheetStaleness(
     sequenceId,
-    characterId
+    characterId,
+    activeLook?.isDefault === false ? activeLookId : undefined
   );
   const { data: versionHistory } = useCharacterSheetVersions(
     sequenceId,
-    characterId
+    characterId,
+    activeLook?.isDefault === false ? activeLookId : undefined
   );
   const selectVersion = useSelectCharacterSheetVersion();
   const { data: shotData } = useShotIdsForCharacter(sequenceId, characterId);
@@ -181,8 +196,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           status: data.status,
         };
 
-        // Only handle events for this character
+        // Only handle events for this character, and the look on show.
         if (payload.characterId !== characterId) return;
+        if (
+          'lookId' in data &&
+          typeof data.lookId === 'string' &&
+          data.lookId !== activeLookId
+        ) {
+          return;
+        }
 
         if (payload.status === 'generating') {
           setIsRegenerating(true);
@@ -215,7 +237,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         }
       }
     },
-    [characterId, queryClient, sequenceId]
+    [activeLookId, characterId, queryClient, sequenceId]
   );
 
   // Subscribe to realtime events
@@ -244,8 +266,13 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   const characterDivergentVariant = useMemo(() => {
     if (!divergentVariants) return undefined;
-    return divergentVariants.find((v) => v.characterId === characterId);
-  }, [divergentVariants, characterId]);
+    // A row with no look is the default look's, whose id is the character's.
+    return divergentVariants.find(
+      (v) =>
+        v.characterId === characterId &&
+        (v.lookId ?? v.characterId) === activeLookId
+    );
+  }, [divergentVariants, characterId, activeLookId]);
 
   const handleDiscardWithUndo = useCallback(
     (variant: CharacterSheetVariant) => {
@@ -304,8 +331,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     [sequenceId, promoteVariant]
   );
 
-  const character = characters?.find((c) => c.id === characterId);
-
   // Determine if currently regenerating (from realtime or mutation pending)
   const isSheetGenerating =
     isRegenerating ||
@@ -349,6 +374,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
       {
         sequenceId,
         characterId,
+        lookId: activeLookId,
         ...(sheetModel ? { imageModel: sheetModel } : {}),
       },
       {
@@ -358,7 +384,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           }),
       }
     );
-  }, [regenerateSheet, sequenceId, characterId, sheetModel]);
+  }, [regenerateSheet, sequenceId, characterId, activeLookId, sheetModel]);
 
   const handleTalentSelect = (talent: TalentWithSheets) => {
     setSelectedTalent(talent);
@@ -479,6 +505,13 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 </div>
               ) : (
                 <>
+                  <CharacterLooksRow
+                    sequenceId={sequenceId}
+                    characterId={characterId}
+                    looks={liveLooks}
+                    activeLookId={activeLookId}
+                    onSelect={setPickedLookId}
+                  />
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">Sheet</p>
                     {isSheetStale && (
@@ -617,7 +650,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     disabled={isSheetGenerating}
                     onFile={(file) =>
                       uploadSheet.mutate(
-                        { file, sequenceId, characterId },
+                        { file, sequenceId, characterId, lookId: activeLookId },
                         {
                           onSuccess: () =>
                             toast.success('Character sheet uploaded'),
@@ -664,9 +697,10 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
             <div className="flex flex-col gap-4">
               <CharacterBibleForm
-                key={character.id}
+                // Clothing here is the default look's; reseed when it moves.
+                key={`${character.id}:${owner?.standardClothing ?? ''}`}
                 sequenceId={sequenceId}
-                character={character}
+                character={owner ?? character}
               />
               {character.firstMentionSceneId && (
                 <div className="flex flex-col gap-1 rounded-lg bg-muted/50 p-3">

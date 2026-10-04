@@ -425,7 +425,9 @@ const continuitySchema = z.object({
   // The look each character wears in this scene (#2015): character tag →
   // `character_looks.id`. A character with no entry wears its default look,
   // so a scene stored before looks — which has no map at all — is every
-  // character in its default.
+  // character in its default. Optional, not defaulted: continuity is read
+  // as typed JSON straight off the row (three SQL mappers, no parse seam),
+  // so a `.default({})` here would never run for a stored scene.
   characterLooks: z.record(z.string(), z.string()).optional(),
   environmentTag: z.string().meta({
     description:

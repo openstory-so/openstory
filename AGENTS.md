@@ -280,6 +280,13 @@ changing the area, and update it in the same PR.**
   scene roster before #2012 is accepted until `LEGACY_HASH_UNTIL`. Design
   rationale:
   `docs/architecture/workflow-snapshots-and-content-hash-staleness.md`.
+- **Character looks (#2015)** — `docs/architecture/character-looks.md`. A
+  look owns clothing and the sheet; "the character's sheet" is its default
+  look's. Never dress by hand: `matchCharactersToShotImage` and
+  `resolveShotReferences` take the scene's `characterLooks` (required) and
+  return the cast dressed. A default look's id is its character's id. Look
+  sheets land only through `characterLooks.claimSheet`, which is conditional
+  on the snapshot. Never read the `legacy*` sheet or clothing columns.
 - **Generation plan, stop-at and continue (#1408, #1816)** —
   `docs/architecture/generation-plan.md`. What a sequence still owes is the
   generation plan, derived from live D1 — never a stored stage. `stopAt` is the
