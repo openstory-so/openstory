@@ -23,6 +23,11 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
+import {
+  explainSeedanceFailure,
+  isSeedanceInternalServiceError,
+  SEEDANCE_INTERNAL_BACKOFF_SECONDS,
+} from '@/motion/seedance-edit';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
 import type { MediaVia } from '@/models/via';
 import { ZERO_MICROS } from '@/billing/money';
@@ -221,11 +226,15 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     let videoUrl = '';
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
+    let seedanceInternalRetried = false;
     let succeededJob: Awaited<ReturnType<typeof submitStudioVideoJob>> | null =
       null;
 
     for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
-      const tag = attempt === 0 ? '' : `-retry-${attempt}`;
+      let retrySeedanceInternal = false;
+      const tag =
+        (attempt === 0 ? '' : `-retry-${attempt}`) +
+        (seedanceInternalRetried ? '-internal' : '');
       // Register the user's stills with BytePlus before the submit step
       // (#1519) — see MotionWorkflow for why this sits outside it.
       const submitVia = await step.do(`resolve-video-via${tag}`, () =>
@@ -270,6 +279,16 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
               ok: false as const,
               rejection: extractFalErrorMessage(error),
             };
+          }
+          // TaskTypeConstraint is a 400. Retrying the same body fails the
+          // same way, so stop here with the plain reason (#2036).
+          const providerMessage = extractFalErrorMessage(error);
+          const explained = explainSeedanceFailure(providerMessage);
+          if (
+            explained &&
+            /TaskTypeConstraint|InvalidParameter/.test(providerMessage)
+          ) {
+            throw new NonRetryableError(explained);
           }
           if (
             error instanceof Error &&
@@ -383,13 +402,33 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           break;
         }
         if (poll.kind === 'failed') {
-          throw new NonRetryableError(poll.error);
+          // One new job, not a Cloudflare retry of the failed task (#2036).
+          // Decrementing the attempt keeps it off the content-flag budget.
+          if (
+            !seedanceInternalRetried &&
+            isSeedanceInternalServiceError(poll.error, job.via)
+          ) {
+            retrySeedanceInternal = true;
+            break;
+          }
+          throw new NonRetryableError(
+            explainSeedanceFailure(poll.error, { via: job.via }) ?? poll.error
+          );
         }
       }
 
       if (videoUrl) {
         succeededJob = job;
         break;
+      }
+      if (retrySeedanceInternal) {
+        seedanceInternalRetried = true;
+        await step.sleep(
+          `seedance-internal-backoff-${attempt}`,
+          SEEDANCE_INTERNAL_BACKOFF_SECONDS
+        );
+        attempt -= 1;
+        continue;
       }
       if (rejected) {
         lastRejection = rejected;

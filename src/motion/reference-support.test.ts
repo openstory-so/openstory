@@ -133,15 +133,16 @@ describe('unusableReferenceLines', () => {
   });
 
   it('refuses a clip under the model minimum', () => {
-    // H3 Max takes clips of 2–15s; Seedance 2.5 takes 1.8–30.2s.
+    // H3 Max takes clips of 2–15s. Seedance 2.5 edits are 4–30s (#2036).
     const [line] = unusableReferenceLines('minimax_h3_max', [
       el('BLINK', 'video', 1.9),
     ]);
     expect(line).toContain('1.9s, under its 2s minimum');
-    expect(line).toContain('Seedance 2.5');
-    expect(
-      unusableReferenceLines('seedance_v2_5', [el('BLINK', 'video', 1.9)])
-    ).toEqual([]);
+    // 1.9s is under Seedance 2.5's 4s edit floor too, so it is not offered.
+    const [seedance] = unusableReferenceLines('seedance_v2_5', [
+      el('BLINK', 'video', 1.9),
+    ]);
+    expect(seedance).toContain('1.9s, under its 4s minimum');
   });
 });
 
@@ -235,14 +236,14 @@ describe('referenceUsability', () => {
   });
 
   it('errors when no model in the catalog is long enough', () => {
-    // Seedance 2.5 is the roomiest at 30.2s.
+    // Seedance 2.5 is the roomiest at 30s (#2036).
     const usability = referenceUsability({
       kind: 'video',
       durationSeconds: 120,
     });
     expect(usability.level).toBe('unusable');
     if (usability.level !== 'unusable') return;
-    expect(usability.problem).toEqual({ reason: 'too-long', maxSeconds: 30.2 });
+    expect(usability.problem).toEqual({ reason: 'too-long', maxSeconds: 30 });
   });
 
   it('warns rather than errors when the length is unknown', () => {

@@ -117,6 +117,15 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       referenceImages: z.array(mediaUrlSchema).max(9).default([]),
       /** Reference mode: clips bound as `@Video1`…`@VideoN`. */
       referenceVideos: z.array(mediaUrlSchema).max(3).default([]),
+      /**
+       * Known lengths of `referenceVideos`, same order. Null when the
+       * browser could not read the file. Seedance 2.5 refuses a known
+       * length outside 4–30s before any hold (#2036).
+       */
+      referenceVideoSeconds: z
+        .array(z.number().nonnegative().nullable())
+        .max(3)
+        .optional(),
       /** Reference mode: audio clips bound as `@Audio1`…`@AudioN`. */
       referenceAudio: z.array(mediaUrlSchema).max(3).default([]),
       /** Frames mode: the first frame, and optionally the last. */

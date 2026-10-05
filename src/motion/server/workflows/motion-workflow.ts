@@ -95,6 +95,11 @@ import {
 } from '@/stills/server/workflows/content-soften';
 import type { TokenUsage } from '@tanstack/ai';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import {
+  explainSeedanceFailure,
+  isSeedanceInternalServiceError,
+  SEEDANCE_INTERNAL_BACKOFF_SECONDS,
+} from '@/motion/seedance-edit';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
   persistMotionCompletion,
@@ -806,7 +811,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         return rescued;
       });
 
+    let seedanceInternalRetried = false;
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
+      let retrySeedanceInternal = false;
       const isRescue = attempt === MAX_MOTION_ATTEMPTS;
       // A final from a draft sends no prompt and cannot change model
       // (#1756): nothing to soften, nothing to swap.
@@ -947,7 +954,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
       }
       const tag =
-        attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`;
+        (attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`) +
+        (seedanceInternalRetried ? '-internal' : '');
 
       // Step 3-pre: register the stills BytePlus must see as `asset://`
       // (#1519). CreateAsset is paced by `BYTEPLUS_ASSET_WRITE_QPM`, so
@@ -1041,6 +1049,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               tooLong: true as const,
               rejection: extractFalErrorMessage(error),
             };
+          }
+          // TaskTypeConstraint is a 400. Retrying the same body fails the
+          // same way, so stop here with the plain reason (#2036).
+          const providerMessage = extractFalErrorMessage(error);
+          const explained = explainSeedanceFailure(providerMessage);
+          if (
+            explained &&
+            /TaskTypeConstraint|InvalidParameter/.test(providerMessage)
+          ) {
+            throw new NonRetryableError(explained);
           }
           if (
             error instanceof Error &&
@@ -1248,7 +1266,18 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           break;
         }
         if (poll.kind === 'failed') {
-          throw new NonRetryableError(poll.error);
+          // One new job, not a Cloudflare retry of the failed task (#2036).
+          if (
+            !seedanceInternalRetried &&
+            !isRescue &&
+            isSeedanceInternalServiceError(poll.error, job.via)
+          ) {
+            retrySeedanceInternal = true;
+            break;
+          }
+          throw new NonRetryableError(
+            explainSeedanceFailure(poll.error, { via: job.via }) ?? poll.error
+          );
         }
         // pending → poll the next batch
       }
@@ -1270,6 +1299,16 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           );
         }
         break;
+      }
+
+      if (retrySeedanceInternal) {
+        seedanceInternalRetried = true;
+        await step.sleep(
+          `seedance-internal-backoff-${attempt}`,
+          SEEDANCE_INTERNAL_BACKOFF_SECONDS
+        );
+        attempt -= 1;
+        continue;
       }
 
       if (rejected) {

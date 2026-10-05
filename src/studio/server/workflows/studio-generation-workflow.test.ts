@@ -97,16 +97,20 @@ function makeWorkflow(): Probe {
   return new Probe(ctx, env);
 }
 
-function makeStep(): WorkflowStep & { names: string[] } {
+function makeStep(): WorkflowStep & { names: string[]; sleeps: string[] } {
   const names: string[] = [];
+  const sleeps: string[] = [];
   // stub: runImpl only uses `do` and `sleep`
-  return asStub<WorkflowStep & { names: string[] }>({
+  return asStub<WorkflowStep & { names: string[]; sleeps: string[] }>({
     names,
+    sleeps,
     do: vi.fn((name: string, fn: () => Promise<unknown>) => {
       names.push(name);
       return fn();
     }),
-    sleep: vi.fn(async () => {}),
+    sleep: vi.fn(async (name: string) => {
+      sleeps.push(name);
+    }),
   });
 }
 
@@ -363,6 +367,79 @@ describe('StudioGenerationWorkflow video', () => {
     expect(mockSubmit).toHaveBeenCalledTimes(2);
     expect(step.names).toContain('submit-video-retry-1');
     expect(generatedAssets.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('resubmits once when Ark reports InternalServiceError (#2036)', async () => {
+    mockSubmit.mockResolvedValue({
+      jobId: 'job-1',
+      modelKey: 'seedance_v2_5',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      via: 'byteplus',
+      usedOwnKey: false,
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValueOnce({
+        status: 'completed',
+        url: 'https://fal.media/a.mp4',
+      });
+    const step = makeStep();
+    const { scopedDb, generatedAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(
+      makeEvent({ ...VIDEO, videoModel: 'seedance_v2_5' }),
+      step,
+      scopedDb
+    );
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(step.sleeps).toContain('seedance-internal-backoff-0');
+    expect(step.names).toContain('submit-video-internal');
+    expect(generatedAssets.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('says the credits were refunded when the retry also fails (#2036)', async () => {
+    mockSubmit.mockResolvedValue({
+      jobId: 'job-1',
+      modelKey: 'seedance_v2_5',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      via: 'byteplus',
+      usedOwnKey: false,
+    });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error: 'InternalServiceError: still down',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(
+        makeEvent({ ...VIDEO, videoModel: 'seedance_v2_5' }),
+        makeStep(),
+        scopedDb
+      )
+    ).rejects.toThrow(
+      /temporary error.*tried again once.*credits for this generation were refunded/
+    );
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops on TaskTypeConstraint instead of replaying the same request (#2036)', async () => {
+    mockSubmit.mockRejectedValue(
+      new Error(
+        'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
+    ).rejects.toThrow(/couldn't process this edit/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+    expect(mockPoll).not.toHaveBeenCalled();
   });
 
   it('gives up after three content flags without billing', async () => {

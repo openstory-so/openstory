@@ -10,6 +10,8 @@
  *   - Frames    — a start frame, plus an end frame where the model takes one
  */
 
+import { readMediaDuration } from '@/cast/element-kind';
+import { seedanceEditLengthMessage } from '@/motion/seedance-edit';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
 import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
@@ -552,6 +554,15 @@ export function StudioComposer({
     : mode === 'reference' && references.length + videoRefs.length === 0
       ? 'text'
       : mode;
+  // A reference clip on Seedance 2.5 is an edit. Length follows the clip,
+  // so the picker shows Auto and the hold prices the longest clip (#2036).
+  const followsReferenceVideo =
+    compatibleVideoModel === 'seedance_v2_5' &&
+    effectiveMode === 'reference' &&
+    videoRefs.length > 0;
+  const pricedDuration: StudioDuration = followsReferenceVideo
+    ? 'auto'
+    : snappedDuration;
 
   const estimate = useMemo(() => {
     if (!pricing) return pricingPending ? undefined : null;
@@ -565,7 +576,7 @@ export function StudioComposer({
     }
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
-      studioBillableSeconds(snappedDuration, compatibleVideoModel),
+      studioBillableSeconds(pricedDuration, compatibleVideoModel),
       {
         pricing,
         mode: effectiveMode,
@@ -585,7 +596,7 @@ export function StudioComposer({
     pricingPending,
     references.length,
     resolution,
-    snappedDuration,
+    pricedDuration,
   ]);
 
   const trimmed = prompt.trim();
@@ -618,7 +629,7 @@ export function StudioComposer({
         videoModel: compatibleVideoModel,
         aspectRatio,
         resolution,
-        duration: snappedDuration,
+        duration: pricedDuration,
         count,
         generateAudio: audioCapable ? generateAudio : undefined,
         draft: draftCapable ? draftMode : undefined,
@@ -627,6 +638,13 @@ export function StudioComposer({
           effectiveMode === 'reference' ? references.map((r) => r.url) : [],
         referenceVideos:
           effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
+        ...(effectiveMode === 'reference' && videoRefs.length > 0
+          ? {
+              referenceVideoSeconds: videoRefs.map(
+                (r) => r.durationSeconds ?? null
+              ),
+            }
+          : {}),
         referenceAudio:
           effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
         startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
@@ -788,6 +806,19 @@ export function StudioComposer({
   const addReference = (reference: StudioReference): number => {
     const { kind } = reference;
     const index = counts[kind];
+    if (
+      kind === 'video' &&
+      compatibleVideoModel === 'seedance_v2_5' &&
+      reference.durationSeconds != null
+    ) {
+      const lengthMessage = seedanceEditLengthMessage(
+        reference.durationSeconds
+      );
+      if (lengthMessage) {
+        toast.error(lengthMessage);
+        return -1;
+      }
+    }
     if (index >= limits[kind]) {
       toast.error(`Up to ${limits[kind]} reference ${kind}s`);
       return -1;
@@ -852,13 +883,25 @@ export function StudioComposer({
         continue;
       }
       taken[kind] += 1;
+      const durationSeconds =
+        kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
+      if (kind === 'video' && compatibleVideoModel === 'seedance_v2_5') {
+        const lengthMessage = seedanceEditLengthMessage(durationSeconds);
+        if (lengthMessage) {
+          toast.error(lengthMessage);
+          continue;
+        }
+      }
       setUploading((n) => n + 1);
       try {
         const { url } = await upload.mutateAsync({
           file,
           type: kind === 'audio' ? 'recording' : kind,
         });
-        placeReference({ url, label: file.name, kind }, target);
+        placeReference(
+          { url, label: file.name, kind, durationSeconds },
+          target
+        );
         void queryClient.invalidateQueries({ queryKey: studioUploadKeys.all });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Upload failed');
@@ -1154,6 +1197,18 @@ export function StudioComposer({
       setPromptTooLongOpen(true);
       return;
     }
+    if (
+      compatibleVideoModel === 'seedance_v2_5' &&
+      effectiveMode === 'reference'
+    ) {
+      for (const ref of videoRefs) {
+        const lengthMessage = seedanceEditLengthMessage(ref.durationSeconds);
+        if (lengthMessage) {
+          toast.error(lengthMessage);
+          return;
+        }
+      }
+    }
     if (trimmed.length === 0) {
       posthog.capture('empty_prompt_generate_clicked', {
         surface: 'studio',
@@ -1199,9 +1254,9 @@ export function StudioComposer({
       ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
       : null,
     isVideo && durationCapable
-      ? snappedDuration === 'auto'
+      ? pricedDuration === 'auto'
         ? 'Auto length'
-        : `${snappedDuration}s`
+        : `${pricedDuration}s`
       : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     draftOn ? 'Draft 480p' : null,
@@ -1576,8 +1631,10 @@ export function StudioComposer({
                   <section className="flex flex-col gap-2">
                     <h3 className="text-sm font-medium">Duration</h3>
                     <Select
-                      value={String(snappedDuration)}
+                      value={String(pricedDuration)}
+                      disabled={followsReferenceVideo}
                       onValueChange={(value) => {
+                        if (followsReferenceVideo) return;
                         if (value === 'auto') {
                           setDuration('auto');
                           return;
@@ -1615,6 +1672,11 @@ export function StudioComposer({
                         )}
                       </SelectContent>
                     </Select>
+                    {followsReferenceVideo && (
+                      <p className="text-xs text-muted-foreground">
+                        A reference video is an edit. Seedance keeps its length.
+                      </p>
+                    )}
                   </section>
                 </>
               )}

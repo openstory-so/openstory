@@ -44,6 +44,10 @@ import {
   type StudioCreateResult,
 } from '@/studio/schema';
 import {
+  seedance25FollowsInputVideo,
+  seedanceEditLengthMessage,
+} from '@/motion/seedance-edit';
+import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
   studioCanEditSource,
@@ -213,9 +217,24 @@ export async function createStudioAssets(
       throw new ValidationError('Unknown video model');
     }
     if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
+    // A known clip outside 4–30s never reaches Ark, and never takes a hold.
+    if (input.videoModel === 'seedance_v2_5') {
+      for (const seconds of input.referenceVideoSeconds ?? []) {
+        const lengthMessage = seedanceEditLengthMessage(seconds);
+        if (lengthMessage) throw new ValidationError(lengthMessage);
+      }
+    }
+    // A reference clip or an edit source is an Ark edit: length follows the
+    // clip, and the hold prices the model's longest clip (#2036).
+    const followsClip = seedance25FollowsInputVideo(
+      input.videoModel,
+      input.mode === 'edit' || input.referenceVideos.length > 0
+    );
     input = {
       ...input,
-      duration: snapStudioVideoDuration(input.duration, input.videoModel),
+      duration: followsClip
+        ? 'auto'
+        : snapStudioVideoDuration(input.duration, input.videoModel),
     };
   }
   const pricing = await getEffectiveFalPricing();

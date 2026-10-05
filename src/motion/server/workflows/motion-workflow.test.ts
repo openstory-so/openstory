@@ -124,16 +124,20 @@ function makeWorkflow(): Probe {
   return new Probe(ctx, env);
 }
 
-function makeStep(): WorkflowStep & { names: string[] } {
+function makeStep(): WorkflowStep & { names: string[]; sleeps: string[] } {
   const names: string[] = [];
+  const sleeps: string[] = [];
   // stub: runImpl only uses `do` and `sleep`
-  return asStub<WorkflowStep & { names: string[] }>({
+  return asStub<WorkflowStep & { names: string[]; sleeps: string[] }>({
     names,
+    sleeps,
     do: vi.fn((name: string, fn: () => Promise<unknown>) => {
       names.push(name);
       return fn();
     }),
-    sleep: vi.fn(async () => {}),
+    sleep: vi.fn(async (name: string) => {
+      sleeps.push(name);
+    }),
   });
 }
 
@@ -280,6 +284,46 @@ beforeEach(() => {
   mockPoll.mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
   mockSoften.mockResolvedValue('the softened prompt');
   mockResolveMotionVia.mockResolvedValue('fal');
+});
+
+describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
+  it('submits one new job after Ark reports InternalServiceError', async () => {
+    mockSubmit.mockResolvedValue({
+      ...job(),
+      via: 'byteplus',
+      modelKey: 'seedance_v2_5',
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
+    const step = makeStep();
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(step.sleeps).toContain('seedance-internal-backoff-0');
+    expect(step.names).toContain('submit-motion-internal');
+  });
+
+  it('stops with a refund sentence when the retry fails', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'byteplus' });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error: 'InternalServiceError: still down',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
+    ).rejects.toThrow(
+      /tried again once.*credits for this generation were refunded/
+    );
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('MotionWorkflow content-flag rescue (#1373)', () => {

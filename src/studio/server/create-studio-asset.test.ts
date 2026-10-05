@@ -492,6 +492,58 @@ describe('createStudioAssets', () => {
     expect(favorites.assets.map((row) => row.id)).toEqual([firstId]);
   });
 
+  it('refuses a Seedance 2.5 reference clip outside 4–30s before any hold (#2036)', async () => {
+    bytePlusLive = true;
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'the fox turns toward camera',
+        videoModel: 'seedance_v2_5',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        count: 1,
+        mode: 'reference',
+        referenceImages: [],
+        referenceVideos: ['https://example.com/short.mp4'],
+        referenceVideoSeconds: [2],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow(/between 4 and 30 seconds/);
+
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+    expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
+  it('prices a Seedance 2.5 reference video as auto length (#2036)', async () => {
+    bytePlusLive = true;
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await createStudioAssets(scopedDb, {
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'seedance_v2_5',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: 5,
+      count: 1,
+      mode: 'reference',
+      referenceImages: [],
+      referenceVideos: ['https://example.com/walk.mp4'],
+      referenceAudio: [],
+    });
+
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/studio',
+      expect.objectContaining({
+        input: expect.objectContaining({ duration: 'auto' }),
+      }),
+      expect.anything()
+    );
+  });
+
   it('reserves a video row against the T2V endpoint with no image model', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const result = await createStudioAssets(scopedDb, {

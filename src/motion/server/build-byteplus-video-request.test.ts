@@ -243,6 +243,52 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
     ).toBe(false);
   });
 
+  it('sends duration -1 and an adaptive size when Seedance 2.5 has a video (#2036)', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        referenceImages: [
+          ...references,
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2_5'
+    );
+    expect(request.size).toBe('adaptive_720p');
+    expect(request.modelOptions).toMatchObject({ duration: -1 });
+    expect(request.duration).toBe(5);
+    expect(request.prompt.some((part) => part.type === 'video')).toBe(true);
+  });
+
+  it('keeps a concrete ratio and duration for Seedance 2.0 with a video', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2'
+    );
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+    expect(request.duration).toBe(5);
+  });
+
   it('sends a text-only request when nothing matched', () => {
     const request = buildBytePlusVideoRequest(
       { ...referenceOnlyBase, referenceImages: [] },

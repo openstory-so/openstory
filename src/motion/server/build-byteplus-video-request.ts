@@ -18,14 +18,16 @@
  * 2.5 tags are `@Image1`/`@Image2` on fal and Ark. Ark does not want a
  * trailing "Reference images:" legend.
  *
- * `size` is `adaptive` only when a `start_frame` role is actually sent. A
- * demoted still is a reference like any other, so reference mode states the
- * sequence's own ratio, as reference-only and text-only do (nothing is left
- * for `adaptive` to adapt to — see the comment at the `size` assignment).
+ * `size` is `adaptive` when a `start_frame` role is actually sent, and when
+ * Seedance 2.5 is carrying a video: Ark classifies that as an edit, which
+ * requires `adaptive` and `duration: -1` (#2036). Otherwise reference mode
+ * states the sequence's own ratio (nothing is left for `adaptive` to adapt
+ * to — see the comment at the `size` assignment, #1809).
  *
  * Client-safe: no env, no adapters.
  */
 
+import { seedance25FollowsInputVideo } from '@/motion/seedance-edit';
 import {
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
@@ -203,6 +205,12 @@ export function buildBytePlusVideoRequest(
         audioUrls: [],
       };
 
+  // A 2.5 video part is an edit: adaptive ratio and duration -1, or Ark
+  // answers TaskTypeConstraint. 2.0 has no edit task and keeps its ratio.
+  const followsClip = seedance25FollowsInputVideo(
+    modelKey,
+    videoUrls.length > 0
+  );
   return {
     modelId,
     prompt: [
@@ -221,8 +229,10 @@ export function buildBytePlusVideoRequest(
         source: { type: 'url', value: url },
       })),
     ],
-    size,
+    size: followsClip ? `adaptive_${resolution}` : size,
     duration: options.duration,
-    modelOptions,
+    modelOptions: followsClip
+      ? { ...modelOptions, duration: -1 }
+      : modelOptions,
   };
 }

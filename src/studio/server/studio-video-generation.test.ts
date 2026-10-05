@@ -621,6 +621,7 @@ describe('submitStudioVideoJob', () => {
             source: { type: 'url', value: 'https://example.com/clip.mp4' },
           },
         ],
+        modelOptions: expect.objectContaining({ duration: -1 }),
       })
     );
   });
