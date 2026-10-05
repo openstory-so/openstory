@@ -37,6 +37,11 @@ import type {
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
 import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
+import {
+  giftRedeemHolderReason,
+  normalizeGiftCode,
+  type GiftRedeemResult,
+} from '@/billing/gift-redeem';
 import { ValidationError } from '@/platform/errors';
 import { getBillingChannel } from '@/platform/realtime';
 import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
@@ -1506,6 +1511,11 @@ export function createBillingMethods(
    * Redeem a gift token for a team. Adds credits via the billing sub-module.
    * Caller must provide an addCredits function (from billing sub-module) to avoid
    * circular dependency.
+   *
+   * Known refusals return `{ status: 'refused' }` (#2033). A code this team
+   * already holds is "already redeemed" / "once per account" even when the
+   * cap is also full — that check comes before the cap, so a single-use code
+   * the caller used does not come back as "fully redeemed".
    */
   async function redeemGiftToken(opts: {
     code: string;
@@ -1519,10 +1529,9 @@ export function createBillingMethods(
         metadata?: Record<string, unknown>;
       }
     ) => Promise<{ newBalance: Microdollars; transactionId: string } | null>;
-  }): Promise<{ newBalance: number; amountUsd: number }> {
-    const normalizedCode = opts.code.trim().toUpperCase();
+  }): Promise<GiftRedeemResult> {
+    const normalizedCode = normalizeGiftCode(opts.code);
 
-    // Find the token
     const [token] = await db
       .select()
       .from(giftTokens)
@@ -1530,14 +1539,35 @@ export function createBillingMethods(
       .limit(1);
 
     if (!token) {
-      throw new ValidationError('Invalid gift code');
+      return { status: 'refused', reason: 'invalid' };
     }
 
     if (token.expiresAt && token.expiresAt < new Date()) {
-      throw new ValidationError('This gift code has expired');
+      return { status: 'refused', reason: 'expired' };
     }
 
-    // Count existing redemptions
+    const teamRedemption = async () => {
+      const [holder] = await db
+        .select({ userId: giftTokenRedemptions.userId })
+        .from(giftTokenRedemptions)
+        .where(
+          and(
+            eq(giftTokenRedemptions.giftTokenId, token.id),
+            eq(giftTokenRedemptions.teamId, opts.teamId)
+          )
+        )
+        .limit(1);
+      return holder ?? null;
+    };
+
+    const ownRedemption = await teamRedemption();
+    if (ownRedemption) {
+      return {
+        status: 'refused',
+        reason: giftRedeemHolderReason(ownRedemption.userId, opts.userId),
+      };
+    }
+
     const [redemptionRow] = await db
       .select({ value: count() })
       .from(giftTokenRedemptions)
@@ -1546,10 +1576,10 @@ export function createBillingMethods(
     const redemptionCount = redemptionRow?.value ?? 0;
 
     if (redemptionCount >= token.maxRedemptions) {
-      throw new ValidationError('This gift code has been fully redeemed');
+      return { status: 'refused', reason: 'fully_redeemed' };
     }
 
-    // Record redemption -- unique index on (giftTokenId, teamId) prevents duplicates
+    // Unique index on (giftTokenId, teamId) closes the race the pre-check missed.
     const [inserted] = await db
       .insert(giftTokenRedemptions)
       .values({
@@ -1562,14 +1592,17 @@ export function createBillingMethods(
       .returning();
 
     if (!inserted) {
-      throw new ValidationError(
-        'Your team has already redeemed this gift code'
-      );
+      const holder = await teamRedemption();
+      return {
+        status: 'refused',
+        reason: holder
+          ? giftRedeemHolderReason(holder.userId, opts.userId)
+          : 'already_redeemed',
+      };
     }
 
     const amountMicros = micros(token.amountMicros);
 
-    // Add credits to team
     const result = await opts.addCredits(amountMicros, {
       type: 'credit_adjustment',
       description: `Gift code redeemed: ${normalizedCode} (${microsToDisplayUsd(amountMicros)})`,
@@ -1577,6 +1610,7 @@ export function createBillingMethods(
     });
 
     return {
+      status: 'redeemed',
       newBalance: result ? microsToUsd(result.newBalance) : 0,
       amountUsd: microsToUsd(amountMicros),
     };

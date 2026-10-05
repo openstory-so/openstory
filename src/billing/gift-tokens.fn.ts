@@ -1,3 +1,4 @@
+import { reportGiftRedeemRefusal } from '@/billing/server/gift-redeem-report';
 import {
   getInternalDomains,
   isSystemAdmin,
@@ -75,12 +76,21 @@ export const redeemGiftTokenFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.object({ code: z.string().min(1) })))
   .handler(async ({ context, data }) => {
-    return context.scopedDb.billing.redeemGiftToken({
+    const result = await context.scopedDb.billing.redeemGiftToken({
       code: data.code,
       teamId: context.teamId,
       userId: context.user.id,
       addCredits: context.scopedDb.billing.addCredits,
     });
+    if (result.status === 'refused') {
+      reportGiftRedeemRefusal({
+        code: data.code,
+        reason: result.reason,
+        userId: context.user.id,
+        teamId: context.teamId,
+      });
+    }
+    return result;
   });
 
 export const listGiftTokensFn = createServerFn({ method: 'GET' })
