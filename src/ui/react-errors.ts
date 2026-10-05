@@ -11,7 +11,7 @@
  * render queues until the SDK's `loaded` callback calls `flushReactErrors`.
  */
 
-import { errorCode } from '@/platform/errors';
+import { errorCode, isUnauthenticatedError } from '@/platform/errors';
 import { isReloadPending } from './chunk-reload';
 import { getLogger } from '@/platform/logger';
 import posthog from 'posthog-js';
@@ -28,6 +28,8 @@ const pending: Pending[] = [];
 export function captureRouteError(error: unknown, info: ErrorInfo): void {
   // A 404 from a stale link renders the not-found page; not an app error.
   if (errorCode(error) === 'NOT_FOUND') return;
+  // An expired session: the fallback sends the visitor to sign in (#2034).
+  if (isUnauthenticatedError(error)) return;
   // A stale-chunk reload is already under way (#1513): whatever the router
   // threw in the meantime is the page shutting down, not something to fix.
   if (isReloadPending()) return;

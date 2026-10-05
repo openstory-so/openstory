@@ -168,6 +168,15 @@ export function isAuthError(error: unknown): boolean {
 }
 
 /**
+ * 401 only — no session, or one the server no longer accepts. Signing in fixes
+ * it, which a 403 (a permission failure) never does.
+ */
+export function isUnauthenticatedError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  return (error as { statusCode?: unknown }).statusCode === 401;
+}
+
+/**
  * Display text for an arbitrary thrown value. A Zod failure — a live
  * `ZodError`, or one that crossed the server-fn boundary as its JSON `message`
  * (#1285) — collapses to one `path: message` line per issue instead of the raw
