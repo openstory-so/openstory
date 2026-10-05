@@ -460,6 +460,19 @@ describe('tools/list and whoami', () => {
     });
   });
 
+  // #2035: the SDK's listen stream never ends, so Cloudflare cancels it.
+  it('refuses subscriptions/listen at once and does not advertise listChanged', async () => {
+    const listen = await rpc('subscriptions/listen', {
+      notifications: { toolsListChanged: true },
+    });
+    expect(listen.status).toBe(404);
+    expect(listen.body.error?.code).toBe(-32601);
+
+    const { body } = await rpc('server/discover');
+    expect(body.error).toBeUndefined();
+    expect(JSON.stringify(body.result)).not.toContain('listChanged');
+  });
+
   describe('a 2025-era client (sessions: stateless)', () => {
     const legacyPost = (method: string, params: Record<string, unknown>) =>
       new Request('https://openstory.test/mcp', {
