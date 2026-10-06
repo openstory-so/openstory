@@ -1,4 +1,5 @@
 import { isReloadPending, isStaleChunkError } from '@/ui/chunk-reload';
+import { use } from 'react';
 import { Button } from '@/ui/shadcn/button';
 import {
   Empty,
@@ -17,16 +18,12 @@ export function isAppUpdatedError(error: unknown): boolean {
   return isReloadPending() || isStaleChunkError(error);
 }
 
+const LEAVING = new Promise<never>(() => {});
+
 export const AppUpdatedNotice: React.FC = () => {
-  if (isReloadPending()) {
-    return (
-      <Empty className="flex-1" aria-live="polite">
-        <EmptyHeader>
-          <EmptyTitle>Updating…</EmptyTitle>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
+  // The page is leaving: suspend, so the screen the visitor was on stays up
+  // until the reload lands. Same move the router makes for its own reload.
+  if (isReloadPending()) use(LEAVING);
   return (
     <Empty className="flex-1">
       <EmptyHeader>
