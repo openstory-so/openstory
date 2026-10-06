@@ -82,12 +82,13 @@ export const deleteCastStatements = (db: Database, where: SQL) =>
   ] as const;
 
 /**
- * The characters that go when a sequence does: the ones only it casts and
- * the library does not hold. Read before the delete, because the links that
+ * The team's characters that go when a sequence does: the ones only it casts
+ * and the library does not hold. Read before the delete, because the links that
  * say so are deleted first. A condition on `characters`.
  */
 export const charactersOnlyIn = async (
   db: Database,
+  teamId: string,
   sequenceId: string
 ): Promise<SQL> => {
   const rows = await db
@@ -97,6 +98,7 @@ export const charactersOnlyIn = async (
     .where(
       and(
         eq(sequenceCast.sequenceId, sequenceId),
+        eq(characters.teamId, teamId),
         eq(characters.inLibrary, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id != ${sequenceId})`
       )

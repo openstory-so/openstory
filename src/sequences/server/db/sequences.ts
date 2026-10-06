@@ -65,6 +65,7 @@ import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
 import {
   assertVoicesReleased,
   deleteCharactersStatements,
+  voiceIdsHeldOnlyBy,
 } from '@/cast/server/db/characters';
 import {
   charactersOnlyIn,
@@ -943,18 +944,48 @@ export function createSequencesMethods(
       return rows.length > 0;
     },
 
-    delete: async (sequenceId: string): Promise<void> => {
+    /**
+     * The saved voices a hard delete of this sequence would strand: release
+     * each, then pass them to `delete`. `get` prefix on purpose: it is a
+     * read, so the workflow surface strips it.
+     */
+    getVoiceIdsToReleaseOnDelete: async (
+      sequenceId: string
+    ): Promise<string[]> =>
+      await voiceIdsHeldOnlyBy(
+        db,
+        await charactersOnlyIn(db, teamId, sequenceId)
+      ),
+
+    /**
+     * Hard-delete one of the team's sequences. Every statement names the
+     * team's sequence, so another team's id deletes nothing. Refused while a
+     * saved voice would be stranded: `releasedVoiceIds` are the ids from
+     * `getVoiceIdsToReleaseOnDelete` the caller has run through
+     * `releaseVoiceIfUnreferenced`.
+     */
+    delete: async (
+      sequenceId: string,
+      opts: { releasedVoiceIds: readonly string[] }
+    ): Promise<void> => {
+      const mine = db
+        .select({ id: sequences.id })
+        .from(sequences)
+        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
       // A character belongs to the team (#2017): the sequence's cast links
       // go, and with them only the characters nothing else holds. Nothing
       // cascades from the sequence to a character, or from a character to
       // its rows, so all of it is deleted here, children first, in one batch.
-      const theirs = await charactersOnlyIn(db, sequenceId);
-      await assertVoicesReleased(db, theirs);
+      const [own] = await mine;
+      const theirs = own
+        ? await charactersOnlyIn(db, teamId, sequenceId)
+        : sql`0`;
+      await assertVoicesReleased(db, theirs, opts.releasedVoiceIds);
       await db.batch([
         db
           .delete(sequenceStyleVersions)
-          .where(eq(sequenceStyleVersions.sequenceId, sequenceId)),
-        ...deleteCastStatements(db, eq(sequenceCast.sequenceId, sequenceId)),
+          .where(inArray(sequenceStyleVersions.sequenceId, mine)),
+        ...deleteCastStatements(db, inArray(sequenceCast.sequenceId, mine)),
         ...deleteCharactersStatements(db, theirs),
         db
           .delete(locationBibleVersions)
@@ -964,10 +995,10 @@ export function createSequencesMethods(
               db
                 .select({ id: sequenceLocations.id })
                 .from(sequenceLocations)
-                .where(eq(sequenceLocations.sequenceId, sequenceId))
+                .where(inArray(sequenceLocations.sequenceId, mine))
             )
           ),
-        db.delete(sequences).where(eq(sequences.id, sequenceId)),
+        db.delete(sequences).where(inArray(sequences.id, mine)),
       ]);
       // An automatic style has no FK to its sequence (#1213); drop it here.
       await db

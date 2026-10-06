@@ -58,6 +58,7 @@ import {
   shots,
   talent,
 } from '@/platform/server/db/schema';
+import { voiceProviderOf } from '@/cast/seed-voice';
 import { markPreviewUnusable } from '@/cast/voice';
 import {
   ConflictError,
@@ -276,28 +277,83 @@ const LIVE_VOICE_CLAIM_STATUSES = [
 ] as const satisfies readonly CharacterVoiceVersionStatus[];
 
 /**
- * Refuse a hard delete while a character it would remove still speaks in a
- * saved voice. A saved voice is an account-wide provider slot, freed only
- * through `releaseVoiceIfUnreferenced` (provider first, row second): deleting
- * the row that points at it would strand the slot. The caller releases each
- * voice first (`releaseCharacterVoice`), then deletes. `where` is a condition
- * on `characters`.
+ * The saved voices that would be stranded if the characters `where` matches
+ * (a condition on `characters`) were deleted: provider voice ids on ANY of
+ * their voice versions, selected or not, that are not yet released and that
+ * no surviving row still points at.
+ *
+ * - A history row with `releasedAt` null is the only record that a slot is
+ *   still held (`releaseReplacedVoice` leaves one on purpose when the
+ *   provider delete fails), so every version counts, not just the selected.
+ * - A voice whose provider holds no slot is left out: that is
+ *   `voiceProviderOf`'s call, not a prefix read here.
+ * - "Still pointed at" is `getVoiceReferenceCount`'s rule: another
+ *   character's selected version, or a talent.
  */
-export async function assertVoicesReleased(
+export async function voiceIdsHeldOnlyBy(
   db: Database,
   where: SQL
-): Promise<void> {
-  const [held] = await db
-    .select({ n: count() })
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ voiceId: characterVoiceVersions.voiceId })
+    .from(characterVoiceVersions)
+    .innerJoin(
+      characters,
+      eq(characters.id, characterVoiceVersions.characterId)
+    )
+    .where(
+      sql`${where} and ${isNotNull(characterVoiceVersions.voiceId)} and ${isNull(characterVoiceVersions.releasedAt)}`
+    );
+  const ids = rows
+    .map((row) => row.voiceId)
+    .filter(
+      (id): id is string => id !== null && voiceProviderOf(id) !== 'seed'
+    );
+  if (ids.length === 0) return [];
+  // One bound parameter however many there are (D1 caps a statement at 100).
+  const theirs = sql`(SELECT value FROM json_each(${JSON.stringify(ids)}))`;
+  const onSurvivors = await db
+    .select({ voiceId: characterVoiceVersions.voiceId })
     .from(characters)
     .innerJoin(
       characterVoiceVersions,
       eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
     )
-    .where(sql`${where} and ${isNotNull(characterVoiceVersions.voiceId)}`);
-  if ((held?.n ?? 0) > 0) {
+    .where(
+      sql`NOT (${where}) and ${inArray(characterVoiceVersions.voiceId, theirs)}`
+    );
+  const onTalent = await db
+    .select({ voiceId: talent.voiceId })
+    .from(talent)
+    .where(inArray(talent.voiceId, theirs));
+  const kept = new Set([...onSurvivors, ...onTalent].map((row) => row.voiceId));
+  return ids.filter((id) => !kept.has(id));
+}
+
+/**
+ * Refuse a hard delete that would strand a saved voice. A saved voice is an
+ * account-wide provider slot, freed only through `releaseVoiceIfUnreferenced`
+ * (provider first, row second), which a db method cannot call. So the caller
+ * reads {@link voiceIdsHeldOnlyBy}, runs each id through
+ * `releaseVoiceIfUnreferenced` (after `releaseCharacterVoice` has dropped a
+ * live pointer), and names the ids it handled. An id it did not name stops
+ * the delete.
+ *
+ * The ids are named rather than re-read from `releasedAt`, because a release
+ * does not always stamp it: a voice that takes no slot, an unconfigured or
+ * refused key. Re-reading would refuse those deletes for good.
+ */
+export async function assertVoicesReleased(
+  db: Database,
+  where: SQL,
+  releasedVoiceIds: readonly string[]
+): Promise<void> {
+  const owed = (await voiceIdsHeldOnlyBy(db, where)).filter(
+    (id) => !releasedVoiceIds.includes(id)
+  );
+  if (owed.length > 0) {
     throw new ConflictError(
-      `${held?.n} character(s) still hold a saved voice. Release each voice before deleting.`
+      `${owed.length} saved voice(s) would be stranded. Release each through releaseVoiceIfUnreferenced before deleting.`
     );
   }
 }
@@ -1108,14 +1164,27 @@ export function createCharactersMethods(db: Database, teamId: string) {
     },
 
     /**
+     * The saved voices a hard delete of this character would strand: release
+     * each, then pass them to `delete`. `get` prefix on purpose: it is a
+     * read, so the workflow surface strips it.
+     */
+    getVoiceIdsToRelease: async (id: string): Promise<string[]> =>
+      await voiceIdsHeldOnlyBy(db, sql`${eq(characters.id, id)} and ${inTeam}`),
+
+    /**
      * Hard-delete one of the team's characters with everything keyed to it.
      * Every statement names the team's character, so another team's id
-     * deletes nothing. Refused while it still holds a saved voice
+     * deletes nothing. Refused while a saved voice would be stranded:
+     * `releasedVoiceIds` are the ids from {@link getVoiceIdsToRelease} the
+     * caller has run through `releaseVoiceIfUnreferenced`
      * ({@link assertVoicesReleased}).
      */
-    delete: async (id: string): Promise<boolean> => {
+    delete: async (
+      id: string,
+      opts: { releasedVoiceIds: readonly string[] }
+    ): Promise<boolean> => {
       const mine = sql`${eq(characters.id, id)} and ${inTeam}`;
-      await assertVoicesReleased(db, mine);
+      await assertVoicesReleased(db, mine, opts.releasedVoiceIds);
       // Two cast statements, then six for the character; the last is its own.
       const [, , , , , , , result] = await db.batch([
         ...deleteCastStatements(

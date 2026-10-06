@@ -19,6 +19,7 @@ import { hashVisualPromptInput } from '@/shots/input-hash';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
   characterBibleVersions,
   characterLooks,
@@ -49,6 +50,9 @@ import { createCharactersMethods } from './characters';
 import { createSequenceElementsMethods } from './sequence-elements';
 import { createSequenceLocationsMethods } from './sequence-locations';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
+
+/** A hard delete of characters that hold no saved voice. */
+const NO_VOICES = { releasedVoiceIds: [] };
 
 let client: Client;
 let db: Database;
@@ -1351,7 +1355,7 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     );
     if (!a || !b || !x || !y) throw new Error('test setup: create failed');
 
-    expect(await chars.delete(a.id)).toBe(true);
+    expect(await chars.delete(a.id, NO_VOICES)).toBe(true);
     expect(await locs.delete(x.id)).toBe(true);
 
     const [sequence] = await db
@@ -1367,7 +1371,8 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
       source: 'backfill',
     });
     await createSequencesMethods(db, sequence.teamId, actorId).delete(
-      sequenceId
+      sequenceId,
+      NO_VOICES
     );
 
     expect(await db.select().from(characterBibleVersions)).toEqual([]);
@@ -1475,7 +1480,10 @@ describe('team characters (#2017)', () => {
       scriptCharacterId: 'char_x',
       bibleVersionId: shared.selectedBibleVersionId,
     });
-    await createSequencesMethods(db, teamId, actorId).delete(sequenceId);
+    await createSequencesMethods(db, teamId, actorId).delete(
+      sequenceId,
+      NO_VOICES
+    );
 
     const left = await db.select({ id: characters.id }).from(characters);
     expect(left.map((row) => row.id).sort()).toEqual(
@@ -1546,7 +1554,7 @@ describe('team characters (#2017)', () => {
   });
   const NOTHING = { sheets: 0, voices: 0, looks: 0, versions: 0, links: 0 };
 
-  it('deleting a character is refused while it holds a saved voice, then removes every row of it', async () => {
+  it('deleting a character is refused until every voice it alone holds is released, then removes every row of it', async () => {
     const created = await withSheetAndVoices('char_001');
     const kept = await withSheetAndVoices('char_002');
     const before = await rowsOf(created.id);
@@ -1558,16 +1566,19 @@ describe('team characters (#2017)', () => {
       links: 1,
     });
 
-    // A saved voice is a provider slot: the row that points at it stays
-    // until the voice is released.
-    await expect(chars().delete(created.id)).rejects.toThrow(
-      /still hold a saved voice/
+    // Both characters have 'voice-a' in their history and 'voice-b'
+    // selected. The other character's SELECTED voice-b is a live reference,
+    // so only voice-a would be stranded.
+    expect(await chars().getVoiceIdsToRelease(created.id)).toEqual(['voice-a']);
+    await expect(chars().delete(created.id, NO_VOICES)).rejects.toThrow(
+      /would be stranded/
     );
     expect(await rowsOf(created.id)).toEqual(before);
 
-    // What `releaseCharacterVoice` writes once the slot is free.
-    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
-    expect(await chars().delete(created.id)).toBe(true);
+    // The caller ran voice-a through releaseVoiceIfUnreferenced and says so.
+    expect(
+      await chars().delete(created.id, { releasedVoiceIds: ['voice-a'] })
+    ).toBe(true);
     expect(await rowsOf(created.id)).toEqual(NOTHING);
     expect(
       await db.select().from(characters).where(eq(characters.id, created.id))
@@ -1576,17 +1587,68 @@ describe('team characters (#2017)', () => {
     expect(await rowsOf(kept.id)).toEqual(before);
   });
 
-  it('deleting a sequence is refused while a character it removes holds a saved voice, then removes sheets and voices too', async () => {
+  it('an unselected voice version that still holds a slot stops the delete', async () => {
+    const created = await withSheetAndVoices('char_001');
+    // What releaseCharacterVoice writes: the live pointer is dropped.
+    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
+    // Neither id is selected any more, and neither is released.
+    expect((await chars().getVoiceIdsToRelease(created.id)).sort()).toEqual([
+      'voice-a',
+      'voice-b',
+    ]);
+    await expect(chars().delete(created.id, NO_VOICES)).rejects.toThrow(
+      /2 saved voice\(s\) would be stranded/
+    );
+
+    // A released id is no longer owed.
+    await chars().markVoiceReleased('voice-a');
+    expect(await chars().getVoiceIdsToRelease(created.id)).toEqual(['voice-b']);
+    await expect(
+      chars().delete(created.id, { releasedVoiceIds: ['voice-a'] })
+    ).rejects.toThrow(/1 saved voice\(s\) would be stranded/);
+    expect(
+      await chars().delete(created.id, { releasedVoiceIds: ['voice-b'] })
+    ).toBe(true);
+  });
+
+  it('a Seed voice and a voice a talent still holds do not stop the delete', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    // A Seed voice holds no provider slot.
+    await chars().updateVoice(
+      created.id,
+      { voiceId: newSeedVoiceId() },
+      'generated',
+      null
+    );
+    // A voice copied from a talent: the talent still points at it.
+    await db.insert(talent).values({ teamId, name: 'T', voiceId: 'voice-t' });
+    await chars().updateVoice(
+      created.id,
+      { voiceId: 'voice-t' },
+      'library',
+      null
+    );
+
+    expect(await chars().getVoiceIdsToRelease(created.id)).toEqual([]);
+    expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
+    expect(await rowsOf(created.id)).toEqual(NOTHING);
+  });
+
+  it("deleting a sequence is refused until its characters' voices are released, then removes sheets and voices too", async () => {
     const created = await withSheetAndVoices('char_001');
     const sequencesDb = createSequencesMethods(db, teamId, actorId);
-    await expect(sequencesDb.delete(sequenceId)).rejects.toThrow(
-      /still hold a saved voice/
+    const owed = await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId);
+    expect(owed.sort()).toEqual(['voice-a', 'voice-b']);
+    await expect(sequencesDb.delete(sequenceId, NO_VOICES)).rejects.toThrow(
+      /would be stranded/
     );
     expect(await db.select().from(sequences)).toHaveLength(1);
     expect((await rowsOf(created.id)).links).toBe(1);
 
-    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
-    await sequencesDb.delete(sequenceId);
+    await sequencesDb.delete(sequenceId, { releasedVoiceIds: owed });
     expect(await db.select().from(sequences)).toEqual([]);
     expect(await db.select().from(characters)).toEqual([]);
     expect(await rowsOf(created.id)).toEqual(NOTHING);
@@ -1594,20 +1656,50 @@ describe('team characters (#2017)', () => {
     expect(await db.select().from(characterVoiceVersions)).toEqual([]);
   });
 
-  it('a kept character keeps its voice when its sequence is deleted', async () => {
-    const created = await withSheetAndVoices('char_001');
+  it('a library character and one another sequence casts keep their voices when a sequence is deleted', async () => {
+    const inLibrary = await withSheetAndVoices('char_001');
+    const shared = await withSheetAndVoices('char_002');
     await db
       .update(characters)
       .set({ inLibrary: true })
-      .where(eq(characters.id, created.id));
-    // It is not deleted, so its voice is not in the way.
-    await createSequencesMethods(db, teamId, actorId).delete(sequenceId);
-    expect(await rowsOf(created.id)).toEqual({
-      sheets: 1,
-      voices: 2,
-      looks: 1,
-      versions: 1,
-      links: 0,
+      .where(eq(characters.id, inLibrary.id));
+    const other = await secondSequence();
+    await db.insert(sequenceCast).values({
+      sequenceId: other,
+      characterId: shared.id,
+      scriptCharacterId: 'char_x',
+      bibleVersionId: shared.selectedBibleVersionId,
+    });
+    const sequencesDb = createSequencesMethods(db, teamId, actorId);
+    // Neither is deleted, so no voice is in the way.
+    expect(await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual(
+      []
+    );
+    await sequencesDb.delete(sequenceId, NO_VOICES);
+
+    const kept = { sheets: 1, voices: 2, looks: 1, versions: 1 };
+    expect(await rowsOf(inLibrary.id)).toEqual({ ...kept, links: 0 });
+    expect(await rowsOf(shared.id)).toEqual({ ...kept, links: 1 });
+    const [voiced] = await db
+      .select({ selected: characters.selectedVoiceVersionId })
+      .from(characters)
+      .where(eq(characters.id, shared.id));
+    expect(voiced?.selected).not.toBeNull();
+  });
+
+  it('another team cannot delete a sequence or what it casts', async () => {
+    const created = await withSheetAndVoices('char_001');
+    const before = await rowsOf(created.id);
+    const otherTeam = generateId();
+    await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
+    const theirs = createSequencesMethods(db, otherTeam, actorId);
+
+    expect(await theirs.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual([]);
+    await theirs.delete(sequenceId, NO_VOICES);
+    expect(await db.select().from(sequences)).toHaveLength(1);
+    expect(await rowsOf(created.id)).toEqual(before);
+    expect(await chars().getById(created.id)).toMatchObject({
+      name: 'char_001',
     });
   });
 
@@ -1685,13 +1777,13 @@ describe('team characters (#2017)', () => {
       )
     ).rejects.toThrow(/not found/);
 
-    expect(await theirs.delete(created.id)).toBe(false);
+    expect(await theirs.delete(created.id, NO_VOICES)).toBe(false);
     expect(await linksOf(created.id)).toHaveLength(1);
     expect(await versionsOf(created.id)).toHaveLength(1);
     expect(await looks().listByCharacter(created.id)).toHaveLength(1);
     expect(await chars().getById(created.id)).toMatchObject({ name: 'Ada' });
 
-    expect(await chars().delete(created.id)).toBe(true);
+    expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
     expect(await linksOf(created.id)).toEqual([]);
   });
 });
