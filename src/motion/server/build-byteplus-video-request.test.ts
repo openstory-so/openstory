@@ -243,7 +243,7 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
     ).toBe(false);
   });
 
-  it('sends duration -1 and an adaptive size when Seedance 2.5 has a video (#2036)', () => {
+  it('keeps a concrete ratio when a Seedance 2.5 video is only a reference (#2036)', () => {
     const request = buildBytePlusVideoRequest(
       {
         ...referenceOnlyBase,
@@ -261,10 +261,55 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
       },
       'seedance_v2_5'
     );
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+    expect(request.duration).toBe(5);
+    expect(request.prompt.some((part) => part.type === 'video')).toBe(true);
+  });
+
+  it('sends duration -1 and an adaptive size when the prompt says edit (#2036)', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        prompt: 'Edit the walk so she turns',
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2_5'
+    );
     expect(request.size).toBe('adaptive_720p');
     expect(request.modelOptions).toMatchObject({ duration: -1 });
     expect(request.duration).toBe(5);
-    expect(request.prompt.some((part) => part.type === 'video')).toBe(true);
+  });
+
+  it('retries a constraint as an edit even when the prompt never said edit (#2036)', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        forceSeedanceEdit: true,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2_5'
+    );
+    expect(request.size).toBe('adaptive_720p');
+    expect(request.modelOptions).toMatchObject({ duration: -1 });
   });
 
   it('keeps a concrete ratio and duration for Seedance 2.0 with a video', () => {

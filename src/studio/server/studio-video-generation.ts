@@ -450,6 +450,11 @@ async function buildStudioBytePlusPrompt(
 export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
   /** From `ingestArkAssets` over `arkStillsForStudio` — see `SubmitMotionOptions.arkAssets`. */
   arkAssets: ArkAssetMap;
+  /**
+   * One resubmit after Ark's edit-constraint 400 (#2036). Sends duration -1
+   * even when the prompt never said "edit".
+   */
+  forceSeedanceEdit?: boolean;
 };
 
 export async function submitStudioVideoJob(
@@ -707,12 +712,16 @@ export async function submitStudioVideoJob(
         mode,
         built.prompt
       );
-      // Any 2.5 request with a video is an edit. `modelOptions.duration`
-      // is sent verbatim and wins over the snapped generic duration (#2036).
-      const followsClip = seedance25FollowsInputVideo(
-        modelKey,
-        mode === 'edit' || (options.referenceVideos?.length ?? 0) > 0
-      );
+      // The word "edit" with a video, Studio edit mode, or the one
+      // constraint retry. `modelOptions.duration` is sent verbatim and wins
+      // over the snapped generic duration (#2036).
+      const followsClip =
+        options.forceSeedanceEdit === true ||
+        seedance25FollowsInputVideo(
+          modelKey,
+          mode === 'edit' || (options.referenceVideos?.length ?? 0) > 0,
+          promptText
+        );
       const { apiKey, ...config } = arkAdapterConfig(
         arkKey,
         FAL_REQUEST_TIMEOUT_MS
@@ -728,8 +737,7 @@ export async function submitStudioVideoJob(
             modelOptions: {
               watermark: false,
               // Sent verbatim, over the snapped generic `duration`: the model
-              // picks the length. An edit requires it (#1925), and so does any
-              // 2.5 request that carries a video (#2036).
+              // picks the length. An edit requires it (#1925, #2036).
               ...((built.auto || followsClip) && { duration: -1 }),
               ...(draft && { draft: true }),
               ...(options.generateAudio !== undefined && {

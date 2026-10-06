@@ -217,19 +217,22 @@ export async function createStudioAssets(
       throw new ValidationError('Unknown video model');
     }
     if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
+    // The word "edit" (or Studio edit mode) with a video: length follows
+    // the clip, and the hold prices the model's longest clip (#2036).
+    // A reference clip without that word keeps the duration the user picked.
+    const followsClip = seedance25FollowsInputVideo(
+      input.videoModel,
+      input.mode === 'edit' || input.referenceVideos.length > 0,
+      input.prompt,
+      input.mode === 'edit'
+    );
     // A known clip outside 4–30s never reaches Ark, and never takes a hold.
-    if (input.videoModel === 'seedance_v2_5') {
+    if (followsClip) {
       for (const seconds of input.referenceVideoSeconds ?? []) {
         const lengthMessage = seedanceEditLengthMessage(seconds);
         if (lengthMessage) throw new ValidationError(lengthMessage);
       }
     }
-    // A reference clip or an edit source is an Ark edit: length follows the
-    // clip, and the hold prices the model's longest clip (#2036).
-    const followsClip = seedance25FollowsInputVideo(
-      input.videoModel,
-      input.mode === 'edit' || input.referenceVideos.length > 0
-    );
     input = {
       ...input,
       duration: followsClip

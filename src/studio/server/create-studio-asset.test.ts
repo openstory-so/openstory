@@ -492,14 +492,42 @@ describe('createStudioAssets', () => {
     expect(favorites.assets.map((row) => row.id)).toEqual([firstId]);
   });
 
-  it('refuses a Seedance 2.5 reference clip outside 4–30s before any hold (#2036)', async () => {
+  it('keeps a short Seedance 2.5 reference clip when the prompt does not say edit (#2036)', async () => {
+    bytePlusLive = true;
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await createStudioAssets(scopedDb, {
+      activity: 'video',
+      prompt: 'the fox turns toward camera',
+      videoModel: 'seedance_v2_5',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      duration: 5,
+      count: 1,
+      mode: 'reference',
+      referenceImages: [],
+      referenceVideos: ['https://example.com/short.mp4'],
+      referenceVideoSeconds: [2],
+      referenceAudio: [],
+    });
+
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/studio',
+      expect.objectContaining({
+        input: expect.objectContaining({ duration: 5 }),
+      }),
+      expect.anything()
+    );
+  });
+
+  it('refuses a Seedance 2.5 edit outside 4–30s before any hold (#2036)', async () => {
     bytePlusLive = true;
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
     await expect(
       createStudioAssets(scopedDb, {
         activity: 'video',
-        prompt: 'the fox turns toward camera',
+        prompt: 'edit the fox turn',
         videoModel: 'seedance_v2_5',
         aspectRatio: '16:9',
         resolution: '720p',
@@ -517,13 +545,13 @@ describe('createStudioAssets', () => {
     expect(await db.select().from(generatedAssets)).toEqual([]);
   });
 
-  it('prices a Seedance 2.5 reference video as auto length (#2036)', async () => {
+  it('prices a Seedance 2.5 edit as auto length (#2036)', async () => {
     bytePlusLive = true;
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
     await createStudioAssets(scopedDb, {
       activity: 'video',
-      prompt: 'the fox turns toward camera',
+      prompt: 'edit the fox turn',
       videoModel: 'seedance_v2_5',
       aspectRatio: '16:9',
       resolution: '720p',

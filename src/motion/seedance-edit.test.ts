@@ -1,16 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import {
   explainSeedanceFailure,
+  isSeedanceEditConstraintError,
   isSeedanceInternalServiceError,
+  promptRequestsSeedanceEdit,
   seedance25FollowsInputVideo,
   seedanceEditLengthMessage,
 } from './seedance-edit';
 
 describe('seedance edit constraints (#2036)', () => {
-  it('treats a Seedance 2.5 video as an edit and leaves 2.0 alone', () => {
-    expect(seedance25FollowsInputVideo('seedance_v2_5', true)).toBe(true);
-    expect(seedance25FollowsInputVideo('seedance_v2_5', false)).toBe(false);
-    expect(seedance25FollowsInputVideo('seedance_v2', true)).toBe(false);
+  it('follows the clip only when the prompt says edit', () => {
+    expect(promptRequestsSeedanceEdit('Edit @Video1.')).toBe(true);
+    expect(promptRequestsSeedanceEdit('please EDIT the clip')).toBe(true);
+    expect(promptRequestsSeedanceEdit('credits and editorial notes')).toBe(
+      false
+    );
+    expect(
+      seedance25FollowsInputVideo('seedance_v2_5', true, 'edit the walk')
+    ).toBe(true);
+    expect(
+      seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks')
+    ).toBe(false);
+    expect(
+      seedance25FollowsInputVideo('seedance_v2_5', false, 'edit the walk')
+    ).toBe(false);
+    expect(
+      seedance25FollowsInputVideo('seedance_v2', true, 'edit the walk')
+    ).toBe(false);
+    expect(
+      seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks', true)
+    ).toBe(true);
+    expect(
+      isSeedanceEditConstraintError('InvalidParameter.TaskTypeConstraint')
+    ).toBe(true);
+    expect(isSeedanceEditConstraintError('InvalidParameter')).toBe(false);
   });
 
   it('names a known length outside 4–30s and stays quiet otherwise', () => {

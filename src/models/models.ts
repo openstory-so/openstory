@@ -897,9 +897,9 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 10,
     maxAudio: 10,
     maxCombined: 50,
-    // Ark treats a 2.5 reference clip as an edit, which only accepts 4–30s
-    // (#2036). Audio stays on fal's 1.8–30.2s window: an edit is a video.
-    videoSeconds: { min: 4, max: 30, maxCombined: 30 },
+    // fal's reference window. An edit (the word "edit", or Ark's own
+    // TaskTypeConstraint) is a separate 4–30s check (#2036).
+    videoSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
     audioSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
   },
   seedance_v2_mini: {

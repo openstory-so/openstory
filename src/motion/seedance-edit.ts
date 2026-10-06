@@ -1,8 +1,10 @@
 /**
- * Seedance 2.5 on Ark classifies a request that carries a video as an edit
- * (#2036). An edit only accepts `duration: -1` and a source clip of 4–30s.
- * A normal duration comes back as `InvalidParameter.TaskTypeConstraint`
- * before anything is billed.
+ * Seedance 2.5 on Ark treats a job as a video edit only when the prompt uses
+ * the word "edit" (#2036), or when Studio is already in edit mode. An edit
+ * accepts `duration: -1` and a source clip of 4–30s. A positive duration on
+ * a job Ark itself classifies as an edit comes back as
+ * `InvalidParameter.TaskTypeConstraint` before anything is billed. A
+ * reference video with no such word is an ordinary reference.
  *
  * Client-safe: the composer, the studio preflight, and both video workflows
  * share these words.
@@ -20,12 +22,31 @@ const SEEDANCE_EDIT_CONSTRAINT_MESSAGE = `Seedance couldn't process this edit be
 
 const SEEDANCE_INTERNAL_MESSAGE = `Seedance couldn't process this video because of a temporary error. We tried again once and it failed again. ${REFUND_SENTENCE}`;
 
-/** Seedance 2.5 with a reference clip or an edit source. Output length follows the clip. */
+/** Whole word, so "credits" and "editorial" do not count. */
+export function promptRequestsSeedanceEdit(prompt: string): boolean {
+  return /\bedit\b/i.test(prompt);
+}
+
+/** Ark rejected the body as a video edit (`duration` must be -1). */
+export function isSeedanceEditConstraintError(message: string): boolean {
+  return /TaskTypeConstraint/.test(message);
+}
+
+/**
+ * Seedance 2.5 whose output length follows the clip: the prompt says "edit"
+ * (or Studio edit mode) and a video is attached.
+ */
 export function seedance25FollowsInputVideo(
   model: string,
-  hasInputVideo: boolean
+  hasInputVideo: boolean,
+  prompt: string,
+  explicitEdit = false
 ): boolean {
-  return model === 'seedance_v2_5' && hasInputVideo;
+  return (
+    model === 'seedance_v2_5' &&
+    hasInputVideo &&
+    (explicitEdit || promptRequestsSeedanceEdit(prompt))
+  );
 }
 
 function formatSeconds(seconds: number): string {

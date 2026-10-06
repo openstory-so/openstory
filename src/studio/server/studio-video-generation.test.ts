@@ -621,6 +621,49 @@ describe('submitStudioVideoJob', () => {
             source: { type: 'url', value: 'https://example.com/clip.mp4' },
           },
         ],
+      })
+    );
+    expect(
+      mockGenerateVideo.mock.calls[0]?.[0].modelOptions.duration
+    ).toBeUndefined();
+  });
+
+  it('sends duration -1 when the reference prompt says edit (#2036)', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-edit-word' });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'Edit the fox walk',
+      model: 'seedance_v2_5',
+      mode: 'reference',
+      referenceVideos: ['https://example.com/clip.mp4'],
+      duration: 5,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        modelOptions: expect.objectContaining({ duration: -1 }),
+      })
+    );
+  });
+
+  it('sends duration -1 on the constraint retry (#2036)', async () => {
+    testEnv.ARK_API_KEY = 'ark-test';
+    mockGenerateVideo.mockResolvedValue({ jobId: 'ark-edit-retry' });
+
+    await submitStudioVideoJob({
+      arkAssets: registeredAssets,
+      prompt: 'The fox walks',
+      model: 'seedance_v2_5',
+      mode: 'reference',
+      referenceVideos: ['https://example.com/clip.mp4'],
+      duration: 5,
+      forceSeedanceEdit: true,
+    });
+
+    expect(mockGenerateVideo).toHaveBeenCalledWith(
+      expect.objectContaining({
         modelOptions: expect.objectContaining({ duration: -1 }),
       })
     );

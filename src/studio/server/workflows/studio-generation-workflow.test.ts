@@ -427,7 +427,38 @@ describe('StudioGenerationWorkflow video', () => {
     expect(mockSubmit).toHaveBeenCalledTimes(2);
   });
 
-  it('stops on TaskTypeConstraint instead of replaying the same request (#2036)', async () => {
+  it('resubmits a TaskTypeConstraint once with auto length (#2036)', async () => {
+    mockSubmit
+      .mockRejectedValueOnce(
+        new Error(
+          'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
+        )
+      )
+      .mockResolvedValue({
+        jobId: 'job-edit',
+        modelKey: 'seedance_v2',
+        endpointId: 'fal-ai/bytedance/seedance/v2.0/image-to-video',
+        via: 'byteplus',
+        usedOwnKey: false,
+      });
+    mockPoll.mockResolvedValue({
+      status: 'completed',
+      url: 'https://fal.media/a.mp4',
+    });
+    const step = makeStep();
+    const { scopedDb, generatedAssets } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(mockSubmit.mock.calls[1]?.[0]).toMatchObject({
+      forceSeedanceEdit: true,
+    });
+    expect(step.names).toContain('submit-video-edit-auto');
+    expect(generatedAssets.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('stops after a second TaskTypeConstraint (#2036)', async () => {
     mockSubmit.mockRejectedValue(
       new Error(
         'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
@@ -438,8 +469,22 @@ describe('StudioGenerationWorkflow video', () => {
     await expect(
       makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
     ).rejects.toThrow(/couldn't process this edit/);
-    expect(mockSubmit).toHaveBeenCalledTimes(1);
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
     expect(mockPoll).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a different InvalidParameter (#2036)', async () => {
+    mockSubmit.mockRejectedValue(
+      new Error(
+        'BytePlus Ark studio motion submit failed (400 InvalidParameter): bad ratio'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
+    ).rejects.toThrow(/couldn't process this video/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
   });
 
   it('gives up after three content flags without billing', async () => {

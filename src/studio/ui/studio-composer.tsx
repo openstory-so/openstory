@@ -11,7 +11,10 @@
  */
 
 import { readMediaDuration } from '@/cast/element-kind';
-import { seedanceEditLengthMessage } from '@/motion/seedance-edit';
+import {
+  promptRequestsSeedanceEdit,
+  seedanceEditLengthMessage,
+} from '@/motion/seedance-edit';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
 import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
@@ -554,12 +557,15 @@ export function StudioComposer({
     : mode === 'reference' && references.length + videoRefs.length === 0
       ? 'text'
       : mode;
-  // A reference clip on Seedance 2.5 is an edit. Length follows the clip,
-  // so the picker shows Auto and the hold prices the longest clip (#2036).
+  // The word "edit" (or Studio edit mode) with a clip. Length follows the
+  // clip, so the picker shows Auto and the hold prices the longest clip.
+  // A reference video without that word keeps the chosen duration (#2036).
   const followsReferenceVideo =
     compatibleVideoModel === 'seedance_v2_5' &&
-    effectiveMode === 'reference' &&
-    videoRefs.length > 0;
+    (effectiveMode === 'edit' ||
+      (effectiveMode === 'reference' &&
+        videoRefs.length > 0 &&
+        promptRequestsSeedanceEdit(prompt)));
   const pricedDuration: StudioDuration = followsReferenceVideo
     ? 'auto'
     : snappedDuration;
@@ -809,6 +815,7 @@ export function StudioComposer({
     if (
       kind === 'video' &&
       compatibleVideoModel === 'seedance_v2_5' &&
+      (mode === 'edit' || promptRequestsSeedanceEdit(prompt)) &&
       reference.durationSeconds != null
     ) {
       const lengthMessage = seedanceEditLengthMessage(
@@ -885,7 +892,11 @@ export function StudioComposer({
       taken[kind] += 1;
       const durationSeconds =
         kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
-      if (kind === 'video' && compatibleVideoModel === 'seedance_v2_5') {
+      if (
+        kind === 'video' &&
+        compatibleVideoModel === 'seedance_v2_5' &&
+        (mode === 'edit' || promptRequestsSeedanceEdit(prompt))
+      ) {
         const lengthMessage = seedanceEditLengthMessage(durationSeconds);
         if (lengthMessage) {
           toast.error(lengthMessage);
@@ -1197,10 +1208,7 @@ export function StudioComposer({
       setPromptTooLongOpen(true);
       return;
     }
-    if (
-      compatibleVideoModel === 'seedance_v2_5' &&
-      effectiveMode === 'reference'
-    ) {
+    if (followsReferenceVideo) {
       for (const ref of videoRefs) {
         const lengthMessage = seedanceEditLengthMessage(ref.durationSeconds);
         if (lengthMessage) {
@@ -1674,7 +1682,7 @@ export function StudioComposer({
                     </Select>
                     {followsReferenceVideo && (
                       <p className="text-xs text-muted-foreground">
-                        A reference video is an edit. Seedance keeps its length.
+                        An edit keeps the clip's length.
                       </p>
                     )}
                   </section>

@@ -25,6 +25,7 @@ import {
 import { extractFalErrorMessage } from '@/models/fal-error';
 import {
   explainSeedanceFailure,
+  isSeedanceEditConstraintError,
   isSeedanceInternalServiceError,
   SEEDANCE_INTERNAL_BACKOFF_SECONDS,
 } from '@/motion/seedance-edit';
@@ -226,6 +227,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     let videoUrl = '';
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
+    let seedanceEditRetried = false;
     let seedanceInternalRetried = false;
     let succeededJob: Awaited<ReturnType<typeof submitStudioVideoJob>> | null =
       null;
@@ -234,6 +236,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       let retrySeedanceInternal = false;
       const tag =
         (attempt === 0 ? '' : `-retry-${attempt}`) +
+        (seedanceEditRetried ? '-edit-auto' : '') +
         (seedanceInternalRetried ? '-internal' : '');
       // Register the user's stills with BytePlus before the submit step
       // (#1519) — see MotionWorkflow for why this sits outside it.
@@ -271,6 +274,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             draft: input.draft,
             finalFromDraftTaskId: event.payload.finalFromDraftTaskId,
             scopedDb: scopedDb.credentials,
+            forceSeedanceEdit: seedanceEditRetried,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -280,14 +284,18 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
               rejection: extractFalErrorMessage(error),
             };
           }
-          // TaskTypeConstraint is a 400. Retrying the same body fails the
-          // same way, so stop here with the plain reason (#2036).
+          // Ark classified this as an edit. One new job with auto length.
+          // The step returns, so a replay does not resubmit the rejected
+          // body. A second constraint falls through (#2036).
           const providerMessage = extractFalErrorMessage(error);
-          const explained = explainSeedanceFailure(providerMessage);
           if (
-            explained &&
-            /TaskTypeConstraint|InvalidParameter/.test(providerMessage)
+            !seedanceEditRetried &&
+            isSeedanceEditConstraintError(providerMessage)
           ) {
+            return { ok: false as const, editRetry: true as const };
+          }
+          const explained = explainSeedanceFailure(providerMessage);
+          if (explained && /InvalidParameter/.test(providerMessage)) {
             throw new NonRetryableError(explained);
           }
           if (
@@ -304,6 +312,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       });
 
       if (!submitOutcome.ok) {
+        if ('editRetry' in submitOutcome) {
+          seedanceEditRetried = true;
+          attempt -= 1;
+          continue;
+        }
         lastRejection = submitOutcome.rejection;
         logger.warn(
           `[StudioGenerationWorkflow] content-flag rejection on submit attempt ${attempt + 1}/${MAX_MOTION_ATTEMPTS} for ${assetId}: ${submitOutcome.rejection}`,

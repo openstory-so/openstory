@@ -97,6 +97,7 @@ import type { TokenUsage } from '@tanstack/ai';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import {
   explainSeedanceFailure,
+  isSeedanceEditConstraintError,
   isSeedanceInternalServiceError,
   SEEDANCE_INTERNAL_BACKOFF_SECONDS,
 } from '@/motion/seedance-edit';
@@ -811,6 +812,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         return rescued;
       });
 
+    let seedanceEditRetried = false;
     let seedanceInternalRetried = false;
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
       let retrySeedanceInternal = false;
@@ -955,6 +957,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       }
       const tag =
         (attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`) +
+        (seedanceEditRetried ? '-edit-auto' : '') +
         (seedanceInternalRetried ? '-internal' : '');
 
       // Step 3-pre: register the stills BytePlus must see as `asset://`
@@ -1031,6 +1034,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             multiPrompt,
             draft: input.draft,
             finalFromDraftTaskId: input.finalFromDraft?.taskId,
+            forceSeedanceEdit: seedanceEditRetried,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -1050,14 +1054,19 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               rejection: extractFalErrorMessage(error),
             };
           }
-          // TaskTypeConstraint is a 400. Retrying the same body fails the
-          // same way, so stop here with the plain reason (#2036).
+          // Ark classified this as an edit. One new job with auto length,
+          // off the rescue pass. The step returns so a replay does not
+          // resubmit the rejected body. A second constraint falls through.
           const providerMessage = extractFalErrorMessage(error);
-          const explained = explainSeedanceFailure(providerMessage);
           if (
-            explained &&
-            /TaskTypeConstraint|InvalidParameter/.test(providerMessage)
+            !seedanceEditRetried &&
+            !isRescue &&
+            isSeedanceEditConstraintError(providerMessage)
           ) {
+            return { ok: false as const, editRetry: true as const };
+          }
+          const explained = explainSeedanceFailure(providerMessage);
+          if (explained && /InvalidParameter/.test(providerMessage)) {
             throw new NonRetryableError(explained);
           }
           if (
@@ -1075,6 +1084,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       });
 
       if (!submitOutcome.ok) {
+        if ('editRetry' in submitOutcome) {
+          seedanceEditRetried = true;
+          attempt -= 1;
+          continue;
+        }
         lastRejection = submitOutcome.rejection;
         if ('tooLong' in submitOutcome) {
           // Reseeding the same prompt cannot fix a length refusal, so this

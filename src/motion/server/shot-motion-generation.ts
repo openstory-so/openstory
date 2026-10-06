@@ -6,6 +6,10 @@
 import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 import {
+  promptRequestsSeedanceEdit,
+  seedanceEditLengthMessage,
+} from '@/motion/seedance-edit';
+import {
   assertReferencesUsable,
   missingVoiceLines,
 } from '@/motion/reference-support';
@@ -348,6 +352,15 @@ export async function generateShotMotion(
   // the render here, before credits are reserved, rather than as a failed
   // job after them.
   assertReferencesUsable(model, referenceImages, !referenceOnly);
+  // The catalog window is 1.8–30.2s. An edit (the word "edit") is 4–30s,
+  // and this runs before the hold (#2036).
+  if (model === 'seedance_v2_5' && promptRequestsSeedanceEdit(prompt)) {
+    for (const ref of referenceImages) {
+      if (ref.kind !== 'video') continue;
+      const lengthMessage = seedanceEditLengthMessage(ref.durationSeconds);
+      if (lengthMessage) throw new ValidationError(lengthMessage);
+    }
+  }
   const shotDialogue = dialogueOf(shot);
   const missingVoices = missingVoiceLines(model, shotDialogue, elements);
   if (missingVoices.length > 0)
