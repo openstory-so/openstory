@@ -98,6 +98,7 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import {
   explainSeedanceFailure,
   isSeedanceInternalServiceError,
+  seedanceSubmitRefusal,
   SEEDANCE_INTERNAL_BACKOFF,
 } from '@/motion/seedance-edit';
 import { NonRetryableError } from 'cloudflare:workflows';
@@ -1050,15 +1051,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               rejection: extractFalErrorMessage(error),
             };
           }
-          // Ark refuses the same body every time, so stop here rather than
-          // let Cloudflare replay it (#2036).
           const providerMessage = extractFalErrorMessage(error);
-          const explained = explainSeedanceFailure(providerMessage, submitVia);
-          if (explained && /InvalidParameter/.test(providerMessage)) {
+          const refusal = seedanceSubmitRefusal(providerMessage, submitVia);
+          if (refusal) {
             logger.warn(
               `[MotionWorkflow] Ark refused the submit for ${videoVersionId}: ${providerMessage}`
             );
-            throw new NonRetryableError(explained);
+            throw new NonRetryableError(refusal);
           }
           if (
             error instanceof Error &&
@@ -1311,9 +1310,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           `[MotionWorkflow] Ark InternalServiceError on job ${job.jobId} for ${videoVersionId}; submitting one new job`
         );
         await step.sleep(
-          `seedance-internal-backoff-${attempt}`,
+          'seedance-internal-backoff',
           SEEDANCE_INTERNAL_BACKOFF
         );
+        // Keeps the new job off the content-flag budget.
         attempt -= 1;
         continue;
       }

@@ -219,9 +219,8 @@ export async function createStudioAssets(
       throw new ValidationError('Unknown video model');
     }
     if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
-    // The word "edit" (or Studio edit mode) with a video: length follows
-    // the clip, and the hold prices the model's longest clip (#2036).
-    // A reference clip without that word keeps the duration the user picked.
+    // An edit's length follows the clip, so the hold prices the model's
+    // longest clip (#2036).
     const followsClip = seedance25FollowsInputVideo(
       input.videoModel,
       input.mode === 'edit' || input.referenceVideos.length > 0,

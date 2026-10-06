@@ -302,7 +302,7 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
 
     expect(mockSubmit).toHaveBeenCalledTimes(2);
     expect(step.sleep).toHaveBeenCalledWith(
-      'seedance-internal-backoff-0',
+      'seedance-internal-backoff',
       '5 seconds'
     );
     expect(step.names).toContain('submit-motion-internal');

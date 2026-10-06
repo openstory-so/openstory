@@ -19,11 +19,10 @@
  * trailing "Reference images:" legend.
  *
  * `size` is `adaptive` when a `start_frame` role is actually sent, and when
- * Seedance 2.5 is editing a video (the prompt says "edit"): an edit requires
- * `adaptive` and `duration: -1` (#2036). A reference video without that word keeps the sequence ratio.
- * Otherwise reference mode states the sequence's own ratio (nothing is left
- * for `adaptive` to adapt to — see the comment at the `size` assignment,
- * #1809).
+ * Seedance 2.5 is editing a video, which also requires `duration: -1`
+ * (`seedance25FollowsInputVideo`, #2036). Otherwise reference mode states the
+ * sequence's own ratio (nothing is left for `adaptive` to adapt to — see the
+ * comment at the `size` assignment, #1809).
  *
  * Client-safe: no env, no adapters.
  */
@@ -209,9 +208,7 @@ export function buildBytePlusVideoRequest(
         audioUrls: [],
       };
 
-  // The word "edit" plus a video part is an edit: adaptive ratio and
-  // duration -1. A reference clip without that word keeps its ratio.
-  // 2.0 has no edit task.
+  // An edit: adaptive ratio and duration -1 (#2036).
   const followsClip = seedance25FollowsInputVideo(
     modelKey,
     videoUrls.length > 0,

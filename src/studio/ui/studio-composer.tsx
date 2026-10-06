@@ -12,7 +12,7 @@
 
 import { readMediaDuration } from '@/cast/element-kind';
 import {
-  promptRequestsSeedanceEdit,
+  seedance25FollowsInputVideo,
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
@@ -557,15 +557,15 @@ export function StudioComposer({
     : mode === 'reference' && references.length + videoRefs.length === 0
       ? 'text'
       : mode;
-  // The word "edit" (or Studio edit mode) with a clip. Length follows the
-  // clip, so the picker shows Auto and the hold prices the longest clip.
-  // A reference video without that word keeps the chosen duration (#2036).
-  const followsReferenceVideo =
-    compatibleVideoModel === 'seedance_v2_5' &&
-    (effectiveMode === 'edit' ||
-      (effectiveMode === 'reference' &&
-        videoRefs.length > 0 &&
-        promptRequestsSeedanceEdit(prompt)));
+  // Length follows the clip, so the picker shows Auto and the estimate
+  // prices the longest clip (#2036).
+  const followsReferenceVideo = seedance25FollowsInputVideo(
+    compatibleVideoModel,
+    effectiveMode === 'edit' ||
+      (effectiveMode === 'reference' && videoRefs.length > 0),
+    prompt,
+    effectiveMode === 'edit'
+  );
   const pricedDuration: StudioDuration = followsReferenceVideo
     ? 'auto'
     : snappedDuration;
@@ -805,20 +805,6 @@ export function StudioComposer({
   const addReference = (reference: StudioReference): number => {
     const { kind } = reference;
     const index = counts[kind];
-    if (
-      kind === 'video' &&
-      compatibleVideoModel === 'seedance_v2_5' &&
-      (mode === 'edit' || promptRequestsSeedanceEdit(prompt)) &&
-      reference.durationSeconds != null
-    ) {
-      const lengthMessage = seedanceEditLengthMessage(
-        reference.durationSeconds
-      );
-      if (lengthMessage) {
-        toast.error(lengthMessage);
-        return -1;
-      }
-    }
     if (index >= limits[kind]) {
       toast.error(`Up to ${limits[kind]} reference ${kind}s`);
       return -1;
@@ -887,8 +873,12 @@ export function StudioComposer({
         kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
       if (
         kind === 'video' &&
-        compatibleVideoModel === 'seedance_v2_5' &&
-        (mode === 'edit' || promptRequestsSeedanceEdit(prompt))
+        seedance25FollowsInputVideo(
+          compatibleVideoModel,
+          true,
+          prompt,
+          mode === 'edit'
+        )
       ) {
         const lengthMessage = seedanceEditLengthMessage(durationSeconds);
         if (lengthMessage) {
@@ -1635,7 +1625,6 @@ export function StudioComposer({
                       value={String(pricedDuration)}
                       disabled={followsReferenceVideo}
                       onValueChange={(value) => {
-                        if (followsReferenceVideo) return;
                         if (value === 'auto') {
                           setDuration('auto');
                           return;

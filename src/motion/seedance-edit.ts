@@ -99,6 +99,20 @@ function providerDetail(message: string): string {
 }
 
 /**
+ * Plain copy when Ark refused the submit body itself (`InvalidParameter`,
+ * which includes `TaskTypeConstraint`), or null. The same body is refused
+ * every time, so the caller stops instead of letting the step replay it.
+ */
+export function seedanceSubmitRefusal(
+  message: string,
+  via: string | undefined
+): string | null {
+  return /InvalidParameter/.test(message)
+    ? explainSeedanceFailure(message, via)
+    : null;
+}
+
+/**
  * User copy for a failure on the BytePlus via, or null for any other via.
  * Portrait-filter copy is already plain. Callers log the raw message: this
  * drops Ark's code and detail.
