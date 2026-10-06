@@ -250,9 +250,9 @@ changing the area, and update it in the same PR.**
   character belongs to the team; a sequence uses it through a `sequence_cast`
   link that pins its bible version, and `sequence_cast_looks` pins each look
   and holds its sheet pointer and claim. Reads return the character as its
-  sequence casts it; writes key on `castId` / `castLookId`. Never read the
-  `legacy*` cast columns on `characters` or `character_looks`: they are
-  written only for a worker older than #2017.
+  sequence casts it; writes key on `castId` / `castLookId`. Nothing cascades
+  from `characters`: a hard delete goes through `deleteCharactersStatements`
+  and is refused while a character still holds a saved voice.
 - **Generation plan, stop-at and continue (#1408, #1816)** —
   `docs/architecture/generation-plan.md`. What a sequence still owes is the
   generation plan, derived from live D1 — never a stored stage. `stopAt` is the
@@ -359,6 +359,7 @@ This destroyed `team_members`, `session`, `account`, and `passkey` in production
 1. **Avoid table rebuilds.** Prefer `ALTER TABLE … RENAME COLUMN / ADD COLUMN / DROP COLUMN` — SQLite/D1 support these without a rebuild.
 2. **Apply destructive migrations manually.** Snapshot first (`wrangler d1 export`), then apply via the D1 dashboard or `wrangler d1 ... --file=…`. Do not let the automated `wrangler d1 migrations apply` paths run it (mark it applied in `d1_migrations` afterwards so they skip it).
 3. **Avoid `ON DELETE CASCADE`** on FKs to long-lived parent tables (`user`, `teams`, `sequences`). Use `'restrict'` or `'no action'` and clean up children in app code.
+4. **A rebuild of a parent that works on the automatic path (#2017, `20261006232156_drop_character_legacy_columns`).** Proven with `wrangler d1 migrations apply --local` on a copy of production. All of these, in one custom file: no child with a cascade, set-null or set-default FK into the parent (loosen them in an earlier migration, and guard for it in the file); `PRAGMA defer_foreign_keys = ON` first; copy out, drop, **create the table again** and copy back with named columns — not drizzle's rename, which fails at commit. Under that pragma a cascade child is silently emptied and `restrict` does not stop it. Details: `docs/architecture/team-characters.md` § Migrations.
 
 **Local guardrail:** `scripts/check-migrations.ts` runs as a Lefthook pre-commit step on staged `drizzle/migrations/**/*.sql`. It flags `DROP TABLE`, `TRUNCATE`, `DELETE FROM`, `ALTER TABLE … DROP COLUMN`, and annotates each `DROP TABLE` with the count of inbound `ON DELETE CASCADE` FKs. Bypass for a manually-applied migration: `bun scripts/check-migrations.ts --allow-destructive`. Note `--allow-destructive` is an argument to the SCRIPT — the Lefthook step (`lefthook.yml`) invokes it without one, so to land an intentionally destructive migration commit with `LEFTHOOK_EXCLUDE=migration-safety git commit`, NOT `--no-verify` (which also skips typecheck, lint, format and knip). A native `ALTER TABLE … DROP COLUMN` is flagged but is exactly the refactor the check asks for — it rebuilds no table, so #612 does not apply.
 
