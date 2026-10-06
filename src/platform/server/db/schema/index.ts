@@ -380,7 +380,6 @@ export type {
   CharacterVoice,
   LegacyCharacterBibleColumn,
   LegacyCharacterSheetColumn,
-  LegacyCharacterCastColumn,
   CharacterCast,
   CharacterWornLook,
   CharacterMinimal,

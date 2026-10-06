@@ -4,18 +4,10 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
-import {
-  index,
-  integer,
-  snakeCase,
-  text,
-  uniqueIndex,
-} from 'drizzle-orm/sqlite-core';
+import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import type { CharacterBible } from './bible-versions';
 import type { CharacterLook, CharacterLookMinimal } from './character-looks';
-import { sequences } from './sequences';
-import { talent } from './talent';
 import { teams } from './teams';
 
 const SHEET_STATUSES = [
@@ -59,37 +51,13 @@ export const characters = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    // The team that owns the character (#2017). Null only on a row a worker
-    // older than #2017 wrote during the deploy; the reconcile cron fills it
-    // (`backfillCast`). NOT NULL comes with the column drop.
-    teamId: text().references(() => teams.id),
+    // The team that owns the character (#2017).
+    teamId: text()
+      .notNull()
+      .references(() => teams.id),
     // In the team library: offered to new sequences. A character that is not
     // lives only as long as some sequence casts it.
     inLibrary: integer({ mode: 'boolean' }).default(false).notNull(),
-    // LEGACY cast columns (#2017). Which sequence a character is in, under
-    // which script id, cast with which talent and whether it is removed all
-    // live on `sequence_cast` (the talent on the pinned bible version).
-    //
-    // All four are still WRITTEN. `sequence_id` and `character_id` are NOT
-    // NULL and carry the legacy unique index. `talent_id` and `deleted_at`
-    // are written for two reasons only: a worker older than #2017 reads them
-    // until the deploy finishes, and they are what a rollback to that worker
-    // would read. Nothing in this worker reads either as the cast or the
-    // removal. The writes are removed in the column-drop PR.
-    //
-    // They are READ only to give a character that older worker wrote its
-    // cast link: `backfillCast` (`platform/server/db/sequence-cast-backfill.ts`)
-    // and the lookup in `characters.create` that finds such a row. The
-    // `legacy` names keep the SQL column names but make every raw reader a
-    // compile error. The drop is a table rebuild, so it lands on its own, by
-    // hand.
-    legacySequenceId: text('sequence_id')
-      .notNull()
-      .references(() => sequences.id, { onDelete: 'cascade' }),
-    legacyTalentId: text('talent_id').references(() => talent.id, {
-      onDelete: 'set null',
-    }),
-    legacyCharacterId: text('character_id').notNull(),
     // The character's CURRENT `character_bible_versions` row (#1600, #2017):
     // the one a new sequence adopts. A sequence reads the version its cast
     // link pins, not this. No FK (same cycle-avoidance as the sheet pointer).
@@ -154,10 +122,6 @@ export const characters = snakeCase.table(
     legacyPendingPromoteSheetVersionId: text(
       'pending_promote_sheet_version_id'
     ),
-    // LEGACY (#2017), see the cast columns above: the soft-remove is
-    // `sequence_cast.removedAt`. Still written, for the older worker and a
-    // rollback; removed in the column-drop PR.
-    legacyDeletedAt: integer('deleted_at', { mode: 'timestamp' }),
     // Timestamps
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -166,18 +130,7 @@ export const characters = snakeCase.table(
       .$defaultFn(() => new Date())
       .notNull(),
   },
-  (table) => [
-    index('idx_characters_sequence_id').on(table.legacySequenceId),
-    index('idx_characters_talent_id').on(table.legacyTalentId),
-    // LEGACY (#2017): a worker older than #2017 upserts on this during the
-    // deploy, so it stays until the columns go. It still holds: no character
-    // is in two sequences yet.
-    uniqueIndex('characters_sequence_character_key').on(
-      table.legacySequenceId,
-      table.legacyCharacterId
-    ),
-    index('idx_characters_team').on(table.teamId),
-  ]
+  (table) => [index('idx_characters_team').on(table.teamId)]
 );
 
 // Type exports
@@ -209,13 +162,6 @@ export type LegacyCharacterSheetColumn =
   | 'legacySheetError'
   | 'legacySelectedSheetVersionId'
   | 'legacyPendingPromoteSheetVersionId';
-
-/** The legacy cast columns (#2017) — never read outside the cast backfill. */
-export type LegacyCharacterCastColumn =
-  | 'legacySequenceId'
-  | 'legacyTalentId'
-  | 'legacyCharacterId'
-  | 'legacyDeletedAt';
 
 /**
  * A character as one sequence casts it (#2017): the fields of its
@@ -263,7 +209,6 @@ export type Character = Omit<
   CharacterRow,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
-  | LegacyCharacterCastColumn
   | 'selectedBibleVersionId'
 > &
   CharacterCast &
@@ -315,7 +260,6 @@ export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
-  | LegacyCharacterCastColumn
   | 'selectedBibleVersionId'
   // The scoped module's own team.
   | 'teamId'

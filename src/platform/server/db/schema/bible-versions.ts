@@ -42,7 +42,11 @@ export const characterBibleVersions = snakeCase.table(
       .notNull(),
     characterId: text()
       .notNull()
-      .references(() => characters.id, { onDelete: 'restrict' }),
+      // NO ACTION, not cascade or restrict (#2017): a rebuild of `characters`
+      // under D1 runs with foreign key checks deferred, where a cascade would
+      // delete these rows and a restrict would not stop it. Deletes remove
+      // them in app code first (`deleteCharactersStatements`).
+      .references(() => characters.id, { onDelete: 'no action' }),
     name: text({ length: 255 }).notNull(),
     age: text(),
     gender: text(),
