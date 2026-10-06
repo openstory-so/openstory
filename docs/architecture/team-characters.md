@@ -123,12 +123,28 @@ delete that forgets a child fails instead of taking rows with it.
   team's characters) and `sequences.delete` (the characters that sequence
   alone holds). Neither has a caller in the app today: a sequence is
   archived, not deleted.
+- **Team.** Both are scoped to the team in every statement. Another team's
+  id deletes nothing.
 - **Voices.** A saved voice is an account-wide provider slot, freed only
-  through `releaseVoiceIfUnreferenced` (`elevenlabs.md`). A db method cannot
-  call the provider, so both deletes are **refused** while a character they
-  would remove still has a voice id on its selected voice version
-  (`assertVoicesReleased`). The caller releases each voice first
-  (`releaseCharacterVoice`), then deletes.
+  through `releaseVoiceIfUnreferenced` (`elevenlabs.md`), which a db method
+  cannot call. So both deletes are **refused** while they would strand one
+  (`assertVoicesReleased`).
+  - What counts (`voiceIdsHeldOnlyBy`): a voice id on **any** voice version
+    of a character being removed, selected or not, that is not released, is
+    not a Seed voice (`voiceProviderOf`), and that no surviving row points
+    at (another character's selected version, or a talent). An unselected
+    version with `releasedAt` null is the only record of a slot whose
+    provider delete failed, so it counts.
+  - The caller reads the ids (`characters.getVoiceIdsToRelease`,
+    `sequences.getVoiceIdsToReleaseOnDelete`), drops each live pointer with
+    `releaseCharacterVoice`, runs the rest through
+    `releaseVoiceIfUnreferenced`, and passes the ids to `delete` as
+    `releasedVoiceIds`. An id it did not name stops the delete.
+  - The ids are named, not re-read from `releasedAt`, because a release does
+    not always stamp it (a voice that takes no slot, an unconfigured or
+    refused key). Re-reading would refuse those deletes for good.
+  - A character kept by the library or by another sequence is not removed,
+    so its voices are not in the way.
 - Deleting a team is refused while it has characters (`characters.team_id`,
   no action).
 
@@ -173,7 +189,8 @@ two `CREATE TABLE`, three `ADD COLUMN`, indexes.
      pragma lasts for that transaction only, so it is in this file.
    - A **guard**: it counts foreign keys into `characters` that act on delete
      (cascade, set null, set default), across every table, and fails the file
-     unless that is zero.
+     unless that is zero. It uses `GLOB`, not `LIKE … ESCAPE`, so the file
+     has no backslash for a statement splitter to read differently.
    - Copy out, drop `characters`, **create it again**, copy back, drop the
      copy. Not a rename: SQLite counts a violation per child row when the
      table is dropped and takes one off only when a row is inserted into a
@@ -198,7 +215,8 @@ What was run (`wrangler d1 migrations apply --local`, one file per call):
   fails at commit, rolls back, nothing lost.
 - Migration 2 without migration 1: stopped by the guard, nothing lost.
 
-Not run: anything on remote D1. Its CPU limit is not exercised locally; the
+The PR preview applied both files to an empty remote D1. Not run: a
+populated remote D1. Its CPU limit is not exercised locally; the
 two files copy about 4,500 child rows once and the character rows twice.
 
 `bun db:generate --custom` copies the previous snapshot, so migration 2's
@@ -208,26 +226,46 @@ changes after it.
 
 ## The deploy window
 
-Migrations run before the new worker is live. For that minute the previous
-worker (the expand PR's code) runs against a `characters` table with no
-`sequence_id`, `character_id`, `talent_id` or `deleted_at`. Its reads do not
-select those columns, so everything it shows still works. Its writes that
-name them fail with "no such column", in one batch each, so nothing is half
-written:
+The two files are applied to production by hand, before the PR is merged
+and built. So the window is not the usual gap between migrate and deploy: it
+runs from the first file until the new worker is live, several minutes at
+best. For all of it the previous worker (the expand PR's code) is serving.
 
-- **Adding a character**, by hand or in analysis (`create-cast-records`). The
-  workflow step retries and succeeds once the new worker is live.
+**From file 1** (children no longer cascade):
+
+- That worker's hard deletes, `characters.delete` and `sequences.delete`,
+  relied on the cascade to remove sheet variants and voice versions. With
+  sheets or voices present they now fail on the foreign key. Neither has a
+  caller in the app, so nothing a user does reaches this. The cast panel's
+  Remove is a soft remove and is not affected by file 1.
+
+**From file 2** (`characters` has no `sequence_id`, `character_id`,
+`talent_id` or `deleted_at`). That worker's reads do not select those
+columns, so everything it shows still works. Its writes that name them fail
+with "no such column", in one batch each, so nothing is half written:
+
+- **Adding a character**, by hand or in analysis (`create-cast-records`).
 - **Any bible edit or recast**, and a re-analysis onto an existing character.
-- **Removing or restoring a character.**
-- Its **sequence delete** and its **`sequence_cast.backfill` cron pass** would
-  fail the same way if they reached those columns. The cron pass counts
-  first and finds nothing to do; sequence delete has no caller.
+- **Removing or restoring a character** (the soft remove).
+- Its **`sequence_cast.backfill` cron pass** would fail the same way if it
+  reached those columns; it counts first and finds nothing to do.
 
-Still working in that minute: voice writes, look edits, sheet claims and
+An analysis run recovers only if its step is still retrying when the new
+worker goes live. `create-cast-records` sets no retry policy, so it has
+Cloudflare Workflows' default: five retries, ten seconds apart to start and
+doubling, about five minutes in all (from Cloudflare's documentation, not
+measured here). A run that uses them up fails, and the user starts it again.
+
+Still working throughout: voice writes, look edits, sheet claims and
 landings, everything on the cast tables.
 
-A rollback of the worker to the expand PR's code is not possible after this
-migration: that code cannot create or edit a character.
+If file 2 fails after file 1 applied, production stays in the "from file 1"
+state, which costs nothing a user can reach, until file 2 is fixed and run
+again. A failed file 2 rolls back whole: no `__new_characters` or guard
+table is left when it ran as one transaction.
+
+A rollback of the worker to the expand PR's code is not possible after file
+2: that code cannot create or edit a character.
 
 ## Open question
 

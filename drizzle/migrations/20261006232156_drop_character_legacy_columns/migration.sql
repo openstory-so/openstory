@@ -33,8 +33,8 @@ SELECT count(*)
 FROM sqlite_master m, pragma_foreign_key_list(m.name) f
 WHERE m.type = 'table'
   -- D1 refuses a pragma on its own `_cf_` tables (SQLITE_AUTH).
-  AND m.name NOT LIKE '\_cf\_%' ESCAPE '\'
-  AND m.name NOT LIKE 'sqlite\_%' ESCAPE '\'
+  AND m.name NOT GLOB '_cf_*'
+  AND m.name NOT GLOB 'sqlite_*'
   AND lower(f."table") = 'characters'
   AND upper(f.on_delete) IN ('CASCADE', 'SET NULL', 'SET DEFAULT');--> statement-breakpoint
 DROP TABLE `__characters_drop_guard`;--> statement-breakpoint
