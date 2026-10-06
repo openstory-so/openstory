@@ -214,9 +214,7 @@ const getLook = async (
 /**
  * The look a write is about to touch. A character with no look yet answers
  * to its own id (the id its default look takes), so that case is filled in
- * here rather than at every writer. A look with no cast look yet (one a
- * worker older than #2017 wrote during the deploy) is not found until the
- * reconcile cron has given it one.
+ * here rather than at every writer.
  */
 export const requireLook = async (
   db: Database,

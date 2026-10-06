@@ -11,7 +11,6 @@
  *       against the NEW prompt text), committed in one batch; video stale.
  */
 
-import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
@@ -255,25 +254,23 @@ const SCENE_WITH_REFS: Scene = {
 };
 
 async function seedCharacterWithSheet(sheetInputHash: string) {
-  const [row] = await db
-    .insert(characters)
-    .values({
-      legacySequenceId: sequenceId,
-      legacyCharacterId: 'char_001',
-      legacyName: 'Jack',
-      legacyConsistencyTag: 'char_001: Jack-denim-jacket',
-      // No look row: the shape a worker older than #2015 leaves, read
-      // through the legacy columns until its first write fills the look in.
-      legacySheetStatus: 'completed',
-    })
-    .returning();
-  await backfillCast(db);
-  if (!row) throw new Error('test setup: character insert returned nothing');
+  const row = await createCharactersMethods(db, teamId).create(
+    {
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Jack',
+      consistencyTag: 'char_001: Jack-denim-jacket',
+      sheetStatus: 'completed',
+    },
+    { source: 'analysis', createdBy: null }
+  );
   // The live sheet is read from the version row, not the mirror (#1419) —
-  // keyed to the character's own id, the shape the backfill produced.
+  // keyed to the character's own id, which is its default look's id: the
+  // shape the backfill produced.
   await db.insert(characterSheetVariants).values({
     id: row.id,
     characterId: row.id,
+    lookId: row.id,
     model: 'prior',
     url: '/r2/characters/jack.png',
     status: 'completed',

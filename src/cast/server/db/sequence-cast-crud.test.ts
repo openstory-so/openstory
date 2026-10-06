@@ -21,7 +21,6 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
   characterBibleVersions,
-  characterLookVersions,
   characterLooks,
   characterSheetVariants,
   characterVoiceVersions,
@@ -40,9 +39,8 @@ import {
   user,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
-import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import { type Client, createClient } from '@libsql/client';
-import { eq, inArray } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -1296,66 +1294,6 @@ describe('bible history (#1600)', () => {
     });
   });
 
-  it('a character an older worker wrote gets its cast link (#2017), and its first edit a look', async () => {
-    const id = generateId();
-    // The shape a worker older than #2015 and #2017 writes during the deploy:
-    // its own columns say which sequence it is in, its bible version holds
-    // the clothing, and it has no team, no look and no cast link.
-    await db.insert(characters).values({
-      id,
-      legacySequenceId: sequenceId,
-      legacyCharacterId: 'char_old',
-      legacyName: 'Old',
-      selectedBibleVersionId: id,
-    });
-    await db.insert(characterBibleVersions).values({
-      id,
-      characterId: id,
-      name: 'Old',
-      legacyStandardClothing: 'coat',
-      voiceOnly: false,
-      isPerson: true,
-      source: 'analysis',
-    });
-    const m = createCharactersMethods(db, teamId);
-    expect(await m.getById(id)).toBeNull();
-
-    // A re-analysis that meets it before the reconcile cron has lands on the
-    // same row instead of tripping the legacy unique index.
-    const again = await m.create(
-      { sequenceId, characterId: 'char_old', name: 'Old' },
-      analysis
-    );
-    expect(again.id).toBe(id);
-    expect(await m.getById(id)).toMatchObject({
-      name: 'Old',
-      standardClothing: 'coat',
-      teamId,
-      castId: id,
-      sequenceId,
-      characterId: 'char_old',
-      selectedBibleVersionId: id,
-    });
-    expect(await backfillCast(db)).toBe(0);
-
-    const edited = await m.updateBible(
-      id,
-      { age: '50s' },
-      { actorId, source: 'edit' }
-    );
-    // The clothing moved onto a default look (#2015) before the bible
-    // version, which no longer carries it, was appended.
-    expect(edited).toMatchObject({
-      name: 'Old',
-      standardClothing: 'coat',
-      looks: [{ id, isDefault: true, clothing: 'coat' }],
-    });
-    const versions = await characterVersions(id);
-    expect(
-      versions.find((v) => v.id === edited.selectedBibleVersionId)
-    ).toMatchObject({ name: 'Old', age: '50s' });
-  });
-
   it('locations: create, bulk re-analysis and edits append the same way', async () => {
     const m = createSequenceLocationsMethods(db);
     const created = await m.create(
@@ -1476,30 +1414,6 @@ describe('team characters (#2017)', () => {
       .values({ id, teamId, title: 'S2', styleId: first.styleId });
     return id;
   };
-  /** What a worker older than #2017 writes: its own columns, no link. */
-  const oldWorkerCharacter = async (
-    values: Partial<typeof characters.$inferInsert> = {}
-  ) => {
-    const id = generateId();
-    await db.insert(characters).values({
-      id,
-      legacySequenceId: sequenceId,
-      legacyCharacterId: 'char_old',
-      legacyName: 'Old',
-      selectedBibleVersionId: id,
-      ...values,
-    });
-    await db.insert(characterBibleVersions).values({
-      id,
-      characterId: id,
-      name: 'Old',
-      voiceOnly: false,
-      isPerson: true,
-      source: 'analysis',
-    });
-    return id;
-  };
-
   it('a recast is one bible version, by its author, naming the talent', async () => {
     const created = await chars().create(
       { sequenceId, characterId: 'char_001', name: 'Ada' },
@@ -1543,78 +1457,6 @@ describe('team characters (#2017)', () => {
     expect(await versionsOf(created.id)).toHaveLength(3);
   });
 
-  it('the cron backfill gives an old-worker character and look their place', async () => {
-    const talentId = await newTalent();
-    const removedAt = new Date('2026-10-01T00:00:00Z');
-    const id = await oldWorkerCharacter({
-      legacyTalentId: talentId,
-      legacyDeletedAt: removedAt,
-    });
-    // Its default look and a second one, state on the look's own columns.
-    const galaId = generateId();
-    await db.insert(characterLooks).values([
-      {
-        id,
-        characterId: id,
-        isDefault: true,
-        sortOrder: 0,
-        selectedLookVersionId: id,
-        legacySheetStatus: 'completed',
-        legacySelectedSheetVersionId: 'sheet-1',
-      },
-      {
-        id: galaId,
-        characterId: id,
-        isDefault: false,
-        sortOrder: 1,
-        selectedLookVersionId: galaId,
-        legacySheetStatus: 'generating',
-        legacyPendingPromoteSheetVersionId: 'claim-1',
-      },
-    ]);
-    await db.insert(characterLookVersions).values([
-      { id, lookId: id, name: 'Default', source: 'analysis' },
-      { id: galaId, lookId: galaId, name: 'Gala', source: 'analysis' },
-    ]);
-
-    // One character and two looks had no place.
-    expect(await backfillCast(db)).toBe(3);
-    expect(await backfillCast(db)).toBe(0);
-
-    const [row] = await db
-      .select()
-      .from(characters)
-      .where(eq(characters.id, id));
-    expect(row?.teamId).toBe(teamId);
-    expect(await linksOf(id)).toMatchObject([
-      {
-        id,
-        sequenceId,
-        scriptCharacterId: 'char_old',
-        bibleVersionId: id,
-        removedAt,
-      },
-    ]);
-    expect((await versionsOf(id))[0]?.talentId).toBe(talentId);
-    const read = await chars().getById(id);
-    expect(read).toMatchObject({ talentId, deletedAt: removedAt });
-    expect(read?.looks).toMatchObject([
-      {
-        id,
-        castLookId: id,
-        lookVersionId: id,
-        sheetStatus: 'completed',
-        selectedSheetVersionId: 'sheet-1',
-      },
-      {
-        id: galaId,
-        castLookId: galaId,
-        sheetStatus: 'generating',
-        pendingPromoteSheetVersionId: 'claim-1',
-      },
-    ]);
-  });
-
   it('deleting a sequence keeps a library character and one another sequence casts', async () => {
     const [oneOff, inLibrary, shared] = await Promise.all(
       ['One', 'Lib', 'Shared'].map((name, i) =>
@@ -1633,14 +1475,6 @@ describe('team characters (#2017)', () => {
       scriptCharacterId: 'char_x',
       bibleVersionId: shared.selectedBibleVersionId,
     });
-    // The legacy column still cascades from the sequence being deleted, so
-    // the two that outlive it are moved off it first. Nothing sets
-    // `inLibrary` or adds a second link until that column is gone.
-    await db
-      .update(characters)
-      .set({ legacySequenceId: other })
-      .where(inArray(characters.id, [inLibrary.id, shared.id]));
-
     await createSequencesMethods(db, teamId, actorId).delete(sequenceId);
 
     const left = await db.select({ id: characters.id }).from(characters);
@@ -1661,12 +1495,120 @@ describe('team characters (#2017)', () => {
     ).toEqual([]);
   });
 
-  it('deleting a sequence takes an old-worker character with no cast link yet', async () => {
-    await oldWorkerCharacter();
-    await createSequencesMethods(db, teamId, actorId).delete(sequenceId);
+  /** A character with a sheet on its default look and two voice versions. */
+  const withSheetAndVoices = async (scriptId: string) => {
+    const created = await chars().create(
+      { sequenceId, characterId: scriptId, name: scriptId },
+      analysis
+    );
+    await db.insert(characterSheetVariants).values({
+      characterId: created.id,
+      lookId: created.lookId,
+      model: 'm',
+      url: '/r2/sheet.png',
+      status: 'completed',
+    });
+    await chars().updateVoice(
+      created.id,
+      { voiceId: 'voice-a' },
+      'library',
+      null
+    );
+    await chars().updateVoice(
+      created.id,
+      { voiceId: 'voice-b' },
+      'library',
+      null
+    );
+    return created;
+  };
+  const rowsOf = async (characterId: string) => ({
+    sheets: (
+      await db
+        .select()
+        .from(characterSheetVariants)
+        .where(eq(characterSheetVariants.characterId, characterId))
+    ).length,
+    voices: (
+      await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(eq(characterVoiceVersions.characterId, characterId))
+    ).length,
+    looks: (
+      await db
+        .select()
+        .from(characterLooks)
+        .where(eq(characterLooks.characterId, characterId))
+    ).length,
+    versions: (await versionsOf(characterId)).length,
+    links: (await linksOf(characterId)).length,
+  });
+  const NOTHING = { sheets: 0, voices: 0, looks: 0, versions: 0, links: 0 };
+
+  it('deleting a character is refused while it holds a saved voice, then removes every row of it', async () => {
+    const created = await withSheetAndVoices('char_001');
+    const kept = await withSheetAndVoices('char_002');
+    const before = await rowsOf(created.id);
+    expect(before).toEqual({
+      sheets: 1,
+      voices: 2,
+      looks: 1,
+      versions: 1,
+      links: 1,
+    });
+
+    // A saved voice is a provider slot: the row that points at it stays
+    // until the voice is released.
+    await expect(chars().delete(created.id)).rejects.toThrow(
+      /still hold a saved voice/
+    );
+    expect(await rowsOf(created.id)).toEqual(before);
+
+    // What `releaseCharacterVoice` writes once the slot is free.
+    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
+    expect(await chars().delete(created.id)).toBe(true);
+    expect(await rowsOf(created.id)).toEqual(NOTHING);
+    expect(
+      await db.select().from(characters).where(eq(characters.id, created.id))
+    ).toEqual([]);
+    // Nothing of another character went with it.
+    expect(await rowsOf(kept.id)).toEqual(before);
+  });
+
+  it('deleting a sequence is refused while a character it removes holds a saved voice, then removes sheets and voices too', async () => {
+    const created = await withSheetAndVoices('char_001');
+    const sequencesDb = createSequencesMethods(db, teamId, actorId);
+    await expect(sequencesDb.delete(sequenceId)).rejects.toThrow(
+      /still hold a saved voice/
+    );
+    expect(await db.select().from(sequences)).toHaveLength(1);
+    expect((await rowsOf(created.id)).links).toBe(1);
+
+    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
+    await sequencesDb.delete(sequenceId);
     expect(await db.select().from(sequences)).toEqual([]);
     expect(await db.select().from(characters)).toEqual([]);
-    expect(await db.select().from(characterBibleVersions)).toEqual([]);
+    expect(await rowsOf(created.id)).toEqual(NOTHING);
+    expect(await db.select().from(characterSheetVariants)).toEqual([]);
+    expect(await db.select().from(characterVoiceVersions)).toEqual([]);
+  });
+
+  it('a kept character keeps its voice when its sequence is deleted', async () => {
+    const created = await withSheetAndVoices('char_001');
+    await db
+      .update(characters)
+      .set({ inLibrary: true })
+      .where(eq(characters.id, created.id));
+    // It is not deleted, so its voice is not in the way.
+    await createSequencesMethods(db, teamId, actorId).delete(sequenceId);
+    expect(await rowsOf(created.id)).toEqual({
+      sheets: 1,
+      voices: 2,
+      looks: 1,
+      versions: 1,
+      links: 0,
+    });
   });
 
   it('an id-only read refuses a character that is in two sequences', async () => {

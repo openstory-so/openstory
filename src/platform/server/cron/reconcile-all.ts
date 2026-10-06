@@ -18,7 +18,6 @@
  */
 
 import { getDb } from '#db-client';
-import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import {
   framePromptVersions,
   frameVariants,
@@ -104,9 +103,6 @@ export async function reconcileAllStuckJobs(): Promise<ReconcileCounts> {
     // Look sheet claims (#2015): the sheet an older worker landed during the
     // deploy, and a run that died holding its claim.
     ['character_looks.claims', () => reconcileLookSheetClaimsPass(db)],
-    // Characters and looks a worker older than #2017 wrote during the
-    // deploy: give them their cast link and cast looks.
-    ['sequence_cast.backfill', () => backfillCast(db)],
     ['shot_variants.status', () => reconcileShotVariantsPass(db, 'primary')],
     [
       'shot_variants.shot_variant',

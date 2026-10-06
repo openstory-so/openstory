@@ -6,6 +6,7 @@ import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
+  characters,
   sequenceLocations,
   sequences,
   styles,
@@ -57,6 +58,8 @@ afterAll(() => {
 
 beforeEach(async () => {
   await clearVersionRows(db);
+  // Nothing cascades from a sequence to its characters (#2017).
+  await db.delete(characters);
   await db.delete(sequenceLocations);
   await db.delete(sequences);
   await db.delete(styles);

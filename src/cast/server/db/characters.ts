@@ -34,7 +34,6 @@ import type {
   CharacterVoice,
   CharacterVoiceVersionSource,
   LegacyCharacterBibleColumn,
-  LegacyCharacterCastColumn,
   LegacyCharacterSheetColumn,
   LookVersionSource,
   CharacterWithTalent,
@@ -60,7 +59,11 @@ import {
   talent,
 } from '@/platform/server/db/schema';
 import { markPreviewUnusable } from '@/cast/voice';
-import { NotFoundError, ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { generateId } from '@/platform/id';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
 import {
@@ -82,7 +85,6 @@ import {
   lookDefinitionWrite,
   requireLook,
 } from './character-looks';
-import { backfillCast } from '@/platform/server/db/sequence-cast-backfill';
 import { deleteCastStatements, oneLinkEach, onlyLink } from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
 import { pickedLook, wearLook } from '@/cast/character-looks';
@@ -182,7 +184,6 @@ type CharacterUpdate = Partial<
     | 'useVoice'
     | LegacyCharacterBibleColumn
     | LegacyCharacterSheetColumn
-    | LegacyCharacterCastColumn
     | 'selectedBibleVersionId'
     | 'teamId'
   >
@@ -215,10 +216,6 @@ const {
   legacySheetError: _sheetError,
   legacySelectedSheetVersionId: _selectedSheetVersionId,
   legacyPendingPromoteSheetVersionId: _pendingPromoteSheetVersionId,
-  legacySequenceId: _sequenceId,
-  legacyTalentId: _talentId,
-  legacyCharacterId: _characterId,
-  legacyDeletedAt: _deletedAt,
   // The character's current version; a read carries the one its cast pins.
   selectedBibleVersionId: _currentBibleVersionId,
   ...characterRowColumns
@@ -277,6 +274,58 @@ const LIVE_VOICE_CLAIM_STATUSES = [
   'pending',
   'generating',
 ] as const satisfies readonly CharacterVoiceVersionStatus[];
+
+/**
+ * Refuse a hard delete while a character it would remove still speaks in a
+ * saved voice. A saved voice is an account-wide provider slot, freed only
+ * through `releaseVoiceIfUnreferenced` (provider first, row second): deleting
+ * the row that points at it would strand the slot. The caller releases each
+ * voice first (`releaseCharacterVoice`), then deletes. `where` is a condition
+ * on `characters`.
+ */
+export async function assertVoicesReleased(
+  db: Database,
+  where: SQL
+): Promise<void> {
+  const [held] = await db
+    .select({ n: count() })
+    .from(characters)
+    .innerJoin(
+      characterVoiceVersions,
+      eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+    )
+    .where(sql`${where} and ${isNotNull(characterVoiceVersions.voiceId)}`);
+  if ((held?.n ?? 0) > 0) {
+    throw new ConflictError(
+      `${held?.n} character(s) still hold a saved voice. Release each voice before deleting.`
+    );
+  }
+}
+
+/**
+ * Hard-delete the characters `where` matches (a condition on `characters`)
+ * and every row keyed to them, for the caller's own `db.batch`. Nothing
+ * cascades from `characters` (#2017, the #612 rebuild trap), so the bible
+ * versions, looks, look versions, sheet variants and voice versions go
+ * first, here. The cast links and cast looks go before these
+ * (`deleteCastStatements`): they hold the looks and the characters.
+ */
+export const deleteCharactersStatements = (db: Database, where: SQL) => {
+  const theirs = db.select({ id: characters.id }).from(characters).where(where);
+  return [
+    db
+      .delete(characterBibleVersions)
+      .where(inArray(characterBibleVersions.characterId, theirs)),
+    ...deleteLooksOfCharacters(db, where),
+    db
+      .delete(characterSheetVariants)
+      .where(inArray(characterSheetVariants.characterId, theirs)),
+    db
+      .delete(characterVoiceVersions)
+      .where(inArray(characterVoiceVersions.characterId, theirs)),
+    db.delete(characters).where(where),
+  ] as const;
+};
 
 export function createCharactersMethods(db: Database, teamId: string) {
   const looks = createCharacterLooksMethods(db, teamId);
@@ -431,12 +480,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         }),
         db
           .update(characters)
-          .set({
-            selectedBibleVersionId: versionId,
-            // Still written for a worker older than #2017 (see the schema).
-            legacyTalentId: talentId,
-            updatedAt: new Date(),
-          })
+          .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
           .where(eq(characters.id, existing.id)),
         db
           .update(sequenceCast)
@@ -734,25 +778,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         eq(sequenceCast.sequenceId, data.sequenceId),
         eq(sequenceCast.scriptCharacterId, data.characterId)
       );
-      let [existing] = await selectCharacters(inSequence);
-      if (!existing) {
-        // A character a worker older than #2017 wrote during the deploy has
-        // no cast link yet, and the legacy unique index would refuse a second
-        // row: give it its link, then re-analyse onto it.
-        const [unlinked] = await db
-          .select({ id: characters.id })
-          .from(characters)
-          .where(
-            and(
-              eq(characters.legacySequenceId, data.sequenceId),
-              eq(characters.legacyCharacterId, data.characterId)
-            )
-          );
-        if (unlinked) {
-          await backfillCast(db);
-          [existing] = await selectCharacters(inSequence);
-        }
-      }
+      const [existing] = await selectCharacters(inSequence);
       const {
         name: _n,
         age: _a,
@@ -794,7 +820,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
             .where(eq(sequenceCast.id, existing.castId)),
           db
             .update(characters)
-            .set({ legacyDeletedAt: null, updatedAt: now })
+            .set({ updatedAt: now })
             .where(eq(characters.id, id)),
           // A field left out keeps its value, as the column upsert did.
           // A talent left out keeps the cast; null uncasts.
@@ -831,10 +857,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
             teamId,
             selectedBibleVersionId: versionId,
             legacyName: bible.name,
-            // NOT NULL, and read by a worker older than #2017 (see the schema).
-            legacySequenceId: sequenceId,
-            legacyCharacterId: scriptCharacterId,
-            legacyTalentId: talentId ?? null,
           }),
           db.insert(characterBibleVersions).values({
             id: versionId,
@@ -1085,23 +1107,25 @@ export function createCharactersMethods(db: Database, teamId: string) {
       return (chars?.n ?? 0) + (tal?.n ?? 0);
     },
 
-    // Cast links, bible versions and looks RESTRICT the parent delete
-    // (#1600, #2015, #2017, the #612 rebuild trap), so they go first in the
-    // same batch. Every statement names the team's character, so another
-    // team's id deletes nothing.
+    /**
+     * Hard-delete one of the team's characters with everything keyed to it.
+     * Every statement names the team's character, so another team's id
+     * deletes nothing. Refused while it still holds a saved voice
+     * ({@link assertVoicesReleased}).
+     */
     delete: async (id: string): Promise<boolean> => {
-      const mine = and(eq(characters.id, id), inTeam);
-      const theirs = db
-        .select({ id: characters.id })
-        .from(characters)
-        .where(mine);
-      const [, , , , , result] = await db.batch([
-        ...deleteCastStatements(db, inArray(sequenceCast.characterId, theirs)),
-        db
-          .delete(characterBibleVersions)
-          .where(inArray(characterBibleVersions.characterId, theirs)),
-        ...deleteLooksOfCharacters(db, mine),
-        db.delete(characters).where(mine),
+      const mine = sql`${eq(characters.id, id)} and ${inTeam}`;
+      await assertVoicesReleased(db, mine);
+      // Two cast statements, then six for the character; the last is its own.
+      const [, , , , , , , result] = await db.batch([
+        ...deleteCastStatements(
+          db,
+          inArray(
+            sequenceCast.characterId,
+            db.select({ id: characters.id }).from(characters).where(mine)
+          )
+        ),
+        ...deleteCharactersStatements(db, mine),
       ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       return (result.rowsAffected ?? 0) > 0;
@@ -1429,10 +1453,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
           .update(sequenceCast)
           .set({ removedAt: deletedAt })
           .where(eq(sequenceCast.id, existing.castId)),
-        // Still written for a worker older than #2017 (see the schema).
         db
           .update(characters)
-          .set({ legacyDeletedAt: deletedAt, updatedAt: deletedAt })
+          .set({ updatedAt: deletedAt })
           .where(eq(characters.id, id)),
         buildEventInsert(db, {
           sequenceId: existing.sequenceId,
@@ -1460,7 +1483,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const [restoredRows] = await db.batch([
         db
           .update(characters)
-          .set({ legacyDeletedAt: null, updatedAt: now })
+          .set({ updatedAt: now })
           .where(eq(characters.id, id))
           .returning({ id: characters.id }),
         db

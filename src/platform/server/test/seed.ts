@@ -15,6 +15,7 @@ import {
   characterLooks,
   characterSheetVariants,
   characterBibleVersions,
+  characterVoiceVersions,
   characters,
   credits,
   frameVariants,
@@ -220,6 +221,13 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
     db
       .delete(characterLooks)
       .where(inArray(characterLooks.characterId, theirs)),
+    // Nothing cascades from `characters` (#2017).
+    db
+      .delete(characterSheetVariants)
+      .where(inArray(characterSheetVariants.characterId, theirs)),
+    db
+      .delete(characterVoiceVersions)
+      .where(inArray(characterVoiceVersions.characterId, theirs)),
     db.delete(characters).where(inArray(characters.id, theirs)),
     db
       .delete(locationBibleVersions)
@@ -570,11 +578,8 @@ export async function createTestCharacter(
   await db.insert(characters).values({
     id,
     teamId: sequence.teamId,
-    legacySequenceId: sequenceId,
-    legacyCharacterId: characterId,
     legacyName: name,
     selectedBibleVersionId: id,
-    legacyTalentId: talentId,
     createdAt: now,
     updatedAt: now,
   });

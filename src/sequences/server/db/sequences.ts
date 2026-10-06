@@ -11,8 +11,6 @@ import { DEFAULT_RESOLUTION, type Resolution } from '@/models/resolutions';
 import type { Database } from '@/platform/server/db/client';
 import { shotHierarchicalOrder } from '@/shots/server/db/shot-view-query';
 import {
-  characterBibleVersions,
-  characters,
   framePromptVersions,
   frames,
   frameVariants,
@@ -64,8 +62,10 @@ import {
 } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
 import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
-import { deleteLooksOfCharacters } from '@/cast/server/db/character-looks';
-import { backfillCastOfSequence } from '@/platform/server/db/sequence-cast-backfill';
+import {
+  assertVoicesReleased,
+  deleteCharactersStatements,
+} from '@/cast/server/db/characters';
 import {
   charactersOnlyIn,
   deleteCastStatements,
@@ -944,30 +944,18 @@ export function createSequencesMethods(
     },
 
     delete: async (sequenceId: string): Promise<void> => {
-      // A character a worker older than #2017 wrote during the deploy has
-      // no cast link yet: give it one, so it is deleted with the rest.
-      await backfillCastOfSequence(db, sequenceId);
       // A character belongs to the team (#2017): the sequence's cast links
-      // go, and with them only the characters nothing else holds.
+      // go, and with them only the characters nothing else holds. Nothing
+      // cascades from the sequence to a character, or from a character to
+      // its rows, so all of it is deleted here, children first, in one batch.
       const theirs = await charactersOnlyIn(db, sequenceId);
-      // The #1600 version tables, the #2015 looks and the #2017 cast links
-      // RESTRICT their parents' delete (the #612 rebuild trap), so they go
-      // first, in the same batch.
+      await assertVoicesReleased(db, theirs);
       await db.batch([
         db
           .delete(sequenceStyleVersions)
           .where(eq(sequenceStyleVersions.sequenceId, sequenceId)),
         ...deleteCastStatements(db, eq(sequenceCast.sequenceId, sequenceId)),
-        db
-          .delete(characterBibleVersions)
-          .where(
-            inArray(
-              characterBibleVersions.characterId,
-              db.select({ id: characters.id }).from(characters).where(theirs)
-            )
-          ),
-        ...deleteLooksOfCharacters(db, theirs),
-        db.delete(characters).where(theirs),
+        ...deleteCharactersStatements(db, theirs),
         db
           .delete(locationBibleVersions)
           .where(
