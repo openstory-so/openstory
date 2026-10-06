@@ -5,11 +5,7 @@
  */
 import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
-import {
-  SEEDANCE_EDIT_MAX_SECONDS,
-  seedance25FollowsInputVideo,
-  seedanceEditLengthMessage,
-} from '@/motion/seedance-edit';
+import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
 import {
   assertReferencesUsable,
   missingVoiceLines,
@@ -352,23 +348,7 @@ export async function generateShotMotion(
   // No fallback (#1559): a clip or voice line this model cannot use refuses
   // the render here, before credits are reserved, rather than as a failed
   // job after them.
-  assertReferencesUsable(model, referenceImages, !referenceOnly);
-  // The catalog window is 1.8–30.2s. An edit (the word "edit") is 4–30s,
-  // and this runs before the hold (#2036). The same test as the Ark body
-  // (`buildBytePlusVideoRequest`), so the hold below matches what is sent.
-  const videoRefs = referenceImages.filter((ref) => ref.kind === 'video');
-  const followsClip = seedance25FollowsInputVideo(
-    model,
-    videoRefs.length > 0,
-    prompt,
-    false
-  );
-  if (followsClip) {
-    for (const ref of videoRefs) {
-      const lengthMessage = seedanceEditLengthMessage(ref.durationSeconds);
-      if (lengthMessage) throw new ValidationError(lengthMessage);
-    }
-  }
+  assertReferencesUsable(model, referenceImages, !referenceOnly, prompt);
   const shotDialogue = dialogueOf(shot);
   const missingVoices = missingVoiceLines(model, shotDialogue, elements);
   if (missingVoices.length > 0)
@@ -413,17 +393,12 @@ export async function generateShotMotion(
   });
   const ttsChars = batchDialogue.ttsChars;
 
-  // An edit's output follows the clip, not the shot, so the hold prices the
-  // longest clip (the 30s cap when a length is unknown). The settle bills
-  // Ark's reported tokens and releases the rest (#2036).
-  const holdSeconds = followsClip
-    ? Math.max(
-        duration,
-        ...videoRefs.map((ref) =>
-          Math.ceil(ref.durationSeconds ?? SEEDANCE_EDIT_MAX_SECONDS)
-        )
-      )
-    : duration;
+  const holdSeconds = seedanceEditHoldSeconds(
+    model,
+    duration,
+    prompt,
+    referenceImages
+  );
   const reservationId = await reserveRunCredits(
     context.scopedDb,
     addMicros(

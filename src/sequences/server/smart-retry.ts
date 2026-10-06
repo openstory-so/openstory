@@ -40,6 +40,7 @@ import {
   gateEstimate,
 } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
+import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ValidationError } from '@/platform/errors';
 import {
@@ -548,17 +549,6 @@ export async function executeSmartRetry(
       const spoken = batchDialogue.byShotId.get(shot.id);
       const voicedLines = spoken?.voicedLines ?? [];
       const audioClips = spoken?.audioClips ?? [];
-      videoCost = addMicros(
-        videoCost,
-        gateEstimate(
-          estimateVideoCost(
-            shotVideoModel,
-            snapDuration(undefined, shotVideoModel),
-            { pricing, resolution: sequence.resolution, referenceOnly }
-          ),
-          { model: shotVideoModel, operation: 'smart-retry:motion' }
-        )
-      );
       const prompt = resolveMotionPromptFromVersion(
         selectedMotion,
         {
@@ -567,6 +557,30 @@ export async function executeSmartRetry(
           description: scene?.originalScript.extract ?? null,
         },
         shotVideoModel
+      );
+      const referenceImages = buildMotionReferenceImages({
+        scene: scene ?? null,
+        characters: motionCharacters,
+        elements: motionElements,
+        motionPrompt: prompt,
+        referenceOnly,
+        locations: motionLocations,
+      });
+      videoCost = addMicros(
+        videoCost,
+        gateEstimate(
+          estimateVideoCost(
+            shotVideoModel,
+            seedanceEditHoldSeconds(
+              shotVideoModel,
+              snapDuration(undefined, shotVideoModel),
+              prompt,
+              referenceImages
+            ),
+            { pricing, resolution: sequence.resolution, referenceOnly }
+          ),
+          { model: shotVideoModel, operation: 'smart-retry:motion' }
+        )
       );
       batchShots.push({
         shotId: shot.id,
@@ -577,14 +591,7 @@ export async function executeSmartRetry(
         sequenceTitle: sequence.title,
         imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,
-        referenceImages: buildMotionReferenceImages({
-          scene: scene ?? null,
-          characters: motionCharacters,
-          elements: motionElements,
-          motionPrompt: prompt,
-          referenceOnly,
-          locations: motionLocations,
-        }),
+        referenceImages,
         frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,
         prompt,

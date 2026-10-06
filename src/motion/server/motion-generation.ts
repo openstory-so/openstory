@@ -303,7 +303,8 @@ async function submitFalMotionJob(
   assertReferencesUsable(
     modelKey,
     options.referenceImages ?? [],
-    Boolean(options.imageUrl)
+    Boolean(options.imageUrl),
+    options.prompt
   );
 
   // References this model can actually carry (#1559): a shot whose only
@@ -474,7 +475,8 @@ export async function submitMotionJob(
   assertReferencesUsable(
     modelKey,
     options.referenceImages ?? [],
-    Boolean(options.imageUrl)
+    Boolean(options.imageUrl),
+    options.prompt
   );
 
   // References this model can actually carry (#1559): a shot whose only

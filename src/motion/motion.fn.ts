@@ -8,6 +8,7 @@ import {
   missingVoiceLines,
   unusableShotReferenceLines,
 } from '@/motion/reference-support';
+import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { createServerFn } from '@tanstack/react-start';
 import {
@@ -295,6 +296,18 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       );
     };
 
+    // The set actually sent below. The check, the estimate and the hold all
+    // read this one, so they cannot price or refuse a different shot.
+    const referencesFor = (shot: (typeof eligibleShots)[number]) =>
+      buildMotionReferenceImages({
+        scene: sceneOf(shot),
+        characters,
+        elements,
+        motionPrompt: motionPromptTextFor(shot),
+        referenceOnly: shotIsReferenceOnly(shot),
+        locations: batchLocations,
+      });
+
     // No fallback (#1559): refuse the batch before reserving if any shot's
     // model cannot use a clip or voice line it attaches. The same element
     // usually sits on several shots, so each problem is named once.
@@ -302,15 +315,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       eligibleShots.flatMap((shot) =>
         unusableShotReferenceLines(
           resolveShotVideoModel(shot),
-          buildMotionReferenceImages({
-            scene: sceneOf(shot),
-            characters,
-            elements,
-            motionPrompt: motionPromptTextFor(shot),
-            referenceOnly: shotIsReferenceOnly(shot),
-            locations: batchLocations,
-          }),
-          !shotIsReferenceOnly(shot)
+          referencesFor(shot),
+          !shotIsReferenceOnly(shot),
+          motionPromptTextFor(shot)
         ).concat(
           missingVoiceLines(
             resolveShotVideoModel(shot),
@@ -365,19 +372,18 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
-          if (!shot) return false;
-          return (
-            buildMotionReferenceImages({
-              scene: sceneOf(shot),
-              characters,
-              elements,
-              // Must match the set actually sent below, or a reference-only
-              // shot carried only by its location sheet estimates as ref-less.
-              motionPrompt: motionPromptTextFor(shot),
-              referenceOnly: shotIsReferenceOnly(shot),
-              locations: batchLocations,
-            }).length > 0
-          );
+          return shot ? referencesFor(shot).length > 0 : false;
+        },
+        holdSeconds: (batchShot, model, seconds) => {
+          const shot = eligibleShots.find((s) => s.id === batchShot.id);
+          return shot
+            ? seedanceEditHoldSeconds(
+                model,
+                seconds,
+                motionPromptTextFor(shot),
+                referencesFor(shot)
+              )
+            : seconds;
         },
       }
     );
@@ -495,14 +501,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               resolution: sequence.resolution,
               draft: draftMotion,
               generateAudio: data.generateAudio,
-              referenceImages: buildMotionReferenceImages({
-                scene,
-                characters,
-                elements,
-                motionPrompt: motionPromptTextFor(shot),
-                referenceOnly: shotIsReferenceOnly(shot),
-                locations: batchLocations,
-              }),
+              referenceImages: referencesFor(shot),
               voicedLines,
               audioClips,
               motionPrompt: selectedMotion

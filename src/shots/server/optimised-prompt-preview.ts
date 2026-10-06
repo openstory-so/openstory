@@ -442,7 +442,8 @@ export function buildShotPromptPreview(input: {
       ...unusableShotReferenceLines(
         input.videoModel,
         motionRefs,
-        motionUsesStartFrame
+        motionUsesStartFrame,
+        assembledMotionPrompt
       ),
       ...missingVoiceLines(
         input.videoModel,

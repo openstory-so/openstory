@@ -26,6 +26,7 @@ import {
 } from '@/models/models';
 import { isNativeGrokVideoModel } from '@/models/grok-native';
 import { isElementVoiceToken } from '@/motion/dialogue-tts';
+import { seedanceEditClipLines } from '@/motion/seedance-edit';
 
 type ReferenceKind = 'image' | 'video' | 'audio';
 
@@ -288,15 +289,22 @@ export function unusableReferenceLines(
  * video is required" — Seedance; "Audio cannot be the only reference input" —
  * H3 Max). With no start frame and no sheet or clip bound, there is nothing
  * for it to ride with.
+ *
+ * And what only the prompt can answer (#2036): the word "edit" makes a
+ * Seedance 2.5 job with a clip a video edit, which takes a clip of 4–30s.
+ * `prompt` is the assembled text the provider reads; null when none is
+ * written yet.
  */
 export function unusableShotReferenceLines(
   model: ImageToVideoModel,
   attached: AttachedReference[],
-  hasStartFrame: boolean
+  hasStartFrame: boolean,
+  prompt: string | null
 ): string[] {
   const lines = [
     ...unusableReferenceLines(model, attached),
     ...overCombinedLengthLines(model, attached),
+    ...seedanceEditClipLines(model, prompt, attached),
   ];
   if (hasStartFrame) return lines;
   const support = motionReferenceSupport(model);
@@ -399,9 +407,15 @@ export function missingVoiceLines(
 export function assertReferencesUsable(
   model: ImageToVideoModel,
   attached: AttachedReference[],
-  hasStartFrame: boolean
+  hasStartFrame: boolean,
+  prompt: string | null
 ): void {
-  const lines = unusableShotReferenceLines(model, attached, hasStartFrame);
+  const lines = unusableShotReferenceLines(
+    model,
+    attached,
+    hasStartFrame,
+    prompt
+  );
   if (lines.length > 0) throw new Error(lines.join(' '));
 }
 

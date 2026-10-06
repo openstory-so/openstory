@@ -59,6 +59,7 @@ import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
+import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
@@ -1924,16 +1925,25 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               scopedDb.liveRead,
               addMicros(
                 gateEstimate(
-                  estimateVideoCost(model, input.duration ?? 3, {
-                    pricing: await getEffectiveFalPricing(),
-                    resolution:
-                      input.draft && supportsDraftMode(model)
-                        ? DRAFT_RESOLUTION
-                        : input.resolution,
-                    referenceOnly: input.referenceOnly,
-                    hasReferenceImages:
-                      (input.referenceImages?.length ?? 0) > 0,
-                  }),
+                  estimateVideoCost(
+                    model,
+                    seedanceEditHoldSeconds(
+                      model,
+                      input.duration ?? 3,
+                      input.prompt,
+                      input.referenceImages ?? []
+                    ),
+                    {
+                      pricing: await getEffectiveFalPricing(),
+                      resolution:
+                        input.draft && supportsDraftMode(model)
+                          ? DRAFT_RESOLUTION
+                          : input.resolution,
+                      referenceOnly: input.referenceOnly,
+                      hasReferenceImages:
+                        (input.referenceImages?.length ?? 0) > 0,
+                    }
+                  ),
                   { model, operation: 'update-stale-shots:video' }
                 ),
                 estimateTtsCost(ttsChars)

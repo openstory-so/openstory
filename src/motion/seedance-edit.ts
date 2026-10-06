@@ -12,8 +12,7 @@
  */
 
 const SEEDANCE_EDIT_MIN_SECONDS = 4;
-/** Also what a sequence holds for an edit whose clip length is unknown. */
-export const SEEDANCE_EDIT_MAX_SECONDS = 30;
+const SEEDANCE_EDIT_MAX_SECONDS = 30;
 const EDIT_WINDOW = `between ${SEEDANCE_EDIT_MIN_SECONDS} and ${SEEDANCE_EDIT_MAX_SECONDS} seconds`;
 
 /** Ark's wire value for "the model picks the length". An edit requires it. */
@@ -51,6 +50,53 @@ export function seedance25FollowsInputVideo(
     model === 'seedance_v2_5' &&
     hasInputVideo &&
     (explicitEdit || promptRequestsSeedanceEdit(prompt))
+  );
+}
+
+type ClipReference = { kind?: string; durationSeconds?: number | null };
+
+/**
+ * Seconds a motion hold must cover. An edit's output follows the clip, not
+ * the shot, so it is the longest attached clip (the 30s cap when a length is
+ * unknown), never less than `seconds`. Every path that reserves for a motion
+ * job prices this, so the hold cannot depend on which trigger was used.
+ */
+export function seedanceEditHoldSeconds(
+  model: string,
+  seconds: number,
+  prompt: string | null,
+  references: ClipReference[]
+): number {
+  const clips = references.filter((ref) => ref.kind === 'video');
+  if (
+    !seedance25FollowsInputVideo(model, clips.length > 0, prompt ?? '', false)
+  )
+    return seconds;
+  return Math.max(
+    seconds,
+    ...clips.map((ref) =>
+      Math.ceil(ref.durationSeconds ?? SEEDANCE_EDIT_MAX_SECONDS)
+    )
+  );
+}
+
+/**
+ * One line per attached clip a Seedance 2.5 edit cannot take (outside
+ * 4–30s). Empty when the job is not an edit. Part of
+ * `unusableShotReferenceLines`, so every trigger and the submit refuse alike.
+ */
+export function seedanceEditClipLines(
+  model: string,
+  prompt: string | null,
+  references: ClipReference[]
+): string[] {
+  const clips = references.filter((ref) => ref.kind === 'video');
+  if (
+    !seedance25FollowsInputVideo(model, clips.length > 0, prompt ?? '', false)
+  )
+    return [];
+  return clips.flatMap(
+    (ref) => seedanceEditLengthMessage(ref.durationSeconds) ?? []
   );
 }
 

@@ -85,6 +85,15 @@ export function estimateBatchMotionCost(
      * quotes the wrong endpoint for the rest.
      */
     referenceOnly?: boolean | ((shot: BatchShot) => boolean);
+    /**
+     * Seconds the hold covers for this shot, given its snapped duration
+     * (`seedanceEditHoldSeconds`, #2036). Per shot like its neighbours.
+     */
+    holdSeconds?: (
+      shot: BatchShot,
+      model: ImageToVideoModel,
+      seconds: number
+    ) => number;
   }
 ): Microdollars {
   return shots.reduce((sum, shot) => {
@@ -102,18 +111,23 @@ export function estimateBatchMotionCost(
       typeof opts.referenceOnly === 'function'
         ? opts.referenceOnly(shot)
         : (opts.referenceOnly ?? false);
+    const seconds = snapDuration(opts.duration, model);
     return addMicros(
       sum,
       gateEstimate(
-        estimateVideoCost(model, snapDuration(opts.duration, model), {
-          pricing: opts.pricing,
-          resolution:
-            opts.draft && supportsDraftMode(model)
-              ? DRAFT_RESOLUTION
-              : opts.resolution,
-          hasReferenceImages: hasRefs,
-          referenceOnly,
-        }),
+        estimateVideoCost(
+          model,
+          opts.holdSeconds?.(shot, model, seconds) ?? seconds,
+          {
+            pricing: opts.pricing,
+            resolution:
+              opts.draft && supportsDraftMode(model)
+                ? DRAFT_RESOLUTION
+                : opts.resolution,
+            hasReferenceImages: hasRefs,
+            referenceOnly,
+          }
+        ),
         { model, operation: 'batch-motion' }
       )
     );

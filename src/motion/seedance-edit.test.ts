@@ -4,6 +4,7 @@ import {
   isSeedanceInternalServiceError,
   promptRequestsSeedanceEdit,
   seedance25FollowsInputVideo,
+  seedanceEditHoldSeconds,
   seedanceEditLengthMessage,
 } from './seedance-edit';
 
@@ -47,6 +48,27 @@ describe('seedance edit constraints (#2036)', () => {
     // Just outside the window never rounds onto the edge.
     expect(seedanceEditLengthMessage(3.99)).toMatch(/3\.9s\.$/);
     expect(seedanceEditLengthMessage(30.01)).toMatch(/30\.1s\.$/);
+  });
+
+  it('holds for the clip an edit will follow, and for the shot otherwise', () => {
+    const clip = (durationSeconds: number | null) => ({
+      kind: 'video',
+      durationSeconds,
+    });
+    const hold = (
+      prompt: string | null,
+      refs: object[],
+      model = 'seedance_v2_5'
+    ) => seedanceEditHoldSeconds(model, 5, prompt, refs);
+    expect(hold('edit the walk', [clip(24.2)])).toBe(25);
+    // Never less than the shot, and the cap when the length is unknown.
+    expect(hold('edit the walk', [clip(4)])).toBe(5);
+    expect(hold('edit the walk', [clip(null)])).toBe(30);
+    // Not an edit: no word, no clip, no prompt yet, or another model.
+    expect(hold('the fox walks', [clip(24)])).toBe(5);
+    expect(hold('edit the walk', [{ kind: 'image' }])).toBe(5);
+    expect(hold(null, [clip(24)])).toBe(5);
+    expect(hold('edit the walk', [clip(24)], 'seedance_v2')).toBe(5);
   });
 
   it('retries InternalServiceError only for a BytePlus job', () => {
