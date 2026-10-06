@@ -897,8 +897,8 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 10,
     maxAudio: 10,
     maxCombined: 50,
-    // fal's reference window. An edit (the word "edit", or Ark's own
-    // TaskTypeConstraint) is a separate 4–30s check (#2036).
+    // Each video 1.8–30.2s; audio the same. A 2.5 edit (the word "edit")
+    // is checked separately at 4–30s (seedanceEditLengthMessage, #2036).
     videoSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
     audioSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
   },

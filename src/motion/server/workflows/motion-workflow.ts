@@ -97,9 +97,8 @@ import type { TokenUsage } from '@tanstack/ai';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import {
   explainSeedanceFailure,
-  isSeedanceEditConstraintError,
   isSeedanceInternalServiceError,
-  SEEDANCE_INTERNAL_BACKOFF_SECONDS,
+  SEEDANCE_INTERNAL_BACKOFF,
 } from '@/motion/seedance-edit';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
@@ -812,7 +811,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         return rescued;
       });
 
-    let seedanceEditRetried = false;
     let seedanceInternalRetried = false;
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
       let retrySeedanceInternal = false;
@@ -957,7 +955,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       }
       const tag =
         (attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`) +
-        (seedanceEditRetried ? '-edit-auto' : '') +
         (seedanceInternalRetried ? '-internal' : '');
 
       // Step 3-pre: register the stills BytePlus must see as `asset://`
@@ -1034,7 +1031,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             multiPrompt,
             draft: input.draft,
             finalFromDraftTaskId: input.finalFromDraft?.taskId,
-            forceSeedanceEdit: seedanceEditRetried,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -1054,19 +1050,14 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               rejection: extractFalErrorMessage(error),
             };
           }
-          // Ark classified this as an edit. One new job with auto length,
-          // off the rescue pass. The step returns so a replay does not
-          // resubmit the rejected body. A second constraint falls through.
+          // Ark refuses the same body every time, so stop here rather than
+          // let Cloudflare replay it (#2036).
           const providerMessage = extractFalErrorMessage(error);
-          if (
-            !seedanceEditRetried &&
-            !isRescue &&
-            isSeedanceEditConstraintError(providerMessage)
-          ) {
-            return { ok: false as const, editRetry: true as const };
-          }
-          const explained = explainSeedanceFailure(providerMessage);
+          const explained = explainSeedanceFailure(providerMessage, submitVia);
           if (explained && /InvalidParameter/.test(providerMessage)) {
+            logger.warn(
+              `[MotionWorkflow] Ark refused the submit for ${videoVersionId}: ${providerMessage}`
+            );
             throw new NonRetryableError(explained);
           }
           if (
@@ -1084,11 +1075,6 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       });
 
       if (!submitOutcome.ok) {
-        if ('editRetry' in submitOutcome) {
-          seedanceEditRetried = true;
-          attempt -= 1;
-          continue;
-        }
         lastRejection = submitOutcome.rejection;
         if ('tooLong' in submitOutcome) {
           // Reseeding the same prompt cannot fix a length refusal, so this
@@ -1289,9 +1275,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             retrySeedanceInternal = true;
             break;
           }
-          throw new NonRetryableError(
-            explainSeedanceFailure(poll.error, { via: job.via }) ?? poll.error
-          );
+          const explained = explainSeedanceFailure(poll.error, job.via);
+          if (explained) {
+            logger.warn(
+              `[MotionWorkflow] Ark job ${job.jobId} failed for ${videoVersionId}: ${poll.error}`
+            );
+          }
+          throw new NonRetryableError(explained ?? poll.error);
         }
         // pending → poll the next batch
       }
@@ -1317,9 +1307,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
 
       if (retrySeedanceInternal) {
         seedanceInternalRetried = true;
+        logger.warn(
+          `[MotionWorkflow] Ark InternalServiceError on job ${job.jobId} for ${videoVersionId}; submitting one new job`
+        );
         await step.sleep(
           `seedance-internal-backoff-${attempt}`,
-          SEEDANCE_INTERNAL_BACKOFF_SECONDS
+          SEEDANCE_INTERNAL_BACKOFF
         );
         attempt -= 1;
         continue;

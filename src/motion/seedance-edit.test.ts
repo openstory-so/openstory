@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   explainSeedanceFailure,
-  isSeedanceEditConstraintError,
   isSeedanceInternalServiceError,
   promptRequestsSeedanceEdit,
   seedance25FollowsInputVideo,
@@ -16,24 +15,25 @@ describe('seedance edit constraints (#2036)', () => {
       false
     );
     expect(
-      seedance25FollowsInputVideo('seedance_v2_5', true, 'edit the walk')
+      seedance25FollowsInputVideo('seedance_v2_5', true, 'edit the walk', false)
     ).toBe(true);
     expect(
-      seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks')
+      seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks', false)
     ).toBe(false);
     expect(
-      seedance25FollowsInputVideo('seedance_v2_5', false, 'edit the walk')
+      seedance25FollowsInputVideo(
+        'seedance_v2_5',
+        false,
+        'edit the walk',
+        false
+      )
     ).toBe(false);
     expect(
-      seedance25FollowsInputVideo('seedance_v2', true, 'edit the walk')
+      seedance25FollowsInputVideo('seedance_v2', true, 'edit the walk', false)
     ).toBe(false);
     expect(
       seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks', true)
     ).toBe(true);
-    expect(
-      isSeedanceEditConstraintError('InvalidParameter.TaskTypeConstraint')
-    ).toBe(true);
-    expect(isSeedanceEditConstraintError('InvalidParameter')).toBe(false);
   });
 
   it('names a known length outside 4–30s and stays quiet otherwise', () => {
@@ -44,6 +44,9 @@ describe('seedance edit constraints (#2036)', () => {
     expect(seedanceEditLengthMessage(4)).toBeNull();
     expect(seedanceEditLengthMessage(30)).toBeNull();
     expect(seedanceEditLengthMessage(null)).toBeNull();
+    // Just outside the window never rounds onto the edge.
+    expect(seedanceEditLengthMessage(3.99)).toMatch(/3\.9s\.$/);
+    expect(seedanceEditLengthMessage(30.01)).toMatch(/30\.1s\.$/);
   });
 
   it('retries InternalServiceError only for a BytePlus job', () => {
@@ -58,27 +61,37 @@ describe('seedance edit constraints (#2036)', () => {
   it('explains Ark failures in plain language and leaves other providers', () => {
     expect(
       explainSeedanceFailure(
-        'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
+        'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1',
+        'byteplus'
       )
     ).toBe(
-      "Seedance couldn't process this edit because the clip has to be between 4 and 30 seconds, and the length has to follow the clip. The credits for this generation were refunded."
+      'Seedance read this as a video edit and refused it. Say "edit" in the prompt and use a clip between 4 and 30 seconds. You were not charged for this generation.'
     );
     expect(
-      explainSeedanceFailure('Motion generation failed: InternalServiceError', {
-        via: 'byteplus',
-      })
+      explainSeedanceFailure(
+        'BytePlus Ark motion submit failed (400 InvalidParameter): bad ratio',
+        'byteplus'
+      )
     ).toBe(
-      "Seedance couldn't process this video because of a temporary error. We tried again once and it failed again. The credits for this generation were refunded."
+      "Seedance couldn't process this video. bad ratio. You were not charged for this generation."
+    );
+    // The via decides, not the words in the message.
+    expect(explainSeedanceFailure('InvalidParameter: nope', 'fal')).toBeNull();
+    expect(
+      explainSeedanceFailure(
+        'Motion generation failed: InternalServiceError',
+        'byteplus'
+      )
+    ).toBe(
+      "Seedance couldn't process this video because of a temporary error. Try again. You were not charged for this generation."
     );
     expect(
-      explainSeedanceFailure('Motion generation failed: Kling exploded', {
-        via: 'fal',
-      })
+      explainSeedanceFailure('Motion generation failed: Kling exploded', 'fal')
     ).toBeNull();
     expect(
       explainSeedanceFailure(
         'Seedance blocked an image that may show a real person. Swap or regenerate it.',
-        { via: 'byteplus' }
+        'byteplus'
       )
     ).toBeNull();
   });

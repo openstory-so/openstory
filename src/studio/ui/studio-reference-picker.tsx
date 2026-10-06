@@ -61,7 +61,7 @@ export type StudioReference = {
   kind: StudioReferenceKind;
   /** Still to show for a video tile. */
   posterUrl?: string;
-  /** Browser-measured length. Unknown stays unset and is not blocked. */
+  /** Browser-measured length; null or unset when unknown, which is not blocked. */
   durationSeconds?: number | null;
   /**
    * Name this reference keeps in the prompt (#1748). Talent, locations and

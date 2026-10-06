@@ -22,7 +22,10 @@ import {
   BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
-import { seedance25FollowsInputVideo } from '@/motion/seedance-edit';
+import {
+  ARK_AUTO_DURATION,
+  seedance25FollowsInputVideo,
+} from '@/motion/seedance-edit';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
@@ -450,11 +453,6 @@ async function buildStudioBytePlusPrompt(
 export type SubmitStudioVideoOptions = StudioVideoJobOptions & {
   /** From `ingestArkAssets` over `arkStillsForStudio` — see `SubmitMotionOptions.arkAssets`. */
   arkAssets: ArkAssetMap;
-  /**
-   * One resubmit after Ark's edit-constraint 400 (#2036). Sends duration -1
-   * even when the prompt never said "edit".
-   */
-  forceSeedanceEdit?: boolean;
 };
 
 export async function submitStudioVideoJob(
@@ -712,16 +710,15 @@ export async function submitStudioVideoJob(
         mode,
         built.prompt
       );
-      // The word "edit" with a video, Studio edit mode, or the one
-      // constraint retry. `modelOptions.duration` is sent verbatim and wins
-      // over the snapped generic duration (#2036).
-      const followsClip =
-        options.forceSeedanceEdit === true ||
-        seedance25FollowsInputVideo(
-          modelKey,
-          mode === 'edit' || (options.referenceVideos?.length ?? 0) > 0,
-          promptText
-        );
+      // The word "edit" with a video, or Studio edit mode.
+      // `modelOptions.duration` is sent verbatim and wins over the snapped
+      // generic duration (#2036).
+      const followsClip = seedance25FollowsInputVideo(
+        modelKey,
+        mode === 'edit' || (options.referenceVideos?.length ?? 0) > 0,
+        promptText,
+        mode === 'edit'
+      );
       const { apiKey, ...config } = arkAdapterConfig(
         arkKey,
         FAL_REQUEST_TIMEOUT_MS
@@ -738,7 +735,9 @@ export async function submitStudioVideoJob(
               watermark: false,
               // Sent verbatim, over the snapped generic `duration`: the model
               // picks the length. An edit requires it (#1925, #2036).
-              ...((built.auto || followsClip) && { duration: -1 }),
+              ...((built.auto || followsClip) && {
+                duration: ARK_AUTO_DURATION,
+              }),
               ...(draft && { draft: true }),
               ...(options.generateAudio !== undefined && {
                 generate_audio: options.generateAudio,

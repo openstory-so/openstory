@@ -644,13 +644,6 @@ export function StudioComposer({
           effectiveMode === 'reference' ? references.map((r) => r.url) : [],
         referenceVideos:
           effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
-        ...(effectiveMode === 'reference' && videoRefs.length > 0
-          ? {
-              referenceVideoSeconds: videoRefs.map(
-                (r) => r.durationSeconds ?? null
-              ),
-            }
-          : {}),
         referenceAudio:
           effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
         startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,

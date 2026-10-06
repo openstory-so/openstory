@@ -97,20 +97,16 @@ function makeWorkflow(): Probe {
   return new Probe(ctx, env);
 }
 
-function makeStep(): WorkflowStep & { names: string[]; sleeps: string[] } {
+function makeStep(): WorkflowStep & { names: string[] } {
   const names: string[] = [];
-  const sleeps: string[] = [];
   // stub: runImpl only uses `do` and `sleep`
-  return asStub<WorkflowStep & { names: string[]; sleeps: string[] }>({
+  return asStub<WorkflowStep & { names: string[] }>({
     names,
-    sleeps,
     do: vi.fn((name: string, fn: () => Promise<unknown>) => {
       names.push(name);
       return fn();
     }),
-    sleep: vi.fn(async (name: string) => {
-      sleeps.push(name);
-    }),
+    sleep: vi.fn(async () => {}),
   });
 }
 
@@ -396,12 +392,15 @@ describe('StudioGenerationWorkflow video', () => {
     );
 
     expect(mockSubmit).toHaveBeenCalledTimes(2);
-    expect(step.sleeps).toContain('seedance-internal-backoff-0');
+    expect(step.sleep).toHaveBeenCalledWith(
+      'seedance-internal-backoff-0',
+      '5 seconds'
+    );
     expect(step.names).toContain('submit-video-internal');
     expect(generatedAssets.markFailed).not.toHaveBeenCalled();
   });
 
-  it('says the credits were refunded when the retry also fails (#2036)', async () => {
+  it('says nothing was charged when the retry also fails (#2036)', async () => {
     mockSubmit.mockResolvedValue({
       jobId: 'job-1',
       modelKey: 'seedance_v2_5',
@@ -421,44 +420,12 @@ describe('StudioGenerationWorkflow video', () => {
         makeStep(),
         scopedDb
       )
-    ).rejects.toThrow(
-      /temporary error.*tried again once.*credits for this generation were refunded/
-    );
+    ).rejects.toThrow(/temporary error.*not charged/);
     expect(mockSubmit).toHaveBeenCalledTimes(2);
   });
 
-  it('resubmits a TaskTypeConstraint once with auto length (#2036)', async () => {
-    mockSubmit
-      .mockRejectedValueOnce(
-        new Error(
-          'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
-        )
-      )
-      .mockResolvedValue({
-        jobId: 'job-edit',
-        modelKey: 'seedance_v2',
-        endpointId: 'fal-ai/bytedance/seedance/v2.0/image-to-video',
-        via: 'byteplus',
-        usedOwnKey: false,
-      });
-    mockPoll.mockResolvedValue({
-      status: 'completed',
-      url: 'https://fal.media/a.mp4',
-    });
-    const step = makeStep();
-    const { scopedDb, generatedAssets } = makeScopedDb();
-
-    await makeWorkflow().runBody(makeEvent(VIDEO), step, scopedDb);
-
-    expect(mockSubmit).toHaveBeenCalledTimes(2);
-    expect(mockSubmit.mock.calls[1]?.[0]).toMatchObject({
-      forceSeedanceEdit: true,
-    });
-    expect(step.names).toContain('submit-video-edit-auto');
-    expect(generatedAssets.markFailed).not.toHaveBeenCalled();
-  });
-
-  it('stops after a second TaskTypeConstraint (#2036)', async () => {
+  it('stops at once on a TaskTypeConstraint, with no second job (#2036)', async () => {
+    mockResolveMotionVia.mockResolvedValueOnce('byteplus');
     mockSubmit.mockRejectedValue(
       new Error(
         'BytePlus Ark studio motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
@@ -468,12 +435,13 @@ describe('StudioGenerationWorkflow video', () => {
 
     await expect(
       makeWorkflow().runBody(makeEvent(VIDEO), makeStep(), scopedDb)
-    ).rejects.toThrow(/couldn't process this edit/);
-    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    ).rejects.toThrow(/read this as a video edit.*not charged/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
     expect(mockPoll).not.toHaveBeenCalled();
   });
 
   it('does not retry a different InvalidParameter (#2036)', async () => {
+    mockResolveMotionVia.mockResolvedValueOnce('byteplus');
     mockSubmit.mockRejectedValue(
       new Error(
         'BytePlus Ark studio motion submit failed (400 InvalidParameter): bad ratio'

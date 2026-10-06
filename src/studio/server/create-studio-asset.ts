@@ -43,10 +43,12 @@ import {
   type StudioCreateInput,
   type StudioCreateResult,
 } from '@/studio/schema';
+import { measureStoredMediaDuration } from '@/cast/server/sequence-elements/media-duration';
 import {
   seedance25FollowsInputVideo,
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
@@ -226,9 +228,18 @@ export async function createStudioAssets(
       input.prompt,
       input.mode === 'edit'
     );
-    // A known clip outside 4–30s never reaches Ark, and never takes a hold.
+    // A reference clip outside 4–30s is refused before the hold. The length
+    // is read from the stored file, never taken from the client; a URL that
+    // is not ours stays unknown and still submits. Edit mode's source is a
+    // clip Seedance made, so it is already inside the window.
     if (followsClip) {
-      for (const seconds of input.referenceVideoSeconds ?? []) {
+      const clipSeconds = await Promise.all(
+        input.referenceVideos.map(async (url) => {
+          const key = r2KeyFromUrl(url);
+          return key ? measureStoredMediaDuration(key) : null;
+        })
+      );
+      for (const seconds of clipSeconds) {
         const lengthMessage = seedanceEditLengthMessage(seconds);
         if (lengthMessage) throw new ValidationError(lengthMessage);
       }

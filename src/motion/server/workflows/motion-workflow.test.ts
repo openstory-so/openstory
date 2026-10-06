@@ -124,20 +124,16 @@ function makeWorkflow(): Probe {
   return new Probe(ctx, env);
 }
 
-function makeStep(): WorkflowStep & { names: string[]; sleeps: string[] } {
+function makeStep(): WorkflowStep & { names: string[] } {
   const names: string[] = [];
-  const sleeps: string[] = [];
   // stub: runImpl only uses `do` and `sleep`
-  return asStub<WorkflowStep & { names: string[]; sleeps: string[] }>({
+  return asStub<WorkflowStep & { names: string[] }>({
     names,
-    sleeps,
     do: vi.fn((name: string, fn: () => Promise<unknown>) => {
       names.push(name);
       return fn();
     }),
-    sleep: vi.fn(async (name: string) => {
-      sleeps.push(name);
-    }),
+    sleep: vi.fn(async () => {}),
   });
 }
 
@@ -305,31 +301,15 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
     await makeWorkflow().runBody(makeEvent(), step, scopedDb);
 
     expect(mockSubmit).toHaveBeenCalledTimes(2);
-    expect(step.sleeps).toContain('seedance-internal-backoff-0');
+    expect(step.sleep).toHaveBeenCalledWith(
+      'seedance-internal-backoff-0',
+      '5 seconds'
+    );
     expect(step.names).toContain('submit-motion-internal');
   });
 
-  it('resubmits a TaskTypeConstraint once with auto length', async () => {
-    mockSubmit
-      .mockRejectedValueOnce(
-        new Error(
-          'BytePlus Ark motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
-        )
-      )
-      .mockImplementation(async () => ({ ...job(), via: 'byteplus' }));
-    const step = makeStep();
-    const { scopedDb } = makeScopedDb();
-
-    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
-
-    expect(mockSubmit).toHaveBeenCalledTimes(2);
-    expect(mockSubmit.mock.calls[1]?.[0]).toMatchObject({
-      forceSeedanceEdit: true,
-    });
-    expect(step.names).toContain('submit-motion-edit-auto');
-  });
-
-  it('stops after a second TaskTypeConstraint', async () => {
+  it('stops at once on a TaskTypeConstraint, with no second job', async () => {
+    mockResolveMotionVia.mockResolvedValue('byteplus');
     mockSubmit.mockRejectedValue(
       new Error(
         'BytePlus Ark motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
@@ -339,11 +319,26 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
 
     await expect(
       makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
-    ).rejects.toThrow(/couldn't process this edit/);
-    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    ).rejects.toThrow(/read this as a video edit.*not charged/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('stops with a refund sentence when the retry fails', async () => {
+  it('stops at once on any other InvalidParameter', async () => {
+    mockResolveMotionVia.mockResolvedValue('byteplus');
+    mockSubmit.mockRejectedValue(
+      new Error(
+        'BytePlus Ark motion submit failed (400 InvalidParameter): bad ratio'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
+    ).rejects.toThrow(/couldn't process this video/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('says nothing was charged when the retry fails', async () => {
     mockSubmit.mockResolvedValue({ ...job(), via: 'byteplus' });
     mockPoll.mockResolvedValue({
       status: 'failed',
@@ -353,9 +348,7 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
 
     await expect(
       makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
-    ).rejects.toThrow(
-      /tried again once.*credits for this generation were refunded/
-    );
+    ).rejects.toThrow(/temporary error.*not charged/);
     expect(mockSubmit).toHaveBeenCalledTimes(2);
   });
 });

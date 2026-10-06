@@ -290,28 +290,6 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
     expect(request.duration).toBe(5);
   });
 
-  it('retries a constraint as an edit even when the prompt never said edit (#2036)', () => {
-    const request = buildBytePlusVideoRequest(
-      {
-        ...referenceOnlyBase,
-        forceSeedanceEdit: true,
-        referenceImages: [
-          {
-            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
-            description: 'a walk',
-            token: 'WALK',
-            role: 'element',
-            kind: 'video',
-            durationSeconds: 8,
-          },
-        ],
-      },
-      'seedance_v2_5'
-    );
-    expect(request.size).toBe('adaptive_720p');
-    expect(request.modelOptions).toMatchObject({ duration: -1 });
-  });
-
   it('keeps a concrete ratio and duration for Seedance 2.0 with a video', () => {
     const request = buildBytePlusVideoRequest(
       {

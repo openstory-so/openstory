@@ -19,9 +19,8 @@
  * trailing "Reference images:" legend.
  *
  * `size` is `adaptive` when a `start_frame` role is actually sent, and when
- * Seedance 2.5 is editing a video (the prompt says "edit", or a retry after
- * `TaskTypeConstraint`): an edit requires `adaptive` and `duration: -1`
- * (#2036). A reference video without that word keeps the sequence ratio.
+ * Seedance 2.5 is editing a video (the prompt says "edit"): an edit requires
+ * `adaptive` and `duration: -1` (#2036). A reference video without that word keeps the sequence ratio.
  * Otherwise reference mode states the sequence's own ratio (nothing is left
  * for `adaptive` to adapt to — see the comment at the `size` assignment,
  * #1809).
@@ -29,7 +28,10 @@
  * Client-safe: no env, no adapters.
  */
 
-import { seedance25FollowsInputVideo } from '@/motion/seedance-edit';
+import {
+  ARK_AUTO_DURATION,
+  seedance25FollowsInputVideo,
+} from '@/motion/seedance-edit';
 import {
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
@@ -90,11 +92,6 @@ export type BytePlusVideoRequestOptions = {
   referenceImages?: ReferenceImageDescription[];
   /** Ark draft mode (#1756): 480p preview, `draft: true` on the wire. */
   draft?: boolean;
-  /**
-   * One resubmit after Ark's edit-constraint 400 (#2036). Sends duration -1
-   * and an adaptive size even when the prompt never said "edit".
-   */
-  forceSeedanceEdit?: boolean;
 };
 
 /**
@@ -159,9 +156,6 @@ export function buildBytePlusVideoRequest(
   };
 
   if (references.length === 0) {
-    // No video part, so the word "edit" is not an edit. The constraint
-    // retry still asks Ark for auto length.
-    const followsClip = options.forceSeedanceEdit === true;
     return {
       modelId,
       prompt: [
@@ -181,11 +175,9 @@ export function buildBytePlusVideoRequest(
             ]
           : []),
       ],
-      size: followsClip ? `adaptive_${resolution}` : size,
+      size,
       duration: options.duration,
-      modelOptions: followsClip
-        ? { ...modelOptions, duration: -1 }
-        : modelOptions,
+      modelOptions,
     };
   }
 
@@ -219,10 +211,13 @@ export function buildBytePlusVideoRequest(
 
   // The word "edit" plus a video part is an edit: adaptive ratio and
   // duration -1. A reference clip without that word keeps its ratio.
-  // 2.0 has no edit task. The constraint retry forces the edit body.
-  const followsClip =
-    options.forceSeedanceEdit === true ||
-    seedance25FollowsInputVideo(modelKey, videoUrls.length > 0, options.prompt);
+  // 2.0 has no edit task.
+  const followsClip = seedance25FollowsInputVideo(
+    modelKey,
+    videoUrls.length > 0,
+    options.prompt,
+    false
+  );
   return {
     modelId,
     prompt: [
@@ -244,7 +239,7 @@ export function buildBytePlusVideoRequest(
     size: followsClip ? `adaptive_${resolution}` : size,
     duration: options.duration,
     modelOptions: followsClip
-      ? { ...modelOptions, duration: -1 }
+      ? { ...modelOptions, duration: ARK_AUTO_DURATION }
       : modelOptions,
   };
 }

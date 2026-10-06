@@ -389,11 +389,6 @@ async function submitFalMotionJob(
  */
 export type SubmitMotionOptions = GenerateMotionOptions & {
   arkAssets: ArkAssetMap;
-  /**
-   * One resubmit after Ark's edit-constraint 400 (#2036). `buildBytePlusVideoRequest`
-   * sends duration -1 and an adaptive size.
-   */
-  forceSeedanceEdit?: boolean;
 };
 
 type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];

@@ -446,6 +446,8 @@ Child workflows (image, motion, music, character bible, location bible, talent m
 
 **Prompt-length recovery (#1754).** `MotionWorkflow` never truncates a prompt. When a via that documents a hard ceiling refuses one — our own `PromptTooLongError` thrown before the request, or the provider's 422, both classified by `isPromptTooLongError` — the submit step returns a `tooLong` sentinel instead of throwing. That sentinel does **not** join the content-rejection reseed ladder (reseeding the same prompt cannot shorten it): the loop calls `shortenOverlongMotionPrompt` once under `videoPromptHardLimit(model)`, appends the rewrite as a `shortened` shot prompt version (unselected, and the in-flight clip's manifest is repointed at it via `writeRescuedMotionPrompt` — the same helper the #1373 content soften uses), and resubmits. One rewrite per run; a second refusal is a `NonRetryableError` naming both numbers, because a shot that still will not fit is the user's to shorten.
 
+**Seedance on Ark: one new job after an internal error (#2036).** `MotionWorkflow` and `StudioGenerationWorkflow` submit one new, identical job when a poll on the BytePlus via fails with `InternalServiceError`: the loop sleeps `seedance-internal-backoff-<attempt>` for 5 seconds and resubmits under the step suffix `-internal`, without spending a content-flag attempt. `MotionWorkflow` skips it on its rescue pass. A second failure is a `NonRetryableError`. An `InvalidParameter` at submit (including `TaskTypeConstraint`) is a `NonRetryableError` at once, so the step never replays a body Ark will always refuse, and nothing is resubmitted with different parameters. Both log Ark's raw message and store plain copy that says the user was not charged. See `docs/architecture/byteplus-ark.md`.
+
 ### Retry Strategy
 
 Under Cloudflare Workflows, retries are configured per `step.do()` (and on the workflow class), not on the trigger — the legacy `retries`/`retryDelay` options on `triggerWorkflow()` are accepted for back-compat but are **no-ops**.
@@ -456,6 +458,7 @@ Under Cloudflare Workflows, retries are configured per `step.do()` (and on the w
 | LLM-call steps (`durableLLMCallCf`)        | via `step.do`   | Engine-managed                                                                  |
 | Child workflows (`spawnAndAwaitChild`)     | own step budget | Awaited with a `timeout`; the child retries its own steps                       |
 | Ark still claim (`<prefix>-ark-<n>-claim`) | 40 × 30s        | Constant — waits out another run's create; a full leased pool fails immediately |
+| Ark poll `InternalServiceError`            | 1 new job       | 5s sleep; off the content-flag budget                                           |
 
 Per-scene fan-out (image, variant, motion) uses `Promise.allSettled` over `spawnAndAwaitChild`, so one scene's failure or timeout doesn't kill the rest of the batch — failures are collected and surfaced as a single error. Dialogue audio is the exception: its failed scenes are logged, not raised, because motion records those shots again (Phase 4b).
 
