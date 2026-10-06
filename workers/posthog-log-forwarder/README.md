@@ -11,6 +11,25 @@ unwraps each LogTape JSON line, lifts `message` → OTLP `body` and
 `properties.*` → OTLP attributes, so PostHog shows clean headlines plus
 structured fields.
 
+Retested on a PR preview on 2026-10-05 (#2028) with the `posthog-openstory-stg`
+destination. Cloudflare's log export still cannot replace this Worker:
+
+| `console` call                | Body in PostHog             | Attributes                                    |
+| ----------------------------- | --------------------------- | --------------------------------------------- |
+| `log('text')`                 | `text`                      | none                                          |
+| `log({ message, ...fields })` | the whole object as JSON    | none                                          |
+| `log('text', { ...fields })`  | `{"message":"text",…}` JSON | none                                          |
+| `log(JSON.stringify({ … }))`  | the same JSON               | none                                          |
+| `error(new Error('x'))`       | `Error: x`                  | none                                          |
+| uncaught throw                | the error message           | `exception.type` / `.message` / `.stacktrace` |
+
+Cloudflare's own Workers Logs does split an object into fields; the export
+does not pass them on. What the export does get right: severity follows the
+console method, `trace_id` / `span_id` are set and match the trace,
+`service.name` is the script name (`pr-2029`), and uncaught exceptions arrive.
+Logs land about two minutes late. Try again only if Cloudflare starts sending
+object fields as OTLP attributes.
+
 ## Setup
 
 ### 1. Deploy the forwarders (one per environment)
