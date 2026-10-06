@@ -23,7 +23,10 @@ import {
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
 import { resolveShotReferences } from '@/shots/scene-matching';
-import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import {
+  characterToBible,
+  locationToBible,
+} from '@/cast/server/bibles-from-scoped';
 import {
   loadNarrowShotPromptContext,
   type ShotPromptContext,
@@ -578,30 +581,44 @@ export async function computeShotStaleness(args: {
       at
     );
   // A digest stamped before #2012 hashed the whole scene roster. Each
-  // character this prompt does not name goes back to its bible as it stood
-  // at the stamp, so only an edit to someone the shot shows can stale it.
+  // character and location this prompt does not name goes back to its bible
+  // as it stood at the stamp, so only an edit to what the shot shows can
+  // stale it. Elements keep no history, so an off-shot one still can.
   const legacyRoster = async (
     loaded: { shot: ShotPromptContext; sceneRoster: ShotPromptContext },
     at: Date
   ): Promise<ShotPromptContext> => {
-    const named = new Set(loaded.shot.characterBible.map((c) => c.characterId));
-    const [rows, history] = await Promise.all([
+    const shownCharacters = new Set(
+      loaded.shot.characterBible.map((c) => c.characterId)
+    );
+    const shownLocations = new Set(
+      loaded.shot.locationBible.map((l) => l.locationId)
+    );
+    const [characters, locations, history] = await Promise.all([
       refs?.characters ?? scopedDb.characters.list(sequence.id),
-      reads
-        ? reads.inputHistory().then((h) => h.characters)
-        : scopedDb.characters
-            .listBibleVersionsBySequence(sequence.id)
-            .then((v) => groupBy(v, (row) => row.characterId)),
+      refs?.locations ?? scopedDb.sequenceLocations.list(sequence.id),
+      reads ? reads.inputHistory() : loadInputHistory(scopedDb, sequence.id),
     ]);
     return {
       ...loaded.sceneRoster,
       characterBible: loaded.sceneRoster.characterBible.map((entry) => {
-        const row = named.has(entry.characterId)
+        const row = shownCharacters.has(entry.characterId)
           ? undefined
-          : rows.find((r) => r.characterId === entry.characterId);
-        const then = row && versionAt(history.get(row.id), at.getTime());
+          : characters.find((r) => r.characterId === entry.characterId);
+        const then =
+          row && versionAt(history.characters.get(row.id), at.getTime());
         return row && then
           ? characterToBible({ ...row, ...then, characterId: row.characterId })
+          : entry;
+      }),
+      locationBible: loaded.sceneRoster.locationBible.map((entry) => {
+        const row = shownLocations.has(entry.locationId)
+          ? undefined
+          : locations.find((r) => r.locationId === entry.locationId);
+        const then =
+          row && versionAt(history.locations.get(row.id), at.getTime());
+        return row && then
+          ? locationToBible({ ...row, ...then, locationId: row.locationId })
           : entry;
       }),
     };

@@ -4,8 +4,14 @@ import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotStalenessRefs } from './shot-staleness';
 import { asStub } from '@/test/as-stub';
-import { characterToBible } from '@/cast/server/bibles-from-scoped';
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import {
+  characterToBible,
+  locationToBible,
+} from '@/cast/server/bibles-from-scoped';
+import type {
+  CharacterBibleEntry,
+  LocationBibleEntry,
+} from '@/shots/scene-analysis.schema';
 
 const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
@@ -171,8 +177,8 @@ const shot = asStub<Shot>({ id: 'shot-1' });
 const NO_LINES = { dialogue: { presence: false, lines: [] }, onNode: false };
 /** A prompt context naming no one, on a scene with no cast. */
 const NO_CAST = {
-  shot: { characterBible: [] },
-  sceneRoster: { characterBible: [] },
+  shot: { characterBible: [], locationBible: [] },
+  sceneRoster: { characterBible: [], locationBible: [] },
 };
 const frame = asStub<Frame>({
   id: 'frame-1',
@@ -913,8 +919,9 @@ describe('per-shot start-frame override', () => {
         shot: {
           frameUrl: args.startingFrameImageUrl ?? null,
           characterBible: [],
+          locationBible: [],
         },
-        sceneRoster: { characterBible: [] },
+        sceneRoster: { characterBible: [], locationBible: [] },
       })
     );
     hashMotionPromptInput.mockImplementation(
@@ -1347,10 +1354,11 @@ describe('style causes (#1600)', () => {
   });
 });
 
-describe('a two-person scene, one person per shot (#2012)', () => {
+describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
   const before = new Date('2025-12-31T00:00:00Z');
   const generated = new Date('2026-01-01T00:00:00Z');
   const afterGen = new Date('2026-01-02T00:00:00Z');
+  const capitalised = (id: string) => id.charAt(0).toUpperCase() + id.slice(1);
   const bible = {
     age: '30s',
     gender: '',
@@ -1363,53 +1371,86 @@ describe('a two-person scene, one person per shot (#2012)', () => {
     voiceOnly: false,
     isPerson: true,
   };
-  const person = (id: string, edited: Record<string, string>) =>
+  const room = {
+    type: 'interior',
+    description: 'old',
+    architecturalStyle: '',
+    keyFeatures: '',
+    ambiance: '',
+  };
+  const person = (id: string, edited: Record<string, string> = {}) =>
     asStub<ShotStalenessRefs['characters'][number]>({
       ...bible,
       ...edited,
       id: `c-${id}`,
       characterId: id,
-      name: id.charAt(0).toUpperCase() + id.slice(1),
+      name: capitalised(id),
       consistencyTag: id,
       voiceDescription: '',
       updatedAt: Object.keys(edited).length > 0 ? afterGen : before,
       sheetGeneratedAt: before,
     });
-  const versions = (row: ShotStalenessRefs['characters'][number]) => [
-    {
-      ...bible,
-      characterId: row.id,
-      name: row.name,
-      consistencyTag: row.consistencyTag,
-      createdAt: before,
-    },
+  const place = (id: string, edited: Record<string, string> = {}) =>
+    asStub<ShotStalenessRefs['locations'][number]>({
+      ...room,
+      ...edited,
+      id: `l-${id}`,
+      locationId: id,
+      name: capitalised(id),
+      consistencyTag: id,
+      updatedAt: Object.keys(edited).length > 0 ? afterGen : before,
+      referenceGeneratedAt: before,
+    });
+  /** The analysis-time version, then the live one. */
+  const characterVersions = (row: ShotStalenessRefs['characters'][number]) => [
+    { ...row, ...bible, characterId: row.id, createdAt: before },
     { ...row, characterId: row.id, createdAt: row.updatedAt },
   ];
-  /** Hashes who the context carries, and as what. */
-  const hashCast = async (input: unknown) =>
-    asStub<{ characterBible: CharacterBibleEntry[] }>(input)
-      .characterBible.map(
-        (c) =>
-          `${c.characterId}:${c.physicalDescription}/${c.distinguishingFeatures}`
-      )
-      .join('|');
-  const stampedOnRoster = 'dazza:old/old|kylie:old/old';
+  const locationVersions = (row: ShotStalenessRefs['locations'][number]) => [
+    { ...row, ...room, locationId: row.id, createdAt: before },
+    { ...row, locationId: row.id, createdAt: row.updatedAt },
+  ];
+  /** Hashes who and where the context carries, and as what. */
+  const hashCast = async (input: unknown) => {
+    const ctx = asStub<{
+      characterBible: CharacterBibleEntry[];
+      locationBible: LocationBibleEntry[];
+    }>(input);
+    return [
+      ctx.characterBible
+        .map(
+          (c) =>
+            `${c.characterId}:${c.physicalDescription}/${c.distinguishingFeatures}`
+        )
+        .join('|'),
+      ctx.locationBible
+        .map((l) => `${l.locationId}:${l.description}`)
+        .join('|'),
+    ].join('#');
+  };
+  const stampedOnRoster =
+    'dazza:old/old|kylie:old/old#bathroom:old|verandah:old';
 
-  async function staleness(
-    motionText: string,
-    edits: Record<string, Record<string, string>>
-  ) {
-    const kylie = person('kylie', edits.kylie ?? {});
-    const dazza = person('dazza', edits.dazza ?? {});
-    const roster = [dazza, kylie].map(characterToBible);
+  type Edits = Partial<
+    Record<'kylie' | 'dazza' | 'bathroom' | 'verandah', Record<string, string>>
+  >;
+
+  async function staleness(motionText: string, edits: Edits) {
+    const kylie = person('kylie', edits.kylie);
+    const dazza = person('dazza', edits.dazza);
+    const bathroom = place('bathroom', edits.bathroom);
+    const verandah = place('verandah', edits.verandah);
+    const cast = [dazza, kylie].map(characterToBible);
+    const rooms = [bathroom, verandah].map(locationToBible);
+    const shows = (prompt: string | null, name: string) =>
+      (prompt ?? '').includes(name.toUpperCase());
     loadNarrowShotPromptContext.mockImplementation(
       async ({ view }: { view: { prompt: string | null } }) => ({
         shot: {
-          characterBible: roster.filter((c) =>
-            (view.prompt ?? '').includes(c.name.toUpperCase())
-          ),
+          characterBible: cast.filter((c) => shows(view.prompt, c.name)),
+          locationBible: rooms.filter((l) => shows(view.prompt, l.name)),
         },
-        sceneRoster: { characterBible: roster },
+        sceneRoster: { characterBible: cast, locationBible: rooms },
       })
     );
     hashMotionPromptInput.mockImplementation(hashCast);
@@ -1418,7 +1459,14 @@ describe('a two-person scene, one person per shot (#2012)', () => {
       motionSelectedHash: stampedOnRoster,
       motionSelectedAt: generated,
       motionText,
-      characterBibleVersions: [...versions(kylie), ...versions(dazza)],
+      characterBibleVersions: [
+        ...characterVersions(kylie),
+        ...characterVersions(dazza),
+      ],
+      locationBibleVersions: [
+        ...locationVersions(bathroom),
+        ...locationVersions(verandah),
+      ],
     });
     Object.assign(scopedDb, {
       scenes: {
@@ -1448,7 +1496,7 @@ describe('a two-person scene, one person per shot (#2012)', () => {
       scene,
       refs: asStub({
         characters: [kylie, dazza],
-        locations: [],
+        locations: [bathroom, verandah],
         elements: [],
         style: null,
       }),
@@ -1460,7 +1508,7 @@ describe('a two-person scene, one person per shot (#2012)', () => {
   });
 
   it('keeps a pre-#2012 digest fresh when only someone off the shot moved', async () => {
-    const kylieShot = await staleness('KYLIE sits on the milk crate.', {
+    const kylieShot = await staleness('KYLIE sits in the BATHROOM.', {
       dazza: { physicalDescription: 'new' },
     });
     const bucketShot = await staleness('A drip falls. No people.', {
@@ -1472,8 +1520,16 @@ describe('a two-person scene, one person per shot (#2012)', () => {
     expect(bucketShot.motionPrompt).toBe('fresh');
   });
 
+  it('keeps a pre-#2012 digest fresh when only a room off the shot moved', async () => {
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
+      verandah: { description: 'new' },
+    });
+
+    expect(result.motionPrompt).toBe('fresh');
+  });
+
   it('stales on the person the shot shows, and names only them', async () => {
-    const result = await staleness('KYLIE sits on the milk crate.', {
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
       kylie: { distinguishingFeatures: 'new' },
       dazza: { physicalDescription: 'new' },
     });
@@ -1481,5 +1537,13 @@ describe('a two-person scene, one person per shot (#2012)', () => {
     expect(result.visualPrompt).toBe('untracked');
     expect(result.motionPrompt).toBe('stale');
     expect(result.causes).toEqual(['Character "Kylie": features']);
+  });
+
+  it('stales on the room the shot shows', async () => {
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
+      bathroom: { description: 'new' },
+    });
+
+    expect(result.motionPrompt).toBe('stale');
   });
 });

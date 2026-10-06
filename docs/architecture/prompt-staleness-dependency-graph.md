@@ -35,8 +35,9 @@ code now says "shot"; the file map in §7 is current.
    `referenceKeys` compare and the motion render's reference attachment use
    the same resolution. A digest stamped on the scene roster before #2012 is
    still accepted at verify until `LEGACY_HASH_UNTIL`, with every roster
-   character the prompt does not name read as its bible stood at the stamp,
-   so an off-shot edit cannot stale it. Still sheets keep the
+   character and location the prompt does not name read as its bible stood
+   at the stamp, so an off-shot edit to either cannot stale it (elements keep
+   no history, so an off-shot element still can). Still sheets keep the
    scene-tag fallback when the visual prompt names nobody, so an off-camera
    sheet can stale a still.
 2. **Cast bible fed into prompt generation.** `analyze-script-workflow.ts`

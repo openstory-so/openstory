@@ -118,9 +118,11 @@ What this buys:
   (`narrowShotPromptContext` takes a required `ShotPromptView`: the channel
   and its text). A digest stamped on the scene roster before #2012 is
   accepted at verify, when the stamp's spec is still the selected spec,
-  until `LEGACY_HASH_UNTIL`. Verify reads each roster character the prompt
-  does not name as its bible stood at the stamp (bible history), so the
-  digest goes stale only when someone the shot shows moves.
+  until `LEGACY_HASH_UNTIL`. Verify reads each roster character and
+  location the prompt does not name as its bible stood at the stamp (bible
+  history), so the digest goes stale only when someone or somewhere the
+  shot shows moves. Elements keep no history, so an off-shot element edit
+  still stales it.
 - **The hash edge stays a hash edge.** The sheet and prompt hashes read more
   than the bible (talent, style, model, the scene), so a pointer compare
   could not replace them without moving every stored digest.
