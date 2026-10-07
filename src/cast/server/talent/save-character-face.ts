@@ -43,7 +43,7 @@ export function talentSheetStoragePath(
 /** What the face of a character's selected sheet is, by provenance. */
 export type FaceDecision =
   /** A run of ours drew it from a bible with no talent: an AI face. */
-  | { kind: 'generated' }
+  | { kind: 'generated'; url: string }
   /** The ledger must say: cleared (not a person) or signed (a real person). */
   | { kind: 'ledger'; url: string }
   /** Refused, with the reason the user sees. */
@@ -71,7 +71,6 @@ export async function decideFace(
   character: {
     name: string;
     talentId: string | null;
-    talent: { name: string } | null;
     selectedSheetVersionId: string | null;
     sheetImageUrl: string | null;
   }
@@ -79,7 +78,7 @@ export async function decideFace(
   if (character.talentId) {
     return {
       kind: 'refused',
-      reason: `${character.name}'s face is already talent ${character.talent?.name ?? character.talentId}. Cast it from the library instead.`,
+      reason: `${character.name}'s face is already a library talent. Cast it from the library instead.`,
     };
   }
   const sheet = character.selectedSheetVersionId
@@ -111,7 +110,7 @@ export async function decideFace(
       reason: `${character.name}'s sheet was drawn from a talent. Cast that talent from the library instead.`,
     };
   }
-  return { kind: 'generated' };
+  return { kind: 'generated', url: sheet.url };
 }
 
 export async function saveCharacterFaceAsTalent(
@@ -171,7 +170,9 @@ export async function saveCharacterFaceAsTalent(
     talentName: newTalent.name,
     talentDescription: newTalent.description ?? undefined,
     referenceImageUrls: [],
-    uploadedSheetUrl: character.sheetImageUrl,
+    // The same row and string the gate checked and the carry covers: never
+    // the character's mirrored `sheetImageUrl`.
+    uploadedSheetUrl: face.url,
     uploadedSheetMetadata: characterToBible(character),
   };
   const workflowInput = {

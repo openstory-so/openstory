@@ -321,7 +321,10 @@ describe('carryUploadRights', () => {
       userId: before.at(-1)?.userId,
       attestedAt: before.at(-1)?.attestedAt,
       carriedByUserId: USER_ID,
+      userAgent: before.at(-1)?.userAgent,
     });
+    expect(rows.at(-1)?.carriedAt).toBeInstanceOf(Date);
+    expect(before.at(-1)?.carriedAt).toBeNull();
     // A copy, never a move: the source rows are untouched, and the source
     // URL still passes.
     expect(rows.slice(0, before.length)).toEqual(before);
@@ -351,5 +354,24 @@ describe('carryUploadRights', () => {
     await expect(
       carryUploadRights(scopedDb, url, `/r2/talent/${TEAM_ID}/tal1/x.png`)
     ).rejects.toBeInstanceOf(AttestationRequiredError);
+  });
+});
+
+describe('the ledger is keyed on the exact URL string', () => {
+  it('another form of the same URL (query string, CDN host) has no row and is refused', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    await recordLikenessFinding(scopedDb, [url], 'animated', request);
+    expect(await requireUploadRights(scopedDb, [url])).toEqual(
+      new Map([[url, { depictsRealPerson: false }]])
+    );
+    for (const other of [
+      `${url}?w=512`,
+      url.replace('/r2/', 'https://cdn.example/'),
+      url.toUpperCase(),
+    ]) {
+      await expect(
+        requireUploadRights(scopedDb, [other])
+      ).rejects.toBeInstanceOf(AttestationRequiredError);
+    }
   });
 });

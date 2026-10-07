@@ -10,8 +10,15 @@ import { AttestationRequiredError } from '@/platform/errors';
 import { asStub } from '@/test/as-stub';
 
 const requireUploadRights = vi.fn();
-const carryUploadRights = vi.fn(async () => undefined);
-const enqueueLibraryTalentSheet = vi.fn(async () => 'run-1');
+const carryUploadRights = vi.fn(
+  async (_db: unknown, _from: string, _to: string) => undefined
+);
+const enqueueLibraryTalentSheet = vi.fn(
+  async (
+    _db: unknown,
+    _params: { sheetId?: string; talentId?: string; workflowInput?: unknown }
+  ) => 'run-1'
+);
 
 vi.doMock('@/cast/server/upload-rights', () => ({
   requireUploadRights,
@@ -34,7 +41,6 @@ const character = {
   selectedSheetVersionId: 'sheet-1',
   sheetImageUrl: UPLOAD_URL,
   talentId: null as string | null,
-  talent: null as { name: string } | null,
   age: '',
   gender: '',
   ethnicity: '',
@@ -111,17 +117,17 @@ describe('decideFace: the branch table (default refuses)', () => {
     {
       name: 'character cast with a talent, sheet reused from it',
       sheet: upload(),
-      opts: { cast: { talentId: 'tal-0', talent: { name: 'Sienna' } } },
-      expect: { kind: 'refused', reason: /already talent Sienna/ },
+      opts: { cast: { talentId: 'tal-0' } },
+      expect: { kind: 'refused', reason: /already a library talent/ },
     },
     {
       name: 'character cast with a human talent, sheet generated from it',
       sheet: generated(),
       opts: {
-        cast: { talentId: 'tal-0', talent: { name: 'Sienna' } },
+        cast: { talentId: 'tal-0' },
         versionTalentId: 'tal-0',
       },
-      expect: { kind: 'refused', reason: /already talent Sienna/ },
+      expect: { kind: 'refused', reason: /already a library talent/ },
     },
     {
       name: 'no selected sheet',
@@ -259,5 +265,40 @@ describe('saveCharacterFaceAsTalent', () => {
     ).rejects.toThrow(/drawn from a talent/);
     expect(talentCreate).not.toHaveBeenCalled();
     expect(requireUploadRights).not.toHaveBeenCalled();
+  });
+});
+
+describe('one read of the selected sheet row feeds the gate, the carry and the copy', () => {
+  it("a character whose mirrored sheetImageUrl disagrees with the row: the row's url is gated, carried and copied; the mirror is never used", async () => {
+    requireUploadRights.mockResolvedValue(
+      new Map([[UPLOAD_URL, { depictsRealPerson: true }]])
+    );
+    await saveCharacterFaceAsTalent(
+      scopedDb(upload(), { cast: { sheetImageUrl: '/r2/stale/mirror.png' } }),
+      ctx,
+      args
+    );
+    expect(requireUploadRights).toHaveBeenCalledWith(expect.anything(), [
+      UPLOAD_URL,
+    ]);
+    expect(carryUploadRights.mock.calls[0]?.[1]).toBe(UPLOAD_URL);
+    expect(enqueueLibraryTalentSheet.mock.calls[0]?.[1]).toMatchObject({
+      workflowInput: expect.objectContaining({ uploadedSheetUrl: UPLOAD_URL }),
+    });
+  });
+
+  it('cast with a signed talent, reuse copy lands (run id set), recast away: the sheet still names that talent, refused', async () => {
+    await expect(
+      saveCharacterFaceAsTalent(
+        // The reuse copy carries the run id and the bible version of the cast.
+        scopedDb(generated('bible-cast'), {
+          cast: { talentId: null },
+          versionTalentId: 'tal-signed',
+        }),
+        ctx,
+        args
+      )
+    ).rejects.toThrow(/drawn from a talent/);
+    expect(talentCreate).not.toHaveBeenCalled();
   });
 });

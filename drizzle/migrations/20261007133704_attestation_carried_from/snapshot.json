@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "86879950-1dfa-48f6-9014-4960f2c67f26",
+  "id": "13db573b-3428-4c6f-adc9-caec941a4303",
   "prevIds": [
     "0a3b5582-1ea2-4c86-afc6-9177d868975a",
     "b233a63a-6386-4912-92ea-38aae1a7cf59"
@@ -9764,6 +9764,16 @@
       "default": null,
       "generated": null,
       "name": "carried_by_user_id",
+      "entityType": "columns",
+      "table": "upload_attestations"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "carried_at",
       "entityType": "columns",
       "table": "upload_attestations"
     },

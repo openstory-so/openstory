@@ -262,6 +262,8 @@ export const uploadAttestations = snakeCase.table(
     carriedByUserId: text().references(() => user.id, {
       onDelete: 'restrict',
     }),
+    /** When it was carried; `attestedAt` stays the original signing moment. */
+    carriedAt: integer({ mode: 'timestamp' }),
 
     ipAddress: text({ length: 45 }),
     userAgent: text({ length: 500 }),

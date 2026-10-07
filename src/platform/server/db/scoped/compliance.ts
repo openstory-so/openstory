@@ -140,6 +140,7 @@ export function createComplianceMethods(
             authorizationBasis: input.authorizationBasis ?? null,
             carriedFromId: input.carried?.fromId ?? null,
             carriedByUserId: input.carried ? userId : null,
+            carriedAt: input.carried ? new Date() : null,
             ...(input.carried ? { attestedAt: input.carried.attestedAt } : {}),
             ipAddress: input.ipAddress ?? null,
             userAgent: input.userAgent ?? null,
