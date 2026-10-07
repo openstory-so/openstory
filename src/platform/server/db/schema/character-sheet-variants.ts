@@ -45,9 +45,10 @@ export const characterSheetVariants = snakeCase.table(
       // delete these rows and a restrict would not stop it. Deletes remove
       // them in app code first (`deleteCharactersStatements`).
       .references(() => characters.id, { onDelete: 'no action' }),
-    // The look this sheet draws (#2015). No FK yet: adding one to an existing
-    // table is a rebuild, so #2017's hand-applied rebuild adds it. Null only on a row an older worker wrote during the #2015
-    // deploy: it is a sheet of the character's default look.
+    // The look this sheet draws (#2015). No FK: adding one to an existing
+    // table is a rebuild, and no migration has done it. Null only on a row
+    // an older worker wrote during the #2015 deploy: it is a sheet of the
+    // character's default look.
     lookId: text(),
 
     model: text({ length: 100 }).notNull(),
