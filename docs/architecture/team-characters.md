@@ -184,12 +184,16 @@ script then names her like any cast member.
   script id is `char_<name>` uniqued against every link of the sequence,
   removed ones included. The event is `character.attached`. Nothing is
   copied.
-- **Refused** unless she is in the library (`ValidationError`), and while a
-  live cast member of the sequence already has her name (`ConflictError`):
-  the text could not tell two ADAs apart. Two characters may still share a
-  plain name when analysis made them; nothing refuses that. Attaching a
-  character the sequence already casts is idempotent, and brings back a
-  removed link.
+- **Refused** unless she is in the library (`ValidationError`), unless the
+  sequence is the team's (`NotFoundError`, checked in the db method, not
+  only by its callers), and while a live cast member of the sequence already
+  has her name (`ConflictError`, `assertNameFree`): the text could not tell
+  two ADAs apart. A script-created SARAH already cast plus an attach of
+  library Sarah is refused with that message; nothing renames or picks one.
+  The same check runs before a removed link is brought back, by an attach or
+  by Restore. Two characters may still share a plain name when analysis made
+  them; nothing refuses that. Attaching a character the sequence already
+  casts is idempotent.
 - **Surfaces.** The script editor's `@` dropdown lists the library characters
   not cast here, most recently used first (`libraryMentionItems`, the
   `listTeam` order), as pick-only rows: picking one inserts her name in
@@ -232,11 +236,36 @@ script then names her like any cast member.
   talent matching: her talent is on the pinned version.
 - **A character only this sequence holds** (not in the library, cast nowhere
   else) is re-analysed as before: bible rewritten, looks synced by name,
-  unused analysis-made looks retired. `shared` is read at the trigger, so a
-  character attached elsewhere mid-run is still this run's to rewrite.
-- **Plain names.** Scene tags are still by name (`reconcileSceneTags`), so two
-  cast characters with one plain name are both tagged where it appears.
-  Unchanged here.
+  unused analysis-made looks retired.
+- **The db layer decides, every time.** `shared` on the payload only shapes
+  the prompt. `characters.create` and `characterLooks.syncFromAnalysis` ask
+  `heldElsewhere` (the library flag, or a live link in another unarchived
+  sequence) on every call: a held character's live link is returned as it
+  is and her looks are linked (`linkFromAnalysis`); her **removed** link is
+  left removed, and an entry that reused its script id becomes a new
+  character under the next free id (`char_001_2`). So a character attached
+  elsewhere, or put in the library, between the click and the write is
+  still safe, and so is one the model reached through a link the snapshot
+  did not list.
+- **The model must echo the cast.** Before anything is written, scene-split
+  checks the reply against the block (`castEchoProblem`): an entry that
+  carries a cast id with another name, or a cast character's name under a
+  new id, fails the run with a plain message ("Run it again"). The prompt
+  says a script character with a cast character's name IS that character.
+- **Plain names, where two characters share one.** Analysis may make two
+  "Sarah"s, and a hand-made one may sit beside an analysed one. What is
+  keyed on the character and what is not:
+  - Look picks: keyed on the character's tag, which `bibleFromWire` makes
+    unique per sequence (`sarah`, `sarah_2`; the attached cast's tags are
+    reserved), so two characters' picks never overwrite each other.
+  - Dialogue speakers: a line names a speaker by text and has no id, so
+    `matchSpeaker` refuses two whole-name matches (`ConflictError`, "Rename
+    one so dialogue knows who speaks") rather than taking the first. The
+    generation plan and dialogue audio surface it.
+  - Scene tags: `reconcileSceneTags` scans each scene's text for the name,
+    so both characters are tagged wherever the name appears, and both
+    sheets reach those shots. A known limit until a scene tag can name the
+    cast link; rename one of them.
 - **Save as talent** is what Add to Library did before: it copies the
   character, as one sequence casts it, into a new talent
   (`saveCharacterAsTalentFn`). It is how a character reaches the recast

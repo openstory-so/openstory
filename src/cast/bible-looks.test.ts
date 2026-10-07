@@ -57,7 +57,8 @@ describe('bibleFromWire', () => {
     const { characterBible, sceneLooks } = bibleFromWire(
       [mia, wire({ characterId: 'char_sam' })],
       sceneIdForLine,
-      30
+      30,
+      new Set()
     );
     expect(characterBible[0]?.looks).toEqual([
       {
@@ -85,7 +86,8 @@ describe('bibleFromWire', () => {
     const { characterBible, sceneLooks } = bibleFromWire(
       [wire({ characterId: 'char_sam', standardClothing: 'overalls' })],
       sceneIdForLine,
-      30
+      30,
+      new Set()
     );
     expect(characterBible[0]?.looks).toEqual([
       {
@@ -116,7 +118,8 @@ describe('bibleFromWire', () => {
         }),
       ],
       sceneIdForLine,
-      30
+      30,
+      new Set()
     );
     expect(characterBible[0]?.standardClothing).toBe('jeans');
     expect(characterBible.flatMap((c) => c.looks.map((l) => l.lookId))).toEqual(
@@ -142,7 +145,8 @@ describe('bibleFromWire', () => {
         },
       ],
       sceneIdForLine,
-      30
+      30,
+      new Set()
     );
     expect(sceneLooks).toEqual({ scene_2: { mia: 'char_mia:gala_gown' } });
   });
@@ -157,7 +161,8 @@ describe('bibleFromWire', () => {
         }),
       ],
       sceneIdForLine,
-      30
+      30,
+      new Set()
     );
     expect(characterBible[0]).toMatchObject({
       standardClothing: 'grey suit',
@@ -178,7 +183,8 @@ describe('bibleFromWire', () => {
         }),
       ],
       sceneIdForLine,
-      30
+      30,
+      new Set()
     );
     expect(characterBible[0]?.looks.map((look) => look.name)).toEqual([
       'Day',
@@ -252,5 +258,34 @@ describe('wearing a look', () => {
     expect(wornStyling(stored)).toBe('');
     expect(withBibleLooks(stored).looks[0]?.clothing).toBe('office suit');
     expect(wearBibleLooks([stored], { mia: 'L2' })[0]).toBe(stored);
+  });
+});
+
+describe('bibleFromWire with two characters of one tag (#2050)', () => {
+  it('numbers the repeat so both keep their own picks, and a reserved tag counts', () => {
+    const twin = wire({
+      characterId: 'char_002',
+      name: 'Mia',
+      consistencyTag: 'mia',
+      looks: [
+        { name: 'Default', clothing: 'jeans', styling: '', lines: [] },
+        { name: 'Rain', clothing: 'mac', styling: '', lines: [12] },
+      ],
+    });
+    const { characterBible, sceneLooks } = bibleFromWire(
+      [mia, twin, wire({ characterId: 'char_003', consistencyTag: 'sam' })],
+      sceneIdForLine,
+      30,
+      new Set(['sam'])
+    );
+    expect(characterBible.map((c) => c.consistencyTag)).toEqual([
+      'mia',
+      'mia_2',
+      'sam_2',
+    ]);
+    expect(sceneLooks.scene_2).toEqual({
+      mia: 'char_mia:gala_gown',
+      mia_2: 'char_002:rain',
+    });
   });
 });

@@ -3,6 +3,7 @@
  */
 
 import type { CharacterBibleEntry, Scene } from '@/shots/scene-analysis.schema';
+import { ConflictError } from '@/platform/errors';
 
 /** The preview fields these take helpers need; matches `VoicePreview`. */
 type VoicePreviewTake = {
@@ -104,6 +105,8 @@ export function speakingCharacterIds(
  * character is in the list (the usual narrator). Matching everyone would
  * synthesise the same line in every voice. A whole-name match wins over a
  * shared token ("Sarah" over "Sarah's Mother"), whatever the cast order.
+ * Two cast characters with the cue's name (#2050) are refused, not
+ * guessed between: a line has no id to say which one speaks.
  */
 export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
   speaker: string,
@@ -113,8 +116,16 @@ export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
     const narrators = characters.filter((character) => character.voiceOnly);
     return narrators.length === 1 ? narrators[0] : undefined;
   }
+  const whole = characters.filter((character) =>
+    sameName(speaker, character.name)
+  );
+  if (whole.length > 1) {
+    throw new ConflictError(
+      `${whole.length} cast characters are named "${speaker.trim()}". Rename one so dialogue knows who speaks.`
+    );
+  }
   return (
-    characters.find((character) => sameName(speaker, character.name)) ??
+    whole[0] ??
     characters.find((character) => sharesToken(speaker, character.name))
   );
 }

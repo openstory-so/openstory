@@ -396,3 +396,15 @@ describe('speakersWithoutVoice (#1773)', () => {
     expect(speakersWithoutVoice([line('Stranger')], [aria, ben])).toEqual([]);
   });
 });
+
+describe('matchSpeaker with two cast characters of one name (#2050)', () => {
+  it('refuses to guess which one speaks', () => {
+    const cast = [
+      { name: 'Sarah', voiceOnly: false },
+      { name: 'sarah', voiceOnly: false },
+    ];
+    expect(() => matchSpeaker('SARAH', cast)).toThrow(
+      '2 cast characters are named "SARAH"'
+    );
+  });
+});

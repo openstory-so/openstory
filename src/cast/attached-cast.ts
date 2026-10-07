@@ -34,6 +34,42 @@ export function formatCastBlock(cast: readonly AttachedCastSnapshot[]): string {
 }
 
 /**
+ * What the model got wrong about the cast, or null (#2050). An entry that
+ * echoes a cast id must carry that character's name; an entry with a cast
+ * character's name must echo the id, not invent one. Either way the run
+ * fails here, visibly, rather than making a second same-named character or
+ * quietly turning someone else into the attached one.
+ */
+export function castEchoProblem(
+  wire: readonly { characterId: string; name: string }[],
+  cast: readonly AttachedCastSnapshot[]
+): string | null {
+  const byId = new Map(cast.map((c) => [c.entry.characterId, c.entry.name]));
+  const byName = new Map(
+    cast.map((c) => [key(c.entry.name), c.entry.characterId])
+  );
+  for (const entry of wire) {
+    const castName = byId.get(entry.characterId);
+    if (castName !== undefined && key(castName) !== key(entry.name)) {
+      return `The analysis gave cast id ${entry.characterId} (${castName}) to "${entry.name}". Run it again.`;
+    }
+    const castId = byName.get(key(entry.name));
+    if (castName === undefined && castId !== undefined) {
+      return `The analysis made a new "${entry.name}" instead of using the cast character ${castId}. Run it again.`;
+    }
+  }
+  return null;
+}
+
+/** The attached cast's tags: what a new entry's tag must not repeat. */
+export const castTags = (cast: readonly AttachedCastSnapshot[]) =>
+  new Set(
+    cast.map(
+      (c) => c.entry.consistencyTag || key(c.entry.name).replace(/\s+/g, '_')
+    )
+  );
+
+/**
  * The model's bible with each shared cast character replaced by her snapshot:
  * the pinned bible fields, her looks (by their `character_looks` ids) and,
  * after them, any look the model named that she does not have (its slug id,

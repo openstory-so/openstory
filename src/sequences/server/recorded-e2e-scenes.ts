@@ -185,7 +185,8 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   const analysed = bibleFromWire(
     bibles.characterBible,
     sceneIdForLine,
-    script.split('\n').length
+    script.split('\n').length,
+    new Set()
   );
   const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
     characterBible: analysed.characterBible,

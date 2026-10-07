@@ -94,17 +94,29 @@ export function bibleFromWire(
   wire: readonly CharacterBibleWireEntry[],
   sceneIdForLine: (lineNumber: number) => string,
   /** Lines in the script: a `lines` entry outside 1..lineCount is dropped. */
-  lineCount: number
+  lineCount: number,
+  /**
+   * Tags already in use (the attached cast's, #2050). Two characters may
+   * share a plain name, but a pick is filed under the character's tag, so
+   * two of one tag would overwrite each other's picks: a repeat gets a
+   * number (`sarah`, `sarah_2`), as a repeated look name does.
+   */
+  reservedTags: ReadonlySet<string>
 ): {
   characterBible: CharacterBibleEntry[];
   sceneLooks: Record<string, Record<string, string>>;
 } {
   const sceneLooks: Record<string, Record<string, string>> = {};
-  const characterBible = wire.map((entry) => {
-    const given = entry.looks;
+  const tags = new Set(reservedTags);
+  const characterBible = wire.map((given) => {
+    const base = canonicalBibleTag(given);
+    let tag = base;
+    for (let n = 2; tags.has(tag); n++) tag = `${base}_${n}`;
+    tags.add(tag);
+    const entry = { ...given, consistencyTag: tag };
     const slugs = new Set<string>();
     const names = new Set<string>();
-    const looks = given.map((look, index) => {
+    const resolved = given.looks.map((look, index) => {
       // Two looks of one character never share a name: the name is how a
       // re-analysis finds the look again, so a repeat gets a number.
       const baseName = look.name.trim() || DEFAULT_LOOK_NAME;
@@ -142,7 +154,7 @@ export function bibleFromWire(
         styling: look.styling,
       };
     });
-    return withBibleLooks({ ...entry, looks });
+    return withBibleLooks({ ...entry, looks: resolved });
   });
   return { characterBible, sceneLooks };
 }

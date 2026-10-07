@@ -61,7 +61,12 @@ import {
   queuedBeforeCast,
   queuedBeforeLooks,
 } from '@/cast/server/workflows/sheet-snapshots';
-import { applyAttachedCast, formatCastBlock } from '@/cast/attached-cast';
+import {
+  applyAttachedCast,
+  castEchoProblem,
+  castTags,
+  formatCastBlock,
+} from '@/cast/attached-cast';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -889,11 +894,16 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       throw queuedBeforeLooks();
     }
     // A shared cast character keeps her pinned bible and looks (#2050); the
-    // model's entry only says which looks she wears and which are new.
+    // model's entry only says which looks she wears and which are new. An
+    // entry that mislabels the cast fails the run here, before anything is
+    // written.
+    const echo = castEchoProblem(biblesResult.characterBible, input.cast);
+    if (echo) throw new NonRetryableError(echo, 'WorkflowValidationError');
     const wire = bibleFromWire(
       biblesResult.characterBible,
       sceneIdForLine,
-      script.split('\n').length
+      script.split('\n').length,
+      castTags(input.cast)
     );
     const { characterBible, sceneLooks } = applyAttachedCast(
       wire.characterBible,
