@@ -961,7 +961,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         buildEventInsert(db, {
           sequenceId,
           actorId: opts.actorId,
-          kind: 'character.created',
+          kind: 'character.attached',
           targetType: 'character',
           targetId: id,
           summary: `Added ${name} from the library`,

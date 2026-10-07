@@ -1937,7 +1937,7 @@ describe('team characters (#2017)', () => {
     expect(
       otherLooks.every((look) => look.selectedSheetVersionId === null)
     ).toBe(true);
-    expect(await eventKinds()).toContain('character.created');
+    expect(await eventKinds()).toContain('character.attached');
 
     // Idempotent: the same link comes back.
     expect(await chars().attach(other, created.id, { actorId })).toMatchObject({
