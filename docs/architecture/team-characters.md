@@ -439,7 +439,9 @@ updateContinuityStatements`): a part-way failure leaves no scene pointing
 reference-provenance.ts`), so a clip stamped before the copy stays
     fresh, and a sheet re-selected on the copy still stales it. Only the
     immediate original is aliased: a copy of a copy answers for the copy it
-    was made from, not the first original.
+    was made from, not the first original, so a clip stamped before the
+    first copy reads stale after a second copy in the same sequence. Rare,
+    and visible as an ordinary "Inputs changed", not silent.
   - **A pre-#1419 default sheet** (the row keyed to the original's id, no
     pointer) would be lost, since the copy's default look is keyed to the
     copy's id. That one row is carried across under the copy's id, same

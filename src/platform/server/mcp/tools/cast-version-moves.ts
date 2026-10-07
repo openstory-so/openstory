@@ -34,6 +34,7 @@ const previewRow = z.object({
   title: z.string(),
   behind: z.boolean(),
   moved: z.array(z.string()),
+  looksToAdd: z.number(),
   shotCount: z.number(),
   sheetCount: z.number(),
   costMicros: z.number().nullable(),

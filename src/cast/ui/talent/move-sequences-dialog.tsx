@@ -174,6 +174,9 @@ export const MoveSequencesDialog: React.FC<MoveSequencesDialogProps> = ({
                             row.moved.length > 0
                               ? `Changes ${row.moved.join(', ')}`
                               : null,
+                            row.looksToAdd > 0
+                              ? `Adds ${row.looksToAdd === 1 ? 'a look' : `${row.looksToAdd} looks`}`
+                              : null,
                             shots(row.shotCount),
                             cost,
                           ]

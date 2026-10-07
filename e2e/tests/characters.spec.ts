@@ -15,6 +15,7 @@ import {
 
 /** Lazy route chunk + loader on a cold dev server. */
 const HYDRATION_TIMEOUT = 15_000;
+const SHEET_URL = '/api/test/image?w=512&h=512&label=sheet';
 
 let sequence: TestSequence;
 let character: TestCharacter;
@@ -49,10 +50,14 @@ test.describe('Characters page', () => {
       testUser.id,
       `E2E Characters ${suffix}`
     );
+    // The sheet is the pre-#1419 shape (a row keyed to the character's id,
+    // no pointer): what a one-off copy has to carry across.
     character = await createTestCharacter(
       sequence.id,
       'char_001',
-      `Mia ${suffix}`
+      `Mia ${suffix}`,
+      null,
+      { sheetImageUrl: SHEET_URL }
     );
   });
 
@@ -196,7 +201,8 @@ test.describe('Characters page', () => {
         before,
         { timeout: HYDRATION_TIMEOUT }
       );
-      // The move preview is the dialog's own, opened and closed, nothing moved.
+      // Move sequences: this one is ticked (behind); moving it is a pointer
+      // write, so the age follows and the notice goes.
       await page
         .getByRole('button', { name: 'Move other sequences…' })
         .click({ timeout: HYDRATION_TIMEOUT });
@@ -204,15 +210,49 @@ test.describe('Characters page', () => {
       await expect(
         moveDialog.getByRole('checkbox', { name: new RegExp(sequence.title) })
       ).toBeChecked();
-      await moveDialog.getByRole('button', { name: 'Cancel' }).click();
-      // Update this sequence: a pointer write, so the age follows.
-      await page.getByRole('button', { name: /^Update this sequence/ }).click();
+      await moveDialog.getByRole('button', { name: 'Move 1 sequence' }).click();
+      await expect(page.getByText('Moved 1 sequence')).toBeVisible();
       await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
         '40s'
       );
       await expect(
         page.getByRole('button', { name: /^Update this sequence/ })
       ).toHaveCount(0);
+
+      // Behind again after a second edit; Update this sequence is the same
+      // pointer write for one sequence.
+      await page.goto(`/sequences/${other.id}/cast/${character.id}`);
+      await expect(age).toBeEditable({ timeout: HYDRATION_TIMEOUT });
+      await age.fill('50s');
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.getByText('Character saved')).toBeVisible();
+      await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
+      await page
+        .getByRole('button', { name: /^Update this sequence/ })
+        .click({ timeout: HYDRATION_TIMEOUT });
+      await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
+        '50s'
+      );
+      await expect(
+        page.getByRole('button', { name: /^Update this sequence/ })
+      ).toHaveCount(0);
+
+      // Make a one-off copy: the copy's page shows the original's sheet at
+      // once (the pre-#1419 row carried across), nothing generated.
+      await page.getByRole('button', { name: 'Make a one-off copy' }).click();
+      await page
+        .getByRole('alertdialog')
+        .getByRole('button', { name: 'Make a copy' })
+        .click();
+      await expect(
+        page.getByText("is now this sequence's own copy")
+      ).toBeVisible();
+      await expect(page).not.toHaveURL(new RegExp(character.id));
+      await expect(
+        page.getByRole('img', { name: character.name }).first()
+      ).toHaveAttribute('src', new RegExp('label=sheet'), {
+        timeout: HYDRATION_TIMEOUT,
+      });
     } finally {
       await cleanupSequenceById(other.id, other.styleId);
     }

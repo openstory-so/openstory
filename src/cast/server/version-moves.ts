@@ -37,8 +37,10 @@ export type VersionMovePreviewRow = {
   title: string;
   /** Pinned at the current versions already: nothing to move. */
   behind: boolean;
-  /** Plain words for what the move changes: "age", "clothing (Gala)", "voice", "talent", "looks added". */
+  /** Plain words for what the move changes: "age", "clothing (Gala)", "voice", "talent". */
   moved: string[];
+  /** Live looks the sequence has no cast look for yet: the move adds them, sheet-less. */
+  looksToAdd: number;
   /** Shots wearing the character in that sequence: the re-render upper bound. */
   shotCount: number;
   /** Sheets the move may redraw: every look whose inputs move, and every look added. */
@@ -77,6 +79,7 @@ export async function previewVersionMove(
         title: cast.title,
         behind: false,
         moved: [],
+        looksToAdd: 0,
         shotCount: 0,
         sheetCount: 0,
         costMicros: ZERO_MICROS,
@@ -118,7 +121,6 @@ export async function previewVersionMove(
     // when a sheet input of the bible moves (a pointer-less legacy sheet
     // counts: it has a sheet to redraw), and every look the move adds.
     let sheetCount = cast.looksToAdd;
-    if (cast.looksToAdd > 0) moved.push('looks added');
     for (const look of character.looks) {
       if (look.deletedAt) continue;
       let lookTouched = false;
@@ -182,6 +184,7 @@ export async function previewVersionMove(
       title: cast.title,
       behind: true,
       moved: [...new Set(moved)],
+      looksToAdd: cast.looksToAdd,
       shotCount: shotIds.length,
       sheetCount,
       costMicros,
