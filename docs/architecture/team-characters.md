@@ -4,10 +4,10 @@ A character belongs to the team. A sequence (an episode) never copies one: it
 holds a **cast link** that pins the version of the character it uses. A lead
 who is in 100 episodes is one character, with one set of looks.
 
-This doc covers the first step: the tables, the backfill, and every read and
-write going through the cast link. Nothing a user sees has changed yet. The
-library, moving an episode to a newer version, and analysis that reads the
-team roster come in later PRs.
+This doc covers the tables, the backfill, every read and write going through
+the cast link, the Characters page and the library flag. Still to come:
+attaching a library character to a sequence (#2050), moving an episode to a
+newer version, and analysis that reads the attached cast.
 
 ## Data
 
@@ -68,21 +68,88 @@ returned.
 Writes key on `castId` / `castLookId` from the row they just read, never on
 the character or look id alone.
 
-**Not done yet:** the methods that take only a character id or a look id
-(`getById`, `updateBible`, `softDelete`, `claimSheet`, …) resolve the
-character's one cast link. They **throw** when a character has more than one
-(`onlyLink` / `oneLinkEach` in `src/cast/server/db/sequence-cast.ts`), so a
-second link cannot be read or written through the wrong episode. A sequence's
-own list throws too, because looks are still read by character id. The PR
-that lets a second sequence cast a character must give those methods the
-sequence first.
+**A method takes the sequence when its answer depends on it.** One character
+can be cast in several sequences, so "the character's cast link" is not a
+thing. The sequence is a required first argument, never a default:
+
+- `characters`: `getById`, `getByIds`, `updateBible`, `softDelete`,
+  `restore`, and the lists.
+- `characterLooks`: `getById`, `ensureDefault`, `listByCharacter(s)`,
+  `syncFromAnalysis`, `create`, `update`, `selectVersion`, `remove`,
+  `restore`, `claimSheet`, `failSheetClaim`.
+- `characterSheetVariants`: `applyConvergent`, `select`, `promoteIfPending`.
+
+A sequence links a character once (unique index) and a cast holds a look
+once, so the sequence and an id name one row.
+
+**About the character itself, with no sequence:** these work for a character
+in no sequence, one, or many.
+
+- The voice: `updateVoice`, `stampPreviewUnusable`, `selectVoiceVersion`,
+  the voice-claim methods and `getVoice`. They return the voice state, not a
+  cast read. The voice workflow's live read is `liveRead.characters.getVoice`.
+- The library flag: `setInLibrary`.
+- The team reads: `listTeam`, `getTeamCharacter` (§ Characters page).
+- A look's definition history (`listVersions`) and a sheet variant by id.
+
+What follows from one character in two sequences:
+
+- **A bible or look edit from one sequence** moves that sequence's pin and
+  the current pointer. The other sequence keeps what it pinned.
+- **A look added from one sequence** has a cast look in that sequence only.
+  Look names are unique among the looks a sequence uses.
+- **Removing a look** is the look's own (`character_looks.deletedAt`), so it
+  is refused while a scene of any sequence that uses the look wears it.
+- **The voice goes only when nothing holds the character.** Removing a
+  character from a sequence, or archiving the sequence, releases the saved
+  voice unless the library or a live link in another sequence still holds
+  it (`characters.getHeldElsewhere`).
+- **Sheet variants are the look's**, with no sequence on the row. A sheet
+  parked as divergent by one sequence's run is listed for every sequence
+  that uses the look. Not changed here.
+
+Nothing in the app creates a second link yet. The db test
+`one character in two sequences …` (`sequence-cast-crud.test.ts`) writes one
+by hand and runs list, get, edit, sheet claim, landing, remove and sequence
+delete through both.
 
 A link whose pinned bible version does not exist throws on read. The pin has
 no FK, so this is the check.
 
 The looks and sheet-variant modules are scoped to the team like the
-characters module. The voice-version methods are not yet: they are reached
-only after the character has been read.
+characters module. The voice writes that read the character first
+(`updateVoice`, `selectVoiceVersion`, `createPendingVoiceClaim`, `getVoice`)
+are too. The methods keyed on a voice version id alone are not yet.
+
+## Characters page and the library
+
+- **`/characters`** is on the sidebar. Its Characters tab lists the team's
+  characters (`?show=all|library`); its Talent tab is the talent library.
+  `/talent` redirects to `/characters?tab=talent`; `/talent/$id` is
+  unchanged. Signed out, the page opens on the Talent tab (the public
+  catalogue) and the Characters tab asks to sign in.
+- **The list** is `characters.listTeam`: one grouped read over the cast
+  links, with no stored column.
+  - Order: the most recently changed sequence casting the character
+    (`max(sequences.updated_at)`), then how many sequences cast it.
+  - A removed link and an archived sequence do not count.
+  - A character nothing casts and the library does not hold is left out.
+    Its rows stay; nothing deletes them yet.
+  - The picture is the default look's sheet as the latest sequence that has
+    one selected it.
+  - Not paged. The grid virtualizes its rows.
+- **`/characters/$id`** shows the sequences that cast the character and
+  embeds the sequence detail view (`CharacterDetailView`) for the one in
+  `?sequence=`, or the latest. Looks, sheets and edits there are that
+  sequence's. A character no sequence casts shows its name and description
+  only: there is no pin to edit through.
+- **Shot count** is on that page only. A shot is matched to a character by
+  scene tags in memory, one sequence at a time
+  (`getTeamCharacterShotCountsFn`).
+- **Add to Library** sets `characters.in_library`; Remove from Library
+  clears it. Nothing is copied and no talent is made. Talent rows made by
+  the old copy are left as they are.
+- MCP: `list_library_characters`.
 
 ## Writes
 

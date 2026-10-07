@@ -1707,6 +1707,7 @@ describe('Studio, Gallery and library reads', () => {
       ['get_library_location', { id: libraryLocationId }],
       ['list_styles', {}],
       ['get_style', { id: galleryStyleId }],
+      ['list_library_characters', {}],
       ['list_gallery_samples', {}],
       ['list_generated_assets', {}],
       ['get_generated_asset', { id: assetId }],

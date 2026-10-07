@@ -9,7 +9,7 @@ The **Talent Library** is a team-wide collection of character references that ca
 
 ## Accessing the Talent Library
 
-Navigate to **Talent** from the main navigation. The library shows all talent as a grid of cards.
+Open **Characters** from the main navigation and pick the **Talent** tab. The library shows all talent as a grid of cards.
 
 ## Adding Talent
 

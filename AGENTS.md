@@ -246,6 +246,12 @@ changing the area, and update it in the same PR.**
   return the cast dressed. A default look's id is its character's id. Look
   sheets land only through `characterLooks.claimSheet`, which is conditional
   on the snapshot. Never read the `legacy*` sheet or clothing columns.
+- **Team characters (#2017)** — `docs/architecture/team-characters.md`. One
+  character can be cast in several sequences. A character or look method
+  whose answer depends on the sequence takes it as a required first
+  argument; never resolve "the character's cast link". The voice and the
+  library flag are the character's own. A sequence letting a character go
+  releases its voice only when `characters.getHeldElsewhere` is false.
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
   character belongs to the team; a sequence uses it through a `sequence_cast`
   link that pins its bible version, and `sequence_cast_looks` pins each look
