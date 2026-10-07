@@ -1,4 +1,5 @@
 import { Button } from '@/ui/shadcn/button';
+import { useHydrated } from '@/ui/use-hydrated';
 
 type LibraryFiltersProps<T extends string> = {
   current: T;
@@ -12,6 +13,10 @@ export function LibraryFilters<T extends string>({
   filters,
   onSelect,
 }: LibraryFiltersProps<T>) {
+  // Server-rendered before its handler exists: a click then does nothing
+  // (the Characters e2e clicked "All Characters" early). Disabled until
+  // hydrated, like the library button; Playwright's click waits for it.
+  const hydrated = useHydrated();
   return (
     <div className="flex items-center gap-2">
       {filters.map((filter) => (
@@ -20,6 +25,7 @@ export function LibraryFilters<T extends string>({
           variant={current === filter.value ? 'default' : 'outline'}
           size="sm"
           aria-pressed={current === filter.value}
+          disabled={!hydrated}
           onClick={() => onSelect(filter.value)}
         >
           {filter.label}
