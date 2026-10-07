@@ -151,8 +151,37 @@ against the talent's default sheet.
   redraws it (credits), with the shots that wear it. No legacy hash shape
   keeps them fresh.
 
+- **Sheet reuse by hash (#2017).** When a plan owes a look's sheet,
+  `buildPlanReferences` first asks `characterSheetVariants.findReusable`
+  for a finished sheet of the SAME look (same character, same look id) by
+  the same image model with the same input hash, from any sequence of the
+  team. The hash covers the pinned bible fields, the look's clothing and
+  styling, the cast talent, the style and the image model, and — on a
+  non-default look — the default look's selected sheet version, so a
+  series gets reuse only while it keeps its style and model fixed. A row
+  that is parked (divergent), discarded, failed or still generating is not
+  a candidate; a sheet stamped in an older hash shape is simply missed,
+  which costs a draw and never a wrong sheet. A match wins over the talent
+  copy. A default that is reused gives its other looks their face at plan
+  time, so they are hashed and checked too and a whole cast reuses.
+  The plan lists it in `reusedSheets`, not `characterSheets`, so the
+  wave's price, the fresh reservation and the Update-all preview count it
+  at zero (the preview says "1 sheet reused"). The footer's count line and
+  the continue quote still count it as a reference to make.
+  **Adopt by pointer, never by copy.** The run takes the ordinary claim,
+  then `characterSheetVariants.adoptIfPending` points this sequence's cast
+  look at the existing row in one guarded UPDATE — claim still held, row
+  still finished and matching. One row, referenced by two cast looks; the
+  strip lists it in both (`ofCastLook` includes the selected row), neither
+  can discard it from under the other, and the other sequence's shots do
+  not move. The same URL is what saves the BytePlus portrait slot. A
+  refused adopt (claim moved, row discarded or changed) fails the sheet,
+  clears its claim and holds the shots that wear it; it never draws
+  instead. An explicit Regenerate never reuses: the user asked for a draw.
+
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
-stored URL). See `byteplus-ark.md` for slot pressure.
+stored URL), so reuse is also what keeps a series inside the ~45-slot pool:
+`byteplus-ark.md` has the numbers.
 
 ## Hashes and staleness
 

@@ -340,7 +340,11 @@ retaining actual artifact claims. Frozen stop-at, switches and model choices
 remain authoritative. The reservation grows from this materialized plan before
 rendering. Missing first character sheets reuse a compatible matched talent
 sheet, with zero generation cost; explicit regeneration still renders the edit.
-Voice-only cast never owes a sheet.
+A look's sheet that already exists finished somewhere in the team with the
+same input hash — same bible, look, talent, style and image model — is
+pointed at, not drawn, and counted at zero too (#2017; `PlanReferences.
+reusedSheets`, `character-looks.md`). A series keeps that reuse only while
+it keeps its style and model fixed. Voice-only cast never owes a sheet.
 
 Analysis persists each shot's spec as its first `shot_spec_versions` row
 (#1915), and the visual and motion directions derived from it as ordinary
