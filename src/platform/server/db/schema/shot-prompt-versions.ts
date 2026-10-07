@@ -15,6 +15,7 @@
  * § prompt versioning and docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { PromptInputVersions } from '@/shots/input-versions';
 import type { ShotDialogueSectionSource } from './shot-dialogue-sections';
 import type {
   MotionAudio,
@@ -186,6 +187,8 @@ export const shotPromptVersions = snakeCase.table(
     // SHA-256 of the upstream context that produced an AI prompt; null for
     // user-edits since they have no upstream input surface.
     inputHash: text(),
+    // The version ids the run read (#1862); see `frame_prompt_versions`.
+    inputVersions: text({ mode: 'json' }).$type<PromptInputVersions>(),
 
     // Analysis model that produced the prompt (null for user-edits).
     analysisModel: text({ length: 100 }),

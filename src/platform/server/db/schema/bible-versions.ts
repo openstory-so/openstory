@@ -67,6 +67,12 @@ export const characterBibleVersions = snakeCase.table(
     // version. Null when uncast. Not a bible field: it is not authored text
     // and no bible diff names it.
     talentId: text().references(() => talent.id, { onDelete: 'set null' }),
+    // Which `talent_versions` row the cast was made from (#1862). No FK, like
+    // the other version pointers. Null when uncast, and on a row written
+    // before talent history whose talent is gone; the backfill fills every
+    // other old row with the talent's backfill version (id = the talent's).
+    // "The talent moved since the cast" is this ≠ `talent.selectedVersionId`.
+    talentVersionId: text(),
     source: text({ enum: BIBLE_VERSION_SOURCES }).notNull(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

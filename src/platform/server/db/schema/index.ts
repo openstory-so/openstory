@@ -85,7 +85,7 @@ import { locationSheets } from './location-sheets';
 // Sequence Elements (user-uploaded reference images)
 import { sequenceElements } from './sequence-elements';
 
-import { talent, talentMedia, talentSheets } from './talent';
+import { talent, talentMedia, talentSheets, talentVersions } from './talent';
 
 import { audio, StyleSampleVideoSchema, styles, vfx } from './libraries';
 
@@ -424,7 +424,7 @@ export type {
 } from './sequence-elements';
 
 // Talent Library
-export { talent, talentMedia, talentSheets };
+export { talent, talentMedia, talentSheets, talentVersions };
 
 export type {
   NewTalent,
@@ -432,9 +432,13 @@ export type {
   NewTalentSheet,
   Talent,
   TalentMediaRecord,
+  TalentLikeness,
   TalentSheet,
+  TalentVersion,
+  TalentVersionSource,
   TalentWithSheets,
 } from './talent';
+export { TALENT_VERSION_FIELDS } from './talent';
 
 // Library Resources
 export { audio, StyleSampleVideoSchema, styles, vfx };
@@ -600,6 +604,7 @@ export const schema = {
   talent,
   talentSheets,
   talentMedia,
+  talentVersions,
 
   // Libraries
   styles,
