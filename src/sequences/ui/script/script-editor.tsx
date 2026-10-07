@@ -26,6 +26,8 @@ type ScriptEditorProps = {
    * elements' tokens (#1079); pass the full sequence sets once analysed.
    */
   mentionItems?: MentionItem[];
+  /** Map the chosen `@` row to the item to insert; the composer attaches a library character here (#2050). */
+  onMentionSelect?: (item: MentionItem) => MentionItem;
 };
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -40,6 +42,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   showCharacterCount = true,
   loading = false,
   mentionItems,
+  onMentionSelect,
 }) => {
   const handleChange = useCallback(
     (markdown: string) => {
@@ -79,6 +82,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           onValueChange={handleChange}
           onKeyDown={handleKeyDown}
           mentionItems={mentionItems}
+          onMentionSelect={onMentionSelect}
           placeholder={placeholder}
           disabled={disabled}
           aria-invalid={hasError}

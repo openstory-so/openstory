@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMentionItems,
   filterMentionItems,
+  libraryCharacterIdOf,
+  libraryMentionItems,
   mentionInsertAttrs,
   SECTION_ORDER,
   type MentionCharacterInput,
   type MentionElementInput,
   type MentionLocationInput,
 } from './mention-items';
+import { splitMentions } from '@/ui/text-editor/mention/mention-match';
 
 const noopCharacter: MentionCharacterInput = {
   id: 'c1',
@@ -209,5 +212,46 @@ describe('mentionInsertAttrs', () => {
       section: 'elements',
       label: 'BONDI_SCREEN',
     });
+  });
+});
+
+describe('library characters in the @ picker (#2050)', () => {
+  const library = [
+    { id: 'lib1', name: 'Ada Lovelace', sheetImageUrl: null },
+    { id: 'lib2', name: 'Bo', sheetImageUrl: 'https://x.test/bo.png' },
+  ];
+
+  it('offers library characters the sequence does not cast, as pick-only cast rows', () => {
+    const items = libraryMentionItems(library, new Set(['lib2']));
+    const [item] = items;
+    if (!item) throw new Error('expected a library row');
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: 'library-character:lib1',
+        section: 'cast',
+        tag: 'ADA LOVELACE',
+        sublabel: 'Add to this sequence',
+        pickOnly: true,
+      }),
+    ]);
+    expect(libraryCharacterIdOf(item)).toBe('lib1');
+    expect(mentionInsertAttrs(item)).toMatchObject({ id: 'ADA LOVELACE' });
+  });
+
+  it('a pick-only row never pills: her name is prose until she is attached', () => {
+    const items = libraryMentionItems(library, new Set());
+    expect(splitMentions('ADA LOVELACE waits.', items)).toEqual([
+      { type: 'text', value: 'ADA LOVELACE waits.' },
+    ]);
+  });
+
+  it('a cast row is not a library row', () => {
+    const [item] = buildMentionItems({
+      characters: [noopCharacter],
+      elements: [],
+      locations: [],
+    });
+    if (!item) throw new Error('expected a cast row');
+    expect(libraryCharacterIdOf(item)).toBeNull();
   });
 });

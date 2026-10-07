@@ -51,6 +51,7 @@ import {
   type CreateSequenceInput,
 } from './sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
+import { attachLibraryCharacter } from '@/cast/server/cast-edit';
 import { copySequenceElements } from '@/cast/server/sequence-elements/copy-sequence-elements';
 import {
   assertDraftElementUploadsAttachable,
@@ -158,6 +159,7 @@ export const createSequences = createServerOnlyFn(
       targetDurationSeconds,
       suggestedTalentIds,
       suggestedLocationIds,
+      castCharacterIds,
       elementUploads,
       sourceSequenceId,
     } = data;
@@ -371,6 +373,17 @@ export const createSequences = createServerOnlyFn(
                 ? suggestedLocationIds
                 : undefined,
             });
+
+            // Library characters the script references (#2050) are cast
+            // before the trigger, so the launcher's cast snapshot has them.
+            for (const characterId of castCharacterIds ?? []) {
+              await attachLibraryCharacter(
+                context.scopedDb,
+                { userId: context.user.id },
+                sequence.id,
+                characterId
+              );
+            }
 
             // Point rows at any draft element uploads (insert + vision; the
             // R2 object is not moved — see attachElementUpload). Runs before

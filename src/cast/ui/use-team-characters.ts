@@ -14,6 +14,7 @@ import {
   listTeamCharactersFn,
   setCharacterInLibraryFn,
 } from '@/cast/team-characters.fn';
+import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 
 const teamCharacterKeys = {
@@ -31,6 +32,19 @@ export function useTeamCharacters(inLibrary: boolean) {
     queryKey: teamCharacterKeys.list(inLibrary),
     queryFn: () => listTeamCharactersFn({ data: { inLibrary } }),
     staleTime: 30_000,
+  });
+}
+
+/**
+ * The library for the `@` picker (#2050): never suspends the composer, and
+ * asks nothing while signed out.
+ */
+export function useLibraryCharacters(enabled: boolean) {
+  return useQuery({
+    queryKey: teamCharacterKeys.list(true),
+    queryFn: () => listTeamCharactersFn({ data: { inLibrary: true } }),
+    staleTime: 30_000,
+    enabled,
   });
 }
 
@@ -65,6 +79,25 @@ export function useSetCharacterInLibrary() {
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.all,
       });
+    },
+  });
+}
+
+/**
+ * Cast a library character into a sequence (#2050). The sequence's cast and
+ * the team list (sort and sequence counts) both move.
+ */
+export function useAttachLibraryCharacter() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      attachLibraryCharacterFn({ data }),
+    onSuccess: (_character, { sequenceId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
     },
   });
 }

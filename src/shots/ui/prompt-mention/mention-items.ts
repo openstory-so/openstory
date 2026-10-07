@@ -73,7 +73,52 @@ export type MentionItem = {
   /** Lowercase haystack for filtering. */
   haystack: string;
   thumbnailUrl?: string | null;
+  /**
+   * Offered by the `@` dropdown only (#2050): a library character not yet
+   * cast here. Picking it attaches her; until then her name in the text is
+   * plain prose and must not pill as if she were.
+   */
+  pickOnly?: true;
 };
+
+/** What the `@` picker needs of a library character (#2050). */
+export type LibraryCharacterMentionInput = {
+  id: string;
+  name: string;
+  sheetImageUrl: string | null;
+};
+
+/**
+ * The team's library characters the sequence does not cast yet, as `@` rows
+ * that attach on pick (#2050). Same tag shape as a cast row (the ALL-CAPS
+ * name), so the inserted text is what the cast row will pill once she is
+ * attached. In the library's order: most recently used first.
+ */
+export function libraryMentionItems(
+  library: readonly LibraryCharacterMentionInput[],
+  castCharacterIds: ReadonlySet<string>
+): MentionItem[] {
+  return library
+    .filter((c) => !castCharacterIds.has(c.id))
+    .map((c) => ({
+      id: `library-character:${c.id}`,
+      section: 'cast' as const,
+      label: c.name,
+      sublabel: 'Add to this sequence',
+      tag: c.name.toUpperCase(),
+      haystack: c.name.toLowerCase(),
+      thumbnailUrl: c.sheetImageUrl,
+      pickOnly: true as const,
+    }));
+}
+
+/** The library character a picked row names, or null for any other row. */
+export function libraryCharacterIdOf(item: MentionItem): string | null {
+  const prefix = 'library-character:';
+  return item.pickOnly && item.id.startsWith(prefix)
+    ? item.id.slice(prefix.length)
+    : null;
+}
 
 /** Strip "char_001: " prefix from a consistencyTag to get the slug half. */
 function consistencyTagSlug(raw: string | null | undefined): string | null {
