@@ -354,10 +354,11 @@ describe('recast across a range and the move preview (#2017)', () => {
       .select({ styleId: sequences.styleId })
       .from(sequences)
       .where(eq(sequences.id, sequenceId));
+    if (!seq) throw new Error('seed sequence missing');
     await db.insert(sequences).values({
       id,
       teamId,
-      styleId: seq?.styleId,
+      styleId: seq.styleId,
       title,
       status: 'completed',
     });
@@ -452,10 +453,11 @@ describe('moves and copies on the real scoped db (#2017)', () => {
       .select({ styleId: sequences.styleId })
       .from(sequences)
       .where(eq(sequences.id, sequenceId));
+    if (!seq) throw new Error('seed sequence missing');
     await db.insert(sequences).values({
       id,
       teamId: team,
-      styleId: seq?.styleId,
+      styleId: seq.styleId,
       title,
       status: 'completed',
     });
