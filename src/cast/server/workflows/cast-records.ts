@@ -8,6 +8,7 @@
  * keys keep the ids stable across the two stages.
  */
 
+import type { SequenceInputVersions } from '@/shots/input-versions';
 import type {
   CharacterBibleEntry,
   ElementBibleEntry,
@@ -168,8 +169,14 @@ export async function createCastRecords(
   elements: SequenceElementMinimal[];
   /** Each bible look id → the `character_looks.id` it landed on (#2015). */
   lookIds: Record<string, string>;
+  /** What the sequence pins after this write (#1862): the first prompts stamp it. */
+  versions: Pick<SequenceInputVersions, 'characters' | 'locations'>;
 }> {
   const { sequenceId } = args;
+  const versions: Pick<SequenceInputVersions, 'characters' | 'locations'> = {
+    characters: {},
+    locations: {},
+  };
   const talentByCharacter = new Map(
     args.talentMatches.map((m) => [m.characterId, m])
   );
@@ -184,14 +191,18 @@ export async function createCastRecords(
     const sharedId = sharedById.get(character.characterId);
     if (sharedId) {
       if (character.voiceOnly) continue;
-      Object.assign(
-        lookIds,
-        await scopedDb.characterLooks.linkFromAnalysis(
-          sequenceId,
-          sharedId,
-          withBibleLooks(character).looks
-        )
+      const linked = await scopedDb.characterLooks.linkFromAnalysis(
+        sequenceId,
+        sharedId,
+        withBibleLooks(character).looks
       );
+      Object.assign(lookIds, linked.lookIds);
+      versions.characters[character.characterId] = {
+        bible: linked.bibleVersionId,
+        // The default look's id is its character's (#1419).
+        defaultLook: sharedId,
+        looks: linked.lookVersionIds,
+      };
       continue;
     }
     const created = await scopedDb.characters.create(
@@ -205,20 +216,23 @@ export async function createCastRecords(
     );
     // A voice-only character is never seen, so it wears nothing to track.
     if (character.voiceOnly) continue;
-    Object.assign(
-      lookIds,
-      await scopedDb.characterLooks.syncFromAnalysis(
-        sequenceId,
-        created.id,
-        withBibleLooks(character).looks
-      )
+    const synced = await scopedDb.characterLooks.syncFromAnalysis(
+      sequenceId,
+      created.id,
+      withBibleLooks(character).looks
     );
+    Object.assign(lookIds, synced.lookIds);
+    versions.characters[character.characterId] = {
+      bible: created.selectedBibleVersionId,
+      defaultLook: created.lookId,
+      looks: synced.lookVersionIds,
+    };
   }
 
   const libraryByLocation = new Map(
     args.locationMatches.map((m) => [m.locationId, m])
   );
-  await scopedDb.sequenceLocations.createBulk(
+  const locations = await scopedDb.sequenceLocations.createBulk(
     args.locationBible.map((location) =>
       buildLocationInsert({
         sequenceId,
@@ -229,6 +243,9 @@ export async function createCastRecords(
     ),
     { source: 'analysis', createdBy: null }
   );
+  for (const location of locations) {
+    versions.locations[location.locationId] = location.selectedBibleVersionId;
+  }
 
   const elements: SequenceElementMinimal[] = [];
   for (const entry of findMissingElementEntries(
@@ -267,5 +284,5 @@ export async function createCastRecords(
       durationSeconds: row.durationSeconds,
     });
   }
-  return { elements, lookIds };
+  return { elements, lookIds, versions };
 }

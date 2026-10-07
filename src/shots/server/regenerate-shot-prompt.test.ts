@@ -70,6 +70,12 @@ vi.doMock('./prompt-context', () => ({
       analysisModel: DEFAULT_ANALYSIS_MODEL,
       startingFrameImageUrl: null,
       referenceOnly: false,
+      versions: {
+        style: null,
+        characters: {},
+        locations: {},
+        scenes: { [scene.sceneId]: null },
+      },
     }),
 }));
 vi.doMock('./shot-dialogue', () => ({

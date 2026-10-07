@@ -20,6 +20,7 @@ import {
   isNotNull,
   isNull,
   ne,
+  or,
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
@@ -58,6 +59,7 @@ import {
   characters,
   sequenceCast,
   sequenceCastLooks,
+  sequenceEvents,
   sequences,
   shots,
   talent,
@@ -1501,23 +1503,57 @@ export function createCharactersMethods(db: Database, teamId: string) {
       ),
 
     /**
-     * Every bible version of the sequence's cast, oldest first (#1600).
-     * Staleness causes diff the version live when an artifact was made
-     * against the live bible.
+     * The bible versions this sequence has PINNED, oldest first (#1600,
+     * #1862): the version each live cast link points at now and every one
+     * its pin-move events name. A shared character's other versions — ones
+     * another sequence wrote and this one never used — are not in it, so a
+     * cause can never diff against them. Staleness looks these up by id.
      */
-    listBibleVersionsBySequence: async (sequenceId: string) =>
-      await db
+    listBibleVersionsBySequence: async (sequenceId: string) => {
+      const pinned = db
+        .select({ id: sequenceCast.bibleVersionId })
+        .from(sequenceCast)
+        .where(eq(sequenceCast.sequenceId, sequenceId));
+      const moved = (path: string) =>
+        db
+          .select({
+            id: sql<string>`json_extract(${sequenceEvents.data}, ${path})`,
+          })
+          .from(sequenceEvents)
+          .where(
+            and(
+              eq(sequenceEvents.sequenceId, sequenceId),
+              eq(sequenceEvents.targetType, 'character'),
+              inArray(sequenceEvents.kind, [
+                'character.updated',
+                'character.version-moved',
+              ])
+            )
+          );
+      return await db
         .select(getTableColumns(characterBibleVersions))
         .from(characterBibleVersions)
         .innerJoin(
           sequenceCast,
           eq(sequenceCast.characterId, characterBibleVersions.characterId)
         )
-        .where(eq(sequenceCast.sequenceId, sequenceId))
+        .where(
+          and(
+            eq(sequenceCast.sequenceId, sequenceId),
+            or(
+              inArray(characterBibleVersions.id, pinned),
+              inArray(characterBibleVersions.id, moved('$.bibleVersion.from')),
+              inArray(characterBibleVersions.id, moved('$.bibleVersion.to')),
+              inArray(characterBibleVersions.id, moved('$.bible.from')),
+              inArray(characterBibleVersions.id, moved('$.bible.to'))
+            )
+          )
+        )
         .orderBy(
           asc(characterBibleVersions.createdAt),
           asc(characterBibleVersions.id)
-        ),
+        );
+    },
 
     listWithTalent: async (
       sequenceId: string

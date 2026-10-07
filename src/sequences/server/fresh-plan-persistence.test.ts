@@ -205,6 +205,18 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
           aspectRatio: '16:9',
           analysisModel: DEFAULT_ANALYSIS_MODEL,
           referenceOnly: false,
+          versions: {
+            style: null,
+            characters: {
+              [character.characterId]: {
+                bible: 'bible-1',
+                defaultLook: 'look-default',
+                looks: { 'look-default': 'look-v1' },
+              },
+            },
+            locations: { [location.locationId]: null },
+            scenes: { [scene.sceneId]: null },
+          },
         }
       );
       expect(written).toEqual({ stillPrompt: true });

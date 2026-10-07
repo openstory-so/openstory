@@ -27,6 +27,7 @@ import type {
   CharacterWithSheet,
   Frame,
   FrameVariant,
+  SceneRow,
   SequenceElement,
   SequenceLocationWithReference,
   Shot,
@@ -346,6 +347,12 @@ async function shotVerdicts(
       locations: world.locations,
       elements: world.elements,
       style: null,
+      scenes: [
+        asStub<SceneRow>({
+          id: world.scene.sceneId,
+          selectedScriptVersionId: null,
+        }),
+      ],
     },
     dialogue: { dialogue: world.dialogue, onNode: true },
   });

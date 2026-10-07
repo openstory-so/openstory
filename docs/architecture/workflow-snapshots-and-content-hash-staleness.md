@@ -105,17 +105,21 @@ What this buys:
 - **A sheet records the bible it was made from.** The trigger snapshots
   `bibleVersionId` onto the payload and the land batch stamps it on the
   sheet's version row, promoted or parked.
-- **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` looks up the version this
-  sequence PINNED when the stale artifact was made — walked back from the pin
-  it holds now through the sequence's pin-move events (`pinnedVersionAt`,
-  `src/shots/pin-moves.ts`; #2017) — and diffs it against the pinned one
-  now: `Character "Jack": clothing, sheet`. Never "the newest version at that
-  time": with two sequences that may be a version another sequence wrote and
-  this one never pinned. A row touched without a bible change (a claim, a
-  voice) is not named. A pin move from before the ids were recorded stops the
-  walk, and the character is named with no fields. Locations are
-  per-sequence and keep the timestamp lookup; an artifact older than the
-  row's history falls back to the old timestamp guess there.
+- **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` reads the version the
+  stale artifact RECORDED it read (`inputVersions`, § Input versions below)
+  and diffs it against the one the sequence pins now, an exact pointer
+  compare: `Character "Jack": clothing, sheet`. Equal pointers name nothing.
+  A row touched without a bible change (a claim, a voice) is not named. For
+  an artifact from before the record existed, a character's version is the
+  one this sequence PINNED then — walked back from the pin it holds now
+  through the sequence's pin-move events (`pinnedVersionAt`,
+  `src/shots/pin-moves.ts`; #2017); never "the newest version at that time",
+  which with two sequences may be a version another sequence wrote and this
+  one never pinned (`listBibleVersionsBySequence` returns only the versions
+  this sequence has pinned) — and the scene, style, location, sheet and
+  element causes come from the clock, with one trailing line that says so
+  (`UNSTAMPED_CAUSE`). A pin move from before the ids were recorded stops
+  the walk, and the character is named with no fields.
   Characters, locations and elements come from `resolveShotReferences`: the
   union of what the shot's stale prompts name, the same
   resolution each prompt hash and the clip's `referenceKeys` compare use. A
@@ -135,6 +139,46 @@ What this buys:
 - **The hash edge stays a hash edge.** The sheet and prompt hashes read more
   than the bible (talent, style, model, the scene), so a pointer compare
   could not replace them without moving every stored digest.
+
+### Input versions (#1862)
+
+The verdict is still the hash compare. What the hash cannot say is WHICH
+rows the run read, and the causes used to guess that from timestamps ("the
+newest version created at or before the artifact"), which is wrong within a
+second, wrong for a run that finished minutes after its trigger, and wrong
+once a character is in two sequences. Now every prompt and still records it:
+
+- `frame_prompt_versions.inputVersions` / `shot_prompt_versions.inputVersions`
+  (`PromptInputVersions`, `src/shots/input-versions.ts`): the scene script
+  version, the style version, each referenced character's pinned bible
+  version and the version of the look it wore in this shot's scene, each
+  referenced location's bible version. Keyed by the script ids the prompt
+  context names. Narrowed by the same `resolveShotReferences` view the hash
+  uses (`promptInputVersionsFor`), so the stamp and the digest come from one
+  set.
+- `frame_variants.inputVersions` (`StillInputVersions`): the sheet version
+  each reference was drawn from, by entity row id, read off the references'
+  `provenanceKey` the render was handed — the still's prompt-side versions
+  are on the prompt row it points at (`promptVersionId`), not repeated.
+- A clip records nothing new: the manifest already points at its prompt and
+  still versions and stamps `referenceKeys`.
+
+Provenance only, never in a hash body (no stored digest moves), never a copy
+of authored data, never filtered in SQL. It comes from the trigger's snapshot
+(`ShotPromptContext.versions`, frozen on the payload), never a mid-run read;
+analysis builds it from the ids its own write steps return. A referenced id
+the snapshot lacks fails the write. Null only on a row from before the
+column, on a user edit with no computable context, and on an upload, which
+read nothing; a restore, soften or shorten copies its source row's.
+
+The causes compare `stamp !== pin`: the recorded bible against
+`sequence_cast.bibleVersionId`, the look against `sequence_cast_looks.
+lookVersionId`, the scene against `scenes.selectedScriptVersionId`, the
+style against `sequences.selectedStyleVersionId`, a location against its
+`selectedBibleVersionId`, a sheet against the cast look's selected sheet
+(or its url for a pre-#1419 row). A character the prompt did not record is
+named `added`. Only a row with no record falls back to the pin walk and the
+clock, and says so.
 
 ### Scene narrative (#1600)
 

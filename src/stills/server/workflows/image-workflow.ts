@@ -17,6 +17,7 @@
  *      with its snapshot's hash and reads stale against the live inputs.
  */
 
+import { stillInputVersionsFromReferences } from '@/shots/input-versions';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { ZERO_MICROS } from '@/billing/money';
 import {
@@ -212,6 +213,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               text: input.prompt,
               source: 'user-edit',
               inputHash: input.userEditProvenance.inputHash,
+              inputVersions: input.userEditProvenance.inputVersions,
               analysisModel: input.userEditProvenance.analysisModel,
               createdBy: input.userId,
             })
@@ -227,6 +229,12 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             ? input.promptVersionId
             : ((await scopedDb.liveRead.frames.getById(frame.id))
                 ?.selectedImagePromptVersionId ?? null));
+        // The sheet versions this render reads (#1862), off the references
+        // the trigger froze. Stamped here, on the row the run owns: a chained
+        // claim was opened before its references were resolved.
+        const inputVersions = stillInputVersionsFromReferences(
+          input.referenceImages ?? []
+        );
         let version;
         if (input.targetVariantId) {
           // #1085: a pre-created claim row exists — transition IT rather than
@@ -239,6 +247,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               model,
               resolution: input.resolution ?? null,
               promptVersionId,
+              inputVersions,
               // Direct-regen claims already carry the hash from enqueue;
               // chained claims get it stamped here (the render's snapshot
               // hash), so "updating" detection survives the upstream prompt
@@ -262,6 +271,7 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             status: 'generating',
             workflowRunId,
             promptVersionId,
+            inputVersions,
             // An added model never speaks for the frame's status (#1942).
             isPrimary: !input.variantOnly,
           });

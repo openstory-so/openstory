@@ -1,3 +1,4 @@
+import type { SequenceInputVersions } from '@/shots/input-versions';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 /**
  * "Update all" planning (#1077/#1085) — pure domain logic that decides *what*
@@ -347,6 +348,8 @@ type PlanPromptContext = {
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
+  /** The versions the bibles are (#1862); every rebuilt prompt stamps from it. */
+  versions: SequenceInputVersions;
   styleConfig: StyleConfig;
   analysisModelId: AnalysisModelId;
 };
@@ -726,7 +729,13 @@ export async function computePlan(args: {
   const dialogueLinesByShotId = new Map(
     dialogueVersions.map((version) => [version.shotId, version.lines])
   );
-  const refs: ShotStalenessRefs = { characters, locations, elements, style };
+  const refs: ShotStalenessRefs = {
+    characters,
+    locations,
+    elements,
+    style,
+    scenes: [...scriptBySceneId.values()].map((ctx) => ctx.scene),
+  };
   const promptDialogueOf = shotPromptDialogueResolver({
     linesByShotId: dialogueLinesByShotId,
     shots: allShots,
@@ -878,6 +887,7 @@ export async function computePlan(args: {
       characterBible: [...ctx.characterBible],
       locationBible: [...ctx.locationBible],
       elementBible: [...ctx.elementBible],
+      versions: ctx.versions,
       styleConfig: ctx.styleConfig,
       analysisModelId:
         getAnalysisModelById(ctx.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL,
@@ -1415,6 +1425,8 @@ async function claimImageArtifact(args: {
       dependsOnVersionId: visualVersionId,
       workflowRunId: parentInstanceId,
       isPrimary: true,
+      // The run stamps when it claims the row (`claimForGeneration`).
+      inputVersions: null,
     });
     return { kind: 'ours', id: row.id };
   }
@@ -1438,6 +1450,7 @@ async function claimImageArtifact(args: {
       pendingInputHash: target.imageLiveHash,
       workflowRunId: parentInstanceId,
       isPrimary: true,
+      inputVersions: null,
     });
     return { kind: 'ours', id: row.id };
   } catch (error) {

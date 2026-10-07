@@ -373,7 +373,7 @@ export function createScenesMethods(db: Database) {
       sceneId: DbSceneId,
       continuity: NonNullable<SceneNarrative['continuity']>,
       opts: { actorId: string | null }
-    ): Promise<void> => {
+    ): Promise<{ scriptVersionId: string | null }> => {
       const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
       // Loud: a write addressed to a row that is not there is a wrong id,
       // and returning quietly hid one (#2015).
@@ -384,7 +384,15 @@ export function createScenesMethods(db: Database) {
         { source: 'edit', createdBy: opts.actorId }
       );
       const [first, ...rest] = statements;
-      if (first) await db.batch([first, ...rest]);
+      if (!first) return { scriptVersionId: existing.selectedScriptVersionId };
+      await db.batch([first, ...rest]);
+      // The version the write landed (#1862), for the stamp on the prompts
+      // written right after it.
+      const [written] = await db
+        .select({ scriptVersionId: scenes.selectedScriptVersionId })
+        .from(scenes)
+        .where(eq(scenes.id, sceneId));
+      return { scriptVersionId: written?.scriptVersionId ?? null };
     },
 
     /**

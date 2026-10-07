@@ -187,6 +187,7 @@ export async function prepareShotImageWorkflowInput(args: {
         text: prompt,
         source: 'user-edit',
         inputHash: userEditProvenance.inputHash,
+        inputVersions: userEditProvenance.inputVersions,
         analysisModel: userEditProvenance.analysisModel,
         createdBy: userId,
       })

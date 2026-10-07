@@ -11,6 +11,7 @@
  * full Cloudflare-Workflow harness.
  */
 
+import type { SequenceInputVersions } from '@/shots/input-versions';
 import type {
   DbSceneId,
   NewScene,
@@ -142,19 +143,29 @@ export async function persistSceneLooks(
         sceneId: DbSceneId,
         continuity: NonNullable<SceneNarrative['continuity']>,
         opts: { actorId: string | null }
-      ) => Promise<void>;
+      ) => Promise<{ scriptVersionId: string | null }>;
     };
   },
   sequenceId: string,
   scenes: ReadonlyArray<Scene>
-): Promise<void> {
+): Promise<SequenceInputVersions['scenes']> {
+  // Every scene's script version after this write (#1862), by the ANALYSIS
+  // scene id the frozen scenes carry: the first prompts stamp it.
+  const versions: SequenceInputVersions['scenes'] = {};
   for (const [orderIndex, scene] of scenes.entries()) {
-    if (!scene.continuity?.characterLooks) continue;
     const row = await scopedDb.scenes.upsert(
       buildSceneInsert(sequenceId, orderIndex)
     );
-    await scopedDb.scenes.updateContinuity(row.id, scene.continuity, {
-      actorId: null,
-    });
+    if (!scene.continuity?.characterLooks) {
+      versions[scene.sceneId] = row.selectedScriptVersionId;
+      continue;
+    }
+    const { scriptVersionId } = await scopedDb.scenes.updateContinuity(
+      row.id,
+      scene.continuity,
+      { actorId: null }
+    );
+    versions[scene.sceneId] = scriptVersionId;
   }
+  return versions;
 }

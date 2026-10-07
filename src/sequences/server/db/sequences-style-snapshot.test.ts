@@ -218,7 +218,7 @@ describe('createSequencesMethods style snapshot', () => {
     expect(await liveClaim()).toEqual(claim);
     expect(
       await methods.snapshotAutoStyle({ id: sequence.id, styleId: style.id })
-    ).toBe(true);
+    ).toEqual({ styleVersionId: expect.any(String) });
     expect(await liveClaim()).toEqual({ location: null, sheet: null });
   });
 
@@ -232,7 +232,7 @@ describe('createSequencesMethods style snapshot', () => {
     );
     expect(
       await methods.snapshotAutoStyle({ id: sequence.id, styleId: auto.id })
-    ).toBe(false);
+    ).toBeNull();
     expect(await liveClaim()).toEqual(claim);
   });
 
@@ -279,7 +279,7 @@ describe('createSequencesMethods style snapshot', () => {
 
     expect(
       await methods.snapshotAutoStyle({ id: sequence.id, styleId: style.id })
-    ).toBe(true);
+    ).toEqual({ styleVersionId: expect.any(String) });
     const [derived] = await methods.listStyleVersions(sequence.id);
     expect(derived?.source).toBe('derived');
     expect((await methods.getById(sequence.id))?.selectedStyleVersionId).toBe(

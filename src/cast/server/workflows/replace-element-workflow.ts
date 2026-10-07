@@ -384,6 +384,8 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           model: modelFor(snapshot),
           workflowRunId: event.instanceId,
           isPrimary: true,
+          // The child stamps when it claims the row.
+          inputVersions: null,
         });
         return claim.id;
       });

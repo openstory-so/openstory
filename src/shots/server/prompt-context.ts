@@ -21,18 +21,31 @@ import {
   resolveShotReferences,
   type ShotPromptView,
 } from '@/shots/scene-matching';
+import {
+  sequenceInputVersionsOf,
+  type SequenceInputVersions,
+} from '@/shots/input-versions';
 
 /**
  * Everything a prompt hash reads except the shot's lines, which the motion
  * hash takes separately (`dialogue`, #1784) — the caller resolves them.
  */
-export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'>;
+export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'> & {
+  /**
+   * The version ids the sequence pins, read with the bibles (#1862). Not a
+   * hash channel: a stamp site narrows it to what its prompt references
+   * (`promptInputVersionsFor`) and writes that beside the hash.
+   */
+  versions: SequenceInputVersions;
+};
 
 export type ShotPromptContextSequence = {
   id: string;
   styleId: string | null;
   /** Sequence-owned recipe. Preferred over the live catalog row. */
   styleConfig?: unknown;
+  /** The `sequence_style_versions` row `styleConfig` is (#1862); null with no snapshot. */
+  selectedStyleVersionId: string | null;
   aspectRatio: string;
   analysisModel: string;
   /**
@@ -57,12 +70,18 @@ export type ShotPromptContextRefs = {
   locations: Awaited<ReturnType<ScopedDb['sequenceLocations']['list']>>;
   elements: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>;
   style: Awaited<ReturnType<ScopedDb['styles']['getById']>> | null;
+  /** Every scene's selected script version (#1862), for the stamp. */
+  scenes: Awaited<ReturnType<ScopedDb['scenes']['listBySequence']>>;
 };
 
 export async function loadShotPromptContext(args: {
   scopedDb: Pick<
     ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    | 'characters'
+    | 'sequenceLocations'
+    | 'sequenceElements'
+    | 'styles'
+    | 'scenes'
   >;
   sequence: ShotPromptContextSequence;
   scene: Scene;
@@ -94,8 +113,8 @@ export async function loadShotPromptContext(args: {
     );
   }
 
-  const [characters, locations, elements, style] = refs
-    ? [refs.characters, refs.locations, refs.elements, refs.style]
+  const [characters, locations, elements, style, scenes] = refs
+    ? [refs.characters, refs.locations, refs.elements, refs.style, refs.scenes]
     : await Promise.all([
         scopedDb.characters.list(sequence.id),
         scopedDb.sequenceLocations.list(sequence.id),
@@ -103,6 +122,7 @@ export async function loadShotPromptContext(args: {
         hasSnapshot || !sequence.styleId
           ? Promise.resolve(null)
           : scopedDb.styles.getById(sequence.styleId),
+        scopedDb.scenes.listBySequence(sequence.id),
       ]);
 
   if (!hasSnapshot && !style) {
@@ -131,6 +151,15 @@ export async function loadShotPromptContext(args: {
     analysisModel,
     startingFrameImageUrl: startingFrameImageUrl ?? null,
     referenceOnly: sequence.referenceOnly,
+    versions: sequenceInputVersionsOf({
+      styleVersionId: sequence.selectedStyleVersionId,
+      characters,
+      locations,
+      scenes: scenes.map((row) => ({
+        sceneId: row.id,
+        scriptVersionId: row.selectedScriptVersionId,
+      })),
+    }),
   };
 }
 
@@ -144,7 +173,11 @@ export async function loadShotPromptContext(args: {
 export async function loadNarrowShotPromptContext(args: {
   scopedDb: Pick<
     ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    | 'characters'
+    | 'sequenceLocations'
+    | 'sequenceElements'
+    | 'styles'
+    | 'scenes'
   >;
   sequence: ShotPromptContextSequence;
   scene: Scene;

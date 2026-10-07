@@ -2578,7 +2578,7 @@ describe('team characters (#2017)', () => {
     expect((await chars().getById(sequenceId, ada.id))?.sheetStatus).toBe(
       'pending'
     );
-    const ids = await looks().syncFromAnalysis(other, ada.id, [
+    const { lookIds: ids } = await looks().syncFromAnalysis(other, ada.id, [
       {
         lookId: 'char_ada:default',
         name: 'Default',
@@ -2659,7 +2659,7 @@ describe('team characters (#2017)', () => {
     );
     await chars().softDelete(other, created.id, { actorId });
 
-    const ids = await looks().linkFromAnalysis(other, created.id, [
+    const { lookIds: ids } = await looks().linkFromAnalysis(other, created.id, [
       {
         lookId: created.lookId,
         name: 'Default',

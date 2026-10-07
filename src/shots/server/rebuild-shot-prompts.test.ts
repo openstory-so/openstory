@@ -127,6 +127,12 @@ const base = {
   elementBible: [],
   aspectRatio: '16:9',
   analysisModel: 'test-model',
+  versions: {
+    style: null,
+    characters: {},
+    locations: {},
+    scenes: { [scene.sceneId]: null },
+  },
   dialogue: { presence: false, lines: [] },
   referenceOnly: false,
   frameId: 'frame-1',

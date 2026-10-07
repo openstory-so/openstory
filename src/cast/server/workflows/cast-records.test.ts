@@ -62,13 +62,15 @@ const syncFromAnalysis = vi.fn(
     _sequenceId: string,
     characterId: string,
     looks: { lookId: string }[]
-  ) =>
-    Object.fromEntries(
+  ) => ({
+    lookVersionIds: {},
+    lookIds: Object.fromEntries(
       looks.map((look, i) => [
         look.lookId,
         i === 0 ? characterId : `db-${look.lookId}`,
       ])
-    )
+    ),
+  })
 );
 
 describe('createCastRecords', () => {
@@ -225,8 +227,13 @@ describe('createCastRecords (attached cast, #2050)', () => {
   const run = async (shared: boolean) => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
     const linkFromAnalysis = vi.fn(
-      async (_s: string, _c: string, looks: { lookId: string }[]) =>
-        Object.fromEntries(looks.map((l) => [l.lookId, `linked-${l.lookId}`]))
+      async (_s: string, _c: string, looks: { lookId: string }[]) => ({
+        lookIds: Object.fromEntries(
+          looks.map((l) => [l.lookId, `linked-${l.lookId}`])
+        ),
+        lookVersionIds: {},
+        bibleVersionId: 'pinned-bible',
+      })
     );
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({

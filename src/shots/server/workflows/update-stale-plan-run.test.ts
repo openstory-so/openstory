@@ -304,6 +304,13 @@ function plan(overrides: Partial<UpdateStalePlan>): UpdateStalePlan {
       characterBible: [],
       locationBible: [],
       elementBible: [],
+      // Every scene a target may name: the stamp refuses an unknown one.
+      versions: {
+        style: null,
+        characters: {},
+        locations: {},
+        scenes: new Proxy({}, { get: () => null }),
+      },
       styleConfig: {},
       analysisModelId: 'x',
     },

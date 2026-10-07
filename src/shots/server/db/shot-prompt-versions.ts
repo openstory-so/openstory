@@ -10,6 +10,7 @@
  * § prompt versioning.
  */
 
+import type { PromptInputVersions } from '@/shots/input-versions';
 import type {
   MotionAudio,
   MotionPromptParameters,
@@ -146,11 +147,14 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         source: 'ai-generated' | 'regenerated';
         inputHash: MotionPromptInputHash;
         analysisModel: string;
+        /** The versions the hash was computed from (#1862). */
+        inputVersions: PromptInputVersions;
       }
     | {
         source: 'user-edit';
         inputHash: string | null;
         analysisModel: string | null;
+        inputVersions: PromptInputVersions | null;
       }
     | {
         // `restored`: audit row for a repoint. `softened`: the content-checker
@@ -161,6 +165,7 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         source: 'restored' | 'softened' | 'shortened';
         inputHash: string | null;
         analysisModel: string | null;
+        inputVersions: PromptInputVersions | null;
       }
     | {
         // Built from a shot spec (#1915). A restore copies this id. A
@@ -169,6 +174,7 @@ export type WriteShotPromptVersionInput = WriteShotPromptVersionBase &
         inputHash: string | null;
         analysisModel: string | null;
         specVersionId: string;
+        inputVersions: PromptInputVersions | null;
       }
   );
 
@@ -350,6 +356,7 @@ export function createShotPromptVersionsMethods(db: Database) {
             specVersionId:
               input.source === 'derived' ? input.specVersionId : null,
             inputHash: nextHash,
+            inputVersions: input.inputVersions,
             analysisModel,
             createdBy: input.createdBy ?? null,
           })
@@ -392,6 +399,7 @@ export function createShotPromptVersionsMethods(db: Database) {
       audio?: MotionAudio | null;
       usesStartFrame: boolean;
       inputHash: MotionPromptInputHash;
+      inputVersions: PromptInputVersions;
       analysisModel: string;
       createdBy?: string | null;
     }): Promise<ShotPromptVersion> => {
@@ -527,6 +535,8 @@ export function createShotPromptVersionsMethods(db: Database) {
        * spec; the claim was stamped from the spec the run replaced (#1923).
        */
       stampHash?: MotionPromptInputHash;
+      /** The versions the stamped hash was computed from (#1862). */
+      inputVersions: PromptInputVersions;
       analysisModel: string;
       /** Rebuild sets `derived` and the spec the text came from (#1923). */
       source?: PromptVariantSource;
@@ -601,6 +611,7 @@ export function createShotPromptVersionsMethods(db: Database) {
           audio: input.audio ?? null,
           usesStartFrame: input.usesStartFrame,
           inputHash,
+          inputVersions: input.inputVersions,
           analysisModel: input.analysisModel,
           status: 'completed',
           ...(input.source !== undefined ? { source: input.source } : {}),

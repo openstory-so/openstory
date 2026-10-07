@@ -11,6 +11,10 @@
  */
 
 import {
+  stillInputVersionsFromReferences,
+  type PromptInputVersions,
+} from '@/shots/input-versions';
+import {
   CONTENT_REJECTION_FALLBACK_EVENT,
   CONTENT_REJECTION_RETRY_EVENT,
   CONTENT_REJECTION_SOFTEN_EVENT,
@@ -123,6 +127,8 @@ function rebuildParams(
 type PromptProvenance = {
   inputHash: string | null;
   analysisModel: string | null;
+  /** The original row's record (#1862); rides with the hash onto the rewrite. */
+  inputVersions: PromptInputVersions | null;
 };
 
 async function loadPromptProvenance(
@@ -134,7 +140,7 @@ async function loadPromptProvenance(
     'load-prompt-provenance',
     async (): Promise<PromptProvenance> => {
       if (!input.frameId || !input.promptVersionId) {
-        return { inputHash: null, analysisModel: null };
+        return { inputHash: null, analysisModel: null, inputVersions: null };
       }
       const original =
         await scopedDb.claims.framePromptVersions.getByIdForFrame(
@@ -144,6 +150,7 @@ async function loadPromptProvenance(
       return {
         inputHash: original?.inputHash ?? null,
         analysisModel: original?.analysisModel ?? null,
+        inputVersions: original?.inputVersions ?? null,
       };
     }
   );
@@ -169,6 +176,7 @@ export async function persistSoftenedPromptVersion(args: {
     text: args.text,
     source: 'softened',
     inputHash: args.provenance.inputHash,
+    inputVersions: args.provenance.inputVersions,
     analysisModel: args.provenance.analysisModel,
     createdBy: args.createdBy,
     select: false,
@@ -358,6 +366,9 @@ export async function generateImageWithContentRetry(
             workflowRunId,
             promptVersionId: input.promptVersionId ?? null,
             pendingInputHash: fallbackHash,
+            inputVersions: stillInputVersionsFromReferences(
+              input.referenceImages ?? []
+            ),
             isPrimary: !input.variantOnly,
           });
           return fallbackVersion.id;

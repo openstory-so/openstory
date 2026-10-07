@@ -127,7 +127,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, and a sequence reads the version its cast link PINS (#2017): an edit from another sequence moves nothing here until this one updates to the current version, a pointer write that re-stales by derivation. A stale shot names the field that moved between the version this sequence pinned when the shot was made and the one it pins now, walked back through the pin moves, never guessed from timestamps. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, and a sequence reads the version its cast link PINS (#2017): an edit from another sequence moves nothing here until this one updates to the current version, a pointer write that re-stales by derivation. A stale shot names the field that moved between the version it RECORDED reading (inputVersions on every prompt and still since #1862; for an older artifact the pin, walked back through the pin moves) and the one the sequence pins now, never guessed from timestamps. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description',
@@ -552,7 +552,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'prompts',
     summary:
-      'The text the still is rendered from. A scene of one shot gets it from the model; every clip of a multi-shot scene has it assembled from the shot spec.',
+      'The text the still is rendered from. A scene of one shot gets it from the model; every clip of a multi-shot scene has it assembled from the shot spec. Each row also records the version ids it read (inputVersions, #1862) beside its hash, so a stale verdict names what moved by pointer.',
     counts: [
       'Scene extract, heading, time of day, story beat',
       'Style config',
