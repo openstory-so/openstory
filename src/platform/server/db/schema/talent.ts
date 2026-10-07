@@ -1,6 +1,11 @@
 /**
  * Talent Library Schema
- * Team-level talent (actors/actresses) library with multiple sheets and reference media
+ *
+ * A talent is a LIKENESS (#2018): a face, the photos and recordings behind
+ * it, one reference sheet, a recorded voice (#1631) and the rights to use
+ * them. The role (personality, movement, designed voice, outfits) belongs to
+ * the character and its looks. `legacy*` columns are unread and dropped in a
+ * later PR.
  */
 
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
@@ -40,24 +45,25 @@ export const talent = snakeCase.table(
       .references(() => teams.id, { onDelete: 'cascade' }),
     name: text({ length: 255 }).notNull(),
     description: text(),
-    // Performance (#1561), copied to the character at cast and back at
-    // save-to-library. This row is the source; the copy in each sheet's
-    // `metadata` exists only because the bible schema requires the keys and
-    // is never read at cast.
-    personality: text(),
-    movement: text(),
-    // Voice (#1553): copied from the character's selected voice version at
-    // save-to-library, and onto the character (as a new version) at cast.
-    // Shared ElevenLabs id — see characters.selectedVoiceVersionId.
+    // Performance moved to the character bible (#2018). Unread; the #2018
+    // backfill moved it onto a library character. Dropped in a later PR.
+    legacyPersonality: text('personality'),
+    legacyMovement: text('movement'),
+    // The recorded voice (#1631): a voice made from this talent's recordings.
+    // Null until #1631 lands. The designed voice the old save-to-library
+    // copied here moved to a library character (#2018 backfill).
     voiceId: text(),
-    voiceDescription: text(),
+    legacyVoiceDescription: text('voice_description'),
     imageUrl: text(), // Talent avatar/headshot
     imagePath: text(), // R2 storage path for avatar
+    // The reference sheet (#2018): the `talent_sheets` row that is this
+    // talent's face. Moved by `landSheet` while the claim holds, or by the
+    // user (`selectSheet`). Null only for a talent with no sheet yet.
+    selectedSheetId: text(),
     // The sheet claim (#1113): the `talent_sheets.id` the in-flight library
     // sheet run will write. Set at the trigger; cleared by an edit to the
-    // name, description or reference photos. The run makes its sheet the
-    // talent's identity (headshot) only while this still names it, else
-    // parks it as divergent.
+    // description or reference photos. The run makes its sheet the
+    // reference sheet only while this still names it, else parks it.
     pendingPromoteSheetId: text(),
     isFavorite: integer({ mode: 'boolean' }).default(false),
     isHuman: integer({ mode: 'boolean' }).default(false),
@@ -83,9 +89,15 @@ export const talent = snakeCase.table(
 );
 
 // ============================================================================
-// Talent Sheets Table (Different Looks/Appearances)
+// Talent Sheets Table (the reference sheet's history)
 // ============================================================================
 
+/**
+ * Every sheet a talent ever had, append-only. The reference sheet is the row
+ * `talent.selectedSheetId` names; the rest are history. `divergedAt` marks a
+ * run that landed after its claim moved (parked, offered on the banner);
+ * `discardedAt` a row the user discarded (restorable).
+ */
 export const talentSheets = snakeCase.table(
   'talent_sheets',
   {
@@ -96,27 +108,24 @@ export const talentSheets = snakeCase.table(
     talentId: text()
       .notNull()
       .references(() => talent.id, { onDelete: 'cascade' }),
-    name: text({ length: 255 }).notNull(), // e.g., "casual outfit", "formal wear"
+    // Named sheets ("casual outfit") were outfits; those are character looks
+    // now (#2015, #2018). NOT NULL, so `landSheet` writes a constant until
+    // the column is dropped. Unread.
+    legacyName: text('name', { length: 255 }).notNull(),
     imageUrl: text(),
     imagePath: text(), // R2 storage path
     metadata: text({ mode: 'json' }).$type<CharacterBibleEntry>(), // Full character details
-    isDefault: integer({ mode: 'boolean' }).default(false),
+    // The Default badge is `talent.selectedSheetId` now (#2018). Unread; kept
+    // with its index so dropping it is a later PR's `DROP INDEX` + `DROP
+    // COLUMN`, not a rebuild.
+    legacyIsDefault: integer('is_default', { mode: 'boolean' }).default(false),
     source: text()
       .$type<TalentSheetSource>()
       .default('manual_upload')
       .notNull(),
     inputHash: text(),
-    /**
-     * Marks a sheet that landed via the snapshot-divergent path: the
-     * library-talent-sheet workflow runs against a stale identity, can't
-     * write the artifact to the talent's primary identity, and parks both
-     * a `talent_sheet_variants` row AND its parent `talent_sheets` row with
-     * this column set. UI consumers fall back through `sheets` to choose
-     * a display image when no `isDefault: true` row exists; that fallback
-     * filters out divergent rows so a stale-marked sheet cannot leak into
-     * the talent's primary identity for first-time-generation cases.
-     */
     divergedAt: integer({ mode: 'timestamp' }),
+    discardedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
@@ -126,7 +135,7 @@ export const talentSheets = snakeCase.table(
   },
   (table) => [
     index('idx_talent_sheets_talent_id').on(table.talentId),
-    index('idx_talent_sheets_is_default').on(table.isDefault),
+    index('idx_talent_sheets_is_default').on(table.legacyIsDefault),
   ]
 );
 
@@ -180,5 +189,6 @@ export type NewTalentMedia = InferInsertModel<typeof talentMedia>;
 export type TalentWithSheets = Talent & {
   sheets: TalentSheet[];
   sheetCount: number;
-  defaultSheet: TalentSheet | null;
+  /** The row `selectedSheetId` names (#2018); null until a sheet lands. */
+  referenceSheet: TalentSheet | null;
 };
