@@ -302,3 +302,46 @@ describe('one read of the selected sheet row feeds the gate, the carry and the c
     expect(talentCreate).not.toHaveBeenCalled();
   });
 });
+
+describe('the payload is the snapshot', () => {
+  it('a selected sheet that changes between the gate read and the trigger: the payload still carries the gated url (one read, no re-read)', async () => {
+    requireUploadRights.mockResolvedValue(
+      new Map([[UPLOAD_URL, { depictsRealPerson: true }]])
+    );
+    const sheetRead = vi
+      .fn()
+      .mockResolvedValueOnce(upload())
+      .mockResolvedValue({
+        url: '/r2/sequences/team-1/uploads/someone-else.png',
+        workflowRunId: null,
+        bibleVersionId: 'bible-1',
+      });
+    const characterRead = vi
+      .fn()
+      .mockResolvedValueOnce(character)
+      .mockResolvedValue({
+        ...character,
+        selectedSheetVersionId: 'sheet-2',
+        sheetImageUrl: '/r2/sequences/team-1/uploads/someone-else.png',
+      });
+    // stub covering only what saveCharacterFaceAsTalent reads
+    const db = asStub<ScopedDb>({
+      sequences: { getForUser: vi.fn(async () => ({ id: 'seq-1' })) },
+      characters: {
+        getById: characterRead,
+        getBibleVersion: vi.fn(async () => ({ talentId: null })),
+      },
+      characterSheetVariants: { getById: sheetRead },
+      talent: { create: talentCreate },
+    });
+
+    await saveCharacterFaceAsTalent(db, ctx, args);
+
+    expect(characterRead).toHaveBeenCalledTimes(1);
+    expect(sheetRead).toHaveBeenCalledTimes(1);
+    expect(carryUploadRights.mock.calls[0]?.[1]).toBe(UPLOAD_URL);
+    expect(enqueueLibraryTalentSheet.mock.calls[0]?.[1]).toMatchObject({
+      workflowInput: expect.objectContaining({ uploadedSheetUrl: UPLOAD_URL }),
+    });
+  });
+});
