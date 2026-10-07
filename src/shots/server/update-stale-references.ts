@@ -103,10 +103,14 @@ export async function buildPlanReferences(args: {
               character,
               lookId: dressed.lookId,
             });
-            // A first sheet can copy the matched talent — decided per look,
-            // against the talent's default sheet. An existing sheet's
-            // regeneration must apply the edited look instead.
-            if (!dressed.selectedSheetVersionId) {
+            // A first sheet of the default look can copy the matched talent.
+            // Any other look is drawn from the default look's sheet, never
+            // from the talent image. An existing sheet's regeneration must
+            // apply the edited look instead.
+            if (
+              dressed.lookId === character.id &&
+              !dressed.selectedSheetVersionId
+            ) {
               payload.reuseTalentSheet = reusesTalentSheet(dressed, {
                 sheetImageUrl: payload.referenceImageUrl,
                 sheetMetadata: payload.talentMetadata,

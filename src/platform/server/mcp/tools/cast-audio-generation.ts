@@ -72,7 +72,7 @@ const cancelResult = z.object({ cancelled: z.boolean() });
 const regenerateCharacterSheetTool = openstoryTool({
   name: 'regenerate_character_sheet',
   description:
-    'Generate a new reference sheet for one look of a character, from its current bible and that look’s clothing and styling (spends credits). lookId picks the look (get_character looks[].id); omit it for the default look. Talent and shots are unchanged; stills of the scenes that wear the look go stale once the sheet lands. Poll get_character for sheet status.',
+    'Generate a new reference sheet for one look of a character, from its current bible and that look’s clothing and styling (spends credits). lookId picks the look (get_character looks[].id); omit it for the default look. A look other than the default is drawn from the default look’s completed sheet and is refused until that sheet exists. Talent and shots are unchanged; stills of the scenes that wear the look go stale once the sheet lands. Poll get_character for sheet status.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: characterInput.extend({
@@ -109,7 +109,7 @@ const regenerateCharacterSheetTool = openstoryTool({
 const recastCharacterTool = openstoryTool({
   name: 'recast_character',
   description:
-    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated and every shot with the character is regenerated (spends credits). Refused for a voice-only character.',
+    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and every shot with the character is regenerated (spends credits). Other looks keep that person and are redrawn by the plan once the new default sheet exists. Refused for a voice-only character.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: characterInput.extend({

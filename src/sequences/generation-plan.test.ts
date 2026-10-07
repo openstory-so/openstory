@@ -291,6 +291,94 @@ describe('planUnits — scenario table (#1816)', () => {
     expect(planUnits(input(), SEQ)).toEqual([]);
     expect(firstStageWithWork([])).toBeNull();
   });
+
+  it('a look sheet waits until the default look’s sheet is done (#2015)', () => {
+    const waiting = planUnits(
+      input({
+        characterSheets: [
+          { id: 'maya', sheet: 'missing' },
+          { id: 'gala', characterId: 'maya', sheet: 'missing' },
+        ],
+      }),
+      SEQ
+    );
+    expect(states(waiting)).toMatchObject({
+      'sheet:character:maya': 'missing',
+      'sheet:character:gala': 'blocked by sheet:character:maya',
+    });
+    expect(planWork(waiting, 'references').map((unit) => unit.id)).toEqual([
+      'maya',
+    ]);
+
+    const drawing = planUnits(
+      input({
+        characterSheets: [
+          { id: 'maya', sheet: 'done' },
+          { id: 'gala', characterId: 'maya', sheet: 'missing' },
+        ],
+      }),
+      SEQ
+    );
+    expect(states(drawing)).toMatchObject({
+      'sheet:character:maya': 'done',
+      'sheet:character:gala': 'missing',
+    });
+    expect(planWork(drawing, 'references').map((unit) => unit.id)).toEqual([
+      'gala',
+    ]);
+
+    // An existing look sheet is not redrawn in the run that first makes the face.
+    const held = planUnits(
+      input({
+        characterSheets: [
+          { id: 'maya', sheet: 'missing' },
+          { id: 'gala', characterId: 'maya', sheet: 'done' },
+        ],
+      }),
+      SEQ
+    );
+    expect(states(held)).toMatchObject({
+      'sheet:character:gala': 'blocked by sheet:character:maya',
+    });
+    expect(planWork(held, 'references').map((unit) => unit.id)).toEqual([
+      'maya',
+    ]);
+
+    const during = planUnits(
+      input({
+        processing: true,
+        runStopAt: 'references',
+        characterSheets: [
+          { id: 'maya', sheet: 'missing' },
+          { id: 'gala', characterId: 'maya', sheet: 'missing' },
+        ],
+      }),
+      SEQ
+    );
+    expect(states(during)).toMatchObject({
+      'sheet:character:maya': 'running',
+      'sheet:character:gala': 'blocked by sheet:character:maya',
+    });
+
+    // A still that wears the look is not shown as running either: this run
+    // is not making that sheet.
+    const duringStills = planUnits(
+      input({
+        processing: true,
+        runStopAt: 'images',
+        characterSheets: [
+          { id: 'maya', sheet: 'missing' },
+          { id: 'gala', characterId: 'maya', sheet: 'missing' },
+        ],
+        shots: [shot('s1', { references: refs('gala'), still: 'missing' })],
+      }),
+      SEQ
+    );
+    expect(states(duringStills)).toMatchObject({
+      'sheet:character:gala': 'blocked by sheet:character:maya',
+      'still:s1': 'blocked by sheet:character:gala',
+    });
+  });
 });
 
 describe('planWork', () => {

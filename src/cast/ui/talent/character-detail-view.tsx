@@ -5,6 +5,12 @@ import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog'
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { SheetVersionStrip } from '@/cast/ui/sheets/sheet-version-strip';
 import { wearLook } from '@/cast/character-looks';
+import {
+  defaultLookCaption,
+  defaultLookFaceState,
+  defaultLookName,
+  lookSheetFaceMessage,
+} from '@/cast/look-sheet-face';
 import { CharacterLibraryButton } from '@/cast/ui/character-library/character-library-button';
 import { CharacterLooksRow } from '@/cast/ui/talent/character-looks-row';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
@@ -100,6 +106,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     liveLooks.find((look) => look.id === pickedLookId) ??
     liveLooks.find((look) => look.isDefault);
   const activeLookId = activeLook?.id ?? characterId;
+  // A look other than the default is drawn from the default look's sheet.
+  const faceState = defaultLookFaceState(liveLooks);
+  const faceBlocked = activeLook?.isDefault === false && faceState !== 'ready';
+  const faceMessage =
+    activeLook?.isDefault === false
+      ? lookSheetFaceMessage(defaultLookName(liveLooks), faceState)
+      : activeLook
+        ? defaultLookCaption(
+            activeLook.name,
+            liveLooks.some((look) => !look.isDefault)
+          )
+        : null;
   // Everything below reads the character wearing that look: its sheet,
   // status, versions and staleness are the look's.
   const character = owner && activeLook ? wearLook(owner, activeLook) : owner;
@@ -369,10 +387,21 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {
       pricing: falPricing,
-      // Talent refs go through the model's edit endpoint (same as the workflow).
-      edit: Boolean(character?.talentId),
+      // A reference image uses the model's edit endpoint. The default look
+      // sends the talent sheet; every other look sends the default look's sheet.
+      edit:
+        activeLook?.isDefault === false
+          ? faceState === 'ready'
+          : Boolean(character?.talentId),
     });
-  }, [falPricing, pricingPending, selectedSheetModel, character?.talentId]);
+  }, [
+    falPricing,
+    pricingPending,
+    selectedSheetModel,
+    character?.talentId,
+    activeLook?.isDefault,
+    faceState,
+  ]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -478,7 +507,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
             entityType="character"
             divergentVariantId={characterDivergentVariant?.id}
             isStale={isSheetStale}
-            onRegenerate={handleRegenerateSheet}
+            onRegenerate={faceBlocked ? undefined : handleRegenerateSheet}
             onCompareDivergent={
               characterDivergentVariant
                 ? () => setCompareVariant(characterDivergentVariant)
@@ -518,9 +547,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     activeLookId={activeLookId}
                     onSelect={setPickedLookId}
                   />
+                  {faceMessage ? (
+                    <p className="text-sm text-muted-foreground">
+                      {faceMessage}
+                    </p>
+                  ) : null}
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">Sheet</p>
-                    {isSheetStale && (
+                    <p className="text-sm font-medium">
+                      {activeLook?.isDefault
+                        ? 'Default look'
+                        : (activeLook?.name ?? 'Sheet')}
+                    </p>
+                    {isSheetStale && !faceBlocked && (
                       <StalenessIndicator
                         artifact="sheet"
                         entityType="character"
@@ -605,7 +643,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   </p>
                   <Button
                     onClick={handleRegenerateSheet}
-                    disabled={regenerateSheet.isPending}
+                    disabled={regenerateSheet.isPending || faceBlocked}
                   >
                     <InButtonCost estimate={sheetCostEstimate}>
                       {regenerateSheet.isPending ? (
@@ -666,7 +704,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     pendingLabel="Uploading…"
                     accept="image/*"
                     isPending={uploadSheet.isPending}
-                    disabled={isSheetGenerating}
+                    disabled={isSheetGenerating || faceBlocked}
                     onFile={(file) =>
                       uploadSheet.mutate(
                         { file, sequenceId, characterId, lookId: activeLookId },

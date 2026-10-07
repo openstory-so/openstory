@@ -83,6 +83,20 @@ describe('character-sheet hash', () => {
     const explicit = await computeCharacterSheetHashFromDto(explicitInput);
     expect(omitted).toBe(explicit);
   });
+
+  it('treats a missing face version as none', async () => {
+    const omitted = await computeCharacterSheetHashFromDto(baseInput);
+    const explicit = await computeCharacterSheetHashFromDto({
+      ...baseInput,
+      faceSheetVersionId: null,
+    });
+    const faced = await computeCharacterSheetHashFromDto({
+      ...baseInput,
+      faceSheetVersionId: 'sheet-v1',
+    });
+    expect(explicit).toBe(omitted);
+    expect(faced).not.toBe(omitted);
+  });
 });
 
 describe('location-sheet hash', () => {

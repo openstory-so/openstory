@@ -18,7 +18,9 @@ import { asStub } from '@/test/as-stub';
 
 const mockCopyStoredImage = vi.fn();
 const mockGenerateImageWithProvider = vi.fn();
+const mockStoreGeneratedPng = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
+const mockRecordFalUsageStep = vi.fn();
 const mockRecordProvenance = vi.fn();
 const mockEmit = vi.fn();
 
@@ -28,10 +30,13 @@ vi.doMock('@/platform/server/storage/copy-stored-image', () => ({
 vi.doMock('@/stills/server/image-generation', () => ({
   generateImageWithProvider: mockGenerateImageWithProvider,
 }));
+vi.doMock('@/stills/server/image-storage', () => ({
+  storeGeneratedPng: mockStoreGeneratedPng,
+}));
 vi.doMock('@/billing/server/workflow-deduction', () => ({
   deductWorkflowCredits: mockDeductWorkflowCredits,
   extractImageCost: () => 0,
-  recordFalUsageStep: vi.fn(),
+  recordFalUsageStep: mockRecordFalUsageStep,
 }));
 vi.doMock('@/platform/server/compliance/provenance', () => ({
   recordProvenance: mockRecordProvenance,
@@ -152,6 +157,17 @@ beforeEach(() => {
     path: 'team-1/seq-1/char-1/copied.png',
     fullPath: 'characters/team-1/seq-1/char-1/copied.png',
   });
+  mockGenerateImageWithProvider.mockResolvedValue({
+    imageUrls: ['https://fal.example/out.png'],
+    metadata: { usedOwnKey: false, requestId: 'req-1' },
+    via: 'fal',
+  });
+  mockStoreGeneratedPng.mockResolvedValue({
+    url: '/r2/characters/team-1/seq-1/char-1/out.png',
+    path: 'team-1/seq-1/char-1/out.png',
+  });
+  mockRecordFalUsageStep.mockResolvedValue({});
+  mockDeductWorkflowCredits.mockResolvedValue(undefined);
   mockRecordProvenance.mockResolvedValue(undefined);
   mockEmit.mockResolvedValue(undefined);
   mockPromoteIfPending.mockResolvedValue('promoted');
@@ -178,6 +194,31 @@ describe('CharacterSheetWorkflow reuseTalentSheet', () => {
       '/r2/characters/team-1/seq-1/char-1/copied.png'
     );
     expect(result.diverged).toBeUndefined();
+  });
+
+  it('draws a look from the default sheet, not the talent image (#2015)', async () => {
+    await makeWorkflow().runBody(
+      await makeEvent({
+        lookId: 'gala',
+        reuseTalentSheet: true,
+        faceSheetUrl: '/r2/characters/team-1/char-1/default.png',
+        faceSheetVersionId: 'char-1',
+        talentDescription: 'Elvis Presley',
+        referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
+      }),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(mockCopyStoredImage).not.toHaveBeenCalled();
+    expect(mockGenerateImageWithProvider).toHaveBeenCalledTimes(1);
+    const params = mockGenerateImageWithProvider.mock.calls[0]?.[0];
+    expect(params.referenceImageUrls).toEqual([
+      '/r2/characters/team-1/char-1/default.png',
+    ]);
+    expect(params.prompt).toContain("this character's default look");
+    expect(params.prompt).not.toContain('Elvis Presley');
+    expect(params.prompt).not.toContain('/r2/talent/');
   });
 });
 

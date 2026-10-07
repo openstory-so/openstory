@@ -24,6 +24,7 @@ import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { enqueueCharacterVoiceDesign } from '@/cast/server/voice/enqueue-character-voice';
 import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
+import { lookSheetFaceRefusal } from '@/cast/look-sheet-face';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import {
   requireCharacterLook,
@@ -91,7 +92,12 @@ export async function regenerateCharacterSheet(
   );
 
   // A removed look is not drawn: nobody could pick the sheet.
-  requireLiveLook(await requireCharacterLook(scopedDb, character, data.lookId));
+  const look = requireLiveLook(
+    await requireCharacterLook(scopedDb, character, data.lookId)
+  );
+  // A look other than the default is drawn from the default look's sheet.
+  const refusal = lookSheetFaceRefusal(character.looks, look.isDefault);
+  if (refusal) throw new ValidationError(refusal);
   const payload = await buildRegenerateCharacterSheetPayload({
     scopedDb,
     userId: actor.userId,
@@ -367,42 +373,15 @@ export async function recastCharacter(
     workflowInput
   );
 
-  // A recast changes the face on every sheet, so every other look a live
-  // scene wears is redrawn too (#2015); its shots read stale once the new
-  // sheet lands. A look nobody wears stays stale until asked for.
-  // The recast itself has started by now, so one look's sheet failing to
-  // start must not read as "recast failed": that look's sheet is marked
-  // failed (by `regenerateCharacterSheet`) and named in the result.
-  const failedLookIds: string[] = [];
-  for (const other of updatedCharacter.looks) {
-    if (other.isDefault || other.deletedAt) continue;
-    const worn = await scopedDb.characters.getShotIdsForCharacter(
-      character.sequenceId,
-      data.characterId,
-      { wearing: other.id }
-    );
-    if (worn.length === 0) continue;
-    try {
-      await regenerateCharacterSheet(scopedDb, actor, sequence, {
-        characterId: data.characterId,
-        lookId: other.id,
-      });
-    } catch (error) {
-      logger.error('Recast: a look sheet did not start', {
-        err: error,
-        characterId: data.characterId,
-        lookId: other.id,
-      });
-      failedLookIds.push(other.id);
-    }
-  }
+  // The recast redraws the default look only. Other looks are drawn from
+  // that new sheet, so starting them here would copy the face that is about
+  // to be replaced. Once the new sheet lands, their hashes go stale and the
+  // plan redraws them.
 
   return {
     character: updatedCharacter,
     talentId: data.talentId,
     sheetWorkflowRunId: workflowRunId,
-    /** Other worn looks whose sheet could not be started (#2015). */
-    failedLookIds,
     // The shots actually queued — a shot with no selected image prompt is
     // dropped by the snapshot builder rather than failing the recast.
     affectedShotIds: shotSnapshots.map((s) => s.shotId),

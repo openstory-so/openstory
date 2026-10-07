@@ -1235,6 +1235,23 @@ describe('staleness matrix — reference sheets', () => {
 
     expect(await galaVerdict(gala)).toBe('fresh');
     expect(await galaVerdict({ ...gala, clothing: 'blue gown' })).toBe('stale');
+    // The gown is drawn from the default look's sheet. A new face stales it.
+    const movedFace = asStub<ScopedDb>({
+      ...castDb(stamped),
+      characters: {
+        getById: () =>
+          Promise.resolve(
+            withLooks(
+              { ...stamped.alice, selectedSheetVersionId: 'csv-alice-2' },
+              [gala]
+            )
+          ),
+      },
+    });
+    expect(
+      (await readLookSheetStaleness(movedFace, 'seq', 'c-alice', GALA.id))
+        .status
+    ).toBe('stale');
     // The gown's edit leaves the default look's sheet alone.
     expect(
       (

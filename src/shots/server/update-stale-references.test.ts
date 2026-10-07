@@ -140,6 +140,39 @@ describe('plan reference talent-sheet reuse', () => {
     ]);
     expect(result?.cost.sheets).toBe(100);
   });
+  it('never copies the talent sheet onto a look other than the default', async () => {
+    buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
+      characterDbId: 'maya',
+      lookId,
+      reuseTalentSheet: false,
+      referenceImageUrl: 'https://example.com/talent.jpg',
+      talentMetadata: { standardClothing: 'yellow rain jacket' },
+      castTalentDescription: 'A matching actor',
+    }));
+    const look = (id: string, isDefault: boolean) =>
+      asStub<Character['looks'][number]>({
+        id,
+        name: id,
+        isDefault,
+        clothing: 'yellow rain jacket',
+        styling: null,
+        sheetImageUrl: null,
+        sheetStatus: 'pending',
+        sheetInputHash: null,
+        selectedSheetVersionId: null,
+      });
+    const result = await references(
+      { looks: [look('maya', true), look('gala', false)] },
+      [
+        { kind: 'sheet:character', id: 'maya' },
+        { kind: 'sheet:character', id: 'gala' },
+      ]
+    );
+    expect(result?.characterSheets).toEqual([
+      expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
+      expect.objectContaining({ lookId: 'gala', reuseTalentSheet: false }),
+    ]);
+  });
   it('excludes voice-only cast from sheet work and its cost', async () => {
     const result = await references({ voiceOnly: true });
     expect(result?.characterSheets).toEqual([]);

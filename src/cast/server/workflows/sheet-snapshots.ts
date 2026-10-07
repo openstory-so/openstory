@@ -162,6 +162,9 @@ function characterSheetHashInput(
   return {
     characterBible: characterBibleFields(input.characterMetadata),
     styling: input.lookStyling,
+    // `?? null`: a payload queued before the face lock has no such field,
+    // and a default look never sets one. Both hash like "no face".
+    faceSheetVersionId: input.faceSheetVersionId ?? null,
     talentSheetHash: input.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(input),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,

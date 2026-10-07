@@ -310,20 +310,33 @@ type CharacterSheetPromptResult = {
  * @param styleConfig - Optional sequence style to apply instead of default studio look
  * @param styling - The look's hair / makeup / injury notes (#2015); null when
  *   the look changes none. `entry.standardClothing` is the look's clothing.
+ * @param faceSheetUrl - The default look's completed sheet. When set, it is
+ *   the only reference: this look keeps that person and changes the costume.
+ *   The talent image is not sent.
  * @returns Prompt and reference URLs for image generation
  */
 export const buildCharacterSheetPrompt = (
   entry: CharacterBibleEntry,
   talentOverrides: TalentOverrides | undefined,
   styleConfig: StyleConfig | undefined,
-  styling: string | null
+  styling: string | null,
+  faceSheetUrl?: string | null
 ): CharacterSheetPromptResult => {
-  const talentMeta = talentOverrides?.sheetMetadata;
-  const hasTalent = !!(talentMeta || talentOverrides?.description);
+  // A look other than the default is this person in another outfit. The
+  // default look's sheet is the person; the talent sheet is not also sent.
+  const fromDefaultLook = Boolean(faceSheetUrl);
+  const talentMeta = fromDefaultLook
+    ? undefined
+    : talentOverrides?.sheetMetadata;
+  const hasTalent = fromDefaultLook
+    ? false
+    : !!(talentMeta || talentOverrides?.description);
 
   // Collect reference URLs
   const referenceUrls: string[] = [];
-  if (talentOverrides?.sheetImageUrl) {
+  if (fromDefaultLook && faceSheetUrl) {
+    referenceUrls.push(faceSheetUrl);
+  } else if (talentOverrides?.sheetImageUrl) {
     referenceUrls.push(talentOverrides.sheetImageUrl);
   }
 
@@ -336,10 +349,11 @@ export const buildCharacterSheetPrompt = (
   const age = talentMeta?.age || entry.age;
   const gender = talentMeta?.gender || entry.gender;
   const ethnicity = talentMeta?.ethnicity || entry.ethnicity;
+  const talentDescription = talentOverrides?.description;
   const physicalDescription =
     talentMeta?.physicalDescription ||
-    (hasTalent && talentOverrides.description
-      ? `${talentOverrides.description}. Match the appearance in the reference image exactly.`
+    (hasTalent && talentDescription
+      ? `${talentDescription}. Match the appearance in the reference image exactly.`
       : entry.physicalDescription);
 
   // Costume/wardrobe: always from the character (the role they're playing)
@@ -366,9 +380,14 @@ ${characterFeatures}`;
 
   // Build reference image instruction
   let referenceInstruction = '';
-  if (hasTalent && referenceUrls.length > 0) {
-    const talentNotes = talentOverrides.description
-      ? `\nTalent notes: ${talentOverrides.description}`
+  if (fromDefaultLook) {
+    referenceInstruction = `
+CRITICAL - Same person, new outfit:
+The reference image is this character's default look. Every panel must show that same person: face, body, skin, and hair match the reference. Change the costume to the clothing described above. Change the hair only when the styling notes for this look say to. If any text conflicts with the reference image, the IMAGE takes priority.
+`;
+  } else if (hasTalent && referenceUrls.length > 0) {
+    const talentNotes = talentDescription
+      ? `\nTalent notes: ${talentDescription}`
       : '';
     referenceInstruction = `
 CRITICAL - Actor Reference:

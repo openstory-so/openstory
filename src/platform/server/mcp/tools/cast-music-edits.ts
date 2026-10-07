@@ -402,7 +402,7 @@ const listCharacterLookVersionsTool = productionRead(
 const createCharacterLookTool = openstoryTool({
   name: 'create_character_look',
   description:
-    'Add an outfit (a look) to a character: a name, the clothing, and any hair, makeup or injury notes that go with it. It has no sheet until regenerate_character_sheet is called with its lookId. A scene wears it once update_scene sets continuity.characterLooks.',
+    'Add an outfit (a look) to a character: a name, the clothing, and any hair, makeup or injury notes that go with it. It has no sheet until regenerate_character_sheet is called with its lookId, and that call is refused until the default look has a completed sheet — the new look is drawn from that face. A scene wears it once update_scene sets continuity.characterLooks.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: characterInput.extend(lookFieldsSchema.shape),

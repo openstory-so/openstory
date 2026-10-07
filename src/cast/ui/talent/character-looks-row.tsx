@@ -205,6 +205,7 @@ export const CharacterLooksRow: React.FC<{
                 />
               ) : null}
               <span>{look.name}</span>
+              {look.isDefault ? <Badge>Default look</Badge> : null}
               {look.sheetStatus === 'generating' ? (
                 <Badge variant="secondary">Generating…</Badge>
               ) : null}

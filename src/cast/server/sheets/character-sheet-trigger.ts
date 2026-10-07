@@ -5,6 +5,7 @@
  */
 
 import { wearLook } from '@/cast/character-looks';
+import { defaultLookFace } from '@/cast/look-sheet-face';
 import { requireCharacterLook } from '@/cast/server/character-look';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -75,6 +76,11 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     params.character,
     params.lookId
   );
+  // Captured before dressing: the character wears the default look, and the
+  // worn row's sheet fields are the look being drawn. Absent when that
+  // sheet is not completed — staleness still has to hash, so this does not
+  // refuse. The generate and upload gates do.
+  const face = look.isDefault ? null : defaultLookFace(params.character.looks);
   const character = wearLook(params.character, look);
   // The UI hides the button; this is the guard for every other caller.
   if (character.voiceOnly) {
@@ -110,6 +116,12 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     lookId: look.id,
     lookVersionId: look.lookVersionId,
     lookStyling: look.styling,
+    // The default look's face. A non-default look is drawn from it, and only
+    // from it. Omitted when this is the default look, or its sheet is not
+    // completed yet.
+    ...(face
+      ? { faceSheetUrl: face.url, faceSheetVersionId: face.versionId }
+      : {}),
     talentId: character.talentId,
     characterName: character.name,
     // Dressed: `standardClothing` is this look's clothing.

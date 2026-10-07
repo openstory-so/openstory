@@ -5,6 +5,7 @@
  * `media-upload.fn.ts` for the staleness and DAG contracts.
  */
 import { wearLook } from '@/cast/character-looks';
+import { defaultLookFace, lookSheetFaceRefusal } from '@/cast/look-sheet-face';
 import {
   requireCharacterLook,
   requireLiveLook,
@@ -24,7 +25,11 @@ import {
   type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
-import { AttestationRequiredError, NotFoundError } from '@/platform/errors';
+import {
+  AttestationRequiredError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import {
   characterSheetTalentHashFields,
   computeStyleConfigHash,
@@ -43,7 +48,6 @@ import type { Sequence, User } from '@/platform/server/db/schema';
 import type { ShotEditContext } from '@/shots/server/shot-context';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { ValidationError } from '@/platform/errors';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { getGenerationChannel } from '@/platform/realtime';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
@@ -578,6 +582,11 @@ export async function setCharacterSheetFromUpload(
   const look = requireLiveLook(
     await requireCharacterLook(scopedDb, owner, data.lookId)
   );
+  // Same rule as generate: a look other than the default keeps the default
+  // look's face, and cannot be uploaded until that sheet exists.
+  const refusal = lookSheetFaceRefusal(owner.looks, look.isDefault);
+  if (refusal) throw new ValidationError(refusal);
+  const face = look.isDefault ? null : defaultLookFace(owner.looks);
   const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(
     character.isPerson,
@@ -602,6 +611,7 @@ export async function setCharacterSheetFromUpload(
       consistencyTag: character.consistencyTag,
     },
     styling: character.styling,
+    faceSheetVersionId: face?.versionId ?? null,
     talentSheetHash: cast.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(cast),
     styleConfigHash,

@@ -80,11 +80,13 @@ const SceneLookPicker: React.FC<{
     (look) => !look.deletedAt || look.id === wornLookId
   );
   if (looks.length < 2) return null;
+  const label = (look: (typeof looks)[number]) =>
+    look.isDefault ? `${look.name} (default look)` : look.name;
   return (
     <Select
       value={wornLookId}
       // The trigger shows the look's name, not its id.
-      items={Object.fromEntries(looks.map((look) => [look.id, look.name]))}
+      items={Object.fromEntries(looks.map((look) => [look.id, label(look)]))}
       disabled={update.isPending}
       onValueChange={(lookId) => {
         if (!lookId) return;
@@ -117,7 +119,7 @@ const SceneLookPicker: React.FC<{
       <SelectContent>
         {looks.map((look) => (
           <SelectItem key={look.id} value={look.id}>
-            {look.name}
+            {label(look)}
           </SelectItem>
         ))}
       </SelectContent>

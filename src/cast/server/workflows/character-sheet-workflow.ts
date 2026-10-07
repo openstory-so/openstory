@@ -240,7 +240,9 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       }
     });
 
-    if (input.reuseTalentSheet) {
+    // A look other than the default is drawn from that look's sheet. The
+    // talent-sheet copy is only for the default look's first sheet.
+    if (input.reuseTalentSheet && !input.faceSheetUrl) {
       return persistReusedTalentSheet({
         event,
         step,
@@ -278,7 +280,8 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           input.characterMetadata,
           talentOverrides,
           input.styleConfig,
-          input.lookStyling
+          input.lookStyling,
+          input.faceSheetUrl
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 

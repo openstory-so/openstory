@@ -472,4 +472,25 @@ describe('buildCharacterSheetPrompt with talent', () => {
       'Hair, Makeup & Condition for this look:\nhair pinned up, split lip'
     );
   });
+
+  test('a look drawn from the default sheet uses that image and no other', () => {
+    const { prompt, referenceUrls } = buildCharacterSheetPrompt(
+      scriptEntry,
+      {
+        sheetMetadata: talentMetadata,
+        description: 'This character should look like Elvis Presley',
+        sheetImageUrl: 'https://example.com/talent.png',
+      },
+      undefined,
+      'hair pinned up',
+      'https://example.com/default-look.png'
+    );
+
+    expect(referenceUrls).toEqual(['https://example.com/default-look.png']);
+    expect(prompt).toContain("this character's default look");
+    expect(prompt).toContain('Change the costume');
+    expect(prompt).not.toContain('Elvis Presley');
+    expect(prompt).not.toContain('https://example.com/talent.png');
+    expect(prompt).toContain('hair pinned up');
+  });
 });
