@@ -585,7 +585,9 @@ bible version with the new talent and face, and the voice is never touched.
   names it** (`talent.delete` throws). The FK's `SET NULL` would otherwise
   blank who played the character, pinned and historical alike; changing the
   FK is a rebuild of `character_bible_versions`, so the refusal is the
-  guard. Recast or hard-delete those characters first.
+  guard. Recast or hard-delete those characters first. A pinned-only
+  refusal (history alone no longer blocking) can come when a later rebuild
+  changes that FK to `restrict`.
 - **Existing rows** (`20261007115216_backfill_talent_likeness`): the Default
   (else newest convergent) sheet became the reference sheet; other
   convergent sheets were discarded (restorable); live parked variants became
@@ -595,7 +597,10 @@ bible version with the new talent and face, and the voice is never touched.
   `backfill` bible version cast with the talent, a `library` voice version
   (the talent's `voice_id` nulled so the slot counts once), one look per
   convergent sheet (the default look keyed to the character, #1419) and one
-  completed `user-upload` sheet per look. It is in no sequence; a sequence
+  completed `user-upload` sheet per look, and `is_person = 1` — the safe
+  state (a person until the likeness check says otherwise); `talent.is_human`
+  is "signed release", not "is a person", and is not copied. It is in no
+  sequence; a sequence
   that casts it reads the default look's sheet by the #1419 rule. The old
   columns (`personality`, `movement`, `voice_description`,
   `talent_sheets.name`, `is_default`) are `legacy*` in Drizzle, unread.
