@@ -43,6 +43,7 @@ import {
   exists,
   inArray,
   isNull,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
@@ -499,21 +500,30 @@ export function createTalentMethods(
       if (!(await getWritableTalent(db, talentId, teamId))) {
         return false;
       }
-      const [named] = await db
-        .select({ n: sql<number>`count(*)`.mapWith(Number) })
-        .from(characterBibleVersions)
-        .where(eq(characterBibleVersions.talentId, talentId));
-      if (named && named.n > 0) {
+      // One guarded DELETE: a recast landing between a check and the delete
+      // would otherwise be blanked by the SET NULL FK. The re-read below only
+      // words the refusal, with no count (a public talent's casts are other
+      // teams' business).
+      const result = await db.delete(talent).where(
+        and(
+          eq(talent.id, talentId),
+          eq(talent.teamId, teamId),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(characterBibleVersions)
+              .where(eq(characterBibleVersions.talentId, talentId))
+          )
+        )
+      );
+      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
+      if ((result.rowsAffected ?? 0) > 0) return true;
+      if (await getWritableTalent(db, talentId, teamId)) {
         throw new ValidationError(
-          `${named.n} character version${named.n === 1 ? '' : 's'} cast this talent. Recast or delete those characters first.`
+          'Characters still cast this talent. Recast or delete them first.'
         );
       }
-
-      const result = await db
-        .delete(talent)
-        .where(and(eq(talent.id, talentId), eq(talent.teamId, teamId)));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result.rowsAffected ?? 0) > 0;
+      return false;
     },
 
     toggleFavorite: async (talentId: string): Promise<Talent | undefined> => {

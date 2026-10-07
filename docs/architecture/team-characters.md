@@ -664,22 +664,27 @@ bible version with the new talent and face, and the voice is never touched.
 - **One talent, several roles.** Matching dedups by character; a talent may
   play twins or a one-person skit. Nothing in the schema ever forbade it.
 - **Deleting a talent is refused while ANY `character_bible_versions` row
-  names it** (`talent.delete` throws). The FK's `SET NULL` would otherwise
+  names it** (`talent.delete`: one DELETE guarded by `NOT EXISTS`, so a
+  recast landing in between cannot be blanked; the refusal is worded from a
+  re-read, with no count). The FK's `SET NULL` would otherwise
   blank who played the character, pinned and historical alike; changing the
   FK is a rebuild of `character_bible_versions`, so the refusal is the
   guard. Recast or hard-delete those characters first. A pinned-only
   refusal (history alone no longer blocking) can come when a later rebuild
   changes that FK to `restrict`.
 - **Existing rows** (`20261007115216_backfill_talent_likeness`): the Default
-  (else newest convergent) sheet became the reference sheet; other
+  (else newest convergent) sheet WITH AN IMAGE became the reference sheet
+  (an image-less sheet never does; such a talent keeps NULL); other
   convergent sheets were discarded (restorable); live parked variants became
   parked `talent_sheets` rows under their own id. A talent carrying role data
   (personality, movement, a voice, or a `script_analysis` sheet — what Add to
   Library made) split off a library character with the talent's id: a
   `backfill` bible version cast with the talent, a `library` voice version
   (the talent's `voice_id` nulled so the slot counts once), one look per
-  convergent sheet (the default look keyed to the character, #1419) and one
-  completed `user-upload` sheet per look, and `is_person = 1` — the safe
+  convergent sheet with an image (the default look keyed to the character,
+  #1419, written for EVERY split character, with `sheet_status` 'pending'
+  when it has no reference sheet, so an attach finds a live look) and one
+  completed `user-upload` sheet per look that has one, and `is_person = 1` — the safe
   state (a person until the likeness check says otherwise); `talent.is_human`
   is "signed release", not "is a person", and is not copied. It is in no
   sequence; a sequence

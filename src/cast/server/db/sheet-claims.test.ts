@@ -1221,9 +1221,11 @@ describe('library talent claims', () => {
 
   it('refuses to delete a talent while a character version casts it (#2018)', async () => {
     await castWith(talentId);
-    await expect(talents().delete(talentId)).rejects.toThrow(
-      /character version/
-    );
+    await expect(talents().delete(talentId)).rejects.toThrow(/still cast/);
+    // The row is still there: the guard is in the DELETE itself.
+    expect(
+      await db.query.talent.findFirst({ where: { id: talentId } })
+    ).toBeDefined();
   });
 });
 
