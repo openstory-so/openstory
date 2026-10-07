@@ -19,7 +19,6 @@ import { getRequest } from '@tanstack/react-start/server';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
   createTalentSchema,
-  createTalentSheetSchema,
   listTalentFilterSchema,
   updateTalentSchema,
 } from '@/cast/server/talent.schemas';
@@ -32,11 +31,11 @@ import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { ValidationError } from '@/platform/errors';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
-import { cropTalentSheetPortrait } from '@/cast/server/talent/crop-sheet-portrait';
 import { enqueueLibraryTalentSheet } from '@/cast/server/talent/enqueue-library-talent-sheet';
 import { maybePromoteOrGenerateSheet } from '@/cast/server/talent/promote-or-generate-sheet';
 import { isTeamTalentStoredUrl } from '@/platform/server/storage/copy-stored-image';
@@ -46,7 +45,7 @@ import { z } from 'zod';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 
 const talentIdSchema = z.object({ talentId: ulidSchema });
-const sheetIdSchema = z.object({ sheetId: ulidSchema });
+const sheetIdSchema = z.object({ talentId: ulidSchema, sheetId: ulidSchema });
 const mediaIdSchema = z.object({ mediaId: ulidSchema });
 
 // List Talent
@@ -133,7 +132,8 @@ export const updateTalentFn = createServerFn({ method: 'POST' })
     return updated;
   });
 
-// Delete Talent (requires admin/owner role)
+// Delete Talent (requires admin/owner role). Refused while a character
+// version casts it (#2018) — `talent.delete` throws the reason.
 
 export const deleteTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
@@ -141,17 +141,16 @@ export const deleteTalentFn = createServerFn({ method: 'POST' })
   .handler(async ({ context, data }) => {
     await requireTeamAdminAccess(context.user.id, context.teamId);
 
-    const existing = await context.scopedDb.talent.getWithRelations(
-      data.talentId
-    );
+    const existing = await context.scopedDb.talent.getById(data.talentId);
     if (!existing || !isTeamWritableTalent(existing, context.teamId)) {
       throw new Error(
         'Talent not found, is read-only, or you do not have permission to delete it'
       );
     }
-    // Slot first, row second (#1553): a failed ElevenLabs delete keeps the
+    // Slot first, row second (#1553): a failed provider delete keeps the
     // pointer on this row, so the next attempt can release it. This row is
-    // the one reference the count must ignore.
+    // the one reference the count must ignore. (Only a recorded Seed voice
+    // lives here since #2018, which holds no slot; kept for #1631.)
     if (existing.voiceId) {
       await releaseVoiceIfUnreferenced(context.scopedDb, existing.voiceId, {
         heldBy: 1,
@@ -179,66 +178,28 @@ export const toggleTalentFavoriteFn = createServerFn({ method: 'POST' })
     return updated;
   });
 
-// Create Talent Sheet
+// The reference sheet (#2018): pick one from the history, discard, restore.
 
-export const createTalentSheetFn = createServerFn({ method: 'POST' })
+export const selectTalentSheetFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(createTalentSheetSchema))
-  .handler(async ({ context, data }) => {
-    return context.scopedDb.talent.sheets.create({
-      talentId: data.talentId,
-      name: data.name,
-      imageUrl: data.imageUrl,
-      imagePath: data.imagePath,
-      metadata: data.metadata,
-      isDefault: data.isDefault,
-      source:
-        data.source === 'ai_generated' ||
-        data.source === 'manual_upload' ||
-        data.source === 'script_analysis'
-          ? data.source
-          : 'manual_upload',
-    });
-  });
+  .validator(zodValidator(sheetIdSchema))
+  .handler(async ({ context, data }) =>
+    context.scopedDb.talent.selectSheet(data.talentId, data.sheetId)
+  );
 
-// Delete Talent Sheet
+export const discardTalentSheetFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(sheetIdSchema))
+  .handler(async ({ context, data }) => ({
+    discardedAt: await context.scopedDb.talent.sheets.discard(data.sheetId),
+  }));
 
-export const deleteTalentSheetFn = createServerFn({ method: 'POST' })
+export const undiscardTalentSheetFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(sheetIdSchema))
   .handler(async ({ context, data }) => {
-    const sheet = await context.scopedDb.talent.sheets.getById(data.sheetId);
-    if (!sheet) {
-      throw new Error('Sheet not found');
-    }
-
-    const deleted = await context.scopedDb.talent.sheets.delete(data.sheetId);
-    if (!deleted) {
-      throw new Error('Failed to delete sheet');
-    }
-
+    await context.scopedDb.talent.sheets.undiscard(data.sheetId);
     return { success: true };
-  });
-
-// Set Default Sheet
-
-export const setDefaultSheetFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(sheetIdSchema))
-  .handler(async ({ context, data }) => {
-    const sheet = await context.scopedDb.talent.sheets.getById(data.sheetId);
-    if (!sheet) {
-      throw new Error('Sheet not found');
-    }
-
-    const updated = await context.scopedDb.talent.sheets.update(data.sheetId, {
-      isDefault: true,
-    });
-    if (!updated) {
-      throw new Error('Failed to update sheet');
-    }
-
-    return updated;
   });
 
 // Delete Talent Media
@@ -373,14 +334,9 @@ export const finalizeTalentUploadFn = createServerFn({ method: 'POST' })
 
 // Generate Talent Sheet
 
-const generateSheetInputSchema = z.object({
-  talentId: ulidSchema,
-  sheetName: z.string().optional(),
-});
-
 export const generateTalentSheetFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(generateSheetInputSchema))
+  .validator(zodValidator(talentIdSchema))
   .handler(async ({ context, data }) => {
     const talentRecord = await context.scopedDb.talent.getWithRelations(
       data.talentId
@@ -405,7 +361,6 @@ export const generateTalentSheetFn = createServerFn({ method: 'POST' })
       talentName: talentRecord.name,
       talentDescription: talentRecord.description ?? undefined,
       referenceImageUrls: imageMedia.map((m) => m.url).sort(),
-      sheetName: data.sheetName,
     };
     const workflowInput = {
       ...workflowInputFields,
@@ -472,10 +427,12 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Save a sequence's character as a new talent: its description, voice and
- * sheet, as that sequence casts it. This is what "Add to Library" did before
- * the library became a flag on the character (#2017). It stays, as "Save as
- * talent", until #2018 says what a talent is.
+ * Save a character's FACE as a new talent (#2018): the name, the physical
+ * description and the sheet this sequence selected for it, which lands as
+ * the talent's reference sheet through the library sheet run (claimed, then
+ * copied and cropped for the headshot). Nothing else crosses: personality,
+ * movement, voice and outfits are the character's. The character is not
+ * recast; Recast with the new talent if that is wanted.
  */
 export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
@@ -495,47 +452,40 @@ export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
     if (!character) {
       throw new Error('Character not found');
     }
+    if (!character.sheetImageUrl) {
+      throw new ValidationError(
+        `${character.name} has no sheet yet. Generate one first.`
+      );
+    }
 
+    // The sheet is a generated face, not a real person's photo: the likeness
+    // ledger (`isHuman`) stays false (#1581).
     const newTalent = await context.scopedDb.talent.create({
       name: character.name,
       description: character.physicalDescription ?? undefined,
-      personality: character.personality ?? undefined,
-      movement: character.movement ?? undefined,
-      // Same ElevenLabs voice on both rows (#1553) — released when the last goes.
-      voiceId: character.voiceId ?? undefined,
-      voiceDescription: character.voiceDescription ?? undefined,
       isFavorite: false,
       isHuman: false,
       isInTeamLibrary: true,
     });
 
-    if (!character.sheetImageUrl) return newTalent;
-
-    await context.scopedDb.talent.sheets.create({
+    const workflowInputFields: SheetPayload<LibraryTalentSheetWorkflowInput> = {
+      userId: context.user.id,
+      teamId: context.teamId,
       talentId: newTalent.id,
-      name: 'Default',
-      imageUrl: character.sheetImageUrl,
-      imagePath: character.sheetImagePath ?? undefined,
-      metadata: characterToBible(character),
-      isDefault: true,
-      source: 'script_analysis',
+      talentName: newTalent.name,
+      talentDescription: newTalent.description ?? undefined,
+      referenceImageUrls: [],
+      uploadedSheetUrl: character.sheetImageUrl,
+      uploadedSheetMetadata: characterToBible(character),
+    };
+    const runId = await enqueueLibraryTalentSheet(context.scopedDb, {
+      talentId: newTalent.id,
+      workflowInput: {
+        ...workflowInputFields,
+        snapshotInputHash:
+          await computeLibraryTalentSheetHashFromDto(workflowInputFields),
+      },
+      activity: 'portrait',
     });
-
-    // Crop panel 2 as the avatar — do not stamp the 4-panel onto imageUrl
-    // (#1630). A non-landscape sheet is copied as-is by the crop helper.
-    const headshot = await cropTalentSheetPortrait({
-      sheetUrl: character.sheetImageUrl,
-      destPath: `${context.teamId}/${newTalent.id}/headshot.png`,
-    });
-    const updated = await context.scopedDb.talent.update(newTalent.id, {
-      imageUrl: headshot.publicUrl,
-      imagePath: headshot.path,
-    });
-    return (
-      updated ?? {
-        ...newTalent,
-        imageUrl: headshot.publicUrl,
-        imagePath: headshot.path,
-      }
-    );
+    return { talent: newTalent, runId };
   });

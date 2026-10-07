@@ -22,7 +22,6 @@ import type {
 import { buildRecastRegenerateSnapshots } from '@/cast/server/workflows/recast-snapshot';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { enqueueCharacterVoiceDesign } from '@/cast/server/voice/enqueue-character-voice';
-import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import { moveCastsToCurrent } from '@/cast/server/version-moves';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { lookSheetFaceRefusal } from '@/cast/look-sheet-face';
@@ -198,30 +197,21 @@ export async function recastCharacter(
         })
       : undefined;
 
-  const talentWithSheets = await scopedDb.talent.getWithRelations(
-    data.talentId
-  );
+  const [talentWithSheets] = await scopedDb.talent.getByIds([data.talentId]);
   if (!talentWithSheets) {
     throw new NotFoundError('Talent not found');
   }
   assertTalentAccessible(talentWithSheets, scopedDb.teamId);
+  // The talent's face is its reference sheet (#2018); a talent with none yet
+  // is cast by description alone.
+  const referenceSheet = talentWithSheets.referenceSheet;
 
-  // Filter divergent sheets out of the fallback chain — they are stale-
-  // marked variants and must not back the talent's casting identity.
-  const defaultSheet =
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    talentWithSheets.sheets?.find((s) => s.isDefault && !s.divergedAt) ??
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    talentWithSheets.sheets?.find((s) => !s.divergedAt);
-
-  // Merge talent appearance with character role attributes
+  // Merge talent appearance with character role attributes. Only the face
+  // crosses: personality, movement and the voice stay the role's (#2018).
   const castingAttrs = buildCastingAttributes(characterToBible(character), {
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    sheetMetadata: defaultSheet?.metadata ?? undefined,
+    sheetMetadata: referenceSheet?.metadata ?? undefined,
     talentName: talentWithSheets.name,
     talentDescription: talentWithSheets.description ?? undefined,
-    personality: talentWithSheets.personality ?? '',
-    movement: talentWithSheets.movement ?? '',
   });
 
   // The talent and its appearance become ONE 'recast' bible version (#1600,
@@ -234,8 +224,6 @@ export async function recastCharacter(
       gender: castingAttrs.gender,
       ethnicity: castingAttrs.ethnicity,
       physicalDescription: castingAttrs.physicalDescription,
-      personality: castingAttrs.personality,
-      movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
       isPerson: isPersonFromTalentCast(
         character.isPerson,
@@ -244,28 +232,6 @@ export async function recastCharacter(
     },
     { actorId: actor.userId, source: 'recast', talentId: data.talentId }
   );
-  // Cast copies the talent's voice (#1553): its own history row, labelled
-  // 'library' because that voice came from the talent, not this role's
-  // design. The role's old voice is released below once nothing points at
-  // it. Separate write — the voice only moves through `updateVoice`.
-  if (talentWithSheets.voiceId) {
-    await scopedDb.characters.updateVoice(
-      data.sequenceId,
-      data.characterId,
-      {
-        voiceId: talentWithSheets.voiceId,
-        voiceDescription: talentWithSheets.voiceDescription,
-        voicePreviews: null,
-      },
-      'library',
-      actor.userId
-    );
-    await releaseReplacedVoice(
-      scopedDb,
-      character.voiceId,
-      talentWithSheets.voiceId
-    );
-  }
   // Re-read rather than use the write's row: the recast snapshot needs the
   // live sheet, which resolves from the version pointer (#1419).
   const updatedCharacter = await requireCharacter(
@@ -353,28 +319,25 @@ export async function recastCharacter(
     sequenceId: character.sequenceId,
     teamId: scopedDb.teamId,
     userId: actor.userId,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    talentMetadata: defaultSheet?.metadata ?? undefined,
+    referenceImageUrl: referenceSheet?.imageUrl ?? undefined,
+    talentMetadata: referenceSheet?.metadata ?? undefined,
     // Image-anchored, name-free (see buildCastingAttributes): naming a
     // person + "look exactly like" trips OpenAI's likeness moderation.
     talentDescription:
       `This character must exactly match the person shown in the reference image. ${talentWithSheets.description ?? ''}`.trim(),
     reuseTalentSheet: Boolean(
-      defaultSheet?.imageUrl &&
+      referenceSheet?.imageUrl &&
       shouldReuseTalentSheet({
         characterClothing: look.clothing,
         characterFeatures: character.distinguishingFeatures,
-        talentClothing: defaultSheet.metadata?.standardClothing,
-        talentFeatures: defaultSheet.metadata?.distinguishingFeatures,
-        talentPhysical: defaultSheet.metadata?.physicalDescription,
+        talentClothing: referenceSheet.metadata?.standardClothing,
+        talentFeatures: referenceSheet.metadata?.distinguishingFeatures,
+        talentPhysical: referenceSheet.metadata?.physicalDescription,
         talentDescription: talentWithSheets.description,
       })
     ),
     imageModel,
-    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-    talentSheetInputHash: defaultSheet?.inputHash ?? null,
+    talentSheetInputHash: referenceSheet?.inputHash ?? null,
     castTalentDescription: talentWithSheets.description,
     sheetVersionId,
     styleConfig,

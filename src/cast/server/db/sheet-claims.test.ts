@@ -374,11 +374,45 @@ describe('character sheet claims', () => {
     expect(await landCharacter(versionId)).toBe('parked');
 
     versionId = await claim();
-    await talents().sheets.create({
+    // A new reference sheet landing on the talent (#2018).
+    const newSheet = generateId();
+    await talents().claimSheet(
       talentId,
-      name: 'New look',
+      newSheet,
+      { description: null, referenceImageUrls: [] },
+      { onlyIfFree: false }
+    );
+    await talents().landSheet({
+      sheetId: newSheet,
+      talentId,
       imageUrl: '/r2/look.png',
+      imagePath: 'look.png',
+      metadata: undefined,
+      source: 'manual_upload',
+      inputHash: null,
     });
+    expect(await landCharacter(versionId)).toBe('parked');
+
+    versionId = await claim();
+    // The user picking another sheet from the history (#2018).
+    const picked = generateId();
+    await talents().claimSheet(
+      talentId,
+      picked,
+      { description: null, referenceImageUrls: [] },
+      { onlyIfFree: false }
+    );
+    await talents().landSheet({
+      sheetId: picked,
+      talentId,
+      imageUrl: '/r2/picked.png',
+      imagePath: 'picked.png',
+      metadata: undefined,
+      source: 'manual_upload',
+      inputHash: null,
+    });
+    versionId = await claim();
+    await talents().selectSheet(talentId, newSheet);
     expect(await landCharacter(versionId)).toBe('parked');
 
     versionId = await claim();
@@ -1042,9 +1076,10 @@ describe('library location claims', () => {
 
 describe('library talent claims', () => {
   const NO_INPUTS = { description: null, referenceImageUrls: [] };
+  const LAST_WINS = { onlyIfFree: false };
   const claimTalent = async () => {
     const sheetId = generateId();
-    await talents().claimSheet(talentId, sheetId, NO_INPUTS);
+    await talents().claimSheet(talentId, sheetId, NO_INPUTS, LAST_WINS);
     return sheetId;
   };
   const T_HASH = talentSheetInputHash('e'.repeat(64));
@@ -1052,22 +1087,28 @@ describe('library talent claims', () => {
     talents().landSheet({
       sheetId,
       talentId,
-      name: 'Sheet',
       imageUrl: `/r2/${sheetId}.png`,
       imagePath: `${sheetId}.png`,
       metadata: undefined,
       source,
       inputHash: T_HASH,
     });
+  const talentRow = async () => {
+    const row = await db.query.talent.findFirst({ where: { id: talentId } });
+    if (!row) throw new Error('talent gone');
+    return row;
+  };
 
-  it('lands a held claim, makes a first upload the default, and revokes cast sheets', async () => {
+  it('lands a held claim as the reference sheet and revokes cast sheets', async () => {
     const castClaim = await claim();
     const sheetId = await claimTalent();
 
     const { sheet, landed } = await land(sheetId, 'manual_upload');
     expect(landed).toBe(true);
     expect(sheet.divergedAt).toBeNull();
-    expect(sheet.isDefault).toBe(true);
+    const row = await talentRow();
+    expect(row.selectedSheetId).toBe(sheetId);
+    expect(row.pendingPromoteSheetId).toBeNull();
     expect((await character()).pendingPromoteSheetVersionId).toBeNull();
     expect(await landCharacter(castClaim)).toBe('parked');
 
@@ -1075,13 +1116,21 @@ describe('library talent claims', () => {
     expect((await land(sheetId, 'manual_upload')).landed).toBe(true);
   });
 
-  it('parks after a description edit, never as default', async () => {
+  it('a new sheet replaces the reference sheet while its claim holds (#2018)', async () => {
+    const first = await claimTalent();
+    await land(first, 'ai_generated');
+    const second = await claimTalent();
+    await land(second, 'ai_generated');
+    expect((await talentRow()).selectedSheetId).toBe(second);
+  });
+
+  it('parks after a description edit and leaves the pointer alone', async () => {
     const sheetId = await claimTalent();
     await talents().update(talentId, { description: 'new' });
     const { sheet, landed } = await land(sheetId, 'manual_upload');
     expect(landed).toBe(false);
     expect(sheet.divergedAt).not.toBeNull();
-    expect(sheet.isDefault).toBe(false);
+    expect((await talentRow()).selectedSheetId).not.toBe(sheetId);
   });
 
   it('refuses the claim when an input moved after the snapshot', async () => {
@@ -1092,20 +1141,39 @@ describe('library talent claims', () => {
       path: 'photo.png',
     });
     const inputs = { description: null, referenceImageUrls: [media.url] };
-    expect(await talents().claimSheet(talentId, generateId(), inputs)).toBe(
-      true
-    );
+    expect(
+      await talents().claimSheet(talentId, generateId(), inputs, LAST_WINS)
+    ).toBe(true);
 
     await talents().update(talentId, { description: 'edited' });
-    expect(await talents().claimSheet(talentId, generateId(), inputs)).toBe(
-      false
-    );
+    expect(
+      await talents().claimSheet(talentId, generateId(), inputs, LAST_WINS)
+    ).toBe(false);
 
     const edited = { ...inputs, description: 'edited' };
     await talents().media.delete(media.id);
-    expect(await talents().claimSheet(talentId, generateId(), edited)).toBe(
-      false
-    );
+    expect(
+      await talents().claimSheet(talentId, generateId(), edited, LAST_WINS)
+    ).toBe(false);
+  });
+
+  it('onlyIfFree refuses while a run holds the claim; a new photo revokes it', async () => {
+    const held = await claimTalent();
+    expect(
+      await talents().claimSheet(talentId, generateId(), NO_INPUTS, {
+        onlyIfFree: true,
+      })
+    ).toBe(false);
+    expect((await talentRow()).pendingPromoteSheetId).toBe(held);
+
+    await talents().media.create({
+      talentId,
+      type: 'image',
+      url: '/r2/new-photo.png',
+      path: 'new-photo.png',
+    });
+    expect((await talentRow()).pendingPromoteSheetId).toBeNull();
+    expect((await land(held, 'ai_generated')).landed).toBe(false);
   });
 
   it('parks an older run once a newer run claims', async () => {
@@ -1113,6 +1181,49 @@ describe('library talent claims', () => {
     const newer = await claimTalent();
     expect((await land(older, 'ai_generated')).landed).toBe(false);
     expect((await land(newer, 'ai_generated')).landed).toBe(true);
+  });
+
+  it('the user pick wins: selectSheet unparks, moves the pointer and revokes claims', async () => {
+    const current = await claimTalent();
+    await land(current, 'ai_generated');
+    const parkedId = await claimTalent();
+    await talents().update(talentId, { description: 'moved' });
+    expect((await land(parkedId, 'ai_generated')).landed).toBe(false);
+
+    const inFlight = await claimTalent();
+    const castClaim = await claim();
+    const picked = await talents().selectSheet(talentId, parkedId);
+    expect(picked.divergedAt).toBeNull();
+    const row = await talentRow();
+    expect(row.selectedSheetId).toBe(parkedId);
+    expect(row.pendingPromoteSheetId).toBeNull();
+    expect((await land(inFlight, 'ai_generated')).landed).toBe(false);
+    expect(await landCharacter(castClaim)).toBe('parked');
+  });
+
+  it('the reference sheet cannot be discarded; a discarded sheet cannot be selected until restored', async () => {
+    const current = await claimTalent();
+    await land(current, 'ai_generated');
+    await expect(talents().sheets.discard(current)).rejects.toThrow(
+      /reference sheet/
+    );
+
+    const older = await claimTalent();
+    await land(older, 'ai_generated');
+    // `older` is now the reference; `current` is history.
+    await talents().sheets.discard(current);
+    await expect(talents().selectSheet(talentId, current)).rejects.toThrow(
+      /Restore/
+    );
+    await talents().sheets.undiscard(current);
+    expect((await talents().selectSheet(talentId, current)).id).toBe(current);
+  });
+
+  it('refuses to delete a talent while a character version casts it (#2018)', async () => {
+    await castWith(talentId);
+    await expect(talents().delete(talentId)).rejects.toThrow(
+      /character version/
+    );
   });
 });
 

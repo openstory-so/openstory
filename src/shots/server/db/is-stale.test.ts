@@ -193,7 +193,7 @@ describe('talent_sheets.input_hash', () => {
     if (!t) throw new Error('test setup: talent insert returned nothing');
     const [sheet] = await db
       .insert(talentSheets)
-      .values({ talentId: t.id, name: 'casual' })
+      .values({ talentId: t.id, legacyName: 'casual' })
       .returning();
     if (!sheet) throw new Error('test setup: sheet insert returned nothing');
     expect(sheet.inputHash).toBeNull();

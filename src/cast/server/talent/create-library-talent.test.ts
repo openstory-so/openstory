@@ -126,7 +126,6 @@ describe('createLibraryTalent', () => {
     const { path, payload, options } = lastTrigger();
     expect(path).toBe('/library-talent-sheet');
     expect(payload.uploadedSheetUrl).toBeUndefined();
-    expect(payload.sheetName).toBe('Default Sheet');
     expect(options?.deduplicationId).toBe(
       libraryTalentGenerateDedupId('tal-1')
     );
@@ -158,7 +157,6 @@ describe('createLibraryTalent', () => {
     );
 
     const { payload } = lastTrigger();
-    expect(payload.sheetName).toBe('Uploaded Sheet');
     expect(payload.uploadedSheetUrl).toBe('/r2/talent/team-1/uploads/a.png');
   });
 
@@ -173,7 +171,6 @@ describe('createLibraryTalent', () => {
     );
 
     expect(lastTrigger().payload.uploadedSheetUrl).toBeUndefined();
-    expect(lastTrigger().payload.sheetName).toBe('Default Sheet');
   });
 
   it('classifies when characterSheetImageUrls is omitted and promotes a sheet', async () => {
@@ -200,7 +197,6 @@ describe('createLibraryTalent', () => {
 
     expect(mockAnalyze).toHaveBeenCalled();
     const { payload } = lastTrigger();
-    expect(payload.sheetName).toBe('Uploaded Sheet');
     expect(payload.uploadedSheetUrl).toBe('/r2/talent/team-1/uploads/a.png');
   });
 

@@ -160,15 +160,13 @@ type TalentAppearanceData = {
   talentName: string;
   /** Talent description/notes */
   talentDescription?: string;
-  // Talent performance (#1561): the talent's own when non-blank, else the
-  // role's. `''` = library has none.
-  personality: string;
-  movement: string;
 };
 
 /**
  * Result of merging talent appearance with character role attributes.
  * Physical attributes come from the talent, costume/styling from the role.
+ * Performance (personality, movement) is the role's and is not touched: a
+ * talent is a likeness (#2018).
  */
 type CastingAttributes = {
   age: string;
@@ -177,8 +175,6 @@ type CastingAttributes = {
   physicalDescription: string;
   standardClothing: string;
   distinguishingFeatures: string;
-  personality: string;
-  movement: string;
   consistencyTag: string;
 };
 
@@ -196,7 +192,7 @@ const slugify = (name: string): string =>
  *
  * Physical appearance (age, gender, ethnicity, physicalDescription) comes from the TALENT.
  * Costume/styling (standardClothing, distinguishingFeatures) comes from the CHARACTER role.
- * Performance (personality, movement) is the talent's when non-blank, else the role's.
+ * Performance (personality, movement) stays the role's (#2018).
  * ConsistencyTag is regenerated from the character ID + talent name.
  *
  * @param scriptEntry - The character's script-derived attributes
@@ -224,9 +220,6 @@ export const buildCastingAttributes = (
     // Costume/styling: always from the character role
     standardClothing: scriptEntry.standardClothing,
     distinguishingFeatures: scriptEntry.distinguishingFeatures,
-    // Performance: the talent's own where the library has it, else the role's
-    personality: talent.personality.trim() || scriptEntry.personality,
-    movement: talent.movement.trim() || scriptEntry.movement,
     // Regenerate tag from talent identity
     consistencyTag: `${scriptEntry.characterId}_${slugify(talent.talentName)}`,
   };
@@ -252,8 +245,6 @@ export const buildCastCharacterBible = (
     characterId: string;
     talentName: string;
     sheetMetadata?: CharacterBibleEntry;
-    personality: string;
-    movement: string;
   }[]
 ): CharacterBibleEntry[] => {
   const byCharacterId = new Map(talentMatches.map((m) => [m.characterId, m]));
@@ -263,8 +254,6 @@ export const buildCastCharacterBible = (
     const cast = buildCastingAttributes(character, {
       sheetMetadata: match.sheetMetadata,
       talentName: match.talentName,
-      personality: match.personality,
-      movement: match.movement,
     });
     return { ...character, ...cast };
   });

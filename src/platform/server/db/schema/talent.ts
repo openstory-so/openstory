@@ -191,4 +191,6 @@ export type TalentWithSheets = Talent & {
   sheetCount: number;
   /** The row `selectedSheetId` names (#2018); null until a sheet lands. */
   referenceSheet: TalentSheet | null;
+  /** The oldest parked, undiscarded sheet (a run whose claim moved), for the banner dot. */
+  parkedSheetId: string | null;
 };

@@ -936,15 +936,11 @@ describe('staleness matrix — looks (#2015)', () => {
 const TALENT = {
   id: 't-1',
   description: 'Headshot reference',
-  sheets: [
-    {
-      isDefault: true,
-      divergedAt: null,
-      imageUrl: '/r2/talent-1.png',
-      metadata: null,
-      inputHash: 'talent-sheet-1',
-    },
-  ],
+  referenceSheet: {
+    imageUrl: '/r2/talent-1.png',
+    metadata: null,
+    inputHash: 'talent-sheet-1',
+  },
 };
 const LIBRARY = {
   id: 'lib-1',
@@ -988,7 +984,7 @@ function castDb(world: CastWorld) {
     sequences: { getById: () => Promise.resolve(world.sequence) },
     characters: { getById: () => Promise.resolve(withLooks(world.alice)) },
     sequenceLocations: { getById: () => Promise.resolve(world.beach) },
-    talent: { getWithRelations: () => Promise.resolve(world.talent) },
+    talent: { getByIds: () => Promise.resolve([world.talent]) },
     locations: { getById: () => Promise.resolve(world.library) },
     // The live sheet pins the model it was drawn with.
     characterSheetVariants: {
@@ -1105,15 +1101,11 @@ const SHEET_MATRIX: SheetRow[] = [
       ...w,
       talent: {
         ...w.talent,
-        sheets: [
-          {
-            isDefault: true,
-            divergedAt: null,
-            imageUrl: '/r2/talent-2.png',
-            metadata: null,
-            inputHash: 'talent-sheet-2',
-          },
-        ],
+        referenceSheet: {
+          imageUrl: '/r2/talent-2.png',
+          metadata: null,
+          inputHash: 'talent-sheet-2',
+        },
       },
     }),
     character: 'stale',

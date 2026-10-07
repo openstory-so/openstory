@@ -9,7 +9,7 @@
  * `analyze-script-workflow` then spawns `talent-matching` / `location-matching`
  * which read those sheets:
  *
- *   - talent matching uses `talent.defaultSheet?.imageUrl` as the casting
+ *   - talent matching uses `talent.referenceSheet?.imageUrl` as the casting
  *     reference image, and
  *   - location matching SKIPS any library location without a
  *     `referenceImageUrl`.
@@ -144,7 +144,7 @@ async function pollUntilReady<TRow extends Rpc.Serializable<TRow>>(
 }
 
 /**
- * Block until every requested talent has a usable default sheet image, or the
+ * Block until every requested talent has a reference sheet image, or the
  * timeout expires. Talent without a sheet (newly created, generation still in
  * flight) are polled; talent that already have one short-circuit on the first
  * read so existing/library talent add no latency.
@@ -165,7 +165,7 @@ export async function waitForTalentSheets(
       return {
         rows,
         pendingIds: rows
-          .filter((t) => !t.defaultSheet?.imageUrl)
+          .filter((t) => !t.referenceSheet?.imageUrl)
           .map((t) => t.id),
       };
     },

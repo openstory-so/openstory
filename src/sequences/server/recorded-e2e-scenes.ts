@@ -222,8 +222,6 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     talentCast.matches.map((match) => ({
       characterId: match.characterId,
       talentName: 'Sienna Blake',
-      personality: '',
-      movement: '',
     }))
   );
 

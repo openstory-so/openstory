@@ -422,8 +422,6 @@ describe('triggerStoryboard', () => {
           id: 'tal_1',
           name: 'Alice',
           description: 'Lead',
-          personality: 'guarded',
-          movement: null,
         },
       ],
       locations: [{ id: 'loc_1', name: 'Docks', description: null }],
@@ -443,8 +441,6 @@ describe('triggerStoryboard', () => {
           talentId: 'tal_1',
           name: 'Alice',
           description: 'Lead',
-          personality: 'guarded',
-          movement: '',
         },
       ],
       suggestedLocations: [

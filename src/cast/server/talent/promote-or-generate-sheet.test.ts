@@ -66,6 +66,9 @@ function talentRow(opts: {
     name: 'Sam',
     description: null,
     sheets: opts.sheets ?? [],
+    selectedSheetId: (opts.sheets ?? []).some((s) => !s.divergedAt)
+      ? 'sheet-1'
+      : null,
     media: opts.media ?? [{ type: 'image', url: PHOTO_URL }],
   };
 }
@@ -127,7 +130,6 @@ describe('maybePromoteOrGenerateSheet', () => {
     expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
     const { payload, options } = lastTrigger();
     expect(payload.uploadedSheetUrl).toBeUndefined();
-    expect(payload.sheetName).toBe('Default Sheet');
     expect(options?.deduplicationId).toBe(
       libraryTalentGenerateDedupId(TALENT_ID)
     );

@@ -28,29 +28,22 @@ const NOT_CAST: CastTalentFields = {
 };
 
 /**
- * Resolve what a cast talent feeds a character sheet: the default convergent
- * talent sheet (image, look metadata, `input_hash`) and the talent's own
- * description. One resolver for the regenerate/verify payload and the upload
- * stamp, so they cannot drift.
+ * Resolve what a cast talent feeds a character sheet: the talent's reference
+ * sheet (image, look metadata, `input_hash`) and its own description. One
+ * resolver for the regenerate/verify payload and the upload stamp, so they
+ * cannot drift. A talent with no reference sheet yet feeds no image (#2018).
  */
 export async function resolveCastTalent(
   scopedDb: Pick<ScopedDb, 'talent'>,
   talentId: string | null
 ): Promise<CastTalentFields> {
   if (!talentId) return NOT_CAST;
-  const talent = await scopedDb.talent.getWithRelations(talentId);
+  const [talent] = await scopedDb.talent.getByIds([talentId]);
   if (!talent) return NOT_CAST;
-  // Exclude divergent sheets from the fallback identity. A divergent row's
-  // `inputHash` represents the parked workflow's snapshot, not the talent's
-  // current upstream identity — binding a downstream character sheet to it
-  // would fork off a stale lineage from first-time generation onward.
-  const convergentSheets = talent.sheets.filter((s) => !s.divergedAt);
-  const defaultSheet =
-    convergentSheets.find((s) => s.isDefault) ?? convergentSheets[0];
   return {
-    referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
-    talentMetadata: defaultSheet?.metadata ?? undefined,
-    talentSheetInputHash: defaultSheet?.inputHash ?? null,
+    referenceImageUrl: talent.referenceSheet?.imageUrl ?? undefined,
+    talentMetadata: talent.referenceSheet?.metadata ?? undefined,
+    talentSheetInputHash: talent.referenceSheet?.inputHash ?? null,
     castTalentDescription: talent.description,
   };
 }

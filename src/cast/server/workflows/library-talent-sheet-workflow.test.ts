@@ -88,20 +88,12 @@ const mockTalentUpdate = vi.fn();
 const mockClearSheetClaimIf = vi.fn();
 
 function makeScopedDb(): WorkflowScopedDb {
-  const sheet = { id: 'sheet-1' };
   // stub covering only the scoped-db surface runImpl touches
   return asStub<WorkflowScopedDb>({
     talent: {
-      sheets: {
-        getById: vi.fn(async () => null),
-        create: vi.fn(async (row: { id: string }) => ({ ...sheet, ...row })),
-      },
       update: mockTalentUpdate,
       landSheet: mockLandSheet,
       clearSheetClaimIf: mockClearSheetClaimIf,
-    },
-    talentSheetVariants: {
-      insertDivergent: vi.fn(async () => ({ id: 'variant-1' })),
     },
     provenance: {},
     liveRead: {},
@@ -255,7 +247,11 @@ describe('LibraryTalentSheetWorkflow sheet claim (#1113)', () => {
     expect(mockTalentUpdate).not.toHaveBeenCalled();
     expect(mockEmit).toHaveBeenCalledWith(
       'generation.stale:detected',
-      expect.objectContaining({ entityType: 'talent', entityId: 'sheet-claim' })
+      expect.objectContaining({
+        entityType: 'talent',
+        entityId: 'tal-1',
+        divergedVariantId: 'sheet-claim',
+      })
     );
   });
 

@@ -4,10 +4,11 @@
  * A sheet run whose claim was revoked mid-flight (an input edit, a newer
  * kickoff, the user picking a sheet) parks its result as a divergent variant
  * instead of landing it. Character and sequence-location sheets park inside
- * their land batch (`src/cast/server/db/sheet-claims.ts`), so the helpers
- * for them only notify the UI via `stale:detected`. Library location and
- * talent results live outside the versions table, so their helpers still
- * insert the divergent row, then notify.
+ * their land batch (`src/cast/server/db/sheet-claims.ts`), and a talent
+ * sheet parks inside `talent.landSheet` (#2018), so the helpers for them only
+ * notify the UI via `stale:detected`. Library location results live outside
+ * the versions table, so that helper still inserts the divergent row, then
+ * notifies.
  */
 
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -34,15 +35,9 @@ import {
 type LocInsertArgs = Parameters<
   ScopedDb['locationSheetVariants']['insertDivergent']
 >[0];
-type TalInsertArgs = Parameters<
-  ScopedDb['talentSheetVariants']['insertDivergent']
->[0];
 export type SheetDivergenceScopedDb = {
   locationSheetVariants: {
     insertDivergent: (values: LocInsertArgs) => Promise<{ id: string }>;
-  };
-  talentSheetVariants: {
-    insertDivergent: (values: TalInsertArgs) => Promise<{ id: string }>;
   };
 };
 
@@ -143,49 +138,22 @@ export async function saveDivergentLibraryLocationSheet({
   return variant.id;
 }
 
-export type SaveDivergentTalentSheetArgs = {
-  scopedDb: SheetDivergenceScopedDb;
-  talentSheetId: string;
-  /**
-   * Parent talent id — used for realtime channel routing. Required: the
-   * talent channel is the only place the talent UI subscribes for stale
-   * events. Passing nothing here would silently drop the notification.
-   */
+/**
+ * A library talent run parked its sheet (`talent.landSheet` left the row
+ * with `divergedAt` set, #2018): tell the talent's UI. `entityId` is the
+ * talent (the only channel the talent UI subscribes to); the parked row is
+ * `divergedVariantId`.
+ */
+export async function reportParkedTalentSheet(args: {
   talentId: string;
-  model: string;
-  url: string;
-  storagePath?: string;
-  workflowRunId?: string;
+  sheetId: string;
   snapshotInputHash: TalentSheetInputHash;
-};
-
-export async function saveDivergentTalentSheet({
-  scopedDb,
-  talentSheetId,
-  talentId,
-  model,
-  url,
-  storagePath,
-  workflowRunId,
-  snapshotInputHash,
-}: SaveDivergentTalentSheetArgs): Promise<string> {
-  const variant = await scopedDb.talentSheetVariants.insertDivergent({
-    talentSheetId,
-    model,
-    url,
-    storagePath: storagePath ?? null,
-    workflowRunId: workflowRunId ?? null,
-    status: 'completed',
-    generatedAt: new Date(),
-    inputHash: snapshotInputHash,
-    divergedAt: new Date(),
-  });
-  await getTalentChannel(talentId).emit('generation.stale:detected', {
+}): Promise<void> {
+  await getTalentChannel(args.talentId).emit('generation.stale:detected', {
     entityType: 'talent',
-    entityId: talentSheetId,
+    entityId: args.talentId,
     artifact: 'sheet',
-    snapshotInputHash,
-    divergedVariantId: variant.id,
+    snapshotInputHash: args.snapshotInputHash,
+    divergedVariantId: args.sheetId,
   });
-  return variant.id;
 }
