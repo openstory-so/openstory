@@ -313,6 +313,7 @@ function shotDb(
     characters: {
       listBibleVersionsBySequence: () => Promise.resolve(characterVersions),
     },
+    characterLooks: { listVersionsBySequence: empty },
     sequenceLocations: { listBibleVersionsBySequence: empty },
     sceneScriptVersions: { listBySequence: empty, getSelected: none },
     scenes: { getById: none },

@@ -64,7 +64,13 @@ export function charactersToBible(
 export function sequenceLocationsToBible(
   rows: readonly SequenceLocationWithReference[]
 ): LocationBibleEntry[] {
-  return rows.map((l) => ({
+  return rows.map(locationToBible);
+}
+
+export function locationToBible(
+  l: SequenceLocationWithReference
+): LocationBibleEntry {
+  return {
     locationId: l.locationId,
     name: l.name,
     type: l.type === 'exterior' || l.type === 'both' ? l.type : 'interior',
@@ -78,7 +84,7 @@ export function sequenceLocationsToBible(
       text: l.firstMentionText ?? '',
       lineNumber: l.firstMentionLine ?? 0,
     },
-  }));
+  };
 }
 
 export function sequenceElementsToBible(

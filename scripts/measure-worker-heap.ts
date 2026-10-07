@@ -19,7 +19,7 @@
  * and a snapshot runs a full GC first — and records what survived, by V8
  * node type, plus the largest single strings.
  */
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { chromium, type BrowserContext, type Page } from 'playwright';
 import WebSocket from 'ws';
@@ -159,19 +159,6 @@ async function measure(step: string, run: () => Promise<string | void>) {
   console.log({ step, note, peakMB: MB(peak), afterGcMB });
 }
 
-// Server-fn ids differ per build: read them from the resolver chunk.
-const resolverFile = readdirSync('dist/server/assets').find((f) =>
-  f.includes('server-fn-resolver')
-);
-const resolver = readFileSync(`dist/server/assets/${resolverFile}`, 'utf8');
-function serverFnId(name: string) {
-  const match = resolver.match(
-    new RegExp(`"([0-9a-f]{64})":\\s*\\{\\s*functionName:\\s*["\`]${name}_`)
-  );
-  if (!match?.[1]) throw new Error(`no server fn ${name} in ${resolverFile}`);
-  return match[1];
-}
-
 async function openPage(
   context: BrowserContext,
   path: string,
@@ -183,11 +170,13 @@ async function openPage(
   const page = await context.newPage();
   let serverFns = 0;
   let watched = 0;
-  const watchedId = watchFn && serverFnId(watchFn);
   page.on('request', (r) => {
     if (!r.url().includes('/_serverFn/')) return;
     serverFns++;
-    if (watchedId && r.url().includes(watchedId)) watched++;
+    // Server-fn ids are the variable name (src/platform/server-fn-id.ts).
+    if (watchFn && new URL(r.url()).pathname === `/_serverFn/${watchFn}`) {
+      watched++;
+    }
   });
   await page.goto(base + path, { waitUntil: 'networkidle', timeout: 180_000 });
   if (act) {
@@ -258,7 +247,7 @@ await measure('voice list (loads the ElevenLabs SDK)', async () => {
     f: 127,
     m: [],
   });
-  const url = `/_serverFn/${serverFnId('listElevenLabsVoicesFn')}?payload=${encodeURIComponent(payload)}`;
+  const url = `/_serverFn/listElevenLabsVoicesFn?payload=${encodeURIComponent(payload)}`;
   const page = await userContext.newPage();
   await page.goto(`${base}/`);
   const status = await page.evaluate(

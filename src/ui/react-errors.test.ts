@@ -1,4 +1,4 @@
-import { OpenStoryError } from '@/platform/errors';
+import { AuthenticationError, OpenStoryError } from '@/platform/errors';
 import { describe, expect, it, vi } from 'vitest';
 
 const captureException = vi.fn();
@@ -30,6 +30,13 @@ describe('captureRouteError', () => {
     captureException.mockClear();
     posthog.__loaded = true;
     captureRouteError(new OpenStoryError('gone', 'NOT_FOUND', 404), {});
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
+  it('skips an expired session', () => {
+    captureException.mockClear();
+    posthog.__loaded = true;
+    captureRouteError(new AuthenticationError('Authentication required'), {});
     expect(captureException).not.toHaveBeenCalled();
   });
 });
