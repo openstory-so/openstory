@@ -423,7 +423,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
+      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A plan that finds a finished sheet of the same look with the same hash in another sequence points at that row instead of drawing (#2017); the hash itself is unchanged. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
       'Character bible (age, gender, ethnicity, description, features, consistency tag)',
       "The look's clothing, and its styling once set",

@@ -167,3 +167,38 @@ describe('buildUpdateStalePreview', () => {
     expect(preview.costByLevel.music).toBe(120_000);
   });
 });
+
+describe('buildUpdateStalePreview sheet reuse (#2017)', () => {
+  it('counts reused sheets and prices only the drawn ones', () => {
+    estimateImageCost.mockReturnValue(micros(40_000));
+    const preview = buildUpdateStalePreview(
+      // the images level reads the sheet lists
+      asStub<never>({
+        aspectRatio: '16:9',
+        sequence: { videoModel: 'seedance_v2', imageModel: 'nano_banana_2' },
+        targets: [],
+        music: null,
+        dialogueSpeech: null,
+        skipped: [],
+        promptContext: null,
+        references: {
+          characterSheets: [{}],
+          lookSheetsAfterDefault: [],
+          reusedSheets: [{}, {}],
+          locationSheets: [],
+          elementSheets: null,
+        },
+      }),
+      {},
+      null
+    );
+    expect(preview.reusedSheets).toBe(2);
+    expect(estimateImageCost).toHaveBeenCalledWith(
+      'nano_banana_2',
+      '16:9',
+      1,
+      expect.anything()
+    );
+    expect(preview.costByLevel.images).toBe(micros(40_000));
+  });
+});

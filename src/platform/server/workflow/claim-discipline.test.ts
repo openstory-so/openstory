@@ -36,8 +36,9 @@ type ClaimDomain = {
   claim: ScopedMethod;
   /** Clears the claim on failure ONLY if this run still holds it. */
   clear: ScopedMethod;
-  /** Moves the pointer and consumes the claim in one guarded UPDATE. */
-  promote: ScopedMethod;
+  /** Moves the pointer and consumes the claim in one guarded UPDATE. A domain
+   * with two ways to land (a drawn row, an existing row pointed at) names both. */
+  promote: ScopedMethod | readonly [ScopedMethod, ...ScopedMethod[]];
   /** The user's selector: moves the pointer unconditionally. Never from a run. */
   userSelect: ScopedMethod;
 };
@@ -67,12 +68,18 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   // sequence that uses the look (#2017): they are on `sequence_cast_looks`,
   // one per look per sequence, and the claim is taken only while the look
   // version, bible version and talent that sequence pins are still the ones
-  // the run was snapshotted from (#1863).
+  // the run was snapshotted from (#1863). A plan that finds the look's sheet
+  // finished elsewhere with the same hash (#2017) lands through the same
+  // claim by pointing at that row: `adoptIfPending`, guarded on the claim and
+  // on the row still being what the plan matched.
   'character sheets': {
     tables: ['character_sheet_variants', 'sequence_cast_looks'],
     claim: 'characterLooks.claimSheet',
     clear: 'characterLooks.failSheetClaim',
-    promote: 'characterSheetVariants.promoteIfPending',
+    promote: [
+      'characterSheetVariants.promoteIfPending',
+      'characterSheetVariants.adoptIfPending',
+    ],
     userSelect: 'characterSheetVariants.select',
   },
   // The bible parent claims through the conditional twin,
@@ -301,14 +308,16 @@ describe('claim discipline (#1130)', () => {
     const missing: string[] = [];
     for (const [name, domain] of Object.entries(CLAIM_DOMAINS)) {
       for (const role of ['claim', 'clear', 'promote', 'userSelect'] as const) {
-        const [module = '', method = ''] = domain[role].split('.');
-        const methods: unknown = Reflect.get(scopedDb, module);
-        const fn: unknown =
-          typeof methods === 'object' && methods !== null
-            ? Reflect.get(methods, method)
-            : undefined;
-        if (typeof fn !== 'function') {
-          missing.push(`${name}.${role}: ${domain[role]}`);
+        for (const spelled of [domain[role]].flat()) {
+          const [module = '', method = ''] = spelled.split('.');
+          const methods: unknown = Reflect.get(scopedDb, module);
+          const fn: unknown =
+            typeof methods === 'object' && methods !== null
+              ? Reflect.get(methods, method)
+              : undefined;
+          if (typeof fn !== 'function') {
+            missing.push(`${name}.${role}: ${spelled}`);
+          }
         }
       }
     }

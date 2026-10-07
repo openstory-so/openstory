@@ -41,12 +41,34 @@ export function referenceKeysFrom(
 }
 
 /**
+ * The entity keys a character answers for (#2017): its own, and the id of
+ * the character it is a one-off copy of — the copying sequence's clips were
+ * stamped with that id, and the copy sends the same sheet, so those stamps
+ * must keep resolving. Used by the live identity AND by the "would be sent
+ * now" set, so a sheet re-selected on the copy still stales a clip stamped
+ * with the original's id.
+ */
+export function characterReferenceEntityKeys(character: {
+  id: string;
+  copiedFromCharacterId: string | null;
+}): string[] {
+  return character.copiedFromCharacterId === null
+    ? [`character:${character.id}`]
+    : [
+        `character:${character.id}`,
+        `character:${character.copiedFromCharacterId}`,
+      ];
+}
+
+/**
  * Live identity per entity (`kind:entityId` → what a render would be sent
- * NOW), built from the rows the reference builders read.
+ * NOW), built from the rows the reference builders read. A one-off copy
+ * answers for its original's id too ({@link characterReferenceEntityKeys}).
  */
 export function liveReferenceIdentity(input: {
   characters: ReadonlyArray<{
     id: string;
+    copiedFromCharacterId: string | null;
     selectedSheetVersionId: string | null;
     sheetImageUrl: string | null;
   }>;
@@ -59,11 +81,13 @@ export function liveReferenceIdentity(input: {
 }): Map<string, string> {
   type Row = [ReferenceEntityKind, string, string | null];
   const rows = [
-    ...input.characters.map((c): Row => [
-      'character',
-      c.id,
-      c.selectedSheetVersionId ?? c.sheetImageUrl,
-    ]),
+    ...input.characters.flatMap((c): Row[] =>
+      characterReferenceEntityKeys(c).map((entity): Row => [
+        'character',
+        entity.slice('character:'.length),
+        c.selectedSheetVersionId ?? c.sheetImageUrl,
+      ])
+    ),
     ...input.locations.map((l): Row => [
       'location',
       l.id,

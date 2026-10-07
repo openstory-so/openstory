@@ -94,17 +94,34 @@ export function bibleFromWire(
   wire: readonly CharacterBibleWireEntry[],
   sceneIdForLine: (lineNumber: number) => string,
   /** Lines in the script: a `lines` entry outside 1..lineCount is dropped. */
-  lineCount: number
+  lineCount: number,
+  /**
+   * The attached cast's tags by script id (#2050). An entry that echoes a
+   * cast id keeps that character's tag, so a re-analysis moves nothing of
+   * hers. Two NEW characters may share a plain name, but a pick is filed
+   * under the character's tag, so two of one tag would overwrite each
+   * other's picks: a new entry's repeat of a tag in use gets a number
+   * (`sarah`, `sarah_2`), as a repeated look name does.
+   */
+  castTagsById: ReadonlyMap<string, string>
 ): {
   characterBible: CharacterBibleEntry[];
   sceneLooks: Record<string, Record<string, string>>;
 } {
   const sceneLooks: Record<string, Record<string, string>> = {};
-  const characterBible = wire.map((entry) => {
-    const given = entry.looks;
+  const tags = new Set(castTagsById.values());
+  const characterBible = wire.map((given) => {
+    const own = castTagsById.get(given.characterId);
+    let tag = own ?? canonicalBibleTag(given);
+    if (own === undefined) {
+      for (let n = 2; tags.has(tag); n++)
+        tag = `${canonicalBibleTag(given)}_${n}`;
+      tags.add(tag);
+    }
+    const entry = { ...given, consistencyTag: tag };
     const slugs = new Set<string>();
     const names = new Set<string>();
-    const looks = given.map((look, index) => {
+    const resolved = given.looks.map((look, index) => {
       // Two looks of one character never share a name: the name is how a
       // re-analysis finds the look again, so a repeat gets a number.
       const baseName = look.name.trim() || DEFAULT_LOOK_NAME;
@@ -142,7 +159,7 @@ export function bibleFromWire(
         styling: look.styling,
       };
     });
-    return withBibleLooks({ ...entry, looks });
+    return withBibleLooks({ ...entry, looks: resolved });
   });
   return { characterBible, sceneLooks };
 }

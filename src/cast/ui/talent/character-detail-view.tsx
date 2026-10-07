@@ -41,6 +41,7 @@ import {
   useSoftDeleteSequenceCharacter,
   useUpdateCastToCurrent,
 } from '@/cast/ui/use-sequence-characters';
+import { useCharacterCastElsewhere } from '@/cast/ui/use-team-characters';
 import type {
   CharacterSheetVariant,
   TalentWithSheets,
@@ -71,10 +72,18 @@ import { toast } from 'sonner';
 import { isBehindCurrentVersion } from '@/cast/version-behind';
 import { CharacterBibleForm } from './character-bible-form';
 import { CharacterVoiceSection } from './character-voice-section';
-import { MoveEpisodesDialog } from './move-episodes-dialog';
+import { MoveSequencesDialog } from './move-sequences-dialog';
 import { RecastConfirmDialog } from './recast-confirm-dialog';
 import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
+
+/** "A, B and 48 others": a recast across fifty sequences names three. */
+const leftBehindLabel = (rows: readonly { title: string }[]): string => {
+  const titles = rows.map((row) => row.title);
+  if (titles.length <= 3) return titles.join(', ');
+  const rest = titles.length - 2;
+  return `${titles.slice(0, 2).join(', ')} and ${rest} others`;
+};
 
 type CharacterDetailViewProps = {
   sequenceId: string;
@@ -146,6 +155,12 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const updateToCurrent = useUpdateCastToCurrent();
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const behind = owner ? isBehindCurrentVersion(owner) : false;
+  // "Move sequences" is offered when there is somewhere to move: another
+  // live sequence casts the character, or this one is behind.
+  const { data: castElsewhere = false } = useCharacterCastElsewhere(
+    characterId,
+    sequenceId
+  );
   // "Make a one-off copy": a new character for this sequence alone, free.
   // Offered on a library character, the one a second sequence can reach.
   const copyForSequence = useCopyCharacterForSequence();
@@ -486,7 +501,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   ? `${moved} other ${moved === 1 ? 'sequence' : 'sequences'} moved to the new ${character.name}; each redraws from its own Update.`
                   : null,
                 result.sequencesLeftBehind.length > 0
-                  ? `${result.sequencesLeftBehind.map((row) => row.title).join(', ')} ${result.sequencesLeftBehind.length === 1 ? 'keeps' : 'keep'} the previous version.`
+                  ? `${leftBehindLabel(result.sequencesLeftBehind)} ${result.sequencesLeftBehind.length === 1 ? 'keeps' : 'keep'} the previous version.`
                   : null,
               ]
                 .filter(Boolean)
@@ -567,15 +582,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
             <StalenessIndicator
               entityType="character"
               density="status-line"
-              message={`Newer version of ${character.name}. This sequence keeps the one it pinned until you update it.`}
-              actionLabel="Update this episode"
+              message={`${character.name} is not on the current version here. This sequence keeps the version it pinned until you update it.`}
+              actionLabel="Update this sequence"
               isRegenerating={updateToCurrent.isPending}
               onRegenerate={() =>
                 updateToCurrent.mutate(
                   { sequenceId, characterId },
                   {
                     onError: (error) =>
-                      toast.error('Episode not updated', {
+                      toast.error('Sequence not updated', {
                         description: errorMessage(error),
                       }),
                   }
@@ -589,7 +604,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 className="h-6 shrink-0 px-2 text-xs"
                 onClick={() => setIsMoveOpen(true)}
               >
-                Move other episodes…
+                Move other sequences…
               </Button>
             </StalenessIndicator>
           )}
@@ -792,9 +807,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     {character.talent ? 'Recast' : 'Cast'}
                   </Button>
                 )}
-                <Button variant="outline" onClick={() => setIsMoveOpen(true)}>
-                  Move episodes
-                </Button>
+                {(behind || castElsewhere) && (
+                  <Button variant="outline" onClick={() => setIsMoveOpen(true)}>
+                    Move sequences
+                  </Button>
+                )}
                 {character.inLibrary && (
                   <Button variant="outline" onClick={() => setIsCopyOpen(true)}>
                     Make a one-off copy
@@ -857,8 +874,10 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
             <div className="flex flex-col gap-4">
               <CharacterBibleForm
-                // Clothing here is the default look's; reseed when it moves.
-                key={`${character.id}:${owner?.standardClothing ?? ''}`}
+                // Uncontrolled inputs: reseed when the pinned bible version
+                // moves (Update this sequence, #2017) or the default look's
+                // clothing does.
+                key={`${character.id}:${character.selectedBibleVersionId}:${owner?.standardClothing ?? ''}`}
                 sequenceId={sequenceId}
                 character={owner ?? character}
               />
@@ -923,7 +942,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         onSelect={handleTalentSelect}
       />
 
-      <MoveEpisodesDialog
+      <MoveSequencesDialog
         open={isMoveOpen}
         onOpenChange={setIsMoveOpen}
         characterId={characterId}
@@ -940,7 +959,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
             <AlertDialogDescription>
               This sequence gets its own copy at the version it has now. Edits
               here stop reaching other sequences, and theirs stop reaching here.
-              Sheets and shots stay as they are; nothing re-renders.
+              Sheets and shots stay as they are; nothing re-renders. Not while a
+              sheet is generating here.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

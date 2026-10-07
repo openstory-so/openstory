@@ -109,10 +109,23 @@ export const previewLevels = (
     prompts.push(`Motion prompts for ${label(preview.motionPromptShotIds)}`);
   if (prompts.length > 0)
     levels.push({ depth: 'prompts', label: prompts.join(' · ') });
-  if (preview.imageShotIds.length > 0)
+  // A sheet found finished in another episode is pointed at, not drawn
+  // (#2017): named so the level's cost reads right.
+  const reused =
+    preview.reusedSheets > 0
+      ? `${preview.reusedSheets} ${preview.reusedSheets === 1 ? 'sheet' : 'sheets'} reused`
+      : null;
+  if (preview.imageShotIds.length > 0 || reused)
     levels.push({
       depth: 'images',
-      label: `Images for ${label(preview.imageShotIds)}`,
+      label: [
+        preview.imageShotIds.length > 0
+          ? `Images for ${label(preview.imageShotIds)}`
+          : null,
+        reused,
+      ]
+        .filter((part) => part !== null)
+        .join(' · '),
     });
   if (preview.dialogueShotIds.length > 0)
     levels.push({

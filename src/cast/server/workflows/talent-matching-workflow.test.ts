@@ -27,7 +27,7 @@ vi.doMock('./wait-for-sheets', () => ({
         description: 'A ranch hand',
         personality: '',
         movement: '',
-        defaultSheet: { imageUrl: '/r2/talent/ada.png', metadata: null },
+        referenceSheet: { imageUrl: '/r2/talent/ada.png', metadata: null },
       },
     ],
   })),

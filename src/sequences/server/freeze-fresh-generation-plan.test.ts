@@ -11,8 +11,16 @@ const computeGenerationPlan = vi.fn(async () => [
     state: 'missing',
     requires: [],
     cascaded: false,
+    reused: false,
   },
-  { kind: 'clip', id: 'shot', state: 'missing', requires: [], cascaded: false },
+  {
+    kind: 'clip',
+    id: 'shot',
+    state: 'missing',
+    requires: [],
+    cascaded: false,
+    reused: false,
+  },
 ]);
 const computePlan = vi.fn(async () => ({
   targets: [],
@@ -110,6 +118,55 @@ describe('fresh planning checkpoint', () => {
     expect(computePlan).toHaveBeenLastCalledWith(
       expect.objectContaining({
         sequenceOverrides: expect.not.objectContaining({ styleConfig }),
+      })
+    );
+  });
+});
+
+describe('fresh planning free sheets', () => {
+  it('counts a sheet reused by hash at zero, like a copied talent sheet (#2017)', async () => {
+    const { estimatePlanCost } = await import('@/billing/cost-estimation');
+    computeGenerationPlan.mockResolvedValueOnce([
+      {
+        kind: 'sheet:character',
+        id: 'maya',
+        state: 'missing',
+        requires: [],
+        cascaded: false,
+        reused: false,
+      },
+      {
+        kind: 'sheet:character',
+        id: 'gala',
+        state: 'missing',
+        requires: [],
+        cascaded: false,
+        reused: false,
+      },
+      {
+        kind: 'sheet:character',
+        id: 'ravi',
+        state: 'missing',
+        requires: [],
+        cascaded: false,
+        reused: false,
+      },
+    ]);
+    computePlan.mockResolvedValueOnce(
+      // the freeze reads only the free-sheet lists
+      asStub<never>({
+        targets: [],
+        music: null,
+        references: {
+          characterSheets: [{ reuseTalentSheet: true }, {}],
+          reusedSheets: [{ sheetVersionId: 'ep1-gala' }],
+        },
+      })
+    );
+    await freezeFreshGenerationPlan(db, input);
+    expect(vi.mocked(estimatePlanCost)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        counts: expect.objectContaining({ 'sheet:character': 1 }),
       })
     );
   });

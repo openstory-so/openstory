@@ -84,6 +84,18 @@ vi.doMock('@/audio/server/music-staleness', () => ({
   readMusicPromptStaleness: () =>
     Promise.resolve({ musicPrompt: 'untracked', musicTrack: 'untracked' }),
 }));
+/** Looks whose owed sheet the planning point finds finished elsewhere (#2017). */
+let reusedLookIds: string[] = [];
+const buildPlanReferences = vi.fn((args: { units: { id: string }[] }) =>
+  Promise.resolve({
+    reusedSheets: args.units
+      .filter((unit) => reusedLookIds.includes(unit.id))
+      .map((unit) => ({ payload: { lookId: unit.id } })),
+  })
+);
+vi.doMock('@/shots/server/update-stale-references', () => ({
+  buildPlanReferences,
+}));
 vi.doMock('@/cast/server/production-staleness', () => ({
   readReferenceStaleness: () => Promise.resolve({ status: 'fresh' }),
   readLookSheetStaleness: () => Promise.resolve({ status: 'fresh' }),
@@ -194,6 +206,70 @@ describe('computeGenerationPlan', () => {
     );
     return Object.fromEntries(plan.map((u) => [`${u.kind}:${u.id}`, u.state]));
   };
+
+  it('marks an owed sheet the planning point will reuse, asking it only about owed sheets (#2017)', async () => {
+    reusedLookIds = ['ravi'];
+    try {
+      buildPlanReferences.mockClear();
+      const plan = await computeGenerationPlan(
+        asScopedDb({
+          userId: 'user-1',
+          sequences: {
+            getById: () =>
+              Promise.resolve({
+                id: 'seq-1',
+                status: 'completed',
+                generateStartFrames: true,
+                generateVoices: false,
+                includeMusic: false,
+                generationStopAt: 'references',
+              }),
+          },
+          shots: {
+            listBySequence: () =>
+              Promise.resolve([{ id: 's1', sceneId: null, audioClips: null }]),
+          },
+          characters: {
+            list: () =>
+              Promise.resolve([
+                character('maya', 'Maya', 'https://x/maya.png'),
+                character('ravi', 'Ravi', null),
+              ]),
+          },
+          sequenceLocations: { list: () => Promise.resolve([]) },
+          frameVariants: {
+            getPrimaryByFrameIds: () => Promise.resolve(new Map()),
+          },
+          shotDialogue: {
+            listShotIdsWithLiveClaim: () => Promise.resolve(new Set()),
+          },
+        }),
+        'seq-1'
+      );
+      const byKey = Object.fromEntries(
+        plan.map((u) => [`${u.kind}:${u.id}`, u])
+      );
+      expect(byKey['sheet:character:ravi']).toMatchObject({
+        state: 'missing',
+        reused: true,
+      });
+      expect(byKey['sheet:character:maya']).toMatchObject({
+        state: 'done',
+        reused: false,
+      });
+      expect(byKey['still:s1']).toMatchObject({ reused: false });
+      // Only the owed sheets are asked about; a done one is not rebuilt.
+      expect(buildPlanReferences).toHaveBeenCalledTimes(1);
+      expect(buildPlanReferences.mock.calls[0]?.[0]).toMatchObject({
+        userId: 'user-1',
+        units: [
+          expect.objectContaining({ kind: 'sheet:character', id: 'ravi' }),
+        ],
+      });
+    } finally {
+      reusedLookIds = [];
+    }
+  });
 
   it('a hand-added pending character owes a sheet and stales the stills that name it', async () => {
     expect(await planStates(true)).toMatchObject({

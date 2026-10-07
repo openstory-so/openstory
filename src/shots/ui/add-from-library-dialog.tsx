@@ -64,8 +64,8 @@ export const AddFromLibraryDialog: React.FC<{
         <DialogHeader>
           <DialogTitle>Add from library</DialogTitle>
           <DialogDescription>
-            The character joins this sequence at her current version, with every
-            look. Her sheets are drawn in this sequence's style.
+            Adds the character at its current version, with every look. Sheets
+            are drawn in this sequence's style.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">

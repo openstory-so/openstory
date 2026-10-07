@@ -28,7 +28,19 @@ import {
   liveLookSheetVersionId,
   requireLook,
 } from './character-looks';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  isNull,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
@@ -67,6 +79,31 @@ const ofCastLook = (
     look.selectedSheetVersionId === null
       ? undefined
       : eq(characterSheetVariants.id, look.selectedSheetVersionId)
+  );
+
+/**
+ * A finished sheet a sequence may point at instead of drawing again (#2017):
+ * of this look, drawn by this model from these inputs — the hash covers the
+ * bible, the look, the talent, the style, the image model and the default
+ * look's face, so a match is the same image from the same inputs. Completed
+ * with a file, not discarded, not parked as divergent (a parked row is some
+ * sequence's banner, and `select` would clear it). A row stamped in an older
+ * hash shape never matches, which costs a draw, never a wrong sheet.
+ */
+const reusableFor = (args: {
+  lookId: string;
+  model: string;
+  inputHash: CharacterSheetInputHash;
+}) =>
+  and(
+    ofLook(args.lookId),
+    eq(characterSheetVariants.model, args.model),
+    eq(characterSheetVariants.inputHash, args.inputHash),
+    eq(characterSheetVariants.status, 'completed'),
+    isNotNull(characterSheetVariants.url),
+    isNotNull(characterSheetVariants.storagePath),
+    isNull(characterSheetVariants.discardedAt),
+    isNull(characterSheetVariants.divergedAt)
   );
 
 /** Sheets parked by a run of `sequenceId`, or of an unknown sequence. */
@@ -444,6 +481,104 @@ export function createCharacterSheetVariantsMethods(
       });
     },
 
+    /**
+     * The sheet of this look a plan may reuse (#2017): see {@link reusableFor}.
+     * Any sequence of the team may have drawn it. A row some cast look
+     * currently SELECTS comes first (newest among those): a re-roll a
+     * sequence rejected is history there, and another sequence should not
+     * adopt it over the one that sequence kept. History rows are still
+     * candidates after that, since they are the same image from the same
+     * inputs. Read at the plan, never in the run: the run adopts by the id
+     * this hands back, through `adoptIfPending`.
+     */
+    findReusable: async (args: {
+      lookId: string;
+      model: string;
+      inputHash: CharacterSheetInputHash;
+    }): Promise<
+      (CharacterSheetVariant & { url: string; storagePath: string }) | null
+    > => {
+      const [row] = await db
+        .select()
+        .from(characterSheetVariants)
+        .where(and(ofTeam(), reusableFor(args)))
+        .orderBy(
+          desc(
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(sequenceCastLooks)
+                .where(
+                  eq(
+                    sequenceCastLooks.selectedSheetVersionId,
+                    characterSheetVariants.id
+                  )
+                )
+            )
+          ),
+          desc(characterSheetVariants.createdAt),
+          desc(characterSheetVariants.id)
+        )
+        .limit(1);
+      // The predicate requires both; this is the type's word for it.
+      if (!row?.url || !row.storagePath) return null;
+      return { ...row, url: row.url, storagePath: row.storagePath };
+    },
+
+    /**
+     * A plan run's reuse landing (#2017): point the sequence's cast look at
+     * the finished row the plan matched. No new row and no file copy — the
+     * same URL, so the BytePlus pool sees one asset however many sequences
+     * wear it. One guarded UPDATE, the twin of `promoteIfPending`: only while
+     * the claim still names this run AND the row is still what the plan
+     * matched ({@link reusableFor}, by id). Anything else is `refused`, and
+     * the caller fails the sheet — a reuse never draws instead, because the
+     * plan priced it at zero.
+     */
+    adoptIfPending: async (args: {
+      sequenceId: string;
+      lookId: string;
+      /** The claim id the trigger minted (`characterLooks.claimSheet`). */
+      claimVersionId: string;
+      /** The existing row to point at. */
+      sheetVersionId: string;
+      model: string;
+      inputHash: CharacterSheetInputHash;
+    }): Promise<'adopted' | 'refused'> => {
+      const look = await requireLook(db, teamId, args.sequenceId, args.lookId);
+      const result = await db
+        .update(sequenceCastLooks)
+        .set({
+          selectedSheetVersionId: args.sheetVersionId,
+          pendingPromoteSheetVersionId: null,
+          sheetStatus: 'completed',
+          sheetError: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(sequenceCastLooks.id, look.castLookId),
+            eq(
+              sequenceCastLooks.pendingPromoteSheetVersionId,
+              args.claimVersionId
+            ),
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(characterSheetVariants)
+                .where(
+                  and(
+                    ofTeam(),
+                    eq(characterSheetVariants.id, args.sheetVersionId),
+                    reusableFor(args)
+                  )
+                )
+            )
+          )
+        );
+      return (result.rowsAffected ?? 0) > 0 ? 'adopted' : 'refused';
+    },
+
     insert: async (
       values: NewCharacterSheetVariant
     ): Promise<CharacterSheetVariant> => {
@@ -506,46 +641,60 @@ export function createCharacterSheetVariantsMethods(
      * first.
      */
     discard: async (variantId: string): Promise<Date> => {
-      // The variant's own look, by primary key; a row with no look is its
-      // character's default look's, whose id is the character's.
-      const [live] = await db
+      // Both "is it live" checks sit in the UPDATE's WHERE, so a select
+      // landing between a check and the write cannot discard a sheet that
+      // was just selected. The variant's own look, by primary key; a row
+      // with no look is its character's default look's, whose id is the
+      // character's.
+      const live = db
         .select({ id: characterLooks.id })
         .from(characterLooks)
         .innerJoin(
           sequenceCastLooks,
           eq(sequenceCastLooks.lookId, characterLooks.id)
         )
-        .innerJoin(
-          characterSheetVariants,
-          eq(
-            characterLooks.id,
-            sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
-          )
-        )
         .where(
           and(
-            eq(characterSheetVariants.id, variantId),
-            eq(liveLookSheetVersionId, variantId)
+            eq(
+              characterLooks.id,
+              sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
+            ),
+            eq(liveLookSheetVersionId, characterSheetVariants.id)
           )
         );
       // A one-off copy's cast look selects a sheet of another look (#2017).
-      const [selectedElsewhere] = await db
+      const selectedElsewhere = db
         .select({ id: sequenceCastLooks.id })
         .from(sequenceCastLooks)
-        .where(eq(sequenceCastLooks.selectedSheetVersionId, variantId));
-      if (live || selectedElsewhere) {
-        throw new ConflictError(
-          'Cannot discard the selected sheet version; select another first.'
+        .where(
+          eq(
+            sequenceCastLooks.selectedSheetVersionId,
+            characterSheetVariants.id
+          )
         );
-      }
       const discardedAt = new Date();
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt, updatedAt: discardedAt })
-        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
+        .where(
+          and(
+            ofTeam(),
+            eq(characterSheetVariants.id, variantId),
+            notExists(live),
+            notExists(selectedElsewhere)
+          )
+        )
         .returning();
       if (result.length === 0) {
-        throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        const [row] = await db
+          .select({ id: characterSheetVariants.id })
+          .from(characterSheetVariants)
+          .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
+        if (!row)
+          throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        throw new ConflictError(
+          'Cannot discard the selected sheet version; select another first.'
+        );
       }
       return discardedAt;
     },

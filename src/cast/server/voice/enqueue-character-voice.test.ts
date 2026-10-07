@@ -45,6 +45,7 @@ function character(
     castId: 'cast-1',
     teamId: 'team-1',
     inLibrary: false,
+    copiedFromCharacterId: null,
     selectedBibleVersionId: 'bible-1',
     currentBibleVersionId: 'bible-1',
     currentVoiceVersionId: 'ver-old',
