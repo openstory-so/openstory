@@ -55,10 +55,8 @@ export async function requireCharacter(
   sequenceId: string,
   characterId: string
 ) {
-  const character = await scopedDb.characters.getById(characterId);
-  if (!character || character.sequenceId !== sequenceId) {
-    throw new NotFoundError('Character not found');
-  }
+  const character = await scopedDb.characters.getById(sequenceId, characterId);
+  if (!character) throw new NotFoundError('Character not found');
   return character;
 }
 
@@ -117,10 +115,15 @@ export async function updateCharacter(
   update: CharacterBibleUpdate
 ) {
   await requireCharacter(scopedDb, sequenceId, characterId);
-  return await scopedDb.characters.updateBible(characterId, update, {
-    actorId: actor.userId,
-    source: 'edit',
-  });
+  return await scopedDb.characters.updateBible(
+    sequenceId,
+    characterId,
+    update,
+    {
+      actorId: actor.userId,
+      source: 'edit',
+    }
+  );
 }
 
 /**
@@ -135,10 +138,16 @@ export async function deleteCharacter(
   characterId: string
 ) {
   const existing = await requireCharacter(scopedDb, sequenceId, characterId);
-  const deletedAt = await scopedDb.characters.softDelete(characterId, {
-    actorId: actor.userId,
-  });
-  await releaseCharacterVoice(scopedDb, existing, actor.userId);
+  const deletedAt = await scopedDb.characters.softDelete(
+    sequenceId,
+    characterId,
+    { actorId: actor.userId }
+  );
+  // The voice is the character's own (#2017): it goes only when nothing
+  // else holds the character.
+  if (!(await scopedDb.characters.getHeldElsewhere(sequenceId, characterId))) {
+    await releaseCharacterVoice(scopedDb, existing, actor.userId);
+  }
   return { characterId, name: existing.name, deletedAt };
 }
 
@@ -149,7 +158,7 @@ export async function restoreCharacter(
   characterId: string
 ) {
   await requireCharacter(scopedDb, sequenceId, characterId);
-  return await scopedDb.characters.restore(characterId, {
+  return await scopedDb.characters.restore(sequenceId, characterId, {
     actorId: actor.userId,
   });
 }
@@ -211,6 +220,7 @@ export async function selectCharacterSheetVersion(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const version = await scopedDb.characterSheetVariants.select(
+    sequenceId,
     character.id,
     versionId,
     { actorId: actor.userId }
@@ -294,6 +304,7 @@ export async function createCharacterLook(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const look = await scopedDb.characterLooks.create(
+    sequenceId,
     character.id,
     {
       name: input.name.trim(),
@@ -323,6 +334,7 @@ export async function updateCharacterLook(
     await requireCharacterLook(scopedDb, character, lookId)
   );
   const updated = await scopedDb.characterLooks.update(
+    sequenceId,
     look.id,
     {
       name: patch.name?.trim(),
@@ -344,7 +356,7 @@ export async function removeCharacterLook(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const look = await requireCharacterLook(scopedDb, character, lookId);
-  const deletedAt = await scopedDb.characterLooks.remove(look.id, {
+  const deletedAt = await scopedDb.characterLooks.remove(sequenceId, look.id, {
     actorId: actor.userId,
   });
   return {
@@ -364,7 +376,9 @@ export async function restoreCharacterLook(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const look = await requireCharacterLook(scopedDb, character, lookId);
-  await scopedDb.characterLooks.restore(look.id, { actorId: actor.userId });
+  await scopedDb.characterLooks.restore(sequenceId, look.id, {
+    actorId: actor.userId,
+  });
   return { characterId: character.id, lookId: look.id, name: look.name };
 }
 
@@ -382,6 +396,7 @@ export async function selectCharacterLookVersion(
     await requireCharacterLook(scopedDb, character, lookId)
   );
   const updated = await scopedDb.characterLooks.selectVersion(
+    sequenceId,
     look.id,
     versionId,
     { actorId: actor.userId }

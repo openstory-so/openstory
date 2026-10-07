@@ -156,7 +156,7 @@ function makeStep(): WorkflowStep {
 }
 
 // A sheet claim is a look's (#2015); a default look's id is its character's.
-const claimSheet = vi.fn(async (lookId: string) => ({
+const claimSheet = vi.fn(async (_sequenceId: string, lookId: string) => ({
   versionId: `csv-${lookId}`,
   held: true,
 }));
@@ -400,6 +400,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     });
     // The claim is taken on the look the payload names, as it was frozen.
     expect(claimSheet).toHaveBeenCalledWith(
+      'seq-1',
       'ravi',
       {
         lookVersionId: 'lv-ravi',
@@ -449,6 +450,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       'spawn-character-sheet-maya',
     ]);
     expect(claimSheet).toHaveBeenCalledWith(
+      'seq-1',
       'gala',
       {
         lookVersionId: 'lookver-gala',
@@ -489,6 +491,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     );
     // Cleared by the run too: a child that never started has no onFailure.
     expect(failSheetClaim).toHaveBeenCalledWith(
+      'seq-1',
       'ravi',
       'csv-ravi',
       'sheet model refused'

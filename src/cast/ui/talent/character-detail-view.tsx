@@ -401,7 +401,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     if (!selectedTalent || !character) return;
 
     recastCharacter.mutate(
-      { characterId: character.id, talentId: selectedTalent.id },
+      { sequenceId, characterId: character.id, talentId: selectedTalent.id },
       {
         onSuccess: () => {
           setIsConfirmOpen(false);

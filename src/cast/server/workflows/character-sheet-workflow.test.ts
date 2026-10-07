@@ -247,13 +247,23 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
     delete asStub<Partial<CharacterSheetWorkflowInput>>(legacy.payload)
       .sheetVersionId;
     await makeWorkflow().failBody(legacy, makeScopedDb());
-    expect(mockFailSheetClaim).toHaveBeenCalledWith('look-1', null, 'boom');
+    expect(mockFailSheetClaim).toHaveBeenCalledWith(
+      'seq-1',
+      'look-1',
+      null,
+      'boom'
+    );
     expect(mockUpdateSheetStatus).not.toHaveBeenCalled();
   });
 
   it('fails only its own claim, on its own look', async () => {
     await makeWorkflow().failBody(await makeEvent(), makeScopedDb());
-    expect(mockFailSheetClaim).toHaveBeenCalledWith('look-1', 'ver-1', 'boom');
+    expect(mockFailSheetClaim).toHaveBeenCalledWith(
+      'seq-1',
+      'look-1',
+      'ver-1',
+      'boom'
+    );
     expect(mockUpdateSheetStatus).not.toHaveBeenCalled();
   });
 

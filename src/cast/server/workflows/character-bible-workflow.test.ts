@@ -76,7 +76,7 @@ const characterCreate = vi.fn(
     ],
   })
 );
-const claimSheet = vi.fn(async (lookId: string) => ({
+const claimSheet = vi.fn(async (_sequenceId: string, lookId: string) => ({
   versionId: `ver-${lookId}`,
   held: true,
 }));
@@ -410,6 +410,7 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
       lookVersionId: `lookver-${row.id}`,
     });
     expect(claimSheet).toHaveBeenCalledWith(
+      'seq-1',
       row.id,
       expect.objectContaining({
         lookVersionId: `lookver-${row.id}`,

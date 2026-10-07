@@ -129,7 +129,11 @@ const recastCharacterTool = openstoryTool({
     const result = await recastCharacter(
       scopedDb,
       { userId },
-      { characterId: character.id, talentId: input.talentId }
+      {
+        sequenceId: input.sequenceId,
+        characterId: character.id,
+        talentId: input.talentId,
+      }
     );
     return {
       data: {

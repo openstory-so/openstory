@@ -432,8 +432,11 @@ export function useRecastCharacter() {
 
   return useMutation({
     meta: { globalError: true },
-    mutationFn: (data: { characterId: string; talentId: string }) =>
-      recastCharacterFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      talentId: string;
+    }) => recastCharacterFn({ data }),
     onSuccess: () => {
       // Invalidate sequence characters to refresh the list
       void queryClient.invalidateQueries({

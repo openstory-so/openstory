@@ -419,6 +419,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               async () =>
                 (
                   await scopedDb.characterLooks.claimSheet(
+                    sequenceId,
                     id,
                     {
                       lookVersionId: payload.lookVersionId,
@@ -463,6 +464,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // claim; the guarded clear is a no-op when one did.
             await step.do(`fail-character-sheet-claim-${id}`, () =>
               scopedDb.characterLooks.failSheetClaim(
+                sequenceId,
                 id,
                 sheetVersionId,
                 sanitizeFailResponse(error)

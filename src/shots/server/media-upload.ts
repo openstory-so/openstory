@@ -568,10 +568,11 @@ export async function setCharacterSheetFromUpload(
     context.teamId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
-  const owner = await scopedDb.characters.getById(data.characterId);
-  if (!owner || owner.sequenceId !== sequence.id) {
-    throw new NotFoundError('Character not found');
-  }
+  const owner = await scopedDb.characters.getById(
+    sequence.id,
+    data.characterId
+  );
+  if (!owner) throw new NotFoundError('Character not found');
   // The sheet is one look's (#2015): the hash below reads that look's
   // clothing and styling, as a generated sheet's would.
   const look = requireLiveLook(
@@ -611,6 +612,7 @@ export async function setCharacterSheetFromUpload(
   // row, only when it moved.
   if (isPerson !== character.isPerson) {
     await scopedDb.characters.updateBible(
+      sequence.id,
       character.id,
       { isPerson },
       { actorId: user.id, source: 'edit' }
@@ -622,13 +624,14 @@ export async function setCharacterSheetFromUpload(
   // inputs didn't change.
   const { version: variant } =
     await scopedDb.characterSheetVariants.applyConvergent({
+      sequenceId: sequence.id,
       lookId: look.id,
       url: data.publicUrl,
       storagePath,
       inputHash,
       model: USER_UPLOAD_MODEL,
     });
-  const updated = await scopedDb.characters.getById(character.id);
+  const updated = await scopedDb.characters.getById(sequence.id, character.id);
   if (!updated) throw new NotFoundError('Character not found');
   await scopedDb.sequenceEvents.record({
     sequenceId: sequence.id,

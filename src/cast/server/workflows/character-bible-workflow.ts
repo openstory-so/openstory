@@ -195,7 +195,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
 
       const created = createdByDbId.get(characterDbId);
-      if (!created) {
+      // A created row means `create-character-records` had the sequence.
+      const sheetSequenceId = input.sequenceId;
+      if (!created || !sheetSequenceId) {
         throw new WorkflowValidationError(
           `[CharacterBibleWorkflow:cf] No created row for ${characterDbId}`
         );
@@ -250,6 +252,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         async () =>
           (
             await scopedDb.characterLooks.claimSheet(
+              sheetSequenceId,
               unclaimedFields.lookId,
               unclaimedFields,
               { markGenerating: false }

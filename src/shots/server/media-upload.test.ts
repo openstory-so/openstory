@@ -278,7 +278,10 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
   });
   // Return the RESOLVED read — the sheet lives on the version row now (#1419),
   // and the staleness hash is computed from it.
-  const resolved = await createCharactersMethods(db, teamId).getById(row.id);
+  const resolved = await createCharactersMethods(db, teamId).getById(
+    sequenceId,
+    row.id
+  );
   if (!resolved)
     throw new Error('test setup: character re-read returned nothing');
   return resolved;

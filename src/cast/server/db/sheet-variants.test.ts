@@ -363,7 +363,10 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       inputHash: characterSheetInputHash('hash-live'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
-    await createCharacterLooksMethods(db, team.id).ensureDefault(characterId);
+    await createCharacterLooksMethods(db, team.id).ensureDefault(
+      sequenceId,
+      characterId
+    );
     await db
       .update(sequenceCastLooks)
       .set({ selectedSheetVersionId: variant.id })
@@ -810,6 +813,7 @@ describe('character sheet versions (append + select)', () => {
     });
 
     const { version } = await methods.applyConvergent({
+      sequenceId,
       lookId: characterId,
       url: 'https://example.com/new.png',
       storagePath: '/new.png',
@@ -820,6 +824,7 @@ describe('character sheet versions (append + select)', () => {
     // The parent's mirror columns are no longer written (#1419) — the live
     // sheet is whatever the pointer names.
     const live = await createCharactersMethods(db, team.id).getById(
+      sequenceId,
       characterId
     );
     expect(live?.selectedSheetVersionId).toBe(version.id);
@@ -838,6 +843,7 @@ describe('character sheet versions (append + select)', () => {
   it('select repoints the parent without discarding the previous version', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
     const first = await methods.applyConvergent({
+      sequenceId,
       lookId: characterId,
       url: 'https://example.com/a.png',
       storagePath: '/a.png',
@@ -845,6 +851,7 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
     const second = await methods.applyConvergent({
+      sequenceId,
       lookId: characterId,
       url: 'https://example.com/b.png',
       storagePath: '/b.png',
@@ -852,11 +859,17 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
     expect(
-      (await createCharactersMethods(db, team.id).getById(characterId))
-        ?.selectedSheetVersionId
+      (
+        await createCharactersMethods(db, team.id).getById(
+          sequenceId,
+          characterId
+        )
+      )?.selectedSheetVersionId
     ).toBe(second.version.id);
 
-    await methods.select(characterId, first.version.id, { actorId: null });
+    await methods.select(sequenceId, characterId, first.version.id, {
+      actorId: null,
+    });
     const [after] = await db
       .select()
       .from(sequenceCastLooks)
@@ -864,6 +877,7 @@ describe('character sheet versions (append + select)', () => {
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     // Reads follow the pointer, not a mirror column (#1419).
     const live = await createCharactersMethods(db, team.id).getById(
+      sequenceId,
       characterId
     );
     expect(live?.sheetImageUrl).toBe('https://example.com/a.png');

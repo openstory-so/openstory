@@ -105,9 +105,12 @@ export async function regenerateCharacterSheet(
   // The claim (#1113): last kickoff wins, and any edit to the look's sheet
   // inputs before this run lands revokes it.
   const { versionId: sheetVersionId } =
-    await scopedDb.characterLooks.claimSheet(payload.lookId, payload, {
-      markGenerating: true,
-    });
+    await scopedDb.characterLooks.claimSheet(
+      sequence.id,
+      payload.lookId,
+      payload,
+      { markGenerating: true }
+    );
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: character.id,
@@ -131,6 +134,7 @@ export async function regenerateCharacterSheet(
     });
   } catch (error) {
     await scopedDb.characterLooks.failSheetClaim(
+      sequence.id,
       payload.lookId,
       sheetVersionId,
       error instanceof Error ? error.message : String(error)
@@ -144,12 +148,13 @@ export async function regenerateCharacterSheet(
 export async function recastCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
-  data: { characterId: string; talentId: string }
+  data: { sequenceId: string; characterId: string; talentId: string }
 ) {
-  const character = await scopedDb.characters.getById(data.characterId);
-  if (!character) {
-    throw new NotFoundError('Character not found');
-  }
+  const character = await requireCharacter(
+    scopedDb,
+    data.sequenceId,
+    data.characterId
+  );
   if (character.voiceOnly) {
     throw new ValidationError(
       `${character.name} is voice-only (#1585): there is no face to cast`
@@ -201,6 +206,7 @@ export async function recastCharacter(
   // The talent and its appearance become ONE 'recast' bible version (#1600,
   // #2017).
   await scopedDb.characters.updateBible(
+    data.sequenceId,
     data.characterId,
     {
       age: castingAttrs.age,
@@ -240,15 +246,19 @@ export async function recastCharacter(
   }
   // Re-read rather than use the write's row: the recast snapshot needs the
   // live sheet, which resolves from the version pointer (#1419).
-  const updatedCharacter = await scopedDb.characters.getById(data.characterId);
-  if (!updatedCharacter) {
-    throw new NotFoundError('Character not found');
-  }
+  const updatedCharacter = await requireCharacter(
+    scopedDb,
+    data.sequenceId,
+    data.characterId
+  );
 
   // The recast workflow redraws the default look's sheet (#2015) and
   // re-renders the shots that wear it. The other looks in use are redrawn
   // below, each as its own sheet run.
-  const look = await scopedDb.characterLooks.ensureDefault(data.characterId);
+  const look = await scopedDb.characterLooks.ensureDefault(
+    data.sequenceId,
+    data.characterId
+  );
   const affectedShotIds = await scopedDb.characters.getShotIdsForCharacter(
     character.sequenceId,
     data.characterId,
@@ -259,6 +269,7 @@ export async function recastCharacter(
   // claim is taken after the cast writes above, which revoke older ones.
   const { versionId: sheetVersionId } =
     await scopedDb.characterLooks.claimSheet(
+      data.sequenceId,
       look.id,
       {
         lookVersionId: look.lookVersionId,

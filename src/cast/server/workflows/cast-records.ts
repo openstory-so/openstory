@@ -191,6 +191,7 @@ export async function createCastRecords(
     Object.assign(
       lookIds,
       await scopedDb.characterLooks.syncFromAnalysis(
+        sequenceId,
         created.id,
         withBibleLooks(character).looks
       )

@@ -86,7 +86,7 @@ import {
   lookDefinitionWrite,
   requireLook,
 } from './character-looks';
-import { deleteCastStatements, oneLinkEach, onlyLink } from './sequence-cast';
+import { deleteCastStatements } from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
 import { pickedLook, wearLook } from '@/cast/character-looks';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
@@ -168,6 +168,19 @@ export type CharacterBibleUpdate = Partial<
 type CharacterVoiceUpdate = Partial<
   CharacterVoice & Pick<CharacterRow, 'useVoice'>
 >;
+/**
+ * A character's own voice: the switch, the pointers and the selected
+ * version's values. Read with no cast link, so it is the same answer for a
+ * character in no sequence, one, or several (#2017).
+ */
+export type CharacterVoiceState = CharacterVoice &
+  Pick<
+    CharacterRow,
+    | 'id'
+    | 'useVoice'
+    | 'selectedVoiceVersionId'
+    | 'pendingPromoteVoiceVersionId'
+  >;
 const VOICE_FIELDS = [
   'voiceId',
   'voiceDescription',
@@ -416,10 +429,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
    * had. A character with no look wears its legacy columns.
    */
   const resolveLooks = async (
+    sequenceId: string,
     rows: readonly Row[]
   ): Promise<CharacterWithSheet[]> => {
     if (rows.length === 0) return [];
-    const all = await looks.listByCharacters(rows.map((row) => row.id));
+    const all = await looks.listByCharacters(
+      sequenceId,
+      rows.map((row) => row.id)
+    );
     return rows.map((row) => {
       // The pin has no FK. A link that names a missing version has no bible
       // to read, and must not come back as a character with a blank one.
@@ -471,27 +488,62 @@ export function createCharactersMethods(db: Database, teamId: string) {
     });
   };
 
-  /** The team's resolved characters matching `where`. */
+  /** The team's resolved characters as one sequence casts them. */
   const selectCharacters = async (
+    sequenceId: string,
     where: SQL | undefined
   ): Promise<CharacterWithSheet[]> =>
-    await resolveLooks(await selectRows().where(and(inTeam, where)));
+    await resolveLooks(
+      sequenceId,
+      await selectRows().where(
+        and(inTeam, eq(sequenceCast.sequenceId, sequenceId), where)
+      )
+    );
 
   /**
-   * The character an id-only method means: through its one cast link. Throws
-   * when it has more than one (`onlyLink`).
+   * The character as one sequence casts it. A sequence links a character at
+   * most once (unique index), so the sequence and the id name one row.
    */
-  const castOf = async (id: string): Promise<CharacterWithSheet | undefined> =>
-    onlyLink(await selectCharacters(eq(characters.id, id)), `Character ${id}`);
+  const castOf = async (
+    sequenceId: string,
+    id: string
+  ): Promise<CharacterWithSheet | undefined> =>
+    (await selectCharacters(sequenceId, eq(characters.id, id)))[0];
 
   /** A write's row, re-read so it carries the resolved bible, looks and voice. */
   const reread = async (
-    row: Pick<CharacterRow, 'id'> | undefined
+    sequenceId: string,
+    id: string
   ): Promise<CharacterWithSheet> => {
-    if (!row) throw new Error('SequenceCharacter not found');
-    const character = await castOf(row.id);
-    if (!character) throw new Error(`SequenceCharacter ${row.id} not found`);
+    const character = await castOf(sequenceId, id);
+    if (!character) throw new Error(`SequenceCharacter ${id} not found`);
     return character;
+  };
+
+  /**
+   * The character's own voice: its switch and the selected version's values.
+   * No cast link is read, so it answers for a character in no sequence, or
+   * in several.
+   */
+  const voiceOf = async (id: string): Promise<CharacterVoiceState> => {
+    const [row] = await db
+      .select({
+        id: characters.id,
+        useVoice: characters.useVoice,
+        selectedVoiceVersionId: characters.selectedVoiceVersionId,
+        pendingPromoteVoiceVersionId: characters.pendingPromoteVoiceVersionId,
+        voiceId: characterVoiceVersions.voiceId,
+        voiceDescription: characterVoiceVersions.description,
+        voicePreviews: characterVoiceVersions.previews,
+      })
+      .from(characters)
+      .leftJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+      )
+      .where(and(eq(characters.id, id), inTeam));
+    if (!row) throw new Error(`Character ${id} not found`);
+    return row;
   };
 
   /**
@@ -554,13 +606,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
     };
   };
 
-  // Private update helper. Voice
+  // The character's own columns; no cast link is read or written. Voice
   // fields are NOT writable here — a new value goes through `updateVoice`,
   // which appends the history row and moves the pointer (#1657).
-  const update = async (
-    id: string,
-    data: CharacterUpdate
-  ): Promise<Character> => {
+  const update = async (id: string, data: CharacterUpdate): Promise<void> => {
     // Belt for the non-literal call site TypeScript's excess-property check
     // cannot see (a spread, a widened variable): drizzle drops a key that is
     // not a column, so a voice write here would vanish without a trace.
@@ -576,10 +625,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       .returning({ id: characters.id });
 
     if (!character) {
-      throw new Error(`SequenceCharacter ${id} not found`);
+      throw new NotFoundError(`Character ${id} not found`);
     }
-
-    return await reread(character);
   };
 
   /**
@@ -596,11 +643,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
     source: CharacterVoiceVersionSource,
     /** Who did this — required so no writer forgets; null when nobody did. */
     createdBy: string | null
-  ): Promise<Character> => {
-    const existing = await castOf(id);
-    if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
+  ): Promise<CharacterVoiceState> => {
+    const existing = await voiceOf(id);
     const versionId = generateId();
-    const [, updatedRows] = await db.batch([
+    await db.batch([
       db.insert(characterVoiceVersions).values({
         id: versionId,
         characterId: id,
@@ -626,10 +672,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
           pendingPromoteVoiceVersionId: null,
           updatedAt: new Date(),
         })
-        .where(eq(characters.id, id))
-        .returning({ id: characters.id }),
+        .where(eq(characters.id, id)),
     ]);
-    return await reread(updatedRows[0]);
+    return await voiceOf(id);
   };
 
   /** The live shots whose scene tags this character, optionally in one look. */
@@ -638,8 +683,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
     characterId: string,
     wearing?: string
   ): Promise<Shot[]> => {
-    const character = await castOf(characterId);
-    if (!character || character.sequenceId !== sequenceId) return [];
+    const character = await castOf(sequenceId, characterId);
+    if (!character) return [];
     const [allShots, sceneContext] = await Promise.all([
       db
         .select()
@@ -661,19 +706,25 @@ export function createCharactersMethods(db: Database, teamId: string) {
   };
 
   return {
-    getById: async (id: string): Promise<CharacterWithSheet | null> => {
-      return (await castOf(id)) ?? null;
+    /** The character as `sequenceId` casts it, live or removed. */
+    getById: async (
+      sequenceId: string,
+      id: string
+    ): Promise<CharacterWithSheet | null> => {
+      return (await castOf(sequenceId, id)) ?? null;
     },
+
+    /** The character's own voice; see {@link CharacterVoiceState}. */
+    getVoice: async (id: string): Promise<CharacterVoiceState> =>
+      await voiceOf(id),
 
     getByCharacterId: async (
       sequenceId: string,
       characterId: string
     ): Promise<CharacterWithSheet | null> => {
       const result = await selectCharacters(
-        and(
-          eq(sequenceCast.sequenceId, sequenceId),
-          eq(sequenceCast.scriptCharacterId, characterId)
-        )
+        sequenceId,
+        eq(sequenceCast.scriptCharacterId, characterId)
       );
       return result[0] ?? null;
     },
@@ -687,6 +738,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       page?: PageOptions
     ): Promise<CharacterWithSheet[]> => {
       return await resolveLooks(
+        sequenceId,
         await pageOf(
           selectRows().$dynamic(),
           and(
@@ -703,6 +755,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
     /** Soft-deleted characters of the sequence, most recently deleted first. */
     listDeleted: async (sequenceId: string): Promise<CharacterWithSheet[]> =>
       await resolveLooks(
+        sequenceId,
         await selectRows()
           .where(
             and(
@@ -768,19 +821,23 @@ export function createCharactersMethods(db: Database, teamId: string) {
           )
         );
 
-      const resolved = await resolveLooks(results.map((row) => row.character));
+      const resolved = await resolveLooks(
+        sequenceId,
+        results.map((row) => row.character)
+      );
       return resolved.map((character, index) => {
         const cast = results[index]?.talent;
         return { ...character, talent: cast?.id ? cast : null };
       });
     },
 
-    getByIds: async (ids: string[]): Promise<CharacterWithSheet[]> => {
+    /** These characters as `sequenceId` casts them. */
+    getByIds: async (
+      sequenceId: string,
+      ids: string[]
+    ): Promise<CharacterWithSheet[]> => {
       if (ids.length === 0) return [];
-      return oneLinkEach(
-        await selectCharacters(inArray(characters.id, ids)),
-        'Character'
-      );
+      return await selectCharacters(sequenceId, inArray(characters.id, ids));
     },
 
     listWithSheets: async (
@@ -789,10 +846,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       // A character counts once any of its looks has a finished sheet: a
       // scene may pick a look other than the default (#2015).
       const live = await selectCharacters(
-        and(
-          eq(sequenceCast.sequenceId, sequenceId),
-          isNull(sequenceCast.removedAt)
-        )
+        sequenceId,
+        isNull(sequenceCast.removedAt)
       );
       // A look whose sheet is not finished offers none: a scene that wears
       // it attaches no sheet, exactly as a single-look character whose sheet
@@ -830,11 +885,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
       data: NewCharacter,
       opts: { source: BibleVersionSource; createdBy: string | null }
     ): Promise<Character> => {
-      const inSequence = and(
-        eq(sequenceCast.sequenceId, data.sequenceId),
+      const [existing] = await selectCharacters(
+        data.sequenceId,
         eq(sequenceCast.scriptCharacterId, data.characterId)
       );
-      const [existing] = await selectCharacters(inSequence);
       const {
         name: _n,
         age: _a,
@@ -864,7 +918,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       if (existing) {
         // An existing character with no look yet (an older worker's) gets its
         // default filled in first.
-        const defaultLook = await requireLook(db, teamId, existing.lookId);
+        const defaultLook = await requireLook(
+          db,
+          teamId,
+          sequenceId,
+          existing.lookId
+        );
         const now = new Date();
         await db.batch([
           // A re-analysis re-extracting a removed character revives it — the
@@ -956,7 +1015,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           }),
         ]);
       }
-      const character = await reread({ id });
+      const character = await reread(sequenceId, id);
       // The voice the cast arrived with fills only what the character does
       // not already have (#1553): re-writing a voice would orphan an
       // ElevenLabs slot. What lands is a history row (#1657) — the ORIGINAL
@@ -971,7 +1030,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           : {}),
       };
       if (Object.keys(voicePatch).length > 0) {
-        return await updateVoice(
+        await updateVoice(
           character.id,
           voicePatch,
           // A voice id only ever arrives as the cast talent's copy.
@@ -979,6 +1038,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           // Seeded by the cast-records step, not by a person.
           null
         );
+        return await reread(sequenceId, id);
       }
       return character;
     },
@@ -994,9 +1054,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       id: string,
       generatedVoiceId: string,
       reason: VoicePreviewUnusable
-    ): Promise<Character> => {
-      const existing = await castOf(id);
-      if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
+    ): Promise<CharacterVoiceState> => {
+      const existing = await voiceOf(id);
       const next = markPreviewUnusable(
         existing.voicePreviews ?? [],
         generatedVoiceId,
@@ -1005,7 +1064,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       // No previews without a selected version: `next` is null then.
       const versionId = existing.selectedVoiceVersionId;
       if (!next || !versionId) return existing;
-      const [, updatedRows] = await db.batch([
+      await db.batch([
         db
           .update(characterVoiceVersions)
           .set({ previews: next })
@@ -1013,10 +1072,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
         db
           .update(characters)
           .set({ updatedAt: new Date() })
-          .where(eq(characters.id, id))
-          .returning({ id: characters.id }),
+          .where(eq(characters.id, id)),
       ]);
-      return await reread(updatedRows[0]);
+      return await voiceOf(id);
     },
 
     /**
@@ -1083,7 +1141,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
     selectVoiceVersion: async (
       characterId: string,
       versionId: string
-    ): Promise<Character> => {
+    ): Promise<CharacterVoiceState> => {
       const [version] = await db
         .select()
         .from(characterVoiceVersions)
@@ -1119,6 +1177,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         .where(
           and(
             eq(characters.id, characterId),
+            inTeam,
             exists(
               db
                 .select({ id: characterVoiceVersions.id })
@@ -1135,7 +1194,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         )
         .returning({ id: characters.id });
       if (!updated) throw new Error(RELEASED_VOICE_MESSAGE);
-      return await reread(updated);
+      return await voiceOf(characterId);
     },
 
     /**
@@ -1210,9 +1269,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       createdBy: string | null,
       opts?: { workflowRunId?: string | null }
     ) => {
-      const existing = await castOf(characterId);
-      if (!existing)
-        throw new Error(`SequenceCharacter ${characterId} not found`);
+      const existing = await voiceOf(characterId);
       const versionId = generateId();
       try {
         const [versionRows, characterRows] = await db.batch([
@@ -1373,7 +1430,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           )
         )
         .returning({ id: characters.id });
-      return updated ? await reread(updated) : null;
+      return updated ? await voiceOf(characterId) : null;
     },
 
     stampVoiceClaimWorkflowRunId: async (
@@ -1392,10 +1449,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       sequenceId: string
     ): Promise<CharacterWithSheet[]> => {
       const live = await selectCharacters(
-        and(
-          eq(sequenceCast.sequenceId, sequenceId),
-          isNull(sequenceCast.removedAt)
-        )
+        sequenceId,
+        isNull(sequenceCast.removedAt)
       );
       return live.filter(
         (character) =>
@@ -1417,6 +1472,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * not move (#1113, #2015).
      */
     updateBible: async (
+      sequenceId: string,
       id: string,
       data: CharacterBibleUpdate,
       opts: { actorId: string | null } & (
@@ -1428,7 +1484,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           }
       )
     ): Promise<Character> => {
-      const existing = await castOf(id);
+      const existing = await castOf(sequenceId, id);
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1440,7 +1496,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       // A character an older worker wrote keeps its clothing on the legacy
       // bible column, which the version appended below no longer carries
       // (#2015): give it its default look first.
-      const defaultLook = await requireLook(db, teamId, existing.lookId);
+      const defaultLook = await requireLook(
+        db,
+        teamId,
+        sequenceId,
+        existing.lookId
+      );
       const { voiceDescription, standardClothing, ...bibleData } = data;
       // Appends a version and moves the pointer (#1600); an edit to a field
       // the sheet reads also revokes an in-flight sheet run's claim (#1113).
@@ -1489,14 +1550,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
         voiceDescription !== undefined &&
         voiceDescription !== existing.voiceDescription
       ) {
-        return await updateVoice(
-          id,
-          { voiceDescription },
-          'user-edit',
-          opts.actorId
-        );
+        await updateVoice(id, { voiceDescription }, 'user-edit', opts.actorId);
       }
-      return await reread(existing);
+      return await reread(sequenceId, id);
     },
 
     /**
@@ -1508,10 +1564,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * timestamp) when already deleted.
      */
     softDelete: async (
+      sequenceId: string,
       id: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const existing = await castOf(id);
+      const existing = await castOf(sequenceId, id);
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1541,20 +1598,20 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /** Undo a soft delete (clears the link's `removedAt`), with a matching event. */
     restore: async (
+      sequenceId: string,
       id: string,
       opts: { actorId: string | null }
     ): Promise<Character> => {
-      const existing = await castOf(id);
+      const existing = await castOf(sequenceId, id);
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
       const now = new Date();
-      const [restoredRows] = await db.batch([
+      await db.batch([
         db
           .update(characters)
           .set({ updatedAt: now })
-          .where(eq(characters.id, id))
-          .returning({ id: characters.id }),
+          .where(eq(characters.id, id)),
         db
           .update(sequenceCast)
           .set({ removedAt: null })
@@ -1569,7 +1626,26 @@ export function createCharactersMethods(db: Database, teamId: string) {
           data: { name: existing.name },
         }),
       ]);
-      return await reread(restoredRows[0]);
+      return await reread(sequenceId, id);
+    },
+
+    /**
+     * Whether something other than `sequenceId` still holds the character:
+     * the library, or a live cast link in another sequence. What a sequence
+     * may not take with it when it lets the character go (its voice).
+     */
+    getHeldElsewhere: async (
+      sequenceId: string,
+      id: string
+    ): Promise<boolean> => {
+      const [row] = await db
+        .select({
+          held: sql<number>`(${characters.inLibrary} OR EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.sequence_id != ${sequenceId} AND o.removed_at IS NULL))`,
+        })
+        .from(characters)
+        .where(and(eq(characters.id, id), inTeam));
+      if (!row) throw new NotFoundError(`Character ${id} not found`);
+      return Boolean(row.held);
     },
 
     getShotsForCharacter: async (

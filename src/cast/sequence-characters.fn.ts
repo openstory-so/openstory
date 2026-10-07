@@ -512,7 +512,11 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
     zodValidator(
-      z.object({ characterId: z.string().min(1), talentId: ulidSchema })
+      z.object({
+        sequenceId: ulidSchema,
+        characterId: z.string().min(1),
+        talentId: ulidSchema,
+      })
     )
   )
   .handler(({ context, data }) =>

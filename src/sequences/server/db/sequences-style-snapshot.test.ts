@@ -184,6 +184,7 @@ describe('createSequencesMethods style snapshot', () => {
       { source: 'analysis', createdBy: null }
     );
     const sheet = await createCharacterLooksMethods(db, teamId).claimSheet(
+      sequence.id,
       character.lookId,
       {
         lookVersionId: character.looks[0]?.lookVersionId ?? '',
@@ -199,7 +200,7 @@ describe('createSequencesMethods style snapshot', () => {
         (await locations.getById(location.id))
           ?.pendingPromoteReferenceVersionId ?? null,
       sheet:
-        (await characters.getById(character.id))
+        (await characters.getById(sequence.id, character.id))
           ?.pendingPromoteSheetVersionId ?? null,
     });
     return { methods, sequence, claim, liveClaim };

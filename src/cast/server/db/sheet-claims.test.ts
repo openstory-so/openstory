@@ -152,6 +152,7 @@ beforeEach(async () => {
 const chars = () => createCharactersMethods(db, teamId);
 const castWith = (to: string | null) =>
   chars().updateBible(
+    sequenceId,
     characterId,
     {},
     { actorId: null, source: 'recast', talentId: to }
@@ -164,7 +165,7 @@ const library = () => createLocationsMethods(db, teamId, userId);
 const talents = () => createTalentMethods(db, teamId, userId);
 
 async function character() {
-  const row = await chars().getById(characterId);
+  const row = await chars().getById(sequenceId, characterId);
   if (!row) throw new Error('character gone');
   return row;
 }
@@ -184,6 +185,7 @@ async function snapshotOf(lookId: string) {
 /** Claim a look's sheet the way a trigger does; the default look by default. */
 async function claim(lookId = characterId) {
   const { versionId } = await looks().claimSheet(
+    sequenceId,
     lookId,
     await snapshotOf(lookId),
     { markGenerating: true }
@@ -207,6 +209,7 @@ const landCharacter = (
   lookId = characterId
 ) =>
   charVersions().promoteIfPending({
+    sequenceId,
     characterId,
     lookId,
     lookVersionId: null,
@@ -247,6 +250,7 @@ describe('character sheet claims', () => {
 
     const second = await claim();
     await chars().updateBible(
+      sequenceId,
       characterId,
       { physicalDescription: 'short' },
       { source: 'edit', actorId: userId }
@@ -262,6 +266,7 @@ describe('character sheet claims', () => {
   it('keeps the claim when the edit touches no field the sheet reads', async () => {
     const versionId = await claim();
     await chars().updateBible(
+      sequenceId,
       characterId,
       { personality: 'wry', physicalDescription: 'tall' },
       { source: 'edit', actorId: userId }
@@ -302,7 +307,12 @@ describe('character sheet claims', () => {
     expect(row.sheetStatus).toBe('generating');
     expect((await version('pre-1113'))?.divergedAt).not.toBeNull();
 
-    await looks().failSheetClaim(characterId, null, 'pre-1113 boom');
+    await looks().failSheetClaim(
+      sequenceId,
+      characterId,
+      null,
+      'pre-1113 boom'
+    );
     row = await character();
     expect(row.pendingPromoteSheetVersionId).toBe(newer);
     expect(row.sheetStatus).toBe('generating');
@@ -314,12 +324,12 @@ describe('character sheet claims', () => {
     const older = await claim();
     const newer = await claim();
 
-    await looks().failSheetClaim(characterId, older, 'boom');
+    await looks().failSheetClaim(sequenceId, characterId, older, 'boom');
     let row = await character();
     expect(row.pendingPromoteSheetVersionId).toBe(newer);
     expect(row.sheetStatus).toBe('generating');
 
-    await looks().failSheetClaim(characterId, newer, 'boom');
+    await looks().failSheetClaim(sequenceId, characterId, newer, 'boom');
     row = await character();
     expect(row.pendingPromoteSheetVersionId).toBeNull();
     expect(row.sheetStatus).toBe('failed');
@@ -340,7 +350,9 @@ describe('character sheet claims', () => {
     const first = await claim();
     await landCharacter(first);
     const second = await claim();
-    await charVersions().select(characterId, first, { actorId: userId });
+    await charVersions().select(sequenceId, characterId, first, {
+      actorId: userId,
+    });
     expect(await landCharacter(second)).toBe('parked');
   });
 
@@ -383,6 +395,7 @@ describe('character sheet claims', () => {
 describe('look sheet claims (#2015)', () => {
   const addLook = () =>
     looks().create(
+      sequenceId,
       characterId,
       { name: 'Gala gown', clothing: 'red gown', styling: null },
       { source: 'edit', actorId: userId }
@@ -425,6 +438,7 @@ describe('look sheet claims (#2015)', () => {
     const defaultRun = await claim();
 
     await looks().update(
+      sequenceId,
       gala.id,
       { clothing: 'blue gown' },
       { source: 'edit', actorId: userId }
@@ -440,6 +454,7 @@ describe('look sheet claims (#2015)', () => {
     const gala = await addLook();
     const run = await claim(gala.id);
     await looks().update(
+      sequenceId,
       gala.id,
       { name: 'Gala' },
       { source: 'edit', actorId: userId }
@@ -454,6 +469,7 @@ describe('look sheet claims (#2015)', () => {
     const galaRun = await claim(gala.id);
     const defaultRun = await claim();
     await chars().updateBible(
+      sequenceId,
       characterId,
       { physicalDescription: 'short' },
       { source: 'edit', actorId: userId }
@@ -467,6 +483,7 @@ describe('look sheet claims (#2015)', () => {
   it('edits the default look when the bible form changes the clothing', async () => {
     const run = await claim();
     await chars().updateBible(
+      sequenceId,
       characterId,
       { standardClothing: 'black suit' },
       { source: 'edit', actorId: userId }
@@ -481,13 +498,19 @@ describe('look sheet claims (#2015)', () => {
     const gala = await addLook();
     const snapshot = await snapshotOf(gala.id);
     await looks().update(
+      sequenceId,
       gala.id,
       { clothing: 'blue gown' },
       { source: 'edit', actorId: userId }
     );
-    const { versionId, held } = await looks().claimSheet(gala.id, snapshot, {
-      markGenerating: true,
-    });
+    const { versionId, held } = await looks().claimSheet(
+      sequenceId,
+      gala.id,
+      snapshot,
+      {
+        markGenerating: true,
+      }
+    );
     expect(held).toBe(false);
     expect((await lookOf(gala.id)).pendingPromoteSheetVersionId).toBeNull();
     expect((await lookOf(gala.id)).sheetStatus).toBe('pending');
@@ -501,13 +524,14 @@ describe('look sheet claims (#2015)', () => {
   it('is not taken once the bible or the cast moved after the snapshot', async () => {
     const snapshot = await snapshotOf(characterId);
     await chars().updateBible(
+      sequenceId,
       characterId,
       { physicalDescription: 'short' },
       { source: 'edit', actorId: userId }
     );
     expect(
       (
-        await looks().claimSheet(characterId, snapshot, {
+        await looks().claimSheet(sequenceId, characterId, snapshot, {
           markGenerating: true,
         })
       ).held
@@ -516,8 +540,11 @@ describe('look sheet claims (#2015)', () => {
     const recast = await snapshotOf(characterId);
     await castWith(null);
     expect(
-      (await looks().claimSheet(characterId, recast, { markGenerating: true }))
-        .held
+      (
+        await looks().claimSheet(sequenceId, characterId, recast, {
+          markGenerating: true,
+        })
+      ).held
     ).toBe(false);
   });
 
@@ -537,7 +564,7 @@ describe('look sheet claims (#2015)', () => {
     const gala = await addLook();
     const galaRun = await claim(gala.id);
     const defaultRun = await claim();
-    await looks().failSheetClaim(gala.id, galaRun, 'boom');
+    await looks().failSheetClaim(sequenceId, gala.id, galaRun, 'boom');
     expect((await lookOf(gala.id)).sheetStatus).toBe('failed');
     const row = await character();
     expect(row.pendingPromoteSheetVersionId).toBe(defaultRun);
@@ -546,25 +573,30 @@ describe('look sheet claims (#2015)', () => {
 
   it('refuses to remove the default look, and restores a removed one', async () => {
     await expect(
-      looks().remove(characterId, { actorId: userId })
+      looks().remove(sequenceId, characterId, { actorId: userId })
     ).rejects.toThrow('default look');
     const gala = await addLook();
-    await looks().remove(gala.id, { actorId: userId });
+    await looks().remove(sequenceId, gala.id, { actorId: userId });
     expect((await lookOf(gala.id)).deletedAt).not.toBeNull();
-    expect(await looks().listByCharacter(characterId)).toHaveLength(1);
-    await looks().restore(gala.id, { actorId: userId });
-    expect(await looks().listByCharacter(characterId)).toHaveLength(2);
+    expect(await looks().listByCharacter(sequenceId, characterId)).toHaveLength(
+      1
+    );
+    await looks().restore(sequenceId, gala.id, { actorId: userId });
+    expect(await looks().listByCharacter(sequenceId, characterId)).toHaveLength(
+      2
+    );
   });
 
   it('re-selects an earlier look version, revoking the claim', async () => {
     const gala = await addLook();
     await looks().update(
+      sequenceId,
       gala.id,
       { clothing: 'blue gown' },
       { source: 'edit', actorId: userId }
     );
     const run = await claim(gala.id);
-    await looks().selectVersion(gala.id, gala.lookVersionId, {
+    await looks().selectVersion(sequenceId, gala.id, gala.lookVersionId, {
       actorId: userId,
     });
     expect((await lookOf(gala.id)).clothing).toBe('red gown');
@@ -574,7 +606,7 @@ describe('look sheet claims (#2015)', () => {
   });
 
   it('writes analysed looks, matching a re-analysis by name so ids hold', async () => {
-    const first = await looks().syncFromAnalysis(characterId, [
+    const first = await looks().syncFromAnalysis(sequenceId, characterId, [
       { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
       {
         lookId: 'c:gala',
@@ -596,7 +628,7 @@ describe('look sheet claims (#2015)', () => {
 
     // The script is re-analysed: same outfit under the same name (any case),
     // new wording, plus one more.
-    const second = await looks().syncFromAnalysis(characterId, [
+    const second = await looks().syncFromAnalysis(sequenceId, characterId, [
       { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
       {
         lookId: 'c:gala_gown',
@@ -620,11 +652,13 @@ describe('look sheet claims (#2015)', () => {
     expect(await landCharacter(run, undefined, null, true, galaId)).toBe(
       'parked'
     );
-    expect(await looks().listByCharacter(characterId)).toHaveLength(3);
+    expect(await looks().listByCharacter(sequenceId, characterId)).toHaveLength(
+      3
+    );
 
     // Only the name's case moves this time: one version, for the rename.
     const versions = (await looks().listVersions(galaId)).length;
-    await looks().syncFromAnalysis(characterId, [
+    await looks().syncFromAnalysis(sequenceId, characterId, [
       { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
       {
         lookId: 'c:gala_gown',
@@ -644,7 +678,7 @@ describe('look sheet claims (#2015)', () => {
       styling: '',
     });
     const office = analysedLook('Office', 'x');
-    const first = await looks().syncFromAnalysis(characterId, [
+    const first = await looks().syncFromAnalysis(sequenceId, characterId, [
       office,
       analysedLook('Gala gown', 'red gown'),
       analysedLook('Pyjamas', 'striped'),
@@ -653,11 +687,13 @@ describe('look sheet claims (#2015)', () => {
     const pyjamasId = first['c:Pyjamas'] ?? '';
     // A person's look, and an analysed look that has a sheet.
     const mine = await looks().create(
+      sequenceId,
       characterId,
       { name: 'Raincoat', clothing: 'yellow', styling: null },
       { source: 'edit', actorId: userId }
     );
     await charVersions().applyConvergent({
+      sequenceId,
       lookId: pyjamasId,
       url: '/r2/pyjamas.png',
       storagePath: '/pyjamas.png',
@@ -666,13 +702,13 @@ describe('look sheet claims (#2015)', () => {
     });
 
     // The script is re-analysed and names only the default outfit.
-    await looks().syncFromAnalysis(characterId, [office]);
+    await looks().syncFromAnalysis(sequenceId, characterId, [office]);
     expect((await lookOf(galaId)).deletedAt).not.toBeNull();
     expect((await lookOf(pyjamasId)).deletedAt).toBeNull();
     expect((await lookOf(mine.id)).deletedAt).toBeNull();
 
     // Named again: the same row comes back, not a twin.
-    const again = await looks().syncFromAnalysis(characterId, [
+    const again = await looks().syncFromAnalysis(sequenceId, characterId, [
       office,
       analysedLook('gala gown', 'red gown'),
     ]);
@@ -684,12 +720,14 @@ describe('look sheet claims (#2015)', () => {
     const gala = await addLook();
     await expect(addLook()).rejects.toThrow('already has a look named');
     const other = await looks().create(
+      sequenceId,
       characterId,
       { name: 'Pyjamas', clothing: null, styling: null },
       { source: 'edit', actorId: userId }
     );
     await expect(
       looks().update(
+        sequenceId,
         other.id,
         { name: 'gala GOWN' },
         { source: 'edit', actorId: userId }
@@ -697,6 +735,7 @@ describe('look sheet claims (#2015)', () => {
     ).rejects.toThrow('already has a look named');
     // Renaming a look to its own name in another case is fine.
     await looks().update(
+      sequenceId,
       gala.id,
       { name: 'Gala Gown' },
       { source: 'edit', actorId: userId }
@@ -727,7 +766,9 @@ describe('look sheet claims (#2015)', () => {
       .update(scenes)
       .set({ selectedScriptVersionId: 'ssv-1' })
       .where(eq(scenes.id, scene.id));
-    await expect(looks().remove(gala.id, { actorId: userId })).rejects.toThrow(
+    await expect(
+      looks().remove(sequenceId, gala.id, { actorId: userId })
+    ).rejects.toThrow(
       'Gala gown is worn in scene 2. Pick another look there first.'
     );
     expect((await lookOf(gala.id)).deletedAt).toBeNull();
@@ -753,7 +794,7 @@ describe('look sheet claims (#2015)', () => {
     expect(before.standardClothing).toBe('old coat');
     expect(before.sheetStatus).toBe('failed');
 
-    const look = await looks().ensureDefault(characterId);
+    const look = await looks().ensureDefault(sequenceId, characterId);
     expect(look).toMatchObject({
       id: characterId,
       isDefault: true,
@@ -1051,9 +1092,14 @@ describe('re-analysis upserts (#1113)', () => {
       .update(sequenceCastLooks)
       .set({ sheetStatus: 'completed' })
       .where(eq(sequenceCastLooks.lookId, characterId));
-    await looks().claimSheet(characterId, await snapshotOf(characterId), {
-      markGenerating: false,
-    });
+    await looks().claimSheet(
+      sequenceId,
+      characterId,
+      await snapshotOf(characterId),
+      {
+        markGenerating: false,
+      }
+    );
     expect((await character()).sheetStatus).toBe('completed');
   });
 });

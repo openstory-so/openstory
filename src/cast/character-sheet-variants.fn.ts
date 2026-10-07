@@ -35,9 +35,10 @@ export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
   .validator(zodValidator(characterVersionsInput))
   .handler(async ({ context, data }) => {
     const character = await context.scopedDb.characters.getById(
+      context.sequence.id,
       data.characterId
     );
-    if (!character || character.sequenceId !== context.sequence.id) {
+    if (!character) {
       throw new Error('Character not found in this sequence');
     }
     const look = await requireCharacterLook(
@@ -116,13 +117,15 @@ export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
     }
 
     const character = await context.scopedDb.characters.getById(
+      context.sequence.id,
       variant.characterId
     );
-    if (!character || character.sequenceId !== context.sequence.id) {
+    if (!character) {
       throw new Error('Character not found in this sequence');
     }
 
     await context.scopedDb.characterSheetVariants.select(
+      context.sequence.id,
       variant.characterId,
       variant.id,
       { actorId: context.user.id }
