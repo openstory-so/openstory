@@ -54,13 +54,16 @@ SET `selected_sheet_id` = d.`id`
 FROM (
   SELECT `talent_id`, min(`id`) AS `id`
   FROM `talent_sheets`
-  WHERE `is_default` = 1 AND `diverged_at` IS NULL
+  WHERE `is_default` = 1 AND `diverged_at` IS NULL AND `image_url` IS NOT NULL
   GROUP BY `talent_id`
 ) d
 WHERE d.`talent_id` = `talent`.`id`
   AND `talent`.`selected_sheet_id` IS NULL;
 --> statement-breakpoint
--- … else the newest convergent one (what the "any sheet" fallback showed).
+-- … else the newest convergent one WITH an image (what the "any sheet"
+-- fallback showed). A sheet with no image is never the reference sheet; a
+-- talent with no usable sheet keeps NULL, which the code reads as "no sheet
+-- yet".
 UPDATE `talent`
 SET `selected_sheet_id` = n.`id`
 FROM (
@@ -69,10 +72,10 @@ FROM (
   JOIN (
     SELECT `talent_id`, max(`created_at`) AS `created_at`
     FROM `talent_sheets`
-    WHERE `diverged_at` IS NULL
+    WHERE `diverged_at` IS NULL AND `image_url` IS NOT NULL
     GROUP BY `talent_id`
   ) m ON m.`talent_id` = s.`talent_id` AND m.`created_at` = s.`created_at`
-  WHERE s.`diverged_at` IS NULL
+  WHERE s.`diverged_at` IS NULL AND s.`image_url` IS NOT NULL
   GROUP BY s.`talent_id`
 ) n
 WHERE n.`talent_id` = `talent`.`id`
@@ -117,7 +120,12 @@ WHERE t.`id` = `talent_sheets`.`talent_id`
 --    question; 0 there is "not signed or never classified", never "not a
 --    person", so it must not fail the gate open.
 --    "split" below is: not stock, and a personality, movement or voice on
---    the row, or a sheet copied from a character (`script_analysis`).
+--    the row, or a sheet copied from a character (`script_analysis`). A
+--    voice on a non-stock talent is a designed voice Add to Library copied
+--    there — the only kind that exists before #1631 records voices — so a
+--    talent with nothing but a voice splits too, and the voice moves.
+--    `sheet_status` is 'completed' only when the talent has a reference
+--    sheet (one with an image, step 1); else 'pending'.
 --    Replay: the role columns are left in place, so the set is stable; each
 --    insert's LEFT JOIN on its own id makes a re-run a no-op.
 INSERT INTO `characters` (
@@ -126,7 +134,9 @@ INSERT INTO `characters` (
 )
 SELECT
   t.`id`, t.`team_id`, 1, t.`id`, t.`name`,
-  0, 1, 'completed', t.`created_at`, t.`updated_at`
+  0, 1,
+  CASE WHEN t.`selected_sheet_id` IS NULL THEN 'pending' ELSE 'completed' END,
+  t.`created_at`, t.`updated_at`
 FROM `talent` t
 LEFT JOIN (
   SELECT `talent_id` FROM `talent_sheets`
@@ -194,51 +204,80 @@ WHERE v.`id` = `talent`.`id`
   AND v.`character_id` = `talent`.`id`
   AND v.`voice_id` = `talent`.`voice_id`;
 --> statement-breakpoint
--- 4c. One look per convergent sheet. The reference sheet's look is the
---     default and takes the character's id; the others take their sheet's.
+-- 4c. Every split character gets a default look keyed to its id (the #1419
+--     rule), with or without a sheet, so an attach finds a live look. Every
+--     OTHER convergent sheet with an image is one more look keyed to the
+--     sheet's id. A sheet with no image makes no look.
 INSERT INTO `character_looks` (
   `id`, `character_id`, `is_default`, `sort_order`,
   `selected_look_version_id`, `sheet_status`, `created_at`, `updated_at`
 )
 SELECT
-  k.`look_id`, k.`character_id`, k.`is_default`, k.`sort_order`,
-  k.`look_id`, 'completed', k.`created_at`, k.`updated_at`
+  t.`id`, t.`id`, 1, 0, t.`id`,
+  CASE WHEN t.`selected_sheet_id` IS NULL THEN 'pending' ELSE 'completed' END,
+  t.`created_at`, t.`updated_at`
+FROM `characters` c
+JOIN `talent` t ON t.`id` = c.`id`
+LEFT JOIN `character_looks` l ON l.`id` = t.`id`
+WHERE l.`id` IS NULL;
+--> statement-breakpoint
+INSERT INTO `character_looks` (
+  `id`, `character_id`, `is_default`, `sort_order`,
+  `selected_look_version_id`, `sheet_status`, `created_at`, `updated_at`
+)
+SELECT
+  k.`id`, k.`character_id`, 0, k.`sort_order`,
+  k.`id`, 'completed', k.`created_at`, k.`updated_at`
 FROM (
   SELECT
-    CASE WHEN s.`id` = t.`selected_sheet_id` THEN t.`id` ELSE s.`id` END AS `look_id`,
-    t.`id` AS `character_id`,
-    CASE WHEN s.`id` = t.`selected_sheet_id` THEN 1 ELSE 0 END AS `is_default`,
-    row_number() OVER (
-      PARTITION BY t.`id`
-      ORDER BY (s.`id` = t.`selected_sheet_id`) DESC, s.`created_at`, s.`id`
-    ) - 1 AS `sort_order`,
+    s.`id`, t.`id` AS `character_id`,
+    row_number() OVER (PARTITION BY t.`id` ORDER BY s.`created_at`, s.`id`) AS `sort_order`,
     s.`created_at`, s.`updated_at`
   FROM `characters` c
   JOIN `talent` t ON t.`id` = c.`id`
-  JOIN `talent_sheets` s ON s.`talent_id` = t.`id` AND s.`diverged_at` IS NULL
+  JOIN `talent_sheets` s
+    ON s.`talent_id` = t.`id`
+   AND s.`diverged_at` IS NULL
+   AND s.`image_url` IS NOT NULL
+   AND s.`id` <> COALESCE(t.`selected_sheet_id`, '')
 ) k
-LEFT JOIN `character_looks` l ON l.`id` = k.`look_id`
+LEFT JOIN `character_looks` l ON l.`id` = k.`id`
 WHERE l.`id` IS NULL;
+--> statement-breakpoint
+-- The default look's version: 'Default', clothing from the reference sheet
+-- when there is one. The other looks' versions carry their sheet's name.
+INSERT INTO `character_look_versions` (
+  `id`, `look_id`, `name`, `clothing`, `styling`, `source`, `created_at`, `created_by`
+)
+SELECT
+  l.`id`, l.`id`, 'Default',
+  json_extract(s.`metadata`, '$.standardClothing'),
+  NULL, 'backfill', l.`created_at`, NULL
+FROM `character_looks` l
+JOIN `talent` t ON t.`id` = l.`character_id` AND l.`id` = t.`id`
+LEFT JOIN `talent_sheets` s ON s.`id` = t.`selected_sheet_id`
+LEFT JOIN `character_look_versions` v ON v.`id` = l.`id`
+WHERE v.`id` IS NULL;
 --> statement-breakpoint
 INSERT INTO `character_look_versions` (
   `id`, `look_id`, `name`, `clothing`, `styling`, `source`, `created_at`, `created_by`
 )
 SELECT
-  l.`id`, l.`id`,
-  CASE WHEN l.`is_default` = 1 THEN 'Default' ELSE s.`name` END,
+  l.`id`, l.`id`, s.`name`,
   json_extract(s.`metadata`, '$.standardClothing'),
   NULL, 'backfill', s.`created_at`, NULL
 FROM `character_looks` l
+JOIN `talent_sheets` s ON s.`id` = l.`id`
 JOIN `talent` t ON t.`id` = l.`character_id`
-JOIN `talent_sheets` s
-  ON s.`id` = CASE WHEN l.`is_default` = 1 THEN t.`selected_sheet_id` ELSE l.`id` END
 LEFT JOIN `character_look_versions` v ON v.`id` = l.`id`
 WHERE v.`id` IS NULL;
 --> statement-breakpoint
--- 4d. Each sheet is its look's completed sheet. The default look's sheet
---     takes the character's id (the #1419 rule: a default look with no
---     pointer reads the sheet row keyed to its character). `model` is the
---     upload sentinel (`USER_UPLOAD_MODEL`): the image came in as it is.
+-- 4d. Each look with a sheet gets it as its completed sheet: the default
+--     look's is the reference sheet, keyed to the character's id (the #1419
+--     rule: a default look with no pointer reads the sheet row keyed to its
+--     character); every other look's is the sheet it was made from, keyed to
+--     that sheet's id. `model` is the upload sentinel (`USER_UPLOAD_MODEL`):
+--     the image came in as it is.
 INSERT INTO `character_sheet_variants` (
   `id`, `character_id`, `look_id`, `model`, `url`, `storage_path`, `status`,
   `generated_at`, `input_hash`, `bible_version_id`, `look_version_id`,
@@ -251,6 +290,7 @@ SELECT
 FROM `character_looks` l
 JOIN `talent` t ON t.`id` = l.`character_id`
 JOIN `talent_sheets` s
-  ON s.`id` = CASE WHEN l.`is_default` = 1 THEN t.`selected_sheet_id` ELSE l.`id` END
+  ON s.`id` = CASE WHEN l.`id` = t.`id` THEN t.`selected_sheet_id` ELSE l.`id` END
+ AND s.`image_url` IS NOT NULL
 LEFT JOIN `character_sheet_variants` x ON x.`id` = l.`id`
 WHERE x.`id` IS NULL;
