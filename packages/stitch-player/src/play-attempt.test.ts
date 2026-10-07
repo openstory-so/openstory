@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { playAttemptUiState, settlePlayWait } from './play-attempt';
+import { playAttemptUiState, settlePlayWait } from './play-attempt.js';
 
 describe('settlePlayWait', () => {
   it('cancels a stale generation without treating it as the live request (#1284 pause-then-play)', () => {

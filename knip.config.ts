@@ -28,7 +28,7 @@ export default {
       ],
       project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
     },
-    // @openstory/stitch-player: its three public entries.
+    // @openstory/stitch-player: its four public entries.
     'packages/stitch-player': {
       entry: [
         'src/index.ts',

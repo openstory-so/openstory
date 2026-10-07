@@ -152,7 +152,11 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
       >
         {chaptersUrl && <track kind="chapters" src={chaptersUrl} default />}
       </Video>
-      {!src && posterSrc && <Poster src={posterSrc} alt="Video thumbnail" />}
+      {!src && posterSrc && (
+        <Poster.Root>
+          <Poster.Image src={posterSrc} alt="Video thumbnail" />
+        </Poster.Root>
+      )}
     </NeutralVideoSkin>
   );
 };

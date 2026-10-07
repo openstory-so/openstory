@@ -33,6 +33,7 @@ import { playerFrameClassName } from '@/ui/player-frame';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
 import { StitchedPlayer } from '@openstory/stitch-player/react';
+import { toast } from 'sonner';
 import { useEffect, useRef, useState } from 'react';
 
 const logger = getLogger(['openstory', 'sequence-player']);
@@ -40,7 +41,7 @@ const logger = getLogger(['openstory', 'sequence-player']);
 type SequencePlayerProps = {
   clips: PlaybackClip[];
   musicUrl: string | null;
-  /** Gain in dB on the music only (a measured loudness normalization); `null` is 0 dB. */
+  /** Gain in dB on the music only (a measured loudness normalization); `null` when none was measured, which plays at 0 dB. */
   musicGainDb: number | null;
   /**
    * Whether the music track plays. Pushed into the engine's music-only gain
@@ -159,7 +160,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               {meta.hasMixedAspectRatios
                 ? 'Playback letterboxes them into a common frame'
                 : 'Smaller clips are upscaled to match'}
-              ; the export will be normalized (re-encoded), which is slower.
+              ; a rendered MP4 normalizes them the same way.
             </TooltipContent>
           </Tooltip>
         )}
@@ -215,7 +216,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         <p className="text-xs text-muted-foreground text-center max-w-sm">
           {hasStills
             ? 'Check your connection and retry playback.'
-            : 'Download → Render MP4 on server gives a file any browser plays.'}
+            : 'Render MP4 on server (under Download) gives a file any browser plays.'}
         </p>
         <Button
           variant="outline"
@@ -263,7 +264,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         <StitchedPlayer
           clips={clips}
           musicUrl={musicUrl}
-          musicGainDb={musicGainDb}
+          musicGainDb={musicGainDb ?? 0}
           musicEnabled={musicEnabled}
           autoPlay={autoPlay}
           className="h-full w-full"
@@ -287,13 +288,19 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
           }}
           onPause={() => flushWatched()}
           onEnded={() => flushWatched(true)}
-          onError={(reason) => {
+          onError={(error) => {
             tracker.dispose();
-            setError(reason);
+            setError(error.message);
             captureVideoPlayFailed(posthog, {
               source: playSource,
-              reason,
+              reason: error.message,
               sequence_id: sequenceId,
+            });
+          }}
+          // Not a playback failure: the cut keeps playing, so say so and move on.
+          onPictureInPictureError={(error) => {
+            toast.error('Picture-in-Picture unavailable', {
+              description: error.message,
             });
           }}
         />

@@ -23,12 +23,12 @@
  */
 
 import type { Video } from '@videojs/media';
-import { cueTextAt } from './cues';
-import type { StitchLogger } from './logger';
-import type { PlaybackClip } from './playback-clip';
-import { playbackClipsKey } from './playback-clips-key';
-import { SequencePlayerEngine, type SequencePlayerMeta } from './playback';
-import type { PlayAttemptResult } from './play-attempt';
+import { cueTextAt } from './cues.js';
+import type { StitchLogger } from './logger.js';
+import type { PlaybackClip } from './playback-clip.js';
+import { playbackClipsKey } from './playback-clips-key.js';
+import { SequencePlayerEngine, type SequencePlayerMeta } from './playback.js';
+import type { PlayAttemptResult } from './play-attempt.js';
 
 const HAVE_NOTHING = 0;
 const HAVE_METADATA = 1;
@@ -36,19 +36,26 @@ const HAVE_CURRENT_DATA = 2;
 const HAVE_ENOUGH_DATA = 4;
 
 export type StitchedSequenceSource = {
-  clips: PlaybackClip[];
+  clips: readonly PlaybackClip[];
   musicUrl: string | null;
-  /** Gain in dB on the music only; `null` is 0 dB. */
-  musicGainDb: number | null;
-  musicEnabled?: boolean;
-  /** Whether the subtitle track starts showing. Defaults to true. Only matters when a clip has cues. */
-  subtitles?: boolean;
+  /** Gain in dB on the music only; 0 for none. */
+  musicGainDb: number;
+  musicEnabled: boolean;
+  /**
+   * Whether the subtitle track is showing. Only matters when a clip has cues.
+   * Applied when it changes between `setSource` calls; the viewer's captions
+   * toggle is not overridden by a `setSource` that repeats the same value.
+   */
+  subtitles: boolean;
 };
 
 export type StitchedSequenceMediaListeners = {
   onLoadProgress?: (loadedClips: number, totalClips: number) => void;
   onMeta?: (meta: SequencePlayerMeta) => void;
+  /** Playback is broken: a clip would not open or decode, a seek or play failed. */
   onError?: (error: Error) => void;
+  /** Picture-in-Picture was refused. Playback is unaffected. */
+  onPictureInPictureError?: (error: Error) => void;
   /** Where the engine reports non-fatal problems. Defaults to `console`. */
   logger?: StitchLogger;
 };
@@ -117,7 +124,7 @@ class StitchedTextTrackList extends EventTarget {
 }
 
 function stitchedSourceIdentity(source: StitchedSequenceSource): string {
-  return `${playbackClipsKey(source.clips)}\0${source.musicUrl ?? ''}\0${source.musicGainDb ?? ''}`;
+  return `${playbackClipsKey(source.clips)}\0${source.musicUrl ?? ''}\0${source.musicGainDb}`;
 }
 
 export class StitchedSequenceMedia
@@ -151,10 +158,11 @@ export class StitchedSequenceMedia
       typeof HTMLVideoElement !== 'undefined' &&
       'requestPictureInPicture' in HTMLVideoElement.prototype
     ) {
-      // The skin ignores the rejection; the host hears it through onError.
+      // The skin ignores the rejection; the host hears it through
+      // onPictureInPictureError — not onError, since playback goes on.
       this.requestPictureInPicture = () =>
         this.#enterPictureInPicture().catch((error: unknown) => {
-          this.#listeners.onError?.(
+          this.#listeners.onPictureInPictureError?.(
             error instanceof Error ? error : new Error(String(error))
           );
           throw error;
@@ -194,11 +202,12 @@ export class StitchedSequenceMedia
   setSource(source: StitchedSequenceSource): void {
     const identity = stitchedSourceIdentity(source);
     const same = identity === this.#sourceIdentity && this.#engine !== null;
+    const previous = this.#source;
     this.#source = source;
     this.#sourceIdentity = identity;
-    this.#syncTextTracks(source);
+    this.#syncTextTracks(source, previous);
     if (same) {
-      this.#engine?.setMusicEnabled(source.musicEnabled ?? true);
+      this.#engine?.setMusicEnabled(source.musicEnabled);
       return;
     }
     this.#rebuildEngine();
@@ -219,7 +228,11 @@ export class StitchedSequenceMedia
   }
 
   detach(): void {
-    void this.exitPictureInPicture();
+    this.exitPictureInPicture().catch((error: unknown) => {
+      this.#listeners.logger?.warn('Leaving Picture-in-Picture failed', {
+        error,
+      });
+    });
     this.#prepareGeneration += 1;
     this.#playGeneration += 1;
     this.#seekGeneration += 1;
@@ -285,8 +298,12 @@ export class StitchedSequenceMedia
     }
     this.#paused = true;
     this.#emit('pause');
-    if (result !== 'cancelled') {
-      this.#listeners.onError?.(new Error(result));
+    // `cancelled` is a pause that beat the play; `disposed` is a teardown
+    // mid-play. Neither is the viewer's problem.
+    if (result === 'not-ready') {
+      this.#listeners.onError?.(
+        new Error('The sequence is still loading; try again in a moment')
+      );
     }
   }
 
@@ -440,17 +457,30 @@ export class StitchedSequenceMedia
       });
       this.#pipVideo = video;
     }
-    void video.play().catch(() => undefined);
+    video.play().catch((error: unknown) => {
+      this.#listeners.logger?.warn(
+        'Picture-in-Picture video would not play; the window may freeze',
+        { error }
+      );
+    });
     // A paused player draws nothing, and the stream only carries new draws
     // (`requestFrame()` delivers nothing here): redraw the canvas onto itself
     // so the video gets a frame, or the browser refuses to float it.
     canvas.getContext('2d')?.drawImage(canvas, 0, 0);
     if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         video.addEventListener('loadedmetadata', () => resolve(), {
           once: true,
         });
-        setTimeout(resolve, 1000);
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                'Picture-in-Picture: the player produced no frame to float'
+              )
+            ),
+          1000
+        );
       });
     }
     await video.requestPictureInPicture();
@@ -482,18 +512,21 @@ export class StitchedSequenceMedia
     );
   }
 
-  #syncTextTracks(source: StitchedSequenceSource): void {
-    const hasCues = source.clips.some((clip) => (clip.cues?.length ?? 0) > 0);
+  #syncTextTracks(
+    source: StitchedSequenceSource,
+    previous: StitchedSequenceSource | null
+  ): void {
+    const hasCues = source.clips.some((clip) => clip.cues.length > 0);
+    const mode = source.subtitles ? 'showing' : 'disabled';
     const track = this.#textTracks[0];
     if (hasCues && !track) {
       this.#textTracks.add(
-        new StitchedTextTrack(
-          source.subtitles === false ? 'disabled' : 'showing',
-          () => this.#emitTrackChange()
-        )
+        new StitchedTextTrack(mode, () => this.#emitTrackChange())
       );
     } else if (!hasCues && track) {
       this.#textTracks.clear();
+    } else if (track && previous && previous.subtitles !== source.subtitles) {
+      track.mode = mode;
     }
   }
 
@@ -520,7 +553,7 @@ export class StitchedSequenceMedia
       clips: source.clips,
       musicUrl: source.musicUrl,
       musicGainDb: source.musicGainDb,
-      musicEnabled: source.musicEnabled ?? true,
+      musicEnabled: source.musicEnabled,
       logger: this.#listeners.logger,
       onLoadProgress: (loaded, total) => {
         this.#listeners.onLoadProgress?.(loaded, total);

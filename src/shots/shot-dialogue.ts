@@ -69,11 +69,16 @@ export function sectionLineTiming(section: {
   }[];
 }): DialogueLineTiming[] {
   return section.speechTurns
-    .filter((turn) => turn.shotId === section.shotId)
+    .filter(
+      (turn) =>
+        turn.shotId === section.shotId &&
+        // A turn wholly before the section's start is not in this clip.
+        turn.endSeconds > section.fromSeconds
+    )
     .map((turn) => ({
       index: turn.index,
       startSeconds: Math.max(0, turn.startSeconds - section.fromSeconds),
-      endSeconds: Math.max(0, turn.endSeconds - section.fromSeconds),
+      endSeconds: turn.endSeconds - section.fromSeconds,
     }));
 }
 

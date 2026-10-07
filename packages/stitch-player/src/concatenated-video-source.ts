@@ -22,16 +22,16 @@ import {
   UrlSource,
   type WrappedCanvas,
 } from 'mediabunny';
-import { createRangedSource } from './ranged-source';
+import { createRangedSource } from './ranged-source.js';
 import {
   computeTargetResolution,
   describeResolutions,
   detectMixedAspectRatios,
   detectMixedResolutions,
   type ClipDimensions,
-} from './resolution';
-import type { StitchLogger } from './logger';
-import type { PlaybackClip } from './playback-clip';
+} from './resolution.js';
+import type { StitchLogger } from './logger.js';
+import { assertPlaybackClips, type PlaybackClip } from './playback-clip.js';
 
 type CanvasFit = 'fill' | 'contain' | 'cover';
 
@@ -39,7 +39,7 @@ type CanvasFit = 'fill' | 'contain' | 'cover';
 const PREFETCH_SECONDS = 1;
 
 export type ClipSlice = {
-  /** Index into the (sorted) clips array. */
+  /** Index into the clips array. */
   clipIndex: number;
   /** Time within that clip, in seconds. */
   localTime: number;
@@ -49,9 +49,9 @@ export type ConcatenatedVideoMeta = {
   /** Total stitched duration in seconds. */
   totalDurationSeconds: number;
   /** Per-clip duration (seconds), in order. */
-  clipDurationsSeconds: number[];
+  clipDurationsSeconds: readonly number[];
   /** Cumulative clip start offsets (seconds), in order. */
-  clipOffsetsSeconds: number[];
+  clipOffsetsSeconds: readonly number[];
   /**
    * Common target dimensions every clip is normalized to. This is the
    * bounding box (max width × max height) of all clips, so mismatched clips
@@ -61,7 +61,17 @@ export type ConcatenatedVideoMeta = {
   displayWidth: number;
   displayHeight: number;
   /** Per-clip native dimensions, in order. */
-  clipDimensions: ClipDimensions[];
+  clipDimensions: readonly ClipDimensions[];
+  /**
+   * Clips whose embedded sound this browser cannot decode. They play silent;
+   * an export refuses them rather than ship a silent file.
+   */
+  silentClipIndexes: readonly number[];
+  /**
+   * Stills with no picture: no `imageUrl` at all, or none that loaded. They
+   * hold on a dark frame; an export refuses them.
+   */
+  missingStillIndexes: readonly number[];
   /**
    * True when the clips resolve to more than one distinct native resolution —
    * the models disagree on pixel dimensions, so the output is normalized and
@@ -82,7 +92,7 @@ export type ConcatenatedVideoMeta = {
 };
 
 export type ClipAudioTrack = {
-  /** Index into the (sorted) clips array. */
+  /** Index into the clips array. */
   clipIndex: number;
   /** Cumulative clip start offset (seconds) — where this audio is anchored on the global timeline. */
   clipOffsetSeconds: number;
@@ -97,6 +107,8 @@ type OpenedClip = {
   inputs: Input[];
   videoTrack: InputVideoTrack | null;
   image: StillFrame | null;
+  /** A rendered clip whose sound could not be decoded. */
+  silent: boolean;
   audioTracks: { track: InputAudioTrack; offset: number }[];
   duration: number;
   dimensions: ClipDimensions;
@@ -107,7 +119,7 @@ function closeStill(image: StillFrame | null): void {
 }
 
 export class ConcatenatedVideoSource {
-  private readonly clips: PlaybackClip[];
+  readonly clips: readonly PlaybackClip[];
   private inputs: Input[] = [];
   private videoTracks: Array<InputVideoTrack | null> = [];
   private images: Array<StillFrame | null> = [];
@@ -117,12 +129,11 @@ export class ConcatenatedVideoSource {
   private disposed = false;
   private readonly logger: StitchLogger;
 
-  constructor(clips: PlaybackClip[], logger: StitchLogger = console) {
+  /** Throws when a clip breaks an invariant (see `assertPlaybackClips`). Clips play in array order. */
+  constructor(clips: readonly PlaybackClip[], logger: StitchLogger = console) {
     this.logger = logger;
-    if (clips.length === 0) {
-      throw new Error('ConcatenatedVideoSource: at least one clip is required');
-    }
-    this.clips = [...clips].sort((a, b) => a.orderIndex - b.orderIndex);
+    assertPlaybackClips(clips);
+    this.clips = clips;
   }
 
   /**
@@ -199,12 +210,16 @@ export class ConcatenatedVideoSource {
       resolutionsLabel: hasMixedResolutions
         ? describeResolutions(videoDimensions)
         : '',
+      silentClipIndexes: opened.flatMap((o, i) => (o.silent ? [i] : [])),
+      missingStillIndexes: opened.flatMap((o, i) =>
+        !o.videoTrack && !o.image ? [i] : []
+      ),
     };
     return this.meta;
   }
 
   private async openClip(clip: PlaybackClip, i: number): Promise<OpenedClip> {
-    if (!('videoUrl' in clip)) return this.openStill(clip);
+    if (!('videoUrl' in clip)) return this.openStill(clip, i);
     const input = new Input({
       formats: ALL_FORMATS,
       source: createRangedSource(clip.videoUrl),
@@ -218,7 +233,8 @@ export class ConcatenatedVideoSource {
   }
 
   private async openStill(
-    clip: Extract<PlaybackClip, { imageUrl: string | null }>
+    clip: Extract<PlaybackClip, { imageUrl: string | null }>,
+    i: number
   ): Promise<OpenedClip> {
     const inputs: Input[] = [];
     let image: StillFrame | null = null;
@@ -230,7 +246,10 @@ export class ConcatenatedVideoSource {
           break;
         } catch (error) {
           if (this.abort.signal.aborted) throw error;
-          this.logger.warn('Sequence preview image unavailable', { error });
+          this.logger.warn(`Clip ${i}: still image failed to load`, {
+            url,
+            error,
+          });
         }
       }
       const audioTracks: OpenedClip['audioTracks'] = [];
@@ -263,6 +282,7 @@ export class ConcatenatedVideoSource {
         inputs,
         image,
         videoTrack: null,
+        silent: false,
         audioTracks,
         duration: audioDuration || clip.durationSeconds,
         dimensions: { width: clip.width, height: clip.height },
@@ -275,10 +295,9 @@ export class ConcatenatedVideoSource {
   }
 
   /**
-   * Same load path as shot-view `<img>`: an element decode, not `fetch` +
-   * `createImageBitmap`. Canvas `fetch` needs CORS; fal preview URLs and
-   * some stored stills don't send it, so the whole-sequence stitcher painted
-   * "No image available" while the inspector still showed the frame.
+   * An element decode, not `fetch` + `createImageBitmap`: a still served
+   * without CORS headers still paints this way. (It taints the canvas,
+   * which only matters for export and Picture-in-Picture.)
    */
   private decodeStill(url: string): Promise<HTMLImageElement> {
     const img = new Image();
@@ -334,17 +353,25 @@ export class ConcatenatedVideoSource {
       );
     }
 
-    // Embedded clip audio (dialogue / VO). Best-effort: clips without an
-    // audio track or with an undecodable codec are silent; the rest are
-    // mixed by the player + export.
+    // Embedded clip audio (dialogue / VO). A clip without an audio track is
+    // simply silent; one whose codec this browser cannot decode plays silent
+    // too, but is reported (`meta.silentClipIndexes`) so an export can refuse it.
     const audioTrack = await input.getPrimaryAudioTrack();
     const usableAudio =
       audioTrack && (await audioTrack.canDecode()) ? audioTrack : null;
+    const silent = audioTrack !== null && usableAudio === null;
+    if (silent) {
+      this.logger.warn(
+        `Clip ${i}: embedded audio cannot be decoded by this browser; it plays silent`,
+        { codec: await audioTrack.getCodec() }
+      );
+    }
 
     return {
       inputs: [input],
       image: null,
       videoTrack,
+      silent,
       audioTracks: usableAudio ? [{ track: usableAudio, offset: 0 }] : [],
       duration,
       dimensions: { width, height },

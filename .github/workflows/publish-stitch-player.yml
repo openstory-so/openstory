@@ -48,6 +48,10 @@ jobs:
       - name: Build
         run: bun run --cwd packages/stitch-player build
 
+      - name: The built package imports under Node
+        working-directory: packages/stitch-player
+        run: node --input-type=module -e "await import('./dist/index.js'); await import('./dist/export.js'); await import('./dist/videojs.js'); await import('./dist/react.js')"
+
       - name: Publish
         working-directory: packages/stitch-player
         run: npm publish --provenance --access public

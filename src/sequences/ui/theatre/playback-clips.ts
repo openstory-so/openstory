@@ -44,10 +44,11 @@ export function groupPlaybackShots<
 
 /**
  * The subtitles for one shot, placed from `offsetSeconds` — where the shot
- * starts inside its clip. Each line runs for the time its reading spoke it
- * (`dialogueTiming`, derived from the speech on read); a shot with no
- * reading yet shows every line for the whole shot. The wording is what was
- * spoken (`spokenLines`), else what was written.
+ * starts inside its clip. A line runs for the time its reading spoke it
+ * (`dialogueTiming`, derived from the speech on read); lines the reading
+ * did not time — every line of a shot with no reading yet, or a line added
+ * after the reading — show together for the whole shot. The wording is what
+ * was spoken (`spokenLines`), else what was written.
  */
 export function shotCues(
   shot: Pick<PlaybackShot, 'dialogue' | 'audioClips' | 'dialogueTiming'>,
@@ -68,34 +69,39 @@ export function shotCues(
     const said = spoken.get(index) ?? line.line;
     return line.character ? `${line.character}: ${said}` : said;
   };
-  const timed = shot.dialogueTiming ?? [];
-  if (timed.length > 0) {
-    return timed.flatMap((line) => {
-      const text = textOf(line.index);
-      return text
-        ? [
-            {
-              startSeconds: offsetSeconds + line.startSeconds,
-              endSeconds: offsetSeconds + line.endSeconds,
-              text,
-            },
-          ]
-        : [];
-    });
-  }
+  const timed = (shot.dialogueTiming ?? []).flatMap((line) => {
+    const text = textOf(line.index);
+    return text
+      ? [
+          {
+            startSeconds: offsetSeconds + line.startSeconds,
+            endSeconds: offsetSeconds + line.endSeconds,
+            text,
+          },
+        ]
+      : [];
+  });
+  const timedIndexes = new Set(
+    (shot.dialogueTiming ?? []).map((line) => line.index)
+  );
+  const untimed = lines
+    .map((_, index) => (timedIndexes.has(index) ? null : textOf(index)))
+    .filter((text) => text !== null);
+  if (untimed.length === 0) return timed;
   return [
+    ...timed,
     {
       startSeconds: offsetSeconds,
       endSeconds: offsetSeconds + shotSeconds,
-      text: lines.map((_, index) => textOf(index)).join('\n'),
+      text: untimed.join('\n'),
     },
   ];
 }
 
-/** One continuous timeline: rendered clips where available, stills elsewhere. */
+/** One continuous timeline: rendered clips where available, stills elsewhere. Clips play in array order. */
 export function toPlaybackClips(
   shots: readonly PlaybackShot[],
-  aspectRatio: AspectRatio = '16:9'
+  aspectRatio: AspectRatio
 ): PlaybackClip[] {
   const clips: PlaybackClip[] = [];
   for (const group of groupPlaybackShots(shots)) {
@@ -106,7 +112,6 @@ export function toPlaybackClips(
     const previewUrl = shot.previewThumbnailUrl ?? null;
     if (videoUrl) {
       clips.push({
-        orderIndex: clips.length,
         videoUrl,
         posterUrl: stillUrl ?? previewUrl,
         cues: packedClipWindows(group).flatMap((window, i) => {
@@ -118,24 +123,25 @@ export function toPlaybackClips(
       });
     } else {
       const audioClips = shot.audioClips ?? [];
+      // Legacy shots with no stored duration hold for 3 s (see
+      // docs/architecture/elevenlabs.md, "Mixed previews").
       const durationSeconds =
         shot.durationMs != null && shot.durationMs > 0
           ? shot.durationMs / 1000
           : 3;
+      // A still with sound runs as long as all its sound, played back to back.
+      const soundSeconds = audioClips.reduce(
+        (sum, clip) => sum + (clip.durationSeconds ?? 0),
+        0
+      );
       clips.push({
-        orderIndex: clips.length,
         imageUrl: stillUrl ?? previewUrl,
         fallbackImageUrl:
           stillUrl && previewUrl && previewUrl !== stillUrl ? previewUrl : null,
         durationSeconds,
         audioUrls: audioClips.map((clip) => clip.url),
         ...aspectRatioToDimensions(aspectRatio),
-        // A still with sound runs as long as its sound (measured on open).
-        cues: shotCues(
-          shot,
-          0,
-          audioClips[0]?.durationSeconds ?? durationSeconds
-        ),
+        cues: shotCues(shot, 0, soundSeconds || durationSeconds),
       });
     }
   }

@@ -1,4 +1,4 @@
-import type { PlaybackClip } from './playback-clip';
+import type { PlaybackClip } from './playback-clip.js';
 
 /**
  * Identity of a stitched clip list (order + media). A new `PlaybackClip[]`
@@ -9,9 +9,8 @@ export function playbackClipsKey(clips: readonly PlaybackClip[]): string {
   return JSON.stringify(
     clips.map((clip) =>
       'videoUrl' in clip
-        ? [clip.orderIndex, clip.videoUrl]
+        ? [clip.videoUrl]
         : [
-            clip.orderIndex,
             clip.imageUrl,
             clip.fallbackImageUrl,
             clip.durationSeconds,
