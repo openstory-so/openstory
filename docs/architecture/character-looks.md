@@ -133,16 +133,20 @@ against the talent's default sheet.
   a face (`lookSheetsAfterDefault`), and `UpdateStaleShotsWorkflow` draws it
   in a second references wave from the sheet the run just landed. A default
   that fails or parks fails the look, which holds the shots that wear it.
-- **Upload** of a non-default look is refused until the default has a
-  sheet (Tom's call).
+- **Upload** of a non-default look is allowed at any time (decided
+  2026-10-07): the user supplies the image, so nothing is drawn from a face.
+  It is stamped with the face that exists at upload, null when none, so it
+  reads stale once a default sheet lands (or a new one replaces it). Only
+  Generate waits for the default sheet.
 - **Recast** redraws the default look only, and re-renders the shots that
   wear it. Other looks a scene wears go stale once the new sheet lands,
   with their shots, and the next Update or Continue redraws them. The
   recast result names them (`looksLeftStale`) and the panel says so.
-- **Existing look sheets go stale.** Every non-default look sheet made
-  before this change was stamped without a face, so it reads stale once
-  its default sheet exists, and the plan redraws it (credits), with the
-  shots that wear it.
+- **Existing look sheets go stale (decided 2026-10-07).** Every
+  non-default look sheet made before this change was stamped without a
+  face, so it reads stale once its default sheet exists, and the plan
+  redraws it (credits), with the shots that wear it. No legacy hash shape
+  keeps them fresh.
 
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
 stored URL). See `byteplus-ark.md` for slot pressure.
@@ -213,9 +217,9 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   "Default look", and the sheet heading says "Default look" while that look
   is open. The line under the chips names it ("This is the default look,
   Clean white shirt…"). On any other look the heading is that look's name,
-  and the line says it is drawn from the default look. Generate and Upload
-  stay disabled until the default sheet is completed — the same sentence the
-  refusal returns. A scene's look picker labels the default "(default look)".
+  and the line says it is drawn from the default look. Generate stays
+  disabled until the default look has a sheet — the same sentence the
+  refusal returns. Upload is always enabled. A scene's look picker labels the default "(default look)".
   MCP: see `mcp-capability-map.md`.
 
 ## Traps
