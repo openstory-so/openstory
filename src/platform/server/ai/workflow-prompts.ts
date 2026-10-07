@@ -162,7 +162,7 @@ For each character determine:
 
 ## CONTEXT
 The user has EXPLICITLY SELECTED these talent members because they want them cast in this production.
-Your job is to find the BEST character match for each talent member.
+Your job is to find the BEST talent for each character.
 
 ## MATCHING PRIORITY (in order of importance)
 1. Gender compatibility (prefer matching, but can be flexible for unspecified characters)
@@ -171,10 +171,10 @@ Your job is to find the BEST character match for each talent member.
 4. Role prominence (prefer giving main roles to talent)
 
 ## RULES
-- You MUST match every talent to a character (the user selected them for a reason)
-- Each talent can only be matched to ONE character
+- Match as many of the selected talent as the characters allow (the user selected them for a reason)
 - Each character can only have ONE talent assigned
-- If there are more talent than characters, match as many as possible (up to character count)
+- One talent MAY play several characters when the script calls for it (twins, a one-person skit, the same face in two roles); otherwise prefer one role per talent
+- If there are more talent than characters, some talent go unmatched: pick the best fit for each character
 - Be creative - talent can play characters of different ages/types with makeup and costume
 
 ## OUTPUT FORMAT
@@ -929,7 +929,7 @@ Respond with ONLY valid JSON matching the schema.`,
 
 ## CONTEXT
 The user has EXPLICITLY SELECTED these talent members because they want them cast in this production.
-Your job is to find the BEST character match for each talent member.
+Your job is to find the BEST talent for each character.
 
 ## MATCHING PRIORITY (in order of importance)
 1. Gender compatibility (prefer matching, but can be flexible for unspecified characters)
@@ -938,10 +938,10 @@ Your job is to find the BEST character match for each talent member.
 4. Role prominence (prefer giving main roles to talent)
 
 ## RULES
-- You MUST match every talent to a character (the user selected them for a reason)
-- Each talent can only be matched to ONE character
+- Match as many of the selected talent as the characters allow (the user selected them for a reason)
 - Each character can only have ONE talent assigned
-- If there are more talent than characters, match as many as possible (up to character count)
+- One talent MAY play several characters when the script calls for it (twins, a one-person skit, the same face in two roles); otherwise prefer one role per talent
+- If there are more talent than characters, some talent go unmatched: pick the best fit for each character
 - Be creative - talent can play characters of different ages/types with makeup and costume
 
 ## OUTPUT FORMAT
@@ -971,12 +971,12 @@ TALENT TO CAST ({{numTalent}} selected by user):
 {{talentDescription}}
 
 REQUIREMENTS:
-- Match ALL {{numTalent}} talent to characters ({{numTalent}} talent, {{numCharacters}} characters available)
-- Each talent gets exactly one character
+- Match the selected talent to characters ({{numTalent}} talent, {{numCharacters}} characters available)
 - Each character can only have one talent
+- One talent may play several characters when the script calls for it
 {{additionalRequirements}}
 
-Respond with exactly {{numTalent}} matches.`,
+Respond with up to {{expectedMatches}} matches, one per character at most.`,
     },
   ],
 
