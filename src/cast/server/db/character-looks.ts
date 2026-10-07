@@ -48,6 +48,7 @@ import {
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
 import { heldElsewhere } from './sequence-cast';
+import { styleUnmoved } from './sheet-claims';
 
 /**
  * A look's live sheet version in the sequence that uses it (#2017): the cast
@@ -102,6 +103,8 @@ export type LookSheetSnapshot = {
   lookVersionId: string;
   bibleVersionId: string | null;
   talentId: string | null;
+  /** `sequences.selectedStyleVersionId` at the snapshot (#2051). */
+  styleVersionId: string | null;
 };
 
 /**
@@ -1147,11 +1150,11 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * point the claim at it. Last kickoff wins.
      *
      * Taken only while the inputs the run was snapshotted from still hold —
-     * the look version and bible version the sequence pins, and that bible
-     * version's talent (#1863). An edit
+     * the look version and bible version the sequence pins, that bible
+     * version's talent (#1863), and the sequence's style (#2051). An edit
      * that landed between the snapshot and this write found no claim to
-     * revoke, so the claim is not taken and the run parks its sheet as
-     * divergent. The id is returned either way: the run still needs one.
+     * revoke, so the claim is not taken: a server fn refuses the run, a plan
+     * run parks its sheet as divergent. The id is returned either way.
      *
      * `markGenerating: false` leaves the status alone, for a caller whose own
      * write already set it.
@@ -1192,7 +1195,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
                     : sql`${sequenceCast.bibleVersionId} IS ${snapshot.bibleVersionId}`,
                   sql`(SELECT ${characterBibleVersions.talentId} FROM ${characterBibleVersions} WHERE ${characterBibleVersions.id} = ${sequenceCast.bibleVersionId}) IS ${snapshot.talentId}`
                 )
-              )}`
+              )}`,
+            styleUnmoved(db, sequenceId, snapshot.styleVersionId)
           )
         );
       return { versionId, held: (result.rowsAffected ?? 0) > 0 };

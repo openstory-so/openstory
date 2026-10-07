@@ -10,7 +10,9 @@ import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
+import type { LocationReferenceSnapshot } from '@/cast/server/db/sequence-locations';
 import { buildLocationInsert } from './cast-records';
+import { assertQueuedWithStyleVersion } from './sheet-snapshots';
 import { computeLocationSheetHashFromDto } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
@@ -51,6 +53,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         'teamId is required for location bible generation'
       );
     }
+    assertQueuedWithStyleVersion(input);
 
     const sequenceId = input.sequenceId;
     const teamId = input.teamId;
@@ -102,10 +105,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     // library link. The sheet claim is taken against both (#1863). A step
     // result cached before #1600 names no bible version; it is failed here,
     // once, rather than claimed unguarded further down.
-    const snapshotByDbId = new Map<
-      string,
-      { bibleVersionId: string; libraryLocationId: string | null }
-    >();
+    const snapshotByDbId = new Map<string, LocationReferenceSnapshot>();
     for (const loc of createdLocations) {
       if (!loc.selectedBibleVersionId) {
         throw new WorkflowValidationError(
@@ -115,6 +115,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
       snapshotByDbId.set(loc.id, {
         bibleVersionId: loc.selectedBibleVersionId,
         libraryLocationId: loc.libraryLocationId,
+        styleVersionId: input.styleVersionId,
       });
     }
 
@@ -153,11 +154,14 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           styleConfig: input.styleConfig,
           libraryLocationReferenceHash:
             libraryMatch?.referenceInputHash ?? null,
+          libraryLocationId: snapshot.libraryLocationId,
+          styleVersionId: snapshot.styleVersionId,
         };
         // Tracked like any other sheet (#1113): hashed, and landed through a
-        // claim a bible edit revokes. The claim is taken only while the bible
-        // and library link the upsert returned are still live (#1863): an edit
-        // that landed since had no claim to revoke, so the child parks.
+        // claim a bible edit revokes. The claim is taken only while the bible,
+        // library link and style the upsert returned are still live (#1863,
+        // #2051): an edit that landed since had no claim to revoke, so the
+        // child parks. Pointer-only: the upsert already set the status.
         const unclaimed = {
           ...unclaimedFields,
           snapshotInputHash:
@@ -166,11 +170,11 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         const referenceVersionId = await step.do(
           `claim-location-sheet-${index}`,
           async () => {
-            const claim =
-              await scopedDb.sequenceLocations.claimReferenceIfUnmoved(
-                locationDbId,
-                snapshot
-              );
+            const claim = await scopedDb.sequenceLocations.claimReference(
+              locationDbId,
+              snapshot,
+              { markGenerating: false }
+            );
             if (!claim.held) {
               logger.warn(
                 `[LocationBibleWorkflow:cf] Location ${locationDbId} moved before the claim; its sheet parks`

@@ -67,8 +67,9 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   // sheets belong to its looks (#2015), and the pointer and the claim to the
   // sequence that uses the look (#2017): they are on `sequence_cast_looks`,
   // one per look per sequence, and the claim is taken only while the look
-  // version, bible version and talent that sequence pins are still the ones
-  // the run was snapshotted from (#1863). A plan that finds the look's sheet
+  // version, bible version and talent that sequence pins, and the sequence's
+  // style, are still the ones the run was snapshotted from (#1863, #2051). A
+  // plan that finds the look's sheet
   // finished elsewhere with the same hash (#2017) lands through the same
   // claim by pointing at that row: `adoptIfPending`, guarded on the claim and
   // on the row still being what the plan matched.
@@ -82,9 +83,9 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     ],
     userSelect: 'characterSheetVariants.select',
   },
-  // The bible parent claims through the conditional twin,
-  // `sequenceLocations.claimReferenceIfUnmoved` (#1863): taken only while
-  // the bible version and library link its upsert returned still hold.
+  // Conditional in every trigger (#1863, #2051): taken only while the bible
+  // version, library link and style the snapshot named still hold. There is
+  // no unguarded form.
   'location sheets': {
     tables: ['location_sheet_variants'],
     claim: 'sequenceLocations.claimReference',

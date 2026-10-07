@@ -71,6 +71,7 @@ describe('character-sheet hash', () => {
     imageModel: 'nano_banana_2',
     talentSheetInputHash: 'talent-v1',
     castTalentDescription: null,
+    styleVersionId: null,
   };
 
   it('treats missing imageModel as DEFAULT_IMAGE_MODEL on both paths', async () => {
@@ -142,6 +143,8 @@ describe('location-sheet hash', () => {
     },
     imageModel: 'nano_banana_2',
     libraryLocationReferenceHash: 'lib-v1',
+    libraryLocationId: 'lib-1',
+    styleVersionId: null,
   };
 
   it('moves with every bible field the prompt reads and the library link (#1785)', async () => {

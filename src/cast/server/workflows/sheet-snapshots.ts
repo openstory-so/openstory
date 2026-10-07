@@ -109,6 +109,20 @@ export function assertQueuedWithFace(input: object): void {
 }
 
 /**
+ * A payload or plan frozen before sheet claims were guarded on the style
+ * (#2051) names no style version: the one check, at the top of the run.
+ */
+export function assertQueuedWithStyleVersion(
+  ...carriers: readonly { styleVersionId?: unknown }[]
+): void {
+  if (carriers.some((carrier) => !('styleVersionId' in carrier))) {
+    throw new WorkflowValidationError(
+      'Queued before sheet claims were guarded on the style. Run it again.'
+    );
+  }
+}
+
+/**
  * A character sheet payload before its face: everything the trigger
  * snapshots except the default look's sheet and the hash that covers it.
  * A look whose default sheet the same run makes waits in this shape.

@@ -149,6 +149,7 @@ function makeEvent(
       generateVoices: opts.generateVoices ?? false,
       speakingCharacterIds: opts.speakingCharacterIds ?? [],
       analysisModelId: 'anthropic/claude-sonnet-5.5',
+      styleVersionId: 'style-v1',
     },
     instanceId: 'run-1',
     workflowName: 'character-bible',
@@ -416,6 +417,7 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
         lookVersionId: `lookver-${row.id}`,
         bibleVersionId: `bible-${row.id}`,
         talentId: null,
+        styleVersionId: 'style-v1',
       }),
       { markGenerating: false }
     );

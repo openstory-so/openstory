@@ -174,9 +174,15 @@ describe('createSequencesMethods style snapshot', () => {
       { sequenceId: sequence.id, locationId: 'loc_001', name: 'Diner' },
       { source: 'analysis', createdBy: null }
     );
-    const locationClaim = await locations.claimReference(location.id, {
-      markGenerating: true,
-    });
+    const { versionId: locationClaim } = await locations.claimReference(
+      location.id,
+      {
+        bibleVersionId: location.selectedBibleVersionId,
+        libraryLocationId: null,
+        styleVersionId: sequence.selectedStyleVersionId,
+      },
+      { markGenerating: true }
+    );
     // A character's sheet claim is on its cast look (#2017).
     const characters = createCharactersMethods(db, teamId);
     const character = await characters.create(
@@ -190,6 +196,7 @@ describe('createSequencesMethods style snapshot', () => {
         lookVersionId: character.looks[0]?.lookVersionId ?? '',
         bibleVersionId: character.selectedBibleVersionId,
         talentId: character.talentId,
+        styleVersionId: sequence.selectedStyleVersionId,
       },
       { markGenerating: true }
     );

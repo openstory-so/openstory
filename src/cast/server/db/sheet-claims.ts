@@ -13,6 +13,7 @@
 import {
   and,
   eq,
+  exists,
   inArray,
   isNotNull,
   isNull,
@@ -23,6 +24,7 @@ import type { SQL, SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/sqlite-core';
 import type {
   AnySQLiteColumn,
+  SQLiteColumn,
   SQLiteInsertValue,
   SQLiteTable,
   SQLiteUpdateSetSource,
@@ -34,8 +36,55 @@ import {
   sequenceCast,
   sequenceCastLooks,
   sequenceLocations,
+  sequenceStyleVersions,
+  sequences,
   talent,
 } from '@/platform/server/db/schema';
+
+/**
+ * The sequence's style is still the one a sheet run was snapshotted from
+ * (#2051): the same catalog style and the same recipe as the style version
+ * the snapshot named — the compare `sequences.update` demotes on (#1863), so
+ * a save that re-sends the same style refuses nothing. A snapshot taken
+ * before any style version holds while the sequence still has none. For a
+ * claim's guard: a style switch that landed between the snapshot and the
+ * claim found nothing to revoke, so the claim is not taken.
+ */
+export const styleUnmoved = (
+  db: Database,
+  sequenceId: string | SQLiteColumn,
+  styleVersionId: string | null
+): SQL => {
+  if (styleVersionId === null) {
+    return exists(
+      db
+        .select({ one: sql`1` })
+        .from(sequences)
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            isNull(sequences.selectedStyleVersionId)
+          )
+        )
+    );
+  }
+  const live = alias(sequenceStyleVersions, 'live_style');
+  const snap = alias(sequenceStyleVersions, 'snapshot_style');
+  return exists(
+    db
+      .select({ one: sql`1` })
+      .from(sequences)
+      .innerJoin(live, eq(live.id, sequences.selectedStyleVersionId))
+      .innerJoin(snap, eq(snap.id, styleVersionId))
+      .where(
+        and(
+          eq(sequences.id, sequenceId),
+          sql`${live.styleId} IS ${snap.styleId}`,
+          eq(live.config, snap.config)
+        )
+      )
+  );
+};
 import type {
   CharacterSheetInputHash,
   LocationSheetInputHash,

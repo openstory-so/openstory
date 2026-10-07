@@ -1888,6 +1888,8 @@ describe('team characters (#2017)', () => {
       lookVersionId: character.looks[0]?.lookVersionId ?? '',
       bibleVersionId: character.selectedBibleVersionId,
       talentId: character.talentId,
+      // Both sequences are inserted with no style version.
+      styleVersionId: null,
     });
     const claim = { markGenerating: true };
     const claimA = await looks().claimSheet(
@@ -2158,6 +2160,7 @@ describe('team characters (#2017)', () => {
         lookVersionId: stale.looks[0]?.lookVersionId ?? '',
         bibleVersionId: stale.selectedBibleVersionId,
         talentId: null,
+        styleVersionId: null,
       },
       { markGenerating: true }
     );

@@ -56,6 +56,7 @@ type SheetPayloadParams = {
     id: string;
     styleId: string | null;
     styleConfig: Parameters<typeof resolveSequenceStyleConfig>[0]['snapshot'];
+    selectedStyleVersionId: string | null;
     imageModel: string | null;
   };
   character: CharacterWithSheet;
@@ -141,6 +142,7 @@ export async function buildCharacterSheetDraft(
     // Always generate: reuse would skip the bible edit the user just saved.
     reuseTalentSheet: false,
     styleConfig,
+    styleVersionId: sequence.selectedStyleVersionId,
   };
   return { draft, isDefault: look.isDefault, liveFace, refusal };
 }

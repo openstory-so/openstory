@@ -131,6 +131,8 @@ async function claim(sequenceId: string) {
       lookVersionId: look.lookVersionId,
       bibleVersionId: row.selectedBibleVersionId,
       talentId: row.talentId,
+      // The sequences here are inserted with no style version.
+      styleVersionId: null,
     },
     { markGenerating: true }
   );

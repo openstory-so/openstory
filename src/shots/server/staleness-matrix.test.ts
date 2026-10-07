@@ -1520,6 +1520,8 @@ describe('stamp == verify', () => {
       libraryLocationDescription: libraryMatch.description,
       styleConfig: STYLE,
       libraryLocationReferenceHash: libraryMatch.referenceInputHash,
+      libraryLocationId: libraryMatch.libraryLocationId,
+      styleVersionId: null,
     });
 
     // What D1 holds after `create-location-records`, read back.

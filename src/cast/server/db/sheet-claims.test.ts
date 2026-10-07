@@ -48,6 +48,7 @@ import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { createSequenceLocationsMethods } from './sequence-locations';
 import { demoteSequenceSheetClaims } from './sheet-claims';
 import { createTalentMethods } from './talent';
+import { createSequencesMethods } from '@/sequences/server/db/sequences';
 
 let client: Client;
 let db: Database;
@@ -180,7 +181,42 @@ async function snapshotOf(lookId: string) {
     lookVersionId: look.lookVersionId,
     bibleVersionId: row.selectedBibleVersionId,
     talentId: row.talentId,
+    styleVersionId: await styleVersionNow(),
   };
+}
+
+/** `sequences.selectedStyleVersionId`, as a trigger reads it (#2051). */
+async function styleVersionNow() {
+  const [row] = await db
+    .select({ styleVersionId: sequences.selectedStyleVersionId })
+    .from(sequences)
+    .where(eq(sequences.id, sequenceId));
+  if (!row) throw new Error('sequence gone');
+  return row.styleVersionId;
+}
+
+/** Switch the sequence's style the way the settings form does (#1863). */
+const seqs = () => createSequencesMethods(db, teamId, userId);
+async function switchStyle(name: string, mood: string) {
+  const [style] = await db
+    .insert(styles)
+    .values({
+      teamId,
+      name,
+      config: {
+        mood,
+        artStyle: 'cinematic',
+        lighting: 'natural',
+        colorPalette: ['#000', '#fff'],
+        cameraWork: 'static',
+        referenceFilms: [],
+        colorGrading: 'neutral',
+      },
+    })
+    .returning();
+  if (!style) throw new Error('setup');
+  await seqs().update({ id: sequenceId, styleId: style.id });
+  return style;
 }
 
 /** Claim a look's sheet the way a trigger does; the default look by default. */
@@ -583,6 +619,33 @@ describe('look sheet claims (#2015)', () => {
     ).toBe(false);
   });
 
+  it('is not taken once the style moved after the snapshot; a re-save of the same style holds (#2051)', async () => {
+    const style = await switchStyle('Noir', 'dark');
+    const snapshot = await snapshotOf(characterId);
+    expect(snapshot.styleVersionId).not.toBeNull();
+    // The same style and recipe saved again is a new version row but no
+    // move: the claim holds, as the demote would have left it alone.
+    await seqs().update({ id: sequenceId, styleId: style.id, title: 'T' });
+    expect(await styleVersionNow()).not.toBe(snapshot.styleVersionId);
+    expect(
+      (
+        await looks().claimSheet(sequenceId, characterId, snapshot, {
+          markGenerating: true,
+        })
+      ).held
+    ).toBe(true);
+
+    await switchStyle('Product', 'bright');
+    const { versionId, held } = await looks().claimSheet(
+      sequenceId,
+      characterId,
+      snapshot,
+      { markGenerating: true }
+    );
+    expect(held).toBe(false);
+    expect(await landCharacter(versionId)).toBe('parked');
+  });
+
   it('fails a claim by its own id, and only while that run holds it', async () => {
     const older = await claim();
     const newer = await claim();
@@ -926,15 +989,29 @@ describe('sequence location claims', () => {
       workflowRunId: 'run',
     });
 
+  /** The snapshot a trigger takes of a location, read live. */
+  const snapshot = async () => {
+    const row = await locs().getById(locationId);
+    if (!row) throw new Error('location gone');
+    return {
+      bibleVersionId: row.selectedBibleVersionId,
+      libraryLocationId: row.libraryLocationId,
+      styleVersionId: await styleVersionNow(),
+    };
+  };
+  /** Claim the way a trigger does: from a snapshot read now. */
+  const claimLocation = async () =>
+    (
+      await locs().claimReference(locationId, await snapshot(), {
+        markGenerating: true,
+      })
+    ).versionId;
+
   it('lands while held and parks after a bible edit', async () => {
-    const first = await locs().claimReference(locationId, {
-      markGenerating: true,
-    });
+    const first = await claimLocation();
     expect(await landLocation(first)).toBe('promoted');
 
-    const second = await locs().claimReference(locationId, {
-      markGenerating: true,
-    });
+    const second = await claimLocation();
     await locs().updateBible(
       locationId,
       { keyFeatures: 'neon sign' },
@@ -944,15 +1021,11 @@ describe('sequence location claims', () => {
   });
 
   it('is revoked by a relink and by the library reference moving', async () => {
-    let versionId = await locs().claimReference(locationId, {
-      markGenerating: true,
-    });
+    let versionId = await claimLocation();
     await locs().update(locationId, { libraryLocationId: libraryId });
     expect(await landLocation(versionId)).toBe('parked');
 
-    versionId = await locs().claimReference(locationId, {
-      markGenerating: true,
-    });
+    versionId = await claimLocation();
     const claimId = await library().claimReference(libraryId);
     await library().updateReferenceIfClaimed(
       libraryId,
@@ -964,22 +1037,16 @@ describe('sequence location claims', () => {
     expect(await landLocation(versionId)).toBe('parked');
   });
 
-  // The bible parent's claim (#1863): taken only while the snapshot is live.
-  const snapshot = async () => {
-    const row = await locs().getById(locationId);
-    if (!row?.selectedBibleVersionId) throw new Error('no bible version');
-    return {
-      bibleVersionId: row.selectedBibleVersionId,
-      libraryLocationId: row.libraryLocationId,
-    };
-  };
-
-  it('a conditional claim is held while the bible and link are live', async () => {
-    const claim = await locs().claimReferenceIfUnmoved(
-      locationId,
-      await snapshot()
-    );
+  // The claim is conditional (#1863, #2051): taken only while the snapshot is
+  // live. Pointer-only for the bible parent, whose upsert set the status.
+  it('a conditional claim is held while the bible, link and style are live', async () => {
+    const claim = await locs().claimReference(locationId, await snapshot(), {
+      markGenerating: false,
+    });
     expect(claim.held).toBe(true);
+    expect((await locs().getById(locationId))?.referenceStatus).not.toBe(
+      'generating'
+    );
     expect(await landLocation(claim.versionId)).toBe('promoted');
   });
 
@@ -990,7 +1057,9 @@ describe('sequence location claims', () => {
       { keyFeatures: 'neon sign' },
       { actorId: userId }
     );
-    const claim = await locs().claimReferenceIfUnmoved(locationId, before);
+    const claim = await locs().claimReference(locationId, before, {
+      markGenerating: true,
+    });
     expect(claim.held).toBe(false);
     expect(await landLocation(claim.versionId)).toBe('parked');
   });
@@ -998,8 +1067,29 @@ describe('sequence location claims', () => {
   it('a conditional claim is not taken after a relink', async () => {
     const before = await snapshot();
     await locs().update(locationId, { libraryLocationId: null });
-    const claim = await locs().claimReferenceIfUnmoved(locationId, before);
+    const claim = await locs().claimReference(locationId, before, {
+      markGenerating: true,
+    });
     expect(claim.held).toBe(false);
+  });
+
+  it('a conditional claim is not taken after a style switch; a re-save of the same style holds (#2051)', async () => {
+    const style = await switchStyle('Noir', 'dark');
+    const before = await snapshot();
+    await seqs().update({ id: sequenceId, styleId: style.id, title: 'T' });
+    expect(
+      (
+        await locs().claimReference(locationId, before, {
+          markGenerating: true,
+        })
+      ).held
+    ).toBe(true);
+    await switchStyle('Product', 'bright');
+    const claim = await locs().claimReference(locationId, before, {
+      markGenerating: true,
+    });
+    expect(claim.held).toBe(false);
+    expect(await landLocation(claim.versionId)).toBe('parked');
   });
 });
 
@@ -1254,7 +1344,15 @@ describe('re-analysis upserts (#1113)', () => {
   });
 
   it('revokes a location claim when the bulk upsert moves an input', async () => {
-    await locs().claimReference(locationId, { markGenerating: true });
+    await locs().claimReference(
+      locationId,
+      {
+        bibleVersionId: (await location()).selectedBibleVersionId,
+        libraryLocationId: libraryId,
+        styleVersionId: null,
+      },
+      { markGenerating: true }
+    );
     await locs().createBulk(
       [{ ...(await location()), id: generateId(), description: 'moved' }],
       { source: 'analysis', createdBy: null }
@@ -1263,9 +1361,15 @@ describe('re-analysis upserts (#1113)', () => {
   });
 
   it('keeps a location claim when the bulk upsert is identical', async () => {
-    const claim = await locs().claimReference(locationId, {
-      markGenerating: true,
-    });
+    const { versionId: claim } = await locs().claimReference(
+      locationId,
+      {
+        bibleVersionId: (await location()).selectedBibleVersionId,
+        libraryLocationId: libraryId,
+        styleVersionId: null,
+      },
+      { markGenerating: true }
+    );
     await locs().createBulk([{ ...(await location()), id: generateId() }], {
       source: 'analysis',
       createdBy: null,

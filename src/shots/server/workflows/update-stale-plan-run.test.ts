@@ -164,7 +164,10 @@ const failSheetClaim = vi.fn(async () => undefined);
 const adoptIfPending = vi.fn(
   async (_args: unknown): Promise<'adopted' | 'refused'> => 'adopted'
 );
-const claimReference = vi.fn(async (id: string) => `lrv-${id}`);
+const claimReference = vi.fn(async (id: string) => ({
+  versionId: `lrv-${id}`,
+  held: true,
+}));
 const claimMusic = vi.fn(async (): Promise<string | null> => 'music-claim');
 const failMusicClaim = vi.fn(async () => undefined);
 const createPendingVoiceClaim = vi.fn(async (id: string) => ({
@@ -350,18 +353,24 @@ const payloadOf = (step: string) =>
 
 const references = {
   characterSheets: [
-    { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
+    {
+      characterDbId: 'maya',
+      lookId: 'maya',
+      lookVersionId: 'lv-maya',
+      styleVersionId: null,
+    },
     {
       characterDbId: 'ravi',
       lookId: 'ravi',
       lookVersionId: 'lv-ravi',
       bibleVersionId: 'bible-ravi',
       talentId: null,
+      styleVersionId: null,
     },
   ],
   lookSheetsAfterDefault: [],
   reusedSheets: [],
-  locationSheets: [{ locationDbId: 'hall' }],
+  locationSheets: [{ locationDbId: 'hall', styleVersionId: null }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
   voices: [{ characterDbId: 'maya' }],
   cost: { sheets: 0, voices: 0 },
@@ -398,6 +407,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     );
     expect(payloadOf('spawn-location-sheet-hall')).toEqual({
       locationDbId: 'hall',
+      styleVersionId: null,
       referenceVersionId: 'lrv-hall',
     });
     expect(payloadOf('spawn-character-voice-maya')).toEqual({
@@ -412,6 +422,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         lookVersionId: 'lv-ravi',
         bibleVersionId: 'bible-ravi',
         talentId: null,
+        styleVersionId: null,
       },
       { markGenerating: true }
     );
@@ -436,6 +447,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
               lookVersionId: 'lookver-default',
               bibleVersionId: 'bible-1',
               talentId: 'talent-1',
+              styleVersionId: null,
             },
             {
               characterDbId: 'maya',
@@ -443,6 +455,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
               lookVersionId: 'lookver-gala',
               bibleVersionId: 'bible-1',
               talentId: 'talent-1',
+              styleVersionId: null,
             },
           ],
           locationSheets: [],
@@ -462,6 +475,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         lookVersionId: 'lookver-gala',
         bibleVersionId: 'bible-1',
         talentId: 'talent-1',
+        styleVersionId: null,
       },
       { markGenerating: true }
     );
@@ -480,6 +494,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       lookStyling: null,
       bibleVersionId: 'bible-1',
       talentId: null,
+      styleVersionId: null,
       // what the hash reads
       characterMetadata: {
         name: 'Maya',
@@ -554,6 +569,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
               characterName: 'Maya',
               lookId: 'gala',
               lookVersionId: 'lookver-gala',
+              styleVersionId: null,
             },
           ],
           locationSheets: [],
@@ -621,6 +637,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       lookVersionId: 'lv-maya',
       bibleVersionId: 'bible-1',
       talentId: null,
+      styleVersionId: null,
       imageModel: 'nano_banana_2',
       snapshotInputHash: 'hash-maya',
     },
@@ -648,7 +665,12 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     expect(claimSheet).toHaveBeenCalledWith(
       'seq-1',
       'maya',
-      { lookVersionId: 'lv-maya', bibleVersionId: 'bible-1', talentId: null },
+      {
+        lookVersionId: 'lv-maya',
+        bibleVersionId: 'bible-1',
+        talentId: null,
+        styleVersionId: null,
+      },
       { markGenerating: true }
     );
     expect(adoptIfPending).toHaveBeenCalledWith({
@@ -1237,11 +1259,16 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
       // minimal child payloads
       references: asStub<never>({
         characterSheets: [
-          { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
+          {
+            characterDbId: 'maya',
+            lookId: 'maya',
+            lookVersionId: 'lv-maya',
+            styleVersionId: null,
+          },
         ],
         lookSheetsAfterDefault: [],
         reusedSheets: [],
-        locationSheets: [{ locationDbId: 'hall' }],
+        locationSheets: [{ locationDbId: 'hall', styleVersionId: null }],
         elementSheets: null,
         voices: [],
         cost: { sheets: 0, voices: 0 },

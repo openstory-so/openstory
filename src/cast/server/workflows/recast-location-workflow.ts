@@ -168,6 +168,10 @@ export class RecastLocationWorkflow extends OpenStoryWorkflowEntrypoint<RecastLo
           libraryLocationDescription: input.libraryLocationDescription,
           styleConfig: input.styleConfig,
           libraryLocationReferenceHash: input.libraryLocationReferenceHash,
+          // The claim recastLocationFn took was guarded on these (#2051);
+          // the child never reads them.
+          libraryLocationId: input.libraryLocationId,
+          styleVersionId: input.styleVersionId,
           // The claim recastLocationFn took (#1113).
           referenceVersionId: input.referenceVersionId,
           // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600

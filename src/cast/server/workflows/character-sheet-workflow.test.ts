@@ -137,6 +137,7 @@ async function makeEvent(
     referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
     reuseTalentSheet: true,
     castTalentDescription: null,
+    styleVersionId: null,
     sheetVersionId: 'ver-1',
     ...overrides,
   };

@@ -49,6 +49,7 @@ export async function buildRegenerateLocationSheetPayload(params: {
     id: string;
     styleId: string | null;
     styleConfig: Parameters<typeof resolveSequenceStyleConfig>[0]['snapshot'];
+    selectedStyleVersionId: string | null;
     imageModel: string | null;
   };
   location: SequenceLocationWithReference;
@@ -103,6 +104,9 @@ export async function buildRegenerateLocationSheetPayload(params: {
     libraryLocationDescription,
     styleConfig,
     libraryLocationReferenceHash,
+    // What the claim is guarded on (#2051), read with the rest.
+    libraryLocationId: location.libraryLocationId,
+    styleVersionId: sequence.selectedStyleVersionId,
   };
   const partial = {
     ...partialFields,

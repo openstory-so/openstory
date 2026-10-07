@@ -882,6 +882,12 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: CharacterSheetInputHash;
   /**
+   * `sequences.selectedStyleVersionId` when `styleConfig` was read (#2051).
+   * Read only by the claim: `characterLooks.claimSheet` is taken only while
+   * the sequence's style is still this one. The run itself never reads it.
+   */
+  styleVersionId: string | null;
+  /**
    * The sheet claim (#1113): the id this run's version row will carry, taken at the trigger
    * (`characterLooks.claimSheet`). The run lands only while the claim still names it,
    * else it parks as divergent. Absent only on a run queued before #1113,
@@ -1018,7 +1024,7 @@ export interface RecastCharacterWorkflowInput
     SequenceWorkflowContext,
     Pick<
       CharacterSheetWorkflowInput,
-      'lookId' | 'lookVersionId' | 'lookStyling' | 'talentId'
+      'lookId' | 'lookVersionId' | 'lookStyling' | 'talentId' | 'styleVersionId'
     > {
   /** Character database ID. The sheet redrawn is its default look's (#2015). */
   characterDbId: string;
@@ -1163,6 +1169,11 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
   speakingCharacterIds: string[];
   /** Drafts the voice description when the character has none. */
   analysisModelId: AnalysisModelId;
+  /**
+   * `sequences.selectedStyleVersionId` when `styleConfig` was read (#2051):
+   * each sheet claim is taken only while the style is still this one.
+   */
+  styleVersionId: string | null;
 }
 
 /**
@@ -1412,6 +1423,14 @@ export interface LocationSheetWorkflowInput extends SequenceWorkflowContext {
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: LocationSheetInputHash;
   /**
+   * What the claim is guarded on besides `bibleVersionId` (#2051): the
+   * library link and `sequences.selectedStyleVersionId` at the snapshot.
+   * `sequenceLocations.claimReference` is taken only while both still hold.
+   * The run itself never reads them.
+   */
+  libraryLocationId: string | null;
+  styleVersionId: string | null;
+  /**
    * The reference claim (#1113): the id this run's version row will carry, taken at the trigger
    * (`sequenceLocations.claimReference`). The run lands only while the claim still names it,
    * else it parks as divergent. Absent only on a run queued before #1113,
@@ -1498,6 +1517,8 @@ export interface LocationBibleWorkflowInput extends UserWorkflowContext {
   libraryLocationMatches?: LibraryLocationMatch[];
   /** Sequence style config to apply to location sheets */
   styleConfig?: StyleConfig;
+  /** See `CharacterBibleWorkflowInput.styleVersionId`. */
+  styleVersionId: string | null;
 }
 
 /**
@@ -1569,6 +1590,8 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
   referenceVersionId: string;
   /** See `LocationSheetWorkflowInput.bibleVersionId`. */
   bibleVersionId: string | null;
+  /** See `LocationSheetWorkflowInput.styleVersionId`. */
+  styleVersionId: string | null;
   /** Sequence style config to apply to the location sheet */
   styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
