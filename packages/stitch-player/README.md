@@ -17,7 +17,6 @@ const still = (
   seconds: number,
   cues: { at: number; text: string }[]
 ) => ({
-  orderIndex: n,
   imageUrl: `https://cdn.example/board/${n}.png`,
   fallbackImageUrl: null,
   durationSeconds: seconds, // used only when there is no sound
@@ -39,9 +38,9 @@ const clips = [
   ]),
   // A rendered shot drops in exactly like a still, with its own sound.
   {
-    orderIndex: 2,
     videoUrl: 'https://cdn.example/shots/3.mp4',
     posterUrl: 'https://cdn.example/board/3.png',
+    cues: [],
   },
 ];
 
@@ -62,36 +61,35 @@ What you get: Video.js's controls, a captions button that toggles the subtitles 
 
 ## What's in the box
 
-| Import                             | What                                                                                                                | Peer deps                      |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| `@openstory/stitch-player`         | The engine: `SequencePlayerEngine`, `ConcatenatedVideoSource`, clip types, pure helpers.                            | none (depends on `mediabunny`) |
-| `@openstory/stitch-player/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.com) custom media, so the Video.js skin drives the engine. | `@videojs/media`               |
-| `@openstory/stitch-player/react`   | `StitchedPlayer`: the canvas under Video.js's `NeutralVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react`      |
-| `@openstory/stitch-player/export`  | `exportSequence` and `downloadSequence`: the same stitch, encoded to MP4 in the browser.                            | none                           |
+| Import                             | What                                                                                                                | Also install              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| `@openstory/stitch-player`         | The engine: `SequencePlayerEngine`, `ConcatenatedVideoSource`, clip types, pure helpers.                            | nothing                   |
+| `@openstory/stitch-player/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.com) custom media, so the Video.js skin drives the engine. | `@videojs/react`          |
+| `@openstory/stitch-player/react`   | `StitchedPlayer`: the canvas under Video.js's `NeutralVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react` |
+| `@openstory/stitch-player/export`  | `exportSequence` and `downloadSequence`: the same stitch, encoded to MP4 in the browser.                            | nothing                   |
 
-All peer dependencies are optional. An engine-only user installs just `mediabunny`.
+`mediabunny` is a dependency, so it installs with the package. The React and Video.js peers are optional. `@videojs/media` is a type-only import of the Video.js entry, and `@videojs/react` brings it in.
 
 ```sh
-npm install @openstory/stitch-player mediabunny
+npm install @openstory/stitch-player
 # for the React surface
-npm install react @videojs/react @videojs/media
+npm install react @videojs/react
 ```
 
 Built against Video.js 10 (`^10.0.0`).
 
 ## Clips
 
-A clip is a rendered video or a timed still. Order comes from `orderIndex`; everything else is per clip.
+A clip is a rendered video or a timed still. Clips play in array order.
 
 ```ts
 import type { PlaybackClip } from '@openstory/stitch-player';
 
 const clips: PlaybackClip[] = [
   // A rendered clip. Its embedded sound plays with it. The poster shows while the player opens.
-  { orderIndex: 0, videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg' },
+  { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
   // A still, held for as long as its sound runs (or `durationSeconds` when silent).
   {
-    orderIndex: 1,
     imageUrl: '/shot-2.png',
     fallbackImageUrl: null,
     durationSeconds: 4,
@@ -148,6 +146,7 @@ const { blob, vtt, durationSeconds } = await exportSequence({
   clips,
   musicUrl: '/score.mp3',
   musicGainDb: -3,
+  musicEnabled: true,
   frameRate: 24, // the default; stills are sampled at this rate too
   subtitles: 'sidecar', // or 'burn-in' to draw them onto the frames, or 'none'
   onProgress: (fraction) => {},
@@ -159,12 +158,13 @@ button.onclick = () =>
   downloadSequence({
     clips,
     musicUrl: null,
-    musicGainDb: null,
+    musicGainDb: 0,
+    musicEnabled: false,
     filename: 'cut.mp4',
   });
 ```
 
-The export runs the same stitching code a second time, so the file matches the preview: same frames, same letterboxing, same mix. Video is H.264, audio AAC, in a fast-start MP4. A codec the browser cannot encode is an error; nothing is quietly swapped. Pass a player's `engine.source` as `source` to export from clips it has already opened (the Download button does this), with the player paused.
+The export runs the same stitching code a second time, so the file matches the preview: same frames, same letterboxing, same mix. Video is H.264 and audio is AAC, in an MP4. A codec the browser cannot encode is an error; nothing is quietly swapped. Pass a player's `engine.source` as `source` to export from clips it has already opened (the Download button does this), with the player paused.
 
 ## Video.js only
 
@@ -173,7 +173,13 @@ import { StitchedSequenceMedia } from '@openstory/stitch-player/videojs';
 
 const media = new StitchedSequenceMedia();
 media.setListeners({ onError: console.error });
-media.setSource({ clips, musicUrl: null, musicGainDb: null });
+media.setSource({
+  clips,
+  musicUrl: null,
+  musicGainDb: 0,
+  musicEnabled: false,
+  subtitles: true,
+});
 media.attach(canvas); // the engine draws into this HTMLCanvasElement
 await media.play();
 media.currentTime = 12; // seeks
@@ -190,7 +196,8 @@ const engine = new SequencePlayerEngine({
   canvas,
   clips,
   musicUrl: null,
-  musicGainDb: null,
+  musicGainDb: 0,
+  musicEnabled: false,
   onTimeUpdate: (t) => {},
   onBuffering: (stalled) => {},
   onEnded: () => {},
@@ -216,7 +223,7 @@ engine.dispose();
 ## Requirements
 
 - **Browser only.** WebCodecs and Web Audio. Nothing here runs in Node or on an edge runtime.
-- **Clip and audio servers must allow Range requests and CORS.** The engine reads clips in range requests and the canvas needs CORS to read pixels. A `data:` or `blob:` URL works for a still's sound. Stills are loaded as images and need no CORS.
+- **Clip and audio servers must allow Range requests and CORS.** The engine reads clips in range requests. A `data:` or `blob:` URL works for a still's sound. Playback loads stills as images, which needs no CORS. Export and Picture-in-Picture read the canvas back, so a still from another origin without CORS taints the canvas and those two throw `SecurityError`.
 - **Encoding (export only):** H.264 and AAC encoders, which Chrome, Edge, Safari 17+ and recent Firefox have.
 
 ## License

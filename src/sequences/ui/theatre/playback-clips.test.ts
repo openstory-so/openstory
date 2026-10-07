@@ -12,6 +12,12 @@ import {
   shotIdAtSequenceTime,
   toPlaybackClips,
 } from './playback-clips';
+import type { AspectRatio } from '@/models/aspect-ratios';
+
+const toClips = (
+  shots: Parameters<typeof toPlaybackClips>[0],
+  aspectRatio: AspectRatio = '16:9'
+) => toPlaybackClips(shots, aspectRatio);
 
 const shot = (url: string | null, extra?: { status?: string }) => ({
   id: `shot-${url ?? 'still'}`,
@@ -28,42 +34,37 @@ const shot = (url: string | null, extra?: { status?: string }) => ({
 describe('toPlaybackClips', () => {
   it('keeps completed clips and fills missing videos with timed stills', () => {
     expect(
-      toPlaybackClips([shot('/a.mp4'), shot(null), shot('/c.mp4'), shot(null)])
+      toClips([shot('/a.mp4'), shot(null), shot('/c.mp4'), shot(null)])
     ).toEqual([
-      { orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null, cues: [] },
+      { videoUrl: '/a.mp4', posterUrl: null, cues: [] },
       expect.objectContaining({
-        orderIndex: 1,
         imageUrl: null,
         durationSeconds: 5,
         audioUrls: [],
       }),
-      { orderIndex: 2, videoUrl: '/c.mp4', posterUrl: null, cues: [] },
-      expect.objectContaining({ orderIndex: 3, imageUrl: null }),
+      { videoUrl: '/c.mp4', posterUrl: null, cues: [] },
+      expect.objectContaining({ imageUrl: null }),
     ]);
   });
 
   it('collapses consecutive packed-segment copies into one clip (#1510)', () => {
     expect(
-      toPlaybackClips([
-        shot('/packed.mp4'),
-        shot('/packed.mp4'),
-        shot('/b.mp4'),
-      ])
+      toClips([shot('/packed.mp4'), shot('/packed.mp4'), shot('/b.mp4')])
     ).toEqual([
-      { orderIndex: 0, videoUrl: '/packed.mp4', posterUrl: null, cues: [] },
-      { orderIndex: 1, videoUrl: '/b.mp4', posterUrl: null, cues: [] },
+      { videoUrl: '/packed.mp4', posterUrl: null, cues: [] },
+      { videoUrl: '/b.mp4', posterUrl: null, cues: [] },
     ]);
   });
 });
 
 describe('playbackClipsKey', () => {
   it('is identical for two shot lists that only differ in non-url fields', () => {
-    const a = toPlaybackClips([
+    const a = toClips([
       shot('/a.mp4', { status: 'completed' }),
       shot(null),
       shot('/c.mp4', { status: 'completed' }),
     ]);
-    const b = toPlaybackClips([
+    const b = toClips([
       shot('/a.mp4', { status: 'completed' }),
       shot(null, { status: 'generating' }),
       shot('/c.mp4', { status: 'completed' }),
@@ -73,25 +74,21 @@ describe('playbackClipsKey', () => {
   });
 
   it('changes when a new clip lands', () => {
-    const before = playbackClipsKey(
-      toPlaybackClips([shot('/a.mp4'), shot(null)])
-    );
-    const after = playbackClipsKey(
-      toPlaybackClips([shot('/a.mp4'), shot('/b.mp4')])
-    );
+    const before = playbackClipsKey(toClips([shot('/a.mp4'), shot(null)]));
+    const after = playbackClipsKey(toClips([shot('/a.mp4'), shot('/b.mp4')]));
     expect(before).not.toBe(after);
   });
 
   it('changes when a clip url is replaced', () => {
-    expect(playbackClipsKey(toPlaybackClips([shot('/a.mp4')]))).not.toBe(
-      playbackClipsKey(toPlaybackClips([shot('/a-v2.mp4')]))
+    expect(playbackClipsKey(toClips([shot('/a.mp4')]))).not.toBe(
+      playbackClipsKey(toClips([shot('/a-v2.mp4')]))
     );
   });
 });
 
 it('does not collapse rendered clips across a missing shot', () => {
   expect(
-    toPlaybackClips([shot('/packed.mp4'), shot(null), shot('/packed.mp4')])
+    toClips([shot('/packed.mp4'), shot(null), shot('/packed.mp4')])
   ).toHaveLength(3);
 });
 it('prefers the selected still and plays its recorded take only when there is no video', () => {
@@ -108,16 +105,13 @@ it('prefers the selected still and plays its recorded take only when there is no
       },
     ],
   };
-  expect(toPlaybackClips([input])[0]).toMatchObject({
+  expect(toClips([input])[0]).toMatchObject({
     imageUrl: '/still.png',
     fallbackImageUrl: '/preview.png',
     audioUrls: ['/take.wav'],
   });
-  expect(
-    toPlaybackClips([{ ...input, video: { url: '/render.mp4' } }])
-  ).toEqual([
+  expect(toClips([{ ...input, video: { url: '/render.mp4' } }])).toEqual([
     {
-      orderIndex: 0,
       videoUrl: '/render.mp4',
       posterUrl: '/still.png',
       cues: [],
@@ -127,7 +121,7 @@ it('prefers the selected still and plays its recorded take only when there is no
 
 it('uses the preview when there is no selected still', () => {
   expect(
-    toPlaybackClips([{ ...shot(null), previewThumbnailUrl: '/preview.png' }])[0]
+    toClips([{ ...shot(null), previewThumbnailUrl: '/preview.png' }])[0]
   ).toMatchObject({
     imageUrl: '/preview.png',
     fallbackImageUrl: null,
@@ -135,7 +129,7 @@ it('uses the preview when there is no selected still', () => {
 });
 it('updates identity when a still, recording, duration or aspect ratio changes', () => {
   const input = { ...shot(null), image: { url: '/still.png' } };
-  const key = playbackClipsKey(toPlaybackClips([input]));
+  const key = playbackClipsKey(toClips([input]));
   for (const changed of [
     { ...input, image: { url: '/new.png' } },
     { ...input, durationMs: 8000 },
@@ -146,9 +140,9 @@ it('updates identity when a still, recording, duration or aspect ratio changes',
       ],
     },
   ]) {
-    expect(playbackClipsKey(toPlaybackClips([changed]))).not.toBe(key);
+    expect(playbackClipsKey(toClips([changed]))).not.toBe(key);
   }
-  expect(playbackClipsKey(toPlaybackClips([input], '9:16'))).not.toBe(key);
+  expect(playbackClipsKey(toClips([input], '9:16'))).not.toBe(key);
 });
 
 describe('shotIdAtSequenceTime (#1771)', () => {
@@ -267,16 +261,14 @@ describe('shotCues (#1853)', () => {
       durationMs: 6000,
       dialogue: { presence: true, lines: dialogue.lines.slice(1) },
     };
-    const [packed] = toPlaybackClips([a, b]);
+    const [packed] = toClips([a, b]);
     expect(
       packed?.cues?.map((cue) => [cue.startSeconds, cue.endSeconds])
     ).toEqual([
       [0, 4],
       [4, 10],
     ]);
-    const [still] = toPlaybackClips([
-      { ...shot(null), dialogue, audioClips: [clip] },
-    ]);
+    const [still] = toClips([{ ...shot(null), dialogue, audioClips: [clip] }]);
     expect(still?.cues).toEqual([
       expect.objectContaining({ startSeconds: 0, endSeconds: 6 }),
     ]);

@@ -266,9 +266,13 @@ export const getShotFn = createServerFn({ method: 'GET' })
           )
         : Promise.resolve(null),
       context.scopedDb.frameVariants.getPrimary(context.frame.id),
-      context.scopedDb.shotDialogue.listSections(context.shot.id),
+      // The same read the list uses, so one shot is timed the same way on
+      // both paths.
+      context.scopedDb.shotDialogue.getSelectedSectionsBySequence(
+        context.sequence.id
+      ),
     ]);
-    const selectedSection = sections.find((s) => s.selectedAt !== null);
+    const selectedSection = sections.find((s) => s.shotId === context.shot.id);
     // The first-shot rule needs the scene-mates, so the sequence's shots are
     // read even for one shot.
     const dialogue = (

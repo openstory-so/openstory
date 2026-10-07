@@ -12,12 +12,12 @@
  */
 
 import { lazy, Suspense, useSyncExternalStore, type ReactNode } from 'react';
-import type { StitchedPlayerSurfaceProps } from './stitched-player-surface';
+import type { StitchedPlayerSurfaceProps } from './stitched-player-surface.js';
 
-export type { StitchedPlayerSurfaceProps } from './stitched-player-surface';
+export type { StitchedPlayerSurfaceProps } from './stitched-player-surface.js';
 
 const Surface = lazy(() =>
-  import('./stitched-player-surface').then((m) => ({
+  import('./stitched-player-surface.js').then((m) => ({
     default: m.StitchedPlayerSurface,
   }))
 );

@@ -32,46 +32,55 @@ import {
   type Quality,
   type StreamTargetChunk,
 } from 'mediabunny';
-import { ConcatenatedVideoSource } from './concatenated-video-source';
-import { cueTextAt } from './cues';
-import type { StitchLogger } from './logger';
-import { computeMusicGain } from './music-gain';
-import type { PlaybackClip } from './playback-clip';
-import { createRangedSource } from './ranged-source';
-import { cuesToWebVTT } from './webvtt';
+import { ConcatenatedVideoSource } from './concatenated-video-source.js';
+import { cueTextAt } from './cues.js';
+import type { StitchLogger } from './logger.js';
+import { computeMusicGain } from './music-gain.js';
+import type { PlaybackClip } from './playback-clip.js';
+import { createRangedSource } from './ranged-source.js';
+import { cuesToWebVTT } from './webvtt.js';
 
-export type ExportSequenceOptions = {
-  clips: PlaybackClip[];
+/** What to export: a clip list to open, or a source a player already opened. */
+export type ExportSequenceInput =
+  | { clips: readonly PlaybackClip[]; source?: undefined }
+  | {
+      /**
+       * An already opened source — a player's `engine.source` — so the clips
+       * are not fetched or probed again. Pause the player first: the two
+       * share one read cache. The source is left open for its owner.
+       */
+      source: ConcatenatedVideoSource;
+      clips?: undefined;
+    };
+
+export type ExportSequenceSettings = {
   musicUrl: string | null;
-  /** Gain in dB on the music only; `null` is 0 dB. */
-  musicGainDb: number | null;
-  /** Defaults to true. */
-  musicEnabled?: boolean;
+  /** Gain in dB on the music only; 0 for none. */
+  musicGainDb: number;
+  musicEnabled: boolean;
   /**
    * `sidecar` (default) returns the cues as WebVTT in `vtt`; `burn-in` draws
    * them onto the frames; `none` drops them.
    */
   subtitles?: 'sidecar' | 'burn-in' | 'none';
-  /** Frames per second of the file. Defaults to 24. */
+  /** Frames per second of the file, above 0. Defaults to 24. */
   frameRate?: number;
   /** Video quality. Defaults to `QUALITY_HIGH`. */
   quality?: Quality;
-  /**
-   * Where the file streams to, e.g. a `FileSystemWritableFileStream` from
-   * `showSaveFilePicker()`. Without it the file is returned as `blob`.
-   */
-  target?: WritableStream<StreamTargetChunk>;
-  /**
-   * Read from an already opened source — a player's `engine.source` — so the
-   * clips are not fetched or probed again. Pause the player first: the two
-   * share one read cache. The source is left open for its owner.
-   */
-  source?: ConcatenatedVideoSource;
   /** 0 to 1 as frames are encoded. */
   onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
   logger?: StitchLogger;
 };
+
+export type ExportSequenceOptions = ExportSequenceInput &
+  ExportSequenceSettings & {
+    /**
+     * Where the file streams to, e.g. a `FileSystemWritableFileStream` from
+     * `showSaveFilePicker()`. Without it the file is returned as `blob`.
+     */
+    target?: WritableStream<StreamTargetChunk>;
+  };
 
 export type ExportSequenceResult = {
   /** The MP4, unless it was streamed to `target`. */
@@ -172,7 +181,6 @@ export async function exportSequence(
   options: ExportSequenceOptions
 ): Promise<ExportSequenceResult> {
   const {
-    clips,
     subtitles = 'sidecar',
     frameRate = 24,
     quality = QUALITY_HIGH,
@@ -181,9 +189,15 @@ export async function exportSequence(
   } = options;
   const logger = options.logger ?? console;
   if (signal?.aborted) throw abortError();
+  if (!(frameRate > 0))
+    throw new Error(`frameRate must be above 0, got ${frameRate}`);
 
-  const borrowed = options.source ?? null;
-  const source = borrowed ?? new ConcatenatedVideoSource(clips, logger);
+  const borrowed = options.source !== undefined;
+  const source =
+    options.source === undefined
+      ? new ConcatenatedVideoSource(options.clips, logger)
+      : options.source;
+  const { clips } = source;
   let musicInput: Input | null = null;
   let output: Output | null = null;
   try {
@@ -198,10 +212,22 @@ export async function exportSequence(
     if (!(await canEncodeAudio('aac'))) {
       throw new Error('This browser cannot encode AAC audio');
     }
+    // The player gets by with a silent clip or a dark slot; a file would
+    // carry that defect without a word, so the export refuses instead.
+    if (meta.silentClipIndexes.length > 0) {
+      throw new Error(
+        `This browser cannot decode the sound of clip ${meta.silentClipIndexes.join(', ')}; the export would be silent there`
+      );
+    }
+    if (meta.missingStillIndexes.length > 0) {
+      throw new Error(
+        `Clip ${meta.missingStillIndexes.join(', ')} has no picture; the export would be dark there`
+      );
+    }
 
     // Music + every clip's sound, mixed the way the player mixes them.
     let musicTrack: InputAudioTrack | null = null;
-    if (options.musicUrl && (options.musicEnabled ?? true)) {
+    if (options.musicUrl && options.musicEnabled) {
       musicInput = new Input({
         formats: ALL_FORMATS,
         source: createRangedSource(options.musicUrl),
@@ -265,16 +291,18 @@ export async function exportSequence(
     const frames = source.canvases(0, { poolSize: 2, fit: 'contain' });
     const step = 1 / frameRate;
     let current = await frames.next();
+    if (current.done) throw new Error('No video frame could be decoded');
     let next = await frames.next();
     const count = Math.ceil(total * frameRate);
     for (let n = 0; n < count; n++) {
       if (signal?.aborted) throw abortError();
       const t = n * step;
+      // Once the iterator is exhausted `current` stays the last real frame,
+      // re-added up to `total`: a still's hold, or a clip's last frame.
       while (!next.done && next.value.timestamp <= t) {
         current = next;
         next = await frames.next();
       }
-      if (current.done) break;
       ctx.clearRect(0, 0, width, height);
       ctx.drawImage(current.value.canvas, 0, 0, width, height);
       if (subtitles === 'burn-in') {
@@ -338,10 +366,11 @@ function saveBlob(blob: Blob, filename: string): void {
  * picker needs the user's gesture. Resolves false when they cancel the picker.
  */
 export async function downloadSequence(
-  options: Omit<ExportSequenceOptions, 'target'> & {
-    /** Defaults to `sequence.mp4`. */
-    filename?: string;
-  }
+  options: ExportSequenceInput &
+    ExportSequenceSettings & {
+      /** Defaults to `sequence.mp4`. */
+      filename?: string;
+    }
 ): Promise<boolean> {
   const filename = options.filename ?? 'sequence.mp4';
   const picker = savePicker();
@@ -364,10 +393,9 @@ export async function downloadSequence(
   }
   let result: ExportSequenceResult;
   try {
-    result = await exportSequence({
-      ...options,
-      target: writable ?? undefined,
-    });
+    result = await exportSequence(
+      writable ? { ...options, target: writable } : options
+    );
   } catch (error) {
     await writable?.abort().catch(() => undefined);
     throw error;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlaybackClip } from './concatenated-video-source';
+import type { PlaybackClip } from './playback-clip.js';
 
 const opened: { url: string; dispose: ReturnType<typeof vi.fn> }[] = [];
 const context = {
@@ -49,18 +49,19 @@ vi.doMock('mediabunny', () => ({
   EncodedPacket: class {},
   EncodedPacketSink: class {},
 }));
-vi.doMock('./ranged-source', () => ({
+vi.doMock('./ranged-source.js', () => ({
   createRangedSource: (url: string) => ({ url }),
 }));
-const { ConcatenatedVideoSource } = await import('./concatenated-video-source');
+const { ConcatenatedVideoSource } =
+  await import('./concatenated-video-source.js');
 const still = (
   overrides: Partial<Extract<PlaybackClip, { imageUrl: string | null }>> = {}
 ): PlaybackClip => ({
-  orderIndex: 0,
   imageUrl: '/preview.png',
   fallbackImageUrl: '/thumbnail.png',
   durationSeconds: 5,
   audioUrls: [],
+  cues: [],
   width: 1600,
   height: 900,
   ...overrides,
@@ -105,13 +106,12 @@ describe('mixed canvas timeline', () => {
   });
   it('uses measured dialogue duration and offsets every audio clip on a mixed timeline', async () => {
     const source = new ConcatenatedVideoSource([
-      { orderIndex: 0, videoUrl: '/render.mp4', posterUrl: null },
+      { videoUrl: '/render.mp4', posterUrl: null, cues: [] },
       still({
-        orderIndex: 1,
         audioUrls: ['/one.wav', '/two.wav'],
         durationSeconds: 15,
       }),
-      still({ orderIndex: 2, durationSeconds: 5 }),
+      still({ durationSeconds: 5 }),
     ]);
     expect(await source.prepare()).toMatchObject({
       clipOffsetsSeconds: [0, 4, 8],

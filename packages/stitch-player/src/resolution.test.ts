@@ -11,7 +11,7 @@ import {
   detectMixedAspectRatios,
   detectMixedResolutions,
   type ClipDimensions,
-} from './resolution';
+} from './resolution.js';
 
 describe('computeTargetResolution', () => {
   test('throws on empty input', () => {
@@ -76,9 +76,8 @@ describe('computeTargetResolution', () => {
   });
 
   test('uniform input is the passthrough fast-path: not mixed, target === shared size', () => {
-    // The export's transmux fast path depends on this invariant: when
-    // detectMixedResolutions is false, the target must equal the clips' own
-    // size so pinning the CanvasSink to it is a no-op.
+    // A uniform cut keeps its own size, so pinning the canvas to the
+    // target draws each clip at the size it was encoded.
     const dims: ClipDimensions[] = [
       { width: 1920, height: 1080 },
       { width: 1920, height: 1080 },

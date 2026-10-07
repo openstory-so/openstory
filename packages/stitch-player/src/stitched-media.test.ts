@@ -6,7 +6,7 @@ import {
   isMediaVolumeCapable,
 } from '@videojs/media';
 
-import type { SequencePlayerMeta, SequencePlayerOptions } from './playback';
+import type { SequencePlayerMeta, SequencePlayerOptions } from './playback.js';
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the single test-double cast
 const asStub = <T>(stub: unknown): T => stub as T;
@@ -27,7 +27,7 @@ const { mocks, lastOpts } = vi.hoisted(() => {
   return { mocks, lastOpts };
 });
 
-vi.mock('./playback', () => {
+vi.mock('./playback.js', () => {
   class SequencePlayerEngine {
     constructor(opts: SequencePlayerOptions) {
       lastOpts.current = opts;
@@ -45,7 +45,7 @@ vi.mock('./playback', () => {
   return { SequencePlayerEngine };
 });
 
-const { StitchedSequenceMedia } = await import('./stitched-media');
+const { StitchedSequenceMedia } = await import('./stitched-media.js');
 
 const meta: SequencePlayerMeta = {
   durationSeconds: 12,
@@ -56,13 +56,16 @@ const meta: SequencePlayerMeta = {
   hasMixedResolutions: false,
   hasMixedAspectRatios: false,
   resolutionsLabel: '1920×1080',
+  silentClipIndexes: [],
+  missingStillIndexes: [],
 };
 
 const source = {
-  clips: [{ orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null }],
+  clips: [{ videoUrl: '/a.mp4', posterUrl: null, cues: [] }],
   musicUrl: '/music.mp3' as string | null,
-  musicGainDb: null as number | null,
+  musicGainDb: 0,
   musicEnabled: true,
+  subtitles: true,
 };
 
 // engine is mocked; attach only stores the handle
@@ -258,7 +261,7 @@ describe('StitchedSequenceMedia source identity', () => {
     const media = await preparedMedia();
     media.setSource({
       ...source,
-      clips: [{ orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null }],
+      clips: [{ videoUrl: '/a.mp4', posterUrl: null, cues: [] }],
     });
     expect(mocks.dispose).not.toHaveBeenCalled();
     expect(mocks.prepare).toHaveBeenCalledOnce();
@@ -281,8 +284,8 @@ describe('StitchedSequenceMedia source identity', () => {
     media.setSource({
       ...source,
       clips: [
-        { orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null },
-        { orderIndex: 1, videoUrl: '/b.mp4', posterUrl: null },
+        { videoUrl: '/a.mp4', posterUrl: null, cues: [] },
+        { videoUrl: '/b.mp4', posterUrl: null, cues: [] },
       ],
     });
     expect(mocks.dispose).toHaveBeenCalledOnce();
@@ -302,7 +305,6 @@ describe('StitchedSequenceMedia subtitles', () => {
     ...source,
     clips: [
       {
-        orderIndex: 0,
         videoUrl: '/a.mp4',
         posterUrl: null,
         cues: [{ startSeconds: 1, endSeconds: 3, text: 'Hello' }],

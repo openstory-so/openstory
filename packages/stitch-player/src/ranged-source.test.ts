@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRangedReader } from './ranged-source';
+import { createRangedReader } from './ranged-source.js';
 
 const KB = 1024;
 const MB = 1024 * KB;

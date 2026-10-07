@@ -34,11 +34,11 @@ function dialogueFixture() {
   return `data:audio/wav;base64,${btoa(String.fromCharCode(...bytes))}`;
 }
 const still: PlaybackClip = {
-  orderIndex: 0,
   imageUrl: '/icon-512.png',
   fallbackImageUrl: null,
   durationSeconds: 5,
   audioUrls: [],
+  cues: [],
   width: 1280,
   height: 720,
 };
@@ -66,10 +66,9 @@ type Story = StoryObj<typeof meta>;
 export const Still: Story = {};
 const mixedClips: PlaybackClip[] = [
   still,
-  { orderIndex: 1, videoUrl, posterUrl: null },
+  { videoUrl, posterUrl: null, cues: [] },
   {
     ...still,
-    orderIndex: 2,
     durationSeconds: 7,
     audioUrls: [dialogueFixture()],
     cues: [
@@ -92,7 +91,8 @@ const ExportDemo: React.FC<{ burnIn: boolean }> = ({ burnIn }) => {
       const done = await exportSequence({
         clips: mixedClips,
         musicUrl: null,
-        musicGainDb: null,
+        musicGainDb: 0,
+        musicEnabled: false,
         subtitles: burnIn ? 'burn-in' : 'sidecar',
         onProgress: setProgress,
       });
@@ -114,7 +114,7 @@ const ExportDemo: React.FC<{ burnIn: boolean }> = ({ burnIn }) => {
         clips={mixedClips}
         aspectRatio="16:9"
         musicUrl={null}
-        musicGainDb={null}
+        musicGainDb={0}
         musicEnabled={false}
         onMusicEnabledChange={() => {}}
       />
@@ -155,7 +155,7 @@ export const WithDownload: Story = {
       <StitchedPlayer
         clips={mixedClips}
         musicUrl={null}
-        musicGainDb={null}
+        musicGainDb={0}
         musicEnabled={false}
         download={{ filename: 'mixed-cut.mp4' }}
       />

@@ -519,11 +519,9 @@ spoke it, in the spoken wording, or every line over the whole shot when there
 is no reading yet. The timing is `ShotView.dialogueTiming` (#1853), derived on
 read from the selected section and its speech's turns (`sectionLineTiming`,
 `getSelectedSectionsBySequence`) — never stored on the clip, so every reading
-ever cut is timed. Theatre play does not
-show lines on screen. Image failures fall back to the preview, then a
+ever cut is timed. Image failures fall back to the preview, then a
 placeholder, preserving the shot's timeline slot. Hard cuts have no
-cross-fades. Mixed previews bypass the cached exported MP4; export continues
-to require rendered videos. There is no separate animatic button, dialog, or
+cross-fades. There is no separate animatic button, dialog, or
 playback mode.
 
 While that player runs, the shot list marks the shot under the playhead and

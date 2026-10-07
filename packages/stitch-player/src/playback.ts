@@ -6,7 +6,7 @@
  * - `ConcatenatedVideoSource` for the video iterator (handles cross-clip
  *   continuity + global timestamps).
  * - A music `Input` + `AudioBufferSink` mixed through a music-only `GainNode`
- *   that applies the variant's measured loudness gain.
+ *   that applies `musicGainDb`.
  * - Clip sound (dialogue / VO) streamed like the music (#1845): an
  *   `AudioBufferSink` per clip, a second ahead of the playhead, queued as
  *   `AudioBufferSourceNode`s on the master gain (not attenuated by the music
@@ -16,8 +16,10 @@
  *   `AudioContext` is suspended — the clock and every queued node stop
  *   together — and `onBuffering` fires, instead of dropping frames or
  *   playing the clip silent.
- * - Codec gating up front via `prepare()`; throws so the React component can
- *   render a fallback CTA.
+ * - Codec gating up front via `prepare()`; throws so the host can show its
+ *   own fallback.
+ *
+ * Issue numbers (#…) refer to github.com/openstory-so/openstory.
  *
  * The engine is intentionally not React-aware: it manipulates an externally-
  * provided `HTMLCanvasElement` and surfaces lifecycle via callbacks. The
@@ -33,36 +35,36 @@ import {
   type WrappedAudioBuffer,
   type WrappedCanvas,
 } from 'mediabunny';
-import { createRangedSource } from './ranged-source';
+import { createRangedSource } from './ranged-source.js';
 
 import {
   ConcatenatedVideoSource,
   type ClipAudioTrack,
-} from './concatenated-video-source';
-import type { PlaybackClip } from './playback-clip';
+} from './concatenated-video-source.js';
+import type { PlaybackClip } from './playback-clip.js';
 import {
   forAwaitUntilDisposed,
   isInputDisposedError,
-} from './disposed-iterator';
-import { computeMusicGain } from './music-gain';
-import { type PlayAttemptResult, settlePlayWait } from './play-attempt';
-import type { StitchLogger } from './logger';
+} from './disposed-iterator.js';
+import { computeMusicGain } from './music-gain.js';
+import { type PlayAttemptResult, settlePlayWait } from './play-attempt.js';
+import type { StitchLogger } from './logger.js';
 
 export type SequencePlayerOptions = {
   canvas: HTMLCanvasElement;
-  clips: PlaybackClip[];
+  clips: readonly PlaybackClip[];
   musicUrl: string | null;
   /**
    * Gain in dB applied to the music track only (e.g. a measured loudness
-   * normalization). `null` is 0 dB. Dialogue is not affected.
+   * normalization); 0 for none. Dialogue is not affected.
    */
-  musicGainDb: number | null;
+  musicGainDb: number;
   /**
    * Whether the music track is audible. `false` mutes only the music-only gain
    * node, leaving clip/dialogue audio untouched. Toggle live via
-   * `setMusicEnabled` without re-preparing the engine (#834). Defaults to true.
+   * `setMusicEnabled` without re-preparing the engine (#834).
    */
-  musicEnabled?: boolean;
+  musicEnabled: boolean;
   /** Where non-fatal problems are reported. Defaults to `console`. */
   logger?: StitchLogger;
   /** Clip-open progress during `prepare()` — drives the loading label (#1253). */
@@ -76,10 +78,15 @@ export type SequencePlayerOptions = {
 
 export type SequencePlayerMeta = {
   durationSeconds: number;
-  clipOffsetsSeconds: number[];
+  /** The measured start of each clip, one per clip in order; `[0]` is 0. */
+  clipOffsetsSeconds: readonly number[];
   displayWidth: number;
   displayHeight: number;
   hasAudio: boolean;
+  /** Clips whose embedded sound this browser cannot decode; they play silent. */
+  silentClipIndexes: readonly number[];
+  /** Stills with no picture (none given, or none loaded); they hold on a dark frame. */
+  missingStillIndexes: readonly number[];
   /**
    * True when the clips resolve to more than one distinct native resolution.
    * Playback is normalized to a common target regardless, but the UI should
@@ -115,7 +122,7 @@ export class SequencePlayerEngine {
   private audioContext: AudioContext | null = null;
   /** Master gain — volume + mute. Dialogue routes here directly. */
   private masterGain: GainNode | null = null;
-  /** Music-only gain — applies the music variant's loudness normalization on top of master gain. */
+  /** Music-only gain — applies `musicGainDb` on top of master gain. */
   private musicGain: GainNode | null = null;
   private musicInput: Input | null = null;
   private musicTrack: InputAudioTrack | null = null;
@@ -165,7 +172,7 @@ export class SequencePlayerEngine {
   private disposed = false;
   private volume = 1;
   private muted = false;
-  private musicEnabled = true;
+  private musicEnabled: boolean;
 
   constructor(opts: SequencePlayerOptions) {
     const ctx = opts.canvas.getContext('2d');
@@ -175,7 +182,7 @@ export class SequencePlayerEngine {
     this.opts = opts;
     this.logger = opts.logger ?? console;
     this.canvasContext = ctx;
-    this.musicEnabled = opts.musicEnabled ?? true;
+    this.musicEnabled = opts.musicEnabled;
     this.videoSource = new ConcatenatedVideoSource(opts.clips, this.logger);
   }
 
@@ -183,8 +190,7 @@ export class SequencePlayerEngine {
    * Open every clip's video + the music track, probe decodability, and size
    * the canvas. Must be called once before `play()` / `seek()`.
    *
-   * Throws on undecodable codec — the React component should catch and render
-   * an "Export to download" fallback CTA.
+   * Throws on an undecodable codec so the host can show its own fallback.
    */
   async prepare(): Promise<SequencePlayerMeta> {
     const videoMeta = await this.videoSource.prepare(this.opts.onLoadProgress);
@@ -238,6 +244,8 @@ export class SequencePlayerEngine {
       hasMixedResolutions: videoMeta.hasMixedResolutions,
       hasMixedAspectRatios: videoMeta.hasMixedAspectRatios,
       resolutionsLabel: videoMeta.resolutionsLabel,
+      silentClipIndexes: videoMeta.silentClipIndexes,
+      missingStillIndexes: videoMeta.missingStillIndexes,
     };
 
     await this.primeFirstFrame();
