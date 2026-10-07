@@ -114,3 +114,49 @@ describe('fresh planning checkpoint', () => {
     );
   });
 });
+
+describe('fresh planning free sheets', () => {
+  it('counts a sheet reused by hash at zero, like a copied talent sheet (#2017)', async () => {
+    const { estimatePlanCost } = await import('@/billing/cost-estimation');
+    computeGenerationPlan.mockResolvedValueOnce([
+      {
+        kind: 'sheet:character',
+        id: 'maya',
+        state: 'missing',
+        requires: [],
+        cascaded: false,
+      },
+      {
+        kind: 'sheet:character',
+        id: 'gala',
+        state: 'missing',
+        requires: [],
+        cascaded: false,
+      },
+      {
+        kind: 'sheet:character',
+        id: 'ravi',
+        state: 'missing',
+        requires: [],
+        cascaded: false,
+      },
+    ]);
+    computePlan.mockResolvedValueOnce(
+      // the freeze reads only the free-sheet lists
+      asStub<never>({
+        targets: [],
+        music: null,
+        references: {
+          characterSheets: [{ reuseTalentSheet: true }, {}],
+          reusedSheets: [{ sheetVersionId: 'ep1-gala' }],
+        },
+      })
+    );
+    await freezeFreshGenerationPlan(db, input);
+    expect(vi.mocked(estimatePlanCost)).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        counts: expect.objectContaining({ 'sheet:character': 1 }),
+      })
+    );
+  });
+});
