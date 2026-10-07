@@ -17,6 +17,7 @@ import { GenerateSequenceIcon } from '@/ui/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/cast/ui/location-library/location-suggestion-selector';
 import {
   buildMentionItems,
+  castNamedInScript,
   libraryCharacterIdOf,
   libraryMentionItems,
   type MentionItem,
@@ -1037,8 +1038,13 @@ export const ScriptView: FC<{
         selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
       suggestedLocationIds:
         selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
-      castCharacterIds:
-        castCharacterIds.length > 0 ? castCharacterIds : undefined,
+      // Only the picks the script still names: a pill deleted from the text
+      // is a character the sequence should not cast.
+      castCharacterIds: castNamedInScript(
+        script ?? baseScript ?? '',
+        castCharacterIds,
+        libraryCharacters ?? []
+      ),
       elementUploads:
         draftElements.length > 0
           ? draftElements.map((el) => ({

@@ -72,6 +72,17 @@ Click **Save as talent** to copy the character into your Talent Library instead.
 
 **Characters** in the main navigation lists every character your team has, most recently used first. Pick **Library** to see only the ones in the library. Open a character to see which sequences cast it and how many shots it is in.
 
+## Using a library character in another sequence
+
+A library character is reused only when you say so. Two ways:
+
+- **In the script**, type `@` and pick the character. Its name goes into the script in capitals and it joins the sequence's cast at its current version, with every look. Nothing else is stored in the text. On the new-sequence screen the character is added when you press Generate, as long as its name is still in the script.
+- **On the cast panel**, click **Add from library** and pick the character. No script change.
+
+Analysis then reads the cast you attached: it keeps the character's bible and looks, links the outfits the script uses and adds a look only for an outfit it does not have. A plain name that is not in the cast is a new character; analysis never reaches into the library on its own.
+
+Two characters in one sequence cannot have the same name when one is added from the library: rename one first. If analysis itself makes two characters of one name, rename one before recording dialogue.
+
 ## Real-Time Updates
 
 Character sheet regeneration happens asynchronously. The UI subscribes to real-time events (`generation.character-sheet:progress`) and automatically updates when:
