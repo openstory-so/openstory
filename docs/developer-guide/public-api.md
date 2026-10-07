@@ -133,7 +133,7 @@ curl -X POST https://openstory.so/api/v1/sequences \
     "targetSeconds": 30,
     "motion": true,
     "music": true,
-    "characters": ["Old Tom the keeper", { "name": "The whale", "isHuman": false }],
+    "characters": ["Old Tom the keeper", { "name": "The whale", "description": "a humpback, barnacled and patient" }],
     "locations": ["Stormy lighthouse"]
   }'
 ```

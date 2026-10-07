@@ -816,25 +816,46 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   />
                 )}
                 {!character.talent && !character.voiceOnly && (
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      saveAsTalent.mutate(
-                        { sequenceId, characterId: character.id },
-                        {
-                          onSuccess: () =>
-                            toast.success(
-                              `Saving ${character.name}'s face as talent…`
-                            ),
-                        }
-                      )
-                    }
-                    disabled={
-                      saveAsTalent.isPending || !character.sheetImageUrl
-                    }
-                  >
-                    {saveAsTalent.isPending ? 'Saving…' : 'Save face as talent'}
-                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        saveAsTalent.mutate(
+                          { sequenceId, characterId: character.id },
+                          {
+                            onSuccess: ({ talent }) =>
+                              toast.success(
+                                `Saving ${character.name}'s face as talent…`,
+                                {
+                                  description:
+                                    'The talent is ready when its sheet lands. This character is not recast.',
+                                  action: {
+                                    label: 'Open talent',
+                                    onClick: () =>
+                                      void navigate({
+                                        to: '/talent/$id',
+                                        params: { id: talent.id },
+                                      }),
+                                  },
+                                }
+                              ),
+                          }
+                        )
+                      }
+                      disabled={
+                        saveAsTalent.isPending || !character.sheetImageUrl
+                      }
+                    >
+                      {saveAsTalent.isPending
+                        ? 'Saving…'
+                        : 'Save face as talent'}
+                    </Button>
+                    {!character.sheetImageUrl && (
+                      <span className="text-xs text-muted-foreground">
+                        Needs a sheet first
+                      </span>
+                    )}
+                  </div>
                 )}
                 {!character.voiceOnly && (
                   <Button

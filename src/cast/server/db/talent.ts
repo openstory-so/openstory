@@ -55,6 +55,7 @@ import {
   getTableColumns,
   inArray,
   isNull,
+  notExists,
   or,
   sql,
   type SQL,
@@ -686,25 +687,36 @@ export function createTalentMethods(
       if (!(await getWritableTalent(db, talentId, teamId))) {
         return false;
       }
-      const [named] = await db
-        .select({ n: sql<number>`count(*)`.mapWith(Number) })
-        .from(characterBibleVersions)
-        .where(eq(characterBibleVersions.talentId, talentId));
-      if (named && named.n > 0) {
-        throw new ValidationError(
-          `${named.n} character version${named.n === 1 ? '' : 's'} cast this talent. Recast or delete those characters first.`
-        );
-      }
-
-      // The history goes first (#1862): nothing cascades from `talent`.
+      // One guarded batch: a recast landing between a check and the delete
+      // would otherwise be blanked by the SET NULL FK. The history goes
+      // first under the same guard (#1862): nothing cascades from `talent`,
+      // and a refused delete must leave the versions where they are. The
+      // re-read below only words the refusal, with no count (a public
+      // talent's casts are other teams' business).
+      const unnamed = notExists(
+        db
+          .select({ one: sql`1` })
+          .from(characterBibleVersions)
+          .where(eq(characterBibleVersions.talentId, talentId))
+      );
       const [, result] = await db.batch([
-        db.delete(talentVersions).where(eq(talentVersions.talentId, talentId)),
+        db
+          .delete(talentVersions)
+          .where(and(eq(talentVersions.talentId, talentId), unnamed)),
         db
           .delete(talent)
-          .where(and(eq(talent.id, talentId), eq(talent.teamId, teamId))),
+          .where(
+            and(eq(talent.id, talentId), eq(talent.teamId, teamId), unnamed)
+          ),
       ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result.rowsAffected ?? 0) > 0;
+      if ((result.rowsAffected ?? 0) > 0) return true;
+      if (await getWritableTalent(db, talentId, teamId)) {
+        throw new ValidationError(
+          'Characters still cast this talent. Recast or delete them first.'
+        );
+      }
+      return false;
     },
 
     toggleFavorite: async (talentId: string): Promise<Talent | undefined> => {

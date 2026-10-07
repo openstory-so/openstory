@@ -22,6 +22,19 @@ export function talentSheetUrl(talent: TalentPreviewInput): string | null {
   return talent.referenceSheet?.imageUrl ?? null;
 }
 
+/**
+ * A talent whose face is still being made (#2018): no reference sheet yet,
+ * and a sheet run holds the claim — Save face as talent, or a first Generate.
+ * The picker shows it as preparing and a recast refuses it, so nobody casts
+ * a face that is not there yet by description alone.
+ */
+export function isTalentPreparing(talent: {
+  referenceSheet: SheetLike | null;
+  pendingPromoteSheetId: string | null;
+}): boolean {
+  return !talent.referenceSheet && talent.pendingPromoteSheetId !== null;
+}
+
 export type TalentSquarePreview = {
   url: string | null;
   /** True when `url` is the 4-panel sheet — square tiles must crop to panel 2. */
