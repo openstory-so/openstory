@@ -58,6 +58,14 @@ export async function saveCharacterFaceAsTalent(
   if (!character) {
     throw new Error('Character not found');
   }
+  // A cast character's face IS its talent's (its sheet shows that person,
+  // whether reused or generated from it). A second talent would split that
+  // person's rights from the release on record, so there is nothing to save.
+  if (character.talentId) {
+    throw new ValidationError(
+      `${character.name}'s face is already talent ${character.talent?.name ?? character.talentId}. Cast it from the library instead.`
+    );
+  }
   const sheet = character.selectedSheetVersionId
     ? await scopedDb.characterSheetVariants.getById(
         character.selectedSheetVersionId

@@ -54,12 +54,16 @@ const talentCreate = vi.fn(async (row: { isHuman: boolean }) => ({
 }));
 
 function scopedDb(
-  sheet: { model: string; url: string; workflowRunId: string | null } | null
+  sheet: { model: string; url: string; workflowRunId: string | null } | null,
+  cast: typeof character & {
+    talentId?: string;
+    talent?: { name: string };
+  } = character
 ): ScopedDb {
   // stub covering only what saveCharacterFaceAsTalent reads
   return asStub<ScopedDb>({
     sequences: { getForUser: vi.fn(async () => ({ id: 'seq-1' })) },
-    characters: { getById: vi.fn(async () => character) },
+    characters: { getById: vi.fn(async () => cast) },
     characterSheetVariants: { getById: vi.fn(async () => sheet) },
     talent: { create: talentCreate },
   });
@@ -162,6 +166,25 @@ describe('saveCharacterFaceAsTalent', () => {
     expect(talentCreate).toHaveBeenCalledWith(
       expect.objectContaining({ isHuman: false })
     );
+  });
+
+  it('a character cast with a talent is refused: its face is already that talent', async () => {
+    await expect(
+      saveCharacterFaceAsTalent(
+        scopedDb(
+          {
+            model: 'fal-ai/gpt-image-2',
+            url: '/r2/sheets/gen.png',
+            workflowRunId: 'run-9',
+          },
+          { ...character, talentId: 'tal-0', talent: { name: 'Sienna' } }
+        ),
+        ctx,
+        args
+      )
+    ).rejects.toThrow(/already talent Sienna/);
+    expect(talentCreate).not.toHaveBeenCalled();
+    expect(requireUploadRights).not.toHaveBeenCalled();
   });
 
   it('a character with no sheet is refused', async () => {

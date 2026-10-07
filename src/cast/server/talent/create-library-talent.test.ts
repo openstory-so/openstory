@@ -320,10 +320,10 @@ describe('createLibraryTalent', () => {
     expect(mockFileExists).not.toHaveBeenCalled();
   });
 
-  it('honours isHuman only when there is nothing to check', async () => {
+  it('ignores a client isHuman: with nothing to check there is no person on record (#2018)', async () => {
     await createLibraryTalent({ name: 'Sam', isHuman: true }, makeCtx());
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ isHuman: true })
+      expect.objectContaining({ isHuman: false })
     );
   });
 });
