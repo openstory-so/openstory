@@ -513,7 +513,13 @@ durations). The Mediabunny canvas source yields timed still frames on the same
 timeline as video frames; it does not encode temporary videos. PCM dialogue
 cut files are decoded with `AudioBufferSink` and scheduled on the existing
 audio clock, so pause, seeking, volume and music work across both kinds of
-entry. Rendered clips use only their embedded audio. Theatre play does not
+entry. Rendered clips use only their embedded audio. Every entry also carries
+the shot's lines as subtitles (`shotCues`): each line for the time its reading
+spoke it, in the spoken wording, or every line over the whole shot when there
+is no reading yet. The timing is `ShotView.dialogueTiming` (#1853), derived on
+read from the selected section and its speech's turns (`sectionLineTiming`,
+`getSelectedSectionsBySequence`) — never stored on the clip, so every reading
+ever cut is timed. Theatre play does not
 show lines on screen. Image failures fall back to the preview, then a
 placeholder, preserving the shot's timeline slot. Hard cuts have no
 cross-fades. Mixed previews bypass the cached exported MP4; export continues

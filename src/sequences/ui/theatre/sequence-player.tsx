@@ -14,9 +14,12 @@ import {
   type AspectRatio,
 } from '@/models/aspect-ratios';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
-import type { SequencePlayerMeta } from './playback';
-import type { PlaybackClip } from './concatenated-video-source';
-import { playbackClipsKey } from './playback-clips';
+import {
+  playbackClipsKey,
+  type PlaybackClip,
+  type SequencePlayerMeta,
+} from '@openstory/stitch-player';
+import { getLogger } from '@/platform/logger';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -28,18 +31,16 @@ import {
 import { cn } from '@/ui/utils';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { StitchedPlayer } from '@openstory/stitch-player/react';
+import { useEffect, useRef, useState } from 'react';
 
-// Dynamic, and rendered only after mount — see stitched-player-surface.tsx.
-// `@videojs/store` constructs an AbortController at module scope, which
-// Workerd rejects (#1139). `lazy()` alone is not enough (React invokes the
-// loader during SSR); the `mounted` gate is what keeps the server out of it.
-const StitchedPlayerSurface = lazy(() => import('./stitched-player-surface'));
+const logger = getLogger(['openstory', 'sequence-player']);
 
 type SequencePlayerProps = {
   clips: PlaybackClip[];
   musicUrl: string | null;
-  musicLoudnessGainDb: number | null;
+  /** Gain in dB on the music only (a measured loudness normalization); `null` is 0 dB. */
+  musicGainDb: number | null;
   /**
    * Whether the music track plays. Pushed into the engine's music-only gain
    * node so toggling is live and never re-prepares the player (#834). When
@@ -68,16 +69,10 @@ type SequencePlayerProps = {
   draftLabel?: string | null;
 };
 
-function useMounted(): boolean {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  return mounted;
-}
-
 export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   clips,
   musicUrl,
-  musicLoudnessGainDb,
+  musicGainDb,
   musicEnabled,
   onMusicEnabledChange,
   aspectRatio,
@@ -91,7 +86,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   draftLabel = null,
 }) => {
   const posthog = usePostHog();
-  const mounted = useMounted();
   const clipsKey = playbackClipsKey(clips);
   // Shots that still have no video (#1690) play as stills on the canvas.
   const hasStills = clips.some((clip) => !('videoUrl' in clip));
@@ -130,7 +124,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     setError(null);
     flushWatched(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clipsKey, not clips identity (#1284)
-  }, [clipsKey, musicUrl, musicLoudnessGainDb]);
+  }, [clipsKey, musicUrl, musicGainDb]);
 
   const frameClassName = cn(
     'relative w-full overflow-hidden rounded-lg bg-black',
@@ -268,47 +262,45 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       data-state={meta ? 'ready' : 'loading'}
       className={frameClassName}
     >
-      {mounted ? (
-        <Suspense fallback={null}>
-          <div className="absolute inset-0 h-full w-full">
-            <StitchedPlayerSurface
-              clips={clips}
-              musicUrl={musicUrl}
-              musicLoudnessGainDb={musicLoudnessGainDb}
-              musicEnabled={musicEnabled}
-              autoPlay={autoPlay}
-              onLoadProgress={(loaded) => setLoadedClips(loaded)}
-              onMeta={(next) => {
-                setMeta(next);
-                tracker.setDuration(next.durationSeconds);
-              }}
-              onTimeUpdate={(t) => {
-                tracker.tick(t);
-                onTimeUpdate?.(t, meta?.clipOffsetsSeconds);
-              }}
-              onPlay={() => {
-                if (!tracker.isActive()) tracker.start();
-                captureVideoPlay(posthog, {
-                  source: playSource,
-                  sequence_id: sequenceId,
-                });
-                onAutoPlayConsumed?.();
-              }}
-              onPause={() => flushWatched()}
-              onEnded={() => flushWatched(true)}
-              onError={(reason) => {
-                tracker.dispose();
-                setError(reason);
-                captureVideoPlayFailed(posthog, {
-                  source: playSource,
-                  reason,
-                  sequence_id: sequenceId,
-                });
-              }}
-            />
-          </div>
-        </Suspense>
-      ) : null}
+      <div className="absolute inset-0 h-full w-full">
+        <StitchedPlayer
+          clips={clips}
+          musicUrl={musicUrl}
+          musicGainDb={musicGainDb}
+          musicEnabled={musicEnabled}
+          autoPlay={autoPlay}
+          className="h-full w-full"
+          logger={logger}
+          onLoadProgress={(loaded) => setLoadedClips(loaded)}
+          onMeta={(next) => {
+            setMeta(next);
+            tracker.setDuration(next.durationSeconds);
+          }}
+          onTimeUpdate={(t) => {
+            tracker.tick(t);
+            onTimeUpdate?.(t, meta?.clipOffsetsSeconds);
+          }}
+          onPlay={() => {
+            if (!tracker.isActive()) tracker.start();
+            captureVideoPlay(posthog, {
+              source: playSource,
+              sequence_id: sequenceId,
+            });
+            onAutoPlayConsumed?.();
+          }}
+          onPause={() => flushWatched()}
+          onEnded={() => flushWatched(true)}
+          onError={(reason) => {
+            tracker.dispose();
+            setError(reason);
+            captureVideoPlayFailed(posthog, {
+              source: playSource,
+              reason,
+              sequence_id: sequenceId,
+            });
+          }}
+        />
+      </div>
       {!meta && loading}
       {overlay}
     </div>

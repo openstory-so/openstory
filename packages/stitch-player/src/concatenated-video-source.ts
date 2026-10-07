@@ -2,14 +2,10 @@
  * A "logical" Mediabunny video source that stitches N clip MP4s into a single
  * canvas/packet stream with monotonically-increasing global timestamps.
  *
- * Used by:
- * - The live `<SequencePlayer>` — `canvases(globalTime)` yields `WrappedCanvas`
- *   frames whose timestamp is offset by each clip's cumulative start, so the
- *   player's `AudioContext`-clock-driven render loop can compare against a
- *   single timeline.
- * - The export pipeline — `packets(globalTime)` yields `EncodedPacket`s whose
- *   timestamps are offset the same way, ready to feed into an
- *   `EncodedVideoPacketSource` for transmux into a single MP4.
+ * Used by `SequencePlayerEngine`: `canvases(globalTime)` yields `WrappedCanvas`
+ * frames whose timestamp is offset by each clip's cumulative start, so the
+ * player's `AudioContext`-clock-driven render loop can compare against a
+ * single timeline.
  *
  * Clip durations and display dimensions are precomputed in `prepare()` so that
  * `seek(globalTime)` is O(log N) and the player can build a progress bar before
@@ -19,7 +15,6 @@
 import {
   ALL_FORMATS,
   CanvasSink,
-  EncodedPacket,
   EncodedPacketSink,
   Input,
   type InputAudioTrack,
@@ -35,18 +30,8 @@ import {
   detectMixedResolutions,
   type ClipDimensions,
 } from './resolution';
-import {
-  canTransmuxClips,
-  decoderConfigDescriptionHex,
-  type ClipCodecProbe,
-} from './transmux';
-
-import { getLogger } from '@/platform/logger';
+import type { StitchLogger } from './logger';
 import type { PlaybackClip } from './playback-clip';
-
-export type { PlaybackClip };
-
-const logger = getLogger(['openstory', 'sequence-player', 'concat-source']);
 
 type CanvasFit = 'fill' | 'contain' | 'cover';
 
@@ -94,13 +79,6 @@ export type ConcatenatedVideoMeta = {
    * `"1920×1080, 1280×1280"`. Empty string when uniform.
    */
   resolutionsLabel: string;
-  /**
-   * True when every clip is AVC with a byte-identical decoder config, so the
-   * export can transmux without re-encoding. When false, transmux is unsafe
-   * and the export falls back to decode→normalize→re-encode (`packets()`
-   * refuses to run).
-   */
-  canTransmux: boolean;
 };
 
 export type ClipAudioTrack = {
@@ -122,7 +100,6 @@ type OpenedClip = {
   audioTracks: { track: InputAudioTrack; offset: number }[];
   duration: number;
   dimensions: ClipDimensions;
-  codecProbe: ClipCodecProbe | null;
 };
 
 function closeStill(image: StillFrame | null): void {
@@ -138,8 +115,10 @@ export class ConcatenatedVideoSource {
   private audioTracks: OpenedClip['audioTracks'][] = [];
   private meta: ConcatenatedVideoMeta | null = null;
   private disposed = false;
+  private readonly logger: StitchLogger;
 
-  constructor(clips: PlaybackClip[]) {
+  constructor(clips: PlaybackClip[], logger: StitchLogger = console) {
+    this.logger = logger;
     if (clips.length === 0) {
       throw new Error('ConcatenatedVideoSource: at least one clip is required');
     }
@@ -187,11 +166,6 @@ export class ConcatenatedVideoSource {
     const audioTracks = opened.map((o) => o.audioTracks);
     const clipDurationsSeconds = opened.map((o) => o.duration);
     const clipDimensions = opened.map((o) => o.dimensions);
-    // Codec + decoder-config probes, fed to `canTransmuxClips()` to decide
-    // the fast transmux path vs. decode→re-encode.
-    const codecProbes = opened.flatMap((o) =>
-      o.codecProbe ? [o.codecProbe] : []
-    );
 
     const clipOffsetsSeconds: number[] = [];
     let acc = 0;
@@ -225,8 +199,6 @@ export class ConcatenatedVideoSource {
       resolutionsLabel: hasMixedResolutions
         ? describeResolutions(videoDimensions)
         : '',
-      canTransmux:
-        codecProbes.length === opened.length && canTransmuxClips(codecProbes),
     };
     return this.meta;
   }
@@ -258,7 +230,7 @@ export class ConcatenatedVideoSource {
           break;
         } catch (error) {
           if (this.abort.signal.aborted) throw error;
-          logger.warn('Sequence preview image unavailable', { error });
+          this.logger.warn('Sequence preview image unavailable', { error });
         }
       }
       const audioTracks: OpenedClip['audioTracks'] = [];
@@ -294,7 +266,6 @@ export class ConcatenatedVideoSource {
         audioTracks,
         duration: audioDuration || clip.durationSeconds,
         dimensions: { width: clip.width, height: clip.height },
-        codecProbe: null,
       };
     } catch (error) {
       for (const input of inputs) input.dispose();
@@ -363,19 +334,6 @@ export class ConcatenatedVideoSource {
       );
     }
 
-    // Probe transmux-safety inputs; the verdict is computed once in `prepare()`
-    // after every clip is open (see `canTransmuxClips`) and stored on
-    // `meta.canTransmux`.
-    const codec = await videoTrack.getCodec();
-    const decoderConfig =
-      codec === 'avc' ? await videoTrack.getDecoderConfig() : null;
-    const codecProbe: ClipCodecProbe = {
-      codec,
-      descriptionHex: decoderConfig
-        ? decoderConfigDescriptionHex(decoderConfig)
-        : '',
-    };
-
     // Embedded clip audio (dialogue / VO). Best-effort: clips without an
     // audio track or with an undecodable codec are silent; the rest are
     // mixed by the player + export.
@@ -390,7 +348,6 @@ export class ConcatenatedVideoSource {
       audioTracks: usableAudio ? [{ track: usableAudio, offset: 0 }] : [],
       duration,
       dimensions: { width, height },
-      codecProbe,
     };
   }
 
@@ -531,71 +488,11 @@ export class ConcatenatedVideoSource {
         // Swallow cleanup rejections so they can't clobber an in-flight
         // decode error — the original throw is the one worth surfacing.
         await iterator.return().catch((err: unknown) => {
-          logger.warn(
+          this.logger.warn(
             `ConcatenatedVideoSource: canvas iterator cleanup failed for clip ${clipIndex}`,
             { err }
           );
         });
-      }
-    }
-  }
-
-  /**
-   * Export iterator: yields raw `EncodedPacket`s with offset timestamps,
-   * suitable for feeding to `EncodedVideoPacketSource.add()` in the export
-   * pipeline. Transmux-compatibility is decided once in `prepare()` (stored
-   * on `meta.canTransmux`); this refuses to run when it's false rather than
-   * re-deriving the verdict, so the two code paths can't drift.
-   */
-  async *packets(
-    options: { signal?: AbortSignal } = {}
-  ): AsyncGenerator<
-    { packet: EncodedPacket; decoderConfig: VideoDecoderConfig | null },
-    void,
-    unknown
-  > {
-    const { signal } = options;
-    const meta = this.getMeta();
-
-    if (!meta.canTransmux) {
-      throw new Error(
-        'ConcatenatedVideoSource.packets(): clips are not transmux-compatible (mixed codecs or decoder configs); use the re-encode path instead.'
-      );
-    }
-
-    let firstPacketEmitted = false;
-
-    for (let clipIndex = 0; clipIndex < this.videoTracks.length; clipIndex++) {
-      if (signal?.aborted) return;
-
-      const videoTrack = this.videoTracks[clipIndex];
-      const offset = meta.clipOffsetsSeconds[clipIndex];
-      if (!videoTrack || offset === undefined) continue;
-
-      // Only the first emitted packet carries the decoder config; the
-      // canTransmux gate above guarantees every clip's config is identical.
-      const decoderConfig = firstPacketEmitted
-        ? null
-        : await videoTrack.getDecoderConfig();
-
-      const sink = new EncodedPacketSink(videoTrack);
-      for await (const packet of sink.packets()) {
-        if (signal?.aborted) return;
-        const offsetTimestamp = packet.timestamp + offset;
-        const offsetPacket = new EncodedPacket(
-          packet.data,
-          packet.type,
-          offsetTimestamp,
-          packet.duration,
-          undefined,
-          packet.byteLength,
-          packet.sideData
-        );
-        yield {
-          packet: offsetPacket,
-          decoderConfig: firstPacketEmitted ? null : decoderConfig,
-        };
-        firstPacketEmitted = true;
       }
     }
   }

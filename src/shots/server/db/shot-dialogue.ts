@@ -252,6 +252,39 @@ export function createShotDialogueMethods(db: Database) {
     },
 
     /**
+     * Every shot's selected section with its speech's turns, for one
+     * sequence (#1853) — the shot view derives line timing from it.
+     */
+    getSelectedSectionsBySequence: async (
+      sequenceId: string
+    ): Promise<
+      Array<{
+        shotId: string;
+        fromSeconds: number;
+        speechTurns: DialogueSpeechTurn[];
+      }>
+    > =>
+      db
+        .select({
+          shotId: shotDialogueSections.shotId,
+          fromSeconds: shotDialogueSections.fromSeconds,
+          speechTurns: dialogueSpeeches.turns,
+        })
+        .from(shotDialogueSections)
+        .innerJoin(shots, eq(shots.id, shotDialogueSections.shotId))
+        .innerJoin(
+          dialogueSpeeches,
+          eq(dialogueSpeeches.id, shotDialogueSections.speechId)
+        )
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            isNull(shots.deletedAt),
+            isNotNull(shotDialogueSections.selectedAt)
+          )
+        ),
+
+    /**
      * Append the lines as a new selected version. Returns the selected row
      * UNCHANGED when it already says exactly this — a re-analysis, a replayed
      * workflow step and a Save with no edit all land here, and each would

@@ -20,6 +20,7 @@
         "@logtape/redaction": "^2.3.10",
         "@modelcontextprotocol/server": "2.1.0",
         "@openrouter/sdk": "0.13.20",
+        "@openstory/stitch-player": "workspace:*",
         "@opentelemetry/api": "^1.9.1",
         "@opentelemetry/exporter-metrics-otlp-http": "^0.222.0",
         "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
@@ -129,6 +130,23 @@
         "wrangler": "^4.142.0",
         "ws": "^8.22.0",
       },
+    },
+    "packages/stitch-player": {
+      "name": "@openstory/stitch-player",
+      "version": "0.1.0",
+      "dependencies": {
+        "mediabunny": "^1.60.0",
+      },
+      "peerDependencies": {
+        "@videojs/media": "^10.0.0-beta.26",
+        "@videojs/react": "^10.0.0-beta.26",
+        "react": "^19.0.0",
+      },
+      "optionalPeers": [
+        "@videojs/media",
+        "@videojs/react",
+        "react",
+      ],
     },
   },
   "overrides": {
@@ -601,6 +619,8 @@
     "@open-draft/until": ["@open-draft/until@2.1.0", "", {}, "sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg=="],
 
     "@openrouter/sdk": ["@openrouter/sdk@0.13.20", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-fx4o19FHgadEldfrSOgSbXAi32hCE3O708q1nxcoxYrW6fP6/WggX3o5PmnlnObzmxrqLMkZpqg188K+Twguhg=="],
+
+    "@openstory/stitch-player": ["@openstory/stitch-player@workspace:packages/stitch-player"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 

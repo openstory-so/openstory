@@ -7,7 +7,9 @@ import {
 } from '@videojs/media';
 
 import type { SequencePlayerMeta, SequencePlayerOptions } from './playback';
-import { asStub } from '@/test/as-stub';
+
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the single test-double cast
+const asStub = <T>(stub: unknown): T => stub as T;
 
 const { mocks, lastOpts } = vi.hoisted(() => {
   const lastOpts: { current: SequencePlayerOptions | null } = { current: null };
@@ -59,7 +61,7 @@ const meta: SequencePlayerMeta = {
 const source = {
   clips: [{ orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null }],
   musicUrl: '/music.mp3' as string | null,
-  musicLoudnessGainDb: null as number | null,
+  musicGainDb: null as number | null,
   musicEnabled: true,
 };
 
@@ -292,5 +294,57 @@ describe('StitchedSequenceMedia source identity', () => {
     media.destroy();
     expect(mocks.dispose).toHaveBeenCalledOnce();
     expect(media.engine).toBeNull();
+  });
+});
+
+describe('StitchedSequenceMedia subtitles', () => {
+  const cued = {
+    ...source,
+    clips: [
+      {
+        orderIndex: 0,
+        videoUrl: '/a.mp4',
+        posterUrl: null,
+        cues: [{ startSeconds: 1, endSeconds: 3, text: 'Hello' }],
+      },
+    ],
+  };
+
+  it('exposes a showing subtitle track only when a clip has cues', async () => {
+    const media = await preparedMedia();
+    expect(media.textTracks.length).toBe(0);
+    const added = vi.fn();
+    media.textTracks.addEventListener('addtrack', added);
+    media.setSource(cued);
+    expect(added).toHaveBeenCalledOnce();
+    expect(media.textTracks[0]?.kind).toBe('subtitles');
+    expect(media.textTracks[0]?.mode).toBe('showing');
+    // Cues are not media: no rebuild.
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+    media.setSource(source);
+    expect(media.textTracks.length).toBe(0);
+  });
+
+  it('starts disabled when asked, and a mode write notifies the list', async () => {
+    const media = await preparedMedia();
+    media.setSource({ ...cued, subtitles: false });
+    const changed = vi.fn();
+    media.textTracks.addEventListener('change', changed);
+    const track = media.textTracks[0];
+    expect(track?.mode).toBe('disabled');
+    if (track) track.mode = 'showing';
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
+  it('activeCueText follows the playhead and the track mode', async () => {
+    const media = await preparedMedia();
+    media.setSource(cued);
+    lastOpts.current?.onTimeUpdate?.(0.5);
+    expect(media.activeCueText).toBeNull();
+    lastOpts.current?.onTimeUpdate?.(2);
+    expect(media.activeCueText).toBe('Hello');
+    const track = media.textTracks[0];
+    if (track) track.mode = 'disabled';
+    expect(media.activeCueText).toBeNull();
   });
 });
