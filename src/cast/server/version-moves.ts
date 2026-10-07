@@ -185,6 +185,23 @@ export async function moveCastsToCurrent(
   characterId: string,
   sequenceIds: readonly string[]
 ): Promise<{ sequenceId: string; moved: boolean }[]> {
+  // Every named sequence must be the team's (the check
+  // `sequenceAccessMiddleware` makes) and must cast the character through a
+  // live link, before anything is written: an id outside that set refuses
+  // the whole call, never a partial move.
+  const live = new Set(
+    (await scopedDb.characters.listCastOfCharacter(characterId)).map(
+      (cast) => cast.sequenceId
+    )
+  );
+  for (const sequenceId of sequenceIds) {
+    if (
+      !live.has(sequenceId) ||
+      (await scopedDb.sequences.getById(sequenceId)) === null
+    ) {
+      throw new NotFoundError('Sequence not found');
+    }
+  }
   const results: { sequenceId: string; moved: boolean }[] = [];
   for (const sequenceId of sequenceIds) {
     const { moved } = await scopedDb.characters.moveCastToCurrent(
