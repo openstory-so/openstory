@@ -111,16 +111,21 @@ What this buys:
   touched without a bible change (a claim, a voice) is no longer named. An
   artifact older than the row's history falls back to the old timestamp guess.
   Characters, locations and elements come from `resolveShotReferences`: the
-  union of what the shot's visual and motion prompts name, the same
+  union of what the shot's stale prompts name, the same
   resolution each prompt hash and the clip's `referenceKeys` compare use. A
   living-room shot does not name a bathroom edited elsewhere in the
   sequence, and a prompt that names no one does not name the scene's cast.
+  A channel with nothing stale names nothing: a reference-only shot's
+  unwritten visual prompt does not pull in the scene's cast.
   Every prompt digest is stamped and verified through the same view
   (`narrowShotPromptContext` takes a required `ShotPromptView`: the channel
   and its text). A digest stamped on the scene roster before #2012 is
   accepted at verify, when the stamp's spec is still the selected spec,
-  until `LEGACY_HASH_UNTIL`; it goes stale when any bible on that roster
-  moves, as it always did.
+  until `LEGACY_HASH_UNTIL`. Verify reads each roster character and
+  location the prompt does not name as its bible stood at the stamp (bible
+  history; a character's clothing from its default look's history, #2015), so the digest goes stale only when someone or somewhere the
+  shot shows moves. Elements keep no history, so an off-shot element edit
+  still stales it.
 - **The hash edge stays a hash edge.** The sheet and prompt hashes read more
   than the bible (talent, style, model, the scene), so a pointer compare
   could not replace them without moving every stored digest.

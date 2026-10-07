@@ -11,9 +11,16 @@ import {
 import { Input } from '@/ui/shadcn/input';
 import { Label } from '@/ui/shadcn/label';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import {
+  giftCodeSubmitAllowed,
+  normalizeGiftCode,
+  type GiftRedeemReason,
+} from '@/billing/gift-redeem';
+import { GiftRedeemNotice } from '@/billing/ui/gift-redeem-notice';
 import { triggerBalanceFlash } from '@/billing/ui/use-balance-flash';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
+import { errorMessage } from '@/platform/errors';
 import { copyTextToClipboard } from '@/ui/clipboard';
 import {
   batchCreateGiftTokensFn,
@@ -25,7 +32,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, Copy, Gift, Layers, LinkIcon, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 const RETURN_KEY = 'openstory:billing-return';
@@ -53,11 +60,32 @@ function RedeemSection() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [code, setCode] = useState('');
+  const [lockedCode, setLockedCode] = useState<string | null>(null);
+  const [refusal, setRefusal] = useState<GiftRedeemReason | null>(null);
+  const [transientError, setTransientError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const lockedCodeRef = useRef<string | null>(null);
+  const pendingCode = useRef<string | null>(null);
 
   const redeemMutation = useMutation({
     mutationFn: (input: { code: string }) => redeemGiftTokenFn({ data: input }),
     onSuccess: (result) => {
+      const submitted = pendingCode.current;
+      if (result.status === 'refused') {
+        if (submitted) {
+          lockedCodeRef.current = submitted;
+          setLockedCode(submitted);
+        }
+        setRefusal(result.reason);
+        setTransientError(null);
+        return;
+      }
+
       setCode('');
+      setRefusal(null);
+      setLockedCode(null);
+      lockedCodeRef.current = null;
+      setTransientError(null);
       triggerBalanceFlash();
       void queryClient.invalidateQueries({
         queryKey: [...BILLING_BALANCE_KEY],
@@ -84,15 +112,38 @@ function RedeemSection() {
       }
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Failed to redeem code');
+      setTransientError(errorMessage(err, 'Failed to redeem code'));
     },
+    onSettled: () => {
+      inFlight.current = false;
+      pendingCode.current = null;
+    },
+  });
+
+  const normalized = normalizeGiftCode(code);
+  const locked = lockedCode !== null && lockedCode === normalized;
+  const submitAllowed = giftCodeSubmitAllowed({
+    code,
+    pending: redeemMutation.isPending,
+    lockedCode,
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const trimmed = code.trim();
-    if (!trimmed) return;
-    redeemMutation.mutate({ code: trimmed });
+    if (
+      inFlight.current ||
+      !giftCodeSubmitAllowed({
+        code,
+        pending: redeemMutation.isPending,
+        lockedCode: lockedCodeRef.current,
+      })
+    ) {
+      return;
+    }
+    inFlight.current = true;
+    pendingCode.current = normalized;
+    setTransientError(null);
+    redeemMutation.mutate({ code: normalized });
   };
 
   return (
@@ -110,7 +161,7 @@ function RedeemSection() {
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
         <form onSubmit={handleSubmit} className="flex gap-3">
           <Input
             name="code"
@@ -123,13 +174,16 @@ function RedeemSection() {
             spellCheck={false}
             required
           />
-          <Button
-            type="submit"
-            disabled={!code.trim() || redeemMutation.isPending}
-          >
+          <Button type="submit" disabled={!submitAllowed}>
             {redeemMutation.isPending ? 'Redeeming…' : 'Redeem'}
           </Button>
         </form>
+        {locked && refusal ? <GiftRedeemNotice reason={refusal} /> : null}
+        {!locked && transientError ? (
+          <Alert variant="destructive">
+            <AlertDescription>{transientError}</AlertDescription>
+          </Alert>
+        ) : null}
       </CardContent>
     </Card>
   );

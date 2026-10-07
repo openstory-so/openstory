@@ -4,12 +4,12 @@
  *
  * Wiring (in the source Worker's wrangler.jsonc):
  *
- *   "streaming_tail_consumers": [{ "service": "openstory-log-forwarder-prd" }]
+ *   "tail_consumers": [{ "service": "openstory-log-forwarder-prd" }]
  *
- * The streaming feed (`tailStream`) opens one handler per invocation; every
- * event carries Cloudflare's trace context, so each record gets the same
- * trace/span id as the trace Cloudflare exports to PostHog, and PostHog links
- * the two. For each invocation we:
+ * `tail()` gets a batch of finished invocations. `tailStream()` would stamp
+ * each record with Cloudflare's trace id so PostHog links logs to traces, but
+ * Cloudflare never called it when wired as a streaming consumer (#1974), so
+ * nothing uses it today. For each invocation we:
  *   1. Try to parse each log line as our LogTape JSON shape and lift its
  *      fields onto an OTLP log record (`body` = the rendered template,
  *      attributes = `logger` + LogTape `properties`).
@@ -99,9 +99,7 @@ const MAX_BODY_BYTES = 4000;
 const FLUSH_EVERY = 100;
 
 export default {
-  // Legacy `tail_consumers` feed: no trace context. Kept so logs keep flowing
-  // while the forwarder and the source Worker deploy in turn; delete once
-  // prod and previews both run on `streaming_tail_consumers`.
+  // The `tail_consumers` feed prod and previews use. No trace context.
   async tail(
     events: TailEvent[],
     env: Env,
