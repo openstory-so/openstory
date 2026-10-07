@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isTalentPreparing,
   talentSheetUrl,
   talentSquareImageClassName,
   talentSquarePreview,
@@ -62,5 +63,22 @@ describe('talentSquareImageClassName', () => {
     const headshot = talentSquareImageClassName(false).split(' ');
     expect(headshot).toEqual(expect.arrayContaining(['w-full', 'object-top']));
     expect(headshot).not.toContain('w-[400%]');
+  });
+});
+
+describe('isTalentPreparing', () => {
+  it('is preparing only with no reference sheet AND a held sheet claim (#2018)', () => {
+    expect(
+      isTalentPreparing({ referenceSheet: null, pendingPromoteSheetId: 'run' })
+    ).toBe(true);
+    expect(
+      isTalentPreparing({ referenceSheet: null, pendingPromoteSheetId: null })
+    ).toBe(false);
+    expect(
+      isTalentPreparing({
+        referenceSheet: { imageUrl: SHEET },
+        pendingPromoteSheetId: 'run',
+      })
+    ).toBe(false);
   });
 });

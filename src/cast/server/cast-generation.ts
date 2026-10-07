@@ -9,6 +9,7 @@ import { safeTextToImageModel } from '@/models/models';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
+import { isTalentPreparing } from '@/cast/talent-preview';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
 import { requireCharacter } from '@/cast/server/cast-edit';
@@ -209,8 +210,15 @@ export async function recastCharacter(
     throw new NotFoundError('Talent not found');
   }
   assertTalentAccessible(talentWithSheets, scopedDb.teamId);
-  // The talent's face is its reference sheet (#2018); a talent with none yet
-  // is cast by description alone.
+  // The talent's face is its reference sheet (#2018). While a sheet run is
+  // still making the first one (Save face as talent, a first Generate) the
+  // cast is refused here, where the UI and MCP both pass: casting by
+  // description alone would quietly give another face.
+  if (isTalentPreparing(talentWithSheets)) {
+    throw new ValidationError(
+      `${talentWithSheets.name}'s face is still being prepared. Recast once its sheet has landed.`
+    );
+  }
   const referenceSheet = talentWithSheets.referenceSheet;
 
   // Merge talent appearance with character role attributes. Only the face
