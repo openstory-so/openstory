@@ -19,9 +19,11 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import { z } from 'zod';
 import type { Database } from '@/platform/server/db/client';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -55,6 +57,7 @@ import {
   characters,
   sequenceCast,
   sequenceCastLooks,
+  sequences,
   shots,
   talent,
 } from '@/platform/server/db/schema';
@@ -83,6 +86,7 @@ import {
 import {
   createCharacterLooksMethods,
   deleteLooksOfCharacters,
+  liveLookSheetVersionId,
   lookDefinitionWrite,
   requireLook,
 } from './character-looks';
@@ -276,6 +280,36 @@ const characterColumns = {
   voiceId: characterVoiceVersions.voiceId,
   voiceDescription: characterVoiceVersions.description,
   voicePreviews: characterVoiceVersions.previews,
+};
+
+/** What `json_group_array` returns for one character's sequences. */
+const teamCastSchema = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    updatedAt: z.number(),
+    sheetImageUrl: z.string().nullable(),
+  })
+);
+
+/**
+ * One of the team's characters as the team sees it (#2017): its current
+ * bible, the library flag and the sequences that cast it. No sequence's pin
+ * is read, so it answers for a character in no sequence, or in several.
+ */
+export type TeamCharacter = {
+  id: string;
+  name: string;
+  physicalDescription: string | null;
+  voiceOnly: boolean;
+  inLibrary: boolean;
+  /** When a sequence casting it last changed; null when none casts it. */
+  lastUsedAt: Date | null;
+  /**
+   * The live sequences that cast it, the most recently changed first, each
+   * with the default look's sheet as that sequence selected it.
+   */
+  sequences: { id: string; title: string; sheetImageUrl: string | null }[];
 };
 
 const RELEASED_VOICE_MESSAGE =
@@ -705,7 +739,107 @@ export function createCharactersMethods(db: Database, teamId: string) {
     });
   };
 
+  /**
+   * The team's characters with the sequences that cast them, in ONE grouped
+   * read over the cast links: nothing about a sequence is stored on the
+   * character. A removed link and an archived sequence do not count.
+   *
+   * Order: the most recently changed sequence casting it, then how many
+   * sequences cast it. A character nothing casts and the library does not
+   * hold is as good as gone, and is left out.
+   */
+  const selectTeam = async (
+    where: SQL | undefined
+  ): Promise<TeamCharacter[]> => {
+    const lastUsedAt = sql`max(${sequences.updatedAt})`;
+    const castCount = sql`count(${sequences.id})`;
+    const rows = await db
+      .select({
+        id: characters.id,
+        inLibrary: characters.inLibrary,
+        name: characterBibleColumns.name,
+        physicalDescription: characterBibleColumns.physicalDescription,
+        voiceOnly: characterBibleColumns.voiceOnly,
+        lastUsedAt: lastUsedAt.mapWith(sequences.updatedAt),
+        cast: sql<string>`json_group_array(json_object('id', ${sequences.id}, 'title', ${sequences.title}, 'updatedAt', ${sequences.updatedAt}, 'sheetImageUrl', ${characterSheetVariants.url})) FILTER (WHERE ${sequences.id} IS NOT NULL)`,
+      })
+      .from(characters)
+      .leftJoin(
+        characterBibleVersions,
+        eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+      )
+      .leftJoin(
+        sequenceCast,
+        and(
+          eq(sequenceCast.characterId, characters.id),
+          isNull(sequenceCast.removedAt)
+        )
+      )
+      .leftJoin(
+        sequences,
+        and(
+          eq(sequences.id, sequenceCast.sequenceId),
+          ne(sequences.status, 'archived')
+        )
+      )
+      .leftJoin(
+        characterLooks,
+        and(
+          eq(characterLooks.characterId, characters.id),
+          eq(characterLooks.isDefault, true)
+        )
+      )
+      .leftJoin(
+        sequenceCastLooks,
+        and(
+          eq(sequenceCastLooks.castId, sequenceCast.id),
+          eq(sequenceCastLooks.lookId, characterLooks.id)
+        )
+      )
+      .leftJoin(
+        characterSheetVariants,
+        eq(characterSheetVariants.id, liveLookSheetVersionId)
+      )
+      .where(and(inTeam, where))
+      .groupBy(characters.id)
+      .having(sql`${characters.inLibrary} OR ${castCount} > 0`)
+      .orderBy(
+        sql`${lastUsedAt} DESC NULLS LAST`,
+        sql`${castCount} DESC`,
+        asc(characterBibleColumns.name),
+        asc(characters.id)
+      );
+    return rows.map(({ cast, ...row }) => ({
+      ...row,
+      sequences: teamCastSchema
+        .parse(JSON.parse(cast))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map(({ updatedAt: _updatedAt, ...sequence }) => sequence),
+    }));
+  };
+
   return {
+    /**
+     * The team's characters (#2017), sorted by use; see {@link selectTeam}.
+     * `inLibrary: true` narrows them to the library.
+     */
+    // ponytail: the whole list in one read; page it when a team passes a few thousand characters.
+    listTeam: async (opts: { inLibrary: boolean }): Promise<TeamCharacter[]> =>
+      await selectTeam(
+        opts.inLibrary ? eq(characters.inLibrary, true) : undefined
+      ),
+
+    /** One of the team's characters, with the sequences that cast it. */
+    getTeamCharacter: async (id: string): Promise<TeamCharacter | null> =>
+      (await selectTeam(eq(characters.id, id)))[0] ?? null,
+
+    /**
+     * Put the character in the team library, or take it out (#2017). A flag
+     * on the character itself: nothing is copied, and no cast link moves.
+     */
+    setInLibrary: async (id: string, inLibrary: boolean): Promise<void> =>
+      await update(id, { inLibrary }),
+
     /** The character as `sequenceId` casts it, live or removed. */
     getById: async (
       sequenceId: string,

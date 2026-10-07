@@ -5,6 +5,7 @@ import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog'
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { SheetVersionStrip } from '@/cast/ui/sheets/sheet-version-strip';
 import { wearLook } from '@/cast/character-looks';
+import { CharacterLibraryButton } from '@/cast/ui/character-library/character-library-button';
 import { CharacterLooksRow } from '@/cast/ui/talent/character-looks-row';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Badge } from '@/ui/shadcn/badge';
@@ -24,7 +25,6 @@ import {
 import {
   restoreSequenceCharacter,
   sequenceCharacterKeys,
-  useAddCharacterToLibrary,
   useCharacterSheetStaleness,
   useRegenerateCharacterSheet,
   useShotIdsForCharacter,
@@ -56,15 +56,7 @@ import { estimateImageCost } from '@/billing/cost-estimation';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import {
-  ArrowLeft,
-  Library,
-  Loader2,
-  Mic,
-  RefreshCw,
-  Trash2,
-  User,
-} from 'lucide-react';
+import { ArrowLeft, Loader2, Mic, RefreshCw, Trash2, User } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CharacterBibleForm } from './character-bible-form';
@@ -76,11 +68,17 @@ import { AppImage } from '@/ui/shadcn/app-image';
 type CharacterDetailViewProps = {
   sequenceId: string;
   characterId: string;
+  /**
+   * `sequence`: its own header, with the way back to the sequence's cast.
+   * `none`: the page around it names the character (the Characters page).
+   */
+  header: 'sequence' | 'none';
 };
 
 export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   sequenceId,
   characterId,
+  header,
 }) => {
   const queryClient = useQueryClient();
   const {
@@ -88,7 +86,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     isLoading,
     error,
   } = useSequenceCharacters(sequenceId);
-  const addToLibrary = useAddCharacterToLibrary();
   const recastCharacter = useRecastCharacter();
   const regenerateSheet = useRegenerateCharacterSheet();
   const { data: sequence } = useSequence(sequenceId);
@@ -460,17 +457,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {/* Header with back button */}
-      <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
-        <Link
-          to="/sequences/$id/cast"
-          params={{ id: sequenceId }}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="text-lg font-semibold">{character.name}</h1>
-      </div>
+      {header === 'sequence' && (
+        <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
+          <Link
+            to="/sequences/$id/cast"
+            params={{ id: sequenceId }}
+            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h1 className="text-lg font-semibold">{character.name}</h1>
+        </div>
+      )}
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-6 p-4">
@@ -628,15 +626,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
               )}
 
               <div className="flex flex-wrap gap-2">
-                {!character.talent && !character.voiceOnly && (
-                  <Button
-                    variant="outline"
-                    onClick={() => addToLibrary.mutate(character.id)}
-                    disabled={addToLibrary.isPending}
-                  >
-                    <Library className="mr-2 h-4 w-4" />
-                    {addToLibrary.isPending ? 'Adding…' : 'Add to Library'}
-                  </Button>
+                {header === 'sequence' && (
+                  <CharacterLibraryButton
+                    characterId={character.id}
+                    inLibrary={character.inLibrary}
+                  />
                 )}
                 {!character.voiceOnly && (
                   <Button

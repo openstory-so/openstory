@@ -28,7 +28,6 @@ import {
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
-import { addCharacterToLibraryFn } from '@/cast/talent.fn';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
@@ -69,23 +68,6 @@ export function useSequenceCharacters(sequenceId: string) {
     staleTime: 30_000,
     refetchOnWindowFocus: true,
     enabled: !!sequenceId,
-  });
-}
-
-/**
- * Hook for adding a sequence character to the team's talent library
- */
-export function useAddCharacterToLibrary() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: { globalError: true },
-    mutationFn: (characterId: string) =>
-      addCharacterToLibraryFn({ data: { characterId } }),
-    onSuccess: () => {
-      // Invalidate talent queries to refresh library
-      void queryClient.invalidateQueries({ queryKey: ['talent'] });
-    },
   });
 }
 

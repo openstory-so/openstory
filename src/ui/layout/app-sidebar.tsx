@@ -131,7 +131,7 @@ const navLinks = [
     ? [{ to: '/models', label: 'Models', icon: Boxes } as const]
     : []),
   { to: '/styles', label: 'Styles', icon: Palette },
-  { to: '/talent', label: 'Talent', icon: Users },
+  { to: '/characters', label: 'Characters', icon: Users },
   { to: '/locations', label: 'Locations', icon: MapPin },
   { to: '/gallery', label: 'Gallery', icon: Clapperboard },
 ] as const;

@@ -38,17 +38,47 @@ function waitForTalentPageLoad(page: import('playwright/test').Page) {
 
 test.describe('Talent Library', () => {
   test('can access talent page', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
-    await expect(page).toHaveURL(/\/talent/);
+    await expect(page).toHaveURL(/\/characters\?tab=talent/);
     await expect(
       page.getByRole('heading', { name: 'Talent Library' })
     ).toBeVisible();
   });
 
-  test('has Add Talent button', async ({ page }) => {
+  test('/talent redirects to the Talent tab of Characters', async ({
+    page,
+  }) => {
     await page.goto('/talent');
+    await waitForTalentPageLoad(page);
+
+    await expect(page).toHaveURL(/\/characters\?tab=talent/);
+    await expect(page.getByRole('tab', { name: 'Talent' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+  });
+
+  test('signed out, Characters opens on Talent and the Characters tab asks to sign in', async ({
+    page,
+  }) => {
+    await page.goto('/characters');
+    await waitForTalentPageLoad(page);
+
+    await expect(page.getByRole('tab', { name: 'Talent' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await page.getByRole('tab', { name: 'Characters' }).click();
+    await expect(page).toHaveURL(/\/characters\?tab=characters/);
+    await expect(
+      page.getByRole('heading', { name: 'Sign in to see your characters' })
+    ).toBeVisible();
+  });
+
+  test('has Add Talent button', async ({ page }) => {
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     const addButton = page.getByRole('button', {
@@ -67,7 +97,7 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   });
 
   testWithUser('can open Add Talent dialog', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     // Click Add Talent button
@@ -90,7 +120,7 @@ testWithUser.describe('Add Talent with Reference Media', () => {
     async ({ page, testUser }) => {
       const uniqueName = `E2E Test Actor ${crypto.randomUUID().slice(0, 8)}`;
 
-      await page.goto('/talent');
+      await page.goto('/characters?tab=talent');
       await waitForTalentPageLoad(page);
 
       // Click Add Talent button
@@ -261,7 +291,7 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   testWithUser('shows the picked file while it uploads', async ({ page }) => {
     const uniqueName = `Test Upload Progress ${crypto.randomUUID().slice(0, 8)}`;
 
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     // Click Add Talent button
@@ -290,7 +320,7 @@ testWithUser.describe('Add Talent with Reference Media', () => {
   });
 
   testWithUser('can cancel Add Talent dialog', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     // Click Add Talent button
@@ -396,7 +426,7 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
   });
 
   testWithUser('can view talent detail page with media', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     // Click on the talent card to view details (use variable, not hardcoded)
@@ -414,7 +444,7 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
   testWithUser(
     'can open edit dialog from talent detail page',
     async ({ page }) => {
-      await page.goto('/talent');
+      await page.goto('/characters?tab=talent');
       await waitForTalentPageLoad(page);
 
       // Click on the talent to view details
@@ -440,7 +470,7 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
   // enough cards exhausted the browser's connection budget with per-card SSE
   // streams, so the update POST could never be sent. Fixed by multiplexing.
   testWithUser('can update talent name and description', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
     await openLibraryCard(page, testTalent.name, TALENT_DETAIL_URL);
 
@@ -473,7 +503,7 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
   });
 
   testWithUser('can add media to existing talent', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
     await openLibraryCard(page, testTalent.name, TALENT_DETAIL_URL);
 
@@ -494,7 +524,7 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
   });
 
   testWithUser('displays existing media in edit dialog', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
     await openLibraryCard(page, testTalent.name, TALENT_DETAIL_URL);
 
@@ -518,7 +548,7 @@ testWithUser.describe('Edit Talent with Reference Media', () => {
   });
 
   testWithUser('can cancel edit dialog without saving', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
     await openLibraryCard(page, testTalent.name, TALENT_DETAIL_URL);
 
@@ -569,7 +599,7 @@ testWithUser.describe('Talent with Media - List View', () => {
   });
 
   testWithUser('displays multiple talents in grid', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     await expect(page.getByText(testTalentAlpha.name)).toBeVisible();
@@ -577,7 +607,7 @@ testWithUser.describe('Talent with Media - List View', () => {
   });
 
   testWithUser('can navigate between talent detail pages', async ({ page }) => {
-    await page.goto('/talent');
+    await page.goto('/characters?tab=talent');
     await waitForTalentPageLoad(page);
 
     // Click first talent
@@ -587,7 +617,11 @@ testWithUser.describe('Talent with Media - List View', () => {
     ).toBeVisible();
 
     // Go back to list
-    await returnToLibraryList(page, 'Back to Talent', /\/talent(\?|$)/);
+    await returnToLibraryList(
+      page,
+      'Back to Talent',
+      /\/characters\?tab=talent/
+    );
 
     // Click second talent
     await openLibraryCard(page, testTalentBeta.name, TALENT_DETAIL_URL);
