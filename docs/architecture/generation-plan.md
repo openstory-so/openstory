@@ -78,12 +78,9 @@ holds a recording keeps its `dialogue` unit either way.
   `musicStatus` (projected from the newest primary `sequence_music_variants`
   row, #1115). While the storyboard run holds the sequence
   (`status === 'processing'`), every unit with work up to its stop reads
-  `running`, except a look sheet waiting on its default sheet, and a unit
-  blocked on that look: those stay `blocked`.
+  `running`.
 - `blocked` — an upstream is `running` elsewhere or `blocked` itself, or the
-  verdict could not be computed (`blockedBy: []`, never read as fresh). A
-  look sheet other than the default is also blocked while its default sheet
-  is anything but `done`, so it is not drawn in the run that makes that face.
+  verdict could not be computed (`blockedBy: []`, never read as fresh).
 - `done`.
 
 ## Requires graph
@@ -99,17 +96,21 @@ Generation preconditions (`SHOT_UNITS`, plus `music` ← `prompt:music`), not th
 - `dialogue` ← a `voice` on every speaker.
 - `music` ← `prompt:music`.
 - A `sheet:character` whose id is not the character's (a look other than the
-  default) ← `sheet:character:<characterId>`. It does not start until that
-  sheet is `done`.
+  default) ← `sheet:character:<characterId>`, the default look's sheet it is
+  drawn from. `characterId` is required on every plan sheet; it equals `id`
+  on the default look.
 
 Cascade, in kind order: an upstream `missing` / `stale` turns a `done` unit
 `stale` with `cascaded: true` (a sheet in the plan puts its stills in the
 plan); an upstream `running` / `blocked` turns a unit with work `blocked`. A
-`done` unit keeps its artifact. A look that is missing or stale while its
-default sheet is not `done` is `blocked` instead, including one that was
-`done` and cascaded because that sheet is missing or stale. The run that
-makes the face does not redraw the look. `requires` is the graph resolved
-to the plan's own units.
+`done` unit keeps its artifact. A look follows its default sheet by the same
+rules: a default this run makes puts the look in the same run (a `done` look
+cascades `stale`, because its face is about to move), and a default running
+elsewhere blocks it. The run draws such a look after the default lands, from
+the sheet it landed (the second references wave, see
+`docs/developer-guide/workflow.md`), so one run makes every look a script
+uses, with the stills and clips that wear them. `requires` is the graph
+resolved to the plan's own units.
 
 ## What a continue does
 

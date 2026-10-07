@@ -111,17 +111,38 @@ that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
 The References stage makes one sheet per look some scene uses: a
 `sheet:character` plan unit is a look id — each character's default look
 always, any other once a live scene picks it. A look nobody wears gets a
-sheet only when someone asks. A look other than the default requires the
-default look's sheet (`sheet:character:<characterId>`, and a default look's
-id is the character's). It stays blocked until that sheet is done, including
-while the default sheet is only missing or stale, and a processing run does
-not mark it running. Generate and upload of that look throw the same
-refusal until the default sheet is completed. The run draws the person from
-that sheet (`faceSheetUrl`) and changes the costume; the talent image is
-not also sent. Talent reuse (`reusesTalentSheet`) applies only to the
-default look, against the talent's default sheet. A recast redraws the
-default look only. Other looks go stale once the new default sheet exists,
-and the plan redraws them.
+sheet only when someone asks. A look other than the
+default is drawn from the default look's sheet: the run draws the person
+from that image and changes the costume, and the talent image is not also
+sent. Talent reuse (`reusesTalentSheet`) applies only to the default look,
+against the talent's default sheet.
+
+- **The face** is the default look's selected sheet, whatever its last
+  attempt did (`populatedDefaultSheet`). A failed or running re-roll leaves
+  that sheet selected and on screen, and it is still the face. The plan,
+  the trigger, the upload and the panel all ask this one question.
+- **The payload** carries `face: { url, versionId } | null`, required; null
+  exactly when the look is the default. The trigger refuses a non-default
+  look with no face (`buildRegenerateCharacterSheetPayload`), so no path
+  draws a look from the talent instead. A payload from before the field is
+  failed at the top of `CharacterSheetWorkflow` (`assertQueuedWithFace`).
+- **One run makes every look.** In the plan the default sheet is the look's
+  upstream, with the ordinary rules: a default this run makes puts the look
+  in the same run (a look that was done goes stale by cascade, since its
+  face is about to move). `buildPlanReferences` drafts such a look without
+  a face (`lookSheetsAfterDefault`), and `UpdateStaleShotsWorkflow` draws it
+  in a second references wave from the sheet the run just landed. A default
+  that fails or parks fails the look, which holds the shots that wear it.
+- **Upload** of a non-default look is refused until the default has a
+  sheet (Tom's call).
+- **Recast** redraws the default look only, and re-renders the shots that
+  wear it. Other looks a scene wears go stale once the new sheet lands,
+  with their shots, and the next Update or Continue redraws them. The
+  recast result names them (`looksLeftStale`) and the panel says so.
+- **Existing look sheets go stale.** Every non-default look sheet made
+  before this change was stamped without a face, so it reads stale once
+  its default sheet exists, and the plan redraws it (credits), with the
+  shots that wear it.
 
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
 stored URL). See `byteplus-ark.md` for slot pressure.
