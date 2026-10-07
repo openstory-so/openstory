@@ -351,8 +351,9 @@ but a person.
   or the talent moves, a pointer-less legacy sheet included) and every look
   the move adds, a still per shot, a clip per shot at the video model's
   longest length, and a dialogue re-record per shot when the voice moves,
-  priced with the sequence's models. Ticked rows move in one action. The
-  move starts no run: each moved sequence reads stale by the hashes that
+  priced with the sequence's models. Ticked rows move in ONE batch
+  (`characters.moveCastsToCurrent`): a failure part-way moves none, never
+  two of five. The move starts no run: each moved sequence reads stale by the hashes that
   already exist, and its own "Inputs changed" banner and Update all give the
   exact plan and price. One click never launches fifty renders.
 - **The version strip is the sequence's.** `character_sheet_variants.
@@ -392,7 +393,9 @@ lookId)` lists the sheets that sequence made or has selected, and
   stale every shot. Those rows carry the cast look's id, so the copy's strip
   lists them (`listHistoryByLook`), the copy can re-select them
   (`characterSheetVariants.select` resolves a sheet of another look through
-  `castLookId`), and nobody can discard a sheet a cast look selects. New
+  `castLookId`), and nobody can discard a sheet a cast look selects (both
+  "is it live" checks are in `discard`'s UPDATE WHERE, so a select landing
+  between a check and the write cannot discard a just-selected sheet). New
   sheets land under the copy's looks. Scene picks name look ids, so every
   scene of the sequence picking a non-default look gets a script version
   naming the copy's look, in the same batch (`scenes.
@@ -413,7 +416,10 @@ reference-provenance.ts`), so a clip stamped before the copy stays
     image and hash, pointer still null, so the still's sheet ingredient
     (`selectedSheetVersionId ?? sheetInputHash`) and the clip's key (the
     url) do not move. One copied row, for that legacy case only.
-    Refused while a sheet run holds a claim here. Event `character.copied`.
+    Refused while a sheet run holds a claim here, and refused when nothing
+    else holds the original (not in the library, cast nowhere else): the
+    copy would orphan it, listed nowhere and holding its voice for ever —
+    "only in this sequence; edit it directly". Event `character.copied`.
 
 ## Hard deletes
 

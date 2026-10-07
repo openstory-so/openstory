@@ -187,6 +187,13 @@ export const MoveSequencesDialog: React.FC<MoveSequencesDialogProps> = ({
             })
           )}
         </fieldset>
+        {chosenRows.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {showCosts && total != null
+              ? `${shots(shotTotal)} re-render on update · up to ~${microsToDisplayUsd(total)}`
+              : `${shots(shotTotal)} re-render on update`}
+          </p>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={move.isPending}>
             Cancel
@@ -200,13 +207,6 @@ export const MoveSequencesDialog: React.FC<MoveSequencesDialogProps> = ({
               : `Move ${sequences(chosenRows.length)}`}
           </AlertDialogAction>
         </AlertDialogFooter>
-        {chosenRows.length > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {showCosts && total != null
-              ? `${shots(shotTotal)} re-render on update · up to ~${microsToDisplayUsd(total)}`
-              : `${shots(shotTotal)} re-render on update`}
-          </p>
-        )}
       </AlertDialogContent>
     </AlertDialog>
   );

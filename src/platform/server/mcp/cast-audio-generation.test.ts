@@ -444,3 +444,83 @@ describe('recast across a range and the move preview (#2017)', () => {
     expect(inA?.talentId).toBeNull();
   });
 });
+
+describe('moves and copies on the real scoped db (#2017)', () => {
+  const sequence = async (title: string, team = teamId) => {
+    const id = generateId();
+    const [seq] = await db
+      .select({ styleId: sequences.styleId })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    await db.insert(sequences).values({
+      id,
+      teamId: team,
+      styleId: seq?.styleId,
+      title,
+      status: 'completed',
+    });
+    return id;
+  };
+
+  it("[B, foreign, C]: another team's sequence refuses the whole move; B and C stay behind", async () => {
+    const { moveCastsToCurrent } = await import('@/cast/server/version-moves');
+    const created = await castCharacter({
+      id: generateId(),
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
+      age: '30s',
+    });
+    await scopedDb.characters.setInLibrary(created.id, true);
+    const b = await sequence('B');
+    const c = await sequence('C');
+    await scopedDb.characters.attach(b, created.id, { actorId });
+    await scopedDb.characters.attach(c, created.id, { actorId });
+    const otherTeam = generateId();
+    await db
+      .insert(teams)
+      .values({ id: otherTeam, name: 'O', slug: otherTeam });
+    const foreign = await sequence('F', otherTeam);
+    // A new bible version from A: B and C are behind.
+    await scopedDb.characters.updateBible(
+      sequenceId,
+      created.id,
+      { age: '40s' },
+      { actorId, source: 'edit' }
+    );
+    await expect(
+      moveCastsToCurrent(scopedDb, { userId: actorId }, created.id, [
+        b,
+        foreign,
+        c,
+      ])
+    ).rejects.toThrow('Sequence not found');
+    for (const id of [b, c]) {
+      const inSeq = await scopedDb.characters.getById(id, created.id);
+      expect(inSeq?.age).toBe('30s');
+    }
+    // The same ids without the foreign one move in one batch.
+    expect(
+      await moveCastsToCurrent(scopedDb, { userId: actorId }, created.id, [
+        b,
+        c,
+      ])
+    ).toEqual([
+      { sequenceId: b, moved: true },
+      { sequenceId: c, moved: true },
+    ]);
+    expect((await scopedDb.characters.getById(c, created.id))?.age).toBe('40s');
+  });
+
+  it('a one-off copy is refused for a character nothing else holds', async () => {
+    const created = await castCharacter({
+      id: generateId(),
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
+    });
+    await expect(
+      scopedDb.characters.copyForSequence(sequenceId, created.id, { actorId })
+    ).rejects.toThrow('only in this sequence');
+  });
+});

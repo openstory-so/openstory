@@ -2312,6 +2312,7 @@ describe('team characters (#2017)', () => {
       { sequenceId, characterId: 'char_001', name: 'Ada' },
       analysis
     );
+    await chars().setInLibrary(created.id, true);
     // The #1419 row: keyed to the character's own id, no look, no pointer.
     await db.insert(characterSheetVariants).values({
       id: created.id,

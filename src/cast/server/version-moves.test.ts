@@ -16,19 +16,28 @@ const NOT_CASTING = '01J00000000000000000000004';
 
 function makeScopedDb(opts: { currentIn?: string[] } = {}) {
   const current = new Set(opts.currentIn ?? []);
-  const moveCastToCurrent = vi.fn(async (sequenceId: string) => ({
+  const moveOf = (sequenceId: string) => ({
+    sequenceId,
     moved: !current.has(sequenceId),
+    // Each sequence still hears the old voice before its move.
+    before: { voiceId: 'voice-1' },
     character: { voiceId: 'voice-2' },
-  }));
+  });
+  const moveCastToCurrent = vi.fn(async (sequenceId: string) =>
+    moveOf(sequenceId)
+  );
+  const moveMany = vi.fn(async (sequenceIds: readonly string[]) =>
+    sequenceIds.map(moveOf)
+  );
   const scopedDb = asStub<ScopedDb>({
     characters: {
       listCastOfCharacter: vi.fn(async () => [
         { sequenceId: B, behind: true },
         { sequenceId: C, behind: true },
       ]),
-      // Each sequence still hears the old voice before its move.
       getById: vi.fn(async () => ({ voiceId: 'voice-1' })),
       moveCastToCurrent,
+      moveCastsToCurrent: moveMany,
     },
     sequences: {
       // Team-scoped: another team's sequence is not found.
@@ -37,13 +46,13 @@ function makeScopedDb(opts: { currentIn?: string[] } = {}) {
       ),
     },
   });
-  return { scopedDb, moveCastToCurrent };
+  return { scopedDb, moveCastToCurrent, moveMany };
 }
 
 describe('moveCastsToCurrent (#2017)', () => {
   it('moves every named sequence the team owns and that casts the character, and releases the voice each let go of', async () => {
     releaseReplacedVoice.mockClear();
-    const { scopedDb, moveCastToCurrent } = makeScopedDb();
+    const { scopedDb, moveMany } = makeScopedDb();
     const moved = await moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [
       B,
       C,
@@ -52,7 +61,9 @@ describe('moveCastsToCurrent (#2017)', () => {
       { sequenceId: B, moved: true },
       { sequenceId: C, moved: true },
     ]);
-    expect(moveCastToCurrent).toHaveBeenCalledTimes(2);
+    expect(moveMany).toHaveBeenCalledWith([B, C], 'c', {
+      actorId: 'u',
+    });
     // Provider-first release through the one path, once per moved sequence.
     expect(releaseReplacedVoice).toHaveBeenCalledTimes(2);
     expect(releaseReplacedVoice).toHaveBeenCalledWith(
@@ -75,19 +86,19 @@ describe('moveCastsToCurrent (#2017)', () => {
   });
 
   it("[B, foreign, C]: another team's sequence refuses the whole batch before any write", async () => {
-    const { scopedDb, moveCastToCurrent } = makeScopedDb();
+    const { scopedDb, moveMany } = makeScopedDb();
     await expect(
       moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [B, OTHER_TEAMS, C])
     ).rejects.toThrow('Sequence not found');
-    expect(moveCastToCurrent).not.toHaveBeenCalled();
+    expect(moveMany).not.toHaveBeenCalled();
   });
 
   it('a sequence that does not cast the character refuses the whole batch', async () => {
-    const { scopedDb, moveCastToCurrent } = makeScopedDb();
+    const { scopedDb, moveMany } = makeScopedDb();
     await expect(
       moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [NOT_CASTING, B])
     ).rejects.toThrow('Sequence not found');
-    expect(moveCastToCurrent).not.toHaveBeenCalled();
+    expect(moveMany).not.toHaveBeenCalled();
   });
 });
 

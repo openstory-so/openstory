@@ -244,11 +244,13 @@ export async function moveSequenceToCurrent(
 }
 
 /**
- * Move the chosen sequences to the character's current version, one batch
- * each ("Move sequences", and what a range recast applies). Every id is
- * checked first ({@link assertMovableSequences}). Nothing starts a
- * re-render: each moved sequence reads stale and is updated from its own
- * banner, so one click never launches fifty runs.
+ * Move the chosen sequences to the character's current version in ONE
+ * batch ("Move sequences", and what a range recast applies): a failure
+ * part-way moves none. Every id is checked first
+ * ({@link assertMovableSequences}); the voices the pins let go of are
+ * released after the batch. Nothing starts a re-render: each moved sequence
+ * reads stale and is updated from its own banner, so one click never
+ * launches fifty runs.
  */
 export async function moveCastsToCurrent(
   scopedDb: ScopedDb,
@@ -257,15 +259,19 @@ export async function moveCastsToCurrent(
   sequenceIds: readonly string[]
 ): Promise<{ sequenceId: string; moved: boolean }[]> {
   await assertMovableSequences(scopedDb, characterId, sequenceIds);
-  const results: { sequenceId: string; moved: boolean }[] = [];
-  for (const sequenceId of sequenceIds) {
-    const { moved } = await moveSequenceToCurrent(
-      scopedDb,
-      actor,
-      sequenceId,
-      characterId
-    );
-    results.push({ sequenceId, moved });
+  const moves = await scopedDb.characters.moveCastsToCurrent(
+    sequenceIds,
+    characterId,
+    { actorId: actor.userId }
+  );
+  for (const move of moves) {
+    if (move.moved) {
+      await releaseReplacedVoice(
+        scopedDb,
+        move.before.voiceId,
+        move.character.voiceId
+      );
+    }
   }
-  return results;
+  return moves.map(({ sequenceId, moved }) => ({ sequenceId, moved }));
 }
