@@ -70,6 +70,37 @@ function sheetState(sheet: TalentSheet): string | null {
   return null;
 }
 
+/** Names the generators and uploads wrote; a sheet named by hand shows its name. */
+const GENERIC_SHEET_NAMES = new Set([
+  'Default',
+  'Default Sheet',
+  'Uploaded Sheet',
+  'Generated Sheet',
+  'Reference sheet',
+]);
+
+/**
+ * "Casual · Uploaded · Discarded": the name an old named sheet carried
+ * (`legacyName`, written until the column is dropped; the name is the only
+ * thing that told two uploads apart), then its source and state.
+ */
+function sheetLabel(sheet: TalentSheet, state: string | null): string {
+  const name = GENERIC_SHEET_NAMES.has(sheet.legacyName)
+    ? null
+    : sheet.legacyName;
+  return [name, SHEET_SOURCE_LABEL[sheet.source], state]
+    .filter((part) => part !== null)
+    .join(' · ');
+}
+
+/** The busy label belongs to the row whose action is running, not every row. */
+function busyOn(
+  mutation: { isPending: boolean; variables?: { sheetId: string } },
+  sheet: TalentSheet
+): boolean {
+  return mutation.isPending && mutation.variables?.sheetId === sheet.id;
+}
+
 function TalentDetailPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
@@ -373,9 +404,7 @@ function TalentDetailPage() {
                       </div>
                       <div className="p-3 flex items-center justify-between gap-2">
                         <p className="text-xs text-muted-foreground">
-                          {state
-                            ? `${SHEET_SOURCE_LABEL[sheet.source]} · ${state}`
-                            : SHEET_SOURCE_LABEL[sheet.source]}
+                          {sheetLabel(sheet, state)}
                         </p>
                         {canManageTalent && (
                           <div className="flex items-center gap-2">
@@ -388,7 +417,7 @@ function TalentDetailPage() {
                                 }
                                 disabled={undiscardSheet.isPending}
                               >
-                                {undiscardSheet.isPending
+                                {busyOn(undiscardSheet, sheet)
                                   ? 'Restoring…'
                                   : 'Restore'}
                               </Button>
@@ -402,7 +431,7 @@ function TalentDetailPage() {
                                   }
                                   disabled={selectSheet.isPending}
                                 >
-                                  {selectSheet.isPending
+                                  {busyOn(selectSheet, sheet)
                                     ? 'Selecting…'
                                     : 'Use as reference'}
                                 </Button>
@@ -414,7 +443,7 @@ function TalentDetailPage() {
                                   }
                                   disabled={discardSheet.isPending}
                                 >
-                                  {discardSheet.isPending
+                                  {busyOn(discardSheet, sheet)
                                     ? 'Discarding…'
                                     : 'Discard'}
                                 </Button>
