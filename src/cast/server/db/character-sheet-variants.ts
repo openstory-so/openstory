@@ -37,6 +37,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
@@ -640,46 +641,60 @@ export function createCharacterSheetVariantsMethods(
      * first.
      */
     discard: async (variantId: string): Promise<Date> => {
-      // The variant's own look, by primary key; a row with no look is its
-      // character's default look's, whose id is the character's.
-      const [live] = await db
+      // Both "is it live" checks sit in the UPDATE's WHERE, so a select
+      // landing between a check and the write cannot discard a sheet that
+      // was just selected. The variant's own look, by primary key; a row
+      // with no look is its character's default look's, whose id is the
+      // character's.
+      const live = db
         .select({ id: characterLooks.id })
         .from(characterLooks)
         .innerJoin(
           sequenceCastLooks,
           eq(sequenceCastLooks.lookId, characterLooks.id)
         )
-        .innerJoin(
-          characterSheetVariants,
-          eq(
-            characterLooks.id,
-            sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
-          )
-        )
         .where(
           and(
-            eq(characterSheetVariants.id, variantId),
-            eq(liveLookSheetVersionId, variantId)
+            eq(
+              characterLooks.id,
+              sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
+            ),
+            eq(liveLookSheetVersionId, characterSheetVariants.id)
           )
         );
       // A one-off copy's cast look selects a sheet of another look (#2017).
-      const [selectedElsewhere] = await db
+      const selectedElsewhere = db
         .select({ id: sequenceCastLooks.id })
         .from(sequenceCastLooks)
-        .where(eq(sequenceCastLooks.selectedSheetVersionId, variantId));
-      if (live || selectedElsewhere) {
-        throw new ConflictError(
-          'Cannot discard the selected sheet version; select another first.'
+        .where(
+          eq(
+            sequenceCastLooks.selectedSheetVersionId,
+            characterSheetVariants.id
+          )
         );
-      }
       const discardedAt = new Date();
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt, updatedAt: discardedAt })
-        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
+        .where(
+          and(
+            ofTeam(),
+            eq(characterSheetVariants.id, variantId),
+            notExists(live),
+            notExists(selectedElsewhere)
+          )
+        )
         .returning();
       if (result.length === 0) {
-        throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        const [row] = await db
+          .select({ id: characterSheetVariants.id })
+          .from(characterSheetVariants)
+          .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
+        if (!row)
+          throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        throw new ConflictError(
+          'Cannot discard the selected sheet version; select another first.'
+        );
       }
       return discardedAt;
     },

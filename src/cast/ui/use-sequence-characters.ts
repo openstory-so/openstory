@@ -177,7 +177,7 @@ export function useCopyCharacterForSequence() {
   });
 }
 
-/** "Update this episode": move this sequence's pins to the current version. */
+/** "Update this sequence": move this sequence's pins to the current version. */
 export function useUpdateCastToCurrent() {
   const queryClient = useQueryClient();
   return useMutation({

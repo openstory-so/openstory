@@ -22,6 +22,7 @@ import {
 } from '@/cast/server/cast-edit';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
+import { moveSequenceToCurrent } from '@/cast/server/version-moves';
 import {
   getElevenLabsApiKey,
   isElevenLabsConfigured,
@@ -458,7 +459,7 @@ export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * "Update this episode" (#2017): move this sequence's cast link to the
+ * "Update this sequence" (#2017): move this sequence's cast link to the
  * character's current bible, voice and look versions. A pointer write; the
  * sequence's sheets and shots then read stale and its own Update redraws them.
  */
@@ -467,10 +468,11 @@ export const updateCastToCurrentFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(characterIdInput))
   .handler(
     async ({ context, data }) =>
-      await context.scopedDb.characters.moveCastToCurrent(
+      await moveSequenceToCurrent(
+        context.scopedDb,
+        { userId: context.user.id },
         data.sequenceId,
-        data.characterId,
-        { actorId: context.user.id }
+        data.characterId
       )
   );
 

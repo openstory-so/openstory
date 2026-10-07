@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   moveCastsToCurrent,
+  moveSequenceToCurrent,
   previewVersionMove,
 } from '@/cast/server/version-moves';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -33,6 +34,7 @@ const previewRow = z.object({
   title: z.string(),
   behind: z.boolean(),
   moved: z.array(z.string()),
+  looksToAdd: z.number(),
   shotCount: z.number(),
   sheetCount: z.number(),
   costMicros: z.number().nullable(),
@@ -93,7 +95,7 @@ const moveCharacterCastsTool = openstoryTool({
 const updateCastToCurrentTool = openstoryTool({
   name: 'update_cast_to_current',
   description:
-    'Move one sequence’s cast link to the character’s current bible, voice and look versions ("Update this episode"). A pointer write: the sequence then reads stale and plan_generation / execute_generation redraws its sheets and shots. moved is false when it was already current.',
+    'Move one sequence’s cast link to the character’s current bible, voice and look versions ("Update this sequence"). A pointer write: the sequence then reads stale and plan_generation / execute_generation redraws its sheets and shots. moved is false when it was already current.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z.strictObject({ sequenceId, characterId }),
@@ -103,10 +105,11 @@ const updateCastToCurrentTool = openstoryTool({
       input.sequenceId,
       input.characterId
     );
-    const result = await scopedDb.characters.moveCastToCurrent(
+    const result = await moveSequenceToCurrent(
+      scopedDb,
+      { userId },
       input.sequenceId,
-      character.id,
-      { actorId: userId }
+      character.id
     );
     return {
       data: { characterId: character.id, moved: result.moved },

@@ -162,7 +162,7 @@ const createCharacterTool = openstoryTool({
 const addCharacterToSequenceTool = openstoryTool({
   name: 'add_character_to_sequence',
   description:
-    'Cast a library character (list_library_characters) into a sequence (#2050): one cast link pinning her current version, every look, nothing copied, no generation. The script names her in capitals; analysis then links to her rather than making a new character. Refused while a live cast member of the sequence already has her name (CONFLICT), or when she is not in the library. Idempotent for a character the sequence already casts.',
+    'Cast a library character (list_library_characters) into a sequence (#2050): one cast link pinning its current version, every look, nothing copied, no generation. The script names the character in capitals; analysis then links to it rather than making a new character. Refused while a live cast member of the sequence already has that name (CONFLICT), or when the character is not in the library. Idempotent for a character the sequence already casts.',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: characterInput,

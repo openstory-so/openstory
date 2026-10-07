@@ -72,6 +72,27 @@ Click **Save as talent** to copy the character into your Talent Library instead.
 
 **Characters** in the main navigation lists every character your team has, most recently used first. Pick **Library** to see only the ones in the library. Open a character to see which sequences cast it and how many shots it is in.
 
+## Using a library character in another sequence
+
+A library character is reused only when you say so. Two ways:
+
+- **In the script**, type `@` and pick the character. Its name goes into the script in capitals and it joins the sequence's cast at its current version, with every look. Nothing else is stored in the text. On the new-sequence screen the character is added when you press Generate, as long as its name is still in the script.
+- **On the cast panel**, click **Add from library** and pick the character. No script change.
+
+Analysis then reads the cast you attached: it keeps the character's bible and looks, links the outfits the script uses and adds a look only for an outfit it does not have. A plain name that is not in the cast is a new character; analysis never reaches into the library on its own.
+
+Two characters in one sequence cannot have the same name when one is added from the library: rename one first. If analysis itself makes two characters of one name, rename one before recording dialogue.
+
+## When a Character Changes in Another Sequence
+
+A library character is one character in every sequence that casts it, but each sequence keeps the version it has. Editing the character in one sequence does not change the others.
+
+- **Not the current version** — When another sequence has changed the character (its bible, voice or an outfit), the cast card shows this badge and the character page shows a notice. Nothing in your sequence changed; it still uses the version it had.
+- **Update this sequence** — Moves your sequence to the current version. Nothing is generated yet: the sheets and shots that used the old version show as out of date, and **Update all** redraws them, with the exact price.
+- **Move sequences** — Lists every sequence that casts the character, with what would change, how many shots are affected and the most it could cost. Tick the sequences to move and confirm. Each moved sequence then shows what to update; none of them re-renders on its own.
+- **Make a one-off copy** — Gives this sequence its own copy of a library character at the version it has now. Edits here stop reaching the other sequences, and theirs stop reaching here. Sheets and shots stay as they are, so nothing re-renders. Not available while a sheet is generating.
+- **Recasting across sequences** — The recast confirmation lists the other sequences that cast the character. Tick the ones that should use the new talent too; they move to the new version and redraw from their own Update. Unticked sequences keep the previous version and show **Not the current version**.
+
 ## Real-Time Updates
 
 Character sheet regeneration happens asynchronously. The UI subscribes to real-time events (`generation.character-sheet:progress`) and automatically updates when:

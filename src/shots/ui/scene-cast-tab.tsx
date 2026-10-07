@@ -185,9 +185,9 @@ const CastCard: React.FC<CastCardProps> = ({
               <Badge variant="secondary">Voice only</Badge>
             )}
             {isBehindCurrentVersion(owner) && (
-              // This sequence pins an older version than the character's
-              // current one (#2017); the panel has Update this episode.
-              <Badge variant="secondary">Newer version</Badge>
+              // This sequence pins a version other than the character's
+              // current one (#2017); the panel has Update this sequence.
+              <Badge variant="secondary">Not the current version</Badge>
             )}
             {(character.age || character.gender) && (
               <p className="mt-1 truncate text-xs text-white/70">

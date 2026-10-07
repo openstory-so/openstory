@@ -36,7 +36,11 @@ import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-
 import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { allowsUnfundedGeneration } from '@/sequences/pipeline';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import {
@@ -316,6 +320,28 @@ export const createSequences = createServerOnlyFn(
       targetDurationSeconds,
       pricing: await getEffectiveFalPricing(),
     });
+
+    // Library characters the script references (#2050) are checked before any
+    // row is written: every pick must be in the library, and no two may share
+    // a name, or the attach after the insert would leave an empty sequence.
+    if (castCharacterIds?.length) {
+      const library = await context.scopedDb.characters.listTeam({
+        inLibrary: true,
+      });
+      const names = new Map<string, string>();
+      for (const id of new Set(castCharacterIds)) {
+        const character = library.find((c) => c.id === id);
+        if (!character) throw new NotFoundError('Character not found');
+        const key = character.name.trim().toLowerCase();
+        const other = names.get(key);
+        if (other) {
+          throw new ConflictError(
+            `${character.name} is picked twice. Rename one first.`
+          );
+        }
+        names.set(key, character.id);
+      }
+    }
 
     // Automatic style (#1213). `'auto'` asks for a fresh script-derived style;
     // a style already bound to another sequence (regenerate / copy of an auto
