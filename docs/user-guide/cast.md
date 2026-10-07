@@ -68,6 +68,8 @@ Recasting regenerates the character's reference sheet using the talent's referen
 
 Click **Add to Library** to put the character in your team's character library. Nothing is copied: it is the same character, with its looks, sheets and voice. **Remove from Library** takes it out again.
 
+Click **Save as talent** to copy the character into your Talent Library instead. A talent can be cast as a character in any sequence.
+
 **Characters** in the main navigation lists every character your team has, most recently used first. Pick **Library** to see only the ones in the library. Open a character to see which sequences cast it and how many shots it is in.
 
 ## Real-Time Updates

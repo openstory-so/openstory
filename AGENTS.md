@@ -250,8 +250,10 @@ changing the area, and update it in the same PR.**
   character can be cast in several sequences. A character or look method
   whose answer depends on the sequence takes it as a required first
   argument; never resolve "the character's cast link". The voice and the
-  library flag are the character's own. A sequence letting a character go
-  releases its voice only when `characters.getHeldElsewhere` is false.
+  library flag are the character's own. Whoever lets a character go (a
+  sequence removing it, an archive, the library flag clearing) releases its
+  voice only when nothing else holds it: `characters.getHeldElsewhere` /
+  `getCastInAnySequence`, never a hand-written check.
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
   character belongs to the team; a sequence uses it through a `sequence_cast`
   link that pins its bible version, and `sequence_cast_looks` pins each look

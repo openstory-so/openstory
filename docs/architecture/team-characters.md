@@ -99,11 +99,26 @@ What follows from one character in two sequences:
 - **A look added from one sequence** has a cast look in that sequence only.
   Look names are unique among the looks a sequence uses.
 - **Removing a look** is the look's own (`character_looks.deletedAt`), so it
-  is refused while a scene of any sequence that uses the look wears it.
-- **The voice goes only when nothing holds the character.** Removing a
-  character from a sequence, or archiving the sequence, releases the saved
-  voice unless the library or a live link in another sequence still holds
-  it (`characters.getHeldElsewhere`).
+  is refused while a scene of any sequence that uses the look wears it. The
+  refusal names the scenes of this sequence, or the titles of the others. An
+  archived sequence does not refuse: it casts nothing while archived, and a
+  scene that points at a removed look keeps wearing it when the sequence
+  comes back.
+- **The voice is shared on purpose.** A voice change made from one sequence
+  is every sequence's: the voice is in each one's video manifest, so the
+  other sequences' dialogue and clips read stale.
+- **The voice goes only when nothing holds the character.** "Held" has one
+  meaning (`castElsewhere` in `characters.ts`): the library flag, or a cast
+  link that is not removed in a sequence that is not archived. The list and
+  the character page count a sequence the same way.
+  - Removing a character from a sequence, or archiving the sequence,
+    releases the saved voice unless something else holds the character
+    (`characters.getHeldElsewhere`).
+  - Taking a character out of the library while no sequence casts it
+    releases the voice first (`setCharacterInLibrary` in `cast-edit.ts`):
+    after that no page can reach the character. Provider first, row second
+    (`elevenlabs.md`); a failed release leaves the flag set.
+  - Unarchiving finds the character with no saved voice, as it does today.
 - **Sheet variants are the look's**, with no sequence on the row. A sheet
   parked as divergent by one sequence's run is listed for every sequence
   that uses the look. Not changed here.
@@ -137,7 +152,8 @@ are too. The methods keyed on a voice version id alone are not yet.
     Its rows stay; nothing deletes them yet.
   - The picture is the default look's sheet as the latest sequence that has
     one selected it.
-  - Not paged. The grid virtualizes its rows.
+  - Not paged: the page and the MCP tool load the whole list (about 1.1 MB
+    at 2,500 characters). Known limit. The grid virtualizes its rows.
 - **`/characters/$id`** shows the sequences that cast the character and
   embeds the sequence detail view (`CharacterDetailView`) for the one in
   `?sequence=`, or the latest. Looks, sheets and edits there are that
@@ -147,8 +163,19 @@ are too. The methods keyed on a voice version id alone are not yet.
   scene tags in memory, one sequence at a time
   (`getTeamCharacterShotCountsFn`).
 - **Add to Library** sets `characters.in_library`; Remove from Library
-  clears it. Nothing is copied and no talent is made. Talent rows made by
-  the old copy are left as they are.
+  clears it. Nothing is copied and no talent is made. Nothing can cast a
+  library character into another sequence until #2050; today the flag keeps
+  the character listed and feeds the Library filter and
+  `list_library_characters`.
+- **Save as talent** is what Add to Library did before: it copies the
+  character, as one sequence casts it, into a new talent
+  (`saveCharacterAsTalentFn`). It is how a character reaches the recast
+  picker, the new-sequence talent picker and the studio today. It stays
+  until #2018 defines what a talent is. Hidden for a talent-cast or
+  voice-only character, as the old button was.
+- **A character the page cannot list** (not in the library, cast in no live
+  sequence, another team's, or gone) reads "Character not found" with a way
+  back, not an error.
 - MCP: `list_library_characters`.
 
 ## Writes
