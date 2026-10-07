@@ -166,8 +166,11 @@ against the talent's default sheet.
   time, so they are hashed and checked too and a whole cast reuses.
   The plan lists it in `reusedSheets`, not `characterSheets`, so the
   wave's price, the fresh reservation and the Update-all preview count it
-  at zero (the preview says "1 sheet reused"). The footer's count line and
-  the continue quote still count it as a reference to make.
+  at zero (the preview says "1 sheet reused"). The live plan marks the unit
+  too (`PlanUnit.reused`, set by `computeGenerationPlan` asking
+  `buildPlanReferences` about the owed sheets), so the footer line says
+  `2 references (1 reused)` and the continue quote (`estimateContinueCost`)
+  prices it at zero. Every number a user sees agrees with the run.
   **Adopt by pointer, never by copy.** The run takes the ordinary claim,
   then `characterSheetVariants.adoptIfPending` points this sequence's cast
   look at the existing row in one guarded UPDATE — claim still held, row

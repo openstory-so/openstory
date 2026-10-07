@@ -433,6 +433,7 @@ describe('footer helpers', () => {
       state: 'running',
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'sheet:character',
@@ -440,6 +441,7 @@ describe('footer helpers', () => {
       state: 'missing',
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'prompt:visual',
@@ -447,6 +449,7 @@ describe('footer helpers', () => {
       state: 'stale',
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'prompt:motion',
@@ -454,6 +457,7 @@ describe('footer helpers', () => {
       state: 'missing',
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'still',
@@ -462,6 +466,7 @@ describe('footer helpers', () => {
       blockedBy: [{ kind: 'sheet:character', id: 'maya' }],
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'still',
@@ -470,6 +475,7 @@ describe('footer helpers', () => {
       blockedBy: [{ kind: 'prompt:visual', id: 's2' }],
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'clip',
@@ -478,6 +484,7 @@ describe('footer helpers', () => {
       blockedBy: [],
       requires: [],
       cascaded: false,
+      reused: false,
     },
     {
       kind: 'dialogue',
@@ -485,6 +492,7 @@ describe('footer helpers', () => {
       state: 'done',
       requires: [],
       cascaded: false,
+      reused: false,
     },
   ];
 
@@ -502,6 +510,7 @@ describe('footer helpers', () => {
           state: 'stale',
           requires: [],
           cascaded: false,
+          reused: false,
         },
       ])
     ).toBe('Regenerate');
@@ -512,12 +521,34 @@ describe('footer helpers', () => {
       kind: PlanUnit['kind'],
       id: string,
       state: PlanUnit['state']
-    ): PlanUnit => ({ kind, id, state, requires: [], cascaded: false });
+    ): PlanUnit => ({
+      kind,
+      id,
+      state,
+      requires: [],
+      cascaded: false,
+      reused: false,
+    });
     const stale = [unit('still', 's1', 'stale'), unit('still', 's2', 'stale')];
     const fresh = [unit('clip', 's1', 'missing')];
     expect(planWorkLine([...stale, ...fresh])).toBe('1 video · redo 2 images');
     expect(planWorkLine(stale)).toBe('2 images');
     expect(planWorkLine(fresh)).toBe('1 video');
+  });
+
+  it('names the sheets pointed at instead of drawn (#2017)', () => {
+    const sheet = (id: string, reused: boolean): PlanUnit => ({
+      kind: 'sheet:character',
+      id,
+      state: 'missing',
+      requires: [],
+      cascaded: false,
+      reused,
+    });
+    expect(planWorkLine([sheet('maya', true), sheet('ravi', false)])).toBe(
+      '2 references (1 reused)'
+    );
+    expect(planWorkLine([sheet('ravi', false)])).toBe('1 reference');
   });
 
   it('says what a blocked unit waits on', () => {
@@ -544,6 +575,7 @@ describe('footer helpers', () => {
           state: 'done',
           requires: [],
           cascaded: false,
+          reused: false,
         },
       ]).draft
     ).toBe(true);
@@ -719,9 +751,9 @@ it('a derived motion prompt requires the spec and ignores the still; a written o
     SEQ
   );
   expect(staleSpec.find((unit) => unit.kind === 'prompt:motion')).toMatchObject(
-    { state: 'stale', cascaded: true }
+    { state: 'stale', cascaded: true, reused: false }
   );
   expect(staleSpec.find((unit) => unit.kind === 'prompt:visual')).toMatchObject(
-    { state: 'stale', cascaded: true }
+    { state: 'stale', cascaded: true, reused: false }
   );
 });

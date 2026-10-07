@@ -11,8 +11,16 @@ const computeGenerationPlan = vi.fn(async () => [
     state: 'missing',
     requires: [],
     cascaded: false,
+    reused: false,
   },
-  { kind: 'clip', id: 'shot', state: 'missing', requires: [], cascaded: false },
+  {
+    kind: 'clip',
+    id: 'shot',
+    state: 'missing',
+    requires: [],
+    cascaded: false,
+    reused: false,
+  },
 ]);
 const computePlan = vi.fn(async () => ({
   targets: [],
@@ -125,6 +133,7 @@ describe('fresh planning free sheets', () => {
         state: 'missing',
         requires: [],
         cascaded: false,
+        reused: false,
       },
       {
         kind: 'sheet:character',
@@ -132,6 +141,7 @@ describe('fresh planning free sheets', () => {
         state: 'missing',
         requires: [],
         cascaded: false,
+        reused: false,
       },
       {
         kind: 'sheet:character',
@@ -139,6 +149,7 @@ describe('fresh planning free sheets', () => {
         state: 'missing',
         requires: [],
         cascaded: false,
+        reused: false,
       },
     ]);
     computePlan.mockResolvedValueOnce(

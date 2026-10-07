@@ -512,6 +512,7 @@ const unit = (
   state,
   requires: [],
   cascaded: false,
+  reused: false,
   ...(blockedBy ? { blockedBy } : {}),
 });
 

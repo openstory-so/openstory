@@ -84,6 +84,8 @@ export async function estimateContinueCost(args: {
     DEFAULT_IMAGE_MODEL
   );
   const counts = planCounts(args.work);
+  // A sheet pointed at instead of drawn is free (#2017).
+  counts['sheet:character'] -= args.work.filter((u) => u.reused).length;
   const priced =
     counts.still === 0 ||
     estimateImageCost(imageModel, sequence.aspectRatio, 1, { pricing }) !==
