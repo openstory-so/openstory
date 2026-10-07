@@ -34,6 +34,7 @@ import {
   talent,
   talentSheets,
   teams,
+  talentVersions,
 } from '@/platform/server/db/schema';
 
 export type SeedDb =
@@ -374,6 +375,40 @@ async function syncSystemTemplates(
   }
 
   log(`Synced talent sheets: ${talentSheetsInserted} inserted`);
+
+  // 4c. Every stock talent has one version (#1862), keyed to its own id like
+  // the backfill's, naming the sheet above. A re-seed finds the pointer set.
+  let talentVersionsInserted = 0;
+  for (const record of await db
+    .select()
+    .from(talent)
+    .where(eq(talent.teamId, systemTeam.id))) {
+    if (record.selectedVersionId) continue;
+    const now = new Date();
+    await db.batch([
+      db
+        .insert(talentVersions)
+        .values({
+          id: record.id,
+          talentId: record.id,
+          name: record.name,
+          description: record.description,
+          isHuman: record.isHuman ?? false,
+          sheetId: record.selectedSheetId,
+          voiceId: record.voiceId,
+          source: 'backfill',
+          createdAt: now,
+          createdBy: null,
+        })
+        .onConflictDoNothing(),
+      db
+        .update(talent)
+        .set({ selectedVersionId: record.id, updatedAt: now })
+        .where(eq(talent.id, record.id)),
+    ]);
+    talentVersionsInserted++;
+  }
+  log(`Synced talent versions: ${talentVersionsInserted} inserted`);
 
   // 5. Sync system locations
   const existingLocations = await db
