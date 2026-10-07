@@ -10,6 +10,7 @@
  */
 
 import { canonicalBibleTag, slugifyTag } from '@/cast/bible-field';
+import { isValidId } from '@/platform/id';
 import type { CharacterBibleWireEntry } from '@/sequences/response-schemas';
 import type {
   CharacterBibleEntry,
@@ -24,7 +25,9 @@ const DEFAULT_LOOK_NAME = 'Default';
  * An entry with its looks made whole. One with none — recorded or stored
  * before looks — gets a default look from `standardClothing`. Slugs are
  * prefixed with the character's id, so two characters' `default` never
- * collide once a scene's picks are read by look id alone.
+ * collide once a scene's picks are read by look id alone. A persisted id (a
+ * `character_looks` ULID, as an attached character's looks carry, #2050) is
+ * left as it is.
  */
 export function withBibleLooks(
   entry: CharacterBibleEntry
@@ -35,9 +38,11 @@ export function withBibleLooks(
     given.length > 0
       ? given.map((look) => ({
           ...look,
-          lookId: look.lookId.startsWith(`${entry.characterId}:`)
-            ? look.lookId
-            : `${entry.characterId}:${look.lookId}`,
+          lookId:
+            look.lookId.startsWith(`${entry.characterId}:`) ||
+            isValidId(look.lookId)
+              ? look.lookId
+              : `${entry.characterId}:${look.lookId}`,
         }))
       : [
           {

@@ -839,6 +839,8 @@ Build a complete character bible. For each character:
 - voiceOnly — true only for a voice that is heard but NEVER seen: a narrator, a voiceover, a radio or phone voice with no face on screen. Each distinct such voice is its own entry, named as the script names it, or "Narrator" for unnamed narration. Its personality describes the VOICE — register, warmth, pace, attitude. Age may be a guess if the voice implies one, otherwise empty; gender, ethnicity, physicalDescription, standardClothing, distinguishingFeatures and movement are empty strings. Create none when nobody speaks off screen. A character who is off screen for a moment, or seen in another scene, has a face: voiceOnly false, full appearance.
 - isPerson — true when this character is a person (including a stylised or cartoon person, and a real person in a non-fiction script). False for animals, robots, creatures, vehicles-as-characters, and non-human cartoons. A narrator is usually a human voice: isPerson true.
 
+Characters already cast (the <CAST> block, when present). These characters exist, with their appearance and their looks. For each one the script uses, return an entry with that EXACT characterId and name; copy its appearance rather than rewriting it. For each outfit it wears, reuse one of its listed look names exactly when it fits, and add a new look only when none fits. A character in the script who is plainly someone else gets a new entry and a new characterId, even if the name matches. Any name you cannot place in <CAST> is a new character. Never invent a characterId that collides with one in <CAST>.
+
 Track first mentions:
 - "a man walks in" → the character first appears as "a man"
 - "JACK (30s) enters" → first appears as "JACK (30s)"
@@ -897,7 +899,7 @@ If a script references an UPPERCASE token that is NOT in <ELEMENTS> and does not
 The following user-uploaded elements are available. Produce an elementBible entry for each one used in the script:
 {{elements}}
 </ELEMENTS>
-
+{{cast}}
 <USER_SCRIPT>
 {{script}}
 </USER_SCRIPT>

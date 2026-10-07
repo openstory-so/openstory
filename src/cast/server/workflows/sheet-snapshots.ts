@@ -88,6 +88,15 @@ export const queuedBeforeLooks = () =>
   );
 
 /**
+ * An analysis payload queued before the trigger snapshotted the cast (#2050):
+ * the one check, at the top of the run, so no step defaults it.
+ */
+export const queuedBeforeCast = () =>
+  new WorkflowValidationError(
+    'Queued before character references shipped. Run it again.'
+  );
+
+/**
  * A sheet payload queued before every look carried `face` (#2015): the one
  * check, at the top of the run, so no field below defaults it.
  */

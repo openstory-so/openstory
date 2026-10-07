@@ -22,6 +22,7 @@ import { generateId } from '@/platform/id';
 import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
   characterBibleVersions,
+  characterLookVersions,
   characterLooks,
   characterSheetVariants,
   characterVoiceVersions,
@@ -1964,6 +1965,82 @@ describe('team characters (#2017)', () => {
         actorId,
       })
     ).rejects.toThrow('not found');
+  });
+
+  it('analysis links a shared character: looks by id or name, a new look added, nothing rewritten or removed (#2050)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    await chars().setInLibrary(created.id, true);
+    const other = await secondSequence();
+    const attached = await chars().attach(other, created.id, { actorId });
+    // A look added in the first sequence after the attach: the second has no
+    // cast look for it, and the snapshot there does not know it.
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala gown', clothing: 'gown', styling: null },
+      { source: 'edit', actorId }
+    );
+    await chars().softDelete(other, created.id, { actorId });
+
+    const ids = await looks().linkFromAnalysis(other, created.id, [
+      {
+        lookId: created.lookId,
+        name: 'Default',
+        clothing: 'MODEL',
+        styling: 'x',
+      },
+      {
+        lookId: 'char_ada:gala_gown',
+        name: 'gala gown',
+        clothing: 'y',
+        styling: '',
+      },
+      {
+        lookId: 'char_ada:rain',
+        name: 'Rain',
+        clothing: 'mac',
+        styling: 'wet',
+      },
+    ]);
+    expect(ids[created.lookId]).toBe(created.lookId);
+    expect(ids['char_ada:gala_gown']).toBe(gala.id);
+    const rainId = ids['char_ada:rain'];
+    if (!rainId) throw new Error('expected the new look');
+
+    // The link came back; the second sequence now has all three looks.
+    expect((await chars().getById(other, created.id))?.deletedAt).toBeNull();
+    const otherLooks = await looks().listByCharacter(other, created.id);
+    expect(otherLooks.map((l) => [l.id, l.name, l.clothing])).toEqual([
+      [created.lookId, 'Default', 'coat'],
+      [gala.id, 'Gala gown', 'gown'],
+      [rainId, 'Rain', 'mac'],
+    ]);
+    expect(otherLooks.find((l) => l.id === gala.id)?.lookVersionId).toBe(
+      gala.lookVersionId
+    );
+    // Nothing of hers was written: one bible version, one version per look.
+    expect(await versionsOf(created.id)).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(characterLookVersions)
+        .where(eq(characterLookVersions.lookId, created.lookId))
+    ).toHaveLength(1);
+    // The first sequence does not wear the new look.
+    expect(await looks().listByCharacter(sequenceId, created.id)).toHaveLength(
+      2
+    );
+    expect(attached.castId).toBe(
+      (await chars().getById(other, created.id))?.castId
+    );
   });
 
   it('lists the team characters by the latest sequence casting them, then by how many', async () => {
