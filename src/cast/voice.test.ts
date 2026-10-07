@@ -408,3 +408,15 @@ describe('matchSpeaker with two cast characters of one name (#2050)', () => {
     );
   });
 });
+
+describe('matchSpeaker with a cue that fits several names (#2050)', () => {
+  it('refuses to take the first partial match', () => {
+    const cast = [
+      { name: 'Sarah Chen', voiceOnly: false },
+      { name: "Sarah's Mother", voiceOnly: false },
+    ];
+    expect(() => matchSpeaker('SARAH', cast)).toThrow(
+      '"SARAH" could be Sarah Chen or Sarah\'s Mother'
+    );
+  });
+});

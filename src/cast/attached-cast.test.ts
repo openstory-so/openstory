@@ -153,6 +153,6 @@ describe('castEchoProblem and castTags (#2050)', () => {
   });
 
   it('reserves the cast tags for the picks', () => {
-    expect([...castTags([ada])]).toEqual(['ada']);
+    expect([...castTags([ada])]).toEqual([['char_ada', 'ada']]);
   });
 });

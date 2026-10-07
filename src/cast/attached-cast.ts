@@ -61,12 +61,16 @@ export function castEchoProblem(
   return null;
 }
 
-/** The attached cast's tags: what a new entry's tag must not repeat. */
+/**
+ * The attached cast's tags by script id: an echoed entry keeps its own, a
+ * new entry must not repeat any.
+ */
 export const castTags = (cast: readonly AttachedCastSnapshot[]) =>
-  new Set(
-    cast.map(
-      (c) => c.entry.consistencyTag || key(c.entry.name).replace(/\s+/g, '_')
-    )
+  new Map(
+    cast.map((c) => [
+      c.entry.characterId,
+      c.entry.consistencyTag || key(c.entry.name).replace(/\s+/g, '_'),
+    ])
   );
 
 /**

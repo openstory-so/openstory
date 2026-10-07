@@ -124,10 +124,16 @@ export function matchSpeaker<T extends { name: string; voiceOnly?: boolean }>(
       `${whole.length} cast characters are named "${speaker.trim()}". Rename one so dialogue knows who speaks.`
     );
   }
-  return (
-    whole[0] ??
-    characters.find((character) => sharesToken(speaker, character.name))
+  if (whole[0]) return whole[0];
+  const partial = characters.filter((character) =>
+    sharesToken(speaker, character.name)
   );
+  if (partial.length > 1) {
+    throw new ConflictError(
+      `"${speaker.trim()}" could be ${partial.map((c) => c.name).join(' or ')}. Use the full name so dialogue knows who speaks.`
+    );
+  }
+  return partial[0];
 }
 
 /** Where a catalog pick came from (#1629). */

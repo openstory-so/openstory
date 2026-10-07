@@ -255,9 +255,10 @@ script then names her like any cast member.
 - **Plain names, where two characters share one.** Analysis may make two
   "Sarah"s, and a hand-made one may sit beside an analysed one. What is
   keyed on the character and what is not:
-  - Look picks: keyed on the character's tag, which `bibleFromWire` makes
-    unique per sequence (`sarah`, `sarah_2`; the attached cast's tags are
-    reserved), so two characters' picks never overwrite each other.
+  - Look picks: keyed on the character's tag. An entry that echoes a cast
+    id keeps that character's own tag (so a re-analysis moves nothing of
+    hers); a NEW entry whose tag is in use gets a number (`sarah`,
+    `sarah_2`), so two characters' picks never overwrite each other.
   - Dialogue speakers: a line names a speaker by text and has no id, so
     `matchSpeaker` refuses two whole-name matches (`ConflictError`, "Rename
     one so dialogue knows who speaks") rather than taking the first. The

@@ -96,23 +96,28 @@ export function bibleFromWire(
   /** Lines in the script: a `lines` entry outside 1..lineCount is dropped. */
   lineCount: number,
   /**
-   * Tags already in use (the attached cast's, #2050). Two characters may
-   * share a plain name, but a pick is filed under the character's tag, so
-   * two of one tag would overwrite each other's picks: a repeat gets a
-   * number (`sarah`, `sarah_2`), as a repeated look name does.
+   * The attached cast's tags by script id (#2050). An entry that echoes a
+   * cast id keeps that character's tag, so a re-analysis moves nothing of
+   * hers. Two NEW characters may share a plain name, but a pick is filed
+   * under the character's tag, so two of one tag would overwrite each
+   * other's picks: a new entry's repeat of a tag in use gets a number
+   * (`sarah`, `sarah_2`), as a repeated look name does.
    */
-  reservedTags: ReadonlySet<string>
+  castTagsById: ReadonlyMap<string, string>
 ): {
   characterBible: CharacterBibleEntry[];
   sceneLooks: Record<string, Record<string, string>>;
 } {
   const sceneLooks: Record<string, Record<string, string>> = {};
-  const tags = new Set(reservedTags);
+  const tags = new Set(castTagsById.values());
   const characterBible = wire.map((given) => {
-    const base = canonicalBibleTag(given);
-    let tag = base;
-    for (let n = 2; tags.has(tag); n++) tag = `${base}_${n}`;
-    tags.add(tag);
+    const own = castTagsById.get(given.characterId);
+    let tag = own ?? canonicalBibleTag(given);
+    if (own === undefined) {
+      for (let n = 2; tags.has(tag); n++)
+        tag = `${canonicalBibleTag(given)}_${n}`;
+      tags.add(tag);
+    }
     const entry = { ...given, consistencyTag: tag };
     const slugs = new Set<string>();
     const names = new Set<string>();

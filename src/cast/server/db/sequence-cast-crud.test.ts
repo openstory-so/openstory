@@ -2016,6 +2016,7 @@ describe('team characters (#2017)', () => {
         characterId: 'char_ada',
         name: 'Ada (older)',
         standardClothing: 'gown',
+        sheetStatus: 'generating',
       },
       analysis
     );
@@ -2023,8 +2024,14 @@ describe('team characters (#2017)', () => {
       id: ada.id,
       name: 'Ada',
       standardClothing: 'coat',
+      // The per-sequence status is still written: the references stage is
+      // drawing her sheet here.
+      sheetStatus: 'generating',
     });
     expect(await versionsOf(ada.id)).toHaveLength(1);
+    expect((await chars().getById(sequenceId, ada.id))?.sheetStatus).toBe(
+      'pending'
+    );
     const ids = await looks().syncFromAnalysis(other, ada.id, [
       {
         lookId: 'char_ada:default',

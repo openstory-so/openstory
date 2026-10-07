@@ -1154,7 +1154,24 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const held = found
         ? await heldElsewhere(db, teamId, found.id, data.sequenceId)
         : false;
-      if (found && held && !found.deletedAt) return found;
+      if (found && held && !found.deletedAt) {
+        // The sheet status is this sequence's own (the cast look), not hers:
+        // the references stage still marks her default look generating.
+        if (data.sheetStatus !== undefined) {
+          const defaultLook = await requireLook(
+            db,
+            teamId,
+            data.sequenceId,
+            found.lookId
+          );
+          await db
+            .update(sequenceCastLooks)
+            .set({ sheetStatus: data.sheetStatus, updatedAt: new Date() })
+            .where(eq(sequenceCastLooks.id, defaultLook.castLookId));
+          return await reread(data.sequenceId, found.id);
+        }
+        return found;
+      }
       const existing = found && !held ? found : undefined;
       const scriptCharacterId =
         found && held
