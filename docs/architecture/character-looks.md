@@ -27,7 +27,8 @@ versions, and a claim.
   `styling`, `source` (`backfill` | `analysis` | `edit`). Never rewritten.
 - **`character_sheet_variants`** carries `lookId` and `lookVersionId` (the
   look version the run read). The divergent key is (look, model, input hash).
-  No FK on `lookId` yet: #2017's hand-applied rebuild adds it.
+  No FK on `lookId`: adding one to an existing table is a rebuild, and no
+  migration has done it.
 - **A scene's picks** live in `continuity.characterLooks` on the selected
   `scene_script_versions` row: character tag → look id. Changing one appends
   a script version, like any narrative edit.

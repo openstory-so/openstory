@@ -226,10 +226,10 @@ changes after it.
 
 ## The deploy window
 
-The two files are applied to production by hand, before the PR is merged
-and built. So the window is not the usual gap between migrate and deploy: it
-runs from the first file until the new worker is live, several minutes at
-best. For all of it the previous worker (the expand PR's code) is serving.
+Nothing is applied to production by hand. The merge's deploy runs the two
+files, one after the other, and then swaps the worker. The window is the
+minutes between the first file and the new worker going live. For all of it
+the previous worker (the expand PR's code) is serving.
 
 **From file 1** (children no longer cascade):
 
@@ -259,10 +259,11 @@ measured here). A run that uses them up fails, and the user starts it again.
 Still working throughout: voice writes, look edits, sheet claims and
 landings, everything on the cast tables.
 
-If file 2 fails after file 1 applied, production stays in the "from file 1"
-state, which costs nothing a user can reach, until file 2 is fixed and run
-again. A failed file 2 rolls back whole: no `__new_characters` or guard
-table is left when it ran as one transaction.
+If file 2 fails after file 1 applied, the deploy stops there and the previous
+worker keeps serving. Production stays in the "from file 1" state, which
+costs nothing a user can reach, until a fix to file 2 is merged and the next
+deploy runs it. A failed file 2 rolls back whole: no `__new_characters` or
+guard table is left when it ran as one transaction.
 
 A rollback of the worker to the expand PR's code is not possible after file
 2: that code cannot create or edit a character.
