@@ -161,7 +161,8 @@ const listLibraryCharacters = productionRead(
       libraryCharactersSchema,
       await readPage(
         input,
-        ['library_characters'],
+        // Bound to the team, like the other library cursors.
+        ['library_characters', scopedDb.teamId],
         pageRows(await scopedDb.characters.listTeam({ inLibrary: true }))
       ),
       origin

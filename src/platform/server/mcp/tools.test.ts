@@ -1855,6 +1855,64 @@ describe('Studio, Gallery and library reads', () => {
         expect(item).not.toHaveProperty('input');
       }
   });
+  it('lists only the library characters of the team, with the sequences casting them, and pages them', async () => {
+    const [ada, bea, cy] = [
+      await castCharacter({ sequenceId, characterId: 'lib_ada', name: 'Ada' }),
+      await castCharacter({ sequenceId, characterId: 'lib_bea', name: 'Bea' }),
+      await castCharacter({ sequenceId, characterId: 'lib_cy', name: 'Cy' }),
+    ];
+    await scopedDb.characters.setInLibrary(ada.id, true);
+    await scopedDb.characters.setInLibrary(bea.id, true);
+    const page = z.object({
+      items: z.array(z.record(z.string(), z.unknown())),
+      nextCursor: z.string().nullable(),
+    });
+
+    const all = page.parse(await data('list_library_characters', {}));
+    // Ascending id; the unflagged character is not there.
+    expect(all.items.map((item) => item.id)).toEqual([ada.id, bea.id].sort());
+    expect(all.items.map((item) => item.id)).not.toContain(cy.id);
+    expect(all.nextCursor).toBeNull();
+    expect(all.items.find((item) => item.id === ada.id)).toEqual({
+      id: ada.id,
+      name: 'Ada',
+      physicalDescription: null,
+      voiceOnly: false,
+      lastUsedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      sequences: [
+        { id: sequenceId, title: 'Test sequence', sheetImageUrl: null },
+      ],
+    });
+
+    const first = page.parse(
+      await data('list_library_characters', { limit: 1 })
+    );
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).not.toBeNull();
+    const second = page.parse(
+      await data('list_library_characters', {
+        limit: 1,
+        cursor: first.nextCursor,
+      })
+    );
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+    expect(second.nextCursor).toBeNull();
+    // A cursor from another collection does not continue this one.
+    expect(
+      (await call('list_talent', { cursor: first.nextCursor })).isError
+    ).toBe(true);
+
+    // Another team sees none of them, and cannot use this team's cursor.
+    scopedDb = createScopedDb(foreignTeamId, generateId());
+    expect(page.parse(await data('list_library_characters', {})).items).toEqual(
+      []
+    );
+    expect(
+      (await call('list_library_characters', { cursor: first.nextCursor }))
+        .isError
+    ).toBe(true);
+    scopedDb = createScopedDb(teamId, generateId());
+  });
   it('binds asset cursors to all filters and windows long input without truncation', async () => {
     const asset = await scopedDb.generatedAssets.getById(assetId);
     if (!asset) throw new Error('seeded asset missing');
