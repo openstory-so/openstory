@@ -211,6 +211,7 @@ describe('computeCharacterSheetInputHash', () => {
       consistencyTag: 'sarah_blonde_30s',
     },
     styling: null,
+    faceSheetVersionId: null,
     talentSheetHash: 'talent-sha',
     talent: null,
     styleConfigHash: 'style-sha',
@@ -256,12 +257,8 @@ describe('computeCharacterSheetInputHash', () => {
   });
 
   it('hashes the default look’s sheet version only once a look is drawn from it', async () => {
+    // The default look carries none, and neither did any digest before.
     const plain = await computeCharacterSheetInputHash(base);
-    const omitted = await computeCharacterSheetInputHash({
-      ...base,
-      faceSheetVersionId: null,
-    });
-    expect(omitted).toBe(plain);
 
     const faced = await computeCharacterSheetInputHash({
       ...base,
@@ -624,6 +621,7 @@ describe('canonical serialization', () => {
         consistencyTag: 'alice_30s',
       },
       styling: null,
+      faceSheetVersionId: null,
       talentSheetHash: 'talent',
       talent: null,
       styleConfigHash: 'style',
@@ -634,6 +632,7 @@ describe('canonical serialization', () => {
       imageModel: 'flux-pro',
       styleConfigHash: 'style',
       styling: null,
+      faceSheetVersionId: null,
       talentSheetHash: 'talent',
       talent: null,
       characterBible: {

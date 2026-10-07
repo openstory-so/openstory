@@ -807,19 +807,15 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** The look's hair / makeup / injury notes; null when it changes none. */
   lookStyling: string | null;
   /**
-   * The default look's completed sheet. Set only when this look is not the
-   * default: the run draws this person from that image and changes the
-   * costume. Snapshotted at the trigger. Absent on the default look and on
-   * a run queued before the face lock.
+   * The default look's selected sheet, which a look other than the default
+   * is drawn from, and only from. Null exactly when this look IS the
+   * default: a non-default look with no face is refused at the trigger.
+   * Snapshotted at the trigger, or (a look whose default sheet the same run
+   * makes) from that run's landed sheet. `versionId` is the selected
+   * version, or the look's id when the pointer is still null (the #1419
+   * row); it joins the sheet hash.
    */
-  faceSheetUrl?: string;
-  /**
-   * The default look's sheet version (`faceSheetUrl`): the selected version,
-   * or that look's id when the pointer is still null (the #1419 row). Hashed
-   * when set, including by the legacy digest shapes, so an older look sheet
-   * does not stay fresh once the default sheet exists.
-   */
-  faceSheetVersionId?: string | null;
+  face: { url: string; versionId: string } | null;
   /**
    * The cast talent at the snapshot; null when not cast. The claim is taken
    * only while the character is still cast with it.

@@ -5,7 +5,8 @@
  */
 
 import { wearLook } from '@/cast/character-looks';
-import { defaultLookFace } from '@/cast/look-sheet-face';
+import { defaultLookFace, lookSheetFaceRefusal } from '@/cast/look-sheet-face';
+import { ValidationError } from '@/platform/errors';
 import { requireCharacterLook } from '@/cast/server/character-look';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -13,10 +14,10 @@ import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
-import { computeCharacterSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import type {
   CastTalentFields,
-  SheetPayload,
+  CharacterSheetDraft,
 } from '@/cast/server/workflows/sheet-snapshots';
 
 const NOT_CAST: CastTalentFields = {
@@ -54,7 +55,7 @@ export async function resolveCastTalent(
   };
 }
 
-export async function buildRegenerateCharacterSheetPayload(params: {
+type SheetPayloadParams = {
   scopedDb: ScopedDb;
   userId: string;
   teamId: string;
@@ -69,18 +70,34 @@ export async function buildRegenerateCharacterSheetPayload(params: {
   lookId: string;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
-}): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
+};
+
+/**
+ * Everything a sheet payload snapshots from the live rows except the face,
+ * plus what the face would be now: the default look's selected sheet, or
+ * null when this look is the default or that sheet does not exist yet.
+ */
+export async function buildCharacterSheetDraft(
+  params: SheetPayloadParams
+): Promise<{
+  draft: CharacterSheetDraft;
+  isDefault: boolean;
+  liveFace: CharacterSheetWorkflowInput['face'];
+  /** Why this look cannot be drawn now; null when it can. */
+  refusal: string | null;
+}> {
   const { scopedDb, userId, teamId, sequence } = params;
   const look = await requireCharacterLook(
     scopedDb,
     params.character,
     params.lookId
   );
-  // Captured before dressing: the character wears the default look, and the
-  // worn row's sheet fields are the look being drawn. Absent when that
-  // sheet is not completed — staleness still has to hash, so this does not
-  // refuse. The generate and upload gates do.
-  const face = look.isDefault ? null : defaultLookFace(params.character.looks);
+  // Read before dressing: the character wears the default look, and the
+  // worn row's sheet fields are the look being drawn.
+  const liveFace = look.isDefault
+    ? null
+    : defaultLookFace(params.character.looks);
+  const refusal = lookSheetFaceRefusal(params.character.looks, look.isDefault);
   const character = wearLook(params.character, look);
   // The UI hides the button; this is the guard for every other caller.
   if (character.voiceOnly) {
@@ -108,7 +125,7 @@ export async function buildRegenerateCharacterSheetPayload(params: {
       )
     : null;
 
-  const partialFields: SheetPayload<CharacterSheetWorkflowInput> = {
+  const draft: CharacterSheetDraft = {
     userId,
     teamId,
     sequenceId: sequence.id,
@@ -116,12 +133,6 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     lookId: look.id,
     lookVersionId: look.lookVersionId,
     lookStyling: look.styling,
-    // The default look's face. A non-default look is drawn from it, and only
-    // from it. Omitted when this is the default look, or its sheet is not
-    // completed yet.
-    ...(face
-      ? { faceSheetUrl: face.url, faceSheetVersionId: face.versionId }
-      : {}),
     talentId: character.talentId,
     characterName: character.name,
     // Dressed: `standardClothing` is this look's clothing.
@@ -138,9 +149,20 @@ export async function buildRegenerateCharacterSheetPayload(params: {
     reuseTalentSheet: false,
     styleConfig,
   };
-  const partial = {
-    ...partialFields,
-    snapshotInputHash: await computeCharacterSheetHashFromDto(partialFields),
-  };
-  return partial;
+  return { draft, isDefault: look.isDefault, liveFace, refusal };
+}
+
+/**
+ * The payload a sheet run takes, drawn now. A look other than the default is
+ * drawn from the default look's selected sheet, and is refused while there
+ * is none: every caller that starts a run (regenerate, a plan's references)
+ * comes through here, so none can draw a look from the talent instead.
+ */
+export async function buildRegenerateCharacterSheetPayload(
+  params: SheetPayloadParams
+): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
+  const { draft, isDefault, liveFace, refusal } =
+    await buildCharacterSheetDraft(params);
+  if (refusal) throw new ValidationError(refusal);
+  return await finishCharacterSheetPayload(draft, isDefault ? null : liveFace);
 }

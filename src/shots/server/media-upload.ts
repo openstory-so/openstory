@@ -611,7 +611,7 @@ export async function setCharacterSheetFromUpload(
       consistencyTag: character.consistencyTag,
     },
     styling: character.styling,
-    faceSheetVersionId: face?.versionId ?? null,
+    faceSheetVersionId: face === null ? null : face.versionId,
     talentSheetHash: cast.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(cast),
     styleConfigHash,

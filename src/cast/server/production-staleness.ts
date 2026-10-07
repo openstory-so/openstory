@@ -2,11 +2,12 @@ import { wearLook } from '@/cast/character-looks';
 import { requireCharacterLook } from '@/cast/server/character-look';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { productionAccess } from '@/sequences/server/production-access';
-import { buildRegenerateCharacterSheetPayload } from './sheets/character-sheet-trigger';
+import { buildCharacterSheetDraft } from './sheets/character-sheet-trigger';
 import { buildRegenerateLocationSheetPayload } from './sheets/location-sheet-trigger';
 import type { SheetStaleness } from './sheets/sheet-staleness';
 import {
   characterSheetHashMatchesStored,
+  finishCharacterSheetPayload,
   locationSheetHashMatchesStored,
 } from './workflows/sheet-snapshots';
 
@@ -81,11 +82,18 @@ export async function readLookSheetStaleness(
   if (character.sheetStatus === 'generating')
     return { status: 'generating', applicable: true };
   if (!stored) return { status: 'untracked', applicable: true };
-  const payload = await buildRegenerateCharacterSheetPayload({
+  // What a regenerate would stamp now. A look whose default has no sheet
+  // yet hashes with no face: it cannot be drawn, and its old sheet was not
+  // drawn from one either.
+  const { draft, isDefault, liveFace } = await buildCharacterSheetDraft({
     ...context,
     character: owner,
     lookId: character.lookId,
   });
+  const payload = await finishCharacterSheetPayload(
+    draft,
+    isDefault ? null : liveFace
+  );
   if (!payload.snapshotInputHash)
     return { status: 'untracked', applicable: true };
   return {

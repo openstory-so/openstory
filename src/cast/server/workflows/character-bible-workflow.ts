@@ -210,6 +210,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         characterDbId,
         lookId: created.lookId,
         lookVersionId: created.lookVersionId,
+        // The bible run draws each character's default look, which has no
+        // face to be drawn from.
+        face: null,
         lookStyling: created.lookStyling,
         talentId: created.talentId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600

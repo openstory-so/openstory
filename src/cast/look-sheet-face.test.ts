@@ -10,37 +10,21 @@ import {
 } from './look-sheet-face';
 
 describe('populatedDefaultSheet', () => {
-  it('is the completed sheet, and nothing else', () => {
-    expect(
-      populatedDefaultSheet({
-        sheetStatus: 'completed',
-        sheetImageUrl: '/r2/priya.png',
-        selectedSheetVersionId: 'ver-1',
-      })
-    ).toEqual({ url: '/r2/priya.png', versionId: 'ver-1' });
-    expect(
-      populatedDefaultSheet({
-        sheetStatus: 'generating',
-        sheetImageUrl: '/r2/priya.png',
-        selectedSheetVersionId: 'ver-1',
-      })
-    ).toBeNull();
-    expect(
-      populatedDefaultSheet({
-        sheetStatus: 'completed',
-        sheetImageUrl: null,
-        selectedSheetVersionId: 'ver-1',
-      })
-    ).toBeNull();
+  it('is the selected sheet, whatever the last attempt did', () => {
+    const sheet = {
+      id: 'priya',
+      sheetImageUrl: '/r2/priya.png',
+      selectedSheetVersionId: 'ver-1',
+    };
+    expect(populatedDefaultSheet(sheet)).toEqual({
+      url: '/r2/priya.png',
+      versionId: 'ver-1',
+    });
+    expect(populatedDefaultSheet({ ...sheet, sheetImageUrl: null })).toBeNull();
     // The pre-versioning sheet is the row keyed to the character's id, and
     // the pointer stays null (#1419). That sheet is still the face.
     expect(
-      populatedDefaultSheet({
-        id: 'priya',
-        sheetStatus: 'completed',
-        sheetImageUrl: '/r2/priya.png',
-        selectedSheetVersionId: null,
-      })
+      populatedDefaultSheet({ ...sheet, selectedSheetVersionId: null })
     ).toEqual({ url: '/r2/priya.png', versionId: 'priya' });
   });
 });
@@ -75,60 +59,105 @@ describe('lookSheetFaceMessage', () => {
 });
 
 describe('lookSheetFaceRefusal', () => {
-  const looks = (
-    sheetStatus: string,
-    extra?: {
-      sheetImageUrl?: string | null;
-      selectedSheetVersionId?: string | null;
-      id?: string;
-    }
-  ) => [
+  const look = { id: 'jacket', isDefault: false, name: 'Op shop jacket' };
+  const looks = (defaultLook: {
+    sheetStatus: string;
+    sheetImageUrl: string | null;
+    selectedSheetVersionId: string | null;
+  }) => [
+    { id: 'priya', isDefault: true, name: 'Clean white shirt', ...defaultLook },
     {
-      id: extra?.id ?? 'priya',
-      isDefault: true,
-      name: 'Clean white shirt',
-      sheetStatus,
-      sheetImageUrl: extra?.sheetImageUrl ?? '/r2/priya.png',
-      selectedSheetVersionId:
-        extra && 'selectedSheetVersionId' in extra
-          ? extra.selectedSheetVersionId
-          : 'ver-1',
+      ...look,
+      sheetStatus: 'pending',
+      sheetImageUrl: null,
+      selectedSheetVersionId: null,
     },
-    { isDefault: false, name: 'Op shop jacket', sheetStatus: 'pending' },
   ];
+  const READY = {
+    url: '/r2/priya.png',
+    versionId: 'ver-1',
+  };
 
-  it('lets the default look through, and a look only once that sheet is completed', () => {
-    const ready = looks('completed');
+  it('lets the default look through, and a look once the default has a selected sheet', () => {
+    const ready = looks({
+      sheetStatus: 'completed',
+      sheetImageUrl: '/r2/priya.png',
+      selectedSheetVersionId: 'ver-1',
+    });
     expect(lookSheetFaceRefusal(ready, true)).toBeNull();
     expect(lookSheetFaceRefusal(ready, false)).toBeNull();
-    expect(defaultLookFace(ready)).toEqual({
-      url: '/r2/priya.png',
-      versionId: 'ver-1',
-    });
+    expect(defaultLookFace(ready)).toEqual(READY);
     expect(defaultLookFaceState(ready)).toBe('ready');
   });
 
-  it('refuses while the default sheet is missing or still generating', () => {
-    const missing = looks('pending', {
+  it('keeps the face when a re-roll of the default failed: the old sheet is still selected', () => {
+    const failed = looks({
+      sheetStatus: 'failed',
+      sheetImageUrl: '/r2/priya.png',
+      selectedSheetVersionId: 'ver-1',
+    });
+    expect(defaultLookFaceState(failed)).toBe('ready');
+    expect(lookSheetFaceRefusal(failed, false)).toBeNull();
+    expect(defaultLookFace(failed)).toEqual(READY);
+  });
+
+  it('keeps the face while a re-roll is running, and waits for a first sheet', () => {
+    const rerolling = looks({
+      sheetStatus: 'generating',
+      sheetImageUrl: '/r2/priya.png',
+      selectedSheetVersionId: 'ver-1',
+    });
+    expect(defaultLookFaceState(rerolling)).toBe('ready');
+    expect(defaultLookFace(rerolling)).toEqual(READY);
+
+    const first = looks({
+      sheetStatus: 'generating',
       sheetImageUrl: null,
       selectedSheetVersionId: null,
     });
-    expect(lookSheetFaceRefusal(missing, false)).toBe(
+    expect(defaultLookFaceState(first)).toBe('generating');
+    expect(lookSheetFaceRefusal(first, false)).toBe(
+      'Drawn from the default look, Clean white shirt. That sheet is still generating.'
+    );
+    expect(defaultLookFace(first)).toBeNull();
+  });
+
+  it('refuses while the default look has never had a sheet', () => {
+    const never = looks({
+      sheetStatus: 'pending',
+      sheetImageUrl: null,
+      selectedSheetVersionId: null,
+    });
+    expect(defaultLookFaceState(never)).toBe('missing');
+    expect(lookSheetFaceRefusal(never, false)).toBe(
       'Drawn from the default look, Clean white shirt. Generate that sheet first.'
     );
-    // A completed sheet with a null pointer is the #1419 row.
-    const unpointed = looks('completed', { selectedSheetVersionId: null });
+    expect(defaultLookFace(never)).toBeNull();
+    // A failed first attempt is still "never had one".
+    expect(
+      lookSheetFaceRefusal(
+        looks({
+          sheetStatus: 'failed',
+          sheetImageUrl: null,
+          selectedSheetVersionId: null,
+        }),
+        false
+      )
+    ).toBe(
+      'Drawn from the default look, Clean white shirt. Generate that sheet first.'
+    );
+  });
+
+  it('takes the #1419 row, a selected sheet with a null pointer, as the face', () => {
+    const unpointed = looks({
+      sheetStatus: 'completed',
+      sheetImageUrl: '/r2/priya.png',
+      selectedSheetVersionId: null,
+    });
     expect(lookSheetFaceRefusal(unpointed, false)).toBeNull();
     expect(defaultLookFace(unpointed)).toEqual({
       url: '/r2/priya.png',
       versionId: 'priya',
     });
-    expect(defaultLookFace(missing)).toBeNull();
-
-    const generating = looks('generating');
-    expect(defaultLookFaceState(generating)).toBe('generating');
-    expect(lookSheetFaceRefusal(generating, false)).toBe(
-      'Drawn from the default look, Clean white shirt. That sheet is still generating.'
-    );
   });
 });

@@ -304,12 +304,12 @@ export type CharacterSheetHashInput = {
   /**
    * The default look's sheet version, when this look is drawn from it
    * (#2015): the selected version, or that look's id when the pointer is
-   * still null (the #1419 row). Omitted or null on the default look and on
-   * a digest stamped before that face was known. Joins every digest shape
+   * still null (the #1419 row). Null on the default look, and on a look whose
+   * default has no sheet yet. Joins every digest shape
    * once set, so a look sheet drawn from a description does not stay fresh
    * after the default sheet exists.
    */
-  faceSheetVersionId?: string | null;
+  faceSheetVersionId: string | null;
   /** Required; `null` is "no talent sheet". */
   talentSheetHash: string | null;
   /** Required; `null` is "not cast". */
@@ -400,7 +400,7 @@ export const CHARACTER_SHEET_BIBLE_FIELDS =
 const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
   styling: z.string().nullable(),
-  faceSheetVersionId: z.string().nullable().optional(),
+  faceSheetVersionId: z.string().nullable(),
   talentSheetHash: z.string().nullable(),
   talent: characterSheetTalentHashFieldsSchema.nullable(),
   styleConfigHash: z.string(),

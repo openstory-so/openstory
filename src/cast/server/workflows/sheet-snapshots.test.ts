@@ -20,7 +20,9 @@ import type {
 import type { SheetPayload } from './sheet-snapshots';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import {
+  assertQueuedWithFace,
   computeCharacterSheetHashFromDto,
+  finishCharacterSheetPayload,
   computeLibraryLocationSheetHashFromDto,
   computeLibraryTalentSheetHashFromDto,
   computeLocationSheetHashFromDto,
@@ -45,6 +47,7 @@ describe('character-sheet hash', () => {
     lookId: 'c1',
     lookVersionId: 'c1',
     lookStyling: null,
+    face: null,
     talentId: null,
     bibleVersionId: null,
     characterName: 'Jack',
@@ -84,18 +87,37 @@ describe('character-sheet hash', () => {
     expect(omitted).toBe(explicit);
   });
 
-  it('treats a missing face version as none', async () => {
-    const omitted = await computeCharacterSheetHashFromDto(baseInput);
-    const explicit = await computeCharacterSheetHashFromDto({
-      ...baseInput,
-      faceSheetVersionId: null,
-    });
+  it('hashes the face a look is drawn from; the default look carries none', async () => {
+    const plain = await computeCharacterSheetHashFromDto(baseInput);
     const faced = await computeCharacterSheetHashFromDto({
       ...baseInput,
-      faceSheetVersionId: 'sheet-v1',
+      face: { url: '/r2/jack.png', versionId: 'sheet-v1' },
     });
-    expect(explicit).toBe(omitted);
-    expect(faced).not.toBe(omitted);
+    const movedUrlOnly = await computeCharacterSheetHashFromDto({
+      ...baseInput,
+      face: { url: '/r2/other.png', versionId: 'sheet-v1' },
+    });
+    expect(faced).not.toBe(plain);
+    // The version is the identity: the url is where the run fetches it.
+    expect(movedUrlOnly).toBe(faced);
+  });
+
+  it('refuses a payload queued before every look carried a face', () => {
+    const { face: _face, ...queuedBefore } = baseInput;
+    expect(() => assertQueuedWithFace(queuedBefore)).toThrow(
+      'Queued before looks were drawn from the default look. Run it again.'
+    );
+    expect(() => assertQueuedWithFace(baseInput)).not.toThrow();
+  });
+
+  it('finishes a draft with its face and the hash that covers it', async () => {
+    const { face: _face, ...draft } = baseInput;
+    const face = { url: '/r2/jack.png', versionId: 'sheet-v1' };
+    const finished = await finishCharacterSheetPayload(draft, face);
+    expect(finished.face).toEqual(face);
+    expect(finished.snapshotInputHash).toBe(
+      await computeCharacterSheetHashFromDto({ ...baseInput, face })
+    );
   });
 });
 

@@ -320,7 +320,7 @@ export const buildCharacterSheetPrompt = (
   talentOverrides: TalentOverrides | undefined,
   styleConfig: StyleConfig | undefined,
   styling: string | null,
-  faceSheetUrl?: string | null
+  faceSheetUrl: string | null
 ): CharacterSheetPromptResult => {
   // A look other than the default is this person in another outfit. The
   // default look's sheet is the person; the talent sheet is not also sent.
@@ -383,7 +383,7 @@ ${characterFeatures}`;
   if (fromDefaultLook) {
     referenceInstruction = `
 CRITICAL - Same person, new outfit:
-The reference image is this character's default look. Every panel must show that same person: face, body, skin, and hair match the reference. Change the costume to the clothing described above. Change the hair only when the styling notes for this look say to. If any text conflicts with the reference image, the IMAGE takes priority.
+The reference image is this character's default look. Every panel must show that same person: face, body, skin, and hair match the reference. Change the costume to the clothing described above. Change the hair only when the styling notes for this look say to. For face, body, skin and hair, the IMAGE takes priority over any text. For the clothing, the TEXT takes priority over the image: the reference wears another outfit.
 `;
   } else if (hasTalent && referenceUrls.length > 0) {
     const talentNotes = talentDescription

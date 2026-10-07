@@ -129,6 +129,7 @@ async function makeEvent(
     lookId: 'look-1',
     lookVersionId: 'lookver-1',
     lookStyling: null,
+    face: null,
     talentId: null,
     bibleVersionId: null,
     characterName: 'Sam',
@@ -201,8 +202,10 @@ describe('CharacterSheetWorkflow reuseTalentSheet', () => {
       await makeEvent({
         lookId: 'gala',
         reuseTalentSheet: true,
-        faceSheetUrl: '/r2/characters/team-1/char-1/default.png',
-        faceSheetVersionId: 'char-1',
+        face: {
+          url: '/r2/characters/team-1/char-1/default.png',
+          versionId: 'char-1',
+        },
         talentDescription: 'Elvis Presley',
         referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
       }),
@@ -323,6 +326,22 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
       })
     );
     expect(result.lookId).toBe('look-1');
+  });
+
+  it('fails a run queued before every look carried a face, at the top', async () => {
+    const legacy = await makeEvent({ lookId: 'gala' });
+    const payload = asStub<Partial<CharacterSheetWorkflowInput>>(
+      legacy.payload
+    );
+    delete payload.face;
+
+    await expect(
+      makeWorkflow().runBody(legacy, makeStep(), makeScopedDb())
+    ).rejects.toThrow(
+      'Queued before looks were drawn from the default look. Run it again.'
+    );
+    expect(mockGenerateImageWithProvider).not.toHaveBeenCalled();
+    expect(mockPromoteIfPending).not.toHaveBeenCalled();
   });
 
   it('fails a run queued before #2015, and clears its claim by the claim id', async () => {

@@ -33,6 +33,7 @@ import { landSheetRun } from './sheet-divergence';
 import type { SheetRunOutcome } from './sheet-divergence';
 import {
   characterSheetHashMatchesStored,
+  assertQueuedWithFace,
   assertQueuedWithLooks,
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -211,6 +212,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const input = event.payload;
     const workflowRunId = event.instanceId;
     assertQueuedWithLooks(input);
+    assertQueuedWithFace(input);
 
     // Validate the snapshot hash inside the workflow body: a tampered
     // payload must halt the run from inside a step, not silently.
@@ -242,7 +244,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // A look other than the default is drawn from that look's sheet. The
     // talent-sheet copy is only for the default look's first sheet.
-    if (input.reuseTalentSheet && !input.faceSheetUrl) {
+    if (input.reuseTalentSheet && input.face === null) {
       return persistReusedTalentSheet({
         event,
         step,
@@ -281,7 +283,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           talentOverrides,
           input.styleConfig,
           input.lookStyling,
-          input.faceSheetUrl
+          input.face === null ? null : input.face.url
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 

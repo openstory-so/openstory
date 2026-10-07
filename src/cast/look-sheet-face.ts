@@ -4,29 +4,35 @@
  */
 
 /**
- * The default look's completed sheet, the face every other look is drawn from.
+ * The face every other look is drawn from: the default look's selected
+ * sheet, whatever its last attempt did. A failed or running re-roll leaves
+ * that sheet selected and on screen, and it is still the face; the one the
+ * re-roll lands replaces it, and the looks drawn from the old one go stale.
  * `id` is that look's id, which is the character's. A sheet from before
  * versions is the row keyed to that id, and the pointer stays null (#1419).
  */
 export function populatedDefaultSheet(sheet: {
-  id?: string;
-  sheetImageUrl?: string | null;
-  sheetStatus?: string | null;
-  selectedSheetVersionId?: string | null;
-}): { url: string; versionId: string } | null {
-  if (sheet.sheetStatus !== 'completed' || !sheet.sheetImageUrl) return null;
-  const versionId = sheet.selectedSheetVersionId ?? sheet.id;
-  if (!versionId) return null;
-  return { url: sheet.sheetImageUrl, versionId };
+  id: string;
+  sheetImageUrl: string | null;
+  selectedSheetVersionId: string | null;
+}): LookSheetFace | null {
+  if (!sheet.sheetImageUrl) return null;
+  return {
+    url: sheet.sheetImageUrl,
+    versionId: sheet.selectedSheetVersionId ?? sheet.id,
+  };
 }
 
+/** The default look's sheet, as a non-default look's payload carries it. */
+export type LookSheetFace = { url: string; versionId: string };
+
 type LookFaceSource = {
-  id?: string;
+  id: string;
   isDefault: boolean;
   name: string;
-  sheetImageUrl?: string | null;
-  sheetStatus?: string | null;
-  selectedSheetVersionId?: string | null;
+  sheetImageUrl: string | null;
+  sheetStatus: string;
+  selectedSheetVersionId: string | null;
 };
 
 export function defaultLookName(
@@ -35,7 +41,10 @@ export function defaultLookName(
   return looks.find((look) => look.isDefault)?.name ?? 'The default look';
 }
 
-/** `ready` when the default look has a completed sheet to draw from. */
+/**
+ * `ready` when the default look has a selected sheet to draw from;
+ * `generating` when its first sheet is on the way.
+ */
 export function defaultLookFaceState(
   looks: readonly LookFaceSource[]
 ): 'ready' | 'missing' | 'generating' {
@@ -59,10 +68,10 @@ export function lookSheetFaceRefusal(
   return lookSheetFaceMessage(defaultLookName(looks), state);
 }
 
-/** The completed default sheet a non-default look is drawn from. */
+/** The selected default sheet a non-default look is drawn from. */
 export function defaultLookFace(
   looks: readonly LookFaceSource[]
-): { url: string; versionId: string } | null {
+): LookSheetFace | null {
   const face = looks.find((look) => look.isDefault);
   return face ? populatedDefaultSheet(face) : null;
 }
