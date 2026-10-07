@@ -37,7 +37,11 @@ import {
   buildRegenerateLocationSheetPayload,
   toLocationMetadata,
 } from '@/cast/server/sheets/location-sheet-trigger';
-import { NotFoundError, ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
@@ -45,6 +49,14 @@ import type { Sequence } from '@/platform/server/db/schema';
 const logger = getLogger(['openstory', 'cast', 'cast-generation']);
 
 type Actor = { userId: string };
+
+/**
+ * A sheet claim refused because an input moved between the snapshot and the
+ * claim (#2051): nothing was written and no run starts. The user retries
+ * against the current inputs.
+ */
+const sheetInputsMoved = (name: string) =>
+  new ConflictError(`${name} changed while this was queued. Try again.`);
 
 async function emitProgress(
   sequenceId: string,
@@ -112,14 +124,17 @@ export async function regenerateCharacterSheet(
   });
 
   // The claim (#1113): last kickoff wins, and any edit to the look's sheet
-  // inputs before this run lands revokes it.
-  const { versionId: sheetVersionId } =
+  // inputs before this run lands revokes it. Taken only while the payload's
+  // snapshot still holds (#1863, #2051); an edit that landed since is refused
+  // here, before anything is spent.
+  const { versionId: sheetVersionId, held } =
     await scopedDb.characterLooks.claimSheet(
       sequence.id,
       payload.lookId,
       payload,
       { markGenerating: true }
     );
+  if (!held) throw sheetInputsMoved(character.name);
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: character.id,
@@ -261,8 +276,9 @@ export async function recastCharacter(
   );
 
   // Always generate a character sheet showing the talent in costume. The
-  // claim is taken after the cast writes above, which revoke older ones.
-  const { versionId: sheetVersionId } =
+  // claim is taken after the cast writes above, which revoke older ones, and
+  // only while what they wrote is still live (#1863, #2051).
+  const { versionId: sheetVersionId, held } =
     await scopedDb.characterLooks.claimSheet(
       data.sequenceId,
       look.id,
@@ -270,9 +286,11 @@ export async function recastCharacter(
         lookVersionId: look.lookVersionId,
         bibleVersionId: updatedCharacter.selectedBibleVersionId,
         talentId: data.talentId,
+        styleVersionId: sequence.selectedStyleVersionId,
       },
       { markGenerating: true }
     );
+  if (!held) throw sheetInputsMoved(character.name);
 
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
@@ -304,6 +322,7 @@ export async function recastCharacter(
     talentId: data.talentId,
     // The recast bible version the metadata below spells out (#1600).
     bibleVersionId: updatedCharacter.selectedBibleVersionId,
+    styleVersionId: sequence.selectedStyleVersionId,
     characterName: character.name,
     characterMetadata: {
       characterId: character.characterId,
@@ -508,11 +527,14 @@ export async function regenerateLocationSheet(
   });
 
   // The claim (#1113): last kickoff wins, and any edit to the location's
-  // inputs before this run lands revokes it.
-  const referenceVersionId = await scopedDb.sequenceLocations.claimReference(
-    location.id,
-    { markGenerating: true }
-  );
+  // inputs before this run lands revokes it. Taken only while the payload's
+  // snapshot still holds (#1863, #2051); an edit that landed since is refused
+  // here, before anything is spent.
+  const { versionId: referenceVersionId, held } =
+    await scopedDb.sequenceLocations.claimReference(location.id, payload, {
+      markGenerating: true,
+    });
+  if (!held) throw sheetInputsMoved(location.name);
   await emitProgress(location.sequenceId, (channel) =>
     channel.emit('generation.location-sheet:progress', {
       locationId: location.id,
@@ -600,11 +622,19 @@ export async function recastLocation(
     throw new NotFoundError('Location not found');
   }
 
-  // Claimed after the relink above, which revokes older claims (#1113).
-  const referenceVersionId = await scopedDb.sequenceLocations.claimReference(
-    data.locationId,
-    { markGenerating: true }
-  );
+  // Claimed after the relink above, which revokes older claims (#1113), and
+  // only while the relinked row is still live (#1863, #2051).
+  const { versionId: referenceVersionId, held } =
+    await scopedDb.sequenceLocations.claimReference(
+      data.locationId,
+      {
+        bibleVersionId: updatedLocation.selectedBibleVersionId,
+        libraryLocationId: data.libraryLocationId,
+        styleVersionId: sequence.selectedStyleVersionId,
+      },
+      { markGenerating: true }
+    );
+  if (!held) throw sheetInputsMoved(location.name);
 
   await emitProgress(location.sequenceId, (channel) =>
     channel.emit('generation.location-sheet:progress', {
@@ -646,6 +676,7 @@ export async function recastLocation(
     libraryLocationReferenceHash: libraryLocation.referenceInputHash,
     referenceVersionId,
     bibleVersionId: updatedLocation.selectedBibleVersionId,
+    styleVersionId: sequence.selectedStyleVersionId,
     imageModel,
     styleConfig,
     aspectRatio: sequence.aspectRatio,

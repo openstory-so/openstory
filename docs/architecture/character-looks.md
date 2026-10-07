@@ -98,9 +98,11 @@ that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
 - A bible edit to a field the sheets read, a recast and a style change demote
   **every** look's claim.
 - The claim is **conditional**: it is taken only while the look version and
-  bible version the sequence pins, and that bible version's talent, are
-  still the ones on the payload. A claim
-  that is not taken still returns an id, and the run parks its sheet under it.
+  bible version the sequence pins, that bible version's talent, and the
+  sequence's style (`styleVersionId`, #2051: same style, same recipe) are
+  still the ones on the payload. A claim that is not taken still returns an
+  id: the regenerate and recast server fns refuse the run and start nothing;
+  a plan run parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
 - A payload frozen before #1600 names no bible version. Absent is "unknown",

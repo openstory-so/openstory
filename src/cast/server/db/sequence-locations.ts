@@ -52,6 +52,18 @@ import {
 } from './bible-versions';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { LOCATION_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
+import { styleUnmoved } from './sheet-claims';
+
+/**
+ * What a reference run was snapshotted from: the claim is taken only while it
+ * holds (#1863, #2051). Every trigger passes its own payload.
+ */
+export type LocationReferenceSnapshot = {
+  bibleVersionId: string | null;
+  libraryLocationId: string | null;
+  /** `sequences.selectedStyleVersionId` at the snapshot. */
+  styleVersionId: string | null;
+};
 
 /** A new location's bible where the caller left a field out. */
 const NEW_LOCATION_BIBLE: Omit<LocationBible, 'name'> = {
@@ -493,47 +505,44 @@ export function createSequenceLocationsMethods(db: Database) {
     },
 
     /**
-     * Take the reference claim (#1113) — the twin of `characters.claimSheet`.
+     * Take the reference claim (#1113) — the twin of `characterLooks.claimSheet`:
+     * mint the id the run's version row will carry and point the claim at it.
+     * Last kickoff wins.
+     *
+     * Taken only while what the run was snapshotted from still holds (#1863,
+     * #2051): the bible version, the library link and the sequence's style.
+     * An edit that landed between the snapshot and this write found no claim
+     * to revoke, so the claim is not taken; the caller refuses the run or
+     * lets it park. One guarded UPDATE; the id is returned either way.
+     *
+     * `markGenerating: false` leaves the status alone, for a caller whose own
+     * write already set it (the bible parent).
      */
     claimReference: async (
       id: string,
+      snapshot: LocationReferenceSnapshot,
       opts: { markGenerating: boolean }
-    ): Promise<string> => {
-      const versionId = generateId();
-      await update(id, {
-        pendingPromoteReferenceVersionId: versionId,
-        ...(opts.markGenerating
-          ? { referenceStatus: 'generating' as const, referenceError: null }
-          : {}),
-      });
-      return versionId;
-    },
-
-    /**
-     * The bible parent's claim (#1863): pointer-only, and taken only while the
-     * bible version and library link the run snapshotted are still live. An
-     * edit that landed between the upsert and this write found no claim to
-     * revoke, so the claim is not taken and the run parks. One guarded UPDATE.
-     */
-    claimReferenceIfUnmoved: async (
-      id: string,
-      snapshot: { bibleVersionId: string; libraryLocationId: string | null }
     ): Promise<{ versionId: string; held: boolean }> => {
       const versionId = generateId();
       const result = await db
         .update(sequenceLocations)
         .set({
           pendingPromoteReferenceVersionId: versionId,
+          ...(opts.markGenerating
+            ? { referenceStatus: 'generating' as const, referenceError: null }
+            : {}),
           updatedAt: new Date(),
         })
         .where(
           and(
             eq(sequenceLocations.id, id),
-            eq(
-              sequenceLocations.selectedBibleVersionId,
-              snapshot.bibleVersionId
-            ),
-            sql`${sequenceLocations.libraryLocationId} IS ${snapshot.libraryLocationId}`
+            sql`${sequenceLocations.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`,
+            sql`${sequenceLocations.libraryLocationId} IS ${snapshot.libraryLocationId}`,
+            styleUnmoved(
+              db,
+              sequenceLocations.sequenceId,
+              snapshot.styleVersionId
+            )
           )
         );
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime

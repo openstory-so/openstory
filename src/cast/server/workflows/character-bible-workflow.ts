@@ -13,6 +13,7 @@ import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { buildCharacterInsert } from './cast-records';
 import {
   assertQueuedWithLooks,
+  assertQueuedWithStyleVersion,
   computeCharacterSheetHashFromDto,
 } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
@@ -49,6 +50,7 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   ): Promise<CharacterMinimal[]> {
     const input = event.payload;
     const { talentMatches = [] } = input;
+    assertQueuedWithStyleVersion(input);
 
     // Create lookup map for talent matches
     const matchMap = new Map<string, TalentCharacterMatch>(
@@ -235,14 +237,15 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           : undefined,
         reuseTalentSheet,
         styleConfig: input.styleConfig,
+        styleVersionId: input.styleVersionId,
         castTalentDescription: talentMatch?.talentDescription ?? null,
         talentSheetInputHash: talentMatch?.sheetInputHash ?? null,
       };
       // A pipeline sheet is tracked like any other (#1113): stamped with its
       // input hash, and landed through a claim a bible edit revokes. The
-      // claim is conditional (#1863): an edit between the snapshot above and
-      // this write found no claim to revoke, so the claim is not taken and
-      // the run parks its sheet.
+      // claim is conditional (#1863, #2051): an edit or a style switch
+      // between the snapshot above and this write found no claim to revoke,
+      // so the claim is not taken and the run parks its sheet.
       const unclaimed = {
         ...unclaimedFields,
         snapshotInputHash:

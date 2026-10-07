@@ -42,8 +42,7 @@ const step = asStub<WorkflowStep>({
   do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
 });
 
-const claimReference = vi.fn(async () => 'unguarded');
-const claimReferenceIfUnmoved = vi.fn(async () => ({
+const claimReference = vi.fn(async () => ({
   versionId: 'guarded',
   held: true,
 }));
@@ -61,7 +60,6 @@ function makeScopedDb(selectedBibleVersionId: string | null): WorkflowScopedDb {
         }))
       ),
       claimReference,
-      claimReferenceIfUnmoved,
     },
   });
 }
@@ -84,6 +82,7 @@ const event: Readonly<WorkflowEvent<LocationBibleWorkflowInput>> = {
     teamId: 'team-1',
     sequenceId: 'seq-1',
     locationBible: [diner],
+    styleVersionId: 'style-v1',
   },
   instanceId: 'run-1',
   workflowName: 'location-bible',
@@ -99,21 +98,42 @@ beforeEach(() => {
 });
 
 describe('LocationBibleWorkflow sheet claim', () => {
-  it('claims against the bible version and link the upsert returned', async () => {
+  it('claims against the bible version and link the upsert returned, and the style the run read', async () => {
     await makeWorkflow().runBody(event, step, makeScopedDb('bible-v1'));
 
-    expect(claimReferenceIfUnmoved).toHaveBeenCalledWith('loc-db-1', {
-      bibleVersionId: 'bible-v1',
-      libraryLocationId: 'lib-1',
-    });
-    expect(claimReference).not.toHaveBeenCalled();
+    // Pointer-only: the upsert already set the status.
+    expect(claimReference).toHaveBeenCalledWith(
+      'loc-db-1',
+      {
+        bibleVersionId: 'bible-v1',
+        libraryLocationId: 'lib-1',
+        styleVersionId: 'style-v1',
+      },
+      { markGenerating: false }
+    );
     expect(mockSpawnAndAwaitChild.mock.calls[0]?.[1]).toMatchObject({
-      childPayload: { referenceVersionId: 'guarded' },
+      childPayload: {
+        referenceVersionId: 'guarded',
+        libraryLocationId: 'lib-1',
+        styleVersionId: 'style-v1',
+      },
     });
   });
 
+  it('fails a payload queued before the style guard, claiming nothing', async () => {
+    const { styleVersionId: _, ...older } = event.payload;
+    await expect(
+      makeWorkflow().runBody(
+        { ...event, payload: asStub<typeof event.payload>(older) },
+        step,
+        makeScopedDb('bible-v1')
+      )
+    ).rejects.toThrow('Queued before sheet claims were guarded on the style');
+    expect(claimReference).not.toHaveBeenCalled();
+  });
+
   it('still spawns the child when the claim was not taken, so its sheet parks', async () => {
-    claimReferenceIfUnmoved.mockResolvedValueOnce({
+    claimReference.mockResolvedValueOnce({
       versionId: 'missed',
       held: false,
     });
@@ -130,7 +150,6 @@ describe('LocationBibleWorkflow sheet claim', () => {
     ).rejects.toThrow('Queued before bible versions shipped. Run it again.');
 
     expect(claimReference).not.toHaveBeenCalled();
-    expect(claimReferenceIfUnmoved).not.toHaveBeenCalled();
     expect(mockSpawnAndAwaitChild).not.toHaveBeenCalled();
   });
 });

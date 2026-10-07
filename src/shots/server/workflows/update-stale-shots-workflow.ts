@@ -50,6 +50,7 @@
 import { withLookSheet } from '@/cast/character-looks';
 import {
   assertQueuedWithLooks,
+  assertQueuedWithStyleVersion,
   finishCharacterSheetPayload,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { generateId } from '@/platform/id';
@@ -278,6 +279,13 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       ...(plan.references?.reusedSheets ?? []).map((reused) => reused.payload),
       ...plan.renderRefs.characters
     );
+    // A plan frozen before the claims were guarded on the style (#2051).
+    assertQueuedWithStyleVersion(
+      ...(plan.references?.characterSheets ?? []),
+      ...(plan.references?.lookSheetsAfterDefault ?? []),
+      ...(plan.references?.reusedSheets ?? []).map((reused) => reused.payload),
+      ...(plan.references?.locationSheets ?? [])
+    );
 
     const counters = {
       visualPrompts: 0,
@@ -429,14 +437,19 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         failedReferenceIds.add(id);
         failures.push(toFailure(id, stage, error));
       };
-      // Conditional (#1863): the payload was built at the click, and an edit
-      // since then found no claim to revoke. The claim is taken only while
-      // the look, the bible and the cast it was built from still hold;
-      // otherwise the run parks its sheet. Null when the claim step failed.
+      // Conditional (#1863, #2051): the payload was built at the click, and
+      // an edit since then found no claim to revoke. The claim is taken only
+      // while the look, the bible, the cast and the style it was built from
+      // still hold; otherwise the run parks its sheet. Null when the claim
+      // step failed.
       const claimCharacterSheet = async (
         payload: Pick<
           CharacterSheetWorkflowInput,
-          'lookId' | 'lookVersionId' | 'bibleVersionId' | 'talentId'
+          | 'lookId'
+          | 'lookVersionId'
+          | 'bibleVersionId'
+          | 'talentId'
+          | 'styleVersionId'
         >
       ): Promise<string | null> => {
         // One sheet per look (#2015).
@@ -455,6 +468,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     // none, and `claimSheet` skips what is absent.
                     bibleVersionId: payload.bibleVersionId,
                     talentId: payload.talentId,
+                    styleVersionId: payload.styleVersionId,
                   },
                   { markGenerating: true }
                 )
@@ -586,12 +600,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           const id = payload.locationDbId;
           let referenceVersionId: string;
           try {
+            // Conditional like the character claim above (#1863, #2051): a
+            // bible edit, relink or style switch since the click leaves it
+            // untaken, and the run parks its sheet.
             referenceVersionId = await step.do(
               `claim-location-sheet-${id}`,
-              () =>
-                scopedDb.sequenceLocations.claimReference(id, {
-                  markGenerating: true,
-                })
+              async () =>
+                (
+                  await scopedDb.sequenceLocations.claimReference(id, payload, {
+                    markGenerating: true,
+                  })
+                ).versionId
             );
           } catch (error) {
             failReference(id, 'reference', error);
