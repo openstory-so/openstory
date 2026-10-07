@@ -156,6 +156,12 @@ export type CharacterLook = Omit<
     castLookId: string;
     /** The look version the sequence pins. */
     lookVersionId: string;
+    /**
+     * The look's CURRENT version (`character_looks.selectedLookVersionId`),
+     * the one a new sequence adopts. Differs from the pin once another
+     * sequence edited the look: "Newer version" (#2017).
+     */
+    currentLookVersionId: string;
     selectedSheetVersionId: string | null;
     pendingPromoteSheetVersionId: string | null;
     sheetStatus: SheetStatus;

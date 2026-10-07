@@ -234,6 +234,8 @@ export function createCharacterSheetVariantsMethods(
           id: generateId(),
           characterId: look.characterId,
           lookId,
+          // Uploaded for this sequence (#2017): its strip lists it.
+          castLookId: look.castLookId,
           model,
           url,
           storagePath,

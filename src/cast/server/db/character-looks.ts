@@ -78,6 +78,9 @@ const lookColumns = {
   sheetStatus: sequenceCastLooks.sheetStatus,
   sheetError: sequenceCastLooks.sheetError,
   lookVersionId: characterLookVersions.id,
+  // The look's current version, next to the pin, so a read can tell "a newer
+  // version exists" without a second query.
+  currentLookVersionId: characterLooks.selectedLookVersionId,
   name: characterLookVersions.name,
   clothing: characterLookVersions.clothing,
   styling: characterLookVersions.styling,

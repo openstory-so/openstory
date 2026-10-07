@@ -38,6 +38,8 @@ function makeScopedDb(referenceCount: number) {
   const scopedDb = asStub<ScopedDb>({
     characters: {
       getVoiceReferenceCount: vi.fn(async () => referenceCount),
+      // The character's own pointer and pin: what its release drops.
+      getOwnVoiceHolds: vi.fn(async () => Math.min(referenceCount, 1)),
       markVoiceReleased,
       updateVoice,
     },
@@ -152,10 +154,12 @@ describe('releaseCharacterVoice', () => {
     await releaseCharacterVoice(
       scopedDb,
       { id: 'c1', voiceId: 'v1' },
+      'seq-1',
       'user-1'
     );
     expect(mockDelete).toHaveBeenCalledWith('key', 'v1');
     expect(updateVoice).toHaveBeenCalledWith(
+      'seq-1',
       'c1',
       { voiceId: null },
       'removed',
@@ -170,7 +174,12 @@ describe('releaseCharacterVoice', () => {
     mockDelete.mockRejectedValue(new Error('502'));
     const { scopedDb, updateVoice } = makeScopedDb(1);
     await expect(
-      releaseCharacterVoice(scopedDb, { id: 'c1', voiceId: 'v1' }, 'user-1')
+      releaseCharacterVoice(
+        scopedDb,
+        { id: 'c1', voiceId: 'v1' },
+        'seq-1',
+        'user-1'
+      )
     ).rejects.toThrow('502');
     expect(updateVoice).not.toHaveBeenCalled();
   });
@@ -179,6 +188,7 @@ describe('releaseCharacterVoice', () => {
     await releaseCharacterVoice(
       scopedDb,
       { id: 'c1', voiceId: null },
+      'seq-1',
       'user-1'
     );
     expect(mockDelete).not.toHaveBeenCalled();

@@ -235,6 +235,7 @@ export async function recastCharacter(
   // it. Separate write — the voice only moves through `updateVoice`.
   if (talentWithSheets.voiceId) {
     await scopedDb.characters.updateVoice(
+      data.sequenceId,
       data.characterId,
       {
         voiceId: talentWithSheets.voiceId,

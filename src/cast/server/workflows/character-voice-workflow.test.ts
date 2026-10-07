@@ -239,7 +239,11 @@ describe('CharacterVoiceWorkflow', () => {
         ],
       })
     );
-    expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
+    expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith(
+      'seq-1',
+      'char-1',
+      'ver-1'
+    );
     expect(mockReleaseReplaced).toHaveBeenCalled();
     expect(mockReleaseIfUnreferenced).not.toHaveBeenCalled();
     expect(result.voiceId).toBe('voice-1');
@@ -343,7 +347,11 @@ describe('CharacterVoiceWorkflow', () => {
       makeStep(),
       scopedDb
     );
-    expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
+    expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith(
+      'seq-1',
+      'char-1',
+      'ver-1'
+    );
     expect(mockReleaseIfUnreferenced).not.toHaveBeenCalled();
     expect(result.voiceId).toBe('voice-1');
     expect(mockEmit).toHaveBeenLastCalledWith(
@@ -397,6 +405,7 @@ describe('CharacterVoiceWorkflow', () => {
       scopedDb
     );
     expect(updateVoice).toHaveBeenCalledWith(
+      'seq-1',
       'char-1',
       expect.objectContaining({ voiceId: 'voice-1' }),
       'generated',

@@ -19,7 +19,9 @@ character to a sequence and what analysis does with the attached cast
   with a different talent; the cast talent is the pinned version's.
 - **`sequence_cast`** — one row per character per sequence.
   - `sequenceId`, `characterId`, `scriptCharacterId` (the analysis id, e.g.
-    `char_001`), `bibleVersionId` (the pin), `removedAt`, `createdAt`.
+    `char_001`), `bibleVersionId` (the pin), `voiceVersionId` (the voice
+    pin; null when the character has no voice here), `removedAt`,
+    `createdAt`.
   - Unique on (`sequenceId`, `characterId`) and on (`sequenceId`,
     `scriptCharacterId`).
   - Soft-remove from a sequence is the link's `removedAt`. The character
@@ -57,7 +59,16 @@ names the character's own columns had, so callers did not change:
 | `selectedBibleVersionId` | `sequence_cast.bibleVersionId` (the pin) |
 | the bible fields         | the pinned bible version                 |
 | `talentId`               | the pinned bible version's `talentId`    |
+| `selectedVoiceVersionId` | `sequence_cast.voiceVersionId` (the pin) |
+| the voice fields         | the pinned voice version                 |
+| `currentBibleVersionId`  | `characters.selectedBibleVersionId`      |
+| `currentVoiceVersionId`  | `characters.selectedVoiceVersionId`      |
 | `castId`                 | the link's own id                        |
+
+A look read carries `currentLookVersionId` (`character_looks.
+selectedLookVersionId`) next to the pinned `lookVersionId` the same way.
+A pin that differs from the current pointer is the "Newer version" notice
+(§ Version moves).
 
 A look read (`scopedDb.characterLooks`, and `character.looks`) is the same
 idea: `lookVersionId`, the definition, `sheetStatus`, `sheetError`,
@@ -104,9 +115,30 @@ What follows from one character in two sequences:
   archived sequence does not refuse: it casts nothing while archived, and a
   scene that points at a removed look keeps wearing it when the sequence
   comes back.
-- **The voice is shared on purpose.** A voice change made from one sequence
-  is every sequence's: the voice is in each one's video manifest, so the
-  other sequences' dialogue and clips read stale.
+- **The voice is pinned per sequence, like the bible (decided 2026-10-07).**
+  `sequence_cast.voiceVersionId` names the `character_voice_versions` row a
+  sequence speaks in; a cast read's `voiceId`, `voiceDescription`,
+  `voicePreviews` and `selectedVoiceVersionId` come from it, and
+  `currentVoiceVersionId` is the character's own pointer. Every voice
+  pointer write takes the sequence it was made from as its first argument
+  and moves that sequence's pin with the current pointer (`updateVoice`,
+  `selectVoiceVersion`, `promoteVoiceClaimIfPending` — the voice workflow's
+  payload already carries `sequenceId`); the other sequences keep what they
+  pinned, and their dialogue and clips do not move. `updateVoice(null, …)`
+  is the one write made from no sequence (the library letting a character go
+  that nothing casts): only the current pointer moves. Attach pins the
+  current voice version. `useVoice` stays on the character.
+- **A provider voice is held while anything names it** (`voiceReferences`
+  in `characters.ts`, the one list behind `getVoiceReferenceCount` and
+  `getOwnVoiceHolds`): a live cast link's pin — not removed, in a sequence
+  that is not archived — a character's current pointer, or a talent. So a
+  recast or voice change from episode 50 leaves episodes 1–49 recording in
+  the old voice, and that voice is released only when the last of them
+  moves on. `releaseCharacterVoice(scopedDb, character, sequenceId, …)`
+  counts its own references first (the current pointer and that sequence's
+  pin, where they name the voice) and passes them as `heldBy`, so the
+  provider delete still comes before the row write and another sequence's
+  pin still blocks it.
 - **The voice goes only when nothing holds the character.** "Held" has one
   meaning (`castElsewhere` in `characters.ts`): the library flag, or a cast
   link that is not removed in a sequence that is not archived. The list and

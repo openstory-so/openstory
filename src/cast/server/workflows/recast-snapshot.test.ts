@@ -69,6 +69,8 @@ function makeCharacter(
     teamId: 'team-1',
     inLibrary: false,
     selectedBibleVersionId: 'bible-1',
+    currentBibleVersionId: 'bible-1',
+    currentVoiceVersionId: null,
     pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
     pendingPromoteVoiceVersionId: null,

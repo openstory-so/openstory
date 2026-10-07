@@ -264,6 +264,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     // A Seed take IS its voice (#1765): nothing to save, no slot to spend.
     if (voiceProviderOf(take.generatedVoiceId) === 'seed') {
       await context.scopedDb.characters.updateVoice(
+        data.sequenceId,
         character.id,
         { voiceId: take.generatedVoiceId, voicePreviews: previews },
         'generated',
@@ -324,6 +325,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       throw error;
     }
     await context.scopedDb.characters.updateVoice(
+      data.sequenceId,
       character.id,
       {
         voiceId,
@@ -408,6 +410,7 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
     }
     const voiceDescription = (data.description ?? data.name)?.trim();
     await context.scopedDb.characters.updateVoice(
+      data.sequenceId,
       character.id,
       { voiceId, ...(voiceDescription ? { voiceDescription } : {}) },
       'library',
@@ -453,6 +456,23 @@ export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
       data.versionId
     );
   });
+
+/**
+ * "Update this episode" (#2017): move this sequence's cast link to the
+ * character's current bible, voice and look versions. A pointer write; the
+ * sequence's sheets and shots then read stale and its own Update redraws them.
+ */
+export const updateCastToCurrentFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(
+    async ({ context, data }) =>
+      await context.scopedDb.characters.moveCastToCurrent(
+        data.sequenceId,
+        data.characterId,
+        { actorId: context.user.id }
+      )
+  );
 
 /** Undo a character soft-delete. */
 export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })

@@ -526,6 +526,8 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     teamId: 'team-1',
     inLibrary: false,
     selectedBibleVersionId: 'bible-1',
+    currentBibleVersionId: 'bible-1',
+    currentVoiceVersionId: null,
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),

@@ -253,6 +253,8 @@ export function landCharacterSheet(
         characterId,
         lookId,
         lookVersionId: args.lookVersionId,
+        // The sequence the sheet was drawn for (#2017): its strip lists it.
+        castLookId,
       },
       versionIdColumn: characterSheetVariants.id,
       divergedAt: characterSheetVariants.divergedAt,

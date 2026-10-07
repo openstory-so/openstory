@@ -235,20 +235,25 @@ const {
   legacySheetError: _sheetError,
   legacySelectedSheetVersionId: _selectedSheetVersionId,
   legacyPendingPromoteSheetVersionId: _pendingPromoteSheetVersionId,
-  // The character's current version; a read carries the one its cast pins.
+  // The character's current versions; a read carries the ones its cast pins,
+  // and the current ones under their own names.
   selectedBibleVersionId: _currentBibleVersionId,
+  selectedVoiceVersionId: _currentVoiceVersionId,
   ...characterRowColumns
 } = getTableColumns(characters);
 
 /**
- * The character as its sequence casts it (#2017). Needs the cast link and
- * the bible version it pins joined.
+ * The character as its sequence casts it (#2017). Needs the cast link, the
+ * bible version it pins and the voice version it pins joined.
  */
 const castColumns = {
   castId: sequenceCast.id,
   sequenceId: sequenceCast.sequenceId,
   characterId: sequenceCast.scriptCharacterId,
   selectedBibleVersionId: sequenceCast.bibleVersionId,
+  selectedVoiceVersionId: sequenceCast.voiceVersionId,
+  currentBibleVersionId: characters.selectedBibleVersionId,
+  currentVoiceVersionId: characters.selectedVoiceVersionId,
   talentId: characterBibleVersions.talentId,
   deletedAt: sequenceCast.removedAt,
 };
@@ -277,7 +282,8 @@ const characterColumns = {
   pinnedBibleVersionId: characterBibleVersions.id,
   ...characterBibleColumns,
   ...legacyLookColumns,
-  // The voice IS the selected version row (#1788); all null without one.
+  // The voice IS the version row the cast link pins (#1788, #2017); all null
+  // without one.
   voiceId: characterVoiceVersions.voiceId,
   voiceDescription: characterVoiceVersions.description,
   voicePreviews: characterVoiceVersions.previews,
@@ -379,11 +385,26 @@ export async function voiceIdsHeldOnlyBy(
     .where(
       sql`NOT (${where}) and ${inArray(characterVoiceVersions.voiceId, theirs)}`
     );
+  // A surviving character's live cast link may pin an older version naming
+  // the id (#2017); the deleted characters' own links go in the same batch.
+  const onSurvivorPins = await db
+    .select({ voiceId: characterVoiceVersions.voiceId })
+    .from(sequenceCast)
+    .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+    .innerJoin(
+      characterVoiceVersions,
+      eq(characterVoiceVersions.id, sequenceCast.voiceVersionId)
+    )
+    .where(
+      sql`NOT (${where}) and ${isNull(sequenceCast.removedAt)} and ${inArray(characterVoiceVersions.voiceId, theirs)}`
+    );
   const onTalent = await db
     .select({ voiceId: talent.voiceId })
     .from(talent)
     .where(inArray(talent.voiceId, theirs));
-  const kept = new Set([...onSurvivors, ...onTalent].map((row) => row.voiceId));
+  const kept = new Set(
+    [...onSurvivors, ...onSurvivorPins, ...onTalent].map((row) => row.voiceId)
+  );
   return ids.filter((id) => !kept.has(id));
 }
 
@@ -463,7 +484,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       )
       .leftJoin(
         characterVoiceVersions,
-        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+        eq(characterVoiceVersions.id, sequenceCast.voiceVersionId)
       );
   type Row = Awaited<ReturnType<typeof selectRows>>[number];
 
@@ -674,14 +695,40 @@ export function createCharactersMethods(db: Database, teamId: string) {
   };
 
   /**
+   * Pin `sequenceId`'s cast link to a voice version (#2017): the statement a
+   * voice pointer write adds to its batch, so the sequence the write was made
+   * from hears the new voice and the others keep theirs. `guard` narrows the
+   * write to when the batch's earlier statement took effect.
+   */
+  const pinVoice = (
+    sequenceId: string,
+    characterId: string,
+    versionId: string,
+    guard?: SQL
+  ) =>
+    db
+      .update(sequenceCast)
+      .set({ voiceVersionId: versionId })
+      .where(
+        and(
+          eq(sequenceCast.sequenceId, sequenceId),
+          eq(sequenceCast.characterId, characterId),
+          guard
+        )
+      );
+
+  /**
    * How a NEW voice value lands (#1657): one `db.batch` that appends the
-   * history row — the selected one's values with `data` on top — and points
-   * the character at it. `source` says WHY — a release and a library pick
-   * both used to be inferred as 'generated'. The other pointer writers:
-   * `selectVoiceVersion` (re-selects an old row) and
+   * history row — the selected one's values with `data` on top — points the
+   * character at it, and pins `sequenceId`'s cast link to it (#2017). `null`
+   * is a write made from no sequence (the library letting a character go):
+   * only the current pointer moves. `source` says WHY — a release and a
+   * library pick both used to be inferred as 'generated'. The other pointer
+   * writers: `selectVoiceVersion` (re-selects an old row) and
    * `promoteVoiceClaimIfPending` (a finished Voice Design).
    */
   const updateVoice = async (
+    sequenceId: string | null,
     id: string,
     data: CharacterVoiceUpdate,
     source: CharacterVoiceVersionSource,
@@ -717,8 +764,51 @@ export function createCharactersMethods(db: Database, teamId: string) {
           updatedAt: new Date(),
         })
         .where(eq(characters.id, id)),
+      ...(sequenceId === null ? [] : [pinVoice(sequenceId, id, versionId)]),
     ]);
     return await voiceOf(id);
+  };
+
+  /**
+   * Every row holding a provider voice id (#2017): a live cast link whose
+   * pinned voice version names it (removed links and archived sequences do
+   * not hold anything), a character whose current version names it (what a
+   * new sequence would adopt), and a talent's own column. The one list
+   * behind `getVoiceReferenceCount` and `getOwnVoiceHolds`, so the release
+   * rule and a caller's "my own references" cannot drift apart.
+   */
+  const voiceReferences = async (voiceId: string) => {
+    const pins = await db
+      .select({
+        characterId: sequenceCast.characterId,
+        sequenceId: sequenceCast.sequenceId,
+      })
+      .from(sequenceCast)
+      .innerJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, sequenceCast.voiceVersionId)
+      )
+      .innerJoin(sequences, eq(sequences.id, sequenceCast.sequenceId))
+      .where(
+        and(
+          eq(characterVoiceVersions.voiceId, voiceId),
+          isNull(sequenceCast.removedAt),
+          ne(sequences.status, 'archived')
+        )
+      );
+    const current = await db
+      .select({ characterId: characters.id })
+      .from(characters)
+      .innerJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+      )
+      .where(eq(characterVoiceVersions.voiceId, voiceId));
+    const [tal] = await db
+      .select({ n: count() })
+      .from(talent)
+      .where(eq(talent.voiceId, voiceId));
+    return { pins, current, talents: tal?.n ?? 0 };
   };
 
   /** The live shots whose scene tags this character, optionally in one look. */
@@ -871,6 +961,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         .select({
           inLibrary: characters.inLibrary,
           bibleVersionId: characterBibleVersions.id,
+          voiceVersionId: characters.selectedVoiceVersionId,
           name: characterBibleColumns.name,
         })
         .from(characters)
@@ -949,6 +1040,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           characterId: id,
           scriptCharacterId,
           bibleVersionId: character.bibleVersionId,
+          voiceVersionId: character.voiceVersionId,
         }),
         ...lookRows.map((look) =>
           db.insert(sequenceCastLooks).values({
@@ -1076,7 +1168,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         )
         .leftJoin(
           characterVoiceVersions,
-          eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+          eq(characterVoiceVersions.id, sequenceCast.voiceVersionId)
         )
         .where(
           and(
@@ -1252,6 +1344,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
             characterId: id,
             scriptCharacterId,
             bibleVersionId: versionId,
+            // A voice version the row arrives pointing at is this sequence's
+            // too; the usual path pins one through `updateVoice` below.
+            voiceVersionId: row.selectedVoiceVersionId ?? null,
           }),
           // The default look reuses the character's id, as the backfill's
           // do, so a character has one whoever wrote it.
@@ -1296,6 +1391,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       };
       if (Object.keys(voicePatch).length > 0) {
         await updateVoice(
+          sequenceId,
           character.id,
           voicePatch,
           // A voice id only ever arrives as the cast talent's copy.
@@ -1373,8 +1469,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /**
      * Every voice a sequence's cast has had, and which one each live
-     * character speaks in now — who a recorded turn was, and since when their
-     * voice is the current one (#1802).
+     * character speaks in now IN THIS SEQUENCE — the version its cast link
+     * pins (#2017) — who a recorded turn was, and since when their voice is
+     * the current one (#1802).
      */
     listVoiceHistoryBySequence: async (sequenceId: string) => {
       const rows = await db
@@ -1382,7 +1479,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           characterId: characterVoiceVersions.characterId,
           voiceId: characterVoiceVersions.voiceId,
           createdAt: characterVoiceVersions.createdAt,
-          current: sql<number>`(${characters.selectedVoiceVersionId} = ${characterVoiceVersions.id} and ${sequenceCast.removedAt} is null)`,
+          current: sql<number>`(${sequenceCast.voiceVersionId} = ${characterVoiceVersions.id} and ${sequenceCast.removedAt} is null)`,
         })
         .from(characterVoiceVersions)
         .innerJoin(
@@ -1403,7 +1500,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       return row ?? null;
     },
 
+    /**
+     * Re-select an earlier voice version: the character's current pointer and
+     * `sequenceId`'s pin move to it (#2017).
+     */
     selectVoiceVersion: async (
+      sequenceId: string,
       characterId: string,
       versionId: string
     ): Promise<CharacterVoiceState> => {
@@ -1430,61 +1532,77 @@ export function createCharactersMethods(db: Database, teamId: string) {
         throw new ValidationError(VOICE_HUSK_EMPTY_MESSAGE);
       }
       // The released check rides in the write too: a release landing between
-      // the read above and here must not leave a dead id selected.
-      const [updated] = await db
-        .update(characters)
-        .set({
-          useVoice: version.enabled,
-          selectedVoiceVersionId: version.id,
-          pendingPromoteVoiceVersionId: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(characters.id, characterId),
-            inTeam,
-            exists(
-              db
-                .select({ id: characterVoiceVersions.id })
-                .from(characterVoiceVersions)
-                .where(
-                  and(
-                    eq(characterVoiceVersions.id, version.id),
-                    isNull(characterVoiceVersions.releasedAt),
-                    eq(characterVoiceVersions.status, 'completed')
-                  )
-                )
+      // the read above and here must not leave a dead id selected. The pin
+      // moves only when the pointer did.
+      const selectable = exists(
+        db
+          .select({ id: characterVoiceVersions.id })
+          .from(characterVoiceVersions)
+          .where(
+            and(
+              eq(characterVoiceVersions.id, version.id),
+              isNull(characterVoiceVersions.releasedAt),
+              eq(characterVoiceVersions.status, 'completed')
             )
           )
-        )
-        .returning({ id: characters.id });
+      );
+      const [[updated]] = await db.batch([
+        db
+          .update(characters)
+          .set({
+            useVoice: version.enabled,
+            selectedVoiceVersionId: version.id,
+            pendingPromoteVoiceVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(characters.id, characterId), inTeam, selectable))
+          .returning({ id: characters.id }),
+        pinVoice(
+          sequenceId,
+          characterId,
+          version.id,
+          sql`(SELECT ${characters.selectedVoiceVersionId} FROM ${characters} WHERE ${characters.id} = ${characterId}) = ${version.id}`
+        ),
+      ]);
       if (!updated) throw new Error(RELEASED_VOICE_MESSAGE);
       return await voiceOf(characterId);
     },
 
     /**
      * Rows (any team — the id is the ElevenLabs account's) still pointing at
-     * a voice — a character through its selected version (#1788), a talent
-     * through its own column — soft-deleted characters included:
-     * soft-delete stamps `deletedAt` and THEN releases (provider first, row
-     * second), so a deleted row still holding an id is a release that
+     * a voice ({@link voiceReferences}): a live cast link's pin (#2017), a
+     * character's current version (#1788), a talent's own column. A
+     * character's current pointer counts whether or not a sequence casts it:
+     * a soft-remove stamps the link and THEN releases (provider first, row
+     * second), so a current pointer still holding an id is a release that
      * failed, and the voice it names is still on the account. `get` prefix
      * on purpose: it is a read, so the workflow surface strips it.
      */
     getVoiceReferenceCount: async (voiceId: string): Promise<number> => {
-      const [chars] = await db
-        .select({ n: count() })
-        .from(characters)
-        .innerJoin(
-          characterVoiceVersions,
-          eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
-        )
-        .where(eq(characterVoiceVersions.voiceId, voiceId));
-      const [tal] = await db
-        .select({ n: count() })
-        .from(talent)
-        .where(eq(talent.voiceId, voiceId));
-      return (chars?.n ?? 0) + (tal?.n ?? 0);
+      const refs = await voiceReferences(voiceId);
+      return refs.pins.length + refs.current.length + refs.talents;
+    },
+
+    /**
+     * How many of {@link getVoiceReferenceCount}'s references are this
+     * character's own — its current pointer, and `sequenceId`'s live pin —
+     * so a release made before the row write (`releaseCharacterVoice`) can
+     * say exactly which references it is about to drop. `get` prefix on
+     * purpose: a read.
+     */
+    getOwnVoiceHolds: async (
+      voiceId: string,
+      characterId: string,
+      sequenceId: string | null
+    ): Promise<number> => {
+      const refs = await voiceReferences(voiceId);
+      return (
+        refs.current.filter((row) => row.characterId === characterId).length +
+        refs.pins.filter(
+          (row) =>
+            row.characterId === characterId && row.sequenceId === sequenceId
+        ).length
+      );
     },
 
     /**
@@ -1661,10 +1779,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
     },
 
     /**
-     * Select the husk as the live voice only if auto-promote still names it.
-     * Returns null when the user picked something else mid-run (#1070 analog).
+     * Select the husk as the live voice only if auto-promote still names it,
+     * and pin the sequence the run was for to it (#2017). Returns null when
+     * the user picked something else mid-run (#1070 analog).
      */
     promoteVoiceClaimIfPending: async (
+      sequenceId: string,
       characterId: string,
       versionId: string
     ) => {
@@ -1680,21 +1800,29 @@ export function createCharactersMethods(db: Database, teamId: string) {
       if (!version || version.status !== 'completed' || !version.voiceId) {
         return null;
       }
-      const [updated] = await db
-        .update(characters)
-        .set({
-          useVoice: version.enabled,
-          selectedVoiceVersionId: version.id,
-          pendingPromoteVoiceVersionId: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(characters.id, characterId),
-            eq(characters.pendingPromoteVoiceVersionId, versionId)
+      const [[updated]] = await db.batch([
+        db
+          .update(characters)
+          .set({
+            useVoice: version.enabled,
+            selectedVoiceVersionId: version.id,
+            pendingPromoteVoiceVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(characters.id, characterId),
+              eq(characters.pendingPromoteVoiceVersionId, versionId)
+            )
           )
-        )
-        .returning({ id: characters.id });
+          .returning({ id: characters.id }),
+        pinVoice(
+          sequenceId,
+          characterId,
+          version.id,
+          sql`(SELECT ${characters.selectedVoiceVersionId} FROM ${characters} WHERE ${characters.id} = ${characterId}) = ${version.id}`
+        ),
+      ]);
       return updated ? await voiceOf(characterId) : null;
     },
 
@@ -1815,7 +1943,13 @@ export function createCharactersMethods(db: Database, teamId: string) {
         voiceDescription !== undefined &&
         voiceDescription !== existing.voiceDescription
       ) {
-        await updateVoice(id, { voiceDescription }, 'user-edit', opts.actorId);
+        await updateVoice(
+          sequenceId,
+          id,
+          { voiceDescription },
+          'user-edit',
+          opts.actorId
+        );
       }
       return await reread(sequenceId, id);
     },
@@ -1925,6 +2059,182 @@ export function createCharactersMethods(db: Database, teamId: string) {
         .where(and(eq(characters.id, id), inTeam));
       if (!row) throw new NotFoundError(`Character ${id} not found`);
       return Boolean(row.cast);
+    },
+
+    /**
+     * The live sequences casting the character ({@link castElsewhere}'s
+     * meaning), most recently changed first, each with the versions its link
+     * pins and whether it is behind the character (#2017): a bible, voice or
+     * look pin that differs from the current pointer, or a live look it has
+     * no cast look for yet. What "Newer version" and "Move many" list.
+     */
+    listCastOfCharacter: async (
+      id: string
+    ): Promise<
+      {
+        sequenceId: string;
+        title: string;
+        castId: string;
+        bibleVersionId: string;
+        voiceVersionId: string | null;
+        behind: boolean;
+      }[]
+    > => {
+      const rows = await db
+        .select({
+          sequenceId: sequenceCast.sequenceId,
+          title: sequences.title,
+          castId: sequenceCast.id,
+          bibleVersionId: sequenceCast.bibleVersionId,
+          voiceVersionId: sequenceCast.voiceVersionId,
+          behind: sql<number>`(
+            ${sequenceCast.bibleVersionId} IS NOT ${characters.selectedBibleVersionId}
+            OR ${sequenceCast.voiceVersionId} IS NOT ${characters.selectedVoiceVersionId}
+            OR EXISTS (SELECT 1 FROM sequence_cast_looks scl JOIN character_looks cl ON cl.id = scl.look_id WHERE scl.cast_id = ${sequenceCast.id} AND scl.look_version_id IS NOT cl.selected_look_version_id)
+            OR EXISTS (SELECT 1 FROM character_looks cl WHERE cl.character_id = ${characters.id} AND cl.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM sequence_cast_looks scl WHERE scl.cast_id = ${sequenceCast.id} AND scl.look_id = cl.id))
+          )`,
+        })
+        .from(sequenceCast)
+        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+        .innerJoin(sequences, eq(sequences.id, sequenceCast.sequenceId))
+        .where(
+          and(
+            eq(characters.id, id),
+            inTeam,
+            isNull(sequenceCast.removedAt),
+            ne(sequences.status, 'archived')
+          )
+        )
+        .orderBy(desc(sequences.updatedAt), asc(sequences.id));
+      return rows.map((row) => ({ ...row, behind: Boolean(row.behind) }));
+    },
+
+    /** One bible version of one of the team's characters, by id. */
+    getBibleVersion: async (versionId: string) => {
+      const [row] = await db
+        .select(getTableColumns(characterBibleVersions))
+        .from(characterBibleVersions)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterBibleVersions.characterId)
+        )
+        .where(and(eq(characterBibleVersions.id, versionId), inTeam));
+      if (!row) throw new NotFoundError(`Bible version ${versionId} not found`);
+      return row;
+    },
+
+    /**
+     * Move `sequenceId`'s cast link to the character's current versions
+     * (#2017, "Update this episode"): the bible and voice pins, every cast
+     * look's pin, and a cast look for each live look the sequence lacked —
+     * one batch, with a `character.version-moved` event naming what moved
+     * from and to. The claims of the cast's sheets are revoked in the same
+     * batch: a pin move changes their inputs under any run in flight. No
+     * version row is written and no current pointer moves. The sequence's
+     * sheets and shots then read stale by the hashes that already exist, and
+     * its own Update redraws them. Nothing is written when nothing is behind.
+     */
+    moveCastToCurrent: async (
+      sequenceId: string,
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<{ character: CharacterWithSheet; moved: boolean }> => {
+      const existing = await castOf(sequenceId, id);
+      if (!existing) throw new NotFoundError(`Character ${id} not found`);
+      if (existing.currentBibleVersionId === null) {
+        throw new Error(
+          `Character ${id} has no current bible version to move to`
+        );
+      }
+      const missing = await db
+        .select({
+          id: characterLooks.id,
+          versionId: characterLooks.selectedLookVersionId,
+        })
+        .from(characterLooks)
+        .where(
+          and(
+            eq(characterLooks.characterId, id),
+            isNull(characterLooks.deletedAt),
+            sql`NOT EXISTS (SELECT 1 FROM ${sequenceCastLooks} WHERE ${sequenceCastLooks.castId} = ${existing.castId} AND ${sequenceCastLooks.lookId} = ${characterLooks.id})`
+          )
+        );
+      const looksMoved = existing.looks
+        .filter((look) => look.lookVersionId !== look.currentLookVersionId)
+        .map((look) => ({
+          lookId: look.id,
+          from: look.lookVersionId,
+          to: look.currentLookVersionId,
+        }));
+      const bibleMoved =
+        existing.selectedBibleVersionId !== existing.currentBibleVersionId;
+      const voiceMoved =
+        existing.selectedVoiceVersionId !== existing.currentVoiceVersionId;
+      if (
+        !bibleMoved &&
+        !voiceMoved &&
+        looksMoved.length === 0 &&
+        missing.length === 0
+      ) {
+        return { character: existing, moved: false };
+      }
+      const now = new Date();
+      await db.batch([
+        db
+          .update(sequenceCast)
+          .set({
+            bibleVersionId: existing.currentBibleVersionId,
+            voiceVersionId: existing.currentVoiceVersionId,
+          })
+          .where(
+            and(
+              eq(sequenceCast.id, existing.castId),
+              // Guarded on the pin this read saw: two moves do not fight.
+              eq(sequenceCast.bibleVersionId, existing.selectedBibleVersionId)
+            )
+          ),
+        db
+          .update(sequenceCastLooks)
+          .set({
+            lookVersionId: sql`(SELECT ${characterLooks.selectedLookVersionId} FROM ${characterLooks} WHERE ${characterLooks.id} = ${sequenceCastLooks.lookId})`,
+            updatedAt: now,
+          })
+          .where(eq(sequenceCastLooks.castId, existing.castId)),
+        ...missing.map((look) =>
+          db.insert(sequenceCastLooks).values({
+            castId: existing.castId,
+            lookId: look.id,
+            lookVersionId: look.versionId,
+            sheetStatus: 'pending',
+          })
+        ),
+        demoteCharacterSheetClaims(db, eq(sequenceCast.id, existing.castId)),
+        db
+          .update(characters)
+          .set({ updatedAt: now })
+          .where(eq(characters.id, id)),
+        buildEventInsert(db, {
+          sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.version-moved',
+          targetType: 'character',
+          targetId: id,
+          summary: `Moved ${existing.name} to the current version`,
+          data: {
+            bible: {
+              from: existing.selectedBibleVersionId,
+              to: existing.currentBibleVersionId,
+            },
+            voice: {
+              from: existing.selectedVoiceVersionId,
+              to: existing.currentVoiceVersionId,
+            },
+            looks: looksMoved,
+            looksAdded: missing.map((look) => look.id),
+          },
+        }),
+      ]);
+      return { character: await reread(sequenceId, id), moved: true };
     },
 
     getShotsForCharacter: async (

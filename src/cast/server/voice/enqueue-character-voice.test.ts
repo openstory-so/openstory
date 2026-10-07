@@ -46,6 +46,8 @@ function character(
     teamId: 'team-1',
     inLibrary: false,
     selectedBibleVersionId: 'bible-1',
+    currentBibleVersionId: 'bible-1',
+    currentVoiceVersionId: 'ver-old',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
