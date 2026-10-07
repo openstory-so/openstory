@@ -2,7 +2,7 @@
  * Resolvers that turn the public API's human-friendly references into the
  * concrete ids / uploads `createSequences` expects:
  *   - style:   id | name | slug  → styleId (auto-pick a default when omitted)
- *   - talent:  id |   *   - character: id | name       → castCharacterIds (library, #2050) or suggestedTalentIds
+ *   - character: id | name     → castCharacterIds (a library character, #2050), else suggestedTalentIds (talent)
  *   - location:id | name         → suggestedLocationIds
  *   - element: hosted URL        → ingested DraftElementUploadInput
  *

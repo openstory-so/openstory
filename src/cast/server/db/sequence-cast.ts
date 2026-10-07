@@ -18,6 +18,85 @@ import {
   sequenceCast,
   sequenceCastLooks,
 } from '@/platform/server/db/schema';
+import { ConflictError, NotFoundError } from '@/platform/errors';
+
+/**
+ * The one meaning of "a sequence casts this character" (#2017): a cast link
+ * that is not removed, in a sequence that is not archived. `exceptSequenceId`
+ * leaves one sequence out. `selectTeam` joins on the same two conditions, so
+ * the list, the character page and the voice release agree.
+ */
+export const castElsewhere = (
+  characterId: string,
+  exceptSequenceId: string | null
+) =>
+  sql`EXISTS (SELECT 1 FROM sequence_cast o JOIN sequences os ON os.id = o.sequence_id WHERE o.character_id = ${characterId} AND o.removed_at IS NULL AND os.status != 'archived' AND (${exceptSequenceId} IS NULL OR o.sequence_id != ${exceptSequenceId}))`;
+
+/**
+ * Whether something other than `exceptSequenceId` holds the character: the
+ * library flag, or another live sequence casting it ({@link castElsewhere}).
+ * What analysis in one sequence may never rewrite (#2050), and what a
+ * sequence may not take the voice with when it lets the character go.
+ */
+export const heldElsewhere = async (
+  db: Database,
+  teamId: string,
+  characterId: string,
+  exceptSequenceId: string | null
+): Promise<boolean> => {
+  const [row] = await db
+    .select({
+      held: sql<number>`(${characters.inLibrary} OR ${castElsewhere(characterId, exceptSequenceId)})`,
+    })
+    .from(characters)
+    .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
+  if (!row) throw new NotFoundError(`Character ${characterId} not found`);
+  return Boolean(row.held);
+};
+
+/**
+ * Refuse while a live cast member of the sequence, other than
+ * `exceptCharacterId`, has this name (trimmed, case-blind). The script names
+ * a character in capitals, and two of one name could not be told apart
+ * (#2050). Attach, revive and restore all pass through here; analysis does
+ * not, since it may make two characters of one name.
+ */
+export const assertNameFree = async (
+  db: Database,
+  sequenceId: string,
+  name: string,
+  exceptCharacterId: string | null
+): Promise<void> => {
+  const key = (value: string) => value.trim().toLowerCase();
+  const live = await db
+    .select({
+      characterId: sequenceCast.characterId,
+      name: characterBibleVersions.name,
+    })
+    .from(sequenceCast)
+    .leftJoin(
+      characterBibleVersions,
+      eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+    )
+    .where(
+      and(
+        eq(sequenceCast.sequenceId, sequenceId),
+        sql`${sequenceCast.removedAt} IS NULL`
+      )
+    );
+  if (
+    live.some(
+      (row) =>
+        row.characterId !== exceptCharacterId &&
+        row.name !== null &&
+        key(row.name) === key(name)
+    )
+  ) {
+    throw new ConflictError(
+      `${name} is already a name in this sequence's cast. Rename one first.`
+    );
+  }
+};
 
 /**
  * The cast links played by a talent: the ones whose pinned bible version

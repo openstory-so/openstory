@@ -47,6 +47,7 @@ import {
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
+import { heldElsewhere } from './sequence-cast';
 
 /**
  * A look's live sheet version in the sequence that uses it (#2017): the cast
@@ -462,7 +463,7 @@ export const deleteLooksOfCharacters = (
 };
 
 export function createCharacterLooksMethods(db: Database, teamId: string) {
-  return {
+  const methods = {
     /** The look as `sequenceId` uses it. */
     getById: (sequenceId: string, id: string) =>
       getLook(db, teamId, sequenceId, id),
@@ -596,6 +597,16 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         styling: string;
       }[]
     ): Promise<Record<string, string>> => {
+      // A character the library or another live sequence holds is linked,
+      // never synced (#2050): decided here, on every call, so no payload flag
+      // that went stale mid-run can reach her.
+      if (await heldElsewhere(db, teamId, characterId, sequenceId)) {
+        return await methods.linkFromAnalysis(
+          sequenceId,
+          characterId,
+          analysed
+        );
+      }
       const opts = { source: 'analysis' as const, createdBy: null };
       const defaultLook = await requireLook(
         db,
@@ -1238,4 +1249,5 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
     },
   };
+  return methods;
 }

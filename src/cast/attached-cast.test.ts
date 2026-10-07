@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { AttachedCastSnapshot } from '@/platform/server/workflow/types';
-import { applyAttachedCast, formatCastBlock } from './attached-cast';
+import {
+  applyAttachedCast,
+  castEchoProblem,
+  castTags,
+  formatCastBlock,
+} from './attached-cast';
 
 const entry = (
   over: Partial<CharacterBibleEntry> & Pick<CharacterBibleEntry, 'characterId'>
@@ -117,5 +122,37 @@ describe('applyAttachedCast', () => {
     );
     expect(characterBible).toEqual(model);
     expect(sceneLooks).toEqual({ scene_1: { bo: 'char_002:default' } });
+  });
+});
+
+describe('castEchoProblem and castTags (#2050)', () => {
+  it('passes an echoed cast id with its name, and a new name', () => {
+    expect(
+      castEchoProblem(
+        [
+          { characterId: 'char_ada', name: 'ADA' },
+          { characterId: 'char_002', name: 'Bo' },
+        ],
+        [ada]
+      )
+    ).toBeNull();
+  });
+
+  it('refuses a cast id given to someone else', () => {
+    expect(
+      castEchoProblem([{ characterId: 'char_ada', name: 'Bob' }], [ada])
+    ).toContain('gave cast id char_ada (Ada) to "Bob"');
+  });
+
+  it("refuses a new entry with a cast character's name", () => {
+    expect(
+      castEchoProblem([{ characterId: 'char_007', name: 'ada' }], [ada])
+    ).toContain(
+      'made a new "ada" instead of using the cast character char_ada'
+    );
+  });
+
+  it('reserves the cast tags for the picks', () => {
+    expect([...castTags([ada])]).toEqual([['char_ada', 'ada']]);
   });
 });
