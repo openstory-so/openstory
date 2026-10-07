@@ -17,24 +17,15 @@
  */
 
 import type { Media, Video as VideoMedia } from '@videojs/media';
-import { createPlayer, Poster, useMedia } from '@videojs/react';
-import { MinimalVideoSkin, Video, videoFeatures } from '@videojs/react/video';
+import { Poster, useMedia } from '@videojs/react';
+import { NeutralVideoSkin, Video, VideoPlayer } from '@videojs/react/video';
 import { useEffect, useRef } from 'react';
 
 // useMedia() returns the base Media capability set; the <Video> component
 // renders an instance with the full Video capability set (seek/source/etc.).
-// Types live in @videojs/media as of v10 beta.26 (no longer re-exported from
-// @videojs/core).
+// Types live in @videojs/media (not re-exported from @videojs/core).
 const isVideoMedia = (media: Media): media is VideoMedia =>
   'duration' in media && 'currentTime' in media;
-
-// `createPlayer` also constructs an AbortController, so it stays out of module
-// scope even here: this module is only ever evaluated in the browser, but the
-// singleton is still the right shape — one player instance shared across every
-// mount, built on first render.
-let playerSingleton: ReturnType<typeof createPlayer> | undefined;
-const getPlayer = () =>
-  (playerSingleton ??= createPlayer({ features: videoFeatures }));
 
 type VideoPlayerSurfaceProps = {
   src: string;
@@ -152,7 +143,7 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   }, [seekTo, media]);
 
   return (
-    <MinimalVideoSkin>
+    <NeutralVideoSkin>
       <Video
         src={src || undefined}
         playsInline
@@ -162,7 +153,7 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
         {chaptersUrl && <track kind="chapters" src={chaptersUrl} default />}
       </Video>
       {!src && posterSrc && <Poster src={posterSrc} alt="Video thumbnail" />}
-    </MinimalVideoSkin>
+    </NeutralVideoSkin>
   );
 };
 
@@ -170,13 +161,10 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
  * Default export so `video-player.tsx` can reach this through `React.lazy`,
  * which requires a module whose default is the component.
  */
-const VideoPlayerSurface: React.FC<VideoPlayerSurfaceProps> = (props) => {
-  const Player = getPlayer();
-  return (
-    <Player.Provider>
-      <VideoPlayerInner {...props} />
-    </Player.Provider>
-  );
-};
+const VideoPlayerSurface: React.FC<VideoPlayerSurfaceProps> = (props) => (
+  <VideoPlayer>
+    <VideoPlayerInner {...props} />
+  </VideoPlayer>
+);
 
 export default VideoPlayerSurface;

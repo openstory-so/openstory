@@ -1,6 +1,6 @@
 /**
  * The Video.js-dependent half of the stitching player: the canvas under the
- * `MinimalVideoSkin`, plus a subtitle layer.
+ * `NeutralVideoSkin`, plus a subtitle layer.
  *
  * Client only: `@videojs/react` pulls in `@videojs/store`, which constructs
  * `AbortController` at module scope; server runtimes such as Cloudflare
@@ -14,8 +14,8 @@
  * outside via `[data-part="stitch-captions"]`.
  */
 
-import { createPlayer, useMediaInstance } from '@videojs/react';
-import { MinimalVideoSkin, videoFeatures } from '@videojs/react/video';
+import { useMediaInstance } from '@videojs/react';
+import { NeutralVideoSkin, VideoPlayer } from '@videojs/react/video';
 import {
   useCallback,
   useEffect,
@@ -30,10 +30,6 @@ import type { StitchLogger } from './logger';
 import type { PlaybackClip } from './playback-clip';
 import type { SequencePlayerMeta } from './playback';
 import { StitchedSequenceMedia } from './stitched-media';
-
-let playerSingleton: ReturnType<typeof createPlayer> | undefined;
-const getPlayer = () =>
-  (playerSingleton ??= createPlayer({ features: videoFeatures }));
 
 export type StitchedPlayerSurfaceProps = {
   clips: PlaybackClip[];
@@ -351,7 +347,7 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
   }, [autoPlay, media]);
 
   return (
-    <MinimalVideoSkin className={className}>
+    <NeutralVideoSkin className={className}>
       <div
         style={{ ...fill, position: 'relative', containerType: 'inline-size' }}
       >
@@ -369,17 +365,14 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
           />
         ) : null}
       </div>
-    </MinimalVideoSkin>
+    </NeutralVideoSkin>
   );
 };
 
 export const StitchedPlayerSurface: React.FC<StitchedPlayerSurfaceProps> = (
   props
-) => {
-  const Player = getPlayer();
-  return (
-    <Player.Provider>
-      <StitchedPlayerInner {...props} />
-    </Player.Provider>
-  );
-};
+) => (
+  <VideoPlayer>
+    <StitchedPlayerInner {...props} />
+  </VideoPlayer>
+);
