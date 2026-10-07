@@ -483,14 +483,20 @@ export function useRecastCharacter() {
       sequenceId: string;
       characterId: string;
       talentId: string;
+      /** Other sequences to move to the recast version (#2017). */
+      applyToSequenceIds: string[];
     }) => recastCharacterFn({ data }),
-    onSuccess: () => {
+    onSuccess: (_result, { applyToSequenceIds }) => {
       // Invalidate sequence characters to refresh the list
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.all,
       });
       // Invalidate shots that contain this character
       void queryClient.invalidateQueries({ queryKey: ['shots'] });
+      for (const sequenceId of applyToSequenceIds) {
+        invalidateAfterVersionMove(queryClient, sequenceId);
+      }
+      void queryClient.invalidateQueries({ queryKey: ['team-characters'] });
     },
   });
 }

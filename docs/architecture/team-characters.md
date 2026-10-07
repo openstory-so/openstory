@@ -7,7 +7,8 @@ who is in 100 episodes is one character, with one set of looks.
 This doc covers the tables, the backfill, every read and write going through
 the cast link, the Characters page and the library flag, attaching a library
 character to a sequence and what analysis does with the attached cast
-(#2050). Still to come: moving an episode to a newer version.
+(#2050), and moving a sequence to a newer version, the one-off copy and a
+recast applied to a range of sequences (§ Version moves).
 
 ## Data
 
@@ -348,6 +349,18 @@ lookId)` lists the sheets that sequence made or has selected, and
   was copied.
 - **Causes read the pin, not the clock**: see
   `prompt-staleness-dependency-graph.md` § 3 and `src/shots/pin-moves.ts`.
+- **Recast across a range.** A recast (`recastCharacter`) is still ONE new
+  bible version carrying the talent, and one new voice version where the
+  talent has a voice, both pinned by the sequence it was launched from; the
+  `RecastCharacterWorkflow` regenerates that sequence's default-look shots
+  as before. `applyToSequenceIds` (the confirm dialog's "Also apply to"
+  checklist, the MCP tool's input) names the other sequences to move to it:
+  each is `moveCastToCurrent` — pins moved, sheet claims revoked, nothing
+  generated — and then reads stale, with the old sheet still selected, until
+  its own Update redraws its sheets and shots. A sequence not named keeps the
+  old face and voice (the old voice is held by its pin) and shows "Newer
+  version". The result and `recast_character` report `movedSequences`
+  (`moved: false` for one already current) and `sequencesLeftBehind`.
 - **Make a one-off copy** (`characters.copyForSequence(sequenceId, id)`,
   offered on a library character): a NEW team character from the version
   this sequence pins, and this sequence's link repointed at it, in one

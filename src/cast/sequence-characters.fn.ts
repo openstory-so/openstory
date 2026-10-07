@@ -565,7 +565,11 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
       ).status
   );
 
-/** Recast a character with different talent, triggering sheet regeneration */
+/**
+ * Recast a character with different talent, triggering sheet regeneration.
+ * `applyToSequenceIds`: the other sequences to move to the recast version
+ * (#2017); the rest keep theirs.
+ */
 export const recastCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
@@ -574,6 +578,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         sequenceId: ulidSchema,
         characterId: z.string().min(1),
         talentId: ulidSchema,
+        applyToSequenceIds: z.array(ulidSchema),
       })
     )
   )

@@ -454,11 +454,16 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     setIsConfirmOpen(true);
   };
 
-  const handleRecastConfirm = () => {
+  const handleRecastConfirm = (applyToSequenceIds: string[]) => {
     if (!selectedTalent || !character) return;
 
     recastCharacter.mutate(
-      { sequenceId, characterId: character.id, talentId: selectedTalent.id },
+      {
+        sequenceId,
+        characterId: character.id,
+        talentId: selectedTalent.id,
+        applyToSequenceIds,
+      },
       {
         onSuccess: (result) => {
           setIsConfirmOpen(false);
@@ -468,6 +473,24 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           if (result.looksLeftStale.length > 0) {
             toast(
               `Update redraws ${result.looksLeftStale.map((look) => look.name).join(', ')} once the new sheet lands.`,
+              { duration: 60_000 }
+            );
+          }
+          // The sequences moved to the recast redraw from their own Update;
+          // the rest keep the old version (#2017).
+          const moved = result.movedSequences.filter((row) => row.moved).length;
+          if (moved > 0 || result.sequencesLeftBehind.length > 0) {
+            toast(
+              [
+                moved > 0
+                  ? `${moved} other ${moved === 1 ? 'sequence' : 'sequences'} moved to the new ${character.name}; each redraws from its own Update.`
+                  : null,
+                result.sequencesLeftBehind.length > 0
+                  ? `${result.sequencesLeftBehind.map((row) => row.title).join(', ')} ${result.sequencesLeftBehind.length === 1 ? 'keeps' : 'keep'} the previous version.`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' '),
               { duration: 60_000 }
             );
           }
@@ -935,6 +958,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           open={isConfirmOpen}
           onOpenChange={setIsConfirmOpen}
           onConfirm={handleRecastConfirm}
+          characterId={character.id}
+          sequenceId={sequenceId}
           characterName={character.name}
           talentName={selectedTalent.name}
           replacingExisting={Boolean(character.talent)}
