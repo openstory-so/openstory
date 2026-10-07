@@ -305,8 +305,15 @@ script then names her like any cast member.
   the sheet this sequence selects for it, which lands as the talent's
   reference sheet through the library sheet run and its claim. Personality,
   movement, voice and looks stay on the character; the character is not
-  recast. Refused while the character has no sheet. Hidden for a talent-cast
-  or voice-only character. See § Talent is a likeness.
+  recast. Refused while the character has no sheet, and refused for a
+  character cast with a talent (its face is that talent's; a second talent
+  would split the person's rights from the release on record). The rights
+  gate holds across the copy: a sheet is generated only when one of our runs
+  landed it (`workflowRunId`); anything else must be in the likeness ledger
+  or the save is refused, `isHuman` is the ledger's answer, and the ledger
+  row is copied to the talent sheet's URL (`carryUploadRights`, naming the
+  source row in `carriedFromId`) before the run starts. Hidden for a
+  talent-cast or voice-only character. See § Talent is a likeness.
 - **A character the page cannot list** (not in the library, cast in no live
   sequence, another team's, or gone) reads "Character not found" with a way
   back, not an error.
