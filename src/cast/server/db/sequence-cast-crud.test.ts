@@ -907,9 +907,26 @@ describe('characters bible CRUD + soft-remove', () => {
       .from(sequenceEvents)
       .where(eq(sequenceEvents.kind, 'character.updated'));
     expect(event?.targetId).toBe(created.id);
+    // The pin move rides on the event (#2017): the staleness causes walk it.
     expect(event?.data).toEqual({
       prevState: { physicalDescription: 'tall, brown hair', age: null },
+      bibleVersion: {
+        from: created.selectedBibleVersionId,
+        to: updated.selectedBibleVersionId,
+      },
     });
+    // An edit that appends no version says so.
+    await m.updateBible(
+      sequenceId,
+      created.id,
+      { age: '40s' },
+      { source: 'edit', actorId }
+    );
+    const events = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'character.updated'));
+    expect(events.at(-1)?.data).toMatchObject({ bibleVersion: null });
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
@@ -1922,6 +1939,34 @@ describe('team characters (#2017)', () => {
       sheetImageUrl: null,
       sheetStatus: 'generating',
     });
+    // The strip is the sequence's (#2017): the sheet the second drew is in
+    // its strip and not the first's; a sheet of unknown origin is in both.
+    const sheets = createCharacterSheetVariantsMethods(db, teamId);
+    expect(
+      (await sheets.listHistoryByLook(other, created.lookId)).map((r) => r.id)
+    ).toEqual([claimB.versionId]);
+    expect(await sheets.listHistoryByLook(sequenceId, created.lookId)).toEqual(
+      []
+    );
+    const unknown = await sheets.insert({
+      characterId: created.id,
+      lookId: created.lookId,
+      model: 'm',
+      url: 'https://x.test/old.png',
+      status: 'completed',
+    });
+    expect(
+      (await sheets.listHistoryByLook(sequenceId, created.lookId)).map(
+        (r) => r.id
+      )
+    ).toEqual([unknown.id]);
+    // The first sequence selecting the second's sheet lists it from then on.
+    await sheets.select(sequenceId, created.id, claimB.versionId, { actorId });
+    expect(
+      (await sheets.listHistoryByLook(sequenceId, created.lookId))
+        .map((r) => r.id)
+        .sort()
+    ).toEqual([claimB.versionId, unknown.id].sort());
 
     // Remove from the first: the second still casts it.
     expect(await chars().getHeldElsewhere(sequenceId, created.id)).toBe(true);

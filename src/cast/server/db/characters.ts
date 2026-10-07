@@ -636,12 +636,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
     const { talentId } = opts;
     const talentMoved = talentId !== existing.talentId;
     if (moved.length === 0 && !talentMoved) {
-      return { moved, talentMoved, statements: [] };
+      return { moved, talentMoved, versionId: null, statements: [] };
     }
     const versionId = generateId();
     return {
       moved,
       talentMoved,
+      /** The version appended; the event names the pin move from → to. */
+      versionId,
       statements: [
         db.insert(characterBibleVersions).values({
           id: versionId,
@@ -1282,6 +1284,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
           existing.lookId
         );
         const now = new Date();
+        // A field left out keeps its value, as the column upsert did.
+        // A talent left out keeps the cast; null uncasts.
+        const bible = bibleWrite(existing, bibleOf(data), {
+          ...opts,
+          talentId: talentId === undefined ? existing.talentId : talentId,
+        });
         await db.batch([
           // A re-analysis re-extracting a removed character revives it — the
           // script says the character exists again (#1108). Sheet OUTPUT is
@@ -1294,12 +1302,27 @@ export function createCharactersMethods(db: Database, teamId: string) {
             .update(characters)
             .set({ updatedAt: now })
             .where(eq(characters.id, id)),
-          // A field left out keeps its value, as the column upsert did.
-          // A talent left out keeps the cast; null uncasts.
-          ...bibleWrite(existing, bibleOf(data), {
-            ...opts,
-            talentId: talentId === undefined ? existing.talentId : talentId,
-          }).statements,
+          ...bible.statements,
+          // The pin moved: the staleness causes walk these events back to
+          // the version a shot was made from (#2017).
+          ...(bible.versionId === null
+            ? []
+            : [
+                buildEventInsert(db, {
+                  sequenceId,
+                  actorId: opts.createdBy,
+                  kind: 'character.updated',
+                  targetType: 'character',
+                  targetId: id,
+                  summary: `Re-analysed character ${existing.name}`,
+                  data: {
+                    bibleVersion: {
+                      from: existing.selectedBibleVersionId,
+                      to: bible.versionId,
+                    },
+                  },
+                }),
+              ]),
           // `sheetStatus` is the default look's: both callers pass an
           // explicit lifecycle value ('generating' for re-analysis,
           // 'pending' for a manual add).
@@ -1898,7 +1921,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const { voiceDescription, standardClothing, ...bibleData } = data;
       // Appends a version and moves the pointer (#1600); an edit to a field
       // the sheet reads also revokes an in-flight sheet run's claim (#1113).
-      const { statements } = bibleWrite(existing, bibleData, {
+      const { statements, versionId } = bibleWrite(existing, bibleData, {
         source: opts.source,
         createdBy: opts.actorId,
         talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
@@ -1922,7 +1945,15 @@ export function createCharactersMethods(db: Database, teamId: string) {
           targetType: 'character',
           targetId: id,
           summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
-          data: { prevState: prev },
+          data: {
+            prevState: prev,
+            // The pin move (#2017), null when no version was appended: the
+            // staleness causes walk these back to the version a shot read.
+            bibleVersion:
+              versionId === null
+                ? null
+                : { from: existing.selectedBibleVersionId, to: versionId },
+          },
         }),
         ...statements,
         ...look.statements,

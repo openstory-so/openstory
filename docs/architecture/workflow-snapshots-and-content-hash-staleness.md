@@ -105,11 +105,17 @@ What this buys:
 - **A sheet records the bible it was made from.** The trigger snapshots
   `bibleVersionId` onto the payload and the land batch stamps it on the
   sheet's version row, promoted or parked.
-- **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` looks up the version live
-  when the stale artifact was made (the newest created at or before it) and
-  diffs it against the live bible: `Character "Jack": clothing, sheet`. A row
-  touched without a bible change (a claim, a voice) is no longer named. An
-  artifact older than the row's history falls back to the old timestamp guess.
+- **Causes name the field, and only for this shot (#2012).** `findStalenessCauses` looks up the version this
+  sequence PINNED when the stale artifact was made — walked back from the pin
+  it holds now through the sequence's pin-move events (`pinnedVersionAt`,
+  `src/shots/pin-moves.ts`; #2017) — and diffs it against the pinned one
+  now: `Character "Jack": clothing, sheet`. Never "the newest version at that
+  time": with two sequences that may be a version another sequence wrote and
+  this one never pinned. A row touched without a bible change (a claim, a
+  voice) is not named. A pin move from before the ids were recorded stops the
+  walk, and the character is named with no fields. Locations are
+  per-sequence and keep the timestamp lookup; an artifact older than the
+  row's history falls back to the old timestamp guess there.
   Characters, locations and elements come from `resolveShotReferences`: the
   union of what the shot's stale prompts name, the same
   resolution each prompt hash and the clip's `referenceKeys` compare use. A

@@ -38,6 +38,7 @@ import {
   useSaveCharacterAsTalent,
   useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
+  useUpdateCastToCurrent,
 } from '@/cast/ui/use-sequence-characters';
 import type {
   CharacterSheetVariant,
@@ -66,8 +67,10 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Loader2, Mic, RefreshCw, Trash2, User } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { isBehindCurrentVersion } from '@/cast/version-behind';
 import { CharacterBibleForm } from './character-bible-form';
 import { CharacterVoiceSection } from './character-voice-section';
+import { MoveEpisodesDialog } from './move-episodes-dialog';
 import { RecastConfirmDialog } from './recast-confirm-dialog';
 import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -137,6 +140,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const softDelete = useSoftDeleteSequenceCharacter();
   const uploadSheet = useUploadCharacterSheet();
   const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
+  // Version moves (#2017): this sequence pins an older version than the
+  // character's current one.
+  const updateToCurrent = useUpdateCastToCurrent();
+  const [isMoveOpen, setIsMoveOpen] = useState(false);
+  const behind = owner ? isBehindCurrentVersion(owner) : false;
 
   // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
   // 60s undo toast. The undo closure survives this component's unmount —
@@ -511,6 +519,36 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-6 p-4">
+          {behind && (
+            <StalenessIndicator
+              entityType="character"
+              density="status-line"
+              message={`Newer version of ${character.name}. This sequence keeps the one it pinned until you update it.`}
+              actionLabel="Update this episode"
+              isRegenerating={updateToCurrent.isPending}
+              onRegenerate={() =>
+                updateToCurrent.mutate(
+                  { sequenceId, characterId },
+                  {
+                    onError: (error) =>
+                      toast.error('Episode not updated', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+            >
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 shrink-0 px-2 text-xs"
+                onClick={() => setIsMoveOpen(true)}
+              >
+                Move other episodes…
+              </Button>
+            </StalenessIndicator>
+          )}
           <SheetStalenessBanners
             entityType="character"
             divergentVariantId={characterDivergentVariant?.id}
@@ -706,6 +744,9 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     {character.talent ? 'Recast' : 'Cast'}
                   </Button>
                 )}
+                <Button variant="outline" onClick={() => setIsMoveOpen(true)}>
+                  Move episodes
+                </Button>
                 {!character.voiceOnly && (
                   <UploadMediaButton
                     label="Upload Sheet"
@@ -827,6 +868,14 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         open={isPickerOpen}
         onOpenChange={setIsPickerOpen}
         onSelect={handleTalentSelect}
+      />
+
+      <MoveEpisodesDialog
+        open={isMoveOpen}
+        onOpenChange={setIsMoveOpen}
+        characterId={characterId}
+        characterName={character.name}
+        sequenceId={sequenceId}
       />
 
       {selectedTalent && (

@@ -26,9 +26,12 @@ versions, and a claim.
 - **`character_look_versions`** — the definition: `name`, `clothing`,
   `styling`, `source` (`backfill` | `analysis` | `edit`). Never rewritten.
 - **`character_sheet_variants`** carries `lookId` and `lookVersionId` (the
-  look version the run read). The divergent key is (look, model, input hash).
-  No FK on `lookId`: adding one to an existing table is a rebuild, and no
-  migration has done it.
+  look version the run read), and `castLookId` (#2017): the cast look it was
+  drawn or uploaded for, so a sequence's version strip and divergent banner
+  list only its own sheets and the one it selected (null: unknown origin,
+  listed everywhere; see `team-characters.md` § Version moves). The divergent
+  key is (look, model, input hash). No FK on `lookId` or `castLookId`: adding
+  one to an existing table is a rebuild, and no migration has done it.
 - **A scene's picks** live in `continuity.characterLooks` on the selected
   `scene_script_versions` row: character tag → look id. Changing one appends
   a script version, like any narrative edit.

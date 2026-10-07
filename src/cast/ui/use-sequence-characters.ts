@@ -25,6 +25,7 @@ import {
   setCharacterVoiceEnabledFn,
   restoreSequenceCharacterFn,
   softDeleteSequenceCharacterFn,
+  updateCastToCurrentFn,
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
@@ -140,6 +141,33 @@ function invalidateAfterVoiceChange(
     queryKey: segmentKeys.list(sequenceId),
   });
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+}
+
+/**
+ * A sequence's cast link moved to the character's current version (#2017):
+ * the cast list, its sheets and voice, and every staleness verdict in the
+ * sequence follow the pins.
+ */
+export function invalidateAfterVersionMove(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  invalidateAfterVoiceChange(queryClient, sequenceId);
+  void queryClient.invalidateQueries({
+    queryKey: ['character-sheet-variants'],
+  });
+  void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
+}
+
+/** "Update this episode": move this sequence's pins to the current version. */
+export function useUpdateCastToCurrent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      updateCastToCurrentFn({ data }),
+    onSuccess: (_result, { sequenceId }) =>
+      invalidateAfterVersionMove(queryClient, sequenceId),
+  });
 }
 
 /** Cancel a voice still generating; the character keeps the voice it had. */

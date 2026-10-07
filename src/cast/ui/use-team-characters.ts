@@ -12,10 +12,15 @@ import {
   getTeamCharacterFn,
   getTeamCharacterShotCountsFn,
   listTeamCharactersFn,
+  moveCharacterCastsFn,
+  previewCharacterVersionMoveFn,
   setCharacterInLibraryFn,
 } from '@/cast/team-characters.fn';
 import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
-import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
+import {
+  invalidateAfterVersionMove,
+  sequenceCharacterKeys,
+} from '@/cast/ui/use-sequence-characters';
 
 const teamCharacterKeys = {
   all: ['team-characters'] as const,
@@ -24,7 +29,43 @@ const teamCharacterKeys = {
   detail: (id: string) => [...teamCharacterKeys.all, 'detail', id] as const,
   shotCounts: (id: string) =>
     [...teamCharacterKeys.all, 'shot-counts', id] as const,
+  versionMove: (id: string) =>
+    [...teamCharacterKeys.all, 'version-move', id] as const,
 };
+
+/**
+ * The sequences casting a character, which are behind its current version,
+ * and the upper-bound cost of moving each (#2017). Loads every behind
+ * sequence's shots, so only while the dialog is open.
+ */
+export function useCharacterVersionMovePreview(
+  characterId: string,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: teamCharacterKeys.versionMove(characterId),
+    queryFn: () => previewCharacterVersionMoveFn({ data: { characterId } }),
+    staleTime: 30_000,
+    enabled,
+  });
+}
+
+/** Move the chosen sequences to the character's current version. */
+export function useMoveCharacterCasts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { characterId: string; sequenceIds: string[] }) =>
+      moveCharacterCastsFn({ data }),
+    onSuccess: (_result, { characterId, sequenceIds }) => {
+      void queryClient.invalidateQueries({
+        queryKey: teamCharacterKeys.versionMove(characterId),
+      });
+      for (const sequenceId of sequenceIds) {
+        invalidateAfterVersionMove(queryClient, sequenceId);
+      }
+    },
+  });
+}
 
 /** The team's characters, sorted by use. Signed-in only. */
 export function useTeamCharacters(inLibrary: boolean) {

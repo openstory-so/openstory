@@ -305,6 +305,50 @@ script then names her like any cast member.
   (`charactersOnlyIn`). The ids are read before the batch, because the links
   that say so go first. See § Hard deletes.
 
+## Version moves (PR 3)
+
+A sequence that pins a bible, voice or look version other than the current
+one, or lacks a cast look for a live look, is **behind**. Nothing moves it
+but a person.
+
+- **"Newer version"** shows on the character panel (a status line with
+  "Update this episode" and "Move other episodes…") and as a badge on the
+  cast rail card, computed off the cast read (`isBehindCurrentVersion`,
+  `src/cast/version-behind.ts`: pinned ≠ current). The server's
+  `characters.listCastOfCharacter` says the same and also counts a missing
+  cast look. The wording says "newer" whichever way the versions differ;
+  `selectVersion` on a look can leave a pin on a later version than the
+  current one.
+- **Update this episode** is `characters.moveCastToCurrent(sequenceId, id)`:
+  one batch that points the link at the current bible and voice versions
+  (guarded on the bible pin the read saw), every cast look at its look's
+  current version, inserts a cast look for each live look the sequence
+  lacked (sheet-less), revokes the cast's sheet claims (a pin move changes
+  their inputs under any run in flight) and writes `character.version-moved`
+  with every from → to. No version row is written and no current pointer
+  moves. Nothing when nothing is behind.
+- **Move episodes** (`MoveEpisodesDialog`, `previewVersionMove` in
+  `src/cast/server/version-moves.ts`) lists the live sequences casting the
+  character; each behind one shows what moves (bible fields, talent, voice,
+  a look's clothing or styling), the shots wearing the character and an
+  **upper-bound** cost: one sheet per look whose inputs move and has a sheet,
+  a still and a clip per shot, priced with the sequence's models. Ticked
+  rows move in one action (`moveCastsToCurrent`, one batch per sequence).
+  The move starts no run: each moved sequence reads stale by the hashes
+  that already exist, and its own "Inputs changed" banner and Update all
+  give the exact plan and price. One click never launches fifty renders.
+- **The version strip is the sequence's.** `character_sheet_variants.
+castLookId` names the cast look a sheet was drawn or uploaded for
+  (stamped in `landCharacterSheet` and `applyConvergent`; the backfill
+  filled it where the look had one cast look). `listHistoryByLook(sequenceId,
+lookId)` lists the sheets that sequence made or has selected, and
+  `listDivergentActiveByCharacter(s)(sequenceId, …)` only the alternates its
+  own runs parked. A row with `castLookId` null (unknown origin) is listed
+  everywhere, as every row was before. One nullable column; no sheet row
+  was copied.
+- **Causes read the pin, not the clock**: see
+  `prompt-staleness-dependency-graph.md` § 3 and `src/shots/pin-moves.ts`.
+
 ## Hard deletes
 
 Nothing cascades from a sequence to a character, or from a character to its

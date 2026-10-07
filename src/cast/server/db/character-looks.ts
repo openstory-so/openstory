@@ -344,7 +344,9 @@ export const lookDefinitionWrite = (
   };
   const after = mergeDefined(before, patch, LOOK_FIELDS);
   const moved = lookChanged(before, after);
-  if (moved.length === 0) return { moved, after, statements: [] };
+  if (moved.length === 0) {
+    return { moved, after, versionId: null, statements: [] };
+  }
   const versionId = generateId();
   const touchesSheet = moved.some((key) =>
     (LOOK_SHEET_FIELDS as readonly string[]).includes(key)
@@ -352,6 +354,8 @@ export const lookDefinitionWrite = (
   return {
     moved,
     after,
+    /** The version appended; the event names the pin move from → to. */
+    versionId,
     statements: [
       db.insert(characterLookVersions).values({
         id: versionId,
@@ -592,9 +596,32 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         look: CharacterLook,
         patch: Partial<LookDefinition>
       ) => {
-        const { statements } = lookDefinitionWrite(db, look, patch, opts);
+        const { statements, versionId } = lookDefinitionWrite(
+          db,
+          look,
+          patch,
+          opts
+        );
         const [first, ...rest] = statements;
-        if (first) await db.batch([first, ...rest]);
+        if (!first || versionId === null) return;
+        // The pin moved: the staleness causes walk these events back to the
+        // version a shot was made from (#2017).
+        await db.batch([
+          first,
+          ...rest,
+          buildEventInsert(db, {
+            sequenceId,
+            actorId: null,
+            kind: 'look.updated',
+            targetType: 'character',
+            targetId: characterId,
+            summary: `Re-analysed look ${patch.name ?? look.name} of ${owner.name}`,
+            data: {
+              lookId: look.id,
+              lookVersion: { from: look.lookVersionId, to: versionId },
+            },
+          }),
+        ]);
       };
       const key = (name: string) => name.trim().toLowerCase();
       const matched = new Set<string>();
@@ -874,12 +901,14 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           look.id
         );
       }
-      const { moved, statements } = lookDefinitionWrite(db, look, patch, {
-        source: opts.source,
-        createdBy: opts.actorId,
-      });
+      const { moved, statements, versionId } = lookDefinitionWrite(
+        db,
+        look,
+        patch,
+        { source: opts.source, createdBy: opts.actorId }
+      );
       const [first, ...rest] = statements;
-      if (!first) return look;
+      if (!first || versionId === null) return look;
       const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
       await db.batch([
         first,
@@ -895,6 +924,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
             lookId,
             prevState: Object.fromEntries(moved.map((key) => [key, look[key]])),
             prevLookVersionId: look.lookVersionId,
+            // The pin move (#2017): the staleness causes walk these back.
+            lookVersion: { from: look.lookVersionId, to: versionId },
           },
         }),
       ]);
@@ -955,6 +986,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
             lookId,
             versionId,
             prevLookVersionId: look.lookVersionId,
+            // The pin move (#2017): the staleness causes walk these back.
+            lookVersion: { from: look.lookVersionId, to: versionId },
           },
         }),
       ]);

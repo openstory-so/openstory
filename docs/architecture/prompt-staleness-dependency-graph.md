@@ -275,10 +275,27 @@ Key consequences of the shape:
   row touched after it.
 - **A sequence reads the versions it pins (#2017).** The bible a shot's
   hashes read is the version the sequence's cast link pins
-  (`sequence_cast.bibleVersionId`), and a look's clothing, styling and sheet
-  pointer are its cast look's (`sequence_cast_looks`). Today those are the
-  character's and the look's current versions, so no digest moved. See
-  `team-characters.md`.
+  (`sequence_cast.bibleVersionId`), the voice its clips bind is the voice
+  version it pins (`sequence_cast.voiceVersionId`), and a look's clothing,
+  styling and sheet pointer are its cast look's (`sequence_cast_looks`). An
+  edit from another sequence moves nothing here until this sequence moves
+  to the current version (`characters.moveCastToCurrent`, "Update this
+  episode" / "Move episodes"), which is a pointer write: the digests then
+  read stale by derivation and no digest body changed. See
+  `team-characters.md` § Version moves.
+- **A cause reads the version this sequence PINNED, never the newest one at
+  that time (#2017).** `findStalenessCauses` finds the bible and look version
+  a shot was made from by walking the sequence's pin moves back from the pin
+  it holds now (`pinnedVersionAt`, `src/shots/pin-moves.ts`): every write
+  that moves a pin records `from → to` on its event (`character.updated`
+  `bibleVersion`, `look.updated` / `look.version-selected` `lookVersion`,
+  `character.version-moved` `bible` and `looks[]`; `sequenceEvents.
+listPinMoves`). With two sequences the newest version at a timestamp may be
+  one another sequence wrote and this one never pinned, so that guess is
+  gone for characters and looks. An event from before the ids were recorded
+  stops the walk, and the cause names the character with no fields
+  (`Character "Mia"`): a hint withheld, never a wrong one. Locations are
+  per-sequence and keep the timestamp rule.
 - **Clothing belongs to a look, and a scene picks the look (#2015).** A
   character has one or more looks (`character_looks`, versioned in
   `character_look_versions`), each with its own sheet; a scene's

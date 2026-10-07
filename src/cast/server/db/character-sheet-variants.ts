@@ -46,6 +46,33 @@ const ofLook = (lookId: string) =>
     )
   );
 
+/**
+ * The sheets one sequence can pick from for a look (#2017): the ones its cast
+ * look made, the one it has selected, and rows whose sequence is unknown
+ * (`castLookId` null, from before the column: listed everywhere, as before).
+ */
+const ofCastLook = (look: {
+  castLookId: string;
+  selectedSheetVersionId: string | null;
+}) =>
+  or(
+    eq(characterSheetVariants.castLookId, look.castLookId),
+    isNull(characterSheetVariants.castLookId),
+    look.selectedSheetVersionId === null
+      ? undefined
+      : eq(characterSheetVariants.id, look.selectedSheetVersionId)
+  );
+
+/** Sheets parked by a run of `sequenceId`, or of an unknown sequence. */
+const parkedFor = (sequenceId: string) =>
+  or(
+    isNull(characterSheetVariants.castLookId),
+    inArray(
+      characterSheetVariants.castLookId,
+      sql`(SELECT scl.id FROM sequence_cast_looks scl JOIN sequence_cast sc ON sc.id = scl.cast_id WHERE sc.sequence_id = ${sequenceId})`
+    )
+  );
+
 export function createCharacterSheetVariantsMethods(
   db: Database,
   teamId: string
@@ -81,14 +108,20 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * Selectable history: completed, not discarded, oldest-first so a
-     * left-to-right strip can label v1, v2, … from position (same as
-     * frame / video versions). Includes parked divergent rows so the user
-     * can pick one instead of promoting through the banner.
+     * Selectable history of a look IN ONE SEQUENCE (#2017): completed, not
+     * discarded, oldest-first so a left-to-right strip can label v1, v2, …
+     * from position (same as frame / video versions). Includes parked
+     * divergent rows so the user can pick one instead of promoting through
+     * the banner. Only the sheets this sequence made (`castLookId` is its cast
+     * look) or selected, plus rows whose sequence is unknown (`castLookId`
+     * null, from before the column): a sheet another sequence drew for its
+     * own style and model is not this sequence's to pick from.
      */
     listHistoryByLook: async (
+      sequenceId: string,
       lookId: string
     ): Promise<CharacterSheetVariant[]> => {
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       return db
         .select()
         .from(characterSheetVariants)
@@ -96,6 +129,7 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             ofLook(lookId),
+            ofCastLook(look),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
           )
@@ -122,11 +156,15 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * List active (non-discarded) divergent alternates for a character. The
-     * UI banner / corner-dot reads through this so the surfaces clear once
-     * the user discards or promotes.
+     * List active (non-discarded) divergent alternates for a character, as
+     * parked by runs of ONE sequence (#2017): a sheet a run of another
+     * sequence parked is that sequence's banner, not this one's. Rows whose
+     * sequence is unknown (`castLookId` null) show in every sequence, as
+     * every row did before. The UI banner / corner-dot reads through this so
+     * the surfaces clear once the user discards or promotes.
      */
     listDivergentActiveByCharacter: async (
+      sequenceId: string,
       characterId: string
     ): Promise<CharacterSheetVariant[]> => {
       return db
@@ -136,6 +174,7 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
+            parkedFor(sequenceId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
           )
@@ -144,6 +183,7 @@ export function createCharacterSheetVariantsMethods(
     },
 
     listDivergentActiveByCharacters: async (
+      sequenceId: string,
       characterIds: string[]
     ): Promise<CharacterSheetVariant[]> => {
       if (characterIds.length === 0) return [];
@@ -154,6 +194,7 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             inArray(characterSheetVariants.characterId, characterIds),
+            parkedFor(sequenceId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
           )
