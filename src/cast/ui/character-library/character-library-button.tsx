@@ -2,6 +2,7 @@ import type React from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/ui/shadcn/button';
 import { useSetCharacterInLibrary } from '@/cast/ui/use-team-characters';
+import { useHydrated } from '@/ui/use-hydrated';
 
 /**
  * The library flag of one character (#2017). Nothing is copied: the
@@ -12,13 +13,15 @@ export const CharacterLibraryButton: React.FC<{
   inLibrary: boolean;
 }> = ({ characterId, inLibrary }) => {
   const setInLibrary = useSetCharacterInLibrary();
+  // Server-rendered before its handler exists: a click then does nothing.
+  const hydrated = useHydrated();
   const idle = inLibrary ? 'Remove from Library' : 'Add to Library';
   const busy = inLibrary ? 'Removing…' : 'Adding…';
 
   return (
     <Button
       variant="outline"
-      disabled={setInLibrary.isPending}
+      disabled={!hydrated || setInLibrary.isPending}
       onClick={() =>
         setInLibrary.mutate(
           { characterId, inLibrary: !inLibrary },
