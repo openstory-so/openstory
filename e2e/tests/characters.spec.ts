@@ -114,6 +114,49 @@ test.describe('Characters page', () => {
     await expect(card(page)).toBeVisible();
   });
 
+  test('Add from library casts the character into a second sequence (#2050)', async ({
+    page,
+    testUser,
+  }) => {
+    const other = await createTestSequence(
+      testUser.teamId,
+      testUser.id,
+      `E2E Second ${crypto.randomUUID().slice(0, 8)}`
+    );
+    try {
+      await openCharacterPage(page);
+      await addButton(page).click();
+      await expect(removeButton(page)).toBeVisible();
+
+      await page.goto(`/sequences/${other.id}/scenes?facet=cast`);
+      await page
+        .getByRole('button', { name: 'Add from library' })
+        .click({ timeout: HYDRATION_TIMEOUT });
+      const dialog = page.getByRole('dialog', { name: 'Add from library' });
+      await dialog.getByLabel('Search the library').fill(character.name);
+      await dialog
+        .getByRole('button', { name: new RegExp(character.name) })
+        .click();
+      await expect(page.getByText(`Added ${character.name}`)).toBeVisible();
+      await expect(dialog).toBeHidden();
+      await expect(
+        page.getByRole('link', { name: new RegExp(character.name) }).first()
+      ).toBeVisible();
+
+      // One character, two sequences.
+      await openCharacterPage(page);
+      await expect(
+        page
+          .getByRole('navigation', {
+            name: 'Sequences that cast this character',
+          })
+          .getByText('Cast in 2 sequences')
+      ).toBeVisible();
+    } finally {
+      await cleanupSequenceById(other.id, other.styleId);
+    }
+  });
+
   test('the sequence cast page and the character page toggle the same flag', async ({
     page,
   }) => {

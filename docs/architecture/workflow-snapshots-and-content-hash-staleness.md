@@ -299,6 +299,8 @@ For the workflows that do content generation, "input" is specifically:
 - **`libraryTalentSheetWorkflow`** (`LibraryTalentSheetWorkflowInput`) — inlines `referenceImageUrls`, `talentDescription`, `snapshotInputHash`, and the claim `sheetId` (the `talent_sheets` id it writes). Lands through `talent.landSheet`; a missed claim parks the sheet and skips the headshot.
 - **`libraryLocationSheetWorkflow`** (`LibraryLocationSheetWorkflowInput`) — carries `referenceClaimId`; publishes its preview through `locations.updateReferenceIfClaimed`, else parks it in `location_sheet_variants`.
 
+- **`storyboardWorkflow` → `analyzeScriptWorkflow` → `sceneSplitWorkflow`** carry the sequence's cast at the click (`cast: AttachedCastSnapshot[]`, #2050): each character as the sequence casts her, with `shared` (held by the library or another sequence). Analysis reads only this; a shared character's pinned bible wins over the model's entry and she is linked, never rewritten. No hash moves: the snapshot is the same projection (`characterToBible`) the prompt hashes already read.
+
 - **A continue (#1818)** is an `UpdateStaleShotsWorkflow` run whose plan the trigger builds from the generation plan's units (`computePlan({ units })`, `buildPlanReferences` for the sheet / element / voice payloads). There is no checkpoint: every input is read from D1 at the click, like any other snapshot. **Update all (#1819)** builds its plan the same way, from the generation plan filtered to `stale` (`planUpdateAll`).
 
 Most migrations are additive — payloads already carry most of the data. The work is inlining hashes, validating at start, and branching at write time.
