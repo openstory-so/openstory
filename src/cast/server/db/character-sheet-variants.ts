@@ -528,11 +528,19 @@ export function createCharacterSheetVariantsMethods(
             eq(liveLookSheetVersionId, variantId)
           )
         );
-      // A one-off copy's cast look selects a sheet of another look (#2017).
+      // A one-off copy's cast look selects a sheet of another look (#2017):
+      // one of the team's cast looks, like every read here.
       const [selectedElsewhere] = await db
         .select({ id: sequenceCastLooks.id })
         .from(sequenceCastLooks)
-        .where(eq(sequenceCastLooks.selectedSheetVersionId, variantId));
+        .innerJoin(sequenceCast, eq(sequenceCast.id, sequenceCastLooks.castId))
+        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+        .where(
+          and(
+            eq(sequenceCastLooks.selectedSheetVersionId, variantId),
+            eq(characters.teamId, teamId)
+          )
+        );
       if (live || selectedElsewhere) {
         throw new ConflictError(
           'Cannot discard the selected sheet version; select another first.'

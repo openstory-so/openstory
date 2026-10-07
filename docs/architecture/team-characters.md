@@ -133,7 +133,7 @@ What follows from one character in two sequences:
   in `characters.ts`, the one list behind `getVoiceReferenceCount` and
   `getOwnVoiceHolds`): a live cast link's pin — not removed, in a sequence
   that is not archived — a character's current pointer, or a talent. So a
-  recast or voice change from episode 50 leaves episodes 1–49 recording in
+  recast or voice change from sequence 50 leaves sequences 1–49 recording in
   the old voice, and that voice is released only when the last of them
   moves on. `releaseCharacterVoice(scopedDb, character, sequenceId, …)`
   counts its own references first (the current pointer and that sequence's
@@ -236,7 +236,7 @@ script then names her like any cast member.
   asks for the id), then talent. MCP: `add_character_to_sequence`.
 - **Detach** is the existing Remove (soft, the link's `removedAt`).
 - **A rename** in a later version leaves the script saying the old name until
-  the episode moves version (version moves, a later PR).
+  the sequence moves version (version moves, a later PR).
 
 ## Analysis reads the attached cast (#2050)
 
@@ -312,32 +312,49 @@ A sequence that pins a bible, voice or look version other than the current
 one, or lacks a cast look for a live look, is **behind**. Nothing moves it
 but a person.
 
-- **"Newer version"** shows on the character panel (a status line with
-  "Update this episode" and "Move other episodes…") and as a badge on the
-  cast rail card, computed off the cast read (`isBehindCurrentVersion`,
+- **"Not the current version"** shows on the character panel (a status line
+  with "Update this sequence" and "Move other sequences…") and as a badge on
+  the cast rail card, computed off the cast read (`isBehindCurrentVersion`,
   `src/cast/version-behind.ts`: pinned ≠ current). The server's
   `characters.listCastOfCharacter` says the same and also counts a missing
-  cast look. The wording says "newer" whichever way the versions differ;
-  `selectVersion` on a look can leave a pin on a later version than the
-  current one.
-- **Update this episode** is `characters.moveCastToCurrent(sequenceId, id)`:
-  one batch that points the link at the current bible and voice versions
-  (guarded on the bible pin the read saw), every cast look at its look's
-  current version, inserts a cast look for each live look the sequence
-  lacked (sheet-less), revokes the cast's sheet claims (a pin move changes
-  their inputs under any run in flight) and writes `character.version-moved`
-  with every from → to. No version row is written and no current pointer
-  moves. Nothing when nothing is behind.
-- **Move episodes** (`MoveEpisodesDialog`, `previewVersionMove` in
-  `src/cast/server/version-moves.ts`) lists the live sequences casting the
-  character; each behind one shows what moves (bible fields, talent, voice,
-  a look's clothing or styling), the shots wearing the character and an
-  **upper-bound** cost: one sheet per look whose inputs move and has a sheet,
-  a still and a clip per shot, priced with the sequence's models. Ticked
-  rows move in one action (`moveCastsToCurrent`, one batch per sequence).
-  The move starts no run: each moved sequence reads stale by the hashes
-  that already exist, and its own "Inputs changed" banner and Update all
-  give the exact plan and price. One click never launches fifty renders.
+  cast look (`looksToAdd`). The wording is true whichever way the versions
+  differ: `selectVersion` on a look can leave a pin on a later version than
+  the current one. "Move sequences" is on the panel only when another live
+  sequence casts the character or this one is behind
+  (`useCharacterCastElsewhere`).
+- **Every move goes through `src/cast/server/version-moves.ts`**:
+  `moveSequenceToCurrent` (one sequence: "Update this sequence", the MCP
+  `update_cast_to_current`) and `moveCastsToCurrent` (many: "Move
+  sequences", `move_character_casts`, a range recast). The db write is
+  `characters.moveCastToCurrent(sequenceId, id)`: one batch that points the
+  link at the current bible and voice versions (guarded on both pins the
+  read saw), every cast look at its look's current version, inserts a cast
+  look for each live look the sequence lacked (sheet-less), revokes the
+  cast's sheet claims (a pin move changes their inputs under any run in
+  flight) and writes `character.version-moved` with every from → to. No
+  version row is written and no current pointer moves. Nothing when nothing
+  is behind. After the write, the voice the pin let go of is released
+  through `releaseReplacedVoice` when nothing holds it any more (the last
+  pin moving off a voice is what frees its slot; provider first, row second,
+  a failed release logged and retried by a later release).
+- **Many sequences are checked first** (`assertMovableSequences`): every id
+  must be the team's (`sequences.getById`, the check
+  `sequenceAccessMiddleware` / `productionAccess` make) and cast the
+  character through a live link; one id outside that set is `NotFoundError`
+  for the whole call before any write, never a partial move. A range recast
+  runs the same check before the recast writes anything.
+- **Move sequences** (`MoveSequencesDialog`, `previewVersionMove`) lists the
+  live sequences casting the character; each behind one shows what moves
+  (bible fields, talent, voice, a look's clothing or styling, looks added),
+  the shots wearing the character and an **upper-bound** cost: a sheet for
+  every look whose inputs move (every look when a sheet field of the bible
+  or the talent moves, a pointer-less legacy sheet included) and every look
+  the move adds, a still per shot, a clip per shot at the video model's
+  longest length, and a dialogue re-record per shot when the voice moves,
+  priced with the sequence's models. Ticked rows move in one action. The
+  move starts no run: each moved sequence reads stale by the hashes that
+  already exist, and its own "Inputs changed" banner and Update all give the
+  exact plan and price. One click never launches fifty renders.
 - **The version strip is the sequence's.** `character_sheet_variants.
 castLookId` names the cast look a sheet was drawn or uploaded for
   (stamped in `landCharacterSheet` and `applyConvergent`; the backfill
@@ -358,9 +375,10 @@ lookId)` lists the sheets that sequence made or has selected, and
   each is `moveCastToCurrent` — pins moved, sheet claims revoked, nothing
   generated — and then reads stale, with the old sheet still selected, until
   its own Update redraws its sheets and shots. A sequence not named keeps the
-  old face and voice (the old voice is held by its pin) and shows "Newer
-  version". The result and `recast_character` report `movedSequences`
-  (`moved: false` for one already current) and `sequencesLeftBehind`.
+  old face and voice (the old voice is held by its pin) and shows "Not the
+  current version". The result and `recast_character` report
+  `movedSequences` (`moved: false` for one already current) and
+  `sequencesLeftBehind`.
 - **Make a one-off copy** (`characters.copyForSequence(sequenceId, id)`,
   offered on a library character): a NEW team character from the version
   this sequence pins, and this sequence's link repointed at it, in one
@@ -377,10 +395,25 @@ lookId)` lists the sheets that sequence made or has selected, and
   `castLookId`), and nobody can discard a sheet a cast look selects. New
   sheets land under the copy's looks. Scene picks name look ids, so every
   scene of the sequence picking a non-default look gets a script version
-  naming the copy's look (after the batch; a pick left pointing at the
-  original's look would dress the default). The script id stays, so scene
-  tags match and no prompt hash moves. Refused while a sheet run holds a
-  claim here. Event `character.copied`.
+  naming the copy's look, in the same batch (`scenes.
+updateContinuityStatements`): a part-way failure leaves no scene pointing
+  at a look the cast does not have. The script id stays, so scene tags match
+  and no prompt hash moves. Two more things keep the copy free:
+  - **Clips.** A clip's `referenceKeys` stamp `character:<id>:<sheet>` with
+    the ORIGINAL's id. The copy records `characters.copiedFromCharacterId`,
+    and the live reference identity and the "would be sent now" set answer
+    for that id too (`characterReferenceEntityKeys`, `src/motion/
+reference-provenance.ts`), so a clip stamped before the copy stays
+    fresh, and a sheet re-selected on the copy still stales it. Only the
+    immediate original is aliased: a copy of a copy answers for the copy it
+    was made from, not the first original.
+  - **A pre-#1419 default sheet** (the row keyed to the original's id, no
+    pointer) would be lost, since the copy's default look is keyed to the
+    copy's id. That one row is carried across under the copy's id, same
+    image and hash, pointer still null, so the still's sheet ingredient
+    (`selectedSheetVersionId ?? sheetInputHash`) and the clip's key (the
+    url) do not move. One copied row, for that legacy case only.
+    Refused while a sheet run holds a claim here. Event `character.copied`.
 
 ## Hard deletes
 

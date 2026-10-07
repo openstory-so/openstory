@@ -5,38 +5,49 @@
  * upper bound from shot counts, because the planner cannot answer "what if".
  * The exact plan and price come afterwards through the sequence's own
  * "Inputs changed" banner and Update all, which do the re-render.
+ *
+ * Every move — one sequence, many, or the ones a recast applies to — goes
+ * through {@link moveSequenceToCurrent} / {@link moveCastsToCurrent} here,
+ * so the access check and the voice release are the same on every path.
  */
 import {
   estimateImageCost,
   estimateVideoCost,
 } from '@/billing/cost-estimation';
+import {
+  estimateTtsCost,
+  TYPICAL_DIALOGUE_CHARS_PER_SHOT,
+} from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   characterBibleChanged,
   pickCharacterBible,
 } from '@/cast/server/db/bible-versions';
+import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
+import { durationGridForModel } from '@/motion/model-capabilities';
 import { NotFoundError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { LOOK_FIELDS } from '@/platform/server/db/schema';
 import { safeImageToVideoModel, safeTextToImageModel } from '@/models/models';
 import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
-/** Fallback clip length for video pricing; the shots' own are not read here. */
-const DEFAULT_VIDEO_DURATION_SECONDS = 5;
-
 export type VersionMovePreviewRow = {
   sequenceId: string;
   title: string;
   /** Pinned at the current versions already: nothing to move. */
   behind: boolean;
-  /** Plain words for what the move changes: "age", "clothing (Gala)", "voice", "talent". */
+  /** Plain words for what the move changes: "age", "clothing (Gala)", "voice", "talent", "looks added". */
   moved: string[];
   /** Shots wearing the character in that sequence: the re-render upper bound. */
   shotCount: number;
-  /** Looks whose sheet inputs move and that have a sheet to redraw. */
+  /** Sheets the move may redraw: every look whose inputs move, and every look added. */
   sheetCount: number;
-  /** Upper-bound re-render cost (sheets, a still and a clip per shot); null when unpriced. */
+  /**
+   * Upper-bound re-render cost: the sheets, a still and a clip at the video
+   * model's longest length per shot, and a dialogue re-record per shot when
+   * the voice moves. Null when unpriced.
+   */
   costMicros: Microdollars | null;
 };
 
@@ -49,7 +60,7 @@ const sum = (parts: (Microdollars | null)[]): Microdollars | null =>
 /**
  * What moving each live sequence to the character's current version would
  * change and cost, at most. A sequence that is not behind is listed with
- * nothing to move, so a list can show every episode.
+ * nothing to move, so a list can show every sequence.
  */
 export async function previewVersionMove(
   scopedDb: ScopedDb,
@@ -58,7 +69,7 @@ export async function previewVersionMove(
 ): Promise<VersionMovePreviewRow[]> {
   const casts = await scopedDb.characters.listCastOfCharacter(characterId);
   const rows: VersionMovePreviewRow[] = [];
-  // ponytail: every behind sequence's shots and scene context are loaded in one request; page it when a character is in hundreds of episodes.
+  // ponytail: every behind sequence's shots and scene context are loaded in one request; page it when a character is in hundreds of sequences.
   for (const cast of casts) {
     if (!cast.behind) {
       rows.push({
@@ -100,13 +111,14 @@ export async function previewVersionMove(
           (CHARACTER_SHEET_BIBLE_FIELDS as readonly string[]).includes(field)
         );
     }
-    if (
-      character.selectedVoiceVersionId !== character.currentVoiceVersionId &&
-      character.currentVoiceVersionId !== null
-    ) {
-      moved.push('voice');
-    }
-    let sheetCount = 0;
+    const voiceMoved =
+      character.selectedVoiceVersionId !== character.currentVoiceVersionId;
+    if (voiceMoved) moved.push('voice');
+    // Every look the move may redraw: one whose own inputs move, every one
+    // when a sheet input of the bible moves (a pointer-less legacy sheet
+    // counts: it has a sheet to redraw), and every look the move adds.
+    let sheetCount = cast.looksToAdd;
+    if (cast.looksToAdd > 0) moved.push('looks added');
     for (const look of character.looks) {
       if (look.deletedAt) continue;
       let lookTouched = false;
@@ -130,9 +142,7 @@ export async function previewVersionMove(
         );
         lookTouched = fields.some((f) => f === 'clothing' || f === 'styling');
       }
-      if ((sheetsTouched || lookTouched) && look.selectedSheetVersionId) {
-        sheetCount += 1;
-      }
+      if (sheetsTouched || lookTouched) sheetCount += 1;
     }
     const shotIds = await scopedDb.characters.getShotIdsForCharacter(
       cast.sequenceId,
@@ -143,6 +153,9 @@ export async function previewVersionMove(
     });
     const imageModel = safeTextToImageModel(sequence.imageModel);
     const videoModel = safeImageToVideoModel(sequence.videoModel);
+    // The longest clip the sequence's video model renders: the shots' own
+    // lengths are not read here, so every shot is priced at the top.
+    const longestClipSeconds = Math.max(...durationGridForModel(videoModel));
     const costMicros = sum([
       sheetCount > 0
         ? estimateImageCost(imageModel, '16:9', sheetCount, { pricing })
@@ -154,11 +167,15 @@ export async function previewVersionMove(
           })
         : ZERO_MICROS,
       ...shotIds.map(() =>
-        estimateVideoCost(videoModel, DEFAULT_VIDEO_DURATION_SECONDS, {
+        estimateVideoCost(videoModel, longestClipSeconds, {
           pricing,
           resolution: sequence.resolution,
         })
       ),
+      // A voice move re-records every shot's lines.
+      voiceMoved
+        ? estimateTtsCost(shotIds.length * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+        : ZERO_MICROS,
     ]);
     rows.push({
       sequenceId: cast.sequenceId,
@@ -174,21 +191,17 @@ export async function previewVersionMove(
 }
 
 /**
- * Move the chosen sequences to the character's current version, one batch
- * each ("Move many"). Nothing starts a re-render: each moved sequence reads
- * stale and is updated from its own banner, so one click never launches
- * fifty runs.
+ * Every named sequence must be the team's (the check
+ * `sequenceAccessMiddleware` / `productionAccess` make) and must cast the
+ * character through a live link. An id outside that set refuses the whole
+ * call with NotFoundError. Called before anything is written, so a many-
+ * sequence move and a range recast never move some and stop.
  */
-export async function moveCastsToCurrent(
+export async function assertMovableSequences(
   scopedDb: ScopedDb,
-  actor: { userId: string },
   characterId: string,
   sequenceIds: readonly string[]
-): Promise<{ sequenceId: string; moved: boolean }[]> {
-  // Every named sequence must be the team's (the check
-  // `sequenceAccessMiddleware` makes) and must cast the character through a
-  // live link, before anything is written: an id outside that set refuses
-  // the whole call, never a partial move.
+): Promise<void> {
   const live = new Set(
     (await scopedDb.characters.listCastOfCharacter(characterId)).map(
       (cast) => cast.sequenceId
@@ -202,12 +215,55 @@ export async function moveCastsToCurrent(
       throw new NotFoundError('Sequence not found');
     }
   }
+}
+
+/**
+ * Move ONE sequence to the character's current version ("Update this
+ * sequence"): the pointer write, then the release of the voice its pin let
+ * go of, when nothing holds it any more (`releaseReplacedVoice`: provider
+ * first, row second; a failed release is logged and the id stays on its
+ * history row for a later release to retry). Nothing starts a re-render.
+ */
+export async function moveSequenceToCurrent(
+  scopedDb: ScopedDb,
+  actor: { userId: string },
+  sequenceId: string,
+  characterId: string
+): Promise<{ moved: boolean }> {
+  const before = await scopedDb.characters.getById(sequenceId, characterId);
+  if (!before) throw new NotFoundError('Character not found');
+  const { moved, character } = await scopedDb.characters.moveCastToCurrent(
+    sequenceId,
+    characterId,
+    { actorId: actor.userId }
+  );
+  if (moved) {
+    await releaseReplacedVoice(scopedDb, before.voiceId, character.voiceId);
+  }
+  return { moved };
+}
+
+/**
+ * Move the chosen sequences to the character's current version, one batch
+ * each ("Move sequences", and what a range recast applies). Every id is
+ * checked first ({@link assertMovableSequences}). Nothing starts a
+ * re-render: each moved sequence reads stale and is updated from its own
+ * banner, so one click never launches fifty runs.
+ */
+export async function moveCastsToCurrent(
+  scopedDb: ScopedDb,
+  actor: { userId: string },
+  characterId: string,
+  sequenceIds: readonly string[]
+): Promise<{ sequenceId: string; moved: boolean }[]> {
+  await assertMovableSequences(scopedDb, characterId, sequenceIds);
   const results: { sequenceId: string; moved: boolean }[] = [];
   for (const sequenceId of sequenceIds) {
-    const { moved } = await scopedDb.characters.moveCastToCurrent(
+    const { moved } = await moveSequenceToCurrent(
+      scopedDb,
+      actor,
       sequenceId,
-      characterId,
-      { actorId: actor.userId }
+      characterId
     );
     results.push({ sequenceId, moved });
   }

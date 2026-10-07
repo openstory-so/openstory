@@ -1,21 +1,33 @@
 import { describe, expect, it, vi } from 'vitest';
 import { asStub } from '@/test/as-stub';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { moveCastsToCurrent } from './version-moves';
 
-const MINE = '01J00000000000000000000001';
-const ALSO_MINE = '01J00000000000000000000002';
+const releaseReplacedVoice = vi.fn(async () => undefined);
+vi.doMock('@/cast/server/voice/release-voice', () => ({
+  releaseReplacedVoice,
+}));
+const { moveCastsToCurrent, moveSequenceToCurrent } =
+  await import('./version-moves');
+
+const B = '01J00000000000000000000001';
+const C = '01J00000000000000000000002';
 const OTHER_TEAMS = '01J00000000000000000000003';
 const NOT_CASTING = '01J00000000000000000000004';
 
-function makeScopedDb() {
-  const moveCastToCurrent = vi.fn(async () => ({ moved: true, character: {} }));
+function makeScopedDb(opts: { currentIn?: string[] } = {}) {
+  const current = new Set(opts.currentIn ?? []);
+  const moveCastToCurrent = vi.fn(async (sequenceId: string) => ({
+    moved: !current.has(sequenceId),
+    character: { voiceId: 'voice-2' },
+  }));
   const scopedDb = asStub<ScopedDb>({
     characters: {
       listCastOfCharacter: vi.fn(async () => [
-        { sequenceId: MINE, behind: true },
-        { sequenceId: ALSO_MINE, behind: true },
+        { sequenceId: B, behind: true },
+        { sequenceId: C, behind: true },
       ]),
+      // Each sequence still hears the old voice before its move.
+      getById: vi.fn(async () => ({ voiceId: 'voice-1' })),
       moveCastToCurrent,
     },
     sequences: {
@@ -29,32 +41,67 @@ function makeScopedDb() {
 }
 
 describe('moveCastsToCurrent (#2017)', () => {
-  it('moves every named sequence the team owns and that casts the character', async () => {
+  it('moves every named sequence the team owns and that casts the character, and releases the voice each let go of', async () => {
+    releaseReplacedVoice.mockClear();
     const { scopedDb, moveCastToCurrent } = makeScopedDb();
     const moved = await moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [
-      MINE,
-      ALSO_MINE,
+      B,
+      C,
     ]);
     expect(moved).toEqual([
-      { sequenceId: MINE, moved: true },
-      { sequenceId: ALSO_MINE, moved: true },
+      { sequenceId: B, moved: true },
+      { sequenceId: C, moved: true },
     ]);
     expect(moveCastToCurrent).toHaveBeenCalledTimes(2);
+    // Provider-first release through the one path, once per moved sequence.
+    expect(releaseReplacedVoice).toHaveBeenCalledTimes(2);
+    expect(releaseReplacedVoice).toHaveBeenCalledWith(
+      scopedDb,
+      'voice-1',
+      'voice-2'
+    );
   });
 
-  it("refuses the whole batch for another team's sequence, before any write", async () => {
+  it('reports moved: false for a sequence already current, and releases nothing for it', async () => {
+    releaseReplacedVoice.mockClear();
+    const { scopedDb } = makeScopedDb({ currentIn: [C] });
+    expect(
+      await moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [B, C])
+    ).toEqual([
+      { sequenceId: B, moved: true },
+      { sequenceId: C, moved: false },
+    ]);
+    expect(releaseReplacedVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it("[B, foreign, C]: another team's sequence refuses the whole batch before any write", async () => {
     const { scopedDb, moveCastToCurrent } = makeScopedDb();
     await expect(
-      moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [MINE, OTHER_TEAMS])
+      moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [B, OTHER_TEAMS, C])
     ).rejects.toThrow('Sequence not found');
     expect(moveCastToCurrent).not.toHaveBeenCalled();
   });
 
-  it('refuses the whole batch for a sequence that does not cast the character', async () => {
+  it('a sequence that does not cast the character refuses the whole batch', async () => {
     const { scopedDb, moveCastToCurrent } = makeScopedDb();
     await expect(
-      moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [NOT_CASTING, MINE])
+      moveCastsToCurrent(scopedDb, { userId: 'u' }, 'c', [NOT_CASTING, B])
     ).rejects.toThrow('Sequence not found');
     expect(moveCastToCurrent).not.toHaveBeenCalled();
+  });
+});
+
+describe('moveSequenceToCurrent (#2017)', () => {
+  it('is the one path "Update this sequence" takes: move, then release', async () => {
+    releaseReplacedVoice.mockClear();
+    const { scopedDb } = makeScopedDb();
+    expect(
+      await moveSequenceToCurrent(scopedDb, { userId: 'u' }, B, 'c')
+    ).toEqual({ moved: true });
+    expect(releaseReplacedVoice).toHaveBeenCalledWith(
+      scopedDb,
+      'voice-1',
+      'voice-2'
+    );
   });
 });
