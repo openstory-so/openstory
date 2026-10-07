@@ -5,7 +5,7 @@
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { NotFoundError } from '@/platform/errors';
+import { setCharacterInLibrary } from '@/cast/server/cast-edit';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
@@ -23,11 +23,10 @@ export const getTeamCharacterFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(characterIdSchema))
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getTeamCharacter(
-      data.characterId
-    );
-    if (!character) throw new NotFoundError('Character not found');
-    return character;
+    // Null, not an error: the page says "not found" for a character that is
+    // gone, another team's, or held by nothing (not in the library and cast
+    // in no live sequence).
+    return await context.scopedDb.characters.getTeamCharacter(data.characterId);
   });
 
 /**
@@ -42,8 +41,8 @@ export const getTeamCharacterShotCountsFn = createServerFn({ method: 'GET' })
     const character = await context.scopedDb.characters.getTeamCharacter(
       data.characterId
     );
-    if (!character) throw new NotFoundError('Character not found');
     const counts: Record<string, number> = {};
+    if (!character) return counts;
     // ponytail: every shot of every casting sequence is loaded; give scene tags the cast id when a character is in hundreds.
     for (const sequence of character.sequences) {
       const shotIds = await context.scopedDb.characters.getShotIdsForCharacter(
@@ -62,10 +61,12 @@ export const getTeamCharacterShotCountsFn = createServerFn({ method: 'GET' })
 export const setCharacterInLibraryFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(characterIdSchema.extend({ inLibrary: z.boolean() })))
-  .handler(async ({ context, data }) => {
-    await context.scopedDb.characters.setInLibrary(
-      data.characterId,
-      data.inLibrary
-    );
-    return { characterId: data.characterId, inLibrary: data.inLibrary };
-  });
+  .handler(
+    async ({ context, data }) =>
+      await setCharacterInLibrary(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.characterId,
+        data.inLibrary
+      )
+  );

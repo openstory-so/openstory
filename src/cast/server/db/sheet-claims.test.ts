@@ -15,6 +15,7 @@ import {
   characterBibleVersions,
   characterLookVersions,
   characterLooks,
+  sequenceCast,
   sequenceCastLooks,
   characterSheetVariants,
   characters,
@@ -772,6 +773,78 @@ describe('look sheet claims (#2015)', () => {
       'Gala gown is worn in scene 2. Pick another look there first.'
     );
     expect((await lookOf(gala.id)).deletedAt).toBeNull();
+  });
+
+  it('refuses to remove a look another sequence wears, naming it; an archived one does not refuse', async () => {
+    const gala = await addLook();
+    // A second sequence casts the character and uses the look (#2050's
+    // attach), and one of its scenes wears it.
+    const [first] = await db
+      .select()
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!first) throw new Error('setup');
+    const other = generateId();
+    await db.insert(sequences).values({
+      id: other,
+      teamId,
+      title: 'Episode 2',
+      styleId: first.styleId,
+    });
+    const character = await chars().getById(sequenceId, characterId);
+    if (!character) throw new Error('setup');
+    const [link] = await db
+      .insert(sequenceCast)
+      .values({
+        sequenceId: other,
+        characterId,
+        scriptCharacterId: 'char_001',
+        bibleVersionId: character.selectedBibleVersionId,
+      })
+      .returning();
+    if (!link) throw new Error('setup');
+    await db.insert(sequenceCastLooks).values({
+      castId: link.id,
+      lookId: gala.id,
+      lookVersionId: gala.lookVersionId,
+      sheetStatus: 'pending',
+    });
+    const [scene] = await db
+      .insert(scenes)
+      .values({ sequenceId: other, orderIndex: 0 })
+      .returning();
+    if (!scene) throw new Error('setup');
+    await db.insert(sceneScriptVersions).values({
+      id: 'ssv-other',
+      sceneId: scene.id,
+      content: { extract: 'x', dialogue: [] },
+      continuity: {
+        characterTags: ['sam'],
+        characterLooks: { sam: gala.id },
+        environmentTag: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
+      source: 'split',
+    });
+    await db
+      .update(scenes)
+      .set({ selectedScriptVersionId: 'ssv-other' })
+      .where(eq(scenes.id, scene.id));
+
+    await expect(
+      looks().remove(sequenceId, gala.id, { actorId: userId })
+    ).rejects.toThrow(
+      'Gala gown is worn in Episode 2. Pick another look there first.'
+    );
+    expect((await lookOf(gala.id)).deletedAt).toBeNull();
+
+    await db
+      .update(sequences)
+      .set({ status: 'archived' })
+      .where(eq(sequences.id, other));
+    await looks().remove(sequenceId, gala.id, { actorId: userId });
+    expect((await lookOf(gala.id)).deletedAt).not.toBeNull();
   });
 
   it('fills in the default look of a character an older worker wrote', async () => {

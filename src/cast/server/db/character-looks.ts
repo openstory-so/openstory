@@ -6,7 +6,16 @@
  * "the character's sheet" is its default look's sheet.
  */
 
-import { and, asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  ne,
+  sql,
+} from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import {
   ConflictError,
@@ -32,6 +41,7 @@ import {
   characters,
   sequenceCast,
   sequenceCastLooks,
+  sequences,
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
@@ -885,20 +895,33 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       }
       // The removal is the look's own, so it reaches every sequence that
-      // uses the look (#2017): one of them still wearing it refuses too.
+      // uses the look (#2017): one of them still wearing it refuses too, and
+      // is named. An archived sequence does not refuse: it casts nothing
+      // while archived, and a scene that points at a removed look keeps
+      // wearing it when the sequence comes back.
       const users = await db
-        .select({ sequenceId: sequenceCast.sequenceId })
+        .select({ sequenceId: sequences.id, title: sequences.title })
         .from(sequenceCastLooks)
         .innerJoin(sequenceCast, eq(sequenceCast.id, sequenceCastLooks.castId))
-        .where(eq(sequenceCastLooks.lookId, lookId));
-      let elsewhere = 0;
+        .innerJoin(sequences, eq(sequences.id, sequenceCast.sequenceId))
+        .where(
+          and(
+            eq(sequenceCastLooks.lookId, lookId),
+            ne(sequences.id, sequenceId),
+            ne(sequences.status, 'archived'),
+            sql`${sequenceCast.removedAt} IS NULL`
+          )
+        )
+        .orderBy(asc(sequences.title), asc(sequences.id));
+      const elsewhere: string[] = [];
       for (const user of users) {
-        if (user.sequenceId === sequenceId) continue;
-        if ((await scenesWearing(user.sequenceId)).length > 0) elsewhere += 1;
+        if ((await scenesWearing(user.sequenceId)).length > 0) {
+          elsewhere.push(user.title);
+        }
       }
-      if (elsewhere > 0) {
+      if (elsewhere.length > 0) {
         throw new ConflictError(
-          `${look.name} is worn in ${elsewhere} other ${elsewhere === 1 ? 'sequence' : 'sequences'}. Pick another look there first.`
+          `${look.name} is worn in ${elsewhere.join(', ')}. Pick another look there first.`
         );
       }
       const deletedAt = new Date();

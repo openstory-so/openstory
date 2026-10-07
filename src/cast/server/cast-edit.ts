@@ -164,6 +164,34 @@ export async function restoreCharacter(
 }
 
 /**
+ * Put a character in the team library, or take it out (#2017). Taking it out
+ * while no sequence casts it leaves nothing holding the character, so its
+ * saved voice is released first, as the last remove from a sequence would
+ * have: once the flag clears, no page can reach the character to do it.
+ * Provider first, row second (`releaseCharacterVoice`); a failed release
+ * leaves the flag set.
+ */
+export async function setCharacterInLibrary(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  inLibrary: boolean
+) {
+  if (
+    !inLibrary &&
+    !(await scopedDb.characters.getCastInAnySequence(characterId))
+  ) {
+    await releaseCharacterVoice(
+      scopedDb,
+      await scopedDb.characters.getVoice(characterId),
+      actor.userId
+    );
+  }
+  await scopedDb.characters.setInLibrary(characterId, inLibrary);
+  return { characterId, inLibrary };
+}
+
+/**
  * Per-character voice switch (#1553): an explicit override of the sequence
  * default. Off releases the saved voice.
  */

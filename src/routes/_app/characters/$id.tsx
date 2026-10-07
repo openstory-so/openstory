@@ -60,6 +60,23 @@ function ShotCount({
 function TeamCharacterContent({ id }: { id: string }) {
   const { sequence: pickedSequenceId } = Route.useSearch();
   const { data: character } = useTeamCharacter(id);
+  // Gone, another team's, or held by nothing: not in the library and cast in
+  // no live sequence. Reached from a stale link, and from this page when the
+  // last holder lets go (the Undo toast still brings it back).
+  if (!character) {
+    return (
+      <EmptyState
+        icon={<User className="h-12 w-12" />}
+        title="Character not found"
+        description="It is not in the library and no sequence casts it."
+        action={
+          <Button variant="outline" asChild>
+            <Link to="/characters">Back to Characters</Link>
+          </Button>
+        }
+      />
+    );
+  }
   const { sequences } = character;
   // The latest sequence casting it, unless the URL names one.
   const shown = pickedSequenceId

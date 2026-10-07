@@ -282,6 +282,15 @@ const characterColumns = {
   voicePreviews: characterVoiceVersions.previews,
 };
 
+/**
+ * The one meaning of "a sequence casts this character" (#2017): a cast link
+ * that is not removed, in a sequence that is not archived. `exceptSequenceId`
+ * leaves one sequence out. `selectTeam` joins on the same two conditions, so
+ * the list, the character page and the voice release agree.
+ */
+const castElsewhere = (characterId: string, exceptSequenceId: string | null) =>
+  sql`EXISTS (SELECT 1 FROM sequence_cast o JOIN sequences os ON os.id = o.sequence_id WHERE o.character_id = ${characterId} AND o.removed_at IS NULL AND os.status != 'archived' AND (${exceptSequenceId} IS NULL OR o.sequence_id != ${exceptSequenceId}))`;
+
 /** What `json_group_array` returns for one character's sequences. */
 const teamCastSchema = z.array(
   z.object({
@@ -1765,8 +1774,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /**
      * Whether something other than `sequenceId` still holds the character:
-     * the library, or a live cast link in another sequence. What a sequence
-     * may not take with it when it lets the character go (its voice).
+     * the library, or another sequence casting it ({@link castElsewhere}).
+     * What a sequence may not take with it when it lets the character go
+     * (its voice).
      */
     getHeldElsewhere: async (
       sequenceId: string,
@@ -1774,12 +1784,25 @@ export function createCharactersMethods(db: Database, teamId: string) {
     ): Promise<boolean> => {
       const [row] = await db
         .select({
-          held: sql<number>`(${characters.inLibrary} OR EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.sequence_id != ${sequenceId} AND o.removed_at IS NULL))`,
+          held: sql<number>`(${characters.inLibrary} OR ${castElsewhere(id, sequenceId)})`,
         })
         .from(characters)
         .where(and(eq(characters.id, id), inTeam));
       if (!row) throw new NotFoundError(`Character ${id} not found`);
       return Boolean(row.held);
+    },
+
+    /**
+     * Whether any sequence casts the character ({@link castElsewhere}). What
+     * the library must not let go of without its voice being released.
+     */
+    getCastInAnySequence: async (id: string): Promise<boolean> => {
+      const [row] = await db
+        .select({ cast: sql<number>`${castElsewhere(id, null)}` })
+        .from(characters)
+        .where(and(eq(characters.id, id), inTeam));
+      if (!row) throw new NotFoundError(`Character ${id} not found`);
+      return Boolean(row.cast);
     },
 
     getShotsForCharacter: async (

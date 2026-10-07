@@ -75,6 +75,6 @@ export function useTeamCharacterName(characterId: string) {
     queryKey: teamCharacterKeys.detail(characterId),
     queryFn: () => getTeamCharacterFn({ data: { characterId } }),
     staleTime: 30_000,
-    select: (character) => character.name,
+    select: (character) => character?.name,
   });
 }
