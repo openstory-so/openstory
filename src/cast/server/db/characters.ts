@@ -23,6 +23,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import { z } from 'zod';
 import type { Database } from '@/platform/server/db/client';
 import { pageOf } from '@/platform/server/db/read-page';
@@ -2111,6 +2112,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
         bibleVersionId: string;
         voiceVersionId: string | null;
         behind: boolean;
+        /** Live looks of the character this sequence has no cast look for: a move adds them. */
+        looksToAdd: number;
       }[]
     > => {
       const rows = await db
@@ -2120,6 +2123,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           castId: sequenceCast.id,
           bibleVersionId: sequenceCast.bibleVersionId,
           voiceVersionId: sequenceCast.voiceVersionId,
+          looksToAdd: sql<number>`(SELECT count(*) FROM character_looks cl WHERE cl.character_id = ${characters.id} AND cl.deleted_at IS NULL AND NOT EXISTS (SELECT 1 FROM sequence_cast_looks scl WHERE scl.cast_id = ${sequenceCast.id} AND scl.look_id = cl.id))`,
           behind: sql<number>`(
             ${sequenceCast.bibleVersionId} IS NOT ${characters.selectedBibleVersionId}
             OR ${sequenceCast.voiceVersionId} IS NOT ${characters.selectedVoiceVersionId}
@@ -2158,7 +2162,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /**
      * Move `sequenceId`'s cast link to the character's current versions
-     * (#2017, "Update this episode"): the bible and voice pins, every cast
+     * (#2017, "Update this sequence"): the bible and voice pins, every cast
      * look's pin, and a cast look for each live look the sequence lacked —
      * one batch, with a `character.version-moved` event naming what moved
      * from and to. The claims of the cast's sheets are revoked in the same
@@ -2222,8 +2226,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
           .where(
             and(
               eq(sequenceCast.id, existing.castId),
-              // Guarded on the pin this read saw: two moves do not fight.
-              eq(sequenceCast.bibleVersionId, existing.selectedBibleVersionId)
+              // Guarded on the pins this read saw: two moves do not fight.
+              eq(sequenceCast.bibleVersionId, existing.selectedBibleVersionId),
+              sql`${sequenceCast.voiceVersionId} IS ${existing.selectedVoiceVersionId}`
             )
           ),
         db
@@ -2311,12 +2316,70 @@ export function createCharactersMethods(db: Database, teamId: string) {
         id: look.isDefault ? copyId : generateId(),
         versionId: generateId(),
       }));
+      // A default sheet from before #1419 is the row keyed to the original's
+      // id with no pointer; the copy's default look is keyed to the copy's
+      // id, so that row would be lost. Carry it across under the copy's id
+      // (same image, same hash), so the pointer stays null and the still's
+      // sheet ingredient (`selectedSheetVersionId ?? sheetInputHash`) and the
+      // clip's key (the url) do not move.
+      const defaultLook = looks.find(({ look }) => look.isDefault);
+      const legacySheet =
+        defaultLook && defaultLook.look.selectedSheetVersionId === null
+          ? (
+              await db
+                .select()
+                .from(characterSheetVariants)
+                .where(eq(characterSheetVariants.id, id))
+            )[0]
+          : undefined;
+      // Scene picks name look ids: every scene picking one of the copied
+      // looks gets a script version naming the copy's look, in the same
+      // batch, so a part-way failure leaves no scene pointing at a look the
+      // cast does not have.
+      const lookIdOf = new Map(
+        looks
+          .filter(({ look }) => !look.isDefault)
+          .map(({ look, id: lookId }) => [look.id, lookId] as const)
+      );
+      const scenes = createScenesMethods(db);
+      const pickStatements: BatchItem<'sqlite'>[] = [];
+      if (lookIdOf.size > 0) {
+        for (const { scene } of (
+          await loadSceneContextBySequenceFromDb(db, sequenceId)
+        ).values()) {
+          const continuity = scene.continuity;
+          const picks = continuity?.characterLooks;
+          if (
+            !continuity ||
+            !picks ||
+            !Object.values(picks).some((v) => lookIdOf.has(v))
+          ) {
+            continue;
+          }
+          pickStatements.push(
+            ...(await scenes.updateContinuityStatements(
+              dbSceneId(scene.id),
+              {
+                ...continuity,
+                characterLooks: Object.fromEntries(
+                  Object.entries(picks).map(([tag, lookId]) => [
+                    tag,
+                    lookIdOf.get(lookId) ?? lookId,
+                  ])
+                ),
+              },
+              { actorId: opts.actorId }
+            ))
+          );
+        }
+      }
       const now = new Date();
       await db.batch([
         db.insert(characters).values({
           id: copyId,
           teamId,
           inLibrary: false,
+          copiedFromCharacterId: id,
           selectedBibleVersionId: bibleVersionId,
           selectedVoiceVersionId: voiceVersionId,
           useVoice: existing.useVoice,
@@ -2333,6 +2396,19 @@ export function createCharactersMethods(db: Database, teamId: string) {
           source: 'edit',
           createdBy: opts.actorId,
         }),
+        ...(legacySheet === undefined || defaultLook === undefined
+          ? []
+          : [
+              db.insert(characterSheetVariants).values({
+                ...legacySheet,
+                id: copyId,
+                characterId: copyId,
+                lookId: copyId,
+                castLookId: defaultLook.look.castLookId,
+                createdAt: now,
+                updatedAt: now,
+              }),
+            ]),
         ...(voiceVersionId === null
           ? []
           : [
@@ -2384,42 +2460,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
           summary: `Made a one-off copy of ${existing.name} for this sequence`,
           data: { fromCharacterId: id, characterId: existing.characterId },
         }),
+        ...pickStatements,
       ]);
-      // Scene picks name look ids: re-point every pick at the copy's look.
-      const lookIdOf = new Map(
-        looks
-          .filter(({ look }) => !look.isDefault)
-          .map(({ look, id: lookId }) => [look.id, lookId] as const)
-      );
-      if (lookIdOf.size > 0) {
-        const scenes = createScenesMethods(db);
-        for (const { scene } of (
-          await loadSceneContextBySequenceFromDb(db, sequenceId)
-        ).values()) {
-          const continuity = scene.continuity;
-          const picks = continuity?.characterLooks;
-          if (
-            !continuity ||
-            !picks ||
-            !Object.values(picks).some((v) => lookIdOf.has(v))
-          ) {
-            continue;
-          }
-          await scenes.updateContinuity(
-            dbSceneId(scene.id),
-            {
-              ...continuity,
-              characterLooks: Object.fromEntries(
-                Object.entries(picks).map(([tag, lookId]) => [
-                  tag,
-                  lookIdOf.get(lookId) ?? lookId,
-                ])
-              ),
-            },
-            { actorId: opts.actorId }
-          );
-        }
-      }
       return await reread(sequenceId, copyId);
     },
 

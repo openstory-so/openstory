@@ -347,7 +347,11 @@ listPinMoves`). With two sequences the newest version at a timestamp may be
   an entity that still exists but the motion prompt no longer names is not
   compared (#2012): a re-render would not send it. A prop close-up rendered
   with a scene-mate's sheet does not go stale when that sheet changes. A
-  stamped entity that was deleted always reads stale.
+  stamped entity that was deleted always reads stale — except a character
+  replaced by its one-off copy (#2017): the copy answers for the original's
+  id (`characters.copiedFromCharacterId`, `characterReferenceEntityKeys`),
+  so a clip stamped with the original stays fresh while the copy sends the
+  same sheet, and stales when the copy selects another.
 - **A new still re-stales the motion prompt.** The motion prompt is written
   looking at the still, so its hash reads the still's URL (unless the shot
   renders reference-only).

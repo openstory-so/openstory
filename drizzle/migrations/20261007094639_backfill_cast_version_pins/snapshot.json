@@ -1,6 +1,6 @@
 {
-  "id": "05ed1460-fa07-45e9-95c5-6e31ab3aa178",
-  "prevIds": ["e667d856-3952-4d5e-a28a-3c61e571799d"],
+  "id": "b233a63a-6386-4912-92ea-38aae1a7cf59",
+  "prevIds": ["5583dfd6-cad2-444b-9988-189ffff6f119"],
   "version": "7",
   "dialect": "sqlite",
   "ddl": [
@@ -1641,6 +1641,16 @@
       "default": "false",
       "generated": null,
       "name": "in_library",
+      "entityType": "columns",
+      "table": "characters"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "copied_from_character_id",
       "entityType": "columns",
       "table": "characters"
     },

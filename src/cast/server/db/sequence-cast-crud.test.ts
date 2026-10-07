@@ -21,6 +21,12 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
+  characterReferenceEntityKeys,
+  liveReferenceIdentity,
+  referenceKeysMoved,
+  referenceProvenanceKey,
+} from '@/motion/reference-provenance';
+import {
   characterBibleVersions,
   characterLookVersions,
   characterLooks,
@@ -2279,6 +2285,78 @@ describe('team characters (#2017)', () => {
     await expect(sheets.discard(sheet.id)).rejects.toThrow(/selected/);
     expect(await eventKinds()).toContain('character.copied');
     void gala;
+
+    // No clip reads stale: a clip stamped with the original's id and sheet
+    // still resolves through the copy (`copiedFromCharacterId`), and a
+    // sheet re-selected on the copy still stales it.
+    expect(copy.copiedFromCharacterId).toBe(created.id);
+    const stamped = referenceProvenanceKey('character', created.id, sheet.id);
+    const live = liveReferenceIdentity({
+      characters: [copy],
+      locations: [],
+      elements: [],
+    });
+    const referenced = new Set(characterReferenceEntityKeys(copy));
+    expect(referenceKeysMoved([stamped], live, referenced)).toBe(false);
+    expect(
+      referenceKeysMoved(
+        [referenceProvenanceKey('character', created.id, 'another-sheet')],
+        live,
+        referenced
+      )
+    ).toBe(true);
+  });
+
+  it('a one-off copy of a character whose default sheet is the pointer-less pre-#1419 row carries that sheet across (#2017)', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    // The #1419 row: keyed to the character's own id, no look, no pointer.
+    await db.insert(characterSheetVariants).values({
+      id: created.id,
+      characterId: created.id,
+      model: 'm',
+      url: 'https://x.test/legacy.png',
+      storagePath: 'legacy.png',
+      status: 'completed',
+      inputHash: 'h-legacy',
+    });
+    const before = await chars().getById(sequenceId, created.id);
+    expect(before).toMatchObject({
+      sheetImageUrl: 'https://x.test/legacy.png',
+      selectedSheetVersionId: null,
+      sheetInputHash: 'h-legacy',
+    });
+    const copy = await chars().copyForSequence(sequenceId, created.id, {
+      actorId,
+    });
+    // Same image and hash, pointer still null: the still's sheet ingredient
+    // (`selectedSheetVersionId ?? sheetInputHash`) and the clip's key do not
+    // move.
+    expect(copy).toMatchObject({
+      sheetImageUrl: 'https://x.test/legacy.png',
+      selectedSheetVersionId: null,
+      sheetInputHash: 'h-legacy',
+    });
+    const live = liveReferenceIdentity({
+      characters: [copy],
+      locations: [],
+      elements: [],
+    });
+    expect(
+      referenceKeysMoved(
+        [
+          referenceProvenanceKey(
+            'character',
+            created.id,
+            'https://x.test/legacy.png'
+          ),
+        ],
+        live,
+        new Set(characterReferenceEntityKeys(copy))
+      )
+    ).toBe(false);
   });
 
   it('attaches a library character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
