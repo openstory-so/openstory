@@ -181,6 +181,17 @@ against the talent's default sheet.
   refused adopt (claim moved, row discarded or changed) fails the sheet,
   clears its claim and holds the shots that wear it; it never draws
   instead. An explicit Regenerate never reuses: the user asked for a draw.
+  **Which row:** `findReusable` prefers a row some cast look currently
+  selects (newest among those), then history rows: a re-roll a sequence
+  rejected must not be adopted over the one it kept. History rows stay
+  candidates because they are the same image from the same inputs.
+  **Two edges, documented not solved (2026-10-07):** once the second
+  sequence selects a different sheet, the shared row drops out of its strip
+  (`ofCastLook` lists only what that sequence drew or selects) and the only
+  way back is reuse on the next plan. And a look drawn in the same wave from
+  a reused default's face reads stale, visibly, if that default's adopt is
+  then refused: its face names a sheet the sequence never selected, and the
+  next Update redraws it.
 
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
 stored URL), so reuse is also what keeps a series inside the ~45-slot pool:

@@ -535,7 +535,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           );
           if (outcome === 'refused') {
             throw new Error(
-              `${payload.characterName}'s sheet could not be reused: it, or the inputs it matched, changed since the plan. Run it again.`
+              `${payload.characterName}'s sheet changed after this update was planned, so it was not reused. Update again to redraw it.`
             );
           }
           generatedCharacters.set(id, {

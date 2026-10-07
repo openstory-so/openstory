@@ -481,10 +481,14 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * The newest sheet of this look a plan may reuse (#2017): see
-     * {@link reusableFor}. Any sequence of the team may have drawn it. Read at
-     * the plan, never in the run: the run adopts by the id this hands back,
-     * through `adoptIfPending`.
+     * The sheet of this look a plan may reuse (#2017): see {@link reusableFor}.
+     * Any sequence of the team may have drawn it. A row some cast look
+     * currently SELECTS comes first (newest among those): a re-roll a
+     * sequence rejected is history there, and another sequence should not
+     * adopt it over the one that sequence kept. History rows are still
+     * candidates after that, since they are the same image from the same
+     * inputs. Read at the plan, never in the run: the run adopts by the id
+     * this hands back, through `adoptIfPending`.
      */
     findReusable: async (args: {
       lookId: string;
@@ -498,6 +502,19 @@ export function createCharacterSheetVariantsMethods(
         .from(characterSheetVariants)
         .where(and(ofTeam(), reusableFor(args)))
         .orderBy(
+          desc(
+            exists(
+              db
+                .select({ one: sql`1` })
+                .from(sequenceCastLooks)
+                .where(
+                  eq(
+                    sequenceCastLooks.selectedSheetVersionId,
+                    characterSheetVariants.id
+                  )
+                )
+            )
+          ),
           desc(characterSheetVariants.createdAt),
           desc(characterSheetVariants.id)
         )

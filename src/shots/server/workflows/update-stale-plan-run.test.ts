@@ -694,7 +694,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         expect.objectContaining({
           shotId: 'maya',
           stage: 'reference',
-          error: expect.stringContaining('could not be reused'),
+          error: expect.stringContaining('was not reused'),
         }),
         expect.objectContaining({ shotId: 's-maya', stage: 'image' }),
       ])
@@ -703,7 +703,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       'seq-1',
       'maya',
       'csv-maya',
-      expect.stringContaining('could not be reused')
+      expect.stringContaining('was not reused')
     );
   });
 

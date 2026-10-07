@@ -189,6 +189,21 @@ describe('findReusable', () => {
     expect((await find())?.id).toBe(newer);
   });
 
+  it('prefers the row a sequence currently selects over a re-roll it rejected', async () => {
+    const kept = await landInEpisode1();
+    const rejected = await landInEpisode1();
+    expect((await castLook(episode1)).selectedSheetVersionId).toBe(rejected);
+    // Episode 1 goes back to the first sheet: the re-roll is history there.
+    await sheets().select(episode1, characterId, kept, { actorId: null });
+    expect((await find())?.id).toBe(kept);
+    // With nothing selecting a match, a history row still serves: same
+    // image, same inputs.
+    await sheets().select(episode1, characterId, kept, { actorId: null });
+    const unrelated = await landInEpisode1(OTHER_HASH);
+    expect((await castLook(episode1)).selectedSheetVersionId).toBe(unrelated);
+    expect((await find())?.id).toBe(rejected);
+  });
+
   it('skips a discarded, divergent, failed or generating row', async () => {
     const discarded = await landInEpisode1();
     // Select another so the first can be discarded.
@@ -250,6 +265,9 @@ describe('adoptIfPending', () => {
     expect(two.pendingPromoteSheetVersionId).toBeNull();
     expect(two.sheetStatus).toBe('completed');
     expect(two.sheetImageUrl).toBe(`/r2/${shared}.png`);
+    // Reads fresh: the stamped hash is the one the plan computed, which is
+    // what `readLookSheetStaleness` compares against a draw's hash now.
+    expect(two.sheetInputHash).toBe(HASH);
     // Episode 1 is untouched, and no row was added.
     expect((await castLook(episode1)).selectedSheetVersionId).toBe(shared);
     expect(await db.select().from(characterSheetVariants)).toHaveLength(1);
