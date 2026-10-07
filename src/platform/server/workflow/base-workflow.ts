@@ -44,7 +44,6 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/platform/server/observability/flush-analytics';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { getLogger, serializeError } from '@/platform/logger';
-import { logIsolateStamp } from '@/platform/server/isolate-stamp';
 import { isContentRejectionError } from '@/models/content-rejection';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
@@ -131,9 +130,6 @@ export abstract class OpenStoryWorkflowEntrypoint<
     event: Readonly<WorkflowEvent<T>>,
     step: WorkflowStep
   ): Promise<unknown> {
-    // Before any await. A step that dies flushes this line with the isolate id.
-    const workflowName = this.constructor.name;
-    logIsolateStamp(workflowName ? `workflow:${workflowName}` : 'workflow');
     if (!event.payload.teamId || !event.payload.userId) {
       throw new Error(
         `[${this.constructor.name}] payload missing teamId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`

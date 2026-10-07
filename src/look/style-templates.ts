@@ -1924,30 +1924,30 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
   {
     name: 'Bedroom Confessional',
     description:
-      'Intimate, low-energy direct-to-camera moment shot on a bed or floor with warm available light. Built for personal-narrative content, mental-health stories, and vulnerable creator posts.',
+      'Intimate, candid direct-to-camera moment shot on a bed or floor with warm available light. Built for storytime videos, hot takes, funny anecdotes, exciting personal news, and relatable creator chats.',
     category: 'influencer',
     tags: ['influencer', 'confessional', 'bedroom', 'personal', 'intimate'],
     config: {
       version: 2,
       look: {
-        mood: 'Vulnerable, quiet, candid',
+        mood: 'Candid, warm, intimate, and conversational',
         artStyle:
-          'Subject sits on a bed, against a headboard, or on a bedroom floor, speaking quietly to camera. Wardrobe is loungewear. Background is a real personal bedroom -- bedside table, books, soft textiles. Eye-level intimacy',
+          'Subject sits on a bed, against a headboard, or on a bedroom floor, talking directly and candidly to camera. Wardrobe is cozy loungewear. Background is an authentic lived-in bedroom -- bedside lamp, books, soft textiles. Eye-level intimacy with natural facial expressions',
         lighting:
-          'Warm lamp light or window light only. Soft, often low-key, with subject partially shadowed. No fill from camera. Mood preserved over flattery',
+          'Warm bedside lamp light or soft natural window light. Cozy, inviting glow with gentle ambient shadows. Flattering and intimate without harsh direct glare',
         colorPalette: ['#F4D9C2', '#A4805D', '#1F1410', '#D9A78A', '#FFFFFF'],
         colorGrading:
           'Warm filmic with rich shadow. Highlights softly bloomed. Skin tones warm. Looks like a private moment posted publicly',
       },
       motion: {
         camera:
-          'Locked tripod or steady handheld at eye level. Tight medium and close-up framing. Long beats held in silence. Minimal cuts',
+          'Steady handheld phone camera or low tripod at eye level. Tight medium and close-up framing with natural micro-movements, expressive pauses, and direct eye contact. Conversational pacing',
       },
       references: [
-        'TikTok Confession Trend Videos',
-        'Reels Mental Health Creators',
-        'YouTube Storytime Vlogs',
-        'Vsco-Style Personal Diaries',
+        'TikTok Storytime Confessionals',
+        'YouTube Creator Personal Story Vlogs',
+        'Late-Night Bedroom Chat Reels',
+        'Candid Creator Hot-Take Videos',
       ],
     },
     isPublic: true,
