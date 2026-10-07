@@ -2,6 +2,9 @@
   "name": "openstory",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "imports": {
     "#env": {
@@ -112,6 +115,7 @@
     "@logtape/redaction": "^2.3.10",
     "@modelcontextprotocol/server": "2.1.0",
     "@openrouter/sdk": "0.13.20",
+    "@openstory/stitch-player": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.222.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",

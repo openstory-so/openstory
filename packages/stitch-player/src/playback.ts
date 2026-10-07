@@ -21,7 +21,8 @@
  *
  * The engine is intentionally not React-aware: it manipulates an externally-
  * provided `HTMLCanvasElement` and surfaces lifecycle via callbacks. The
- * matching React component lives in `src/sequences/ui/theatre/sequence-player.tsx`.
+ * Video.js adapter is `stitched-media.ts`; the React surface is
+ * `stitched-player-surface.tsx`.
  */
 
 import {
@@ -37,35 +38,33 @@ import { createRangedSource } from './ranged-source';
 import {
   ConcatenatedVideoSource,
   type ClipAudioTrack,
-  type PlaybackClip,
 } from './concatenated-video-source';
+import type { PlaybackClip } from './playback-clip';
 import {
   forAwaitUntilDisposed,
   isInputDisposedError,
 } from './disposed-iterator';
 import { computeMusicGain } from './music-gain';
 import { type PlayAttemptResult, settlePlayWait } from './play-attempt';
-
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'sequence-player', 'playback']);
+import type { StitchLogger } from './logger';
 
 export type SequencePlayerOptions = {
   canvas: HTMLCanvasElement;
   clips: PlaybackClip[];
   musicUrl: string | null;
   /**
-   * Gain in dB to apply to the music track to hit the broadcast loudness
-   * target. `null` falls back to 0 dB (no normalization). See
-   * `sequence_music_variants.loudness_gain_db`.
+   * Gain in dB applied to the music track only (e.g. a measured loudness
+   * normalization). `null` is 0 dB. Dialogue is not affected.
    */
-  musicLoudnessGainDb: number | null;
+  musicGainDb: number | null;
   /**
    * Whether the music track is audible. `false` mutes only the music-only gain
    * node, leaving clip/dialogue audio untouched. Toggle live via
    * `setMusicEnabled` without re-preparing the engine (#834). Defaults to true.
    */
   musicEnabled?: boolean;
+  /** Where non-fatal problems are reported. Defaults to `console`. */
+  logger?: StitchLogger;
   /** Clip-open progress during `prepare()` — drives the loading label (#1253). */
   onLoadProgress?: (loadedClips: number, totalClips: number) => void;
   onTimeUpdate?: (time: number) => void;
@@ -109,6 +108,7 @@ const PREFETCH_LEAD_SECONDS = 3;
 
 export class SequencePlayerEngine {
   private readonly opts: SequencePlayerOptions;
+  private readonly logger: StitchLogger;
   private readonly canvasContext: CanvasRenderingContext2D;
   private readonly videoSource: ConcatenatedVideoSource;
 
@@ -173,9 +173,10 @@ export class SequencePlayerEngine {
       throw new Error('SequencePlayerEngine: 2d canvas context unavailable');
     }
     this.opts = opts;
+    this.logger = opts.logger ?? console;
     this.canvasContext = ctx;
     this.musicEnabled = opts.musicEnabled ?? true;
-    this.videoSource = new ConcatenatedVideoSource(opts.clips);
+    this.videoSource = new ConcatenatedVideoSource(opts.clips, this.logger);
   }
 
   /**
@@ -263,9 +264,12 @@ export class SequencePlayerEngine {
     this.prefetchedClips.add(next);
     void this.videoSource.prefetch(next).catch((err: unknown) => {
       if (this.disposed) return;
-      logger.warn(`SequencePlayerEngine: prefetch failed for clip ${next}`, {
-        err,
-      });
+      this.logger.warn(
+        `SequencePlayerEngine: prefetch failed for clip ${next}`,
+        {
+          err,
+        }
+      );
     });
   }
 
@@ -274,6 +278,11 @@ export class SequencePlayerEngine {
       throw new Error('SequencePlayerEngine: prepare() must be called first');
     }
     return this.meta;
+  }
+
+  /** The opened clips — an export reads from here so nothing is fetched twice. */
+  get source(): ConcatenatedVideoSource {
+    return this.videoSource;
   }
 
   getPlaybackTime(): number {
@@ -453,7 +462,7 @@ export class SequencePlayerEngine {
     this.masterGain.gain.value = masterLinear;
     this.musicGain.gain.value = computeMusicGain(
       this.musicEnabled,
-      this.opts.musicLoudnessGainDb
+      this.opts.musicGainDb
     );
   }
 
@@ -502,7 +511,7 @@ export class SequencePlayerEngine {
             return;
           }
           // A broken clip track stays silent; the lane moves on.
-          logger.warn(
+          this.logger.warn(
             `SequencePlayerEngine: failed to decode embedded audio for clip ${clipIndex}`,
             { err }
           );

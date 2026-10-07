@@ -1,4 +1,4 @@
-import type { PlaybackClip } from './playback-clip';
+import type { PlaybackClip, PlaybackCue } from '@openstory/stitch-player';
 
 import type { ShotView } from '@/shots/shot-view';
 import {
@@ -13,7 +13,13 @@ import {
 
 type PlaybackShot = Pick<
   ShotView,
-  'previewThumbnailUrl' | 'durationMs' | 'audioClips'
+  | 'id'
+  | 'shotNumber'
+  | 'previewThumbnailUrl'
+  | 'durationMs'
+  | 'audioClips'
+  | 'dialogue'
+  | 'dialogueTiming'
 > & {
   video: { url: string | null } | null;
   image: { url: string | null } | null;
@@ -36,6 +42,56 @@ export function groupPlaybackShots<
   return groups;
 }
 
+/**
+ * The subtitles for one shot, placed from `offsetSeconds` — where the shot
+ * starts inside its clip. Each line runs for the time its reading spoke it
+ * (`dialogueTiming`, derived from the speech on read); a shot with no
+ * reading yet shows every line for the whole shot. The wording is what was
+ * spoken (`spokenLines`), else what was written.
+ */
+export function shotCues(
+  shot: Pick<PlaybackShot, 'dialogue' | 'audioClips' | 'dialogueTiming'>,
+  offsetSeconds: number,
+  shotSeconds: number
+): PlaybackCue[] {
+  const lines = shot.dialogue?.presence ? shot.dialogue.lines : [];
+  if (lines.length === 0) return [];
+  const spoken = new Map(
+    (shot.audioClips?.[0]?.spokenLines ?? []).map((line) => [
+      line.index,
+      line.text,
+    ])
+  );
+  const textOf = (index: number): string | null => {
+    const line = lines[index];
+    if (!line) return null;
+    const said = spoken.get(index) ?? line.line;
+    return line.character ? `${line.character}: ${said}` : said;
+  };
+  const timed = shot.dialogueTiming ?? [];
+  if (timed.length > 0) {
+    return timed.flatMap((line) => {
+      const text = textOf(line.index);
+      return text
+        ? [
+            {
+              startSeconds: offsetSeconds + line.startSeconds,
+              endSeconds: offsetSeconds + line.endSeconds,
+              text,
+            },
+          ]
+        : [];
+    });
+  }
+  return [
+    {
+      startSeconds: offsetSeconds,
+      endSeconds: offsetSeconds + shotSeconds,
+      text: lines.map((_, index) => textOf(index)).join('\n'),
+    },
+  ];
+}
+
 /** One continuous timeline: rendered clips where available, stills elsewhere. */
 export function toPlaybackClips(
   shots: readonly PlaybackShot[],
@@ -53,19 +109,33 @@ export function toPlaybackClips(
         orderIndex: clips.length,
         videoUrl,
         posterUrl: stillUrl ?? previewUrl,
+        cues: packedClipWindows(group).flatMap((window, i) => {
+          const member = group[i];
+          return member
+            ? shotCues(member, window.startSeconds, window.durationSeconds)
+            : [];
+        }),
       });
     } else {
+      const audioClips = shot.audioClips ?? [];
+      const durationSeconds =
+        shot.durationMs != null && shot.durationMs > 0
+          ? shot.durationMs / 1000
+          : 3;
       clips.push({
         orderIndex: clips.length,
         imageUrl: stillUrl ?? previewUrl,
         fallbackImageUrl:
           stillUrl && previewUrl && previewUrl !== stillUrl ? previewUrl : null,
-        durationSeconds:
-          shot.durationMs != null && shot.durationMs > 0
-            ? shot.durationMs / 1000
-            : 3,
-        audioUrls: (shot.audioClips ?? []).map((clip) => clip.url),
+        durationSeconds,
+        audioUrls: audioClips.map((clip) => clip.url),
         ...aspectRatioToDimensions(aspectRatio),
+        // A still with sound runs as long as its sound (measured on open).
+        cues: shotCues(
+          shot,
+          0,
+          audioClips[0]?.durationSeconds ?? durationSeconds
+        ),
       });
     }
   }
@@ -83,28 +153,6 @@ export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
     if (out[out.length - 1] !== url) out.push(url);
   }
   return out;
-}
-
-/**
- * Identity of a stitched clip list (order + URLs). A new `PlaybackClip[]` of
- * the same clips (shots refetch while others generate) is not a new list (#1284).
- */
-export function playbackClipsKey(clips: readonly PlaybackClip[]): string {
-  return JSON.stringify(
-    clips.map((clip) =>
-      'videoUrl' in clip
-        ? [clip.orderIndex, clip.videoUrl]
-        : [
-            clip.orderIndex,
-            clip.imageUrl,
-            clip.fallbackImageUrl,
-            clip.durationSeconds,
-            clip.audioUrls,
-            clip.width,
-            clip.height,
-          ]
-    )
-  );
 }
 
 /**

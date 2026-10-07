@@ -20,6 +20,7 @@ import type {
   VideoVariant,
 } from '@/platform/server/db/schema';
 import type { SHOT_GENERATION_STATUSES } from '@/platform/server/db/schema/shots';
+import type { DialogueLineTiming } from '@/shots/shot-dialogue';
 
 /** A shot's still lifecycle, as {@link readinessImageStatus} derives it. */
 export type ImageStatus = (typeof SHOT_GENERATION_STATUSES)[number];
@@ -145,6 +146,8 @@ export type ShotViewSources = {
   motionPrompt?: AssemblableMotionPrompt | null;
   /** See {@link ShotView.dialogue}. */
   dialogue?: MotionDialogue | null;
+  /** See {@link ShotView.dialogueTiming}. */
+  dialogueTiming?: DialogueLineTiming[] | null;
   /**
    * In-flight variant upscale: the generating framing version the promote
    * claim points at, when it already has a cropped-tile url (minted at
@@ -192,6 +195,14 @@ export type ShotView = Shot & {
    * shot is `{ presence: false, lines: [] }`.
    */
   dialogue: MotionDialogue | null;
+  /**
+   * When each line is heard in the shot's dialogue clip (#1853), derived on
+   * read from the selected section and its speech (`sectionLineTiming`) —
+   * never stored. The theatre times subtitles with it. Null on a view
+   * assembled without it, or a shot with no recording: lines are then
+   * untimed, not silent.
+   */
+  dialogueTiming: DialogueLineTiming[] | null;
   /** Cropped tile for an in-flight variant upscale, or null. */
   pendingUpscaleUrl: string | null;
   /**
@@ -247,7 +258,7 @@ export function shotViewMissingFrame(
   shot: Shot,
   video: Pick<
     ShotViewSources,
-    'video' | 'primaryVideo' | 'motionPrompt' | 'dialogue'
+    'video' | 'primaryVideo' | 'motionPrompt' | 'dialogue' | 'dialogueTiming'
   >
 ): ShotView {
   const frame: Frame = {
@@ -307,6 +318,7 @@ export function toShotView(
     gridSheet: sources.gridSheet ?? null,
     motionPrompt: sources.motionPrompt ?? null,
     dialogue: sources.dialogue ?? null,
+    dialogueTiming: sources.dialogueTiming ?? null,
     pendingUpscaleUrl: sources.pendingUpscaleUrl ?? null,
     pendingUpscaleIndex: null,
   };

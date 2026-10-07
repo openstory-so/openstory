@@ -5,19 +5,24 @@
  */
 import { describe, expect, it } from 'vitest';
 
+import { playbackClipsKey } from '@openstory/stitch-player';
 import {
   groupPlaybackShots,
-  playbackClipsKey,
+  shotCues,
   shotIdAtSequenceTime,
   toPlaybackClips,
 } from './playback-clips';
 
 const shot = (url: string | null, extra?: { status?: string }) => ({
+  id: `shot-${url ?? 'still'}`,
+  shotNumber: null,
   video: url ? { url, status: extra?.status } : null,
   image: null,
   previewThumbnailUrl: null,
   durationMs: 5000,
   audioClips: null,
+  dialogue: null,
+  dialogueTiming: null,
 });
 
 describe('toPlaybackClips', () => {
@@ -25,14 +30,14 @@ describe('toPlaybackClips', () => {
     expect(
       toPlaybackClips([shot('/a.mp4'), shot(null), shot('/c.mp4'), shot(null)])
     ).toEqual([
-      { orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null },
+      { orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null, cues: [] },
       expect.objectContaining({
         orderIndex: 1,
         imageUrl: null,
         durationSeconds: 5,
         audioUrls: [],
       }),
-      { orderIndex: 2, videoUrl: '/c.mp4', posterUrl: null },
+      { orderIndex: 2, videoUrl: '/c.mp4', posterUrl: null, cues: [] },
       expect.objectContaining({ orderIndex: 3, imageUrl: null }),
     ]);
   });
@@ -45,8 +50,8 @@ describe('toPlaybackClips', () => {
         shot('/b.mp4'),
       ])
     ).toEqual([
-      { orderIndex: 0, videoUrl: '/packed.mp4', posterUrl: null },
-      { orderIndex: 1, videoUrl: '/b.mp4', posterUrl: null },
+      { orderIndex: 0, videoUrl: '/packed.mp4', posterUrl: null, cues: [] },
+      { orderIndex: 1, videoUrl: '/b.mp4', posterUrl: null, cues: [] },
     ]);
   });
 });
@@ -111,7 +116,12 @@ it('prefers the selected still and plays its recorded take only when there is no
   expect(
     toPlaybackClips([{ ...input, video: { url: '/render.mp4' } }])
   ).toEqual([
-    { orderIndex: 0, videoUrl: '/render.mp4', posterUrl: '/still.png' },
+    {
+      orderIndex: 0,
+      videoUrl: '/render.mp4',
+      posterUrl: '/still.png',
+      cues: [],
+    },
   ]);
 });
 
@@ -176,5 +186,99 @@ describe('shotIdAtSequenceTime (#1771)', () => {
   it('falls back to the plain estimate with no offsets', () => {
     expect(shotIdAtSequenceTime(shots, 10.5)).toBe('s3');
     expect(shotIdAtSequenceTime([], 0)).toBeUndefined();
+  });
+});
+
+describe('shotCues (#1853)', () => {
+  const dialogue = {
+    presence: true,
+    lines: [
+      { character: 'Ann', line: 'Hello there.', tone: 'warm' },
+      { character: '', line: 'Night falls.', tone: 'flat' },
+    ],
+  };
+  const clip = {
+    id: 'section',
+    url: '/take.wav',
+    token: 'DIALOGUE',
+    durationSeconds: 6,
+  };
+
+  it('times each line by its reading, offset to the shot, in the spoken wording', () => {
+    expect(
+      shotCues(
+        {
+          dialogue,
+          audioClips: [
+            { ...clip, spokenLines: [{ index: 0, text: 'Hello.' }] },
+          ],
+          dialogueTiming: [
+            { index: 0, startSeconds: 0.2, endSeconds: 1.4 },
+            { index: 1, startSeconds: 1.6, endSeconds: 3 },
+          ],
+        },
+        10,
+        6
+      )
+    ).toEqual([
+      { startSeconds: 10.2, endSeconds: 11.4, text: 'Ann: Hello.' },
+      { startSeconds: 11.6, endSeconds: 13, text: 'Night falls.' },
+    ]);
+  });
+
+  it('shows every line for the whole shot when there is no timing', () => {
+    const whole = [
+      {
+        startSeconds: 0,
+        endSeconds: 6,
+        text: 'Ann: Hello there.\nNight falls.',
+      },
+    ];
+    expect(
+      shotCues({ dialogue, audioClips: [clip], dialogueTiming: null }, 0, 6)
+    ).toEqual(whole);
+    expect(
+      shotCues({ dialogue, audioClips: null, dialogueTiming: [] }, 0, 6)
+    ).toEqual(whole);
+  });
+
+  it('is empty for a silent shot', () => {
+    expect(
+      shotCues(
+        {
+          dialogue: { presence: false, lines: [] },
+          audioClips: null,
+          dialogueTiming: null,
+        },
+        0,
+        3
+      )
+    ).toEqual([]);
+    expect(
+      shotCues({ dialogue: null, audioClips: null, dialogueTiming: null }, 0, 3)
+    ).toEqual([]);
+  });
+
+  it('places a packed clip’s cues at each member’s window and a still’s over its sound', () => {
+    const a = { ...shot('/packed.mp4'), id: 'a', durationMs: 4000, dialogue };
+    const b = {
+      ...shot('/packed.mp4'),
+      id: 'b',
+      durationMs: 6000,
+      dialogue: { presence: true, lines: dialogue.lines.slice(1) },
+    };
+    const [packed] = toPlaybackClips([a, b]);
+    expect(
+      packed?.cues?.map((cue) => [cue.startSeconds, cue.endSeconds])
+    ).toEqual([
+      [0, 4],
+      [4, 10],
+    ]);
+    const [still] = toPlaybackClips([
+      { ...shot(null), dialogue, audioClips: [clip] },
+    ]);
+    expect(still?.cues).toEqual([
+      expect.objectContaining({ startSeconds: 0, endSeconds: 6 }),
+    ]);
   });
 });

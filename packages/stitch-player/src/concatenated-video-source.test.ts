@@ -29,7 +29,6 @@ vi.doMock('mediabunny', () => ({
             canDecode: async () => true,
             getDisplayWidth: async () => 1280,
             getDisplayHeight: async () => 720,
-            getCodec: async () => 'vp9',
           }
         : null;
     }
@@ -92,7 +91,6 @@ describe('mixed canvas timeline', () => {
     const source = new ConcatenatedVideoSource([still()]);
     expect(await source.prepare()).toMatchObject({
       totalDurationSeconds: 5,
-      canTransmux: false,
     });
     const frames = [];
     for await (const frame of source.canvases(2)) frames.push(frame);

@@ -44,6 +44,39 @@ export type { ShotDialogueLine };
  */
 export const DIALOGUE_TAKE_CHUNK_CHARS = 2000;
 
+/** When one of a shot's lines is heard, in seconds from the start of the shot's clip. */
+export type DialogueLineTiming = {
+  /** Index into the shot's dialogue lines. */
+  index: number;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+/**
+ * A shot's line timing, read off its selected section (#1853): the speech's
+ * turns for this shot, moved to the section's origin — which is where the
+ * cut file, and so the theatre's clip, starts. Never stored: the speech
+ * already holds it.
+ */
+export function sectionLineTiming(section: {
+  shotId: string;
+  fromSeconds: number;
+  speechTurns: readonly {
+    shotId: string;
+    index: number;
+    startSeconds: number;
+    endSeconds: number;
+  }[];
+}): DialogueLineTiming[] {
+  return section.speechTurns
+    .filter((turn) => turn.shotId === section.shotId)
+    .map((turn) => ({
+      index: turn.index,
+      startSeconds: Math.max(0, turn.startSeconds - section.fromSeconds),
+      endSeconds: Math.max(0, turn.endSeconds - section.fromSeconds),
+    }));
+}
+
 /** The speech a clip was cut from, under its pre-#1913 key too. */
 export function clipSpeechId(clip: MotionAudioClip): string | undefined {
   return clip.speechId ?? clip.recordingId;

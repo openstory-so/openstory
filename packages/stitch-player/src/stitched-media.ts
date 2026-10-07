@@ -4,17 +4,24 @@
  * The skin talks to a structural `Partial<Video>` (capability predicates +
  * HTMLMediaElement event names), not an `<video>` element. This class is that
  * media: a canvas is only the render target (`attach`), matching Vimeo's
- * iframe host. Play/seek/volume chrome then works without the hand-rolled
- * theatre controls (#1258).
+ * iframe host. Play/seek/volume chrome then works without hand-rolled
+ * controls.
+ *
+ * Subtitles: when any clip carries `cues`, the media exposes one `subtitles`
+ * text track, so the skin's captions button and `c` hotkey toggle it. There
+ * is no `<video>` to paint cues, so the React surface reads `activeCueText`
+ * and draws them; an engine-only host does the same off `timeupdate`.
  *
  * No `@videojs/react` import — that package constructs an AbortController at
- * module scope and cannot be evaluated on Workerd (#1139). The React wrapper
- * lives in `stitched-player-surface.tsx` behind the client-only boundary.
+ * module scope and cannot be evaluated during server rendering. The React
+ * wrapper lives in `stitched-player-surface.tsx` behind a client-only boundary.
  */
 
 import type { Video } from '@videojs/media';
-import type { PlaybackClip } from './concatenated-video-source';
-import { playbackClipsKey } from './playback-clips';
+import { cueTextAt } from './cues';
+import type { StitchLogger } from './logger';
+import type { PlaybackClip } from './playback-clip';
+import { playbackClipsKey } from './playback-clips-key';
 import { SequencePlayerEngine, type SequencePlayerMeta } from './playback';
 import type { PlayAttemptResult } from './play-attempt';
 
@@ -26,18 +33,86 @@ const HAVE_ENOUGH_DATA = 4;
 export type StitchedSequenceSource = {
   clips: PlaybackClip[];
   musicUrl: string | null;
-  musicLoudnessGainDb: number | null;
+  /** Gain in dB on the music only; `null` is 0 dB. */
+  musicGainDb: number | null;
   musicEnabled?: boolean;
+  /** Whether the subtitle track starts showing. Defaults to true. Only matters when a clip has cues. */
+  subtitles?: boolean;
 };
 
 export type StitchedSequenceMediaListeners = {
   onLoadProgress?: (loadedClips: number, totalClips: number) => void;
   onMeta?: (meta: SequencePlayerMeta) => void;
   onError?: (error: Error) => void;
+  /** Where the engine reports non-fatal problems. Defaults to `console`. */
+  logger?: StitchLogger;
 };
 
+type TextTrackMode = 'showing' | 'disabled' | 'hidden';
+
+/** The one subtitle track; `mode` writes notify the list, which the skin watches. */
+class StitchedTextTrack {
+  readonly kind = 'subtitles';
+  readonly label = 'Subtitles';
+  readonly language = '';
+  readonly id = 'subtitles';
+  readonly cues = null;
+  #mode: TextTrackMode;
+  readonly #onChange: () => void;
+
+  constructor(mode: TextTrackMode, onChange: () => void) {
+    this.#mode = mode;
+    this.#onChange = onChange;
+  }
+
+  get mode(): TextTrackMode {
+    return this.#mode;
+  }
+
+  set mode(value: TextTrackMode) {
+    if (this.#mode === value) return;
+    this.#mode = value;
+    this.#onChange();
+  }
+}
+
+/** `TextTrackList`-shaped: indexable, iterable, and an EventTarget. */
+class StitchedTextTrackList extends EventTarget {
+  readonly #tracks: StitchedTextTrack[] = [];
+  [index: number]: StitchedTextTrack;
+
+  get length(): number {
+    return this.#tracks.length;
+  }
+
+  [Symbol.iterator](): Iterator<StitchedTextTrack> {
+    return this.#tracks[Symbol.iterator]();
+  }
+
+  getTrackById(id: string): StitchedTextTrack | null {
+    return this.#tracks.find((track) => track.id === id) ?? null;
+  }
+
+  add(track: StitchedTextTrack): void {
+    this[this.#tracks.length] = track;
+    this.#tracks.push(track);
+    this.dispatchEvent(new Event('addtrack'));
+  }
+
+  clear(): void {
+    for (let i = 0; i < this.#tracks.length; i++) delete this[i];
+    const had = this.#tracks.length > 0;
+    this.#tracks.length = 0;
+    if (had) this.dispatchEvent(new Event('removetrack'));
+  }
+
+  get showing(): boolean {
+    return this.#tracks.some((track) => track.mode === 'showing');
+  }
+}
+
 function stitchedSourceIdentity(source: StitchedSequenceSource): string {
-  return `${playbackClipsKey(source.clips)}\0${source.musicUrl ?? ''}\0${source.musicLoudnessGainDb ?? ''}`;
+  return `${playbackClipsKey(source.clips)}\0${source.musicUrl ?? ''}\0${source.musicGainDb ?? ''}`;
 }
 
 export class StitchedSequenceMedia
@@ -55,6 +130,7 @@ export class StitchedSequenceMedia
   #prepared: Promise<void> = Promise.resolve();
   #prepareReady = false;
   #meta: SequencePlayerMeta | null = null;
+  readonly #textTracks = new StitchedTextTrackList();
 
   #paused = true;
   #ended = false;
@@ -90,6 +166,7 @@ export class StitchedSequenceMedia
     const same = identity === this.#sourceIdentity && this.#engine !== null;
     this.#source = source;
     this.#sourceIdentity = identity;
+    this.#syncTextTracks(source);
     if (same) {
       this.#engine?.setMusicEnabled(source.musicEnabled ?? true);
       return;
@@ -125,6 +202,7 @@ export class StitchedSequenceMedia
     this.#source = null;
     this.#sourceIdentity = '';
     this.#listeners = {};
+    this.#textTracks.clear();
   }
 
   load(): void {
@@ -292,6 +370,51 @@ export class StitchedSequenceMedia
     return this.#videoHeight;
   }
 
+  /** The subtitle track, present when a clip has cues. What the skin's captions button toggles. */
+  get textTracks(): StitchedTextTrackList {
+    return this.#textTracks;
+  }
+
+  /** Video.js capability shape; the only track is the one built from the clips' cues. */
+  addTextTrack(): StitchedTextTrack {
+    const existing = this.#textTracks[0];
+    if (existing) return existing;
+    const track = new StitchedTextTrack('hidden', () =>
+      this.#emitTrackChange()
+    );
+    this.#textTracks.add(track);
+    return track;
+  }
+
+  /** The subtitle at the playhead, or null when none or the track is not showing. */
+  get activeCueText(): string | null {
+    if (!this.#textTracks.showing || !this.#source || !this.#meta) return null;
+    return cueTextAt(
+      this.#source.clips,
+      this.#meta.clipOffsetsSeconds,
+      this.#currentTime
+    );
+  }
+
+  #syncTextTracks(source: StitchedSequenceSource): void {
+    const hasCues = source.clips.some((clip) => (clip.cues?.length ?? 0) > 0);
+    const track = this.#textTracks[0];
+    if (hasCues && !track) {
+      this.#textTracks.add(
+        new StitchedTextTrack(
+          source.subtitles === false ? 'disabled' : 'showing',
+          () => this.#emitTrackChange()
+        )
+      );
+    } else if (!hasCues && track) {
+      this.#textTracks.clear();
+    }
+  }
+
+  #emitTrackChange(): void {
+    this.#textTracks.dispatchEvent(new Event('change'));
+  }
+
   #rebuildEngine(): void {
     this.#prepareGeneration += 1;
     this.#playGeneration += 1;
@@ -310,8 +433,9 @@ export class StitchedSequenceMedia
       canvas,
       clips: source.clips,
       musicUrl: source.musicUrl,
-      musicLoudnessGainDb: source.musicLoudnessGainDb,
+      musicGainDb: source.musicGainDb,
       musicEnabled: source.musicEnabled ?? true,
+      logger: this.#listeners.logger,
       onLoadProgress: (loaded, total) => {
         this.#listeners.onLoadProgress?.(loaded, total);
       },

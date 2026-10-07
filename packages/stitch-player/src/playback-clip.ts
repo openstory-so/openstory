@@ -1,6 +1,15 @@
-/** One stitched theatre entry: a rendered clip, or a timed still. */
+/** A subtitle over part of one clip, in seconds from that clip's start. */
+export type PlaybackCue = {
+  startSeconds: number;
+  endSeconds: number;
+  text: string;
+};
+
+/** One stitched entry: a rendered clip, or a timed still. */
 export type PlaybackClip = {
   orderIndex: number;
+  /** Subtitles for this clip. Shown by the Video.js / React entries; the engine ignores them. */
+  cues?: PlaybackCue[];
 } & (
   | {
       videoUrl: string;
@@ -15,6 +24,7 @@ export type PlaybackClip = {
       imageUrl: string | null;
       fallbackImageUrl: string | null;
       durationSeconds: number;
+      /** Sound played over the still, back to back. Each must answer Range requests, or be a `data:` / `blob:` URL. */
       audioUrls: string[];
       width: number;
       height: number;
