@@ -41,6 +41,8 @@ export async function loadLiveShotInputs(
     name: string;
     characterId: string;
     consistencyTag: string | null;
+    /** A one-off copy answers for its original's reference keys (#2017). */
+    copiedFromCharacterId: string | null;
     selectedSheetVersionId: string | null;
     sheetImageUrl: string | null;
   })[],
