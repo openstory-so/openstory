@@ -11,6 +11,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNull,
@@ -46,7 +47,13 @@ import {
   sequences,
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-import { characterBibleColumns, mergeDefined } from './bible-versions';
+import {
+  assertVersionLanded,
+  characterBibleColumns,
+  mergeDefined,
+  nowSeconds,
+  patchedOrLive,
+} from './bible-versions';
 import { heldElsewhere } from './sequence-cast';
 
 /**
@@ -372,23 +379,55 @@ export const lookDefinitionWrite = (
   const touchesSheet = moved.some((key) =>
     (LOOK_SHEET_FIELDS as readonly string[]).includes(key)
   );
+  // Guarded (#1862), like `bibleWrite`: the fields the patch leaves alone
+  // are copied from the version THIS SEQUENCE PINS inside the batch, and
+  // nothing lands unless the pin is still the one `look` read. The caller's
+  // `assertVersionLanded` fails a lost race visibly.
+  const pinned = and(
+    eq(sequenceCastLooks.id, look.castLookId),
+    eq(sequenceCastLooks.lookVersionId, look.lookVersionId)
+  );
+  const landed = exists(
+    db
+      .select({ one: sql`1` })
+      .from(characterLookVersions)
+      .where(eq(characterLookVersions.id, versionId))
+  );
+  const field = (key: keyof LookDefinition) =>
+    patchedOrLive(
+      patch[key],
+      characterLookVersions[key],
+      characterLookVersions[key]
+    );
   return {
     moved,
     after,
     /** The version appended; the event names the pin move from → to. */
     versionId,
     statements: [
-      db.insert(characterLookVersions).values({
-        id: versionId,
-        lookId: look.id,
-        ...after,
-        source: opts.source,
-        createdBy: opts.createdBy,
-      }),
+      db.insert(characterLookVersions).select(
+        db
+          .select({
+            id: sql`${versionId}`.as('id'),
+            lookId: sql`${look.id}`.as('look_id'),
+            name: field('name'),
+            clothing: field('clothing'),
+            styling: field('styling'),
+            source: sql`${opts.source}`.as('source'),
+            createdAt: nowSeconds().as('created_at'),
+            createdBy: sql`${opts.createdBy}`.as('created_by'),
+          })
+          .from(sequenceCastLooks)
+          .innerJoin(
+            characterLookVersions,
+            eq(characterLookVersions.id, sequenceCastLooks.lookVersionId)
+          )
+          .where(pinned)
+      ),
       db
         .update(characterLooks)
         .set({ selectedLookVersionId: versionId, updatedAt: new Date() })
-        .where(eq(characterLooks.id, look.id)),
+        .where(and(eq(characterLooks.id, look.id), landed)),
       db
         .update(sequenceCastLooks)
         .set({
@@ -396,7 +435,7 @@ export const lookDefinitionWrite = (
           ...(touchesSheet ? { pendingPromoteSheetVersionId: null } : {}),
           updatedAt: new Date(),
         })
-        .where(eq(sequenceCastLooks.id, look.castLookId)),
+        .where(and(pinned, landed)),
     ],
   };
 };
@@ -960,7 +999,13 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           },
         }),
       ]);
-      return await requireLook(db, teamId, sequenceId, lookId);
+      const written = await requireLook(db, teamId, sequenceId, lookId);
+      assertVersionLanded(
+        `Look ${look.name}`,
+        written.lookVersionId,
+        versionId
+      );
+      return written;
     },
 
     /**

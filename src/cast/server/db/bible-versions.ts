@@ -10,8 +10,9 @@
  * those columns.
  */
 
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { ConflictError } from '@/platform/errors';
 import {
   CHARACTER_BIBLE_FIELDS,
   LOCATION_BIBLE_FIELDS,
@@ -96,6 +97,44 @@ export const locationBibleColumns = {
   consistencyTag: sql<
     string | null
   >`${live(lbv.id, lbv.consistencyTag, sequenceLocations.legacyConsistencyTag)}`,
+};
+
+/**
+ * One column of a version appended by `INSERT … SELECT` (#1862): the patch's
+ * value when the caller set it, else the live value copied INSIDE the batch,
+ * so an edit landing between the caller's read and its write survives (the
+ * scene writer's pattern, `scenes.ts`). Aliased to the column's name so the
+ * select maps onto the insert.
+ */
+export const patchedOrLive = (
+  patched: string | boolean | null | undefined,
+  live: SQL | AnySQLiteColumn,
+  column: AnySQLiteColumn
+): SQL.Aliased => {
+  if (patched === undefined) return sql`${live}`.as(column.name);
+  const bound = typeof patched === 'boolean' ? (patched ? 1 : 0) : patched;
+  return sql`${bound}`.as(column.name);
+};
+
+/** `created_at` for an `INSERT … SELECT`, which skips `$defaultFn`. */
+export const nowSeconds = () => sql`${Math.floor(Date.now() / 1000)}`;
+
+/**
+ * A guarded version write landed only if the pointer now names it. The
+ * guard is the pointer the writer read: a second edit that read the same
+ * version and landed first wins, and this one fails here instead of
+ * silently dropping that edit's field.
+ */
+export const assertVersionLanded = (
+  what: string,
+  pointer: string | null,
+  versionId: string | null
+): void => {
+  if (versionId !== null && pointer !== versionId) {
+    throw new ConflictError(
+      `${what} changed while you were editing it. Reload and try again.`
+    );
+  }
 };
 
 /** The character bible fields of any object that carries them. */

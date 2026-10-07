@@ -71,6 +71,8 @@ function makeCharacter(
     copiedFromCharacterId: null,
     selectedBibleVersionId: 'bible-1',
     currentBibleVersionId: 'bible-1',
+    talentVersionId: null,
+    currentTalentVersionId: null,
     currentVoiceVersionId: null,
     pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
