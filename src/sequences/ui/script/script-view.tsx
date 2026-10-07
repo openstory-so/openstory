@@ -672,9 +672,14 @@ export const ScriptView: FC<{
       name: c.name,
       sheetImageUrl: c.sequences[0]?.sheetImageUrl ?? null,
     }));
-    // On the create screen a picked library character is the cast.
+    // On the create screen a picked library character is the cast — while
+    // the script still names her; a name deleted from the text puts her
+    // back among the library rows, as create will not cast her either.
+    const named = new Set(
+      castNamedInScript(script ?? '', castCharacterIds, libraryRows) ?? []
+    );
     const draftCast = libraryRows
-      .filter((c) => castCharacterIds.includes(c.id))
+      .filter((c) => named.has(c.id))
       .map((c) => ({ ...c, characterId: c.id, consistencyTag: null }));
     const cast = mentionSequenceId ? (mentionCharacters ?? []) : draftCast;
     const items = mentionSequenceId
@@ -707,6 +712,7 @@ export const ScriptView: FC<{
     draftElements,
     libraryCharacters,
     castCharacterIds,
+    script,
   ]);
 
   // A picked library row inserts her name as a cast row would; the attach
