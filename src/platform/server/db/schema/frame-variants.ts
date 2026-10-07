@@ -36,6 +36,7 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
+import type { StillInputVersions } from '@/shots/input-versions';
 import type { Resolution } from '@/models/resolutions';
 import { frames } from './frames';
 import { sequences } from './sequences';
@@ -137,6 +138,10 @@ export const frameVariants = snakeCase.table(
     // Staleness of THIS version.
     promptHash: text(),
     inputHash: text(),
+    // The version ids the render read (#1862): what the prompt's record
+    // holds plus the sheet version each reference was drawn from. Null on a
+    // row from before the column and on an upload, which read nothing.
+    inputVersions: text({ mode: 'json' }).$type<StillInputVersions>(),
     // In-flight claim for direct image regens (#1085): the live input hash
     // this render was enqueued to satisfy. Chained renders (image waiting on
     // a pending prompt version) leave it null — their validity derives from

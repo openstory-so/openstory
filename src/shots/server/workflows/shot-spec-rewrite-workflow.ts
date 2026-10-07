@@ -88,6 +88,7 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         characterBible: input.characterBible,
         locationBible: input.locationBible,
         elementBible: input.elementBible,
+        versions: input.versions,
         aspectRatio: input.aspectRatio,
         analysisModel: input.analysisModelId,
         dialogue: input.dialogue,

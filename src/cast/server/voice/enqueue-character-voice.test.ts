@@ -48,6 +48,8 @@ function character(
     copiedFromCharacterId: null,
     selectedBibleVersionId: 'bible-1',
     currentBibleVersionId: 'bible-1',
+    talentVersionId: null,
+    currentTalentVersionId: null,
     currentVoiceVersionId: 'ver-old',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,

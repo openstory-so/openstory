@@ -4,6 +4,7 @@
  * 3×3 variant grid, and pick a tile from it (upscale). Each takes the shot
  * context `loadShotTarget` builds.
  */
+import { stillInputVersionsFromReferences } from '@/shots/input-versions';
 import type { z } from 'zod';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
@@ -127,6 +128,9 @@ export async function generateShotImage(
       model: workflowInput.model ?? DEFAULT_IMAGE_MODEL,
       pendingInputHash: workflowInput.snapshotInputHash,
       isPrimary: true,
+      inputVersions: stillInputVersionsFromReferences(
+        workflowInput.referenceImages ?? []
+      ),
     });
   } catch (error) {
     const raced = (
@@ -386,6 +390,8 @@ export async function selectShotImageVariant(
     // The hash the grid was generated against (#712), so the tile reads
     // stale after a prompt edit. A pre-#712 sheet has none: 'untracked'.
     inputHash: sheet.inputHash ? shotImageInputHash(sheet.inputHash) : null,
+    // The tile is a crop of the grid: it read what the grid read.
+    inputVersions: sheet.inputVersions,
     status: 'generating',
     url: cropResult.url,
     storagePath: cropResult.path || null,

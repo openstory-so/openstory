@@ -19,6 +19,7 @@ import { hashVisualPromptInput } from '@/shots/input-hash';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { ConflictError } from '@/platform/errors';
 import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
   characterReferenceEntityKeys,
@@ -933,6 +934,93 @@ describe('characters bible CRUD + soft-remove', () => {
       .from(sequenceEvents)
       .where(eq(sequenceEvents.kind, 'character.updated'));
     expect(events.at(-1)?.data).toMatchObject({ bibleVersion: null });
+  });
+
+  it('two bible edits that read the same version cannot both land: the loser fails, no field is dropped (#1862)', async () => {
+    const m = createCharactersMethods(db, teamId);
+    const created = await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Alice',
+        physicalDescription: 'tall',
+        sheetStatus: 'completed',
+      },
+      { source: 'analysis', createdBy: null }
+    );
+    // Both read v1 before either writes.
+    const results = await Promise.allSettled([
+      m.updateBible(
+        sequenceId,
+        created.id,
+        { age: '40s' },
+        { source: 'edit', actorId }
+      ),
+      m.updateBible(
+        sequenceId,
+        created.id,
+        { personality: 'dry' },
+        { source: 'edit', actorId }
+      ),
+    ]);
+    const won = results.filter((r) => r.status === 'fulfilled');
+    const lost = results.filter((r) => r.status === 'rejected');
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect(lost[0]?.reason).toBeInstanceOf(ConflictError);
+    const live = await m.getById(sequenceId, created.id);
+    // Exactly one of the two patches is in the bible; a version built from
+    // the stale read never overwrote the winner's field.
+    const landed = [live?.age === '40s', live?.personality === 'dry'];
+    expect(landed.filter(Boolean)).toHaveLength(1);
+    expect(await m.listBibleVersionsBySequence(sequenceId)).toHaveLength(2);
+  });
+
+  it('a recast records the talent version the cast was made from (#1862)', async () => {
+    const m = createCharactersMethods(db, teamId);
+    const talentId = generateId();
+    await db
+      .insert(talent)
+      .values({ id: talentId, teamId, name: 'Face', selectedVersionId: 'tv1' });
+    const created = await m.create(
+      { sequenceId, characterId: 'char_001', name: 'Alice' },
+      { source: 'analysis', createdBy: null }
+    );
+    expect(created.talentVersionId).toBeNull();
+    const recast = await m.updateBible(
+      sequenceId,
+      created.id,
+      {},
+      { source: 'recast', actorId, talentId }
+    );
+    expect(recast.talentId).toBe(talentId);
+    expect(recast.talentVersionId).toBe('tv1');
+    expect(recast.currentTalentVersionId).toBe('tv1');
+    // An edit keeps the cast and its talent version; the talent moving on
+    // shows as a newer current version, never a moved cast.
+    await db
+      .update(talent)
+      .set({ selectedVersionId: 'tv2' })
+      .where(eq(talent.id, talentId));
+    const edited = await m.updateBible(
+      sequenceId,
+      created.id,
+      { age: '30s' },
+      { source: 'edit', actorId }
+    );
+    expect(edited.talentVersionId).toBe('tv1');
+    expect(edited.currentTalentVersionId).toBe('tv2');
+    // A recast to the same talent moves the cast onto its current version.
+    const adopted = await m.updateBible(
+      sequenceId,
+      created.id,
+      {},
+      { source: 'recast', actorId, talentId }
+    );
+    expect(adopted.talentVersionId).toBe('tv2');
+    expect(adopted.selectedBibleVersionId).not.toBe(
+      edited.selectedBibleVersionId
+    );
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
@@ -2501,7 +2589,7 @@ describe('team characters (#2017)', () => {
     expect((await chars().getById(sequenceId, ada.id))?.sheetStatus).toBe(
       'pending'
     );
-    const ids = await looks().syncFromAnalysis(other, ada.id, [
+    const { lookIds: ids } = await looks().syncFromAnalysis(other, ada.id, [
       {
         lookId: 'char_ada:default',
         name: 'Default',
@@ -2582,7 +2670,7 @@ describe('team characters (#2017)', () => {
     );
     await chars().softDelete(other, created.id, { actorId });
 
-    const ids = await looks().linkFromAnalysis(other, created.id, [
+    const { lookIds: ids } = await looks().linkFromAnalysis(other, created.id, [
       {
         lookId: created.lookId,
         name: 'Default',

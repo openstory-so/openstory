@@ -181,6 +181,17 @@ export type CharacterCast = {
   characterId: string;
   /** The talent on the pinned bible version. */
   talentId: string | null;
+  /**
+   * The `talent_versions` row that version was cast from (#1862). Null when
+   * uncast, or on a cast made before talent history whose talent is gone.
+   */
+  talentVersionId: string | null;
+  /**
+   * The talent's CURRENT version (`talent.selectedVersionId`). Differs from
+   * `talentVersionId` once the talent was edited after the cast: "Newer
+   * version" for the talent side; nothing moves the cast but a person.
+   */
+  currentTalentVersionId: string | null;
   /** Removed from this sequence (`sequence_cast.removedAt`). */
   deletedAt: Date | null;
   /** The bible version this sequence pins. */

@@ -8,6 +8,7 @@
  * "selected" — it's only the source the tiles are cropped from.
  */
 
+import { stillInputVersionsFromReferences } from '@/shots/input-versions';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
 import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
@@ -167,6 +168,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           promptVersionId: input.promptVersionId ?? null,
           // What a tile picked from this sheet inherits (#712).
           inputHash: await tileInputHash(input),
+          inputVersions: stillInputVersionsFromReferences(allReferences),
           status: 'generating',
           workflowRunId,
           // A sheet is never the frame's still, so its render never speaks

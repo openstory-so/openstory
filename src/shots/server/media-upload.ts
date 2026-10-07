@@ -594,7 +594,7 @@ export async function setCharacterSheetFromUpload(
   );
 
   // Same upstream resolution the character-sheet workflow uses.
-  const cast = await resolveCastTalent(scopedDb, character.talentId);
+  const cast = await resolveCastTalent(scopedDb, character);
   const { styleConfigHash, imageModel } = await resolveSheetHashContext(
     scopedDb,
     sequence

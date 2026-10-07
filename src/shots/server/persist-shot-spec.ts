@@ -11,6 +11,10 @@ import {
 } from '@/shots/input-hash';
 import type { VisualPromptHashInput } from '@/shots/input-hash';
 import { narrowShotPromptContext } from '@/shots/server/prompt-context';
+import {
+  promptInputVersionsFor,
+  type SequenceInputVersions,
+} from '@/shots/input-versions';
 import { shotDialogue } from '@/shots/shot-dialogue';
 import {
   deriveMotionPrompt,
@@ -36,7 +40,11 @@ export async function persistShotSpec(
     'shotSpecVersions' | 'framePromptVersions' | 'shotPromptVersions'
   >,
   item: ShotWorkItem,
-  context: Omit<VisualPromptHashInput, 'scene'> & { referenceOnly: boolean }
+  context: Omit<VisualPromptHashInput, 'scene'> & {
+    referenceOnly: boolean;
+    /** The versions the frozen bibles are (#1862); the stamp beside each hash. */
+    versions: SequenceInputVersions;
+  }
 ): Promise<{ stillPrompt: boolean }> {
   const { shotId, frameId, shotNumber } = item.mapping;
   const spec = shotSpecForItem(item);
@@ -72,18 +80,26 @@ export async function persistShotSpec(
 
   if (!referenceOnly && frameId !== null) {
     const text = deriveStillPrompt(stored, item.scene, context.styleConfig);
+    const narrowed = narrowShotPromptContext(full, {
+      channel: 'visual',
+      prompt: text,
+    });
     await scopedDb.framePromptVersions.write({
       frameId,
       source: 'derived',
       specVersionId: version.id,
       text,
-      inputHash: await hashVisualPromptInput(
-        narrowShotPromptContext(full, { channel: 'visual', prompt: text })
-      ),
+      inputHash: await hashVisualPromptInput(narrowed),
+      inputVersions: promptInputVersionsFor(context.versions, narrowed),
       analysisModel: context.analysisModel,
     });
   }
   const motion = deriveMotionPrompt(stored, { referenceOnly });
+  const narrowedMotion = narrowShotPromptContext(full, {
+    channel: 'motion',
+    prompt: motion.text,
+    referenceOnly,
+  });
   await scopedDb.shotPromptVersions.write({
     shotId,
     promptType: 'motion',
@@ -92,13 +108,8 @@ export async function persistShotSpec(
     text: motion.text,
     audio: motion.audio,
     usesStartFrame: !referenceOnly,
-    inputHash: await hashMotionPromptInput(
-      narrowShotPromptContext(full, {
-        channel: 'motion',
-        prompt: motion.text,
-        referenceOnly,
-      })
-    ),
+    inputHash: await hashMotionPromptInput(narrowedMotion),
+    inputVersions: promptInputVersionsFor(context.versions, narrowedMotion),
     analysisModel: context.analysisModel,
   });
   return { stillPrompt: !referenceOnly };

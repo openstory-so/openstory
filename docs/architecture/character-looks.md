@@ -151,6 +151,13 @@ against the talent's default sheet.
   redraws it (credits), with the shots that wear it. No legacy hash shape
   keeps them fresh.
 
+- **The sheet reads the talent as the cast was made from it (#1862).**
+  `resolveCastTalent` takes the cast's `talentId` AND `talentVersionId` and
+  reads that `talent_versions` row — its description and its reference sheet
+  — never the live talent row. Editing a talent or landing it a new sheet
+  moves no character sheet claim and redraws nothing until the sequence
+  adopts the current version (`adoptCurrentTalent`, "Use current talent";
+  see `team-characters.md` § Talent is a likeness).
 - **Sheet reuse by hash (#2017).** When a plan owes a look's sheet,
   `buildPlanReferences` first asks `characterSheetVariants.findReusable`
   for a finished sheet of the SAME look (same character, same look id) by

@@ -615,6 +615,7 @@ export function createSequenceElementsMethods(db: Database) {
                   specVersionId:
                     specIdByShot.get(motion.shotId) ?? motion.specVersionId,
                   inputHash: motion.inputHash,
+                  inputVersions: motion.inputVersions,
                   analysisModel: motion.analysisModel,
                 }),
                 db
@@ -642,6 +643,7 @@ export function createSequenceElementsMethods(db: Database) {
                   specVersionId:
                     specIdByShot.get(delta.shotId) ?? image.specVersionId,
                   inputHash: image.inputHash,
+                  inputVersions: image.inputVersions,
                   analysisModel: image.analysisModel,
                 }),
                 db

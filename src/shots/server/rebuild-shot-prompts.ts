@@ -5,6 +5,10 @@
  * `prompt-variants.fn.ts` instead.
  */
 
+import {
+  promptInputVersionsFor,
+  type SequenceInputVersions,
+} from '@/shots/input-versions';
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
 import type { FramePromptVersion } from '@/platform/server/db/schema/frame-prompt-versions';
 import type { ShotPromptVersion } from '@/platform/server/db/schema/shot-prompt-versions';
@@ -83,6 +87,8 @@ export type CompleteDerivedPromptsInput = {
   aspectRatio: string;
   analysisModel: string;
   dialogue: MotionDialogue;
+  /** The versions the frozen bibles are (#1862); the stamp beside each hash. */
+  versions: SequenceInputVersions;
   referenceOnly: boolean;
   frameId: string | null;
   shotId: string;
@@ -132,16 +138,17 @@ export async function completeDerivedPrompts(
   const motion = deriveMotionPrompt(input.spec, {
     referenceOnly: input.referenceOnly,
   });
-  const visualHash = await hashVisualPromptInput(
-    narrowShotPromptContext(full, { channel: 'visual', prompt: stillText })
-  );
-  const motionHash = await hashMotionPromptInput(
-    narrowShotPromptContext(full, {
-      channel: 'motion',
-      prompt: motion.text,
-      referenceOnly: input.referenceOnly,
-    })
-  );
+  const narrowedVisual = narrowShotPromptContext(full, {
+    channel: 'visual',
+    prompt: stillText,
+  });
+  const narrowedMotion = narrowShotPromptContext(full, {
+    channel: 'motion',
+    prompt: motion.text,
+    referenceOnly: input.referenceOnly,
+  });
+  const visualHash = await hashVisualPromptInput(narrowedVisual);
+  const motionHash = await hashMotionPromptInput(narrowedMotion);
 
   let visualVersionId: string | null = null;
   const writeStill =
@@ -156,6 +163,7 @@ export async function completeDerivedPrompts(
       text: stillText,
       inputHash: visualHash,
       stampHash: visualHash,
+      inputVersions: promptInputVersionsFor(input.versions, narrowedVisual),
       analysisModel: input.analysisModel,
       source: 'derived',
       specVersionId: input.specVersionId,
@@ -173,6 +181,7 @@ export async function completeDerivedPrompts(
       usesStartFrame: !input.referenceOnly,
       inputHash: motionHash,
       stampHash: motionHash,
+      inputVersions: promptInputVersionsFor(input.versions, narrowedMotion),
       analysisModel: input.analysisModel,
       source: 'derived',
       specVersionId: input.specVersionId,

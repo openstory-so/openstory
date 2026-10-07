@@ -46,6 +46,7 @@ import {
   generateCharacterVoice,
   recastCharacter,
   regenerateCharacterSheet,
+  adoptCurrentTalent,
 } from '@/cast/server/cast-generation';
 import {
   authWithTeamMiddleware,
@@ -473,6 +474,23 @@ export const updateCastToCurrentFn = createServerFn({ method: 'POST' })
         { userId: context.user.id },
         data.sequenceId,
         data.characterId
+      )
+  );
+
+/**
+ * "Use the current talent" (#1862): the cast was made from an older version
+ * of its talent. One recast bible version from the talent as it is now; no
+ * run starts, the sequence's own Update redraws what reads stale.
+ */
+export const adoptCurrentTalentFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(
+    async ({ context, data }) =>
+      await adoptCurrentTalent(
+        context.scopedDb,
+        { userId: context.user.id },
+        data
       )
   );
 

@@ -74,6 +74,12 @@ const context = (referenceOnly: boolean) => ({
   aspectRatio: '16:9' as const,
   analysisModel: 'm',
   referenceOnly,
+  versions: {
+    style: null,
+    characters: {},
+    locations: {},
+    scenes: { s1: null },
+  },
 });
 
 const fakeDb = () => {

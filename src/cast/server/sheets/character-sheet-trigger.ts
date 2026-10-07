@@ -35,16 +35,27 @@ const NOT_CAST: CastTalentFields = {
  */
 export async function resolveCastTalent(
   scopedDb: Pick<ScopedDb, 'talent'>,
-  talentId: string | null
+  cast: { talentId: string | null; talentVersionId: string | null }
 ): Promise<CastTalentFields> {
-  if (!talentId) return NOT_CAST;
-  const [talent] = await scopedDb.talent.getByIds([talentId]);
-  if (!talent) return NOT_CAST;
+  if (!cast.talentId) return NOT_CAST;
+  // The talent AS THE CAST WAS MADE FROM IT (#1862): the version the bible
+  // version records, not the live row. A talent edit moves no cast until a
+  // person adopts the current version.
+  if (!cast.talentVersionId) {
+    throw new Error(
+      `Cast with talent ${cast.talentId} records no talent version; recast the character`
+    );
+  }
+  const version = await scopedDb.talent.versions.getById(cast.talentVersionId);
+  if (!version) return NOT_CAST;
+  const sheet = version.sheetId
+    ? await scopedDb.talent.sheets.getById(version.sheetId)
+    : undefined;
   return {
-    referenceImageUrl: talent.referenceSheet?.imageUrl ?? undefined,
-    talentMetadata: talent.referenceSheet?.metadata ?? undefined,
-    talentSheetInputHash: talent.referenceSheet?.inputHash ?? null,
-    castTalentDescription: talent.description,
+    referenceImageUrl: sheet?.imageUrl ?? undefined,
+    talentMetadata: sheet?.metadata ?? undefined,
+    talentSheetInputHash: sheet?.inputHash ?? null,
+    castTalentDescription: version.description,
   };
 }
 
@@ -110,7 +121,7 @@ export async function buildCharacterSheetDraft(
         })
       : undefined;
 
-  const cast = await resolveCastTalent(scopedDb, character.talentId);
+  const cast = await resolveCastTalent(scopedDb, character);
 
   const liveVersion = character.selectedSheetVersionId
     ? await scopedDb.characterSheetVariants.getById(

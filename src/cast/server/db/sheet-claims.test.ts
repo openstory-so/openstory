@@ -641,15 +641,24 @@ describe('look sheet claims (#2015)', () => {
   });
 
   it('writes analysed looks, matching a re-analysis by name so ids hold', async () => {
-    const first = await looks().syncFromAnalysis(sequenceId, characterId, [
-      { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
-      {
-        lookId: 'c:gala',
-        name: 'Gala gown',
-        clothing: 'red gown',
-        styling: '',
-      },
-    ]);
+    const { lookIds: first } = await looks().syncFromAnalysis(
+      sequenceId,
+      characterId,
+      [
+        {
+          lookId: 'c:default',
+          name: 'Office',
+          clothing: 'ignored',
+          styling: '',
+        },
+        {
+          lookId: 'c:gala',
+          name: 'Gala gown',
+          clothing: 'red gown',
+          styling: '',
+        },
+      ]
+    );
     // The default look keeps the character's id and takes the name; its
     // clothing came in with the character's upsert.
     expect(first['c:default']).toBe(characterId);
@@ -663,21 +672,30 @@ describe('look sheet claims (#2015)', () => {
 
     // The script is re-analysed: same outfit under the same name (any case),
     // new wording, plus one more.
-    const second = await looks().syncFromAnalysis(sequenceId, characterId, [
-      { lookId: 'c:default', name: 'Office', clothing: 'ignored', styling: '' },
-      {
-        lookId: 'c:gala_gown',
-        name: 'gala GOWN',
-        clothing: 'blue gown',
-        styling: 'hair up',
-      },
-      {
-        lookId: 'c:pyjamas',
-        name: 'Pyjamas',
-        clothing: 'striped',
-        styling: '',
-      },
-    ]);
+    const { lookIds: second } = await looks().syncFromAnalysis(
+      sequenceId,
+      characterId,
+      [
+        {
+          lookId: 'c:default',
+          name: 'Office',
+          clothing: 'ignored',
+          styling: '',
+        },
+        {
+          lookId: 'c:gala_gown',
+          name: 'gala GOWN',
+          clothing: 'blue gown',
+          styling: 'hair up',
+        },
+        {
+          lookId: 'c:pyjamas',
+          name: 'Pyjamas',
+          clothing: 'striped',
+          styling: '',
+        },
+      ]
+    );
     expect(second['c:gala_gown']).toBe(galaId);
     expect(await lookOf(galaId)).toMatchObject({
       clothing: 'blue gown',
@@ -713,11 +731,15 @@ describe('look sheet claims (#2015)', () => {
       styling: '',
     });
     const office = analysedLook('Office', 'x');
-    const first = await looks().syncFromAnalysis(sequenceId, characterId, [
-      office,
-      analysedLook('Gala gown', 'red gown'),
-      analysedLook('Pyjamas', 'striped'),
-    ]);
+    const { lookIds: first } = await looks().syncFromAnalysis(
+      sequenceId,
+      characterId,
+      [
+        office,
+        analysedLook('Gala gown', 'red gown'),
+        analysedLook('Pyjamas', 'striped'),
+      ]
+    );
     const galaId = first['c:Gala gown'] ?? '';
     const pyjamasId = first['c:Pyjamas'] ?? '';
     // A person's look, and an analysed look that has a sheet.
@@ -743,10 +765,11 @@ describe('look sheet claims (#2015)', () => {
     expect((await lookOf(mine.id)).deletedAt).toBeNull();
 
     // Named again: the same row comes back, not a twin.
-    const again = await looks().syncFromAnalysis(sequenceId, characterId, [
-      office,
-      analysedLook('gala gown', 'red gown'),
-    ]);
+    const { lookIds: again } = await looks().syncFromAnalysis(
+      sequenceId,
+      characterId,
+      [office, analysedLook('gala gown', 'red gown')]
+    );
     expect(again['c:gala gown']).toBe(galaId);
     expect((await lookOf(galaId)).deletedAt).toBeNull();
   });

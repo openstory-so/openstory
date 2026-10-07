@@ -71,7 +71,7 @@ describe('deriveAutoStyle', () => {
     const { scopedDb, setGeneratedForSequence, snapshotAutoStyle } =
       makeScopedDb(true);
 
-    const config = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
+    const { config } = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
 
     expect(config.look.mood).toBe('tense and paranoid');
     expect(setGeneratedForSequence).toHaveBeenCalledWith({
@@ -124,7 +124,7 @@ describe('deriveAutoStyle', () => {
     emit.mockReset();
     const { scopedDb, setGeneratedForSequence } = makeScopedDb(true);
 
-    const config = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
+    const { config } = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
 
     expect(config.look.mood).toContain(
       'Photoreal CGI-meets-scientific-visualization'
@@ -172,7 +172,7 @@ describe('deriveAutoStyle', () => {
     emit.mockReset();
     const { scopedDb, setGeneratedForSequence } = makeScopedDb(true, false);
 
-    const config = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
+    const { config } = await deriveAutoStyle(step, { scopedDb, ...PARAMS });
 
     expect(config.look.mood).toBe('tense and paranoid');
     expect(setGeneratedForSequence).toHaveBeenCalled();

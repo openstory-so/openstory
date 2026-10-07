@@ -15,6 +15,7 @@
  * § prompt versioning and docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { PromptInputVersions } from '@/shots/input-versions';
 import type { VisualPromptComponents } from '@/shots/scene-analysis.schema';
 import type { VisualPromptInputHash } from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
@@ -63,6 +64,8 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
         source: 'ai-generated' | 'regenerated';
         inputHash: VisualPromptInputHash;
         analysisModel: string;
+        /** The versions the hash was computed from (#1862). */
+        inputVersions: PromptInputVersions;
       }
     | {
         // Softened copies the rejected row's hash + model so staleness still
@@ -70,6 +73,8 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
         source: 'user-edit' | 'restored' | 'softened' | 'shortened';
         inputHash: string | null;
         analysisModel: string | null;
+        /** With the hash: the source row's, or the edit's provenance; null with no hash. */
+        inputVersions: PromptInputVersions | null;
       }
     | {
         // Built from a shot spec (#1915). A restore copies this id. A
@@ -78,6 +83,7 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
         inputHash: string | null;
         analysisModel: string | null;
         specVersionId: string;
+        inputVersions: PromptInputVersions | null;
       }
   );
 
@@ -255,6 +261,7 @@ export function createFramePromptVersionsMethods(db: Database) {
             specVersionId:
               input.source === 'derived' ? input.specVersionId : null,
             inputHash: nextHash,
+            inputVersions: input.inputVersions,
             analysisModel,
             createdBy: input.createdBy ?? null,
           })
@@ -296,6 +303,7 @@ export function createFramePromptVersionsMethods(db: Database) {
       text: string;
       components?: VisualPromptComponents | null;
       inputHash: VisualPromptInputHash;
+      inputVersions: PromptInputVersions;
       analysisModel: string;
       createdBy?: string | null;
     }): Promise<FramePromptVersion> => {
@@ -437,6 +445,8 @@ export function createFramePromptVersionsMethods(db: Database) {
        * spec; the claim was stamped from the spec the run replaced (#1923).
        */
       stampHash?: VisualPromptInputHash;
+      /** The versions the stamped hash was computed from (#1862). */
+      inputVersions: PromptInputVersions;
       analysisModel: string;
       /** Rebuild sets `derived` and the spec the text came from (#1923). */
       source?: PromptVersionSource;
@@ -511,6 +521,7 @@ export function createFramePromptVersionsMethods(db: Database) {
           text: input.text,
           components: input.components ?? null,
           inputHash,
+          inputVersions: input.inputVersions,
           analysisModel: input.analysisModel,
           status: 'completed',
           ...(input.source !== undefined ? { source: input.source } : {}),

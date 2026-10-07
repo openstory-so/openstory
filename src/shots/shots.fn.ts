@@ -558,6 +558,7 @@ export const updateShotFn = createServerFn({ method: 'POST' })
         text: editedImagePrompt,
         source: 'user-edit',
         inputHash: null,
+        inputVersions: null,
         analysisModel: null,
         createdBy: context.user.id,
       });
@@ -575,6 +576,7 @@ export const updateShotFn = createServerFn({ method: 'POST' })
         source: 'user-edit',
         usesStartFrame: usesStartFrame(context.shot, context.sequence),
         inputHash: null,
+        inputVersions: null,
         analysisModel: null,
         createdBy: context.user.id,
       });

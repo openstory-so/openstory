@@ -42,7 +42,21 @@ vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: vi.fn(async () => ({})),
 }));
 
-const createCastRecords = vi.fn(async () => ({ elements: [], lookIds: {} }));
+const createCastRecords = vi.fn(async () => ({
+  elements: [],
+  lookIds: {},
+  // What the first prompts record (#1862): Ada's pinned bible and default look.
+  versions: {
+    characters: {
+      c1: {
+        bible: 'bible-c1',
+        defaultLook: 'c1:default',
+        looks: { 'c1:default': 'look-c1' },
+      },
+    },
+    locations: {},
+  },
+}));
 vi.doMock('@/cast/server/workflows/cast-records', () => ({
   ...realCastRecords,
   createCastRecords,
@@ -206,6 +220,15 @@ function makeScopedDb(update: UpdateMock): WorkflowScopedDb {
     },
     liveRead: { sequenceElements: { listByIds: vi.fn(async () => []) } },
     shotSpecVersions: { write: writeSpec },
+    // The scene rows the picks land on (#2015) and whose versions the first
+    // prompts record (#1862).
+    scenes: {
+      upsert: vi.fn(async (data: { orderIndex: number }) => ({
+        id: `scene-row-${data.orderIndex}`,
+        selectedScriptVersionId: `scene-v-${data.orderIndex}`,
+      })),
+      updateContinuity: vi.fn(async () => ({ scriptVersionId: 'scene-v-x' })),
+    },
     framePromptVersions: { write: writeVisualPrompt },
     shotPromptVersions: { write: writeMotionPrompt },
   });

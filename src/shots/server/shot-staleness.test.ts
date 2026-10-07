@@ -37,7 +37,7 @@ vi.doMock('@/shots/input-hash', () => ({
   sha256Hex: realInputHash.sha256Hex,
 }));
 
-const { computeShotStaleness, loadShotStalenessReads } =
+const { computeShotStaleness, loadShotStalenessReads, UNSTAMPED_CAUSE } =
   await import('./shot-staleness');
 
 // Shape-matching stubs: each fixture carries only what this module reads, so a
@@ -585,6 +585,7 @@ describe('staleness causes (#1194)', () => {
       'Style',
       'Character "Woman"',
       'Element BOTTLE',
+      UNSTAMPED_CAUSE,
     ]);
   });
 
@@ -719,7 +720,10 @@ describe('staleness causes (#1194)', () => {
       }),
     });
 
-    expect(result.causes).toEqual(['Character "Woman": clothing, sheet']);
+    expect(result.causes).toEqual([
+      'Character "Woman": clothing, sheet',
+      UNSTAMPED_CAUSE,
+    ]);
   });
 
   it('names the look the scene dresses a character in, and only that look (#2015)', async () => {
@@ -859,9 +863,10 @@ describe('staleness causes (#1194)', () => {
     // The gala scene names the look, and what moved in it.
     expect(await run({ woman: 'gala' })).toEqual([
       'Character "Woman" (Gala gown): clothing',
+      UNSTAMPED_CAUSE,
     ]);
     // A scene in her default look is not touched by the gown's edit.
-    expect(await run(undefined)).toEqual([]);
+    expect(await run(undefined)).toEqual([UNSTAMPED_CAUSE]);
     // The scene switched her into the gown after the still: the look is named.
     const causes = await run({ woman: 'gala' }, [
       {
@@ -975,6 +980,7 @@ describe('staleness causes (#1194)', () => {
     // The woman is in the shot; the bathroom (edited later) is not.
     expect(result.causes).toEqual([
       expect.stringMatching(/^Character "Woman"/),
+      UNSTAMPED_CAUSE,
     ]);
   });
 
@@ -1057,7 +1063,7 @@ describe('staleness causes (#1194)', () => {
     });
 
     // The title is a display label: renamed, but never a cause.
-    expect(result.causes).toEqual(['Scene: time of day']);
+    expect(result.causes).toEqual(['Scene: time of day', UNSTAMPED_CAUSE]);
   });
 });
 
@@ -1406,7 +1412,7 @@ describe('causes left for #1787', () => {
     });
 
     expect(result.motionPrompt).toBe('stale');
-    expect(result.causes).toEqual(['Dialogue']);
+    expect(result.causes).toEqual(['Dialogue', UNSTAMPED_CAUSE]);
   });
 
   it('names a location sheet regenerated after the still', async () => {
@@ -1456,7 +1462,7 @@ describe('causes left for #1787', () => {
       }),
     });
 
-    expect(result.causes).toEqual(['Location "Diner": sheet']);
+    expect(result.causes).toEqual(['Location "Diner": sheet', UNSTAMPED_CAUSE]);
   });
 
   it('falls back to the scene timestamp only for a backfilled narrative (#1600, #1787)', async () => {
@@ -1500,10 +1506,10 @@ describe('causes left for #1787', () => {
       return result.causes;
     };
 
-    expect(await causesFor(true)).toEqual(['Scene details']);
+    expect(await causesFor(true)).toEqual(['Scene details', UNSTAMPED_CAUSE]);
     // A version written with its narrative is the truth: a touched scene
     // whose narrative did not move is not a cause.
-    expect(await causesFor(false)).toEqual([]);
+    expect(await causesFor(false)).toEqual([UNSTAMPED_CAUSE]);
   });
 });
 
@@ -1578,7 +1584,7 @@ describe('style causes (#1600)', () => {
       }),
     });
 
-    expect(result.causes).toEqual(['Style: lighting']);
+    expect(result.causes).toEqual(['Style: lighting', UNSTAMPED_CAUSE]);
   });
 });
 
@@ -1840,7 +1846,10 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
 
     expect(result.visualPrompt).toBe('untracked');
     expect(result.motionPrompt).toBe('stale');
-    expect(result.causes).toEqual(['Character "Kylie": features']);
+    expect(result.causes).toEqual([
+      'Character "Kylie": features',
+      UNSTAMPED_CAUSE,
+    ]);
   });
 
   it('stales on the room the shot shows', async () => {

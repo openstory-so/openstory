@@ -1,3 +1,4 @@
+import type { PromptInputVersions } from '@/shots/input-versions';
 import {
   buildMotionShotPrompt,
   buildPackedMotionPrompt,
@@ -436,6 +437,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                 source: 'user-edit',
                 usesStartFrame: !input.referenceOnly,
                 inputHash: input.userEditProvenance.inputHash,
+                inputVersions: input.userEditProvenance.inputVersions,
                 analysisModel: input.userEditProvenance.analysisModel,
                 createdBy: input.userId,
               })
@@ -752,6 +754,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         return {
           inputHash: original?.inputHash ?? null,
           analysisModel: original?.analysisModel ?? null,
+          inputVersions: original?.inputVersions ?? null,
         };
       });
 
@@ -781,6 +784,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       provenance: {
         inputHash: string | null;
         analysisModel: string | null;
+        inputVersions: PromptInputVersions | null;
       },
       source: 'softened' | 'shortened',
       audio: MotionAudio | null = null
@@ -797,6 +801,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           source,
           usesStartFrame: !input.referenceOnly,
           inputHash: provenance.inputHash,
+          inputVersions: provenance.inputVersions,
           analysisModel: provenance.analysisModel,
           createdBy: input.userId,
           select: false,

@@ -19,6 +19,7 @@ import {
   loadNarrowShotPromptContext,
   type ShotPromptContextSequence,
 } from './prompt-context';
+import { promptInputVersionsFor } from '@/shots/input-versions';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
 import type { UserEditProvenance } from '@/platform/server/workflow/types';
@@ -29,7 +30,11 @@ export async function buildUserEditProvenance(
   args: {
     scopedDb: Pick<
       ScopedDb,
-      'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+      | 'characters'
+      | 'sequenceLocations'
+      | 'sequenceElements'
+      | 'styles'
+      | 'scenes'
     >;
     sequence: ShotPromptContextSequence;
     scene: Scene | null;
@@ -47,7 +52,9 @@ export async function buildUserEditProvenance(
   )
 ): Promise<UserEditProvenance> {
   const { scopedDb, sequence, scene } = args;
-  if (!scene) return { inputHash: null, analysisModel: null };
+  if (!scene) {
+    return { inputHash: null, analysisModel: null, inputVersions: null };
+  }
   try {
     const { shot: ctx } = await loadNarrowShotPromptContext({
       scopedDb,
@@ -70,6 +77,7 @@ export async function buildUserEditProvenance(
           ? await hashMotionPromptInput({ ...ctx, dialogue: args.dialogue })
           : await hashVisualPromptInput(ctx),
       analysisModel: ctx.analysisModel,
+      inputVersions: promptInputVersionsFor(ctx.versions, ctx),
     };
   } catch (err) {
     // Recording the edit with a null hash beats losing the edit.
@@ -77,6 +85,6 @@ export async function buildUserEditProvenance(
       `Could not compute upstream ${args.kind} hash for user edit on sequence ${sequence.id}; recording with null hash`,
       { err }
     );
-    return { inputHash: null, analysisModel: null };
+    return { inputHash: null, analysisModel: null, inputVersions: null };
   }
 }

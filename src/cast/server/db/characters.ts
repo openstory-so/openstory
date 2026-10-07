@@ -20,6 +20,7 @@ import {
   isNotNull,
   isNull,
   ne,
+  or,
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
@@ -58,6 +59,7 @@ import {
   characters,
   sequenceCast,
   sequenceCastLooks,
+  sequenceEvents,
   sequences,
   shots,
   talent,
@@ -81,12 +83,16 @@ import { dbSceneId } from '@/shots/scene-id';
 import { typedEntries } from '@/platform/typed-object';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import {
+  assertVersionLanded,
   characterBibleChanged,
   characterBibleColumns,
   legacyBibleClothing,
+  nowSeconds,
+  patchedOrLive,
   pickCharacterBible,
   mergeDefined,
 } from './bible-versions';
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import {
   createCharacterLooksMethods,
   deleteLooksOfCharacters,
@@ -263,6 +269,11 @@ const castColumns = {
   currentBibleVersionId: characters.selectedBibleVersionId,
   currentVoiceVersionId: characters.selectedVoiceVersionId,
   talentId: characterBibleVersions.talentId,
+  talentVersionId: characterBibleVersions.talentVersionId,
+  // One scalar lookup per row rather than a join every select would need.
+  currentTalentVersionId: sql<
+    string | null
+  >`(SELECT ${talent.selectedVersionId} FROM ${talent} WHERE ${talent.id} = ${characterBibleVersions.talentId})`,
   deletedAt: sequenceCast.removedAt,
 };
 
@@ -625,11 +636,18 @@ export function createCharactersMethods(db: Database, teamId: string) {
    * The one writer of a bible (#1600): the statements that append a version
    * row, make it the character's current one and pin the sequence's cast
    * link to it (#2017), for the caller's own `db.batch`. The version carries
-   * the cast talent, so every caller says who plays the character: a new
-   * `talentId` is a recast, `existing.talentId` keeps the cast.
+   * the cast talent, so every caller says who plays the character: `recast`
+   * names a new talent (null uncasts), `null` keeps the cast.
    * A change to a field the sheets read, or of the talent, revokes the
    * in-flight sheet claim of every look of that cast (#1113, #2015) in the
    * same batch. Empty when nothing moved.
+   *
+   * Guarded (#1862): the fields the patch leaves alone are copied from the
+   * version THIS SEQUENCE PINS inside the batch, not from `existing`, and
+   * every statement lands only while the pin is still the one `existing`
+   * saw. Two edits that both read v1 cannot both land: the second inserts
+   * no row and moves no pointer, and the caller's `assertVersionLanded`
+   * fails it visibly. A recast records the talent's current version.
    */
   const bibleWrite = (
     existing: Character,
@@ -637,40 +655,85 @@ export function createCharactersMethods(db: Database, teamId: string) {
     opts: {
       source: BibleVersionSource;
       createdBy: string | null;
-      talentId: string | null;
+      recast: { talentId: string | null } | null;
     }
   ) => {
     const before = pickCharacterBible(existing);
     const after = mergeBible(before, patch);
     const moved = characterBibleChanged(before, after);
-    const { talentId } = opts;
-    const talentMoved = talentId !== existing.talentId;
+    const talentId = opts.recast ? opts.recast.talentId : existing.talentId;
+    // A recast to the same talent still moves the cast onto the talent's
+    // current version (#1862); an edit keeps the version the pin holds.
+    const talentMoved =
+      talentId !== existing.talentId ||
+      (opts.recast !== null &&
+        existing.talentVersionId !== existing.currentTalentVersionId);
     if (moved.length === 0 && !talentMoved) {
       return { moved, talentMoved, versionId: null, statements: [] };
     }
     const versionId = generateId();
+    const pinned = and(
+      eq(sequenceCast.id, existing.castId),
+      eq(sequenceCast.bibleVersionId, existing.selectedBibleVersionId)
+    );
+    const landed = exists(
+      db
+        .select({ one: sql`1` })
+        .from(characterBibleVersions)
+        .where(eq(characterBibleVersions.id, versionId))
+    );
+    const cbv = characterBibleVersions;
+    const field = (key: keyof CharacterBible) =>
+      patchedOrLive(patch[key], cbv[key], cbv[key]);
+    const copy = (column: AnySQLiteColumn) => sql`${column}`.as(column.name);
+    const talentVersion = opts.recast
+      ? opts.recast.talentId === null
+        ? sql`NULL`
+        : sql`(SELECT ${talent.selectedVersionId} FROM ${talent} WHERE ${talent.id} = ${opts.recast.talentId})`
+      : sql`${cbv.talentVersionId}`;
     return {
       moved,
       talentMoved,
       /** The version appended; the event names the pin move from → to. */
       versionId,
       statements: [
-        db.insert(characterBibleVersions).values({
-          id: versionId,
-          characterId: existing.id,
-          ...after,
-          talentId,
-          source: opts.source,
-          createdBy: opts.createdBy,
-        }),
+        db.insert(characterBibleVersions).select(
+          db
+            .select({
+              id: sql`${versionId}`.as('id'),
+              characterId: sql`${existing.id}`.as('character_id'),
+              name: field('name'),
+              age: field('age'),
+              gender: field('gender'),
+              ethnicity: field('ethnicity'),
+              physicalDescription: field('physicalDescription'),
+              legacyStandardClothing: copy(cbv.legacyStandardClothing),
+              distinguishingFeatures: field('distinguishingFeatures'),
+              personality: field('personality'),
+              movement: field('movement'),
+              voiceOnly: field('voiceOnly'),
+              isPerson: field('isPerson'),
+              consistencyTag: field('consistencyTag'),
+              talentId: opts.recast
+                ? sql`${opts.recast.talentId}`.as('talent_id')
+                : copy(cbv.talentId),
+              talentVersionId: talentVersion.as('talent_version_id'),
+              source: sql`${opts.source}`.as('source'),
+              createdAt: nowSeconds().as('created_at'),
+              createdBy: sql`${opts.createdBy}`.as('created_by'),
+            })
+            .from(sequenceCast)
+            .innerJoin(cbv, eq(cbv.id, sequenceCast.bibleVersionId))
+            .where(pinned)
+        ),
         db
           .update(characters)
           .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
-          .where(eq(characters.id, existing.id)),
+          .where(and(eq(characters.id, existing.id), landed)),
         db
           .update(sequenceCast)
           .set({ bibleVersionId: versionId })
-          .where(eq(sequenceCast.id, existing.castId)),
+          .where(and(pinned, landed)),
         ...(touchesSheet(moved) || talentMoved
           ? [
               demoteCharacterSheetClaims(
@@ -1180,6 +1243,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           characterId: copyId,
           ...pickCharacterBible(existing),
           talentId: existing.talentId,
+          talentVersionId: existing.talentVersionId,
           source: 'edit',
           createdBy: opts.actorId,
         }),
@@ -1444,23 +1508,57 @@ export function createCharactersMethods(db: Database, teamId: string) {
       ),
 
     /**
-     * Every bible version of the sequence's cast, oldest first (#1600).
-     * Staleness causes diff the version live when an artifact was made
-     * against the live bible.
+     * The bible versions this sequence has PINNED, oldest first (#1600,
+     * #1862): the version each live cast link points at now and every one
+     * its pin-move events name. A shared character's other versions — ones
+     * another sequence wrote and this one never used — are not in it, so a
+     * cause can never diff against them. Staleness looks these up by id.
      */
-    listBibleVersionsBySequence: async (sequenceId: string) =>
-      await db
+    listBibleVersionsBySequence: async (sequenceId: string) => {
+      const pinned = db
+        .select({ id: sequenceCast.bibleVersionId })
+        .from(sequenceCast)
+        .where(eq(sequenceCast.sequenceId, sequenceId));
+      const moved = (path: string) =>
+        db
+          .select({
+            id: sql<string>`json_extract(${sequenceEvents.data}, ${path})`,
+          })
+          .from(sequenceEvents)
+          .where(
+            and(
+              eq(sequenceEvents.sequenceId, sequenceId),
+              eq(sequenceEvents.targetType, 'character'),
+              inArray(sequenceEvents.kind, [
+                'character.updated',
+                'character.version-moved',
+              ])
+            )
+          );
+      return await db
         .select(getTableColumns(characterBibleVersions))
         .from(characterBibleVersions)
         .innerJoin(
           sequenceCast,
           eq(sequenceCast.characterId, characterBibleVersions.characterId)
         )
-        .where(eq(sequenceCast.sequenceId, sequenceId))
+        .where(
+          and(
+            eq(sequenceCast.sequenceId, sequenceId),
+            or(
+              inArray(characterBibleVersions.id, pinned),
+              inArray(characterBibleVersions.id, moved('$.bibleVersion.from')),
+              inArray(characterBibleVersions.id, moved('$.bibleVersion.to')),
+              inArray(characterBibleVersions.id, moved('$.bible.from')),
+              inArray(characterBibleVersions.id, moved('$.bible.to'))
+            )
+          )
+        )
         .orderBy(
           asc(characterBibleVersions.createdAt),
           asc(characterBibleVersions.id)
-        ),
+        );
+    },
 
     listWithTalent: async (
       sequenceId: string
@@ -1640,7 +1738,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         // A talent left out keeps the cast; null uncasts.
         const bible = bibleWrite(existing, bibleOf(data), {
           ...opts,
-          talentId: talentId === undefined ? existing.talentId : talentId,
+          recast: talentId === undefined ? null : { talentId },
         });
         await db.batch([
           // A re-analysis re-extracting a removed character revives it — the
@@ -1689,6 +1787,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
           ...lookDefinitionWrite(db, defaultLook, { clothing }, look)
             .statements,
         ]);
+        assertVersionLanded(
+          `Character ${existing.name}`,
+          (await castOf(sequenceId, id))?.selectedBibleVersionId ?? null,
+          bible.versionId
+        );
       } else {
         const bible = mergeBible(
           { ...NEW_CHARACTER_BIBLE, name: data.name },
@@ -1710,6 +1813,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
             characterId: id,
             ...bible,
             talentId: talentId ?? null,
+            // The talent's current version, read in the same statement.
+            talentVersionId: talentId
+              ? sql`(SELECT ${talent.selectedVersionId} FROM ${talent} WHERE ${talent.id} = ${talentId})`
+              : null,
             source: opts.source,
             createdBy: opts.createdBy,
           }),
@@ -2276,7 +2383,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const { statements, versionId } = bibleWrite(existing, bibleData, {
         source: opts.source,
         createdBy: opts.actorId,
-        talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
+        recast: opts.source === 'recast' ? { talentId: opts.talentId } : null,
       });
       // Clothing is the default look's (#2015): the same edit, written as a
       // look version.
@@ -2318,6 +2425,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
             ]
           : []),
       ]);
+      const written = await reread(sequenceId, id);
+      assertVersionLanded(
+        `Character ${existing.name}`,
+        written.selectedBibleVersionId,
+        versionId
+      );
       // `voiceDescription` is the selected voice version's, so an edit to it
       // is a voice write and belongs in the voice history (#1657). Only when it
       // actually moved: the form posts every field, and a row per unrelated
@@ -2333,8 +2446,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
           'user-edit',
           opts.actorId
         );
+        return await reread(sequenceId, id);
       }
-      return await reread(sequenceId, id);
+      return written;
     },
 
     /**

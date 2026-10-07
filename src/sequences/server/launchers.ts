@@ -231,6 +231,7 @@ async function resolveStoryboardPayload(
       snapshot: sequence.styleConfig,
       live: style?.config,
     }),
+    selectedStyleVersionId: sequence.selectedStyleVersionId,
     pendingAutoStyleId,
     analysisModelId:
       getAnalysisModelById(sequence.analysisModel)?.id ??

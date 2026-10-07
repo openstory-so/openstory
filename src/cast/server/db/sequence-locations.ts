@@ -8,6 +8,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNotNull,
@@ -45,8 +46,11 @@ import {
 import { typedEntries } from '@/platform/typed-object';
 import { matchLocationsToScene } from '@/shots/scene-matching';
 import {
+  assertVersionLanded,
   locationBibleChanged,
   locationBibleColumns,
+  nowSeconds,
+  patchedOrLive,
   pickLocationBible,
   mergeDefined,
 } from './bible-versions';
@@ -198,19 +202,64 @@ export function createSequenceLocationsMethods(db: Database) {
     const after = mergeBible(before, patch);
     const moved = locationBibleChanged(before, after);
     if (moved.length === 0 && existing.selectedBibleVersionId) {
-      return { moved, statements: [] };
+      return { moved, versionId: null, statements: [] };
     }
     const versionId = generateId();
+    // Guarded (#1862), like the characters twin: the fields the patch leaves
+    // alone are copied from the live version inside the batch (the legacy
+    // columns when the row has none yet), and nothing lands unless the
+    // pointer is still what `existing` read. The caller's
+    // `assertVersionLanded` fails a lost race visibly.
+    const pointer =
+      existing.selectedBibleVersionId === null
+        ? isNull(sequenceLocations.selectedBibleVersionId)
+        : eq(
+            sequenceLocations.selectedBibleVersionId,
+            existing.selectedBibleVersionId
+          );
+    const unmoved = and(eq(sequenceLocations.id, existing.id), pointer);
+    const landed = exists(
+      db
+        .select({ one: sql`1` })
+        .from(locationBibleVersions)
+        .where(eq(locationBibleVersions.id, versionId))
+    );
+    const field = (key: keyof LocationBible) =>
+      patchedOrLive(
+        patch[key],
+        locationBibleColumns[key],
+        locationBibleVersions[key]
+      );
     return {
       moved,
+      versionId,
       statements: [
-        db.insert(locationBibleVersions).values({
-          id: versionId,
-          locationId: existing.id,
-          ...after,
-          source: opts.source,
-          createdBy: opts.createdBy,
-        }),
+        db.insert(locationBibleVersions).select(
+          db
+            .select({
+              id: sql`${versionId}`.as('id'),
+              locationId: sql`${existing.id}`.as('location_id'),
+              name: field('name'),
+              type: field('type'),
+              description: field('description'),
+              architecturalStyle: field('architecturalStyle'),
+              keyFeatures: field('keyFeatures'),
+              ambiance: field('ambiance'),
+              consistencyTag: field('consistencyTag'),
+              source: sql`${opts.source}`.as('source'),
+              createdAt: nowSeconds().as('created_at'),
+              createdBy: sql`${opts.createdBy}`.as('created_by'),
+            })
+            .from(sequenceLocations)
+            .leftJoin(
+              locationBibleVersions,
+              eq(
+                locationBibleVersions.id,
+                sequenceLocations.selectedBibleVersionId
+              )
+            )
+            .where(unmoved)
+        ),
         db
           .update(sequenceLocations)
           .set({
@@ -220,7 +269,7 @@ export function createSequenceLocationsMethods(db: Database) {
               : {}),
             updatedAt: new Date(),
           })
-          .where(eq(sequenceLocations.id, existing.id)),
+          .where(and(unmoved, landed)),
       ],
     };
   };
@@ -616,7 +665,7 @@ export function createSequenceLocationsMethods(db: Database) {
       }
       // Appends a version (#1600); revokes an in-flight sheet run's claim
       // when a field it reads moved (#1113).
-      const { statements } = bibleWrite(existing, data, {
+      const { statements, versionId } = bibleWrite(existing, data, {
         source: 'edit',
         createdBy: opts.actorId,
       });
@@ -632,7 +681,13 @@ export function createSequenceLocationsMethods(db: Database) {
         }),
         ...statements,
       ]);
-      return await reread(existing);
+      const written = await reread(existing);
+      assertVersionLanded(
+        `Location ${existing.name}`,
+        written.selectedBibleVersionId,
+        versionId
+      );
+      return written;
     },
 
     /**

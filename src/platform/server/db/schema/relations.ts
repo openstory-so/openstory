@@ -359,6 +359,13 @@ export const relations = defineRelations(schema, (r) => ({
     }),
     sheets: r.many.talentSheets(),
     media: r.many.talentMedia(),
+    versions: r.many.talentVersions(),
+  },
+  talentVersions: {
+    talent: r.one.talent({
+      from: r.talentVersions.talentId,
+      to: r.talent.id,
+    }),
   },
   talentSheets: {
     talent: r.one.talent({

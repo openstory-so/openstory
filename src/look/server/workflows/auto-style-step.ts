@@ -34,7 +34,7 @@ export async function deriveAutoStyle(
     analysisModelId: AnalysisModelId;
     reservationId?: string;
   }
-): Promise<StyleConfig> {
+): Promise<{ config: StyleConfig; styleVersionId: string | null }> {
   const { scopedDb, sequenceId, styleId } = params;
 
   const response = await durableLLMCallCf(
@@ -74,7 +74,7 @@ export async function deriveAutoStyle(
     );
   }
 
-  await step.do('save-automatic-style', async () => {
+  const styleVersionId = await step.do('save-automatic-style', async () => {
     const bound = await scopedDb.styles.setGeneratedForSequence({
       styleId,
       sequenceId,
@@ -93,7 +93,7 @@ export async function deriveAutoStyle(
       id: sequenceId,
       styleId,
     });
-    if (!snapshotted) {
+    if (snapshotted === null) {
       logger.warn('[AutoStyle:cf] sequence re-styled mid-run; snapshot kept', {
         sequenceId,
         styleId,
@@ -108,7 +108,8 @@ export async function deriveAutoStyle(
       styleId,
       name: draft.name,
     });
+    return snapshotted?.styleVersionId ?? null;
   });
 
-  return draft.config;
+  return { config: draft.config, styleVersionId };
 }

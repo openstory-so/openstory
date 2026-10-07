@@ -7,6 +7,7 @@
  * prompt is left alone unless the caller names it in `replace`.
  */
 
+import { promptInputVersionsFor } from '@/shots/input-versions';
 import type { ShotEditContext } from './shot-context';
 import type { ShotSpecVersion } from '@/platform/server/db/schema';
 import type { ShotSpecRewriteWorkflowInput } from '@/platform/server/workflow/types';
@@ -222,6 +223,7 @@ export async function regenerateShotPrompt(
         specVersionId: selectedSpec.id,
         text: stillText,
         inputHash: visualHash,
+        inputVersions: promptInputVersionsFor(ctx.versions, narrowedVisual),
         analysisModel,
         createdBy: user.id,
       });
@@ -236,6 +238,7 @@ export async function regenerateShotPrompt(
         audio: motion.audio,
         usesStartFrame: !shotReferenceOnly,
         inputHash: motionHash,
+        inputVersions: promptInputVersionsFor(ctx.versions, narrowedMotion),
         analysisModel,
         createdBy: user.id,
       });
@@ -313,6 +316,7 @@ export async function regenerateShotPrompt(
         characterBible: [...ctx.characterBible],
         locationBible: [...ctx.locationBible],
         elementBible: [...ctx.elementBible],
+        versions: ctx.versions,
         styleConfig: ctx.styleConfig,
         aspectRatio: sequence.aspectRatio,
         analysisModelId: analysisModel,

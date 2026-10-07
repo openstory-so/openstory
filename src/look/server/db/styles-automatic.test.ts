@@ -121,7 +121,7 @@ describe('automatic styles', () => {
         id: sequence.id,
         styleId: style.id,
       })
-    ).toBe(true);
+    ).toEqual({ styleVersionId: expect.any(String) });
     const updated = await sequencesDb.getById(sequence.id);
     expect(parseStyleConfig(updated?.styleConfig).look.mood).toBe(
       derived().config.look.mood
@@ -146,7 +146,7 @@ describe('automatic styles', () => {
         id: sequence.id,
         styleId: style.id,
       })
-    ).toBe(false);
+    ).toBeNull();
     const after = await sequencesDb.getById(sequence.id);
     expect(after?.styleId).toBe(library.id);
     expect(parseStyleConfig(after?.styleConfig).look.mood).toBe(

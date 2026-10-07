@@ -894,7 +894,7 @@ export function createSequencesMethods(
     snapshotAutoStyle: async (params: {
       id: string;
       styleId: string;
-    }): Promise<boolean> => {
+    }): Promise<{ styleVersionId: string } | null> => {
       const styleConfig = await snapshotConfigForStyleId(db, params.styleId);
       const still = and(
         eq(sequences.id, params.id),
@@ -905,7 +905,7 @@ export function createSequencesMethods(
         .select({ id: sequences.id })
         .from(sequences)
         .where(still);
-      if (!current) return false;
+      if (!current) return null;
       // The derived recipe is a snapshot like any other (#1600). The pointer
       // moves only while the sequence still points at this style; a pick that
       // lands between the read and the batch leaves the row as history.
@@ -941,7 +941,7 @@ export function createSequencesMethods(
           .where(still)
           .returning({ id: sequences.id }),
       ]);
-      return rows.length > 0;
+      return rows.length > 0 ? { styleVersionId } : null;
     },
 
     /**

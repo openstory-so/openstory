@@ -10,6 +10,10 @@
  * instead.
  */
 
+import {
+  stillInputVersionsFromReferences,
+  type StillInputVersions,
+} from '@/shots/input-versions';
 import { resolveUpscaleModel } from '@/models/resolve-asset-models';
 import { ZERO_MICROS } from '@/billing/money';
 import {
@@ -96,6 +100,8 @@ export async function bindUpscaleVersion(params: {
   workflowRunId: string;
   /** Tier the upscale was asked for (#1449); null on pre-tier rows. */
   resolution?: Resolution;
+  /** The sheet versions the upscale reads (#1862), off its references. */
+  inputVersions: StillInputVersions;
 }): Promise<string | null> {
   const {
     scopedDb,
@@ -107,6 +113,7 @@ export async function bindUpscaleVersion(params: {
     promptVersionId,
     workflowRunId,
     resolution,
+    inputVersions,
   } = params;
   if (versionId) {
     const existing = await scopedDb.claims.frameVariants.getById(versionId);
@@ -122,6 +129,7 @@ export async function bindUpscaleVersion(params: {
     resolution: resolution ?? null,
     sourceVariantId,
     promptVersionId,
+    inputVersions,
     status: 'generating',
     workflowRunId,
     isPrimary: true,
@@ -278,6 +286,10 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
         upscaleModel,
         sourceVariantId: input.sourceVariantId ?? null,
         promptVersionId: input.promptVersionId,
+        inputVersions: stillInputVersionsFromReferences([
+          ...(input.characterReferences ?? []),
+          ...(input.locationReferences ?? []),
+        ]),
         workflowRunId,
         resolution: input.resolution,
       });

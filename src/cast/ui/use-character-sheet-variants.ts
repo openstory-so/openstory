@@ -5,6 +5,7 @@ import {
   promoteCharacterSheetVariantFn,
   selectCharacterSheetVersionFn,
   undiscardCharacterSheetVariantFn,
+  getSheetUpstreamChangesFn,
 } from '@/cast/character-sheet-variants.fn';
 import { sequenceCharacterKeys } from './use-sequence-characters';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
@@ -23,6 +24,22 @@ export const characterSheetVariantKeys = {
       characterId,
     ] as const,
 };
+
+/** What moved since a parked sheet was drawn (#1862); read while the compare is open. */
+export function useSheetUpstreamChanges(
+  sequenceId: string,
+  variantId: string | undefined
+) {
+  return useQuery<string[]>({
+    queryKey: [...characterSheetVariantKeys.all, 'upstream', variantId ?? ''],
+    queryFn: () => {
+      if (!variantId) throw new Error('variantId is required');
+      return getSheetUpstreamChangesFn({ data: { sequenceId, variantId } });
+    },
+    enabled: !!variantId,
+    staleTime: 30_000,
+  });
+}
 
 /**
  * Query the active divergent character-sheet alternates for every character

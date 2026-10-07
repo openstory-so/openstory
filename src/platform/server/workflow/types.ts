@@ -2,6 +2,10 @@
  * Payload and result types for the Cloudflare Workflows entrypoints.
  */
 
+import type {
+  PromptInputVersions,
+  SequenceInputVersions,
+} from '@/shots/input-versions';
 import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
@@ -67,6 +71,8 @@ import { z } from 'zod';
 export type UserEditProvenance = {
   inputHash: string | null;
   analysisModel: string | null;
+  /** The versions the edit was authored against (#1862); null with the hash. */
+  inputVersions: PromptInputVersions | null;
 };
 
 /**
@@ -278,6 +284,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   /** `sequences.draftMotion` at launch (#1756) — see `MotionWorkflowInput.draft`. */
   draftMotion?: boolean;
   styleConfig: StyleConfig;
+  /** The `sequence_style_versions` row `styleConfig` is (#1862); null with no snapshot. */
+  selectedStyleVersionId: string | null;
   /**
    * Automatic style (#1213): set when the sequence's style is a placeholder
    * bound to it whose recipe has not been derived yet. The poster renders
@@ -427,6 +435,12 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   /** `sequences.draftMotion` at launch (#1756) — see `MotionWorkflowInput.draft`. */
   draftMotion?: boolean;
   styleConfig: StyleConfig;
+  /**
+   * The `sequence_style_versions` row `styleConfig` is (#1862), null while
+   * an automatic style has not derived yet (the run then records the one it
+   * writes). The first prompts stamp it.
+   */
+  selectedStyleVersionId: string | null;
   /** @see StoryboardWorkflowInput.pendingAutoStyleId — derived here, in parallel with scene-split. */
   pendingAutoStyleId?: string;
   analysisModelId: AnalysisModelId;
@@ -1240,6 +1254,8 @@ export interface ShotSpecRewriteWorkflowInput extends SequenceWorkflowContext {
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
+  /** The versions the bibles are (#1862); the rebuilt prompts stamp from it. */
+  versions: SequenceInputVersions;
   styleConfig: StyleConfig;
   aspectRatio: AspectRatio;
   analysisModelId: AnalysisModelId;

@@ -10,6 +10,7 @@
  * (the generated images). See docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { PromptInputVersions } from '@/shots/input-versions';
 import type { VisualPromptComponents } from '@/shots/scene-analysis.schema';
 import { type InferSelectModel, sql } from 'drizzle-orm';
 import {
@@ -80,6 +81,11 @@ export const framePromptVersions = snakeCase.table(
     // SHA-256 of the upstream context that produced an AI prompt; null for
     // user-edits since they have no upstream input surface.
     inputHash: text(),
+    // The version ids the run read (#1862): the scene script, the style
+    // snapshot, each referenced character's pinned bible and worn look, each
+    // location's bible. Provenance beside the hash, never in it. Null on a
+    // row from before the column and on a user edit, which read no inputs.
+    inputVersions: text({ mode: 'json' }).$type<PromptInputVersions>(),
 
     // Analysis model that produced the prompt (null for user-edits).
     analysisModel: text({ length: 100 }),

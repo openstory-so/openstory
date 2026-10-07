@@ -202,6 +202,10 @@ const EXCEPTIONS: Record<string, string> = {
   // Look definitions (#2015): authored like a bible. The look's SHEET is the
   // generated thing, and it lands through the `character sheets` claim.
   character_look_versions: 'authored; analysis and edits append',
+  // Talent history (#1862): authored like a bible. A landed reference sheet
+  // appends one inside `talent.landSheet`, under the talent's own sheet
+  // claim; the version row itself is no selection pointer.
+  talent_versions: 'authored; edits and a landed sheet append',
   // Style snapshots (#1600): copied from the catalog on create, switch and
   // automatic derivation; a snapshot, not a generation.
   sequence_style_versions: 'snapshot of the catalog style; appended on change',

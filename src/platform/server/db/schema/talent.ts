@@ -60,6 +60,11 @@ export const talent = snakeCase.table(
     // talent's face. Moved by `landSheet` while the claim holds, or by the
     // user (`selectSheet`). Null only for a talent with no sheet yet.
     selectedSheetId: text(),
+    // The current `talent_versions` row (#1862): what a new cast adopts. No
+    // FK, like the character's `selectedBibleVersionId`. Null only on a row
+    // an older worker wrote during the #1862 deploy; the backfill fills every
+    // existing one with a version keyed to the talent's own id.
+    selectedVersionId: text(),
     // The sheet claim (#1113): the `talent_sheets.id` the in-flight library
     // sheet run will write. Set at the trigger; cleared by an edit to the
     // description or reference photos. The run makes its sheet the
@@ -85,6 +90,59 @@ export const talent = snakeCase.table(
     index('idx_talent_name').on(table.name),
     index('idx_talent_is_favorite').on(table.isFavorite),
     index('idx_talent_is_in_team_library').on(table.isInTeamLibrary),
+  ]
+);
+
+// ============================================================================
+// Talent Versions Table (the likeness's history, #1862)
+// ============================================================================
+
+/**
+ * Why a talent version exists: `backfill` is the #1862 migration's snapshot
+ * of the row as it stood; `edit` a person changing the name or description;
+ * `sheet` the reference sheet moving (a landed run or a user's pick);
+ * `voice` the recorded voice moving (#1631).
+ */
+const TALENT_VERSION_SOURCES = ['backfill', 'edit', 'sheet', 'voice'] as const;
+export type TalentVersionSource = (typeof TALENT_VERSION_SOURCES)[number];
+
+/**
+ * Every state a likeness has been in, append-only, like
+ * `character_bible_versions`. A character's bible version records which of
+ * these it was cast from (`talentVersionId`), so a talent edit moves no cast
+ * until a person moves it. Rows are never rewritten.
+ */
+export const talentVersions = snakeCase.table(
+  'talent_versions',
+  {
+    id: text()
+      .$defaultFn(() => generateId())
+      .primaryKey()
+      .notNull(),
+    talentId: text()
+      .notNull()
+      // NO ACTION (#2017's rule for version children): a hard delete removes
+      // these in app code first.
+      .references(() => talent.id, { onDelete: 'no action' }),
+    name: text({ length: 255 }).notNull(),
+    description: text(),
+    isHuman: integer({ mode: 'boolean' }).notNull(),
+    /** The reference sheet in this version; null while the talent has none. */
+    sheetId: text(),
+    /** The recorded voice in this version (#1631); null when there is none. */
+    voiceId: text(),
+    source: text({ enum: TALENT_VERSION_SOURCES }).notNull(),
+    createdAt: integer({ mode: 'timestamp' })
+      .$defaultFn(() => new Date())
+      .notNull(),
+    /** The person who made this version; null for the backfill and a landed run. */
+    createdBy: text().references(() => user.id, { onDelete: 'set null' }),
+  },
+  (table) => [
+    index('idx_talent_versions_talent_created').on(
+      table.talentId,
+      table.createdAt
+    ),
   ]
 );
 
@@ -178,6 +236,22 @@ export const talentMedia = snakeCase.table(
 
 export type Talent = InferSelectModel<typeof talent>;
 export type NewTalent = InferInsertModel<typeof talent>;
+
+export type TalentVersion = InferSelectModel<typeof talentVersions>;
+
+/** The versioned fields of a likeness, in display order (#1862). */
+export const TALENT_VERSION_FIELDS = [
+  'name',
+  'description',
+  'isHuman',
+  'sheetId',
+  'voiceId',
+] as const satisfies readonly (keyof TalentVersion)[];
+
+export type TalentLikeness = Pick<
+  TalentVersion,
+  (typeof TALENT_VERSION_FIELDS)[number]
+>;
 
 export type TalentSheet = InferSelectModel<typeof talentSheets>;
 export type NewTalentSheet = InferInsertModel<typeof talentSheets>;

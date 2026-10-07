@@ -11,6 +11,7 @@ import {
   asc,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNull,
@@ -46,7 +47,13 @@ import {
   sequences,
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-import { characterBibleColumns, mergeDefined } from './bible-versions';
+import {
+  assertVersionLanded,
+  characterBibleColumns,
+  mergeDefined,
+  nowSeconds,
+  patchedOrLive,
+} from './bible-versions';
 import { heldElsewhere } from './sequence-cast';
 
 /**
@@ -293,6 +300,7 @@ const ownerOf = async (
     .select({
       castId: sequenceCast.id,
       sequenceId: sequenceCast.sequenceId,
+      bibleVersionId: sequenceCast.bibleVersionId,
       name: characterBibleColumns.name,
     })
     .from(sequenceCast)
@@ -372,23 +380,55 @@ export const lookDefinitionWrite = (
   const touchesSheet = moved.some((key) =>
     (LOOK_SHEET_FIELDS as readonly string[]).includes(key)
   );
+  // Guarded (#1862), like `bibleWrite`: the fields the patch leaves alone
+  // are copied from the version THIS SEQUENCE PINS inside the batch, and
+  // nothing lands unless the pin is still the one `look` read. The caller's
+  // `assertVersionLanded` fails a lost race visibly.
+  const pinned = and(
+    eq(sequenceCastLooks.id, look.castLookId),
+    eq(sequenceCastLooks.lookVersionId, look.lookVersionId)
+  );
+  const landed = exists(
+    db
+      .select({ one: sql`1` })
+      .from(characterLookVersions)
+      .where(eq(characterLookVersions.id, versionId))
+  );
+  const field = (key: keyof LookDefinition) =>
+    patchedOrLive(
+      patch[key],
+      characterLookVersions[key],
+      characterLookVersions[key]
+    );
   return {
     moved,
     after,
     /** The version appended; the event names the pin move from → to. */
     versionId,
     statements: [
-      db.insert(characterLookVersions).values({
-        id: versionId,
-        lookId: look.id,
-        ...after,
-        source: opts.source,
-        createdBy: opts.createdBy,
-      }),
+      db.insert(characterLookVersions).select(
+        db
+          .select({
+            id: sql`${versionId}`.as('id'),
+            lookId: sql`${look.id}`.as('look_id'),
+            name: field('name'),
+            clothing: field('clothing'),
+            styling: field('styling'),
+            source: sql`${opts.source}`.as('source'),
+            createdAt: nowSeconds().as('created_at'),
+            createdBy: sql`${opts.createdBy}`.as('created_by'),
+          })
+          .from(sequenceCastLooks)
+          .innerJoin(
+            characterLookVersions,
+            eq(characterLookVersions.id, sequenceCastLooks.lookVersionId)
+          )
+          .where(pinned)
+      ),
       db
         .update(characterLooks)
         .set({ selectedLookVersionId: versionId, updatedAt: new Date() })
-        .where(eq(characterLooks.id, look.id)),
+        .where(and(eq(characterLooks.id, look.id), landed)),
       db
         .update(sequenceCastLooks)
         .set({
@@ -396,7 +436,7 @@ export const lookDefinitionWrite = (
           ...(touchesSheet ? { pendingPromoteSheetVersionId: null } : {}),
           updatedAt: new Date(),
         })
-        .where(eq(sequenceCastLooks.id, look.castLookId)),
+        .where(and(pinned, landed)),
     ],
   };
 };
@@ -596,7 +636,10 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         clothing: string;
         styling: string;
       }[]
-    ): Promise<Record<string, string>> => {
+    ): Promise<{
+      lookIds: Record<string, string>;
+      lookVersionIds: Record<string, string>;
+    }> => {
       // A character the library or another live sequence holds is linked,
       // never synced (#2050): decided here, on every call, so no payload flag
       // that went stale mid-run can reach her.
@@ -607,6 +650,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           analysed
         );
       }
+      /** Each look's pinned version after this write (#1862). */
+      const lookVersionIds: Record<string, string> = {};
       const opts = { source: 'analysis' as const, createdBy: null };
       const defaultLook = await requireLook(
         db,
@@ -634,7 +679,10 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           opts
         );
         const [first, ...rest] = statements;
-        if (!first || versionId === null) return;
+        if (!first || versionId === null) {
+          lookVersionIds[look.id] = look.lookVersionId;
+          return;
+        }
         // The pin moved: the staleness causes walk these events back to the
         // version a shot was made from (#2017).
         await db.batch([
@@ -653,6 +701,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
             },
           }),
         ]);
+        lookVersionIds[look.id] = versionId;
       };
       const key = (name: string) => name.trim().toLowerCase();
       const matched = new Set<string>();
@@ -708,6 +757,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         ]);
         matched.add(id);
         ids[look.lookId] = id;
+        lookVersionIds[id] = versionId;
       }
 
       // Retire what this analysis left behind, where nothing is lost.
@@ -757,7 +807,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           ]);
         }
       }
-      return ids;
+      return { lookIds: ids, lookVersionIds };
     },
 
     /**
@@ -778,7 +828,11 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         clothing: string;
         styling: string;
       }[]
-    ): Promise<Record<string, string>> => {
+    ): Promise<{
+      lookIds: Record<string, string>;
+      lookVersionIds: Record<string, string>;
+      bibleVersionId: string;
+    }> => {
       const owner = await ownerOf(db, teamId, sequenceId, characterId);
       const own = await db
         .select({
@@ -800,6 +854,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       const key = (name: string) => name.trim().toLowerCase();
       const ids: Record<string, string> = {};
+      const lookVersionIds: Record<string, string> = {};
       const statements: BatchItem<'sqlite'>[] = [
         db
           .update(sequenceCast)
@@ -813,6 +868,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           own.find((row) => key(row.name) === key(look.name));
         if (existing) {
           ids[look.lookId] = existing.id;
+          lookVersionIds[existing.id] = existing.versionId;
           statements.push(
             db
               .insert(sequenceCastLooks)
@@ -848,10 +904,16 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
         own.push({ id, versionId, sortOrder: nextSort, name: look.name });
         ids[look.lookId] = id;
+        lookVersionIds[id] = versionId;
       }
       const [first, ...rest] = statements;
       if (first) await db.batch([first, ...rest]);
-      return ids;
+      return {
+        lookIds: ids,
+        lookVersionIds,
+        /** The bible version this sequence pins for her (#1862). */
+        bibleVersionId: owner.bibleVersionId,
+      };
     },
 
     /** Add a look to a character. It has no sheet until someone asks for one. */
@@ -960,7 +1022,13 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           },
         }),
       ]);
-      return await requireLook(db, teamId, sequenceId, lookId);
+      const written = await requireLook(db, teamId, sequenceId, lookId);
+      assertVersionLanded(
+        `Look ${look.name}`,
+        written.lookVersionId,
+        versionId
+      );
+      return written;
     },
 
     /**

@@ -27,6 +27,7 @@ import {
   restoreSequenceCharacterFn,
   softDeleteSequenceCharacterFn,
   updateCastToCurrentFn,
+  adoptCurrentTalentFn,
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
@@ -184,6 +185,17 @@ export function useUpdateCastToCurrent() {
   return useMutation({
     mutationFn: (data: { sequenceId: string; characterId: string }) =>
       updateCastToCurrentFn({ data }),
+    onSuccess: (_result, { sequenceId }) =>
+      invalidateAfterVersionMove(queryClient, sequenceId),
+  });
+}
+
+/** "Use the current talent" (#1862): a pointer write, like a version move. */
+export function useAdoptCurrentTalent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      adoptCurrentTalentFn({ data }),
     onSuccess: (_result, { sequenceId }) =>
       invalidateAfterVersionMove(queryClient, sequenceId),
   });

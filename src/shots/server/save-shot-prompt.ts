@@ -1,3 +1,7 @@
+import {
+  promptInputVersionsFor,
+  type PromptInputVersions,
+} from '@/shots/input-versions';
 import type { ShotEditContext } from './shot-context';
 import type { z } from 'zod';
 import type { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
@@ -101,6 +105,7 @@ export async function saveShotPrompt(
   // render-workflow user-edit path).
   let inputHash: string | null = null;
   let analysisModel: string | null = null;
+  let inputVersions: PromptInputVersions | null = null;
   if (scene) {
     try {
       const ctx = await loadShotPromptContext({
@@ -113,23 +118,26 @@ export async function saveShotPrompt(
           : await getFrameImageUrl(scopedDb, frame.id),
       });
       // The digest narrows its bibles by the text being saved (#2012).
+      const narrowed =
+        data.promptType === 'visual'
+          ? narrowShotPromptContext(ctx, { channel: 'visual', prompt: text })
+          : narrowShotPromptContext(ctx, {
+              channel: 'motion',
+              prompt: text,
+              referenceOnly: rendersReferenceOnly(shot, sequence),
+            });
       inputHash =
         data.promptType === 'visual'
-          ? await hashVisualPromptInput(
-              narrowShotPromptContext(ctx, { channel: 'visual', prompt: text })
-            )
+          ? await hashVisualPromptInput(narrowed)
           : await hashMotionPromptInput({
-              ...narrowShotPromptContext(ctx, {
-                channel: 'motion',
-                prompt: text,
-                referenceOnly: rendersReferenceOnly(shot, sequence),
-              }),
+              ...narrowed,
               // Read after the write above: the edit is authored against
               // the lines it saved (#1784).
               dialogue: (
                 await loadShotPromptDialogue(scopedDb, sequence.id, shot)
               ).dialogue,
             });
+      inputVersions = promptInputVersionsFor(ctx.versions, narrowed);
       analysisModel = ctx.analysisModel;
     } catch (error) {
       logger.warn(
@@ -145,6 +153,7 @@ export async function saveShotPrompt(
       text,
       source: 'user-edit',
       inputHash,
+      inputVersions,
       analysisModel,
       createdBy: user.id,
     });
@@ -163,6 +172,7 @@ export async function saveShotPrompt(
     source: 'user-edit',
     usesStartFrame: usesStartFrame(shot, sequence),
     inputHash,
+    inputVersions,
     analysisModel,
     createdBy: user.id,
   });

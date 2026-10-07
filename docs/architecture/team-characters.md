@@ -649,6 +649,25 @@ between the two: casting copies the face fields and the reference sheet
 (`buildCastingAttributes`, `TalentCharacterMatch`), the recast writes one
 bible version with the new talent and face, and the voice is never touched.
 
+- **A talent has a history (#1862).** `talent_versions` is append-only
+  (name, description, `isHuman`, the reference sheet, the recorded voice;
+  `source` backfill / edit / sheet / voice) and `talent.selectedVersionId`
+  the current one, like a character's bible. The writers are `talent.update`
+  (name or description moved), `landSheet` (under the claim) and
+  `selectSheet`; each appends with the in-batch `INSERT … SELECT` the bible
+  writers use, guarded on the pointer it read (`talentVersionWrite`), and
+  fails a lost race visibly. A character's bible version records the
+  version it was cast from (`character_bible_versions.talentVersionId`;
+  `talentVersionId` / `currentTalentVersionId` on every cast read), and the
+  sheet trigger reads THAT version (`resolveCastTalent`: its description and
+  its sheet), so editing a talent moves no cast and redraws nothing. The
+  character panel shows "… changed since … was cast" with **Use current
+  talent** (`adoptCurrentTalent`): one recast bible version from the talent
+  as it is now, sheet claims revoked, no run — the sequence's own Update
+  redraws what reads stale. A recast to the same talent does the same.
+  The backfill gave every talent one version keyed to its own id and
+  stamped every cast with it. Nothing versions `isFavorite`, the headshot or
+  the library flags.
 - **The reference sheet** is `talent.selectedSheetId`, a pointer into
   `talent_sheets`, which is the whole history (append-only): `divergedAt`
   marks a run that landed after its claim moved (parked, offered by the

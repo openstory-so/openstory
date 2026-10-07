@@ -5,6 +5,10 @@
  * to the stored `*_input_hash`.
  */
 
+import type {
+  PromptInputVersions,
+  StillInputVersions,
+} from '@/shots/input-versions';
 import {
   rendersReferenceOnly,
   type StartFrameSequence,
@@ -194,7 +198,13 @@ export async function loadShotStalenessBatch(
         ? scopedDb.styles.getById(sequence.styleId)
         : Promise.resolve(null),
     ]);
-  const refs: ShotStalenessRefs = { characters, locations, elements, style };
+  const refs: ShotStalenessRefs = {
+    characters,
+    locations,
+    elements,
+    style,
+    scenes: [...sceneContext.values()].map((ctx) => ctx.scene),
+  };
   return {
     anchorsByShot: new Map(anchorRows.map((f) => [f.shotId, f])),
     sceneContext,
@@ -630,15 +640,16 @@ export async function computeShotStaleness(args: {
         const row = shownCharacters.has(entry.characterId)
           ? undefined
           : characters.find((r) => r.characterId === entry.characterId);
-        const then =
-          row && versionAt(history.characters.get(row.id), at.getTime());
+        // The version this sequence pinned then (#2017, #1862), never the
+        // newest at that time: another sequence's edit is not this one's.
+        const then = row && pinnedThen(history, row, at.getTime());
         // Clothing is the look's (#2015): the default look as it stood then,
         // which is what a digest from before looks hashed.
-        const defaultLookId =
-          row && (row.looks.find((l) => l.isDefault)?.id ?? row.lookId);
+        // A scoped read wears the default look (`row.lookId`).
+        const defaultLook =
+          row && (row.looks.find((l) => l.id === row.lookId) ?? null);
         const lookThen =
-          defaultLookId &&
-          versionAt(history.looks.get(defaultLookId), at.getTime());
+          defaultLook && pinnedLookThen(history, defaultLook, at.getTime());
         return row && then
           ? characterToBible({
               ...row,
@@ -667,6 +678,7 @@ export async function computeShotStaleness(args: {
   };
   let selectedMotion: {
     inputHash: string | null;
+    inputVersions: PromptInputVersions | null;
     createdAt: Date;
     source: string;
     specVersionId: string | null;
@@ -937,6 +949,7 @@ export async function computeShotStaleness(args: {
         style: sequence.styleId
           ? await scopedDb.styles.getById(sequence.styleId)
           : null,
+        scenes: await scopedDb.scenes.listBySequence(sequence.id),
       };
       causes = await findStalenessCauses({
         scopedDb,
@@ -962,6 +975,20 @@ export async function computeShotStaleness(args: {
           motionPrompt:
             motionPrompt === 'stale' ? selectedMotion?.createdAt : undefined,
         },
+        // What each stale artifact recorded it read (#1862); null on a row
+        // from before the column.
+        stamps: {
+          thumbnail:
+            thumbnail === 'stale' ? selectedImage?.inputVersions : undefined,
+          visualPrompt:
+            visualPrompt === 'stale'
+              ? selectedPrompt?.inputVersions
+              : undefined,
+          motionPrompt:
+            motionPrompt === 'stale'
+              ? selectedMotion?.inputVersions
+              : undefined,
+        },
       });
     } catch (error) {
       // A hint, never a verdict: an unreadable row just leaves it unnamed.
@@ -978,7 +1005,7 @@ const after = (d: Date | null | undefined, at: number) =>
   d != null && d.getTime() > at;
 
 /** Plain words for the bible fields a cause names (#1600). */
-const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
+export const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
   name: 'name',
   age: 'age',
   gender: 'gender',
@@ -999,7 +1026,7 @@ const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
 const LOOK_LABELS = { clothing: 'clothing', styling: 'styling' } as const;
 
 /** What moved in a look since the version live then. */
-const lookMoved = (
+export const lookMoved = (
   then: CharacterLookVersion,
   now: { standardClothing: string | null; styling: string | null }
 ): string[] => [
@@ -1056,6 +1083,55 @@ function pinnedMoved<V extends { id: string }>(
   return then ? diff(then) : null;
 }
 
+/** The bible version a sequence pinned for a character at `at` (the pin walk). */
+function pinnedThen(
+  history: InputHistory,
+  row: { id: string; selectedBibleVersionId: string },
+  at: number
+): CharacterBibleVersion | undefined {
+  const id = pinnedVersionAt(
+    row.selectedBibleVersionId,
+    history.bibleMoves.get(row.id),
+    at
+  );
+  return id === null
+    ? undefined
+    : history.characters.get(row.id)?.find((v) => v.id === id);
+}
+
+/** The look version a sequence pinned at `at` (the pin walk). */
+function pinnedLookThen(
+  history: InputHistory,
+  look: { id: string; lookVersionId: string },
+  at: number
+): CharacterLookVersion | undefined {
+  const id = pinnedVersionAt(
+    look.lookVersionId,
+    history.lookMoves.get(look.id),
+    at
+  );
+  return id === null
+    ? undefined
+    : history.looks.get(look.id)?.find((v) => v.id === id);
+}
+
+/**
+ * The stamped version against the pinned one now (#1862): an exact pointer
+ * compare. Equal → nothing moved (`[]`). Moved → the fields that differ
+ * between the stamped row and the live one; null when the stamped row is
+ * not in the history (the caller names the input with no fields).
+ */
+function stampedMoved<V extends { id: string }>(
+  history: readonly V[] | undefined,
+  stamped: string | null,
+  current: string | null,
+  diff: (then: V) => string[]
+): string[] | null {
+  if (stamped === current) return [];
+  const then = history?.find((v) => v.id === stamped);
+  return then ? diff(then) : null;
+}
+
 /** The version live at `at`: the newest created at or before it. */
 function versionAt<V extends { createdAt: Date }>(
   history: readonly V[] | undefined,
@@ -1091,9 +1167,8 @@ const STYLE_LABELS: Record<string, string> = {
 function styleMoved(
   history: readonly SequenceStyleVersion[],
   live: unknown,
-  at: number
+  then: SequenceStyleVersion | undefined
 ): string[] | null {
-  const then = versionAt(history, at);
   if (!then || live == null) return null;
   try {
     const before = styleConfigHashBody(parseStyleConfig(then.config)) ?? {};
@@ -1141,11 +1216,10 @@ async function loadSceneContext(
  * back to the timestamp guess.
  */
 function sceneCauses(
-  history: readonly SceneScriptVersion[] | undefined,
+  then: SceneScriptVersion | undefined,
   live: SceneContext,
   at: number
 ): string[] {
-  const then = versionAt(history, at);
   if (!then) {
     if (after(live.scriptCreatedAt, at)) return ['Script'];
     return after(live.scene.updatedAt, at) ? ['Scene details'] : [];
@@ -1209,6 +1283,16 @@ async function findStalenessCauses(args: {
   sceneContext?: ReadonlyMap<string, SceneContext>;
   settingsEvents?: readonly SequenceEvent[];
   inputHistory: InputHistory;
+  /**
+   * What each stale artifact recorded it read (#1862). Absent → that
+   * artifact isn't stale; null → a row from before the column, whose causes
+   * fall back to the pin walk and the clock.
+   */
+  stamps: {
+    thumbnail?: StillInputVersions | null;
+    visualPrompt?: PromptInputVersions | null;
+    motionPrompt?: PromptInputVersions | null;
+  };
 }): Promise<string[]> {
   const {
     scopedDb,
@@ -1220,6 +1304,7 @@ async function findStalenessCauses(args: {
     sceneContext,
     settingsEvents,
     inputHistory,
+    stamps,
   } = args;
   const times = [
     generatedAt.thumbnail,
@@ -1229,6 +1314,16 @@ async function findStalenessCauses(args: {
   if (times.length === 0) return [];
   const at = Math.min(...times);
   const causes: string[] = [];
+  // The prompt that recorded its versions, when one did: the still's prompt
+  // first, since the still is the oldest artifact. A stale prompt row with
+  // no record is from before #1862 and keeps the pin walk and the clock.
+  const stamp = stamps.visualPrompt ?? stamps.motionPrompt ?? null;
+  const stalePromptUnstamped =
+    (generatedAt.visualPrompt !== undefined && !stamps.visualPrompt) ||
+    (generatedAt.motionPrompt !== undefined && !stamps.motionPrompt);
+  const stillStamp = stamps.thumbnail ?? null;
+  const staleStillUnstamped =
+    generatedAt.thumbnail !== undefined && !stamps.thumbnail;
 
   let ctx: SceneContext | null | undefined;
   let sceneThen: SceneScriptVersion | undefined;
@@ -1239,8 +1334,19 @@ async function findStalenessCauses(args: {
       : await loadSceneContext(scopedDb, sceneId);
     if (ctx) {
       const history = inputHistory.scenes.get(sceneId);
-      causes.push(...sceneCauses(history, ctx, at));
-      sceneThen = versionAt(history, at);
+      if (stamp) {
+        // Pointer compare: the version the prompt read against the one the
+        // scene selects now.
+        if (stamp.scene !== ctx.scene.selectedScriptVersionId) {
+          sceneThen = history?.find((v) => v.id === stamp.scene);
+          causes.push(
+            ...(sceneThen ? sceneCauses(sceneThen, ctx, at) : ['Scene'])
+          );
+        }
+      } else {
+        sceneThen = versionAt(history, at);
+        causes.push(...sceneCauses(sceneThen, ctx, at));
+      }
     }
   }
   // Only what this shot's stale prompts reference (#2012): the union of the
@@ -1297,8 +1403,22 @@ async function findStalenessCauses(args: {
     }
   }
   // A snapshot with history names the knobs that moved (#1600) in place of
-  // the bare "Style" a switch event would give.
-  const styleKnobs = styleMoved(inputHistory.style, sequence.styleConfig, at);
+  // the bare "Style" a switch event would give. With a stamp it is a pointer
+  // compare against the version the sequence points at now.
+  const liveStyleVersionId = sequence.selectedStyleVersionId ?? null;
+  const styleKnobs = stamp
+    ? stamp.style === liveStyleVersionId
+      ? []
+      : styleMoved(
+          inputHistory.style,
+          sequence.styleConfig,
+          inputHistory.style.find((v) => v.id === stamp.style)
+        )
+    : styleMoved(
+        inputHistory.style,
+        sequence.styleConfig,
+        versionAt(inputHistory.style, at)
+      );
   // Older events also list model switches, which never stale (#1785).
   for (const f of fields) {
     if (f === 'styleId' && styleKnobs !== null) continue;
@@ -1307,6 +1427,9 @@ async function findStalenessCauses(args: {
   }
   if (styleKnobs && styleKnobs.length > 0) {
     causes.push(`Style: ${styleKnobs.join(', ')}`);
+  } else if (stamp && styleKnobs === null) {
+    // The stamped version moved but is not in the history: say so, bare.
+    causes.push('Style');
   }
   // Catalog style edits only flow through when the sequence has no snapshot.
   if (sequence.styleConfig == null && after(refs.style?.updatedAt, at)) {
@@ -1315,29 +1438,55 @@ async function findStalenessCauses(args: {
 
   // Each character is dressed for this shot's scene (#2015): `c` carries the
   // clothing and sheet of the look the scene picks, and the cause names it.
+  const bibleDiff =
+    (c: (typeof characters)[number]) => (then: CharacterBibleVersion) =>
+      characterBibleChanged(then, c).map((k) => CHARACTER_LABELS[k]);
   for (const c of characters) {
-    // The version this sequence pinned when the artifact was made (#2017),
-    // not the newest one then: another sequence's edit is not this one's.
-    const bible = pinnedMoved(
-      inputHistory.characters.get(c.id),
-      inputHistory.bibleMoves.get(c.id),
-      c.selectedBibleVersionId,
-      at,
-      (then) => characterBibleChanged(then, c).map((k) => CHARACTER_LABELS[k])
-    );
+    const label = `Character "${c.name}"${wearsDefaultLook(c) ? '' : ` (${c.lookName})`}`;
+    const wornPin = c.looks.find((l) => l.id === c.lookId)?.lookVersionId;
+    const recorded = stamp?.characters[c.characterId];
+    if (stamp && !recorded) {
+      // The prompt did not name this character when it was made.
+      causes.push(`${label}: added`);
+      continue;
+    }
+    // With a record: the stamped bible and look against the pins now, an
+    // exact pointer compare (#1862). Without one: the version this sequence
+    // pinned when the artifact was made, walked back through the pin moves
+    // (#2017), never the newest one then.
+    const bible = recorded
+      ? stampedMoved(
+          inputHistory.characters.get(c.id),
+          recorded.bible,
+          c.selectedBibleVersionId,
+          bibleDiff(c)
+        )
+      : pinnedMoved(
+          inputHistory.characters.get(c.id),
+          inputHistory.bibleMoves.get(c.id),
+          c.selectedBibleVersionId,
+          at,
+          bibleDiff(c)
+        );
     // A look added after the artifact has no version that old; the scene
     // switching to it is the cause.
-    const wornPin = c.looks.find((l) => l.id === c.lookId)?.lookVersionId;
     const look =
       (wornPin === undefined
         ? null
-        : pinnedMoved(
-            inputHistory.looks.get(c.lookId),
-            inputHistory.lookMoves.get(c.lookId),
-            wornPin,
-            at,
-            (then) => lookMoved(then, c)
-          )) ?? [];
+        : recorded
+          ? stampedMoved(
+              inputHistory.looks.get(c.lookId),
+              recorded.look,
+              wornPin,
+              (then) => lookMoved(then, c)
+            )
+          : pinnedMoved(
+              inputHistory.looks.get(c.lookId),
+              inputHistory.lookMoves.get(c.lookId),
+              wornPin,
+              at,
+              (then) => lookMoved(then, c)
+            )) ?? [];
     // The scene dressed this character in another look back then.
     const wornThen =
       sceneThen &&
@@ -1345,9 +1494,19 @@ async function findStalenessCauses(args: {
         c.looks.find((l) => l.isDefault)?.id ??
         c.lookId);
     const switched = wornThen && wornThen !== c.lookId ? ['look'] : [];
-    const sheet = after(c.sheetGeneratedAt, at) ? ['sheet'] : [];
+    // The still's sheet: the version it was drawn from against the one the
+    // cast look selects now; the clock only for a still from before #1862.
+    const sheet = stillStamp
+      ? c.id in stillStamp.sheets &&
+        (stillStamp.sheets[c.id] ?? null) !==
+          (c.selectedSheetVersionId ?? c.sheetImageUrl ?? null)
+        ? ['sheet']
+        : []
+      : after(c.sheetGeneratedAt, at)
+        ? ['sheet']
+        : [];
     const cause = namedCause(
-      `Character "${c.name}"${wearsDefaultLook(c) ? '' : ` (${c.lookName})`}`,
+      label,
       bible === null ? null : [...bible, ...look],
       [...switched, ...sheet],
       () => after(c.updatedAt, at)
@@ -1355,10 +1514,29 @@ async function findStalenessCauses(args: {
     if (cause) causes.push(cause);
   }
   for (const l of locations) {
-    const moved = bibleMoved(inputHistory.locations.get(l.id), at, (then) =>
-      locationBibleChanged(then, l).map((k) => LOCATION_LABELS[k])
-    );
-    const sheet = after(l.referenceGeneratedAt, at) ? ['sheet'] : [];
+    const diff = (then: LocationBibleVersion) =>
+      locationBibleChanged(then, l).map((k) => LOCATION_LABELS[k]);
+    const recorded = stamp ? stamp.locations[l.locationId] : undefined;
+    const moved =
+      stamp && recorded === undefined
+        ? ['added']
+        : recorded !== undefined
+          ? stampedMoved(
+              inputHistory.locations.get(l.id),
+              recorded,
+              l.selectedBibleVersionId,
+              diff
+            )
+          : bibleMoved(inputHistory.locations.get(l.id), at, diff);
+    const sheet = stillStamp
+      ? l.id in stillStamp.locationSheets &&
+        (stillStamp.locationSheets[l.id] ?? null) !==
+          (l.selectedReferenceVersionId ?? l.referenceImageUrl ?? null)
+        ? ['sheet']
+        : []
+      : after(l.referenceGeneratedAt, at)
+        ? ['sheet']
+        : [];
     const cause = namedCause(`Location "${l.name}"`, moved, sheet, () =>
       after(l.updatedAt, at)
     );
@@ -1378,5 +1556,14 @@ async function findStalenessCauses(args: {
       causes.push('Image re-rendered');
     }
   }
+  // Rows from before #1862 recorded no versions: the scene, style, sheet
+  // and element causes above came from the clock, and this says so.
+  if (stalePromptUnstamped || staleStillUnstamped) {
+    causes.push(UNSTAMPED_CAUSE);
+  }
   return causes;
 }
+
+/** Appended when a stale artifact predates version records (#1862). */
+export const UNSTAMPED_CAUSE =
+  'Some causes are estimated from timing: this was made before versions were recorded';

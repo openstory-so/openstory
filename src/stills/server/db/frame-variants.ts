@@ -20,6 +20,7 @@
  * See docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { StillInputVersions } from '@/shots/input-versions';
 import type { Database } from '@/platform/server/db/client';
 import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Resolution } from '@/models/resolutions';
@@ -616,6 +617,7 @@ export function createFrameVariantsMethods(db: Database) {
       promptText: string | null;
       actorId: string | null;
     }): Promise<FrameVariant> => {
+      // An upload read no sheet: nothing to record (#1862).
       const versionId = generateId();
       const [inserted] = await db.batch([
         db
@@ -633,6 +635,7 @@ export function createFrameVariantsMethods(db: Database) {
             isPrimary: true,
             generatedAt: new Date(),
             inputHash: input.inputHash,
+            inputVersions: null,
             promptHash: input.promptText ? simpleHash(input.promptText) : null,
             promptVersionId: input.promptVersionId,
           })
@@ -864,6 +867,12 @@ export function createFrameVariantsMethods(db: Database) {
       promptVersionId?: string | null;
       /** False for an added model (`variantOnly`, #1942). */
       isPrimary: boolean;
+      /**
+       * The sheet versions the render will read (#1862), known at the
+       * trigger. Null only for a chained render whose references are
+       * resolved by the run (`dependsOnVersionId`): it stamps on completion.
+       */
+      inputVersions: StillInputVersions | null;
     }): Promise<FrameVariant> => {
       const [row] = await db
         .insert(frameVariants)
@@ -874,6 +883,7 @@ export function createFrameVariantsMethods(db: Database) {
           model: input.model,
           status: 'pending',
           isPrimary: input.isPrimary,
+          inputVersions: input.inputVersions,
           pendingInputHash: input.pendingInputHash ?? null,
           dependsOnVersionId: input.dependsOnVersionId ?? null,
           workflowRunId: input.workflowRunId ?? null,
@@ -1086,6 +1096,8 @@ export function createFrameVariantsMethods(db: Database) {
         resolution?: Resolution | null;
         promptVersionId?: string | null;
         pendingInputHash?: string | null;
+        /** The sheet versions the render reads (#1862); the claim was opened before they were known. */
+        inputVersions: StillInputVersions;
       }
     ): Promise<FrameVariant | null> => {
       try {
@@ -1097,6 +1109,7 @@ export function createFrameVariantsMethods(db: Database) {
             model: data.model,
             resolution: data.resolution ?? null,
             promptVersionId: data.promptVersionId ?? null,
+            inputVersions: data.inputVersions,
             ...(data.pendingInputHash !== undefined
               ? { pendingInputHash: data.pendingInputHash }
               : {}),

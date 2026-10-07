@@ -23,7 +23,18 @@ import {
   talent,
   talentMedia,
   talentSheets,
+  talentVersions,
 } from '@/platform/server/db/schema';
+import type {
+  TalentVersion,
+  TalentVersionSource,
+} from '@/platform/server/db/schema';
+import { generateId } from '@/platform/id';
+import {
+  assertVersionLanded,
+  nowSeconds,
+  patchedOrLive,
+} from './bible-versions';
 import type { TalentSheetInputHash } from '@/shots/input-hash';
 import { ValidationError } from '@/platform/errors';
 import { castOfTalent } from './sequence-cast';
@@ -41,11 +52,13 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   inArray,
   isNull,
   notExists,
   or,
   sql,
+  type SQL,
 } from 'drizzle-orm';
 import { stripServerManagedColumns } from '@/platform/server/db/scoped/server-managed';
 
@@ -54,6 +67,71 @@ const TALENT_WRITE_DENIED =
 
 /** The sheet history is written only by `landSheet`; the constant fills the NOT NULL legacy column. */
 const LEGACY_SHEET_NAME = 'Reference sheet';
+
+/**
+ * The one writer of a talent's history (#1862): the statements that append a
+ * `talent_versions` row and make it the talent's current one, for the
+ * caller's own `db.batch`. Every field the patch leaves alone is copied from
+ * the live row INSIDE the batch, and nothing lands unless `guard` still
+ * holds (the pointer the caller read, or the sheet claim), so two edits that
+ * read the same version cannot both land — the caller's `assertVersionLanded`
+ * fails the loser.
+ */
+const talentVersionWrite = (
+  db: Database,
+  talentId: string,
+  patch: Partial<Pick<TalentVersion, 'name' | 'description' | 'sheetId'>>,
+  opts: { source: TalentVersionSource; createdBy: string | null; guard: SQL }
+) => {
+  const versionId = generateId();
+  const landed = exists(
+    db
+      .select({ one: sql`1` })
+      .from(talentVersions)
+      .where(eq(talentVersions.id, versionId))
+  );
+  const unmoved = and(eq(talent.id, talentId), opts.guard);
+  return {
+    versionId,
+    statements: [
+      db.insert(talentVersions).select(
+        db
+          .select({
+            id: sql`${versionId}`.as('id'),
+            talentId: sql`${talentId}`.as('talent_id'),
+            name: patchedOrLive(patch.name, talent.name, talentVersions.name),
+            description: patchedOrLive(
+              patch.description,
+              talent.description,
+              talentVersions.description
+            ),
+            isHuman: sql`coalesce(${talent.isHuman}, 0)`.as('is_human'),
+            sheetId: patchedOrLive(
+              patch.sheetId,
+              talent.selectedSheetId,
+              talentVersions.sheetId
+            ),
+            voiceId: sql`${talent.voiceId}`.as('voice_id'),
+            source: sql`${opts.source}`.as('source'),
+            createdAt: nowSeconds().as('created_at'),
+            createdBy: sql`${opts.createdBy}`.as('created_by'),
+          })
+          .from(talent)
+          .where(unmoved)
+      ),
+      db
+        .update(talent)
+        .set({ selectedVersionId: versionId, updatedAt: new Date() })
+        .where(and(unmoved, landed)),
+    ],
+  };
+};
+
+/** The pointer a talent writer read, as the guard its version write lands under. */
+const pointerIs = (selectedVersionId: string | null) =>
+  selectedVersionId === null
+    ? isNull(talent.selectedVersionId)
+    : eq(talent.selectedVersionId, selectedVersionId);
 
 /**
  * Write-side ACL for scoped talent mutations. Public/system templates are
@@ -227,6 +305,28 @@ function createTalentReadMethodsScoped(db: Database, teamId: string | null) {
         });
       },
     },
+
+    versions: {
+      /** One row of the likeness's history (#1862); the talent must be in scope. */
+      getById: async (
+        versionId: string
+      ): Promise<TalentVersion | undefined> => {
+        const [row] = await db
+          .select(getTableColumns(talentVersions))
+          .from(talentVersions)
+          .innerJoin(talent, eq(talent.id, talentVersions.talentId))
+          .where(and(eq(talentVersions.id, versionId), scope));
+        return row;
+      },
+      /** The whole history, newest first. */
+      list: async (talentId: string): Promise<TalentVersion[]> =>
+        await db
+          .select(getTableColumns(talentVersions))
+          .from(talentVersions)
+          .innerJoin(talent, eq(talent.id, talentVersions.talentId))
+          .where(and(eq(talentVersions.talentId, talentId), scope))
+          .orderBy(desc(talentVersions.createdAt), desc(talentVersions.id)),
+    },
   };
 }
 
@@ -270,14 +370,36 @@ export function createTalentMethods(
     create: async (
       data: Omit<NewTalent, ServerManagedTalentColumn>
     ): Promise<Talent> => {
-      const [created] = await db
-        .insert(talent)
-        .values({
-          ...stripServerManagedColumns(data, SERVER_MANAGED_TALENT_COLUMNS),
-          teamId,
+      // The row and its first version (#1862), the version keyed to the
+      // talent's own id like the backfill's.
+      const id = generateId();
+      const row = stripServerManagedColumns(
+        data,
+        SERVER_MANAGED_TALENT_COLUMNS
+      );
+      const [[created]] = await db.batch([
+        db
+          .insert(talent)
+          .values({
+            ...row,
+            id,
+            teamId,
+            createdBy: userId,
+            selectedVersionId: id,
+          })
+          .returning(),
+        db.insert(talentVersions).values({
+          id,
+          talentId: id,
+          name: row.name,
+          description: row.description ?? null,
+          isHuman: row.isHuman ?? false,
+          sheetId: null,
+          voiceId: row.voiceId ?? null,
+          source: 'edit',
           createdBy: userId,
-        })
-        .returning();
+        }),
+      ]);
       if (!created) throw new Error('Failed to create talent');
       return created;
     },
@@ -286,14 +408,31 @@ export function createTalentMethods(
       talentId: string,
       data: TalentUpdate
     ): Promise<Talent | undefined> => {
-      if (!(await getWritableTalent(db, talentId, teamId))) {
-        return undefined;
-      }
+      const existing = await getWritableTalent(db, talentId, teamId);
+      if (!existing) return undefined;
 
       // Claims (#1113): the description feeds this talent's own sheet run
       // and every character cast with it. (A rename is not a sheet input: the
       // sheet hash never covered the name.)
       const descriptionMoved = data.description !== undefined;
+      // The likeness changed: a new version (#1862). The headshot and the
+      // favourite flag are not part of it.
+      const likenessMoved =
+        (data.name !== undefined && data.name !== existing.name) ||
+        (data.description !== undefined &&
+          data.description !== existing.description);
+      const version = likenessMoved
+        ? talentVersionWrite(
+            db,
+            talentId,
+            { name: data.name, description: data.description },
+            {
+              source: 'edit',
+              createdBy: userId,
+              guard: pointerIs(existing.selectedVersionId),
+            }
+          )
+        : { versionId: null, statements: [] };
       const [[updated]] = await db.batch([
         db
           .update(talent)
@@ -308,7 +447,17 @@ export function createTalentMethods(
           db,
           descriptionMoved ? castOfTalent(db, talentId) : sql`0`
         ),
+        ...version.statements,
       ]);
+      const [written] = await db
+        .select({ selectedVersionId: talent.selectedVersionId })
+        .from(talent)
+        .where(eq(talent.id, talentId));
+      assertVersionLanded(
+        `Talent ${existing.name}`,
+        written?.selectedVersionId ?? null,
+        version.versionId
+      );
       return updated;
     },
 
@@ -413,7 +562,19 @@ export function createTalentMethods(
           )
       );
       const now = new Date();
-      const [, , , , [sheet]] = await db.batch([
+      // The new face is a new version of the likeness (#1862), under the
+      // same claim guard as the pointer move.
+      const version = talentVersionWrite(
+        db,
+        talentId,
+        { sheetId },
+        {
+          source: 'sheet',
+          createdBy: null,
+          guard: eq(talent.pendingPromoteSheetId, sheetId),
+        }
+      );
+      const [, , , , , , [sheet]] = await db.batch([
         db
           .insert(talentSheets)
           .values({
@@ -436,6 +597,7 @@ export function createTalentMethods(
           db,
           and(castOfTalent(db, talentId), holds) ?? sql`0`
         ),
+        ...version.statements,
         // The pointer moves and the claim is consumed in one guarded UPDATE.
         db
           .update(talent)
@@ -466,7 +628,11 @@ export function createTalentMethods(
       talentId: string,
       sheetId: string
     ): Promise<TalentSheet> => {
-      const { sheet } = await requireWritableSheet(db, sheetId, teamId);
+      const { sheet, talent: owner } = await requireWritableSheet(
+        db,
+        sheetId,
+        teamId
+      );
       if (sheet.talentId !== talentId) {
         throw new ValidationError('That sheet belongs to another talent');
       }
@@ -474,11 +640,23 @@ export function createTalentMethods(
         throw new ValidationError('Restore the sheet before selecting it');
       }
       const now = new Date();
-      const [, , , , [selected]] = await db.batch([
+      // A new face is a new version of the likeness (#1862).
+      const version = talentVersionWrite(
+        db,
+        talentId,
+        { sheetId },
+        {
+          source: 'sheet',
+          createdBy: userId,
+          guard: pointerIs(owner.selectedVersionId),
+        }
+      );
+      const [, , , , , , [selected]] = await db.batch([
+        ...version.statements,
         db
           .update(talent)
           .set({ selectedSheetId: sheetId, updatedAt: now })
-          .where(eq(talent.id, talentId)),
+          .where(and(eq(talent.id, talentId), pointerIs(version.versionId))),
         db
           .update(talentSheets)
           .set({ divergedAt: null, updatedAt: now })
@@ -488,6 +666,15 @@ export function createTalentMethods(
         db.select().from(talentSheets).where(eq(talentSheets.id, sheetId)),
       ]);
       if (!selected) throw new Error(`TalentSheet ${sheetId} vanished`);
+      const [written] = await db
+        .select({ selectedVersionId: talent.selectedVersionId })
+        .from(talent)
+        .where(eq(talent.id, talentId));
+      assertVersionLanded(
+        `Talent ${owner.name}`,
+        written?.selectedVersionId ?? null,
+        version.versionId
+      );
       return selected;
     },
 
@@ -500,22 +687,28 @@ export function createTalentMethods(
       if (!(await getWritableTalent(db, talentId, teamId))) {
         return false;
       }
-      // One guarded DELETE: a recast landing between a check and the delete
-      // would otherwise be blanked by the SET NULL FK. The re-read below only
-      // words the refusal, with no count (a public talent's casts are other
-      // teams' business).
-      const result = await db.delete(talent).where(
-        and(
-          eq(talent.id, talentId),
-          eq(talent.teamId, teamId),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(characterBibleVersions)
-              .where(eq(characterBibleVersions.talentId, talentId))
-          )
-        )
+      // One guarded batch: a recast landing between a check and the delete
+      // would otherwise be blanked by the SET NULL FK. The history goes
+      // first under the same guard (#1862): nothing cascades from `talent`,
+      // and a refused delete must leave the versions where they are. The
+      // re-read below only words the refusal, with no count (a public
+      // talent's casts are other teams' business).
+      const unnamed = notExists(
+        db
+          .select({ one: sql`1` })
+          .from(characterBibleVersions)
+          .where(eq(characterBibleVersions.talentId, talentId))
       );
+      const [, result] = await db.batch([
+        db
+          .delete(talentVersions)
+          .where(and(eq(talentVersions.talentId, talentId), unnamed)),
+        db
+          .delete(talent)
+          .where(
+            and(eq(talent.id, talentId), eq(talent.teamId, teamId), unnamed)
+          ),
+      ]);
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
       if ((result.rowsAffected ?? 0) > 0) return true;
       if (await getWritableTalent(db, talentId, teamId)) {

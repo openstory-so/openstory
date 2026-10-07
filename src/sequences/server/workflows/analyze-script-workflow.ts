@@ -1,4 +1,5 @@
 /** Analyze and cast the script, then persist each shot's spec and derived prompts. */
+import type { SequenceInputVersions } from '@/shots/input-versions';
 import { sanitizeScriptContent } from '@/sequences/prompt-validation';
 import { resolveVideoModels } from '@/models/resolve-video-models';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -244,7 +245,12 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     // Claimed only now: the split is in D1, so a style failure fails a run
     // the user can still continue.
-    const styleConfig = (await stylePromise) ?? inputStyleConfig;
+    const derivedStyle = await stylePromise;
+    const styleConfig = derivedStyle?.config ?? inputStyleConfig;
+    // The style version the first prompts read (#1862): the one this run
+    // derived, else the one the trigger saw.
+    const styleVersionId =
+      derivedStyle?.styleVersionId ?? input.selectedStyleVersionId;
 
     // ----------------------------------------------------------------------
     // PHASE 1b: talent + location matching in parallel, then the cast rows.
@@ -328,7 +334,13 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     // run stopped at Script shows the whole bible for review before any
     // reference image is billed. The executor later fills their selected sheets.
     const castRecords = await step.do('create-cast-records', async () => {
-      if (!sequenceId) return { elements: [], lookIds: {} };
+      if (!sequenceId) {
+        return {
+          elements: [],
+          lookIds: {},
+          versions: { characters: {}, locations: {} },
+        };
+      }
       return createCastRecords(scopedDb, {
         sequenceId,
         cast: input.cast,
@@ -360,9 +372,21 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           }
         : scene;
     });
-    await step.do('persist-scene-looks', async () => {
-      if (sequenceId) await persistSceneLooks(scopedDb, sequenceId, scenes);
+    const sceneVersions = await step.do('persist-scene-looks', async () => {
+      if (!sequenceId) return {};
+      return persistSceneLooks(scopedDb, sequenceId, scenes);
     });
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: step results cached by a run that started before #1862
+    if (!castRecords.versions || !sceneVersions) {
+      throw new NonRetryableError(
+        'This run was queued before prompts recorded their input versions (#1862). Start it again.'
+      );
+    }
+    const versions: SequenceInputVersions = {
+      style: styleVersionId,
+      ...castRecords.versions,
+      scenes: sceneVersions,
+    };
     // Each shot's spec lands as its first version, with the prompts derived
     // from it (#1915). Derivation reads only the spec and the frozen bibles.
     await step.do('persist-shot-specs', async () => {
@@ -372,6 +396,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           characterBible: castCharacterBible,
           locationBible,
           elementBible,
+          versions,
           aspectRatio,
           analysisModel: analysisModelId,
           referenceOnly,
