@@ -5,7 +5,7 @@ import { EmptyState } from '@/ui/shadcn/empty-state';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { User } from 'lucide-react';
 import type React from 'react';
-import { useRef, useSyncExternalStore } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 
 const subscribeToResize = (onChange: () => void) => {
   window.addEventListener('resize', onChange);
@@ -33,9 +33,13 @@ export const TeamCharacterList: React.FC<{
 }> = ({ inLibrary, scrollRef }) => {
   const { data: characters } = useTeamCharacters(inLibrary);
   const columns = useSyncExternalStore(subscribeToResize, gridColumns, () => 2);
-  const listRef = useRef<HTMLDivElement>(null);
+  // Where the list starts inside the page's scroller, measured when the
+  // list mounts (a ref callback, not a read of a ref during render).
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const measure = useCallback((list: HTMLDivElement | null) => {
+    if (list) setScrollMargin(list.offsetTop);
+  }, []);
   const rowCount = Math.ceil(characters.length / columns);
-  const scrollMargin = listRef.current?.offsetTop ?? 0;
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => scrollRef.current,
@@ -60,7 +64,7 @@ export const TeamCharacterList: React.FC<{
 
   return (
     <div
-      ref={listRef}
+      ref={measure}
       className="relative w-full"
       style={{ height: virtualizer.getTotalSize() }}
     >

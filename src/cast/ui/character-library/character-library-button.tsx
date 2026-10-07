@@ -27,6 +27,8 @@ export const CharacterLibraryButton: React.FC<{
               toast.success(
                 inLibrary ? 'Removed from Library' : 'Added to Library',
                 {
+                  // Long enough to act on, like the cast Remove toast.
+                  duration: 60_000,
                   action: {
                     label: 'Undo',
                     onClick: () =>

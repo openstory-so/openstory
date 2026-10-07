@@ -29,6 +29,7 @@ import {
   useRegenerateCharacterSheet,
   useShotIdsForCharacter,
   useRecastCharacter,
+  useSaveCharacterAsTalent,
   useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
@@ -86,6 +87,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     isLoading,
     error,
   } = useSequenceCharacters(sequenceId);
+  const saveAsTalent = useSaveCharacterAsTalent();
   const recastCharacter = useRecastCharacter();
   const regenerateSheet = useRegenerateCharacterSheet();
   const { data: sequence } = useSequence(sequenceId);
@@ -631,6 +633,23 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     characterId={character.id}
                     inLibrary={character.inLibrary}
                   />
+                )}
+                {!character.talent && !character.voiceOnly && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      saveAsTalent.mutate(
+                        { sequenceId, characterId: character.id },
+                        {
+                          onSuccess: () =>
+                            toast.success(`Saved ${character.name} as talent`),
+                        }
+                      )
+                    }
+                    disabled={saveAsTalent.isPending}
+                  >
+                    {saveAsTalent.isPending ? 'Saving…' : 'Save as talent'}
+                  </Button>
                 )}
                 {!character.voiceOnly && (
                   <Button

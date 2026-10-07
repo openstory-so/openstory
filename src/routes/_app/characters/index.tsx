@@ -56,8 +56,8 @@ function CharactersPage() {
         </PageIntro>
       ) : (
         <PageIntro title="Characters">
-          Your team's characters. One in the library can be cast in any
-          sequence.
+          Every character your team's sequences cast. Library shows the ones you
+          added to the library.
         </PageIntro>
       )}
       <PageContainer padding="none" className="pb-8">

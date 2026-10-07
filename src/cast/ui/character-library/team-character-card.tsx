@@ -33,13 +33,14 @@ export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
         aria-label={character.name}
         className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <div className="aspect-square bg-muted relative">
+        <div className="aspect-square bg-muted relative overflow-hidden">
           {sheetUrl ? (
             <AppImage
               src={sheetUrl}
               alt={character.name}
-              width={160}
-              height={160}
+              // The whole four-panel sheet: one panel is a quarter of it.
+              width={960}
+              height={240}
               className={talentSquareImageClassName(true)}
             />
           ) : (

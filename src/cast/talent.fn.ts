@@ -31,10 +31,12 @@ import {
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
+import { cropTalentSheetPortrait } from '@/cast/server/talent/crop-sheet-portrait';
 import { enqueueLibraryTalentSheet } from '@/cast/server/talent/enqueue-library-talent-sheet';
 import { maybePromoteOrGenerateSheet } from '@/cast/server/talent/promote-or-generate-sheet';
 import { isTeamTalentStoredUrl } from '@/platform/server/storage/copy-stored-image';
@@ -467,4 +469,73 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
       standardClothing: result.standardClothing,
       distinguishingFeatures: result.distinguishingFeatures,
     };
+  });
+
+/**
+ * Save a sequence's character as a new talent: its description, voice and
+ * sheet, as that sequence casts it. This is what "Add to Library" did before
+ * the library became a flag on the character (#2017). It stays, as "Save as
+ * talent", until #2018 says what a talent is.
+ */
+export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, characterId: ulidSchema }))
+  )
+  .handler(async ({ context, data }) => {
+    // Verify the sequence belongs to this team
+    await context.scopedDb.sequences.getForUser({
+      sequenceId: data.sequenceId,
+    });
+
+    const character = await context.scopedDb.characters.getById(
+      data.sequenceId,
+      data.characterId
+    );
+    if (!character) {
+      throw new Error('Character not found');
+    }
+
+    const newTalent = await context.scopedDb.talent.create({
+      name: character.name,
+      description: character.physicalDescription ?? undefined,
+      personality: character.personality ?? undefined,
+      movement: character.movement ?? undefined,
+      // Same ElevenLabs voice on both rows (#1553) — released when the last goes.
+      voiceId: character.voiceId ?? undefined,
+      voiceDescription: character.voiceDescription ?? undefined,
+      isFavorite: false,
+      isHuman: false,
+      isInTeamLibrary: true,
+    });
+
+    if (!character.sheetImageUrl) return newTalent;
+
+    await context.scopedDb.talent.sheets.create({
+      talentId: newTalent.id,
+      name: 'Default',
+      imageUrl: character.sheetImageUrl,
+      imagePath: character.sheetImagePath ?? undefined,
+      metadata: characterToBible(character),
+      isDefault: true,
+      source: 'script_analysis',
+    });
+
+    // Crop panel 2 as the avatar — do not stamp the 4-panel onto imageUrl
+    // (#1630). A non-landscape sheet is copied as-is by the crop helper.
+    const headshot = await cropTalentSheetPortrait({
+      sheetUrl: character.sheetImageUrl,
+      destPath: `${context.teamId}/${newTalent.id}/headshot.png`,
+    });
+    const updated = await context.scopedDb.talent.update(newTalent.id, {
+      imageUrl: headshot.publicUrl,
+      imagePath: headshot.path,
+    });
+    return (
+      updated ?? {
+        ...newTalent,
+        imageUrl: headshot.publicUrl,
+        imagePath: headshot.path,
+      }
+    );
   });
