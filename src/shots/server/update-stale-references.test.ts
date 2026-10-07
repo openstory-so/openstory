@@ -4,14 +4,21 @@ import type { Character, Sequence } from '@/platform/server/db/schema';
 import { buildPlanReferences } from './update-stale-references';
 import { asStub } from '@/test/as-stub';
 
-const { buildSheet, estimateSheets } = vi.hoisted(() => ({
+const { buildSheet, buildDraft, estimateSheets } = vi.hoisted(() => ({
   buildSheet: vi.fn(),
+  buildDraft: vi.fn(async ({ lookId }: { lookId: string }) => ({
+    draft: { characterDbId: 'maya', lookId },
+    isDefault: false,
+    liveFace: null,
+    refusal: 'Drawn from the default look. Generate that sheet first.',
+  })),
   estimateSheets: vi.fn(
     ({ characterSheets }: { characterSheets: number }) => characterSheets * 100
   ),
 }));
 vi.mock('@/cast/server/sheets/character-sheet-trigger', () => ({
   buildRegenerateCharacterSheetPayload: buildSheet,
+  buildCharacterSheetDraft: buildDraft,
 }));
 vi.mock('@/cast/server/sheets/location-sheet-trigger', () => ({
   buildRegenerateLocationSheetPayload: vi.fn(),
@@ -132,12 +139,17 @@ describe('plan reference talent-sheet reuse', () => {
         { kind: 'sheet:character', id: 'gala' },
       ]
     );
-    // The default look matches the talent's own clothes and copies its sheet;
-    // the gown does not, so it is drawn. The look no unit names is skipped.
+    // The default look matches the talent's own clothes and copies its sheet.
+    // The gown is drawn from that sheet, so it waits for it in the same run
+    // (a draft with no face), and is billed. The look no unit names is
+    // skipped.
     expect(result?.characterSheets).toEqual([
       expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
-      expect.objectContaining({ lookId: 'gala', reuseTalentSheet: false }),
     ]);
+    expect(result?.lookSheetsAfterDefault).toEqual([
+      expect.objectContaining({ lookId: 'gala' }),
+    ]);
+    expect(buildSheet).toHaveBeenCalledTimes(1);
     expect(result?.cost.sheets).toBe(100);
   });
   it('never copies the talent sheet onto a look other than the default', async () => {
@@ -170,8 +182,43 @@ describe('plan reference talent-sheet reuse', () => {
     );
     expect(result?.characterSheets).toEqual([
       expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
-      expect.objectContaining({ lookId: 'gala', reuseTalentSheet: false }),
     ]);
+    expect(result?.lookSheetsAfterDefault).toEqual([
+      expect.objectContaining({ lookId: 'gala' }),
+    ]);
+  });
+  it('draws a look now, from the live default sheet, when this run does not make the default', async () => {
+    buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
+      characterDbId: 'maya',
+      lookId,
+      reuseTalentSheet: false,
+      face: { url: '/r2/maya.png', versionId: 'maya-v1' },
+    }));
+    const look = (id: string, isDefault: boolean) =>
+      asStub<Character['looks'][number]>({
+        id,
+        name: id,
+        isDefault,
+        clothing: 'gown',
+        styling: null,
+        sheetImageUrl: isDefault ? '/r2/maya.png' : null,
+        sheetStatus: 'completed',
+        sheetInputHash: null,
+        selectedSheetVersionId: isDefault ? 'maya-v1' : null,
+      });
+    const result = await references(
+      { looks: [look('maya', true), look('gala', false)] },
+      [{ kind: 'sheet:character', id: 'gala' }]
+    );
+    expect(result?.characterSheets).toEqual([
+      expect.objectContaining({
+        lookId: 'gala',
+        reuseTalentSheet: false,
+        face: { url: '/r2/maya.png', versionId: 'maya-v1' },
+      }),
+    ]);
+    expect(result?.lookSheetsAfterDefault).toEqual([]);
+    expect(buildDraft).not.toHaveBeenCalled();
   });
   it('excludes voice-only cast from sheet work and its cost', async () => {
     const result = await references({ voiceOnly: true });

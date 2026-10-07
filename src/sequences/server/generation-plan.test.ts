@@ -224,13 +224,14 @@ describe('computeGenerationPlan', () => {
     }
   });
 
-  it('a worn look stays blocked until the default sheet is done (#2015)', async () => {
+  it('a worn look is owed in the run that makes its default sheet (#2015)', async () => {
     sceneLooks = { maya: 'gala' };
     try {
       const states = await planStates(true, false, false, null);
+      // Drawn after the default lands, in the same run: both are its work.
       expect(states).toMatchObject({
         'sheet:character:maya': 'missing',
-        'sheet:character:gala': 'blocked',
+        'sheet:character:gala': 'missing',
       });
     } finally {
       sceneLooks = null;

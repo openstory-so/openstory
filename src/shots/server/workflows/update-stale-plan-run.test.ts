@@ -355,6 +355,7 @@ const references = {
       talentId: null,
     },
   ],
+  lookSheetsAfterDefault: [],
   locationSheets: [{ locationDbId: 'hall' }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
   voices: [{ characterDbId: 'maya' }],
@@ -463,6 +464,91 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       lookId: 'gala',
       sheetVersionId: 'csv-gala',
     });
+  });
+
+  it('draws a look after its default sheet lands, from that sheet, in the same run (#2015)', async () => {
+    const gala = {
+      characterDbId: 'maya',
+      characterName: 'Maya',
+      lookId: 'gala',
+      lookVersionId: 'lookver-gala',
+      lookStyling: null,
+      bibleVersionId: 'bible-1',
+      talentId: null,
+      // what the hash reads
+      characterMetadata: {
+        name: 'Maya',
+        age: '30s',
+        gender: '',
+        ethnicity: '',
+        physicalDescription: '',
+        standardClothing: 'red gown',
+        distinguishingFeatures: '',
+        consistencyTag: 'maya',
+      },
+      imageModel: 'nano_banana_2',
+      talentSheetInputHash: null,
+      castTalentDescription: null,
+    };
+    await run(
+      plan({
+        // payload stubs
+        references: asStub<never>({
+          ...references,
+          characterSheets: [references.characterSheets[0]],
+          lookSheetsAfterDefault: [gala],
+          locationSheets: [],
+          elementSheets: null,
+          voices: [],
+        }),
+      })
+    );
+    // The look is spawned after the default, never beside it.
+    expect(spawned()).toEqual([
+      'spawn-character-sheet-maya',
+      'spawn-character-sheet-gala',
+    ]);
+    // Its face is the sheet this run landed, not a re-read.
+    expect(payloadOf('spawn-character-sheet-gala')).toMatchObject({
+      lookId: 'gala',
+      face: {
+        url: 'https://x/new-maya.png',
+        versionId: 'new-maya-version',
+      },
+      snapshotInputHash: expect.any(String),
+      sheetVersionId: 'csv-gala',
+    });
+  });
+
+  it('fails a look whose default sheet did not land, and holds what wears it', async () => {
+    failCharacter.add('maya');
+    const result = await run(
+      plan({
+        // payload stubs
+        references: asStub<never>({
+          ...references,
+          characterSheets: [references.characterSheets[0]],
+          lookSheetsAfterDefault: [
+            {
+              characterDbId: 'maya',
+              characterName: 'Maya',
+              lookId: 'gala',
+              lookVersionId: 'lookver-gala',
+            },
+          ],
+          locationSheets: [],
+          elementSheets: null,
+          voices: [],
+        }),
+      })
+    );
+    expect(spawned()).toEqual(['spawn-character-sheet-maya']);
+    expect(result.failures.map((failure) => failure.shotId)).toEqual(
+      expect.arrayContaining(['maya', 'gala'])
+    );
+    expect(
+      result.failures.find((failure) => failure.shotId === 'gala')?.error
+    ).toContain('default look sheet did not land in this run');
   });
 
   it('a failed sheet holds the stills made from it, and nothing else', async () => {
@@ -1020,6 +1106,7 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
         characterSheets: [
           { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
         ],
+        lookSheetsAfterDefault: [],
         locationSheets: [{ locationDbId: 'hall' }],
         elementSheets: null,
         voices: [],

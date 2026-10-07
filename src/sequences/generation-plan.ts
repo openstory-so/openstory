@@ -139,13 +139,14 @@ export type PlanInput = {
   /**
    * The looks that need a sheet (#2015), by look id: each character's
    * default, and every other look some scene picks. Voice-only characters
-   * never do. `characterId` is set when `id` is not the default look: that
-   * sheet waits until the default look's sheet is done, and is drawn from it.
+   * never do. `characterId` is the look's character; it equals `id` on the
+   * default look, whose id is the character's. Any other look is drawn from
+   * the default look's sheet, so that sheet is its upstream.
    */
   characterSheets: ReadonlyArray<{
     id: string;
     sheet: ArtifactVerdict;
-    characterId?: string;
+    characterId: string;
   }>;
   locationSheets: ReadonlyArray<{ id: string; sheet: ArtifactVerdict }>;
   elementRefs: ReadonlyArray<{ id: string; ref: ArtifactVerdict }>;
@@ -238,25 +239,25 @@ const rootUnit = (
  * - An upstream that is `running` elsewhere or `blocked` turns a unit that
  *   still has work (`missing` / `stale`) `blocked`: making it now would read
  *   inputs that are about to move. A `done` unit keeps its artifact.
- * - A look that is not the default waits until that character's default
- *   sheet is `done`, even while the default sheet is still `missing` or
- *   `stale`. It is not part of the run that makes the default sheet.
+ * - A look that is not the default is drawn from its character's default
+ *   sheet, its upstream: the same two rules. A default sheet this run makes
+ *   puts the other looks in the same run, drawn after it lands (the second
+ *   references wave, `PlanReferences.lookSheetsAfterDefault`); a default
+ *   sheet running elsewhere holds them.
  * - While the storyboard run holds the sequence, every unit with work up to
- *   that run's stop is `running`. A look sheet waiting on its default sheet
- *   stays `blocked`.
+ *   that run's stop is `running`.
  */
 export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
   const characterSheetUnits = input.characterSheets
-    .map((sheet) => {
-      const characterId = sheet.characterId ?? sheet.id;
-      return {
-        kind: 'sheet:character' as const,
-        id: sheet.id,
-        verdict: sheet.sheet,
-        upstream:
-          characterId === sheet.id ? [] : [ref('sheet:character', characterId)],
-      };
-    })
+    .map((sheet) => ({
+      kind: 'sheet:character' as const,
+      id: sheet.id,
+      verdict: sheet.sheet,
+      upstream:
+        sheet.characterId === sheet.id
+          ? []
+          : [ref('sheet:character', sheet.characterId)],
+    }))
     // The default sheet has to settle before the looks that wait on it.
     .sort((a, b) => a.upstream.length - b.upstream.length);
   const base: BaseUnit[] = [
@@ -320,51 +321,14 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
           result = { ...self, state };
         }
       }
-      // A non-default look is drawn from the default sheet. It does not
-      // start while that sheet is still missing, stale, running or blocked.
-      // Only that look's own sheet waits this way: a still that names a
-      // character sheet keeps the ordinary cascade.
-      const face =
-        unit.kind === 'sheet:character'
-          ? upstream.find((up) => up.kind === 'sheet:character')
-          : undefined;
-      if (
-        face &&
-        face.state !== 'done' &&
-        (result.state === 'missing' || result.state === 'stale')
-      ) {
-        result = {
-          ...self,
-          state: 'blocked',
-          blockedBy: [{ kind: face.kind, id: face.id }],
-        };
-      }
     }
     // The run making the upstream is the run making this unit too: a
     // cascade block inside its stop is its own work, not a wait. An
-    // uncomputable verdict (`blockedBy: []`) stays blocked. A look sheet
-    // waiting on its default sheet is not that work, and neither is a unit
-    // blocked on that look: this run makes the default, and the look follows
-    // once that sheet exists.
-    const blockedOnLookWaitingForFace =
-      result.blockedBy?.some((block) => {
-        const up = settled.get(key(block));
-        return (
-          up?.kind === 'sheet:character' &&
-          (up.blockedBy?.some((inner) => inner.kind === 'sheet:character') ??
-            false)
-        );
-      }) ?? false;
-    const waitingOnDefaultFace =
-      (result.kind === 'sheet:character' &&
-        (result.blockedBy?.some((block) => block.kind === 'sheet:character') ??
-          false)) ||
-      blockedOnLookWaitingForFace;
+    // uncomputable verdict (`blockedBy: []`) stays blocked.
     const runBlocked =
       result.state === 'blocked' && (result.blockedBy?.length ?? 0) > 0;
     if (
       input.processing &&
-      !waitingOnDefaultFace &&
       (result.state === 'missing' || result.state === 'stale' || runBlocked) &&
       includesStage(input.runStopAt, PLAN_KIND_STAGE[result.kind])
     ) {
