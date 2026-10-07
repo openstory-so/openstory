@@ -270,12 +270,13 @@ script then names her like any cast member.
 - **Plain names.** Scene tags are still by name (`reconcileSceneTags`), so two
   cast characters with one plain name are both tagged where it appears.
   Unchanged here.
-- **Save as talent** is what Add to Library did before: it copies the
-  character, as one sequence casts it, into a new talent
-  (`saveCharacterAsTalentFn`). It is how a character reaches the recast
-  picker, the new-sequence talent picker and the studio today. It stays
-  until #2018 defines what a talent is. Hidden for a talent-cast or
-  voice-only character, as the old button was.
+- **Save face as talent** (#2018, `saveCharacterAsTalentFn`) makes a new
+  talent from the character's FACE only: its name, physical description and
+  the sheet this sequence selects for it, which lands as the talent's
+  reference sheet through the library sheet run and its claim. Personality,
+  movement, voice and looks stay on the character; the character is not
+  recast. Refused while the character has no sheet. Hidden for a talent-cast
+  or voice-only character. See § Talent is a likeness.
 - **A character the page cannot list** (not in the library, cast in no live
   sequence, another team's, or gone) reads "Character not found" with a way
   back, not an error.
@@ -548,11 +549,58 @@ guard table is left when it ran as one transaction.
 A rollback of the worker to the expand PR's code is not possible after file
 2: that code cannot create or edit a character.
 
-## Open question
+## Talent is a likeness (#2018)
 
-Deleting a talent sets `character_bible_versions.talent_id` to null on every
-version that named it (`ON DELETE SET NULL`), pinned and historical alike. A
-sequence sees what it saw before: the character is uncast. But it rewrites
-rows that are otherwise append-only, and history loses who played the
-character. Unchanged here; Tom to decide between keeping it, a pointer with
-no FK, or refusing the delete while a version names the talent.
+A talent is a face: its name and description, its reference photos and
+recordings (`talent_media`), ONE reference sheet, a recorded voice (#1631,
+`talent.voiceId`, null until then) and the rights flag (`isHuman`, from the
+likeness ledger, never the client). The role — personality, movement, the
+designed voice, outfits — is the character's and its looks'. Nothing copies
+between the two: casting copies the face fields and the reference sheet
+(`buildCastingAttributes`, `TalentCharacterMatch`), the recast writes one
+bible version with the new talent and face, and the voice is never touched.
+
+- **The reference sheet** is `talent.selectedSheetId`, a pointer into
+  `talent_sheets`, which is the whole history (append-only): `divergedAt`
+  marks a run that landed after its claim moved (parked, offered by the
+  banner), `discardedAt` a row the user discarded (restorable). The pointer
+  moves only through `talent.landSheet` (while the run's claim holds; a new
+  sheet replaces the current one) and `talent.selectSheet` (the user's pick:
+  unparks the row, revokes the talent's own claim and the cast claims).
+  `sheets.discard` refuses the reference sheet; a discarded row cannot be
+  selected until restored. `TalentWithSheets.referenceSheet` is the one join
+  on the pointer — no Default scan, no newest-convergent fallback — and
+  `parkedSheetId` the oldest parked row, for the card dot.
+  `talent_sheet_variants` is unwritten (dropped in a later PR).
+- **The claim is taken before the trigger** (`enqueueLibraryTalentSheet`,
+  #1863), so a fast `manual_upload` run can never land unclaimed. Under a
+  dedup key it is taken only while none is held (`claimSheet(…, { onlyIfFree
+})`); if the trigger reused a run, only our own id is handed back
+  (`clearSheetClaimIf`). A claim held yet a new run started (an upload during
+  a generate) claims after, last kickoff wins. A new reference photo revokes
+  the claim, as a deleted one did.
+- **One talent, several roles.** Matching dedups by character; a talent may
+  play twins or a one-person skit. Nothing in the schema ever forbade it.
+- **Deleting a talent is refused while ANY `character_bible_versions` row
+  names it** (`talent.delete` throws). The FK's `SET NULL` would otherwise
+  blank who played the character, pinned and historical alike; changing the
+  FK is a rebuild of `character_bible_versions`, so the refusal is the
+  guard. Recast or hard-delete those characters first.
+- **Existing rows** (`20261007115216_backfill_talent_likeness`): the Default
+  (else newest convergent) sheet became the reference sheet; other
+  convergent sheets were discarded (restorable); live parked variants became
+  parked `talent_sheets` rows under their own id. A talent carrying role data
+  (personality, movement, a voice, or a `script_analysis` sheet — what Add to
+  Library made) split off a library character with the talent's id: a
+  `backfill` bible version cast with the talent, a `library` voice version
+  (the talent's `voice_id` nulled so the slot counts once), one look per
+  convergent sheet (the default look keyed to the character, #1419) and one
+  completed `user-upload` sheet per look. It is in no sequence; a sequence
+  that casts it reads the default look's sheet by the #1419 rule. The old
+  columns (`personality`, `movement`, `voice_description`,
+  `talent_sheets.name`, `is_default`) are `legacy*` in Drizzle, unread.
+- UI: `/talent/$id` shows the reference sheet, the photos, the sheet history
+  (Use as reference / Discard / Restore) and the rights badge. Edit has
+  name, description and photos. MCP: `get_talent` carries
+  `selectedSheetId`; `talent_sheet` rows carry `source`, `divergedAt`,
+  `discardedAt`; `talent_sheet_version` is gone.

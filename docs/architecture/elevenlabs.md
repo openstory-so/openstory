@@ -111,8 +111,10 @@ shows Take 2 after promoting the second preview, not a generic “Designed
 take” (#1709). A `generatedVoiceId` can be saved once; after create()
 succeeds (or ElevenLabs says it already did / the preview aged out) the
 take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
-**account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
-character at cast / save-to-library) and freed only through
+**account-wide** ElevenLabs slot, so the id can be shared between characters
+(nothing copies a voice between talent and characters since #2018: a talent
+holds only a recorded voice, #1631; the #2018 backfill moved every designed
+voice a talent held onto a library character) and freed only through
 `releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over every live cast
 link's pinned voice version (#2017: a removed link or an archived sequence
 holds nothing), characters' current voice versions and `talent.voiceId`,
