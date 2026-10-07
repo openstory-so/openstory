@@ -13,6 +13,7 @@ import {
   type VideoPlaySource,
 } from '@/sequences/ui/theatre/player-events';
 import { cn } from '@/ui/utils';
+import { playerFrameClassName } from '@/ui/player-frame';
 import { usePostHog } from '@posthog/react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
@@ -153,13 +154,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // the poster directly into a properly-sized aspect-ratio container instead.
   if (!src && posterSrc) {
     return (
-      <div
-        className={cn(
-          'relative w-full overflow-hidden',
-          className,
-          getAspectRatioClassName(aspectRatio)
-        )}
-      >
+      <div className={playerFrameClassName(aspectRatio, className)}>
         <PlayerPlaceholder posterSrc={posterSrc} alt="Scene thumbnail" />
       </div>
     );
@@ -170,13 +165,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   );
 
   return (
-    <div
-      className={cn(
-        'relative w-full',
-        className,
-        getAspectRatioClassName(aspectRatio)
-      )}
-    >
+    <div className={playerFrameClassName(aspectRatio, className)}>
       {mounted ? (
         <Suspense fallback={placeholder}>
           <VideoPlayerSurface

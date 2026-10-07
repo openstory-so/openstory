@@ -29,6 +29,7 @@ import {
   type VideoPlaySource,
 } from './player-events';
 import { cn } from '@/ui/utils';
+import { playerFrameClassName } from '@/ui/player-frame';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
 import { StitchedPlayer } from '@openstory/stitch-player/react';
@@ -126,11 +127,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clipsKey, not clips identity (#1284)
   }, [clipsKey, musicUrl, musicGainDb]);
 
-  const frameClassName = cn(
-    'relative w-full overflow-hidden rounded-lg bg-black',
-    className,
-    getAspectRatioClassName(aspectRatio)
-  );
+  const frameClassName = playerFrameClassName(aspectRatio, className);
 
   const overlay = (
     <>

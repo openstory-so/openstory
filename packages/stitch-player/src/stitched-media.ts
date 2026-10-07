@@ -12,6 +12,11 @@
  * is no `<video>` to paint cues, so the React surface reads `activeCueText`
  * and draws them; an engine-only host does the same off `timeupdate`.
  *
+ * Picture-in-Picture: a `<video>` feature, so the canvas is captured as a
+ * stream into a hidden one and that goes to PiP. Only offered where the
+ * browser has the API (`requestPictureInPicture` is left undefined
+ * otherwise, which is how the skin decides to hide the button).
+ *
  * No `@videojs/react` import — that package constructs an AbortController at
  * module scope and cannot be evaluated during server rendering. The React
  * wrapper lives in `stitched-player-surface.tsx` behind a client-only boundary.
@@ -131,6 +136,31 @@ export class StitchedSequenceMedia
   #prepareReady = false;
   #meta: SequencePlayerMeta | null = null;
   readonly #textTracks = new StitchedTextTrackList();
+  #pipVideo: HTMLVideoElement | null = null;
+
+  /** Video.js reads this; nothing here sets it. */
+  disablePictureInPicture = false;
+  /** Present only where the browser has the Picture-in-Picture API. */
+  requestPictureInPicture?: () => Promise<void>;
+
+  constructor() {
+    super();
+    if (
+      typeof document !== 'undefined' &&
+      document.pictureInPictureEnabled &&
+      typeof HTMLVideoElement !== 'undefined' &&
+      'requestPictureInPicture' in HTMLVideoElement.prototype
+    ) {
+      // The skin ignores the rejection; the host hears it through onError.
+      this.requestPictureInPicture = () =>
+        this.#enterPictureInPicture().catch((error: unknown) => {
+          this.#listeners.onError?.(
+            error instanceof Error ? error : new Error(String(error))
+          );
+          throw error;
+        });
+    }
+  }
 
   #paused = true;
   #ended = false;
@@ -189,6 +219,7 @@ export class StitchedSequenceMedia
   }
 
   detach(): void {
+    void this.exitPictureInPicture();
     this.#prepareGeneration += 1;
     this.#playGeneration += 1;
     this.#seekGeneration += 1;
@@ -199,6 +230,15 @@ export class StitchedSequenceMedia
 
   destroy(): void {
     this.detach();
+    const pip = this.#pipVideo;
+    this.#pipVideo = null;
+    if (
+      pip &&
+      typeof MediaStream !== 'undefined' &&
+      pip.srcObject instanceof MediaStream
+    ) {
+      for (const track of pip.srcObject.getTracks()) track.stop();
+    }
     this.#source = null;
     this.#sourceIdentity = '';
     this.#listeners = {};
@@ -368,6 +408,52 @@ export class StitchedSequenceMedia
 
   get videoHeight(): number {
     return this.#videoHeight;
+  }
+
+  get isPictureInPicture(): boolean {
+    return (
+      this.#pipVideo !== null &&
+      document.pictureInPictureElement === this.#pipVideo
+    );
+  }
+
+  async exitPictureInPicture(): Promise<void> {
+    if (!this.isPictureInPicture) return;
+    await document.exitPictureInPicture();
+  }
+
+  /** The canvas as a live stream in a hidden `<video>`, which is what the browser can float. */
+  async #enterPictureInPicture(): Promise<void> {
+    const canvas = this.#canvas;
+    if (!canvas) throw new Error('Nothing is playing yet');
+    let video = this.#pipVideo;
+    if (!video) {
+      video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = canvas.captureStream();
+      video.addEventListener('enterpictureinpicture', () => {
+        this.#emit('enterpictureinpicture');
+      });
+      video.addEventListener('leavepictureinpicture', () => {
+        this.#emit('leavepictureinpicture');
+      });
+      this.#pipVideo = video;
+    }
+    void video.play().catch(() => undefined);
+    // A paused player draws nothing, and the stream only carries new draws
+    // (`requestFrame()` delivers nothing here): redraw the canvas onto itself
+    // so the video gets a frame, or the browser refuses to float it.
+    canvas.getContext('2d')?.drawImage(canvas, 0, 0);
+    if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+      await new Promise<void>((resolve) => {
+        video.addEventListener('loadedmetadata', () => resolve(), {
+          once: true,
+        });
+        setTimeout(resolve, 1000);
+      });
+    }
+    await video.requestPictureInPicture();
   }
 
   /** The subtitle track, present when a clip has cues. What the skin's captions button toggles. */
