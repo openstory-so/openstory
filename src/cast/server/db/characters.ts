@@ -61,6 +61,7 @@ import {
   shots,
   talent,
 } from '@/platform/server/db/schema';
+import { identityToken, nextIdentityToken } from '@/cast/bible-field';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { markPreviewUnusable } from '@/cast/voice';
 import {
@@ -848,6 +849,127 @@ export function createCharactersMethods(db: Database, teamId: string) {
      */
     setInLibrary: async (id: string, inLibrary: boolean): Promise<void> =>
       await update(id, { inLibrary }),
+
+    /**
+     * Cast one of the team's library characters into `sequenceId` (#2050):
+     * one link pinning her current bible version, and a cast look per live
+     * look, each pinned at its current version and sheet-less (a sheet also
+     * depends on the sequence's style and image model). Nothing is copied.
+     *
+     * Refused unless the character is in the library, and while a live cast
+     * member of the sequence already has her name: the script names a
+     * character in capitals, and two of one name could not be told apart.
+     * Attaching a character the sequence already casts is idempotent: a
+     * removed link comes back, a live one is returned as it is.
+     */
+    attach: async (
+      sequenceId: string,
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<Character> => {
+      const [character] = await db
+        .select({
+          inLibrary: characters.inLibrary,
+          bibleVersionId: characterBibleVersions.id,
+          name: characterBibleColumns.name,
+        })
+        .from(characters)
+        .leftJoin(
+          characterBibleVersions,
+          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+        )
+        .where(and(eq(characters.id, id), inTeam));
+      if (!character) throw new NotFoundError('Character not found');
+      if (character.bibleVersionId === null || character.name === null) {
+        throw new Error(
+          `Character ${id} points at a bible version that does not exist`
+        );
+      }
+      const { name } = character;
+      if (!character.inLibrary) {
+        throw new ValidationError(`${name} is not in the library`);
+      }
+      const existing = await castOf(sequenceId, id);
+      if (existing) {
+        if (!existing.deletedAt) return existing;
+        await db
+          .update(sequenceCast)
+          .set({ removedAt: null })
+          .where(eq(sequenceCast.id, existing.castId));
+        return await reread(sequenceId, id);
+      }
+      const cast = await db
+        .select({
+          scriptCharacterId: sequenceCast.scriptCharacterId,
+          removedAt: sequenceCast.removedAt,
+          name: characterBibleVersions.name,
+        })
+        .from(sequenceCast)
+        .leftJoin(
+          characterBibleVersions,
+          eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+        )
+        .where(eq(sequenceCast.sequenceId, sequenceId));
+      const key = (name: string) => name.trim().toLowerCase();
+      if (
+        cast.some(
+          (row) =>
+            row.removedAt === null &&
+            row.name !== null &&
+            key(row.name) === key(name)
+        )
+      ) {
+        throw new ConflictError(
+          `${name} is already a name in this sequence's cast. Rename one first.`
+        );
+      }
+      // The script id follows a hand-added character's (`char_ada`), uniqued
+      // against every link of the sequence, removed ones included.
+      const scriptCharacterId = nextIdentityToken(
+        identityToken('char', name),
+        new Set(cast.map((row) => row.scriptCharacterId))
+      );
+      const lookRows = await db
+        .select({
+          id: characterLooks.id,
+          lookVersionId: characterLooks.selectedLookVersionId,
+        })
+        .from(characterLooks)
+        .where(
+          and(
+            eq(characterLooks.characterId, id),
+            isNull(characterLooks.deletedAt)
+          )
+        );
+      const castId = generateId();
+      await db.batch([
+        db.insert(sequenceCast).values({
+          id: castId,
+          sequenceId,
+          characterId: id,
+          scriptCharacterId,
+          bibleVersionId: character.bibleVersionId,
+        }),
+        ...lookRows.map((look) =>
+          db.insert(sequenceCastLooks).values({
+            castId,
+            lookId: look.id,
+            lookVersionId: look.lookVersionId,
+            sheetStatus: 'pending',
+          })
+        ),
+        buildEventInsert(db, {
+          sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.created',
+          targetType: 'character',
+          targetId: id,
+          summary: `Added ${name} from the library`,
+          data: { name, characterId: scriptCharacterId },
+        }),
+      ]);
+      return await reread(sequenceId, id);
+    },
 
     /** The character as `sequenceId` casts it, live or removed. */
     getById: async (

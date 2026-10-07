@@ -1890,6 +1890,82 @@ describe('team characters (#2017)', () => {
     expect(await linksOf(created.id)).toEqual([]);
   });
 
+  it('attaches a library character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada Lovelace',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala', clothing: 'gown', styling: null },
+      { source: 'edit', actorId }
+    );
+    const other = await secondSequence();
+
+    // Not in the library: refused, and nothing written.
+    await expect(
+      chars().attach(other, created.id, { actorId })
+    ).rejects.toThrow('not in the library');
+    expect(await linksOf(created.id)).toHaveLength(1);
+
+    await chars().setInLibrary(created.id, true);
+    const attached = await chars().attach(other, created.id, { actorId });
+    expect(attached).toMatchObject({
+      id: created.id,
+      sequenceId: other,
+      characterId: 'char_ada_lovelace',
+      selectedBibleVersionId: created.selectedBibleVersionId,
+      standardClothing: 'coat',
+      sheetStatus: 'pending',
+    });
+    // The whole character once, with two links.
+    expect(await db.select().from(characters)).toHaveLength(1);
+    expect(await linksOf(created.id)).toHaveLength(2);
+    // Every live look came across, pinned at its current version, sheet-less.
+    const otherLooks = await looks().listByCharacter(other, created.id);
+    expect(otherLooks.map((look) => [look.id, look.lookVersionId])).toEqual([
+      [created.lookId, created.looks[0]?.lookVersionId],
+      [gala.id, gala.lookVersionId],
+    ]);
+    expect(
+      otherLooks.every((look) => look.selectedSheetVersionId === null)
+    ).toBe(true);
+    expect(await eventKinds()).toContain('character.created');
+
+    // Idempotent: the same link comes back.
+    expect(await chars().attach(other, created.id, { actorId })).toMatchObject({
+      castId: attached.castId,
+    });
+    // Removed from the second, attached again: the link is restored.
+    await chars().softDelete(other, created.id, { actorId });
+    expect(
+      (await chars().attach(other, created.id, { actorId })).deletedAt
+    ).toBeNull();
+
+    // A second library character with the same name is refused: the script
+    // names a character in capitals, and ADA LOVELACE would be two people.
+    const twin = await chars().create(
+      { sequenceId, characterId: 'char_002', name: 'ada lovelace' },
+      analysis
+    );
+    await chars().setInLibrary(twin.id, true);
+    await expect(chars().attach(other, twin.id, { actorId })).rejects.toThrow(
+      'already a name'
+    );
+    // Another team's character is not found.
+    await expect(
+      createCharactersMethods(db, generateId()).attach(other, created.id, {
+        actorId,
+      })
+    ).rejects.toThrow('not found');
+  });
+
   it('lists the team characters by the latest sequence casting them, then by how many', async () => {
     const [old, busy, removed] = await Promise.all(
       ['Old', 'Busy', 'Removed'].map((name, i) =>

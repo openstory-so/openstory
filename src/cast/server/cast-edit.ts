@@ -104,6 +104,23 @@ export async function createCharacter(
 }
 
 /**
+ * Cast a library character into a sequence (#2050): the `@` picker and the
+ * cast panel's Add from library. One link pinning her current version, a cast
+ * look per look; nothing is copied and no generation starts. Refused while a
+ * live cast member has her name (`characters.attach`).
+ */
+export async function attachLibraryCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string
+) {
+  return await scopedDb.characters.attach(sequenceId, characterId, {
+    actorId: actor.userId,
+  });
+}
+
+/**
  * Edit a character's bible fields. Only the sent fields change; the sheet and
  * prompts that project them re-stale by hash derivation.
  */
