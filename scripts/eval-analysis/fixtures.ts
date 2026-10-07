@@ -44,7 +44,7 @@ export type TalentRow = {
   id: string;
   name: string;
   description: string | null;
-  defaultSheet: { metadata?: CharacterBibleEntry | null } | null;
+  referenceSheet: { metadata?: CharacterBibleEntry | null } | null;
 };
 
 export type LocationRow = {
@@ -102,14 +102,14 @@ export const TALENT_CASE = {
       name: 'Sienna Blake',
       description:
         'Young adult woman, golden blonde, beach-tanned, wide smile. Product-ad and rom-com lead energy.',
-      defaultSheet: { metadata: null },
+      referenceSheet: { metadata: null },
     },
     {
       id: 'talent_marcus',
       name: 'Marcus Hale',
       description:
         'Man in his mid-forties, broad build, salt-and-pepper stubble, weathered face. Character-actor presence.',
-      defaultSheet: { metadata: null },
+      referenceSheet: { metadata: null },
     },
   ] satisfies TalentRow[],
   gold: [

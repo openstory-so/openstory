@@ -817,17 +817,18 @@ export async function getSystemTalentByName(name: string): Promise<{
       `System talent "${name}" not found in test DB — was \`bun scripts/seed.ts --test\` run during global setup?`
     );
   }
-  const sheets = await db
-    .select()
-    .from(talentSheets)
-    .where(
-      and(eq(talentSheets.talentId, found.id), eq(talentSheets.isDefault, true))
-    )
-    .limit(1);
+  // The reference sheet (#2018): the row the pointer names.
+  const sheets = found.selectedSheetId
+    ? await db
+        .select()
+        .from(talentSheets)
+        .where(eq(talentSheets.id, found.selectedSheetId))
+        .limit(1)
+    : [];
   const defaultSheet = sheets[0];
   if (!defaultSheet) {
     throw new Error(
-      `System talent "${name}" has no default sheet — re-run seed`
+      `System talent "${name}" has no reference sheet — re-run seed`
     );
   }
   return {

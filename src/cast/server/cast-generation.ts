@@ -319,6 +319,9 @@ export async function recastCharacter(
       voiceOnly: character.voiceOnly,
       isPerson: updatedCharacter.isPerson,
       voiceDescription: character.voiceDescription ?? '',
+      // Performance stays the role's (#2018).
+      personality: character.personality ?? '',
+      movement: character.movement ?? '',
       ...castingAttrs,
       // The look owns clothing (#2015): the entry wears the look being drawn.
       standardClothing: look.clothing ?? '',

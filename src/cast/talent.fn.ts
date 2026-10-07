@@ -478,13 +478,14 @@ export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
       uploadedSheetUrl: character.sheetImageUrl,
       uploadedSheetMetadata: characterToBible(character),
     };
+    const workflowInput = {
+      ...workflowInputFields,
+      snapshotInputHash:
+        await computeLibraryTalentSheetHashFromDto(workflowInputFields),
+    };
     const runId = await enqueueLibraryTalentSheet(context.scopedDb, {
       talentId: newTalent.id,
-      workflowInput: {
-        ...workflowInputFields,
-        snapshotInputHash:
-          await computeLibraryTalentSheetHashFromDto(workflowInputFields),
-      },
+      workflowInput,
       activity: 'portrait',
     });
     return { talent: newTalent, runId };

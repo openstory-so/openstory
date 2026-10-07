@@ -83,8 +83,6 @@ function makeScopedDb(opts: {
     id: string;
     name: string;
     description: string | null;
-    personality: string | null;
-    movement: string | null;
   }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
   musicPrompt?: string | null;
