@@ -215,9 +215,16 @@ What was run (`wrangler d1 migrations apply --local`, one file per call):
   fails at commit, rolls back, nothing lost.
 - Migration 2 without migration 1: stopped by the guard, nothing lost.
 
-The PR preview applied both files to an empty remote D1. Not run: a
-populated remote D1. Its CPU limit is not exercised locally; the
-two files copy about 4,500 child rows once and the character rows twice.
+On remote D1:
+
+- The PR preview applied both files to an empty remote D1.
+- On 2026-10-07 both files were applied with `migrations apply --remote` to
+  a throwaway remote D1 loaded with a production export (188,226 rows):
+  about 50 ms each, all eight tables identical in count, no foreign key
+  violations, no orphans, both files recorded. The two files copy about
+  4,500 child rows once and the character rows twice.
+- Not shown on remote: the out-of-order control (the guard stopping
+  migration 2 when migration 1 has not run). That was run on local D1 only.
 
 `bun db:generate --custom` copies the previous snapshot, so migration 2's
 `snapshot.json` is the one drizzle-kit wrote for the generated form of the
