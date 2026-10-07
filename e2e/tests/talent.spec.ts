@@ -60,20 +60,17 @@ test.describe('Talent Library', () => {
     );
   });
 
-  test('signed out, Characters opens on Talent and the Characters tab asks to sign in', async ({
+  test('signed in, Characters opens on the Characters tab', async ({
     page,
   }) => {
     await page.goto('/characters');
-    await waitForTalentPageLoad(page);
 
-    await expect(page.getByRole('tab', { name: 'Talent' })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Characters' })).toHaveAttribute(
       'aria-selected',
       'true'
     );
-    await page.getByRole('tab', { name: 'Characters' }).click();
-    await expect(page).toHaveURL(/\/characters\?tab=characters/);
     await expect(
-      page.getByRole('heading', { name: 'Sign in to see your characters' })
+      page.getByRole('button', { name: 'All Characters' })
     ).toBeVisible();
   });
 
@@ -90,6 +87,27 @@ test.describe('Talent Library', () => {
 });
 
 // Tests create talents via UI - use unique names to avoid collisions in parallel
+test.describe('Characters page, signed out', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test('signed out, Characters opens on Talent and the Characters tab asks to sign in', async ({
+    page,
+  }) => {
+    await page.goto('/characters');
+    await waitForTalentPageLoad(page);
+
+    await expect(page.getByRole('tab', { name: 'Talent' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    );
+    await page.getByRole('tab', { name: 'Characters' }).click();
+    await expect(page).toHaveURL(/\/characters\?tab=characters/);
+    await expect(
+      page.getByRole('heading', { name: 'Sign in to see your characters' })
+    ).toBeVisible();
+  });
+});
+
 testWithUser.describe('Add Talent with Reference Media', () => {
   testWithUser.beforeEach(async ({ page }) => {
     // Set up mock routes for R2 and other external services
