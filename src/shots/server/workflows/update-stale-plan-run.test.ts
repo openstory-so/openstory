@@ -161,6 +161,9 @@ const claimSheet = vi.fn(async (_sequenceId: string, lookId: string) => ({
   held: true,
 }));
 const failSheetClaim = vi.fn(async () => undefined);
+const adoptIfPending = vi.fn(
+  async (_args: unknown): Promise<'adopted' | 'refused'> => 'adopted'
+);
 const claimReference = vi.fn(async (id: string) => `lrv-${id}`);
 const claimMusic = vi.fn(async (): Promise<string | null> => 'music-claim');
 const failMusicClaim = vi.fn(async () => undefined);
@@ -173,6 +176,7 @@ function makeScopedDb(): WorkflowScopedDb {
   // minimal stub for the paths under test
   return asStub<WorkflowScopedDb>({
     characterLooks: { claimSheet, failSheetClaim },
+    characterSheetVariants: { adoptIfPending },
     characters: {
       createPendingVoiceClaim,
       markVoiceClaimTerminal: vi.fn(),
@@ -356,6 +360,7 @@ const references = {
     },
   ],
   lookSheetsAfterDefault: [],
+  reusedSheets: [],
   locationSheets: [{ locationDbId: 'hall' }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
   voices: [{ characterDbId: 'maya' }],
@@ -606,6 +611,111 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       'sheet model refused'
     );
     expect(result.images).toBe(1);
+  });
+
+  const reusedMaya = {
+    payload: {
+      characterDbId: 'maya',
+      characterName: 'Maya',
+      lookId: 'maya',
+      lookVersionId: 'lv-maya',
+      bibleVersionId: 'bible-1',
+      talentId: null,
+      imageModel: 'nano_banana_2',
+      snapshotInputHash: 'hash-maya',
+    },
+    sheetVersionId: 'ep1-maya',
+    url: 'https://x/ep1-maya.png',
+    storagePath: 'ep1-maya.png',
+  };
+
+  it('adopts a sheet the plan found finished elsewhere through its claim, drawing nothing (#2017)', async () => {
+    const result = await run(
+      plan({
+        // payload stubs
+        references: asStub<never>({
+          ...references,
+          characterSheets: [],
+          reusedSheets: [reusedMaya],
+          locationSheets: [],
+          elementSheets: null,
+          voices: [],
+        }),
+        targets: [target('s-maya', ['maya'])],
+      })
+    );
+    // The same claim a draw takes, then the pointer, in one guarded write.
+    expect(claimSheet).toHaveBeenCalledWith(
+      'seq-1',
+      'maya',
+      { lookVersionId: 'lv-maya', bibleVersionId: 'bible-1', talentId: null },
+      { markGenerating: true }
+    );
+    expect(adoptIfPending).toHaveBeenCalledWith({
+      sequenceId: 'seq-1',
+      lookId: 'maya',
+      claimVersionId: 'csv-maya',
+      sheetVersionId: 'ep1-maya',
+      model: 'nano_banana_2',
+      inputHash: 'hash-maya',
+    });
+    expect(spawned()).not.toContain('spawn-character-sheet-maya');
+    expect(emit).toHaveBeenCalledWith('generation.character-sheet:progress', {
+      characterId: 'maya',
+      lookId: 'maya',
+      status: 'completed',
+      sheetImageUrl: 'https://x/ep1-maya.png',
+    });
+    // The still that wears it renders, from the adopted sheet.
+    expect(spawned()).toContain('spawn-image-s-maya');
+    expect(result.failures).toEqual([]);
+  });
+
+  it('fails the sheet when the adopt is refused, holds its stills and never draws instead', async () => {
+    adoptIfPending.mockResolvedValueOnce('refused');
+    const result = await run(
+      plan({
+        // payload stubs
+        references: asStub<never>({
+          ...references,
+          characterSheets: [],
+          reusedSheets: [reusedMaya],
+          locationSheets: [],
+          elementSheets: null,
+          voices: [],
+        }),
+        targets: [target('s-maya', ['maya'])],
+      })
+    );
+    expect(spawned()).not.toContain('spawn-character-sheet-maya');
+    expect(spawned()).not.toContain('spawn-image-s-maya');
+    expect(result.failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          shotId: 'maya',
+          stage: 'reference',
+          error: expect.stringContaining('could not be reused'),
+        }),
+        expect.objectContaining({ shotId: 's-maya', stage: 'image' }),
+      ])
+    );
+    expect(failSheetClaim).toHaveBeenCalledWith(
+      'seq-1',
+      'maya',
+      'csv-maya',
+      expect.stringContaining('could not be reused')
+    );
+  });
+
+  it('refuses a plan frozen before sheet reuse', async () => {
+    await expect(
+      run(
+        plan({
+          // an older plan: no reusedSheets field
+          references: asStub<never>({ ...references, reusedSheets: undefined }),
+        })
+      )
+    ).rejects.toThrow('predates sheet reuse');
   });
 });
 
@@ -1130,6 +1240,7 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
           { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
         ],
         lookSheetsAfterDefault: [],
+        reusedSheets: [],
         locationSheets: [{ locationDbId: 'hall' }],
         elementSheets: null,
         voices: [],

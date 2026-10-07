@@ -55,6 +55,7 @@ import {
 import { generateId } from '@/platform/id';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import {
+  DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   supportsDraftMode,
   type AudioModel,
@@ -112,6 +113,7 @@ import {
   type ShotClaims,
   type SkippedShot,
 } from '@/shots/server/update-stale-plan';
+import type { ReusedCharacterSheet } from '@/shots/server/update-stale-references';
 import { bindPendingVoices } from '@/shots/server/pending-voices';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { shotVariantDedupId } from '@/platform/server/workflow/dedup-ids';
@@ -260,10 +262,20 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         'Update-all plan predates looks drawn from the default look; re-trigger the update'
       );
     }
+    if (
+      plan.references &&
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- plans frozen before sheets were reused by hash
+      !plan.references.reusedSheets
+    ) {
+      throw new WorkflowValidationError(
+        'Update-all plan predates sheet reuse; re-trigger the update'
+      );
+    }
     // Before any claim is taken, so nothing is left to clear.
     assertQueuedWithLooks(
       ...(plan.references?.characterSheets ?? []),
       ...(plan.references?.lookSheetsAfterDefault ?? []),
+      ...(plan.references?.reusedSheets ?? []).map((reused) => reused.payload),
       ...plan.renderRefs.characters
     );
 
@@ -500,6 +512,62 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         const sheetVersionId = await claimCharacterSheet(payload);
         if (sheetVersionId) await spawnCharacterSheet(payload, sheetVersionId);
       };
+      // A sheet the plan found finished elsewhere (#2017): the same claim a
+      // draw takes, then one guarded write points this sequence's cast look
+      // at that row. Gone or changed since the plan, the sheet fails here
+      // and holds its shots; nothing is drawn in its place, since the plan
+      // priced it at zero.
+      const adoptCharacterSheet = async (reused: ReusedCharacterSheet) => {
+        const { payload } = reused;
+        const id = payload.lookId;
+        const sheetVersionId = await claimCharacterSheet(payload);
+        if (!sheetVersionId) return;
+        try {
+          const outcome = await step.do(`adopt-character-sheet-${id}`, () =>
+            scopedDb.characterSheetVariants.adoptIfPending({
+              sequenceId,
+              lookId: id,
+              claimVersionId: sheetVersionId,
+              sheetVersionId: reused.sheetVersionId,
+              model: payload.imageModel ?? DEFAULT_IMAGE_MODEL,
+              inputHash: payload.snapshotInputHash,
+            })
+          );
+          if (outcome === 'refused') {
+            throw new Error(
+              `${payload.characterName}'s sheet could not be reused: it, or the inputs it matched, changed since the plan. Run it again.`
+            );
+          }
+          generatedCharacters.set(id, {
+            sheetImageUrl: reused.url,
+            sheetImagePath: reused.storagePath,
+            characterDbId: payload.characterDbId,
+            lookId: id,
+            sheetVersionId: reused.sheetVersionId,
+          });
+          await step.do(`emit-character-sheet-reused-${id}`, () =>
+            getGenerationChannel(sequenceId).emit(
+              'generation.character-sheet:progress',
+              {
+                characterId: payload.characterDbId,
+                lookId: id,
+                status: 'completed',
+                sheetImageUrl: reused.url,
+              }
+            )
+          );
+        } catch (error) {
+          failReference(id, 'reference', error);
+          await step.do(`fail-character-sheet-claim-${id}`, () =>
+            scopedDb.characterLooks.failSheetClaim(
+              sequenceId,
+              id,
+              sheetVersionId,
+              sanitizeFailResponse(error)
+            )
+          );
+        }
+      };
       // The second wave's claims are taken now, with the first wave's: the
       // click is when the run kicks these looks off. A regenerate between
       // the waves then takes a newer claim, and this run's older sheet
@@ -513,6 +581,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       );
       await Promise.allSettled([
         ...references.characterSheets.map(drawCharacterSheet),
+        ...references.reusedSheets.map(adoptCharacterSheet),
         ...references.locationSheets.map(async (payload) => {
           const id = payload.locationDbId;
           let referenceVersionId: string;
