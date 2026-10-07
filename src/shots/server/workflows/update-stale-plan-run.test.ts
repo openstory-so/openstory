@@ -483,6 +483,7 @@ describe('executor packed clips', () => {
           sceneId: 'scene-1',
           renderSegmentId: 'segment-1',
           referenceOnly: true,
+          seedanceEditSeconds: null,
           packedScene: header,
           attachSceneHeader: true,
           duration: 2,

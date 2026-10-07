@@ -7,6 +7,7 @@ const base = {
   prompt: 'SCARLETT lifts the CORAL_LIPSTICK to the light',
   aspectRatio: '16:9' as const,
   duration: 5,
+  heldSeedanceEditSeconds: null,
 };
 
 const references = [
@@ -176,6 +177,7 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
     aspectRatio: '16:9' as const,
     duration: 5,
     referenceOnly: true,
+    heldSeedanceEditSeconds: null,
   };
 
   it('states a concrete ratio, since nothing is left for adaptive to follow', () => {
@@ -267,11 +269,15 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
     expect(request.prompt.some((part) => part.type === 'video')).toBe(true);
   });
 
-  it('sends duration -1 and an adaptive size when the prompt says edit (#2036)', () => {
-    const request = buildBytePlusVideoRequest(
+  const editRequest = (
+    heldSeedanceEditSeconds: number | null,
+    prompt: string
+  ) =>
+    buildBytePlusVideoRequest(
       {
         ...referenceOnlyBase,
-        prompt: 'Edit the walk so she turns',
+        heldSeedanceEditSeconds,
+        prompt,
         referenceImages: [
           {
             referenceImageUrl: 'https://cdn.example.com/walk.mp4',
@@ -285,9 +291,32 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
       },
       'seedance_v2_5'
     );
+
+  it('sends duration -1 and an adaptive size for an edit the trigger held for (#2036)', () => {
+    const request = editRequest(8, 'Edit the walk so she turns');
     expect(request.size).toBe('adaptive_720p');
     expect(request.modelOptions).toMatchObject({ duration: -1 });
     expect(request.duration).toBe(5);
+  });
+
+  it('never sends an edit the trigger did not hold for (#2036)', () => {
+    // A fixed length on a hold sized for the shot. Ark refuses it unbilled.
+    const request = editRequest(null, 'Edit the walk so she turns');
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+  });
+
+  it('never sends an edit held for a shorter clip than the one attached (#2036)', () => {
+    // A packed clip can carry a longer clip than the shot that was held.
+    const request = editRequest(6, 'Edit the walk so she turns');
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+  });
+
+  it('sends the shot length when a rewrite dropped the word (#2036)', () => {
+    const request = editRequest(8, 'She turns as she walks');
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
   });
 
   it('keeps a concrete ratio and duration for Seedance 2.0 with a video', () => {

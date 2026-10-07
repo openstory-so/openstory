@@ -43,6 +43,7 @@ import {
   type PackedMotionPromptShot,
 } from '@/motion/server/build-motion-render';
 import { buildBytePlusVideoRequest } from '@/motion/server/build-byteplus-video-request';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { buildGeminiVideoRequest } from '@/motion/server/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/motion/server/build-grok-video-request';
 import { buildMotionRequest } from '@/motion/server/build-model-input';
@@ -439,12 +440,11 @@ export function buildShotPromptPreview(input: {
       packedPromptOverflow
     ),
     motionUnusable: [
-      ...unusableShotReferenceLines(
-        input.videoModel,
-        motionRefs,
-        motionUsesStartFrame,
-        assembledMotionPrompt
-      ),
+      ...unusableShotReferenceLines(input.videoModel, motionRefs, {
+        hasStartFrame: motionUsesStartFrame,
+        prompt: assembledMotionPrompt,
+        onArk: byteplusEnabled,
+      }),
       ...missingVoiceLines(
         input.videoModel,
         input.motionPrompt?.dialogue,
@@ -592,6 +592,13 @@ function buildMotionPreview(input: {
             ? input.generateAudio
             : undefined,
           referenceImages: input.referenceImages,
+          // What a trigger would decide for this prompt (#2036).
+          heldSeedanceEditSeconds: seedanceEditSeconds({
+            model: input.model,
+            onArk: true,
+            prompt: modelPrompt,
+            references: input.referenceImages,
+          }),
         },
         input.model
       );

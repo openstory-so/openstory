@@ -12,7 +12,7 @@
 
 import { readMediaDuration } from '@/cast/element-kind';
 import {
-  seedance25FollowsInputVideo,
+  isSeedanceEdit,
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
@@ -558,14 +558,16 @@ export function StudioComposer({
       ? 'text'
       : mode;
   // Length follows the clip, so the picker shows Auto and the estimate
-  // prices the longest clip (#2036).
-  const followsReferenceVideo = seedance25FollowsInputVideo(
-    compatibleVideoModel,
-    effectiveMode === 'edit' ||
-      (effectiveMode === 'reference' && videoRefs.length > 0),
+  // prices the model's longest clip (#2036).
+  const followsReferenceVideo = isSeedanceEdit({
+    model: compatibleVideoModel,
+    onArk: vias.byteplus === true,
     prompt,
-    effectiveMode === 'edit'
-  );
+    hasInputVideo:
+      effectiveMode === 'edit' ||
+      (effectiveMode === 'reference' && videoRefs.length > 0),
+    explicitEdit: effectiveMode === 'edit',
+  });
   const pricedDuration: StudioDuration = followsReferenceVideo
     ? 'auto'
     : snappedDuration;
@@ -873,12 +875,13 @@ export function StudioComposer({
         kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
       if (
         kind === 'video' &&
-        seedance25FollowsInputVideo(
-          compatibleVideoModel,
-          true,
+        isSeedanceEdit({
+          model: compatibleVideoModel,
+          onArk: vias.byteplus === true,
           prompt,
-          mode === 'edit'
-        )
+          hasInputVideo: true,
+          explicitEdit: mode === 'edit',
+        })
       ) {
         const lengthMessage = seedanceEditLengthMessage(durationSeconds);
         if (lengthMessage) {

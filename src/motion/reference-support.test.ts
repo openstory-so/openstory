@@ -125,20 +125,18 @@ describe('unusableReferenceLines', () => {
 
   it('refuses at submit with the same words', () => {
     expect(() =>
-      assertReferencesUsable(
-        'kling_v3_pro',
-        [el('VOICE', 'audio', 3)],
-        true,
-        null
-      )
+      assertReferencesUsable('kling_v3_pro', [el('VOICE', 'audio', 3)], {
+        hasStartFrame: true,
+        prompt: null,
+        onArk: true,
+      })
     ).toThrow("can't use VOICE — it takes no reference audio");
     expect(() =>
-      assertReferencesUsable(
-        'seedance_v2_5',
-        [el('VOICE', 'audio', 3)],
-        true,
-        null
-      )
+      assertReferencesUsable('seedance_v2_5', [el('VOICE', 'audio', 3)], {
+        hasStartFrame: true,
+        prompt: null,
+        onArk: true,
+      })
     ).not.toThrow();
   });
 
@@ -171,12 +169,11 @@ describe('unusableShotReferenceLines — a voice line with nothing to ride on', 
   };
 
   it('refuses a voice line with no start frame and no sheet or clip', () => {
-    const [line] = unusableShotReferenceLines(
-      'seedance_v2_5',
-      [voice],
-      false,
-      null
-    );
+    const [line] = unusableShotReferenceLines('seedance_v2_5', [voice], {
+      hasStartFrame: false,
+      prompt: null,
+      onArk: true,
+    });
     expect(line).toContain("can't send NARRATOR on its own");
     expect(line).toContain('or use a start frame');
   });
@@ -185,32 +182,59 @@ describe('unusableShotReferenceLines — a voice line with nothing to ride on', 
     const short = { token: 'CLIP', kind: 'video' as const, durationSeconds: 2 };
     // Inside the 1.8–30.2s reference window, so only the word makes it fail.
     expect(
-      unusableShotReferenceLines('seedance_v2_5', [short], true, 'the fox runs')
+      unusableShotReferenceLines('seedance_v2_5', [short], {
+        hasStartFrame: true,
+        prompt: 'the fox runs',
+        onArk: true,
+      })
     ).toEqual([]);
     expect(
-      unusableShotReferenceLines('seedance_v2_5', [short], true, 'Edit the run')
+      unusableShotReferenceLines('seedance_v2_5', [short], {
+        hasStartFrame: true,
+        prompt: 'Edit the run',
+        onArk: true,
+      })
     ).toEqual([
       'Seedance can only edit a video between 4 and 30 seconds. This one is 2s.',
     ]);
+    // fal never sends an edit, so the reference window is all that applies.
+    expect(
+      unusableShotReferenceLines('seedance_v2_5', [short], {
+        hasStartFrame: true,
+        prompt: 'Edit the run',
+        onArk: false,
+      })
+    ).toEqual([]);
     // The submit is the last word for every trigger.
     expect(() =>
-      assertReferencesUsable('seedance_v2_5', [short], true, 'Edit the run')
+      assertReferencesUsable('seedance_v2_5', [short], {
+        hasStartFrame: true,
+        prompt: 'Edit the run',
+        onArk: true,
+      })
     ).toThrow(/between 4 and 30 seconds/);
   });
 
   it('lets it ride with a start frame, a sheet or a clip', () => {
     expect(
-      unusableShotReferenceLines('seedance_v2_5', [voice], true, null)
+      unusableShotReferenceLines('seedance_v2_5', [voice], {
+        hasStartFrame: true,
+        prompt: null,
+        onArk: true,
+      })
     ).toEqual([]);
     expect(
-      unusableShotReferenceLines('seedance_v2_5', [voice, sheet], false, null)
+      unusableShotReferenceLines('seedance_v2_5', [voice, sheet], {
+        hasStartFrame: false,
+        prompt: null,
+        onArk: true,
+      })
     ).toEqual([]);
     expect(
       unusableShotReferenceLines(
         'seedance_v2_5',
         [voice, { token: 'CLIP', kind: 'video', durationSeconds: 5 }],
-        false,
-        null
+        { hasStartFrame: false, prompt: null, onArk: true }
       )
     ).toEqual([]);
   });
@@ -219,8 +243,7 @@ describe('unusableShotReferenceLines — a voice line with nothing to ride on', 
     const lines = unusableShotReferenceLines(
       'minimax_h3_max',
       [voice, { token: 'LONG', kind: 'video', durationSeconds: 40 }],
-      false,
-      null
+      { hasStartFrame: false, prompt: null, onArk: true }
     );
     expect(lines.some((line) => line.includes('over its 15s limit'))).toBe(
       true
@@ -339,8 +362,7 @@ describe('combined reference length (#1651)', () => {
     const [line, ...rest] = unusableShotReferenceLines(
       'minimax_h3_max',
       [still, audio('DIALOGUE', 10), audio('SIREN', 10)],
-      true,
-      null
+      { hasStartFrame: true, prompt: null, onArk: true }
     );
     expect(rest).toEqual([]);
     expect(line).toContain('DIALOGUE and SIREN');
@@ -353,8 +375,7 @@ describe('combined reference length (#1651)', () => {
       unusableShotReferenceLines(
         'minimax_h3_max',
         [still, audio('DIALOGUE', 7), audio('SIREN', 6)],
-        true,
-        null
+        { hasStartFrame: true, prompt: null, onArk: true }
       )
     ).toEqual([]);
   });
@@ -369,8 +390,7 @@ describe('combined reference length (#1651)', () => {
     const [line] = unusableShotReferenceLines(
       'minimax_h3_max',
       [still, clip('DOLLY', 9), clip('CRANE', 9)],
-      true,
-      null
+      { hasStartFrame: true, prompt: null, onArk: true }
     );
     expect(line).toContain('18s of clips');
     expect(line).toContain('15s combined limit');
@@ -382,8 +402,7 @@ describe('combined reference length (#1651)', () => {
     const lines = unusableShotReferenceLines(
       'minimax_h3_max',
       [still, audio('DIALOGUE', 20), audio('SIREN', 6)],
-      true,
-      null
+      { hasStartFrame: true, prompt: null, onArk: true }
     );
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('over its 15s limit');
@@ -394,8 +413,7 @@ describe('combined reference length (#1651)', () => {
       unusableShotReferenceLines(
         'minimax_h3_max',
         [still, audio('DIALOGUE', 14.8)],
-        true,
-        null
+        { hasStartFrame: true, prompt: null, onArk: true }
       )
     ).toEqual([]);
   });
@@ -409,8 +427,7 @@ describe('combined reference length (#1651)', () => {
           audio('DIALOGUE', 14),
           { ...audio('SIREN', 0), durationSeconds: null },
         ],
-        true,
-        null
+        { hasStartFrame: true, prompt: null, onArk: true }
       )
     ).toEqual([]);
   });
@@ -429,8 +446,7 @@ describe('combined reference length (#1651)', () => {
             referenceImageUrl: 'https://example.test/dialogue.wav',
           },
         ],
-        true,
-        null
+        { hasStartFrame: true, prompt: null, onArk: true }
       )
     ).toThrow(/16\.2s, over its 15s limit/);
   });

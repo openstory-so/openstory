@@ -1,6 +1,7 @@
 /**
  * Seedance 2.5 on Ark treats a job as a video edit only when the prompt uses
- * the word "edit" (#2036), or when Studio is already in edit mode. An edit
+ * the word "edit" (#2036), or when Studio is already in edit mode. The same
+ * model on fal never sends an edit, so none of this applies there. An edit
  * requires `duration: -1` and a source clip of 4–30s. A positive duration on
  * a job Ark itself classifies as an edit comes back as
  * `InvalidParameter.TaskTypeConstraint` before anything is billed, and the
@@ -21,9 +22,11 @@ export const ARK_AUTO_DURATION = -1;
 /** Wait before the one resubmit after Ark's `InternalServiceError`. */
 export const SEEDANCE_INTERNAL_BACKOFF = '5 seconds';
 
-// True whenever a run fails: nothing is captured. "Refunded" is not, because
-// a batch releases its hold only when the whole batch finishes.
-const NOT_CHARGED = 'You were not charged for this generation.';
+// True whenever a run fails: the clip is never captured. Not "this
+// generation": a prompt rewrite earlier in the same run is billed as it
+// happens. Not "refunded" either, because a batch releases its hold only when
+// the whole batch finishes.
+const NOT_CHARGED = 'You were not charged for this video.';
 
 // Ark saw an edit where we sent a fixed length. Saying "edit" is what makes
 // the next submit follow the clip.
@@ -32,72 +35,100 @@ const SEEDANCE_EDIT_CONSTRAINT_MESSAGE = `Seedance read this as a video edit and
 const SEEDANCE_INTERNAL_MESSAGE = `Seedance couldn't process this video because of a temporary error. Try again. ${NOT_CHARGED}`;
 
 /** Whole word, so "credits" and "editorial" do not count. */
-export function promptRequestsSeedanceEdit(prompt: string): boolean {
+function promptRequestsSeedanceEdit(prompt: string): boolean {
   return /\bedit\b/i.test(prompt);
-}
-
-/**
- * Seedance 2.5 whose output length follows the clip: the prompt says "edit"
- * (or Studio edit mode) and a video is attached.
- */
-export function seedance25FollowsInputVideo(
-  model: string,
-  hasInputVideo: boolean,
-  prompt: string,
-  explicitEdit: boolean
-): boolean {
-  return (
-    model === 'seedance_v2_5' &&
-    hasInputVideo &&
-    (explicitEdit || promptRequestsSeedanceEdit(prompt))
-  );
 }
 
 type ClipReference = { kind?: string; durationSeconds?: number | null };
 
+type SeedanceEditQuestion = {
+  model: string;
+  /** The job goes to BytePlus Ark. fal never sends an edit. */
+  onArk: boolean;
+  /** The assembled text the provider reads; null when none is written. */
+  prompt: string | null;
+};
+
+type SeedanceEditJob = SeedanceEditQuestion & { references: ClipReference[] };
+
 /**
- * Seconds a motion hold must cover. An edit's output follows the clip, not
- * the shot, so it is the longest attached clip (the 30s cap when a length is
- * unknown), never less than `seconds`. Every path that reserves for a motion
- * job prices this, so the hold cannot depend on which trigger was used.
+ * A Seedance 2.5 edit on Ark: the word "edit" in the prompt (or Studio edit
+ * mode, `explicitEdit`) plus an attached video. Studio asks this directly; a
+ * sequence asks `seedanceEditSeconds`.
  */
-export function seedanceEditHoldSeconds(
-  model: string,
-  seconds: number,
-  prompt: string | null,
-  references: ClipReference[]
-): number {
-  const clips = references.filter((ref) => ref.kind === 'video');
+export function isSeedanceEdit(
+  job: SeedanceEditQuestion & { hasInputVideo: boolean; explicitEdit: boolean }
+): boolean {
+  return (
+    job.model === 'seedance_v2_5' &&
+    job.onArk &&
+    job.hasInputVideo &&
+    (job.explicitEdit || promptRequestsSeedanceEdit(job.prompt ?? ''))
+  );
+}
+
+/**
+ * Whole seconds of the longest attached clip when this job is an edit (the
+ * 30s cap when a length is unknown); null when it is not.
+ *
+ * The one decision for a sequence. A trigger makes it, holds
+ * `Math.max(shotSeconds, editSeconds ?? 0)`, and puts it on the payload as
+ * `seedanceEditSeconds`; the submit sends `duration: -1` only when that
+ * covers the request it built (`arkSendsSeedanceEdit`), so an edit is never
+ * sent on a hold sized for less.
+ */
+export function seedanceEditSeconds(job: SeedanceEditJob): number | null {
+  const clips = job.references.filter((ref) => ref.kind === 'video');
   if (
-    !seedance25FollowsInputVideo(model, clips.length > 0, prompt ?? '', false)
+    !isSeedanceEdit({
+      ...job,
+      hasInputVideo: clips.length > 0,
+      explicitEdit: false,
+    })
   )
-    return seconds;
+    return null;
   return Math.max(
-    seconds,
     ...clips.map((ref) =>
-      Math.ceil(ref.durationSeconds ?? SEEDANCE_EDIT_MAX_SECONDS)
+      Math.ceil(knownSeconds(ref.durationSeconds) ?? SEEDANCE_EDIT_MAX_SECONDS)
     )
+  );
+}
+
+/**
+ * Whether the Ark request goes out as an edit: the request as built is one,
+ * AND the trigger held for at least its longest clip. The workflow
+ * re-assembles the prompt, can rewrite it, and packs several shots' clips
+ * into one request after the hold was taken, so the request is asked again
+ * here and measured against what was held. Held but no longer an edit sends
+ * the shot's own length, which the hold covers. An edit that was not held
+ * for, or held for a shorter clip, sends a fixed length, which Ark refuses
+ * before billing (`InvalidParameter.TaskTypeConstraint`).
+ */
+export function arkSendsSeedanceEdit(
+  heldEditSeconds: number | null,
+  request: Omit<SeedanceEditJob, 'onArk'>
+): boolean {
+  const needed = seedanceEditSeconds({ ...request, onArk: true });
+  return (
+    needed !== null && heldEditSeconds !== null && heldEditSeconds >= needed
   );
 }
 
 /**
  * One line per attached clip a Seedance 2.5 edit cannot take (outside
  * 4–30s). Empty when the job is not an edit. Part of
- * `unusableShotReferenceLines`, so every trigger and the submit refuse alike.
+ * `unusableShotReferenceLines`, so a trigger and the submit say the same
+ * thing.
  */
-export function seedanceEditClipLines(
-  model: string,
-  prompt: string | null,
-  references: ClipReference[]
-): string[] {
-  const clips = references.filter((ref) => ref.kind === 'video');
-  if (
-    !seedance25FollowsInputVideo(model, clips.length > 0, prompt ?? '', false)
-  )
-    return [];
-  return clips.flatMap(
-    (ref) => seedanceEditLengthMessage(ref.durationSeconds) ?? []
-  );
+export function seedanceEditClipLines(job: SeedanceEditJob): string[] {
+  if (seedanceEditSeconds(job) === null) return [];
+  return job.references
+    .filter((ref) => ref.kind === 'video')
+    .flatMap((ref) => seedanceEditLengthMessage(ref.durationSeconds) ?? []);
+}
+
+function knownSeconds(seconds: number | null | undefined): number | null {
+  return seconds != null && Number.isFinite(seconds) ? seconds : null;
 }
 
 // Rounds away from the window, so 3.99s reads 3.9s and never "4s".
@@ -110,12 +141,14 @@ function formatSeconds(seconds: number): string {
 /**
  * Plain refusal when a known clip length is outside 4–30s. Null when the
  * length is unknown or inside the window — unknown still submits.
- * No refund sentence: this runs before a hold exists.
+ * No refund sentence: a trigger says this before a hold exists, and at the
+ * submit nothing has been sent.
  */
 export function seedanceEditLengthMessage(
-  seconds: number | null | undefined
+  length: number | null | undefined
 ): string | null {
-  if (seconds == null || !Number.isFinite(seconds)) return null;
+  const seconds = knownSeconds(length);
+  if (seconds === null) return null;
   if (
     seconds >= SEEDANCE_EDIT_MIN_SECONDS &&
     seconds <= SEEDANCE_EDIT_MAX_SECONDS
@@ -161,7 +194,8 @@ export function seedanceSubmitRefusal(
 /**
  * User copy for a failure on the BytePlus via, or null for any other via.
  * Portrait-filter copy is already plain. Callers log the raw message: this
- * drops Ark's code and detail.
+ * strips Ark's prefix and code and keeps at most 180 characters of its
+ * detail.
  */
 export function explainSeedanceFailure(
   message: string,
@@ -178,11 +212,16 @@ export function explainSeedanceFailure(
   return `Seedance couldn't process this video. ${short}${stop} ${NOT_CHARGED}`;
 }
 
-/** Stored failure text the gallery and the shot overlay should show whole. */
+/**
+ * Stored failure text the gallery and the shot overlay should show whole:
+ * only the sentences this module writes. Another error that happens to start
+ * with the model's name can carry raw provider text.
+ */
 export function seedanceUserFacingError(
   error: string | null | undefined
 ): string | null {
   const text = error?.trim();
-  if (!text?.startsWith('Seedance')) return null;
+  if (!text || !/^Seedance (?:couldn't|can only|read this)/.test(text))
+    return null;
   return text;
 }

@@ -273,6 +273,7 @@ async function generateClip(
     // This script has no D1, so it cannot register ACR assets (#1361) — it
     // runs without ARK_API_KEY and the fal via renders these clips.
     arkAssets: {},
+    heldSeedanceEditSeconds: null,
     imageUrl: motionUrl,
     prompt,
     model,

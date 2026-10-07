@@ -40,7 +40,9 @@ import {
   gateEstimate,
 } from '@/billing/cost-estimation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
-import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ValidationError } from '@/platform/errors';
 import {
@@ -511,7 +513,10 @@ export async function executeSmartRetry(
     const [motionCharacters, motionElements, motionLocations, voiceCharacters] =
       await Promise.all([
         context.scopedDb.characters.listWithSheets(sequence.id),
-        context.scopedDb.sequenceElements.list(sequence.id),
+        // A clip with no known length passes every length gate unchecked.
+        context.scopedDb.sequenceElements
+          .list(sequence.id)
+          .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
         anyReferenceOnly
           ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
           : Promise.resolve([]),
@@ -535,6 +540,9 @@ export async function executeSmartRetry(
       ),
     });
 
+    const seedanceOnArk = await seedanceRunsOnArk(
+      toWorkflowScopedDb(context.scopedDb).credentials
+    );
     const batchShots: BatchMotionMusicWorkflowInput['shots'] = [];
     let videoCost = ZERO_MICROS;
     for (const shot of failedMotionShots) {
@@ -566,17 +574,20 @@ export async function executeSmartRetry(
         referenceOnly,
         locations: motionLocations,
       });
+      // No refusal here: images above may already be running, so a clip this
+      // model cannot use fails its own shot at the submit, at once.
+      const editSeconds = seedanceEditSeconds({
+        model: shotVideoModel,
+        onArk: seedanceOnArk,
+        prompt,
+        references: referenceImages,
+      });
       videoCost = addMicros(
         videoCost,
         gateEstimate(
           estimateVideoCost(
             shotVideoModel,
-            seedanceEditHoldSeconds(
-              shotVideoModel,
-              snapDuration(undefined, shotVideoModel),
-              prompt,
-              referenceImages
-            ),
+            Math.max(snapDuration(undefined, shotVideoModel), editSeconds ?? 0),
             { pricing, resolution: sequence.resolution, referenceOnly }
           ),
           { model: shotVideoModel, operation: 'smart-retry:motion' }
@@ -591,6 +602,7 @@ export async function executeSmartRetry(
         sequenceTitle: sequence.title,
         imageUrl: referenceOnly ? undefined : (imageUrl ?? undefined),
         referenceOnly,
+        seedanceEditSeconds: editSeconds,
         referenceImages,
         frameVersionId: referenceOnly ? null : (shot.image?.id ?? null),
         motionPromptVersionId: selectedMotion?.id ?? null,

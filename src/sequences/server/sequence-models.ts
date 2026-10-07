@@ -53,7 +53,12 @@ import {
   NotFoundError,
   ValidationError,
 } from '@/platform/errors';
-import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
+import {
+  canRenderReferenceOnly,
+  seedanceRunsOnArk,
+} from '@/motion/server/motion-generation';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
+import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   rendersReferenceOnly,
@@ -368,7 +373,10 @@ export async function addModelToSequence(
       selectedMotionByShot,
     ] = await Promise.all([
       scopedDb.characters.listWithSheets(sequence.id),
-      scopedDb.sequenceElements.list(sequence.id),
+      // A clip with no known length passes every length gate unchecked.
+      scopedDb.sequenceElements
+        .list(sequence.id)
+        .then((rows) => withMeasuredDurations(scopedDb, rows)),
       anyReferenceOnly
         ? scopedDb.sequenceLocations.listWithReferences(sequence.id)
         : Promise.resolve([]),
@@ -408,6 +416,76 @@ export async function addModelToSequence(
       ),
     });
 
+    const sceneOf = (s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>) =>
+      resolveSceneForShot(s, dialogueSceneContext).scene;
+    // Built before the hold (#2036): a shot's edit decision sizes it, and the
+    // same decision rides the payload. Structured motion prompt now lives on
+    // the shot's selected `shot_prompt_versions` row (#713); `motion-batch`
+    // re-assembles per model from `motionPrompt`.
+    const seedanceOnArk = await seedanceRunsOnArk(
+      toWorkflowScopedDb(scopedDb).credentials
+    );
+    const shots: BatchMotionMusicWorkflowInput['shots'] = eligible.map((f) => {
+      const selectedMotion = selectedMotionByShot.get(f.id);
+      const spoken = batchDialogue.byShotId.get(f.id);
+      const motionPrompt = selectedMotion
+        ? motionPromptFromVersion(selectedMotion, dialogueOf(f))
+        : undefined;
+      const referenceOnly = shotIsReferenceOnly(f);
+      const referenceImages = buildMotionReferenceImages({
+        scene: sceneOf(f),
+        characters,
+        elements,
+        motionPrompt: selectedMotion?.text ?? null,
+        referenceOnly,
+        locations,
+      });
+      const prompt = resolveMotionPrompt(
+        {
+          motionPrompt: motionPrompt ?? null,
+          characterTags: sceneOf(f)?.continuity?.characterTags,
+          description: sceneOf(f)?.originalScript.extract ?? null,
+        },
+        model
+      );
+      return {
+        shotId: f.id,
+        sceneId: f.sceneId,
+        packedScene: packedSceneFromScene(sceneOf(f), styleConfig),
+        attachSceneHeader:
+          allShots.filter((row) => row.sceneId === f.sceneId).length > 1,
+        // Reference-only carries no still; every other eligible shot
+        // has one. Same encoding as the batch path in
+        // `generateBatchMotionFn`: a null `frameVersionId` means the
+        // clip rendered from references.
+        imageUrl: referenceOnly ? undefined : (f.image?.url ?? ''),
+        referenceOnly,
+        frameVersionId: referenceOnly ? null : (f.image?.id ?? null),
+        motionPromptVersionId: selectedMotion?.id ?? null,
+        seedanceEditSeconds: seedanceEditSeconds({
+          model,
+          onArk: seedanceOnArk,
+          prompt,
+          references: referenceImages,
+        }),
+        referenceImages,
+        prompt,
+        model,
+        motionPrompt,
+        // The audio that goes with the words in the prompt: the clip
+        // when one matches and the lines either way.
+        voicedLines: spoken?.voicedLines ?? [],
+        ...(spoken && spoken.audioClips.length > 0
+          ? { audioClips: spoken.audioClips }
+          : {}),
+        sceneTitle: sceneOf(f)?.metadata?.title,
+        characterTags: sceneOf(f)?.continuity?.characterTags,
+        duration: f.durationMs ? f.durationMs / 1000 : 3,
+        aspectRatio: sequence.aspectRatio,
+        resolution: sequence.resolution,
+      };
+    });
+
     const pricing = await getEffectiveFalPricing();
     const reservationId = await reserveRunCredits(
       scopedDb,
@@ -415,22 +493,26 @@ export async function addModelToSequence(
       // So does a start-frame shot once sheets exist — the payload below
       // attaches cast/element refs to EVERY shot, and on a model whose refs
       // switch endpoint (Kling O3, Seedance, H3 Max) that is a different,
-      // dearer row. Asked at sequence granularity because the per-shot match
-      // needs scene context that is only loaded after the reservation; a
-      // shot that matches nothing merely over-reserves, which is refunded,
-      // where under-reserving fails the run mid-flight.
+      // dearer row. Asked at sequence granularity: a shot that matches
+      // nothing merely over-reserves, which is refunded, where
+      // under-reserving fails the run mid-flight. A Seedance 2.5 edit holds
+      // its clip's length (#2036).
       eligible.reduce(
-        (sum, shot) =>
+        (sum, shot, index) =>
           addMicros(
             sum,
             gateEstimate(
-              estimateVideoCost(model, 5, {
-                pricing,
-                resolution: sequence.resolution,
-                referenceOnly: shotIsReferenceOnly(shot),
-                hasReferenceImages:
-                  characters.length > 0 || elements.length > 0,
-              }),
+              estimateVideoCost(
+                model,
+                Math.max(5, shots[index]?.seedanceEditSeconds ?? 0),
+                {
+                  pricing,
+                  resolution: sequence.resolution,
+                  referenceOnly: shotIsReferenceOnly(shot),
+                  hasReferenceImages:
+                    characters.length > 0 || elements.length > 0,
+                }
+              ),
               { model, operation: 'add-video-model' }
             )
           ),
@@ -448,11 +530,6 @@ export async function addModelToSequence(
         scopedDb,
         reservationId,
         async () => {
-          const sceneContext = dialogueSceneContext;
-          const sceneOf = (
-            s: Pick<Shot, 'sceneId' | 'durationMs' | 'shotNumber'>
-          ) => resolveSceneForShot(s, sceneContext).scene;
-
           // No pre-seeded `video_variants` version here (mirrors the image branch
           // below, #990): each shot's motion child opens its own in-flight
           // `video_variants` version in `set-generating-status` (keyed by
@@ -461,9 +538,6 @@ export async function addModelToSequence(
           // Pre-seeding a `pending` row the workflow can't reconcile (it dedupes on
           // the run id the pending row lacks) would orphan it and — being non-failed
           // — permanently block re-adding the model via `assertModelNotAlreadyAdded`.
-          // Structured motion prompt now lives on the shot's selected
-          // `shot_prompt_versions` row (#713), not `metadata.prompts.motion`. Batch
-          // it once; `motion-batch` re-assembles per model from `motionPrompt`.
           const workflowInput: BatchMotionMusicWorkflowInput = {
             ...baseCtx,
             reservationId,
@@ -476,59 +550,7 @@ export async function addModelToSequence(
             ...(batchDialogue.dialogueSpeech
               ? { dialogueSpeech: batchDialogue.dialogueSpeech }
               : {}),
-            shots: eligible.map((f) => {
-              const selectedMotion = selectedMotionByShot.get(f.id);
-              const spoken = batchDialogue.byShotId.get(f.id);
-              const motionPrompt = selectedMotion
-                ? motionPromptFromVersion(selectedMotion, dialogueOf(f))
-                : undefined;
-              const referenceOnly = shotIsReferenceOnly(f);
-              return {
-                shotId: f.id,
-                sceneId: f.sceneId,
-                packedScene: packedSceneFromScene(sceneOf(f), styleConfig),
-                attachSceneHeader:
-                  allShots.filter((row) => row.sceneId === f.sceneId).length >
-                  1,
-                // Reference-only carries no still; every other eligible shot
-                // has one. Same encoding as the batch path in
-                // `generateBatchMotionFn`: a null `frameVersionId` means the
-                // clip rendered from references.
-                imageUrl: referenceOnly ? undefined : (f.image?.url ?? ''),
-                referenceOnly,
-                frameVersionId: referenceOnly ? null : (f.image?.id ?? null),
-                motionPromptVersionId: selectedMotion?.id ?? null,
-                referenceImages: buildMotionReferenceImages({
-                  scene: sceneOf(f),
-                  characters,
-                  elements,
-                  motionPrompt: selectedMotion?.text ?? null,
-                  referenceOnly,
-                  locations,
-                }),
-                prompt: resolveMotionPrompt(
-                  {
-                    motionPrompt: motionPrompt ?? null,
-                    characterTags: sceneOf(f)?.continuity?.characterTags,
-                    description: sceneOf(f)?.originalScript.extract ?? null,
-                  },
-                  model
-                ),
-                model,
-                motionPrompt,
-                // The audio that goes with the words in the prompt: the clip
-                // when one matches and the lines either way.
-                voicedLines: spoken?.voicedLines ?? [],
-                ...(spoken && spoken.audioClips.length > 0
-                  ? { audioClips: spoken.audioClips }
-                  : {}),
-                sceneTitle: sceneOf(f)?.metadata?.title,
-                characterTags: sceneOf(f)?.continuity?.characterTags,
-                duration: f.durationMs ? f.durationMs / 1000 : 3,
-                aspectRatio: sequence.aspectRatio,
-                resolution: sequence.resolution,
-              };
-            }),
+            shots,
           };
           return triggerWorkflow('/motion-batch', workflowInput, {
             deduplicationId: `add-video-${sequence.id}-${model}-${Date.now()}`,

@@ -234,6 +234,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
     for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
       let retrySeedanceInternal = false;
+      let internalError = '';
       const tag =
         (attempt === 0 ? '' : `-retry-${attempt}`) +
         (seedanceInternalRetried ? '-internal' : '');
@@ -320,7 +321,8 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         }
 
         const poll = await step.do(
-          `video-poll-batch-${attempt}-${batch}`,
+          // The suffix keeps the second job's polls apart from the first's.
+          `video-poll-batch-${attempt}-${batch}${seedanceInternalRetried ? '-internal' : ''}`,
           async (): Promise<StudioPollOutcome> => {
             const deadline = Date.now() + POLL_BATCH_DURATION_MS;
             while (Date.now() < deadline) {
@@ -403,12 +405,12 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         }
         if (poll.kind === 'failed') {
           // One new job, not a Cloudflare retry of the failed task (#2036).
-          // Decrementing the attempt keeps it off the content-flag budget.
           if (
             !seedanceInternalRetried &&
             isSeedanceInternalServiceError(poll.error, job.via)
           ) {
             retrySeedanceInternal = true;
+            internalError = poll.error;
             break;
           }
           const explained = explainSeedanceFailure(poll.error, job.via);
@@ -428,12 +430,13 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       if (retrySeedanceInternal) {
         seedanceInternalRetried = true;
         logger.warn(
-          `[StudioGenerationWorkflow] Ark InternalServiceError on job ${job.jobId} for ${assetId}; submitting one new job`
+          `[StudioGenerationWorkflow] Ark job ${job.jobId} failed for ${assetId}; submitting one new job: ${internalError}`
         );
         await step.sleep(
           'seedance-internal-backoff',
           SEEDANCE_INTERNAL_BACKOFF
         );
+        // Keeps the new job off the content-flag budget.
         attempt -= 1;
         continue;
       }

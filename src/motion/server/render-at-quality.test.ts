@@ -27,6 +27,13 @@ vi.doMock('@/billing/server/fal-pricing-live', () => ({
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTrigger,
 }));
+// The draft's stored clip. Null: the container does not say.
+const mockDraftSeconds = vi.fn(
+  async (_key: string): Promise<number | null> => null
+);
+vi.doMock('@/cast/server/sequence-elements/media-duration', () => ({
+  measureOwnMediaDuration: mockDraftSeconds,
+}));
 
 const { ALREADY_RENDERING, draftRenderBlocker, renderDraftAtQuality } =
   await import('./render-at-quality');
@@ -188,6 +195,55 @@ describe('renderDraftAtQuality', () => {
     );
     // Never a draft flag on a final: its task id must not be stamped.
     expect(mockTrigger.mock.calls[0]?.[1]).not.toHaveProperty('draft');
+  });
+
+  it("holds the draft's own length when it ran longer than the shot (#2036)", async () => {
+    // A Seedance 2.5 edit: the draft followed its 24s clip, not the 5s shot.
+    mockDraftSeconds.mockResolvedValueOnce(23.8);
+    const draft = makeVersion();
+    const { scopedDb } = makeScopedDb([draft]);
+
+    await renderDraftAtQuality({
+      scopedDb,
+      userId: 'u1',
+      sequence,
+      version: draft,
+      sceneId: 'scene-1',
+    });
+
+    expect(mockDraftSeconds).toHaveBeenCalledWith('videos/draft.mp4');
+    expect(mockReserve).toHaveBeenCalledWith(
+      scopedDb,
+      gateEstimate(
+        estimateVideoCost('seedance_v2_5', 24, {
+          pricing: TEST_FAL_PRICING,
+          resolution: '1080p',
+          hasReferenceImages: true,
+          referenceOnly: true,
+        }),
+        { model: 'seedance_v2_5', operation: 'motion' }
+      ),
+      expect.anything()
+    );
+    // The manifest's length still rides the payload.
+    expect(mockTrigger.mock.calls[0]?.[1]).toMatchObject({ duration: 5 });
+  });
+
+  it('refuses before the hold when the draft clip cannot be read (#2036)', async () => {
+    mockDraftSeconds.mockRejectedValueOnce(new Error('R2 is down'));
+    const draft = makeVersion();
+    const { scopedDb } = makeScopedDb([draft]);
+
+    await expect(
+      renderDraftAtQuality({
+        scopedDb,
+        userId: 'u1',
+        sequence,
+        version: draft,
+        sceneId: 'scene-1',
+      })
+    ).rejects.toThrow(/Couldn't read the draft clip/);
+    expect(mockReserve).not.toHaveBeenCalled();
   });
 
   it('a second attempt after a failed final gets a fresh key', async () => {

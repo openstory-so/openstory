@@ -8,7 +8,7 @@ import {
   missingVoiceLines,
   unusableShotReferenceLines,
 } from '@/motion/reference-support';
-import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { createServerFn } from '@tanstack/react-start';
 import {
@@ -25,7 +25,10 @@ import {
   safeImageToVideoModel,
 } from '@/models/models';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
-import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
+import {
+  canRenderReferenceOnly,
+  seedanceRunsOnArk,
+} from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -308,6 +311,31 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         locations: batchLocations,
       });
 
+    // The prompt each shot's payload carries. With no written version it is
+    // the script extract, so the edit decision below reads the text that is
+    // sent, not the null the reference match reads.
+    const payloadPromptFor = (shot: (typeof eligibleShots)[number]) =>
+      resolveMotionPromptFromVersion(
+        selectedMotionByShot.get(shot.id),
+        {
+          dialogue: batchDialogueOf(shot),
+          characterTags: sceneOf(shot)?.continuity?.characterTags,
+          description: sceneOf(shot)?.originalScript.extract ?? null,
+          generateAudio: data.generateAudio,
+        },
+        resolveShotVideoModel(shot)
+      );
+    // One edit decision per shot (#2036): the refusal, the hold and the
+    // payload all read it.
+    const seedanceOnArk = await seedanceRunsOnArk(credentials);
+    const editSecondsFor = (shot: (typeof eligibleShots)[number]) =>
+      seedanceEditSeconds({
+        model: resolveShotVideoModel(shot),
+        onArk: seedanceOnArk,
+        prompt: payloadPromptFor(shot),
+        references: referencesFor(shot),
+      });
+
     // No fallback (#1559): refuse the batch before reserving if any shot's
     // model cannot use a clip or voice line it attaches. The same element
     // usually sits on several shots, so each problem is named once.
@@ -316,8 +344,11 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         unusableShotReferenceLines(
           resolveShotVideoModel(shot),
           referencesFor(shot),
-          !shotIsReferenceOnly(shot),
-          motionPromptTextFor(shot)
+          {
+            hasStartFrame: !shotIsReferenceOnly(shot),
+            prompt: payloadPromptFor(shot),
+            onArk: seedanceOnArk,
+          }
         ).concat(
           missingVoiceLines(
             resolveShotVideoModel(shot),
@@ -374,16 +405,9 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
           return shot ? referencesFor(shot).length > 0 : false;
         },
-        holdSeconds: (batchShot, model, seconds) => {
+        holdSeconds: (batchShot, _model, seconds) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
-          return shot
-            ? seedanceEditHoldSeconds(
-                model,
-                seconds,
-                motionPromptTextFor(shot),
-                referencesFor(shot)
-              )
-            : seconds;
+          return Math.max(seconds, (shot && editSecondsFor(shot)) ?? 0);
         },
       }
     );
@@ -471,6 +495,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 ? undefined
                 : (shot.image?.url ?? undefined),
               referenceOnly: shotIsReferenceOnly(shot),
+              seedanceEditSeconds: editSecondsFor(shot),
               // The versions this clip renders from, pinned here so the render
               // manifest can't name rows a concurrent edit repointed to.
               // `null` when the clip renders from references — naming a still
@@ -480,16 +505,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 ? null
                 : (shot.image?.id ?? null),
               motionPromptVersionId: selectedMotion?.id ?? null,
-              prompt: resolveMotionPromptFromVersion(
-                selectedMotion,
-                {
-                  dialogue: shotDialogue,
-                  characterTags: scene?.continuity?.characterTags,
-                  description: scene?.originalScript.extract ?? null,
-                  generateAudio: data.generateAudio,
-                },
-                shotModel
-              ),
+              prompt: payloadPromptFor(shot),
               model: shotModel,
               sceneTitle: scene?.metadata?.title,
               sequenceTitle: sequence.title,

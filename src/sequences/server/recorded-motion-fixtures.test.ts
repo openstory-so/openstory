@@ -71,6 +71,7 @@ it('recorded packed and individual motion requests match canonical direction and
         characterTags: scene.continuity.characterTags,
         generateAudio: true,
         referenceOnly: false,
+        seedanceEditSeconds: null,
       };
     });
     for (const mode of ['packed', 'single'] as const) {

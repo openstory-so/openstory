@@ -2,39 +2,64 @@ import { describe, expect, it } from 'vitest';
 import {
   explainSeedanceFailure,
   isSeedanceInternalServiceError,
-  promptRequestsSeedanceEdit,
-  seedance25FollowsInputVideo,
-  seedanceEditHoldSeconds,
+  arkSendsSeedanceEdit,
+  isSeedanceEdit,
   seedanceEditLengthMessage,
+  seedanceEditSeconds,
+  seedanceUserFacingError,
 } from './seedance-edit';
 
 describe('seedance edit constraints (#2036)', () => {
-  it('follows the clip only when the prompt says edit', () => {
-    expect(promptRequestsSeedanceEdit('Edit @Video1.')).toBe(true);
-    expect(promptRequestsSeedanceEdit('please EDIT the clip')).toBe(true);
-    expect(promptRequestsSeedanceEdit('credits and editorial notes')).toBe(
-      false
-    );
-    expect(
-      seedance25FollowsInputVideo('seedance_v2_5', true, 'edit the walk', false)
-    ).toBe(true);
-    expect(
-      seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks', false)
-    ).toBe(false);
-    expect(
-      seedance25FollowsInputVideo(
-        'seedance_v2_5',
-        false,
-        'edit the walk',
-        false
-      )
-    ).toBe(false);
-    expect(
-      seedance25FollowsInputVideo('seedance_v2', true, 'edit the walk', false)
-    ).toBe(false);
-    expect(
-      seedance25FollowsInputVideo('seedance_v2_5', true, 'the fox walks', true)
-    ).toBe(true);
+  it('is an edit only for the word plus a video, on Seedance 2.5 via Ark', () => {
+    const ask = (over: Partial<Parameters<typeof isSeedanceEdit>[0]> = {}) =>
+      isSeedanceEdit({
+        model: 'seedance_v2_5',
+        onArk: true,
+        prompt: 'edit the walk',
+        hasInputVideo: true,
+        explicitEdit: false,
+        ...over,
+      });
+    expect(ask()).toBe(true);
+    expect(ask({ prompt: 'Edit @Video1.' })).toBe(true);
+    expect(ask({ prompt: 'please EDIT the clip' })).toBe(true);
+    // Whole word only.
+    expect(ask({ prompt: 'credits and editorial notes' })).toBe(false);
+    expect(ask({ prompt: 'the fox walks' })).toBe(false);
+    expect(ask({ prompt: null })).toBe(false);
+    expect(ask({ hasInputVideo: false })).toBe(false);
+    expect(ask({ model: 'seedance_v2' })).toBe(false);
+    // fal never sends an edit.
+    expect(ask({ onArk: false })).toBe(false);
+    // Studio edit mode needs no word.
+    expect(ask({ prompt: 'the fox walks', explicitEdit: true })).toBe(true);
+  });
+
+  it('sends the edit only when the hold covers the request as built', () => {
+    const sends = (
+      held: number | null,
+      prompt: string,
+      clipSeconds: number[] = [8],
+      model = 'seedance_v2_5'
+    ) =>
+      arkSendsSeedanceEdit(held, {
+        model,
+        prompt,
+        references: clipSeconds.map((durationSeconds) => ({
+          kind: 'video',
+          durationSeconds,
+        })),
+      });
+    expect(sends(8, 'edit the walk')).toBe(true);
+    // Not held: a fixed length goes out, and Ark refuses it unbilled.
+    expect(sends(null, 'edit the walk')).toBe(false);
+    // Held for a shorter clip than a packed neighbour attached.
+    expect(sends(8, 'edit the walk', [8, 28])).toBe(false);
+    expect(sends(28, 'edit the walk', [8, 28])).toBe(true);
+    // Held, but a rewrite dropped the word: the shot's own length.
+    expect(sends(8, 'the fox walks')).toBe(false);
+    expect(sends(8, 'edit the walk', [])).toBe(false);
+    expect(sends(8, 'edit the walk', [8], 'seedance_v2')).toBe(false);
   });
 
   it('names a known length outside 4–30s and stays quiet otherwise', () => {
@@ -50,25 +75,50 @@ describe('seedance edit constraints (#2036)', () => {
     expect(seedanceEditLengthMessage(30.01)).toMatch(/30\.1s\.$/);
   });
 
-  it('holds for the clip an edit will follow, and for the shot otherwise', () => {
+  it('gives the longest clip an edit will follow, and null otherwise', () => {
     const clip = (durationSeconds: number | null) => ({
       kind: 'video',
       durationSeconds,
     });
-    const hold = (
+    const seconds = (
       prompt: string | null,
-      refs: object[],
-      model = 'seedance_v2_5'
-    ) => seedanceEditHoldSeconds(model, 5, prompt, refs);
-    expect(hold('edit the walk', [clip(24.2)])).toBe(25);
-    // Never less than the shot, and the cap when the length is unknown.
-    expect(hold('edit the walk', [clip(4)])).toBe(5);
-    expect(hold('edit the walk', [clip(null)])).toBe(30);
-    // Not an edit: no word, no clip, no prompt yet, or another model.
-    expect(hold('the fox walks', [clip(24)])).toBe(5);
-    expect(hold('edit the walk', [{ kind: 'image' }])).toBe(5);
-    expect(hold(null, [clip(24)])).toBe(5);
-    expect(hold('edit the walk', [clip(24)], 'seedance_v2')).toBe(5);
+      references: object[],
+      over: { model?: string; onArk?: boolean } = {}
+    ) =>
+      seedanceEditSeconds({
+        model: 'seedance_v2_5',
+        onArk: true,
+        prompt,
+        references,
+        ...over,
+      });
+    expect(seconds('edit the walk', [clip(24.2)])).toBe(25);
+    expect(seconds('edit the walk', [clip(4), clip(12)])).toBe(12);
+    // The cap when a length is unknown, or is not a number.
+    expect(seconds('edit the walk', [clip(null)])).toBe(30);
+    expect(seconds('edit the walk', [clip(Number.NaN)])).toBe(30);
+    // Not an edit: no word, no clip, no prompt yet, another model, or fal.
+    expect(seconds('the fox walks', [clip(24)])).toBeNull();
+    expect(seconds('edit the walk', [{ kind: 'image' }])).toBeNull();
+    expect(seconds(null, [clip(24)])).toBeNull();
+    expect(
+      seconds('edit the walk', [clip(24)], { model: 'seedance_v2' })
+    ).toBeNull();
+    expect(seconds('edit the walk', [clip(24)], { onArk: false })).toBeNull();
+  });
+
+  it('shows whole only the sentences this module writes', () => {
+    expect(
+      seedanceUserFacingError(
+        "Seedance couldn't process this video. You were not charged for this video."
+      )
+    ).toMatch(/^Seedance couldn't/);
+    expect(
+      seedanceUserFacingError(
+        'Seedance 2.5 refused this prompt for its length: raw provider text'
+      )
+    ).toBeNull();
+    expect(seedanceUserFacingError(null)).toBeNull();
   });
 
   it('retries InternalServiceError only for a BytePlus job', () => {
@@ -87,7 +137,7 @@ describe('seedance edit constraints (#2036)', () => {
         'byteplus'
       )
     ).toBe(
-      'Seedance read this as a video edit and refused it. Say "edit" in the prompt and use a clip between 4 and 30 seconds. You were not charged for this generation.'
+      'Seedance read this as a video edit and refused it. Say "edit" in the prompt and use a clip between 4 and 30 seconds. You were not charged for this video.'
     );
     expect(
       explainSeedanceFailure(
@@ -95,7 +145,7 @@ describe('seedance edit constraints (#2036)', () => {
         'byteplus'
       )
     ).toBe(
-      "Seedance couldn't process this video. bad ratio. You were not charged for this generation."
+      "Seedance couldn't process this video. bad ratio. You were not charged for this video."
     );
     // The via decides, not the words in the message.
     expect(explainSeedanceFailure('InvalidParameter: nope', 'fal')).toBeNull();
@@ -105,7 +155,7 @@ describe('seedance edit constraints (#2036)', () => {
         'byteplus'
       )
     ).toBe(
-      "Seedance couldn't process this video because of a temporary error. Try again. You were not charged for this generation."
+      "Seedance couldn't process this video because of a temporary error. Try again. You were not charged for this video."
     );
     expect(
       explainSeedanceFailure('Motion generation failed: Kling exploded', 'fal')

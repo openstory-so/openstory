@@ -5,7 +5,7 @@
  */
 import { loadSequenceStyle } from '@/look/server/sequence-style';
 import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
-import { seedanceEditHoldSeconds } from '@/motion/seedance-edit';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import {
   assertReferencesUsable,
   missingVoiceLines,
@@ -33,6 +33,7 @@ import {
 import {
   canRenderReferenceOnly,
   resolveMotionVia,
+  seedanceRunsOnArk,
 } from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
@@ -348,7 +349,14 @@ export async function generateShotMotion(
   // No fallback (#1559): a clip or voice line this model cannot use refuses
   // the render here, before credits are reserved, rather than as a failed
   // job after them.
-  assertReferencesUsable(model, referenceImages, !referenceOnly, prompt);
+  const seedanceOnArk = await seedanceRunsOnArk(
+    toWorkflowScopedDb(context.scopedDb).credentials
+  );
+  assertReferencesUsable(model, referenceImages, {
+    hasStartFrame: !referenceOnly,
+    prompt,
+    onArk: seedanceOnArk,
+  });
   const shotDialogue = dialogueOf(shot);
   const missingVoices = missingVoiceLines(model, shotDialogue, elements);
   if (missingVoices.length > 0)
@@ -393,12 +401,15 @@ export async function generateShotMotion(
   });
   const ttsChars = batchDialogue.ttsChars;
 
-  const holdSeconds = seedanceEditHoldSeconds(
+  // The clicked shot's edit decision (#2036): sizes the hold here and rides
+  // the payload below.
+  const editSeconds = seedanceEditSeconds({
     model,
-    duration,
+    onArk: seedanceOnArk,
     prompt,
-    referenceImages
-  );
+    references: referenceImages,
+  });
+  const holdSeconds = Math.max(duration, editSeconds ?? 0);
   const reservationId = await reserveRunCredits(
     context.scopedDb,
     addMicros(
@@ -432,6 +443,7 @@ export async function generateShotMotion(
         attachSceneHeader,
         imageUrl: firstMember.shotId === shot.id ? firstImageUrl : imageUrl,
         referenceOnly,
+        seedanceEditSeconds: editSeconds,
         frameVersionId:
           firstMember.shotId === shot.id
             ? firstFrameVersionId
@@ -510,6 +522,8 @@ export async function generateShotMotion(
               attachSceneHeader,
               imageUrl: memberImageUrl,
               referenceOnly: memberReferenceOnly,
+              // The hold above priced the clicked shot's decision only.
+              seedanceEditSeconds: null,
               frameVersionId: memberFrameVersionId,
               motionPromptVersionId: version?.id ?? null,
               prompt: memberPrompt,

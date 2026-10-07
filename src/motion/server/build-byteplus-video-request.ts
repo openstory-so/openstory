@@ -20,7 +20,7 @@
  *
  * `size` is `adaptive` when a `start_frame` role is actually sent, and when
  * Seedance 2.5 is editing a video, which also requires `duration: -1`
- * (`seedance25FollowsInputVideo`, #2036). Otherwise reference mode states the
+ * (`arkSendsSeedanceEdit`, #2036). Otherwise reference mode states the
  * sequence's own ratio (nothing is left for `adaptive` to adapt to — see the
  * comment at the `size` assignment, #1809).
  *
@@ -29,7 +29,7 @@
 
 import {
   ARK_AUTO_DURATION,
-  seedance25FollowsInputVideo,
+  arkSendsSeedanceEdit,
 } from '@/motion/seedance-edit';
 import {
   getMotionReferenceEndpoint,
@@ -91,6 +91,12 @@ export type BytePlusVideoRequestOptions = {
   referenceImages?: ReferenceImageDescription[];
   /** Ark draft mode (#1756): 480p preview, `draft: true` on the wire. */
   draft?: boolean;
+  /**
+   * `MotionWorkflowInput.seedanceEditSeconds`: the clip seconds the trigger
+   * held credits for as a Seedance 2.5 edit, or null. The job goes out as an
+   * edit only when this covers the longest clip attached here.
+   */
+  heldSeedanceEditSeconds: number | null;
 };
 
 /**
@@ -208,13 +214,13 @@ export function buildBytePlusVideoRequest(
         audioUrls: [],
       };
 
-  // An edit: adaptive ratio and duration -1 (#2036).
-  const followsClip = seedance25FollowsInputVideo(
-    modelKey,
-    videoUrls.length > 0,
-    options.prompt,
-    false
-  );
+  const followsClip =
+    videoUrls.length > 0 &&
+    arkSendsSeedanceEdit(options.heldSeedanceEditSeconds, {
+      model: modelKey,
+      prompt: options.prompt,
+      references: options.referenceImages ?? [],
+    });
   return {
     modelId,
     prompt: [

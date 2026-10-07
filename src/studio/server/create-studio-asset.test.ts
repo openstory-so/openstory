@@ -59,7 +59,7 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
   captureProductEvent: mockCaptureProductEvent,
 }));
 vi.doMock('@/cast/server/sequence-elements/media-duration', () => ({
-  measureStoredMediaDuration: mockMeasureStoredMediaDuration,
+  measureOwnMediaDuration: mockMeasureStoredMediaDuration,
 }));
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: mockGetEffectiveFalPricing,
@@ -553,6 +553,29 @@ describe('createStudioAssets', () => {
 
     expect(mockReserveRunCredits).not.toHaveBeenCalled();
     expect(await db.select().from(generatedAssets)).toEqual([]);
+  });
+
+  it('refuses when our own reference video cannot be read (#2036)', async () => {
+    bytePlusLive = true;
+    mockMeasureStoredMediaDuration.mockRejectedValue(new Error('R2 is down'));
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        activity: 'video',
+        prompt: 'edit the fox turn',
+        videoModel: 'seedance_v2_5',
+        aspectRatio: '16:9',
+        resolution: '720p',
+        duration: 5,
+        count: 1,
+        mode: 'reference',
+        referenceImages: [],
+        referenceVideos: ['/r2/uploads/clip.mp4'],
+        referenceAudio: [],
+      })
+    ).rejects.toThrow(/Couldn't read that reference video/);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
   });
 
   it('prices a Seedance 2.5 edit as auto length (#2036)', async () => {

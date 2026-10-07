@@ -86,10 +86,12 @@ export function estimateBatchMotionCost(
      */
     referenceOnly?: boolean | ((shot: BatchShot) => boolean);
     /**
-     * Seconds the hold covers for this shot, given its snapped duration
-     * (`seedanceEditHoldSeconds`, #2036). Per shot like its neighbours.
+     * Seconds the hold covers for this shot, given its snapped duration: more
+     * than that when the shot is a Seedance 2.5 edit (`seedanceEditSeconds`,
+     * #2036). Required: leaving it out would hold every edit at the shot's
+     * length.
      */
-    holdSeconds?: (
+    holdSeconds: (
       shot: BatchShot,
       model: ImageToVideoModel,
       seconds: number
@@ -115,19 +117,15 @@ export function estimateBatchMotionCost(
     return addMicros(
       sum,
       gateEstimate(
-        estimateVideoCost(
-          model,
-          opts.holdSeconds?.(shot, model, seconds) ?? seconds,
-          {
-            pricing: opts.pricing,
-            resolution:
-              opts.draft && supportsDraftMode(model)
-                ? DRAFT_RESOLUTION
-                : opts.resolution,
-            hasReferenceImages: hasRefs,
-            referenceOnly,
-          }
-        ),
+        estimateVideoCost(model, opts.holdSeconds(shot, model, seconds), {
+          pricing: opts.pricing,
+          resolution:
+            opts.draft && supportsDraftMode(model)
+              ? DRAFT_RESOLUTION
+              : opts.resolution,
+          hasReferenceImages: hasRefs,
+          referenceOnly,
+        }),
         { model, operation: 'batch-motion' }
       )
     );

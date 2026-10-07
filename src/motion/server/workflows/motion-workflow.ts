@@ -101,6 +101,7 @@ import {
   seedanceSubmitRefusal,
   SEEDANCE_INTERNAL_BACKOFF,
 } from '@/motion/seedance-edit';
+import { UnusableReferencesError } from '@/motion/reference-support';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
   persistMotionCompletion,
@@ -815,6 +816,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     let seedanceInternalRetried = false;
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
       let retrySeedanceInternal = false;
+      let internalError = '';
       const isRescue = attempt === MAX_MOTION_ATTEMPTS;
       // A final from a draft sends no prompt and cannot change model
       // (#1756): nothing to soften, nothing to swap.
@@ -1012,6 +1014,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
         try {
           const job = await submitMotionJob({
+            // `??`: a run queued before #2036 has no such field, and is not
+            // an edit.
+            heldSeedanceEditSeconds: input.seedanceEditSeconds ?? null,
             imageUrl: startImageUrl ?? undefined,
             referenceOnly: input.referenceOnly,
             prompt,
@@ -1050,6 +1055,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               tooLong: true as const,
               rejection: extractFalErrorMessage(error),
             };
+          }
+          // Refused before anything was sent, and would be again.
+          if (error instanceof UnusableReferencesError) {
+            throw new NonRetryableError(error.message);
           }
           const providerMessage = extractFalErrorMessage(error);
           const refusal = seedanceSubmitRefusal(providerMessage, submitVia);
@@ -1156,7 +1165,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
 
         const poll = await step.do(
-          `motion-poll-batch-${attempt}-${batch}`,
+          // The suffix keeps the second job's polls apart from the first's.
+          `motion-poll-batch-${attempt}-${batch}${seedanceInternalRetried ? '-internal' : ''}`,
           async (): Promise<MotionPollOutcome> => {
             const deadline = Date.now() + POLL_BATCH_DURATION_MS;
 
@@ -1272,6 +1282,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             isSeedanceInternalServiceError(poll.error, job.via)
           ) {
             retrySeedanceInternal = true;
+            internalError = poll.error;
             break;
           }
           const explained = explainSeedanceFailure(poll.error, job.via);
@@ -1307,7 +1318,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       if (retrySeedanceInternal) {
         seedanceInternalRetried = true;
         logger.warn(
-          `[MotionWorkflow] Ark InternalServiceError on job ${job.jobId} for ${videoVersionId}; submitting one new job`
+          `[MotionWorkflow] Ark job ${job.jobId} failed for ${videoVersionId}; submitting one new job: ${internalError}`
         );
         await step.sleep(
           'seedance-internal-backoff',

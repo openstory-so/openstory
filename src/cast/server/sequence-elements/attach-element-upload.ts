@@ -119,11 +119,15 @@ export async function attachElementUpload(params: {
     uploadedFilename: filename,
     token,
     kind,
-    // The browser measured it on upload; a caller that sent none (the public
-    // API, an old saved draft) gets it read from the file instead.
+    // Read from the stored file: holds and length refusals are sized on it
+    // (#2036), so the browser's number is used only when the container does
+    // not say.
     durationSeconds:
-      params.durationSeconds ??
-      (kind === 'image' ? null : await measureStoredMediaDuration(path)),
+      kind === 'image'
+        ? null
+        : ((await measureStoredMediaDuration(path)) ??
+          params.durationSeconds ??
+          null),
     imageUrl,
     imagePath: path,
     description: hasInlineVision ? params.description : null,
@@ -270,8 +274,11 @@ export async function replaceElementUpload(params: {
     uploadedFilename: params.filename,
     kind,
     durationSeconds:
-      params.durationSeconds ??
-      (kind === 'image' ? null : await measureStoredMediaDuration(params.path)),
+      kind === 'image'
+        ? null
+        : ((await measureStoredMediaDuration(params.path)) ??
+          params.durationSeconds ??
+          null),
     description: null,
     consistencyTag: null,
     visionStatus: kind === 'image' ? 'analyzing' : 'completed',

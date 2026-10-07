@@ -17,6 +17,8 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { asStub } from '@/test/as-stub';
+import { UnusableReferencesError } from '@/motion/reference-support';
+import { NonRetryableError } from 'cloudflare:workflows';
 
 const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
@@ -222,6 +224,7 @@ function makeEvent(
       packedScene: {},
       imageUrl: '/r2/stills/a.png',
       referenceOnly: false,
+      seedanceEditSeconds: null,
       prompt: 'the original prompt',
       model: MODEL,
       motionPromptVersionId: 'spv-orig',
@@ -306,6 +309,41 @@ describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
       '5 seconds'
     );
     expect(step.names).toContain('submit-motion-internal');
+    // The second job's polls are not the first job's steps.
+    expect(step.names).toContain('motion-poll-batch-0-0');
+    expect(step.names).toContain('motion-poll-batch-0-0-internal');
+  });
+
+  it('stops at once when the references cannot be used, with no step retry', async () => {
+    mockSubmit.mockRejectedValue(
+      new UnusableReferencesError(
+        'Seedance can only edit a video between 4 and 30 seconds. This one is 2s.'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    const run = makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await expect(run).rejects.toThrow(/between 4 and 30 seconds/);
+    await expect(run).rejects.toBeInstanceOf(NonRetryableError);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits as an edit only when the trigger held for one', async () => {
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ heldSeedanceEditSeconds: null })
+    );
+
+    await makeWorkflow().runBody(
+      makeEvent({ seedanceEditSeconds: 24 }),
+      makeStep(),
+      scopedDb
+    );
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ heldSeedanceEditSeconds: 24 })
+    );
   });
 
   it('stops at once on a TaskTypeConstraint, with no second job', async () => {
@@ -1169,6 +1207,7 @@ describe('recording its own dialogue (#1657)', () => {
           sceneId: 'scene-1',
           imageUrl: '/r2/stills/a.png',
           referenceOnly: false,
+          seedanceEditSeconds: null,
           frameVersionId: 'fv-1',
           packedScene: {},
           prompt: 'Sarah waits beside the window.',

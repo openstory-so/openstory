@@ -282,6 +282,18 @@ export function unusableReferenceLines(
   return lines;
 }
 
+/** What a reference check needs to know about the job beyond its references. */
+type ShotJob = {
+  hasStartFrame: boolean;
+  /** The assembled text the provider reads; null when none is written. */
+  prompt: string | null;
+  /**
+   * Seedance 2.5 goes to BytePlus Ark for this team (`seedanceRunsOnArk`).
+   * Read only by the Seedance 2.5 edit rule.
+   */
+  onArk: boolean;
+};
+
 /**
  * Everything `unusableReferenceLines` says, plus what only the whole shot can
  * answer: a voice line with nothing to ride alongside. Every reference
@@ -290,21 +302,21 @@ export function unusableReferenceLines(
  * H3 Max). With no start frame and no sheet or clip bound, there is nothing
  * for it to ride with.
  *
- * And what only the prompt can answer (#2036): the word "edit" makes a
- * Seedance 2.5 job with a clip a video edit, which takes a clip of 4–30s.
- * `prompt` is the assembled text the provider reads; null when none is
- * written yet.
+ * And what only the prompt and the via can answer (#2036): the word "edit"
+ * makes a Seedance 2.5 job with a clip a video edit on Ark, which takes a
+ * clip of 4–30s. `prompt` is the assembled text the provider reads; null when
+ * none is written yet.
  */
 export function unusableShotReferenceLines(
   model: ImageToVideoModel,
   attached: AttachedReference[],
-  hasStartFrame: boolean,
-  prompt: string | null
+  job: ShotJob
 ): string[] {
+  const { hasStartFrame, prompt, onArk } = job;
   const lines = [
     ...unusableReferenceLines(model, attached),
     ...overCombinedLengthLines(model, attached),
-    ...seedanceEditClipLines(model, prompt, attached),
+    ...seedanceEditClipLines({ model, onArk, prompt, references: attached }),
   ];
   if (hasStartFrame) return lines;
   const support = motionReferenceSupport(model);
@@ -407,16 +419,18 @@ export function missingVoiceLines(
 export function assertReferencesUsable(
   model: ImageToVideoModel,
   attached: AttachedReference[],
-  hasStartFrame: boolean,
-  prompt: string | null
+  job: ShotJob
 ): void {
-  const lines = unusableShotReferenceLines(
-    model,
-    attached,
-    hasStartFrame,
-    prompt
-  );
-  if (lines.length > 0) throw new Error(lines.join(' '));
+  const lines = unusableShotReferenceLines(model, attached, job);
+  if (lines.length > 0) throw new UnusableReferencesError(lines.join(' '));
+}
+
+/**
+ * The attached references cannot be used as they are. The same request is
+ * refused every time, so a workflow step must stop on it, not replay it.
+ */
+export class UnusableReferencesError extends Error {
+  override name = 'UnusableReferencesError';
 }
 
 /** "H3 Max, Seedance 2.0 and Seedance 2.5" */

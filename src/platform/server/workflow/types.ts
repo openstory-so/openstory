@@ -644,6 +644,15 @@ export interface MotionWorkflowInput
    * credits were reserved.
    */
   referenceOnly: boolean;
+  /**
+   * The trigger's edit decision (#2036): whole seconds of the longest
+   * attached clip when it held credits for a Seedance 2.5 edit
+   * (`seedanceEditSeconds`), null when it did not. The submit sends
+   * `duration: -1` only when this is set, so an edit never goes out on a hold
+   * sized for the shot. Required: a trigger that forgot it would send every
+   * edit at the shot's length.
+   */
+  seedanceEditSeconds: number | null;
   prompt: string;
   model?: keyof typeof IMAGE_TO_VIDEO_MODELS;
   duration?: number;
@@ -1649,6 +1658,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     imageUrl?: string;
     /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */
     referenceOnly: boolean;
+    /** See `MotionWorkflowInput.seedanceEditSeconds`. Decided for `model`. */
+    seedanceEditSeconds: number | null;
     /** See `MotionWorkflowInput.frameVersionId`. */
     frameVersionId?: string | null;
     /** See `MotionWorkflowInput.motionPromptVersionId`. */
