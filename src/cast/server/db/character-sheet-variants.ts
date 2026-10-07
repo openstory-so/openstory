@@ -23,7 +23,11 @@ import {
   sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
-import { liveLookSheetVersionId, requireLook } from './character-looks';
+import {
+  getLookByCastLookId,
+  liveLookSheetVersionId,
+  requireLook,
+} from './character-looks';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
@@ -51,13 +55,15 @@ const ofLook = (lookId: string) =>
  * look made, the one it has selected, and rows whose sequence is unknown
  * (`castLookId` null, from before the column: listed everywhere, as before).
  */
-const ofCastLook = (look: {
-  castLookId: string;
-  selectedSheetVersionId: string | null;
-}) =>
+const ofCastLook = (
+  lookId: string,
+  look: { castLookId: string; selectedSheetVersionId: string | null }
+) =>
   or(
+    // Drawn for this cast look — of this look, or of the look it pointed at
+    // before a one-off copy repointed it.
     eq(characterSheetVariants.castLookId, look.castLookId),
-    isNull(characterSheetVariants.castLookId),
+    and(ofLook(lookId), isNull(characterSheetVariants.castLookId)),
     look.selectedSheetVersionId === null
       ? undefined
       : eq(characterSheetVariants.id, look.selectedSheetVersionId)
@@ -128,8 +134,7 @@ export function createCharacterSheetVariantsMethods(
         .where(
           and(
             ofTeam(),
-            ofLook(lookId),
-            ofCastLook(look),
+            ofCastLook(lookId, look),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
           )
@@ -320,14 +325,28 @@ export function createCharacterSheetVariantsMethods(
       const [version] = await db
         .select()
         .from(characterSheetVariants)
-        .where(
-          and(
-            ofTeam(),
-            eq(characterSheetVariants.id, versionId),
-            eq(characterSheetVariants.characterId, characterId)
-          )
-        );
+        .where(and(ofTeam(), eq(characterSheetVariants.id, versionId)));
       if (!version) {
+        throw new NotFoundError(
+          `CharacterSheetVariant ${versionId} not found for character ${characterId}`
+        );
+      }
+      // The sheet is the look's own, or was drawn for this sequence's cast
+      // look before a one-off copy moved that cast look onto a new look
+      // (#2017): a copy keeps pointing at the original's sheet rows.
+      const copied =
+        version.characterId !== characterId && version.castLookId !== null
+          ? await getLookByCastLookId(
+              db,
+              teamId,
+              sequenceId,
+              version.castLookId
+            )
+          : null;
+      if (
+        version.characterId !== characterId &&
+        copied?.characterId !== characterId
+      ) {
         throw new NotFoundError(
           `CharacterSheetVariant ${versionId} not found for character ${characterId}`
         );
@@ -343,12 +362,14 @@ export function createCharacterSheetVariantsMethods(
         );
       }
 
-      const look = await requireLook(
-        db,
-        teamId,
-        sequenceId,
-        version.lookId ?? characterId
-      );
+      const look =
+        copied ??
+        (await requireLook(
+          db,
+          teamId,
+          sequenceId,
+          version.lookId ?? characterId
+        ));
       const [existing] = await db
         .select({ name: characterBibleColumns.name })
         .from(sequenceCast)
@@ -507,7 +528,12 @@ export function createCharacterSheetVariantsMethods(
             eq(liveLookSheetVersionId, variantId)
           )
         );
-      if (live) {
+      // A one-off copy's cast look selects a sheet of another look (#2017).
+      const [selectedElsewhere] = await db
+        .select({ id: sequenceCastLooks.id })
+        .from(sequenceCastLooks)
+        .where(eq(sequenceCastLooks.selectedSheetVersionId, variantId));
+      if (live || selectedElsewhere) {
         throw new ConflictError(
           'Cannot discard the selected sheet version; select another first.'
         );

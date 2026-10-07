@@ -259,6 +259,26 @@ export const requireLook = async (
 };
 
 /**
+ * The look behind one `sequence_cast_looks` row, as its sequence uses it
+ * (#2017): how a sheet row that names the cast look it was drawn for finds
+ * the look it now belongs to, after a one-off copy repointed that cast look.
+ */
+export const getLookByCastLookId = async (
+  db: Database,
+  teamId: string,
+  sequenceId: string,
+  castLookId: string
+): Promise<CharacterLook | null> =>
+  (
+    await selectLooks(
+      db,
+      teamId,
+      sequenceId,
+      eq(sequenceCastLooks.id, castLookId)
+    )
+  )[0] ?? null;
+
+/**
  * A character's cast link in one sequence (#2017): where its looks' cast
  * looks go, and the name its events carry.
  */

@@ -75,6 +75,8 @@ import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
+import { createScenesMethods } from '@/shots/server/db/scenes';
+import { dbSceneId } from '@/shots/scene-id';
 import { typedEntries } from '@/platform/typed-object';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import {
@@ -2266,6 +2268,159 @@ export function createCharactersMethods(db: Database, teamId: string) {
         }),
       ]);
       return { character: await reread(sequenceId, id), moved: true };
+    },
+
+    /**
+     * "Make a one-off copy" (#2017): a NEW team character from the version
+     * `sequenceId` pins, and this sequence's cast link repointed at it, so
+     * edits here stop reaching the other sequences. One batch.
+     *
+     * The copy OWNS: its row (`inLibrary: false`), one bible version (the
+     * pinned bible, with its talent), one voice version naming the same
+     * provider voice id (a shared id, held by both until released), and for
+     * each live look a new look row (the default's id is the copy's id) with
+     * one version (the pinned definition); the cast looks are repointed at
+     * them. The copy SHARES the original's sheet rows: `selectedSheetVersionId`
+     * stays, because stills and clips key on the sheet version id, so a copy
+     * that redrew its sheets would stale every shot. New sheets land under
+     * the copy's looks. Scene picks name look ids, so every scene of the
+     * sequence that picks a non-default look is rewritten to the copy's look
+     * (a script version each, after the batch). The script id stays, so scene
+     * tags still match. Refused while a sheet run holds a claim here: its
+     * landing would address the old look.
+     */
+    copyForSequence: async (
+      sequenceId: string,
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<CharacterWithSheet> => {
+      const existing = await castOf(sequenceId, id);
+      if (!existing) throw new NotFoundError(`Character ${id} not found`);
+      const live = existing.looks.filter((look) => look.deletedAt === null);
+      if (live.some((look) => look.pendingPromoteSheetVersionId !== null)) {
+        throw new ConflictError(
+          `${existing.name} has a sheet generating here. Wait for it to land, then copy.`
+        );
+      }
+      const copyId = generateId();
+      const bibleVersionId = generateId();
+      const voiceVersionId =
+        existing.selectedVoiceVersionId === null ? null : generateId();
+      const looks = live.map((look) => ({
+        look,
+        id: look.isDefault ? copyId : generateId(),
+        versionId: generateId(),
+      }));
+      const now = new Date();
+      await db.batch([
+        db.insert(characters).values({
+          id: copyId,
+          teamId,
+          inLibrary: false,
+          selectedBibleVersionId: bibleVersionId,
+          selectedVoiceVersionId: voiceVersionId,
+          useVoice: existing.useVoice,
+          firstMentionSceneId: existing.firstMentionSceneId,
+          firstMentionText: existing.firstMentionText,
+          firstMentionLine: existing.firstMentionLine,
+          legacyName: existing.name,
+        }),
+        db.insert(characterBibleVersions).values({
+          id: bibleVersionId,
+          characterId: copyId,
+          ...pickCharacterBible(existing),
+          talentId: existing.talentId,
+          source: 'edit',
+          createdBy: opts.actorId,
+        }),
+        ...(voiceVersionId === null
+          ? []
+          : [
+              db.insert(characterVoiceVersions).values({
+                id: voiceVersionId,
+                characterId: copyId,
+                voiceId: existing.voiceId,
+                description: existing.voiceDescription,
+                previews: existing.voicePreviews,
+                enabled: existing.useVoice,
+                source: 'library',
+                createdBy: opts.actorId,
+              }),
+            ]),
+        ...looks.flatMap(({ look, id: lookId, versionId }) => [
+          db.insert(characterLooks).values({
+            id: lookId,
+            characterId: copyId,
+            isDefault: look.isDefault,
+            sortOrder: look.sortOrder,
+            selectedLookVersionId: versionId,
+            // NOT NULL until the column is dropped (#2017).
+            legacySheetStatus: look.sheetStatus,
+          }),
+          db.insert(characterLookVersions).values({
+            id: versionId,
+            lookId,
+            name: look.name,
+            clothing: look.clothing,
+            styling: look.styling,
+            source: 'edit',
+            createdBy: opts.actorId,
+          }),
+          db
+            .update(sequenceCastLooks)
+            .set({ lookId, lookVersionId: versionId, updatedAt: now })
+            .where(eq(sequenceCastLooks.id, look.castLookId)),
+        ]),
+        db
+          .update(sequenceCast)
+          .set({ characterId: copyId, bibleVersionId, voiceVersionId })
+          .where(eq(sequenceCast.id, existing.castId)),
+        buildEventInsert(db, {
+          sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.copied',
+          targetType: 'character',
+          targetId: copyId,
+          summary: `Made a one-off copy of ${existing.name} for this sequence`,
+          data: { fromCharacterId: id, characterId: existing.characterId },
+        }),
+      ]);
+      // Scene picks name look ids: re-point every pick at the copy's look.
+      const lookIdOf = new Map(
+        looks
+          .filter(({ look }) => !look.isDefault)
+          .map(({ look, id: lookId }) => [look.id, lookId] as const)
+      );
+      if (lookIdOf.size > 0) {
+        const scenes = createScenesMethods(db);
+        for (const { scene } of (
+          await loadSceneContextBySequenceFromDb(db, sequenceId)
+        ).values()) {
+          const continuity = scene.continuity;
+          const picks = continuity?.characterLooks;
+          if (
+            !continuity ||
+            !picks ||
+            !Object.values(picks).some((v) => lookIdOf.has(v))
+          ) {
+            continue;
+          }
+          await scenes.updateContinuity(
+            dbSceneId(scene.id),
+            {
+              ...continuity,
+              characterLooks: Object.fromEntries(
+                Object.entries(picks).map(([tag, lookId]) => [
+                  tag,
+                  lookIdOf.get(lookId) ?? lookId,
+                ])
+              ),
+            },
+            { actorId: opts.actorId }
+          );
+        }
+      }
+      return await reread(sequenceId, copyId);
     },
 
     getShotsForCharacter: async (

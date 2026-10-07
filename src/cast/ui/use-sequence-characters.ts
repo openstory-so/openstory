@@ -19,6 +19,7 @@ import {
   assignCharacterVoiceFn,
   chooseCharacterVoiceTakeFn,
   cancelCharacterVoiceFn,
+  copyCharacterForSequenceFn,
   generateCharacterVoiceFn,
   listCharacterVoiceVersionsFn,
   selectCharacterVoiceVersionFn,
@@ -157,6 +158,23 @@ export function invalidateAfterVersionMove(
     queryKey: ['character-sheet-variants'],
   });
   void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
+}
+
+/**
+ * "Make a one-off copy": a new character for this sequence alone. The cast
+ * list and the team list (a new character, one fewer sequence on the
+ * original) both move.
+ */
+export function useCopyCharacterForSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      copyCharacterForSequenceFn({ data }),
+    onSuccess: (_copy, { sequenceId }) => {
+      invalidateCastMembership(queryClient, sequenceId);
+      void queryClient.invalidateQueries({ queryKey: ['team-characters'] });
+    },
+  });
 }
 
 /** "Update this episode": move this sequence's pins to the current version. */

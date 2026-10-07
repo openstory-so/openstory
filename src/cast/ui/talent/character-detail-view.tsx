@@ -37,6 +37,7 @@ import {
   useRecastCharacter,
   useSaveCharacterAsTalent,
   useSequenceCharacters,
+  useCopyCharacterForSequence,
   useSoftDeleteSequenceCharacter,
   useUpdateCastToCurrent,
 } from '@/cast/ui/use-sequence-characters';
@@ -145,6 +146,26 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const updateToCurrent = useUpdateCastToCurrent();
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const behind = owner ? isBehindCurrentVersion(owner) : false;
+  // "Make a one-off copy": a new character for this sequence alone, free.
+  // Offered on a library character, the one a second sequence can reach.
+  const copyForSequence = useCopyCharacterForSequence();
+  const [isCopyOpen, setIsCopyOpen] = useState(false);
+  const handleCopy = () =>
+    copyForSequence.mutate(
+      { sequenceId, characterId },
+      {
+        onSuccess: (copy) => {
+          setIsCopyOpen(false);
+          toast(`${copy.name} is now this sequence's own copy.`);
+          void navigate({
+            to: '/sequences/$id/cast/$characterId',
+            params: { id: sequenceId, characterId: copy.id },
+          });
+        },
+        onError: (error) =>
+          toast.error('Copy not made', { description: errorMessage(error) }),
+      }
+    );
 
   // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
   // 60s undo toast. The undo closure survives this component's unmount —
@@ -747,6 +768,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 <Button variant="outline" onClick={() => setIsMoveOpen(true)}>
                   Move episodes
                 </Button>
+                {character.inLibrary && (
+                  <Button variant="outline" onClick={() => setIsCopyOpen(true)}>
+                    Make a one-off copy
+                  </Button>
+                )}
                 {!character.voiceOnly && (
                   <UploadMediaButton
                     label="Upload Sheet"
@@ -877,6 +903,32 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         characterName={character.name}
         sequenceId={sequenceId}
       />
+
+      <AlertDialog open={isCopyOpen} onOpenChange={setIsCopyOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Make a one-off copy of {character.name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This sequence gets its own copy at the version it has now. Edits
+              here stop reaching other sequences, and theirs stop reaching here.
+              Sheets and shots stay as they are; nothing re-renders.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={copyForSequence.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={copyForSequence.isPending}
+              onClick={handleCopy}
+            >
+              {copyForSequence.isPending ? 'Copying…' : 'Make a copy'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {selectedTalent && (
         <RecastConfirmDialog

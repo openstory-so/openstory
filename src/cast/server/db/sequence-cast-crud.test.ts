@@ -2200,6 +2200,87 @@ describe('team characters (#2017)', () => {
     expect(await chars().getVoiceReferenceCount('voice-1')).toBe(0);
   });
 
+  it('a one-off copy owns a new character, bible, voice and looks, keeps the original sheet rows, and repoints only this sequence (#2017)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    await chars().updateVoice(
+      sequenceId,
+      created.id,
+      { voiceId: 'voice-1' },
+      'generated',
+      null
+    );
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala', clothing: 'gown', styling: 'updo' },
+      { source: 'edit', actorId }
+    );
+    // A sheet of the default look, selected here.
+    const sheets = createCharacterSheetVariantsMethods(db, teamId);
+    const { version: sheet } = await sheets.applyConvergent({
+      sequenceId,
+      lookId: created.lookId,
+      url: 'https://x.test/a.png',
+      storagePath: 'a.png',
+      inputHash: null,
+      model: 'm',
+    });
+    await chars().setInLibrary(created.id, true);
+    const other = await secondSequence();
+    await chars().attach(other, created.id, { actorId });
+    const versionsBefore = (await versionsOf(created.id)).length;
+
+    const copy = await chars().copyForSequence(sequenceId, created.id, {
+      actorId,
+    });
+    expect(copy.id).not.toBe(created.id);
+    expect(copy).toMatchObject({
+      name: 'Ada',
+      characterId: 'char_001',
+      standardClothing: 'coat',
+      voiceId: 'voice-1',
+      inLibrary: false,
+      // The original's sheet row, shared: nothing re-renders.
+      selectedSheetVersionId: sheet.id,
+      sheetImageUrl: 'https://x.test/a.png',
+    });
+    expect(copy.lookId).toBe(copy.id);
+    expect(copy.looks.map((look) => look.name).sort()).toEqual([
+      'Default',
+      'Gala',
+    ]);
+    expect(copy.looks.every((look) => look.characterId === copy.id)).toBe(true);
+    // The copy's pins are its own current versions.
+    expect(copy.selectedBibleVersionId).toBe(copy.currentBibleVersionId);
+    expect(copy.selectedVoiceVersionId).toBe(copy.currentVoiceVersionId);
+    // This sequence casts the copy; the other still casts the original, and
+    // the original's rows are untouched.
+    expect((await chars().list(sequenceId)).map((c) => c.id)).toEqual([
+      copy.id,
+    ]);
+    expect((await chars().list(other)).map((c) => c.id)).toEqual([created.id]);
+    expect((await versionsOf(created.id)).length).toBe(versionsBefore);
+    expect(await looks().listByCharacter(other, created.id)).toHaveLength(2);
+    expect(
+      (await sheets.listHistoryByLook(sequenceId, copy.lookId)).map((r) => r.id)
+    ).toEqual([sheet.id]);
+    // The shared voice id is held by both.
+    expect(await chars().getVoiceReferenceCount('voice-1')).toBe(4);
+    // The copy can re-pick the shared sheet, and nobody can discard it.
+    await sheets.select(sequenceId, copy.id, sheet.id, { actorId });
+    await expect(sheets.discard(sheet.id)).rejects.toThrow(/selected/);
+    expect(await eventKinds()).toContain('character.copied');
+    void gala;
+  });
+
   it('attaches a library character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
     const created = await chars().create(
       {

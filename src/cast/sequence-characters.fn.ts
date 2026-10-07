@@ -474,6 +474,23 @@ export const updateCastToCurrentFn = createServerFn({ method: 'POST' })
       )
   );
 
+/**
+ * "Make a one-off copy" (#2017): a new character from the version this
+ * sequence pins, this sequence's cast link repointed at it. Free: the copy
+ * keeps pointing at the original's sheet rows, so nothing re-renders.
+ */
+export const copyCharacterForSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(
+    async ({ context, data }) =>
+      await context.scopedDb.characters.copyForSequence(
+        data.sequenceId,
+        data.characterId,
+        { actorId: context.user.id }
+      )
+  );
+
 /** Undo a character soft-delete. */
 export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])

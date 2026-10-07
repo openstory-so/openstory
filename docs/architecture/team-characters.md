@@ -348,6 +348,26 @@ lookId)` lists the sheets that sequence made or has selected, and
   was copied.
 - **Causes read the pin, not the clock**: see
   `prompt-staleness-dependency-graph.md` § 3 and `src/shots/pin-moves.ts`.
+- **Make a one-off copy** (`characters.copyForSequence(sequenceId, id)`,
+  offered on a library character): a NEW team character from the version
+  this sequence pins, and this sequence's link repointed at it, in one
+  batch. The copy **owns** its row (`inLibrary: false`), one bible version
+  (the pinned bible, with its talent), one voice version naming the same
+  provider voice id (held by both until the last lets go), and one look row
+  per live look (the default's id is the copy's id) with one version each;
+  the sequence's cast looks are repointed at them. The copy **shares** the
+  original's sheet rows: `selectedSheetVersionId` stays, because stills and
+  clips key on the sheet version id, so a copy that redrew its sheets would
+  stale every shot. Those rows carry the cast look's id, so the copy's strip
+  lists them (`listHistoryByLook`), the copy can re-select them
+  (`characterSheetVariants.select` resolves a sheet of another look through
+  `castLookId`), and nobody can discard a sheet a cast look selects. New
+  sheets land under the copy's looks. Scene picks name look ids, so every
+  scene of the sequence picking a non-default look gets a script version
+  naming the copy's look (after the batch; a pick left pointing at the
+  original's look would dress the default). The script id stays, so scene
+  tags match and no prompt hash moves. Refused while a sheet run holds a
+  claim here. Event `character.copied`.
 
 ## Hard deletes
 
