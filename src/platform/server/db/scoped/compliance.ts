@@ -117,8 +117,12 @@ export function createComplianceMethods(
         statementSha256: string;
         depictsRealPerson: boolean;
         authorizationBasis?: string | null;
-        /** The row this one copies, when carrying evidence to a new URL. */
-        carriedFromId?: string | null;
+        /**
+         * A copy of another row's evidence under a new URL (#2018): the
+         * source row, its ORIGINAL signer and moment (kept as this row's
+         * `userId` / `attestedAt`), with this team member as the carrier.
+         */
+        carried?: { fromId: string; signerUserId: string; attestedAt: Date };
         ipAddress?: string | null;
         userAgent?: string | null;
       }): Promise<UploadAttestation> {
@@ -126,7 +130,7 @@ export function createComplianceMethods(
           .insert(uploadAttestations)
           .values({
             id: generateId(),
-            userId,
+            userId: input.carried?.signerUserId ?? userId,
             teamId,
             subjectType: input.subjectType,
             subjectId: input.subjectId,
@@ -134,7 +138,9 @@ export function createComplianceMethods(
             statementSha256: input.statementSha256,
             depictsRealPerson: input.depictsRealPerson,
             authorizationBasis: input.authorizationBasis ?? null,
-            carriedFromId: input.carriedFromId ?? null,
+            carriedFromId: input.carried?.fromId ?? null,
+            carriedByUserId: input.carried ? userId : null,
+            ...(input.carried ? { attestedAt: input.carried.attestedAt } : {}),
             ipAddress: input.ipAddress ?? null,
             userAgent: input.userAgent ?? null,
           })

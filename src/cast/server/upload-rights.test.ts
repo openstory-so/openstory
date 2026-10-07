@@ -316,6 +316,11 @@ describe('carryUploadRights', () => {
       authorizationBasis: 'release #7',
       ipAddress: '203.0.113.9',
       carriedFromId: before.at(-1)?.id,
+      // The ORIGINAL signer and moment, never re-attributed; the carrier is
+      // recorded on its own.
+      userId: before.at(-1)?.userId,
+      attestedAt: before.at(-1)?.attestedAt,
+      carriedByUserId: USER_ID,
     });
     // A copy, never a move: the source rows are untouched, and the source
     // URL still passes.
@@ -328,8 +333,16 @@ describe('carryUploadRights', () => {
     const again = await carryUploadRights(scopedDb, url, libraryUrl + '2');
     expect(again.id).not.toBe(carried.id);
     expect(again.carriedFromId).toBe(before.at(-1)?.id);
+    // A carry of a carried row still names the FIRST row.
+    const chained = await carryUploadRights(
+      scopedDb,
+      libraryUrl,
+      libraryUrl + '3'
+    );
+    expect(chained.carriedFromId).toBe(before.at(-1)?.id);
+    expect(chained.userId).toBe(before.at(-1)?.userId);
     expect((await db.select().from(uploadAttestations)).length).toBe(
-      before.length + 2
+      before.length + 3
     );
   });
 

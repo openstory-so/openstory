@@ -253,6 +253,15 @@ export const uploadAttestations = snakeCase.table(
      * recorded directly (and on every row from before this column).
      */
     carriedFromId: text(),
+    /**
+     * Who carried it (the person whose save made the copy). The row's
+     * `userId` and `attestedAt` stay the ORIGINAL signer's and moment: a copy
+     * never re-attributes the statement. Set with `carriedFromId`; null on a
+     * row recorded directly.
+     */
+    carriedByUserId: text().references(() => user.id, {
+      onDelete: 'restrict',
+    }),
 
     ipAddress: text({ length: 45 }),
     userAgent: text({ length: 500 }),

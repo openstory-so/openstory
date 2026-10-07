@@ -221,7 +221,9 @@ export async function likenessFromLedger(
 /**
  * Cover a copy of an object at a new URL with the evidence its source URL
  * has: a NEW row under the new URL that names the source row
- * (`carriedFromId`), same statement, same answer, same signer context. The
+ * (`carriedFromId`, the first row in a chain of carries), same statement,
+ * same answer, the ORIGINAL signer and moment (`userId`, `attestedAt`), and
+ * the person doing the carry as `carriedByUserId` — never as the signer. The
  * source row is never moved or changed — the original upload, its character
  * and its shots keep relying on it. Used after a finalize moves an object
  * and by Save face as talent (#2018). Refuses when the source has no row.
@@ -244,7 +246,11 @@ export async function carryUploadRights(
     statementSha256: row.statementSha256,
     depictsRealPerson: row.depictsRealPerson,
     authorizationBasis: row.authorizationBasis,
-    carriedFromId: row.id,
+    carried: {
+      fromId: row.carriedFromId ?? row.id,
+      signerUserId: row.userId,
+      attestedAt: row.attestedAt,
+    },
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
   });
