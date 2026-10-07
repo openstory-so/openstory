@@ -662,7 +662,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
     const after = mergeBible(before, patch);
     const moved = characterBibleChanged(before, after);
     const talentId = opts.recast ? opts.recast.talentId : existing.talentId;
-    const talentMoved = talentId !== existing.talentId;
+    // A recast to the same talent still moves the cast onto the talent's
+    // current version (#1862); an edit keeps the version the pin holds.
+    const talentMoved =
+      talentId !== existing.talentId ||
+      (opts.recast !== null &&
+        existing.talentVersionId !== existing.currentTalentVersionId);
     if (moved.length === 0 && !talentMoved) {
       return { moved, talentMoved, versionId: null, statements: [] };
     }

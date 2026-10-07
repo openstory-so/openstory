@@ -1005,7 +1005,7 @@ const after = (d: Date | null | undefined, at: number) =>
   d != null && d.getTime() > at;
 
 /** Plain words for the bible fields a cause names (#1600). */
-const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
+export const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
   name: 'name',
   age: 'age',
   gender: 'gender',
@@ -1026,7 +1026,7 @@ const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
 const LOOK_LABELS = { clothing: 'clothing', styling: 'styling' } as const;
 
 /** What moved in a look since the version live then. */
-const lookMoved = (
+export const lookMoved = (
   then: CharacterLookVersion,
   now: { standardClothing: string | null; styling: string | null }
 ): string[] => [

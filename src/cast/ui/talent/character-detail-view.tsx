@@ -27,6 +27,7 @@ import {
   usePromoteCharacterSheetVariant,
   useSelectCharacterSheetVersion,
   useUndiscardCharacterSheetVariant,
+  useSheetUpstreamChanges,
 } from '@/cast/ui/use-character-sheet-variants';
 import {
   restoreSequenceCharacter,
@@ -40,6 +41,7 @@ import {
   useCopyCharacterForSequence,
   useSoftDeleteSequenceCharacter,
   useUpdateCastToCurrent,
+  useAdoptCurrentTalent,
 } from '@/cast/ui/use-sequence-characters';
 import { useCharacterCastElsewhere } from '@/cast/ui/use-team-characters';
 import type {
@@ -155,6 +157,16 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const updateToCurrent = useUpdateCastToCurrent();
   const [isMoveOpen, setIsMoveOpen] = useState(false);
   const behind = owner ? isBehindCurrentVersion(owner) : false;
+  // Talent versions (#1862): the cast was made from an older version of its
+  // talent. Nothing moves it but a person; the sheets keep the face they
+  // were drawn from until then.
+  const adoptTalent = useAdoptCurrentTalent();
+  const talentBehind =
+    owner !== undefined &&
+    owner.talentId !== null &&
+    owner.talentVersionId !== null &&
+    owner.currentTalentVersionId !== null &&
+    owner.talentVersionId !== owner.currentTalentVersionId;
   // "Move sequences" is offered when there is somewhere to move: another
   // live sequence casts the character, or this one is behind.
   const { data: castElsewhere = false } = useCharacterCastElsewhere(
@@ -317,6 +329,12 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   });
 
   const { data: divergentVariants } = useCharacterDivergentVariants(sequenceId);
+  // What moved between the version a parked sheet was drawn from and the one
+  // the cast pins (#1862); read only while the compare is open.
+  const { data: upstreamChanges } = useSheetUpstreamChanges(
+    sequenceId,
+    compareVariant?.id
+  );
   const invalidateDivergentKeys = useCallback(
     () => [characterSheetVariantKeys.divergentBySequence(sequenceId)],
     [sequenceId]
@@ -607,6 +625,26 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 Move other sequences…
               </Button>
             </StalenessIndicator>
+          )}
+          {talentBehind && (
+            <StalenessIndicator
+              entityType="character"
+              density="status-line"
+              message={`${character.talent?.name ?? 'The talent'} changed since ${character.name} was cast. This sequence keeps the face it was cast from until you update it.`}
+              actionLabel="Use current talent"
+              isRegenerating={adoptTalent.isPending}
+              onRegenerate={() =>
+                adoptTalent.mutate(
+                  { sequenceId, characterId },
+                  {
+                    onError: (error) =>
+                      toast.error('Talent not updated', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+            />
           )}
           <SheetStalenessBanners
             entityType="character"
@@ -1006,6 +1044,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           onDiscard={() => handleDiscardWithUndo(compareVariant)}
           isPromoting={promoteVariant.isPending}
           isDiscarding={discardVariant.isPending}
+          upstreamChanges={upstreamChanges}
         />
       )}
     </div>

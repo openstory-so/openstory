@@ -101,15 +101,9 @@ export const talent = snakeCase.table(
  * Why a talent version exists: `backfill` is the #1862 migration's snapshot
  * of the row as it stood; `edit` a person changing the name or description;
  * `sheet` the reference sheet moving (a landed run or a user's pick);
- * `voice` the recorded voice moving (#1631); `rights` the likeness check.
+ * `voice` the recorded voice moving (#1631).
  */
-const TALENT_VERSION_SOURCES = [
-  'backfill',
-  'edit',
-  'sheet',
-  'voice',
-  'rights',
-] as const;
+const TALENT_VERSION_SOURCES = ['backfill', 'edit', 'sheet', 'voice'] as const;
 export type TalentVersionSource = (typeof TALENT_VERSION_SOURCES)[number];
 
 /**

@@ -1010,6 +1010,17 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     expect(edited.talentVersionId).toBe('tv1');
     expect(edited.currentTalentVersionId).toBe('tv2');
+    // A recast to the same talent moves the cast onto its current version.
+    const adopted = await m.updateBible(
+      sequenceId,
+      created.id,
+      {},
+      { source: 'recast', actorId, talentId }
+    );
+    expect(adopted.talentVersionId).toBe('tv2');
+    expect(adopted.selectedBibleVersionId).not.toBe(
+      edited.selectedBibleVersionId
+    );
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {

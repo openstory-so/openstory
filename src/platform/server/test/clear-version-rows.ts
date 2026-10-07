@@ -9,6 +9,7 @@ import {
   sequenceCast,
   sequenceCastLooks,
   sequenceStyleVersions,
+  talentVersions,
 } from '@/platform/server/db/schema';
 
 /**
@@ -27,4 +28,6 @@ export async function clearVersionRows(db: Database): Promise<void> {
   await db.delete(characterLooks);
   await db.delete(locationBibleVersions);
   await db.delete(sequenceStyleVersions);
+  // Talent history (#1862); nothing cascades from `talent` into it.
+  await db.delete(talentVersions);
 }

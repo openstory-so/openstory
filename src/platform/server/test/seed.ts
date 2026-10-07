@@ -36,6 +36,7 @@ import {
   talent,
   talentMedia,
   talentSheets,
+  talentVersions,
   teamMembers,
   teams,
   user,
@@ -442,9 +443,21 @@ export async function createTestTalent(
     createdAt: now,
     updatedAt: now,
   });
+  // Its one version (#1862), keyed to the talent's own id like the backfill.
+  await db.insert(talentVersions).values({
+    id: talentId,
+    talentId,
+    name,
+    description: null,
+    isHuman: false,
+    sheetId,
+    voiceId: null,
+    source: 'backfill',
+    createdAt: now,
+  });
   await db
     .update(talent)
-    .set({ selectedSheetId: sheetId })
+    .set({ selectedSheetId: sheetId, selectedVersionId: talentId })
     .where(eq(talent.id, talentId));
 
   return { id: talentId, teamId, name, defaultSheetId: sheetId };
@@ -487,9 +500,21 @@ export async function createTestTalentWithMedia(
     createdAt: now,
     updatedAt: now,
   });
+  // Its one version (#1862), keyed to the talent's own id like the backfill.
+  await db.insert(talentVersions).values({
+    id: talentId,
+    talentId,
+    name,
+    description: null,
+    isHuman: false,
+    sheetId,
+    voiceId: null,
+    source: 'backfill',
+    createdAt: now,
+  });
   await db
     .update(talent)
-    .set({ selectedSheetId: sheetId })
+    .set({ selectedSheetId: sheetId, selectedVersionId: talentId })
     .where(eq(talent.id, talentId));
 
   const mediaIds: string[] = [];

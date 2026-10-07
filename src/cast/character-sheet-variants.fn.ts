@@ -1,3 +1,4 @@
+import { sheetVersionDiff } from '@/cast/server/production-staleness';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -97,6 +98,20 @@ export const getSequenceCharacterDivergentVariantsFn = createServerFn({
       characters.map((c) => c.id)
     );
   });
+
+/**
+ * The fields that moved between the versions a parked sheet was drawn from
+ * and the ones this sequence pins (#1862), for the compare dialog.
+ */
+export const getSheetUpstreamChangesFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, variantId: ulidSchema }))
+  )
+  .handler(
+    async ({ context, data }) =>
+      await sheetVersionDiff(context.scopedDb, data.sequenceId, data.variantId)
+  );
 
 /**
  * Promote a divergent character-sheet alternate into the live primary

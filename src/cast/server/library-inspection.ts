@@ -26,6 +26,9 @@ const schemas = {
     description: true,
     imageUrl: true,
     selectedSheetId: true,
+    // The current version of the likeness (#1862); a cast records the one
+    // it was made from.
+    selectedVersionId: true,
     isFavorite: true,
     isHuman: true,
     isInTeamLibrary: true,

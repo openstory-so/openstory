@@ -978,7 +978,10 @@ const CAST_BASE: CastWorld = {
     styleConfig: STYLE,
     imageModel: DEFAULT_IMAGE_MODEL,
   },
-  alice: { ...ALICE, talentId: 't-1' },
+  // Cast from the talent's version 't-1' (#1862): the sheet reads that
+  // version, so a mutation of `talent` below stands for the version the cast
+  // reads moving (what adopting the current talent does).
+  alice: { ...ALICE, talentId: 't-1', talentVersionId: 't-1' },
   beach: { ...BEACH, libraryLocationId: 'lib-1' },
   talent: TALENT,
   library: LIBRARY,
@@ -991,7 +994,17 @@ function castDb(world: CastWorld) {
     sequences: { getById: () => Promise.resolve(world.sequence) },
     characters: { getById: () => Promise.resolve(withLooks(world.alice)) },
     sequenceLocations: { getById: () => Promise.resolve(world.beach) },
-    talent: { getByIds: () => Promise.resolve([world.talent]) },
+    talent: {
+      getByIds: () => Promise.resolve([world.talent]),
+      versions: {
+        getById: () =>
+          Promise.resolve({
+            description: world.talent.description,
+            sheetId: 'ts-1',
+          }),
+      },
+      sheets: { getById: () => Promise.resolve(world.talent.referenceSheet) },
+    },
     locations: { getById: () => Promise.resolve(world.library) },
     // The live sheet pins the model it was drawn with.
     characterSheetVariants: {

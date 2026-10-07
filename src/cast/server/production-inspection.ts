@@ -94,6 +94,11 @@ export const characterReadSchema = createSelectSchema(characters)
     sequenceId: createSelectSchema(sequenceCast).shape.sequenceId,
     characterId: createSelectSchema(sequenceCast).shape.scriptCharacterId,
     talentId: createSelectSchema(characterBibleVersions).shape.talentId,
+    // The talent version the cast was made from, and the talent's current
+    // one (#1862): different once the talent was edited after the cast.
+    talentVersionId: createSelectSchema(characterBibleVersions).shape
+      .talentVersionId,
+    currentTalentVersionId: z.string().nullable(),
   })
   .extend(
     createSelectSchema(characters).pick({

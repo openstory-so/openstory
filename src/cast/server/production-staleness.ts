@@ -1,3 +1,6 @@
+import { NotFoundError } from '@/platform/errors';
+import { characterBibleChanged } from '@/cast/server/db/bible-versions';
+import { CHARACTER_LABELS, lookMoved } from '@/shots/server/shot-staleness';
 import { wearLook } from '@/cast/character-looks';
 import { requireCharacterLook } from '@/cast/server/character-look';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -59,6 +62,58 @@ export async function readReferenceStaleness(
  * One look's sheet freshness (#2015). An id that is not a look of this
  * character is an error, never the default look's verdict.
  */
+/**
+ * What moved between the versions a parked sheet was drawn from
+ * (`character_sheet_variants.bibleVersionId` / `lookVersionId`, stamped by
+ * the land) and the ones this sequence pins now (#1862): the bible fields
+ * and look fields, in plain words, for the compare dialog. Empty when the
+ * sheet reads the pinned versions; a sheet from before the stamps (an
+ * upload, a pre-#1600 row) names nothing.
+ */
+export async function sheetVersionDiff(
+  scopedDb: ScopedDb,
+  sequenceId: string,
+  variantId: string
+): Promise<string[]> {
+  const variant = await scopedDb.characterSheetVariants.getById(variantId);
+  if (!variant) throw new NotFoundError(`Sheet ${variantId} not found`);
+  const owner = await productionAccess(scopedDb).character(
+    sequenceId,
+    variant.characterId
+  );
+  const changes: string[] = [];
+  if (
+    variant.bibleVersionId &&
+    variant.bibleVersionId !== owner.selectedBibleVersionId
+  ) {
+    const then = await scopedDb.characters.getBibleVersion(
+      variant.bibleVersionId
+    );
+    changes.push(
+      ...characterBibleChanged(then, owner).map((k) => CHARACTER_LABELS[k])
+    );
+  }
+  const look = owner.looks.find((l) => l.id === (variant.lookId ?? owner.id));
+  if (
+    look &&
+    variant.lookVersionId &&
+    variant.lookVersionId !== look.lookVersionId
+  ) {
+    const then = (await scopedDb.characterLooks.listVersions(look.id)).find(
+      (v) => v.id === variant.lookVersionId
+    );
+    if (then) {
+      changes.push(
+        ...lookMoved(then, {
+          standardClothing: look.clothing,
+          styling: look.styling,
+        })
+      );
+    }
+  }
+  return changes;
+}
+
 export async function readLookSheetStaleness(
   scopedDb: ScopedDb,
   sequenceId: string,
