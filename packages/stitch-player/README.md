@@ -10,7 +10,7 @@ Three stills, recorded dialogue, a music bed, subtitles. Nothing is rendered up 
 
 ```tsx
 import { StitchedPlayer } from '@openstory/stitch-player/react';
-import '@videojs/react/video/minimal-skin.css';
+import '@videojs/react/video/neutral-skin.css';
 
 const still = (
   n: number,
@@ -66,7 +66,7 @@ What you get: Video.js's controls, a captions button that toggles the subtitles 
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
 | `@openstory/stitch-player`         | The engine: `SequencePlayerEngine`, `ConcatenatedVideoSource`, clip types, pure helpers.                            | none (depends on `mediabunny`) |
 | `@openstory/stitch-player/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.com) custom media, so the Video.js skin drives the engine. | `@videojs/media`               |
-| `@openstory/stitch-player/react`   | `StitchedPlayer`: the canvas under Video.js's `MinimalVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react`      |
+| `@openstory/stitch-player/react`   | `StitchedPlayer`: the canvas under Video.js's `NeutralVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react`      |
 | `@openstory/stitch-player/export`  | `exportSequence` and `downloadSequence`: the same stitch, encoded to MP4 in the browser.                            | none                           |
 
 All peer dependencies are optional. An engine-only user installs just `mediabunny`.
@@ -77,7 +77,7 @@ npm install @openstory/stitch-player mediabunny
 npm install react @videojs/react @videojs/media
 ```
 
-Video.js 10 is in beta. The `/videojs` and `/react` entries track it and inherit its churn; the engine and export entries do not.
+Built against Video.js 10 (`^10.0.0`).
 
 ## Clips
 
@@ -131,7 +131,7 @@ import { StitchedPlayer } from '@openstory/stitch-player/react';
 />;
 ```
 
-`StitchedPlayer` is safe to import anywhere, including a server render: it renders `fallback` (nothing by default) on the server and until its code has loaded on the client, then the player. The Video.js parts are loaded behind that, so your framework never evaluates them during SSR. Import the skin stylesheet once: `import '@videojs/react/video/minimal-skin.css'`.
+`StitchedPlayer` is safe to import anywhere, including a server render: it renders `fallback` (nothing by default) on the server and until its code has loaded on the client, then the player. The Video.js parts are loaded behind that, so your framework never evaluates them during SSR. Import the skin stylesheet once: `import '@videojs/react/video/neutral-skin.css'`.
 
 Subtitles are drawn by the surface, not by a `<video>` element (there is none), in a box above the controls that lifts with them. Restyle it with CSS on `[data-part="stitch-captions"]`; the Download button is `[data-part="stitch-download"]`.
 

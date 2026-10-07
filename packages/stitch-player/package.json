@@ -54,8 +54,8 @@
     "mediabunny": "^1.60.0"
   },
   "peerDependencies": {
-    "@videojs/media": "^10.0.0-beta.26",
-    "@videojs/react": "^10.0.0-beta.26",
+    "@videojs/media": "^10.0.0",
+    "@videojs/react": "^10.0.0",
     "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
