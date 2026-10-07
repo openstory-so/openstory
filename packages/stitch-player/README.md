@@ -133,7 +133,7 @@ import { StitchedPlayer } from '@openstory/stitch-player/react';
 
 `StitchedPlayer` is safe to import anywhere, including a server render: it renders `fallback` (nothing by default) on the server and until its code has loaded on the client, then the player. The Video.js parts are loaded behind that, so your framework never evaluates them during SSR. Import the skin stylesheet once: `import '@videojs/react/video/neutral-skin.css'`.
 
-Subtitles are drawn by the surface, not by a `<video>` element (there is none), in a box above the controls that lifts with them. Restyle it with CSS on `[data-part="stitch-captions"]`; the Download button is `[data-part="stitch-download"]`.
+Subtitles are drawn by the surface, not by a `<video>` element (there is none), in a box above the controls that lifts with them. Picture-in-Picture works too: the canvas is streamed into a hidden video and that is what floats. Restyle it with CSS on `[data-part="stitch-captions"]`; the Download button is `[data-part="stitch-download"]`.
 
 ## Export
 
