@@ -114,6 +114,28 @@ test.describe('Characters page', () => {
     await expect(card(page)).toBeVisible();
   });
 
+  /** Library flag on, then "Add from library" on `other`'s cast facet. */
+  async function castIntoSecondSequence(page: Page, other: TestSequence) {
+    await openCharacterPage(page);
+    await addButton(page).click();
+    await expect(removeButton(page)).toBeVisible();
+
+    await page.goto(`/sequences/${other.id}/scenes?facet=cast`);
+    await page
+      .getByRole('button', { name: 'Add from library' })
+      .click({ timeout: HYDRATION_TIMEOUT });
+    const dialog = page.getByRole('dialog', { name: 'Add from library' });
+    await dialog.getByLabel('Search the library').fill(character.name);
+    await dialog
+      .getByRole('button', { name: new RegExp(character.name) })
+      .click();
+    await expect(page.getByText(`Added ${character.name}`)).toBeVisible();
+    await expect(dialog).toBeHidden();
+    await expect(
+      page.getByRole('link', { name: new RegExp(character.name) }).first()
+    ).toBeVisible();
+  }
+
   test('Add from library casts the character into a second sequence (#2050)', async ({
     page,
     testUser,
@@ -124,24 +146,7 @@ test.describe('Characters page', () => {
       `E2E Second ${crypto.randomUUID().slice(0, 8)}`
     );
     try {
-      await openCharacterPage(page);
-      await addButton(page).click();
-      await expect(removeButton(page)).toBeVisible();
-
-      await page.goto(`/sequences/${other.id}/scenes?facet=cast`);
-      await page
-        .getByRole('button', { name: 'Add from library' })
-        .click({ timeout: HYDRATION_TIMEOUT });
-      const dialog = page.getByRole('dialog', { name: 'Add from library' });
-      await dialog.getByLabel('Search the library').fill(character.name);
-      await dialog
-        .getByRole('button', { name: new RegExp(character.name) })
-        .click();
-      await expect(page.getByText(`Added ${character.name}`)).toBeVisible();
-      await expect(dialog).toBeHidden();
-      await expect(
-        page.getByRole('link', { name: new RegExp(character.name) }).first()
-      ).toBeVisible();
+      await castIntoSecondSequence(page, other);
 
       // One character, two sequences.
       await openCharacterPage(page);
@@ -152,23 +157,43 @@ test.describe('Characters page', () => {
           })
           .getByText('Cast in 2 sequences')
       ).toBeVisible();
+    } finally {
+      await cleanupSequenceById(other.id, other.styleId);
+    }
+  });
+
+  test('an edit from one sequence leaves the other on its pinned version until Update this sequence (#2017)', async ({
+    page,
+    testUser,
+  }) => {
+    // Two sequences' worth of page loads on a dev server.
+    test.slow();
+    const other = await createTestSequence(
+      testUser.teamId,
+      testUser.id,
+      `E2E Second ${crypto.randomUUID().slice(0, 8)}`
+    );
+    try {
+      await castIntoSecondSequence(page, other);
 
       // Edit the character from the second sequence: the first keeps the
-      // version it pinned and says so, until it is updated (#2017).
+      // version it pinned and says so, until it is updated.
       await page.goto(`/sequences/${other.id}/cast/${character.id}`);
       const age = page.getByRole('textbox', { name: 'Age' });
-      await age.fill('40s', { timeout: HYDRATION_TIMEOUT });
+      await expect(age).toBeEditable({ timeout: HYDRATION_TIMEOUT });
+      const before = await age.inputValue();
+      await age.fill('40s');
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByText('Character saved')).toBeVisible();
 
-      await page.goto(`/sequences/${sequence.id}/scenes?facet=cast`);
-      await expect(
-        page.getByText('Not the current version', { exact: true })
-      ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-
       await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
+      await expect(
+        page.getByText(`${character.name} is not on the current version here`, {
+          exact: false,
+        })
+      ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
       await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
-        '30s',
+        before,
         { timeout: HYDRATION_TIMEOUT }
       );
       // The move preview is the dialog's own, opened and closed, nothing moved.

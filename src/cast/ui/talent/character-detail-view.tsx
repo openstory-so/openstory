@@ -870,8 +870,10 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
             <div className="flex flex-col gap-4">
               <CharacterBibleForm
-                // Clothing here is the default look's; reseed when it moves.
-                key={`${character.id}:${owner?.standardClothing ?? ''}`}
+                // Uncontrolled inputs: reseed when the pinned bible version
+                // moves (Update this sequence, #2017) or the default look's
+                // clothing does.
+                key={`${character.id}:${character.selectedBibleVersionId}:${owner?.standardClothing ?? ''}`}
                 sequenceId={sequenceId}
                 character={owner ?? character}
               />
