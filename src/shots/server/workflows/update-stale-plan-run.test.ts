@@ -508,6 +508,21 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       'spawn-character-sheet-maya',
       'spawn-character-sheet-gala',
     ]);
+    // Its claim was taken at kickoff, before the default's child ran: a
+    // user regenerate between the waves takes a newer claim, and this run's
+    // sheet (landing under the older id) parks — the newer click wins
+    // (sheet-claims.test: "lets a newer kickoff win over a late completion").
+    const galaClaim =
+      claimSheet.mock.invocationCallOrder[
+        claimSheet.mock.calls.findIndex(([, lookId]) => lookId === 'gala')
+      ];
+    const mayaSpawn =
+      spawnAndAwaitChild.mock.invocationCallOrder[
+        spawnAndAwaitChild.mock.calls.findIndex(
+          ([, args]) => args.spawnStepName === 'spawn-character-sheet-maya'
+        )
+      ];
+    expect(galaClaim).toBeLessThan(mayaSpawn ?? 0);
     // Its face is the sheet this run landed, not a re-read.
     expect(payloadOf('spawn-character-sheet-gala')).toMatchObject({
       lookId: 'gala',
@@ -549,6 +564,14 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     expect(
       result.failures.find((failure) => failure.shotId === 'gala')?.error
     ).toContain('default look sheet did not land in this run');
+    // The claim taken at kickoff is cleared, by its own id: nothing is left
+    // holding the look.
+    expect(failSheetClaim).toHaveBeenCalledWith(
+      'seq-1',
+      'gala',
+      'csv-gala',
+      expect.stringContaining('did not land')
+    );
   });
 
   it('a failed sheet holds the stills made from it, and nothing else', async () => {

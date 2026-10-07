@@ -417,18 +417,20 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         failedReferenceIds.add(id);
         failures.push(toFailure(id, stage, error));
       };
-      const drawCharacterSheet = async (
-        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>
-      ) => {
+      // Conditional (#1863): the payload was built at the click, and an edit
+      // since then found no claim to revoke. The claim is taken only while
+      // the look, the bible and the cast it was built from still hold;
+      // otherwise the run parks its sheet. Null when the claim step failed.
+      const claimCharacterSheet = async (
+        payload: Pick<
+          CharacterSheetWorkflowInput,
+          'lookId' | 'lookVersionId' | 'bibleVersionId' | 'talentId'
+        >
+      ): Promise<string | null> => {
         // One sheet per look (#2015).
         const id = payload.lookId;
-        let sheetVersionId: string;
         try {
-          // Conditional (#1863): the payload was built at the click, and an
-          // edit since then found no claim to revoke. The claim is taken
-          // only while the look, the bible and the cast it was built from
-          // still hold; otherwise the run parks its sheet.
-          sheetVersionId = await step.do(
+          return await step.do(
             `claim-character-sheet-${id}`,
             async () =>
               (
@@ -448,8 +450,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           );
         } catch (error) {
           failReference(id, 'reference', error);
-          return;
+          return null;
         }
+      };
+      const spawnCharacterSheet = async (
+        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>,
+        sheetVersionId: string
+      ) => {
+        const id = payload.lookId;
         try {
           const generated = await spawnAndAwaitChild<
             CharacterSheetWorkflowInput,
@@ -486,6 +494,23 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           );
         }
       };
+      const drawCharacterSheet = async (
+        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>
+      ) => {
+        const sheetVersionId = await claimCharacterSheet(payload);
+        if (sheetVersionId) await spawnCharacterSheet(payload, sheetVersionId);
+      };
+      // The second wave's claims are taken now, with the first wave's: the
+      // click is when the run kicks these looks off. A regenerate between
+      // the waves then takes a newer claim, and this run's older sheet
+      // parks (last kickoff wins).
+      const afterDefaultClaims = new Map<string, string>();
+      await Promise.allSettled(
+        references.lookSheetsAfterDefault.map(async (draft) => {
+          const claimed = await claimCharacterSheet(draft);
+          if (claimed) afterDefaultClaims.set(draft.lookId, claimed);
+        })
+      );
       await Promise.allSettled([
         ...references.characterSheets.map(drawCharacterSheet),
         ...references.locationSheets.map(async (payload) => {
@@ -617,14 +642,24 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       // look, which holds the stills that wear it.
       await Promise.allSettled(
         references.lookSheetsAfterDefault.map(async (draft) => {
+          const sheetVersionId = afterDefaultClaims.get(draft.lookId);
+          // The claim step failed and was reported.
+          if (!sheetVersionId) return;
           const landed = generatedCharacters.get(draft.characterDbId);
           const versionId = landed?.sheetVersionId;
           if (!landed || landed.diverged || !versionId) {
-            failReference(
-              draft.lookId,
-              'reference',
-              new Error(
-                `${draft.characterName}'s default look sheet did not land in this run, so this look has no face to be drawn from`
+            const error = new Error(
+              `${draft.characterName}'s default look sheet did not land in this run, so this look has no face to be drawn from`
+            );
+            failReference(draft.lookId, 'reference', error);
+            // Its claim was taken at kickoff; no child holds it, so clear it
+            // here (a no-op once a newer run took it).
+            await step.do(`fail-character-sheet-claim-${draft.lookId}`, () =>
+              scopedDb.characterLooks.failSheetClaim(
+                sequenceId,
+                draft.lookId,
+                sheetVersionId,
+                sanitizeFailResponse(error)
               )
             );
             return;
@@ -637,7 +672,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 versionId,
               })
           );
-          await drawCharacterSheet(payload);
+          await spawnCharacterSheet(payload, sheetVersionId);
         })
       );
     }
