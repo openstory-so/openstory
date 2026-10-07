@@ -152,6 +152,42 @@ test.describe('Characters page', () => {
           })
           .getByText('Cast in 2 sequences')
       ).toBeVisible();
+
+      // Edit the character from the second sequence: the first keeps the
+      // version it pinned and says so, until it is updated (#2017).
+      await page.goto(`/sequences/${other.id}/cast/${character.id}`);
+      const age = page.getByRole('textbox', { name: 'Age' });
+      await age.fill('40s', { timeout: HYDRATION_TIMEOUT });
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.getByText('Character saved')).toBeVisible();
+
+      await page.goto(`/sequences/${sequence.id}/scenes?facet=cast`);
+      await expect(
+        page.getByText('Not the current version', { exact: true })
+      ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+
+      await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
+      await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
+        '30s',
+        { timeout: HYDRATION_TIMEOUT }
+      );
+      // The move preview is the dialog's own, opened and closed, nothing moved.
+      await page
+        .getByRole('button', { name: 'Move other sequences…' })
+        .click({ timeout: HYDRATION_TIMEOUT });
+      const moveDialog = page.getByRole('alertdialog');
+      await expect(
+        moveDialog.getByRole('checkbox', { name: new RegExp(sequence.title) })
+      ).toBeChecked();
+      await moveDialog.getByRole('button', { name: 'Cancel' }).click();
+      // Update this sequence: a pointer write, so the age follows.
+      await page.getByRole('button', { name: /^Update this sequence/ }).click();
+      await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
+        '40s'
+      );
+      await expect(
+        page.getByRole('button', { name: /^Update this sequence/ })
+      ).toHaveCount(0);
     } finally {
       await cleanupSequenceById(other.id, other.styleId);
     }

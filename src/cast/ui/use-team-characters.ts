@@ -143,6 +143,24 @@ export function useAttachLibraryCharacter() {
   });
 }
 
+/**
+ * Whether a live sequence other than `sequenceId` casts the character: the
+ * panel offers "Move sequences" only then, or when this one is behind. Never
+ * suspends the panel.
+ */
+export function useCharacterCastElsewhere(
+  characterId: string,
+  sequenceId: string
+) {
+  return useQuery({
+    queryKey: teamCharacterKeys.detail(characterId),
+    queryFn: () => getTeamCharacterFn({ data: { characterId } }),
+    staleTime: 30_000,
+    select: (character) =>
+      (character?.sequences ?? []).some((s) => s.id !== sequenceId),
+  });
+}
+
 /** The character's name for a breadcrumb: never suspends the header. */
 export function useTeamCharacterName(characterId: string) {
   return useQuery({

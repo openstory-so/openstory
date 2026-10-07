@@ -55,8 +55,14 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
     else next.delete(id);
     setPicked(next);
   };
+  // The dialog stays mounted while a talent is selected: a cancel forgets
+  // the ticks, so reopening does not carry a previous pick.
+  const handleOpenChange = (next: boolean) => {
+    if (!next) setPicked(new Set());
+    onOpenChange(next);
+  };
   return (
-    <AlertDialog open={open} onOpenChange={onOpenChange}>
+    <AlertDialog open={open} onOpenChange={handleOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -81,7 +87,7 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
           <fieldset className="flex flex-col gap-2">
             <legend className="text-sm">
               Also apply to these sequences. Each then redraws from its own
-              Update; the others keep the current {characterName}.
+              Update. Unticked sequences keep the previous version.
             </legend>
             {others.map((row) => {
               const checked = picked.has(row.sequenceId);
