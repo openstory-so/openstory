@@ -38,6 +38,12 @@ export type EnqueueLibraryTalentSheetParams = {
   workflowInput: SheetPayload<LibraryTalentSheetWorkflowInput>;
   activity: SheetProgressActivity;
   deduplicationId?: string;
+  /**
+   * The claim id, when the caller needs it before the run (to cover the
+   * sheet's future URL in the rights ledger, `save-character-face.ts`).
+   * Minted here otherwise.
+   */
+  sheetId?: string;
 };
 
 export async function enqueueLibraryTalentSheet(
@@ -45,7 +51,7 @@ export async function enqueueLibraryTalentSheet(
   params: EnqueueLibraryTalentSheetParams
 ): Promise<string> {
   const { talentId, workflowInput, deduplicationId } = params;
-  const sheetId = generateId();
+  const sheetId = params.sheetId ?? generateId();
   const inputs = {
     description: workflowInput.talentDescription ?? null,
     referenceImageUrls: workflowInput.referenceImageUrls ?? [],

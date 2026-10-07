@@ -14,6 +14,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { ImageGenerationParams } from '@/stills/server/image-generation';
 import { buildLibraryTalentSheetPrompt } from '@/cast/character-prompt';
 import { cropTalentSheetPortrait } from '@/cast/server/talent/crop-sheet-portrait';
+import { talentSheetStoragePath } from '@/cast/server/talent/save-character-face';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getTalentChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
@@ -91,7 +92,11 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
         const result = await copyStoredImage({
           sourceUrl: uploadedSheetUrl,
           destBucket: STORAGE_BUCKETS.TALENT,
-          destPath: `${input.teamId}/${input.talentId}/${sheetId}.png`,
+          destPath: talentSheetStoragePath(
+            input.teamId,
+            input.talentId,
+            sheetId
+          ),
         });
         return { url: result.publicUrl, path: result.path };
       });
@@ -133,7 +138,7 @@ export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<Libr
           storeGeneratedPng(
             result.imageUrls[0],
             STORAGE_BUCKETS.TALENT,
-            `${input.teamId}/${input.talentId}/${sheetId}.png`
+            talentSheetStoragePath(input.teamId, input.talentId, sheetId)
           ),
       });
       storageResult = {

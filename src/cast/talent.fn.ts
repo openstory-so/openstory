@@ -30,13 +30,12 @@ import {
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
-import { characterToBible } from '@/cast/server/bibles-from-scoped';
-import { ValidationError } from '@/platform/errors';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
 import { enqueueLibraryTalentSheet } from '@/cast/server/talent/enqueue-library-talent-sheet';
+import { saveCharacterFaceAsTalent } from '@/cast/server/talent/save-character-face';
 import { maybePromoteOrGenerateSheet } from '@/cast/server/talent/promote-or-generate-sheet';
 import { isTeamTalentStoredUrl } from '@/platform/server/storage/copy-stored-image';
 import { createServerFn } from '@tanstack/react-start';
@@ -426,67 +425,16 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
     };
   });
 
-/**
- * Save a character's FACE as a new talent (#2018): the name, the physical
- * description and the sheet this sequence selected for it, which lands as
- * the talent's reference sheet through the library sheet run (claimed, then
- * copied and cropped for the headshot). Nothing else crosses: personality,
- * movement, voice and outfits are the character's. The character is not
- * recast; Recast with the new talent if that is wanted.
- */
+/** Save a character's face as a new talent (#2018): see `save-character-face.ts`. */
 export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
     zodValidator(z.object({ sequenceId: ulidSchema, characterId: ulidSchema }))
   )
-  .handler(async ({ context, data }) => {
-    // Verify the sequence belongs to this team
-    await context.scopedDb.sequences.getForUser({
-      sequenceId: data.sequenceId,
-    });
-
-    const character = await context.scopedDb.characters.getById(
-      data.sequenceId,
-      data.characterId
-    );
-    if (!character) {
-      throw new Error('Character not found');
-    }
-    if (!character.sheetImageUrl) {
-      throw new ValidationError(
-        `${character.name} has no sheet yet. Generate one first.`
-      );
-    }
-
-    // The sheet is a generated face, not a real person's photo: the likeness
-    // ledger (`isHuman`) stays false (#1581).
-    const newTalent = await context.scopedDb.talent.create({
-      name: character.name,
-      description: character.physicalDescription ?? undefined,
-      isFavorite: false,
-      isHuman: false,
-      isInTeamLibrary: true,
-    });
-
-    const workflowInputFields: SheetPayload<LibraryTalentSheetWorkflowInput> = {
-      userId: context.user.id,
-      teamId: context.teamId,
-      talentId: newTalent.id,
-      talentName: newTalent.name,
-      talentDescription: newTalent.description ?? undefined,
-      referenceImageUrls: [],
-      uploadedSheetUrl: character.sheetImageUrl,
-      uploadedSheetMetadata: characterToBible(character),
-    };
-    const workflowInput = {
-      ...workflowInputFields,
-      snapshotInputHash:
-        await computeLibraryTalentSheetHashFromDto(workflowInputFields),
-    };
-    const runId = await enqueueLibraryTalentSheet(context.scopedDb, {
-      talentId: newTalent.id,
-      workflowInput,
-      activity: 'portrait',
-    });
-    return { talent: newTalent, runId };
-  });
+  .handler(async ({ context, data }) =>
+    saveCharacterFaceAsTalent(
+      context.scopedDb,
+      { userId: context.user.id, teamId: context.teamId },
+      data
+    )
+  );
