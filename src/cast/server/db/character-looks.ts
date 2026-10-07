@@ -18,6 +18,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import {
   ConflictError,
   NotFoundError,
@@ -738,7 +739,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       const key = (name: string) => name.trim().toLowerCase();
       const ids: Record<string, string> = {};
-      const statements = [
+      const statements: BatchItem<'sqlite'>[] = [
         db
           .update(sequenceCast)
           .set({ removedAt: null })
