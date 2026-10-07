@@ -2,7 +2,6 @@ import {
   talent,
   talentSheets,
   talentMedia,
-  talentSheetVariants,
   locationLibrary,
   locationSheets,
   generatedAssets,
@@ -1538,7 +1537,6 @@ describe('Studio, Gallery and library reads', () => {
   let libraryLocationId: string;
   let sheetId: string;
   let mediaId: string;
-  let talentVersionId: string;
   let locationSheetId: string;
   let locationVersionId: string;
   let assetId: string;
@@ -1570,7 +1568,6 @@ describe('Studio, Gallery and library reads', () => {
     libraryLocationId = generateId();
     sheetId = generateId();
     mediaId = generateId();
-    talentVersionId = generateId();
     locationSheetId = generateId();
     locationVersionId = generateId();
     assetId = generateId();
@@ -1585,7 +1582,7 @@ describe('Studio, Gallery and library reads', () => {
       id: talentId,
       teamId,
       name: 'Actor',
-      voiceId: 'voice-1',
+      selectedSheetId: sheetId,
       imagePath: 'private',
       imageUrl: '/r2/actor.jpg',
     });
@@ -1599,10 +1596,9 @@ describe('Studio, Gallery and library reads', () => {
     await db.insert(talentSheets).values({
       id: sheetId,
       talentId,
-      name: 'Formal',
+      legacyName: 'Formal',
       imageUrl: '/r2/formal.jpg',
       imagePath: 'private',
-      isDefault: true,
     });
     await db.insert(talentMedia).values({
       id: mediaId,
@@ -1610,15 +1606,6 @@ describe('Studio, Gallery and library reads', () => {
       type: 'recording',
       url: '/r2/voice.mp3',
       path: 'private',
-    });
-    await db.insert(talentSheetVariants).values({
-      id: talentVersionId,
-      talentSheetId: sheetId,
-      model: 'test',
-      url: '/r2/alternate.jpg',
-      discardedAt: new Date(),
-      divergedAt: new Date(),
-      storagePath: 'private',
     });
     await db.insert(locationSheets).values({
       id: locationSheetId,
@@ -1685,7 +1672,6 @@ describe('Studio, Gallery and library reads', () => {
   const resourceCases = () => [
     { kind: 'talent_sheet', parentId: talentId, id: sheetId },
     { kind: 'talent_media', parentId: talentId, id: mediaId },
-    { kind: 'talent_sheet_version', parentId: sheetId, id: talentVersionId },
     {
       kind: 'location_sheet',
       parentId: libraryLocationId,
@@ -1732,7 +1718,8 @@ describe('Studio, Gallery and library reads', () => {
         expect(detail).not.toHaveProperty(key);
     }
     const actor = await document('get_talent', { id: talentId });
-    expect(actor.voiceId).toBe('voice-1');
+    expect(actor.selectedSheetId).toBe(sheetId);
+    expect(actor).not.toHaveProperty('voiceId');
     expect(actor.imageUrl).toBe('https://openstory.test/r2/actor.jpg');
     const asset = await document('get_generated_asset', { id: assetId });
     expect(asset.input).toEqual({
@@ -1828,7 +1815,9 @@ describe('Studio, Gallery and library reads', () => {
       (await call('list_talent', { cursor: first.nextCursor })).isError
     ).toBe(true);
     scopedDb = createScopedDb(teamId, generateId());
-    await db.insert(talentSheets).values({ talentId, name: 'Second sheet' });
+    await db
+      .insert(talentSheets)
+      .values({ talentId, legacyName: 'Second sheet' });
     const sheets = listResult.parse(
       await data('list_library_resources', {
         kind: 'talent_sheet',
@@ -1967,7 +1956,6 @@ describe('Studio, Gallery and library reads', () => {
     for (const kind of [
       'talent_sheet',
       'talent_media',
-      'talent_sheet_version',
       'location_sheet',
       'location_sheet_version',
     ] as const) {
