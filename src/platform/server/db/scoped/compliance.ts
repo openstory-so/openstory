@@ -117,6 +117,8 @@ export function createComplianceMethods(
         statementSha256: string;
         depictsRealPerson: boolean;
         authorizationBasis?: string | null;
+        /** The row this one copies, when carrying evidence to a new URL. */
+        carriedFromId?: string | null;
         ipAddress?: string | null;
         userAgent?: string | null;
       }): Promise<UploadAttestation> {
@@ -132,6 +134,7 @@ export function createComplianceMethods(
             statementSha256: input.statementSha256,
             depictsRealPerson: input.depictsRealPerson,
             authorizationBasis: input.authorizationBasis ?? null,
+            carriedFromId: input.carriedFromId ?? null,
             ipAddress: input.ipAddress ?? null,
             userAgent: input.userAgent ?? null,
           })

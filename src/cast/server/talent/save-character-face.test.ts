@@ -53,7 +53,9 @@ const talentCreate = vi.fn(async (row: { isHuman: boolean }) => ({
   ...row,
 }));
 
-function scopedDb(sheet: { model: string; url: string } | null): ScopedDb {
+function scopedDb(
+  sheet: { model: string; url: string; workflowRunId: string | null } | null
+): ScopedDb {
   // stub covering only what saveCharacterFaceAsTalent reads
   return asStub<ScopedDb>({
     sequences: { getForUser: vi.fn(async () => ({ id: 'seq-1' })) },
@@ -77,7 +79,7 @@ describe('saveCharacterFaceAsTalent', () => {
     );
 
     const result = await saveCharacterFaceAsTalent(
-      scopedDb({ model: 'user-upload', url: UPLOAD_URL }),
+      scopedDb({ model: 'user-upload', url: UPLOAD_URL, workflowRunId: null }),
       ctx,
       args
     );
@@ -111,7 +113,11 @@ describe('saveCharacterFaceAsTalent', () => {
 
     await expect(
       saveCharacterFaceAsTalent(
-        scopedDb({ model: 'user-upload', url: UPLOAD_URL }),
+        scopedDb({
+          model: 'user-upload',
+          url: UPLOAD_URL,
+          workflowRunId: null,
+        }),
         ctx,
         args
       )
@@ -120,9 +126,33 @@ describe('saveCharacterFaceAsTalent', () => {
     expect(enqueueLibraryTalentSheet).not.toHaveBeenCalled();
   });
 
-  it('a generated sheet is an AI face: no ledger, isHuman false', async () => {
+  it('a sheet with an unexpected model and no run is an upload: no ledger row, refused', async () => {
+    requireUploadRights.mockRejectedValue(
+      new AttestationRequiredError(
+        'This image has not been checked for a real person yet'
+      )
+    );
+    await expect(
+      saveCharacterFaceAsTalent(
+        scopedDb({
+          model: 'fal-ai/gpt-image-2',
+          url: '/r2/sheets/odd.png',
+          workflowRunId: null,
+        }),
+        ctx,
+        args
+      )
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    expect(talentCreate).not.toHaveBeenCalled();
+  });
+
+  it('a sheet our own run made is an AI face: no ledger, isHuman false', async () => {
     await saveCharacterFaceAsTalent(
-      scopedDb({ model: 'fal-ai/gpt-image-2', url: '/r2/sheets/gen.png' }),
+      scopedDb({
+        model: 'fal-ai/gpt-image-2',
+        url: '/r2/sheets/gen.png',
+        workflowRunId: 'run-9',
+      }),
       ctx,
       args
     );

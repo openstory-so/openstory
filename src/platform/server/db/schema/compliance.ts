@@ -246,6 +246,13 @@ export const uploadAttestations = snakeCase.table(
      * false answer here is a documented misrepresentation, not a gap.
      */
     authorizationBasis: text({ length: 500 }),
+    /**
+     * The row this one was copied from when an object's evidence was carried
+     * to a new URL (`carryUploadRights`, #2018): the finalize move, Save face
+     * as talent. The source row is never moved or changed. Null on a row
+     * recorded directly (and on every row from before this column).
+     */
+    carriedFromId: text(),
 
     ipAddress: text({ length: 45 }),
     userAgent: text({ length: 500 }),

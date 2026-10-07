@@ -219,27 +219,32 @@ export async function likenessFromLedger(
 }
 
 /**
- * After a finalize moves an object, cover the new URL with the same row so
- * the library copy passes the gate without a second look.
+ * Cover a copy of an object at a new URL with the evidence its source URL
+ * has: a NEW row under the new URL that names the source row
+ * (`carriedFromId`), same statement, same answer, same signer context. The
+ * source row is never moved or changed — the original upload, its character
+ * and its shots keep relying on it. Used after a finalize moves an object
+ * and by Save face as talent (#2018). Refuses when the source has no row.
  */
 export async function carryUploadRights(
   scopedDb: ScopedDb,
   fromUrl: string,
   toUrl: string
-): Promise<void> {
+): Promise<UploadAttestation> {
   const row = await latestRow(scopedDb, fromUrl);
   if (!row) {
     throw new AttestationRequiredError(
       'This image has not been checked for a real person yet'
     );
   }
-  await scopedDb.compliance.attestations.record({
+  return scopedDb.compliance.attestations.record({
     subjectType: 'uploaded_image',
     subjectId: await sha256Hex(toUrl),
     statementVersion: row.statementVersion,
     statementSha256: row.statementSha256,
     depictsRealPerson: row.depictsRealPerson,
     authorizationBasis: row.authorizationBasis,
+    carriedFromId: row.id,
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
   });

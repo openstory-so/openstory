@@ -1,0 +1,1 @@
+ALTER TABLE `upload_attestations` ADD `carried_from_id` text;

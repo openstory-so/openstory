@@ -302,18 +302,35 @@ describe('carryUploadRights', () => {
       request
     );
 
-    await carryUploadRights(scopedDb, url, libraryUrl);
+    const before = await db.select().from(uploadAttestations);
+    const carried = await carryUploadRights(scopedDb, url, libraryUrl);
 
     expect(await requireUploadRights(scopedDb, [libraryUrl])).toEqual(
       new Map([[libraryUrl, { depictsRealPerson: true }]])
     );
     const rows = await db.select().from(uploadAttestations);
     expect(rows.at(-1)).toMatchObject({
+      id: carried.id,
       subjectId: await sha256Hex(libraryUrl),
       statementVersion: PORTRAIT_RIGHTS_V1.version,
       authorizationBasis: 'release #7',
       ipAddress: '203.0.113.9',
+      carriedFromId: before.at(-1)?.id,
     });
+    // A copy, never a move: the source rows are untouched, and the source
+    // URL still passes.
+    expect(rows.slice(0, before.length)).toEqual(before);
+    expect(await requireUploadRights(scopedDb, [url])).toEqual(
+      new Map([[url, { depictsRealPerson: true }]])
+    );
+
+    // A second carry is a second linked row, not a move either.
+    const again = await carryUploadRights(scopedDb, url, libraryUrl + '2');
+    expect(again.id).not.toBe(carried.id);
+    expect(again.carriedFromId).toBe(before.at(-1)?.id);
+    expect((await db.select().from(uploadAttestations)).length).toBe(
+      before.length + 2
+    );
   });
 
   it('refuses to carry an unchecked URL', async () => {
