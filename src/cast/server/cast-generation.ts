@@ -375,13 +375,33 @@ export async function recastCharacter(
 
   // The recast redraws the default look only. Other looks are drawn from
   // that new sheet, so starting them here would copy the face that is about
-  // to be replaced. Once the new sheet lands, their hashes go stale and the
-  // plan redraws them.
+  // to be replaced. Once the new sheet lands they read stale, with the shots
+  // that wear them, and the next Update or Continue redraws them. Named on
+  // the result so the caller can say so. (`failedLookIds` went with the
+  // sheet runs this used to start for them: none is started, none fails.)
+  const looksLeftStale: { lookId: string; name: string }[] = [];
+  for (const other of updatedCharacter.looks) {
+    if (other.isDefault || other.deletedAt) continue;
+    const worn = await scopedDb.characters.getShotIdsForCharacter(
+      data.sequenceId,
+      data.characterId,
+      { wearing: other.id }
+    );
+    if (worn.length > 0) {
+      looksLeftStale.push({ lookId: other.id, name: other.name });
+    }
+  }
 
   return {
     character: updatedCharacter,
     talentId: data.talentId,
     sheetWorkflowRunId: workflowRunId,
+    /**
+     * Looks a scene wears other than the default. They are not redrawn by
+     * the recast: they go stale once its sheet lands, and Update redraws
+     * them from it.
+     */
+    looksLeftStale,
     // The shots actually queued — a shot with no selected image prompt is
     // dropped by the snapshot builder rather than failing the recast.
     affectedShotIds: shotSnapshots.map((s) => s.shotId),

@@ -109,7 +109,7 @@ const regenerateCharacterSheetTool = openstoryTool({
 const recastCharacterTool = openstoryTool({
   name: 'recast_character',
   description:
-    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and every shot with the character is regenerated (spends credits). Other looks keep that person and are redrawn by the plan once the new default sheet exists. Refused for a voice-only character.',
+    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and the shots that wear the default look are regenerated (spends credits). Other looks a scene wears are not redrawn now: they and their shots go stale once the new sheet lands (looksLeftStale), and plan_generation / execute_generation redraws them. Refused for a voice-only character.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: characterInput.extend({
@@ -120,6 +120,7 @@ const recastCharacterTool = openstoryTool({
     talentId: z.string(),
     sheetWorkflowRunId: z.string(),
     affectedShotIds: z.array(z.string()),
+    looksLeftStale: z.array(z.object({ lookId: z.string(), name: z.string() })),
   }),
   run: async (input, { scopedDb, userId }) => {
     const character = await productionAccess(scopedDb).character(
@@ -141,8 +142,9 @@ const recastCharacterTool = openstoryTool({
         talentId: result.talentId,
         sheetWorkflowRunId: result.sheetWorkflowRunId,
         affectedShotIds: result.affectedShotIds,
+        looksLeftStale: result.looksLeftStale,
       },
-      summary: `Recasting ${character.name}; ${result.affectedShotIds.length} shots will regenerate.`,
+      summary: `Recasting ${character.name}; ${result.affectedShotIds.length} shots will regenerate.${result.looksLeftStale.length > 0 ? ` Stale until the next update: ${result.looksLeftStale.map((look) => look.name).join(', ')}.` : ''}`,
     };
   },
 });

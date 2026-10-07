@@ -431,9 +431,17 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     recastCharacter.mutate(
       { sequenceId, characterId: character.id, talentId: selectedTalent.id },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setIsConfirmOpen(false);
           setSelectedTalent(null);
+          // Other looks are drawn from the new default sheet, so the recast
+          // leaves them for the next update (#2015). Say which.
+          if (result.looksLeftStale.length > 0) {
+            toast(
+              `Update redraws ${result.looksLeftStale.map((look) => look.name).join(', ')} once the new sheet lands.`,
+              { duration: 60_000 }
+            );
+          }
         },
       }
     );
