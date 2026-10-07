@@ -12,6 +12,14 @@
   }
 }
 
+/* Our players sit inside their own rounded frames (`rounded-lg overflow-hidden`),
+   so the skin's inner 1px frame border and its larger corner radius would show
+   as a second, inset border. Let the app frame be the only one. */
+.media-skin {
+  --media-frame-border: transparent;
+  --media-video-border-radius: 0;
+}
+
 /* Theatre stitcher renders a canvas, not <video>. The skin only sizes video. */
 .media-skin canvas {
   display: block;
