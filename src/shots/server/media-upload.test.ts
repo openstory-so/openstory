@@ -45,6 +45,7 @@ import {
   resolveUploadExtension,
 } from './upload-media';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
+import { uploadAttestations } from '@/platform/server/db/schema';
 import { isSelectedVersionStale } from '@/shots/scene-segments';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { type Client, createClient } from '@libsql/client';
@@ -770,6 +771,79 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
     });
 
     expect(await verifyThumbnailStaleness(SCENE_WITH_REFS)).toBe('fresh');
+  });
+});
+
+describe('character sheet upload for a look other than the default (#2015)', () => {
+  it('is allowed before the default has a sheet, and reads stale once one lands', async () => {
+    const { setCharacterSheetFromUpload } = await import('./media-upload');
+    const { readLookSheetStaleness } =
+      await import('@/cast/server/production-staleness');
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const scopedDb = createScopedDb(teamId, actorId);
+    const mia = await scopedDb.characters.create(
+      { sequenceId, characterId: 'char_001', name: 'Mia' },
+      { source: 'analysis', createdBy: null }
+    );
+    const gala = await scopedDb.characterLooks.create(
+      sequenceId,
+      mia.id,
+      { name: 'Gala gown', clothing: 'red silk gown', styling: null },
+      { source: 'edit', actorId }
+    );
+    // The upload hashes the sequence style, which must parse as today's.
+    await db
+      .update(styles)
+      .set({
+        config: {
+          version: 2,
+          look: {
+            mood: 'neutral',
+            artStyle: 'cinematic',
+            lighting: 'natural',
+            colorPalette: ['#000', '#fff'],
+            colorGrading: 'neutral',
+          },
+          motion: { camera: 'static' },
+          references: [],
+        },
+      })
+      .where(eq(styles.id, styleId));
+    const sequence = await scopedDb.sequences.getById(sequenceId);
+    if (!sequence) throw new Error('test setup: no sequence');
+    const url = `/r2/characters/teams/${teamId}/sheets/gala.png`;
+    // The upload gate reads the likeness ledger: not a person.
+    await recordLikenessFinding(scopedDb, [url], 'other', {});
+
+    // No default sheet yet: the upload is not refused.
+    await setCharacterSheetFromUpload(
+      { scopedDb, user: { id: actorId }, teamId, sequence },
+      { characterId: mia.id, lookId: gala.id, publicUrl: url }
+    );
+    const uploaded = await scopedDb.characterLooks.getById(sequenceId, gala.id);
+    expect(uploaded?.sheetImageUrl).toBe(url);
+    expect(
+      (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
+        .status
+    ).toBe('fresh');
+
+    // The default look's sheet lands: the upload was stamped with no face,
+    // so it now reads stale, as a look drawn before that face would.
+    await scopedDb.characterSheetVariants.applyConvergent({
+      sequenceId,
+      lookId: mia.id,
+      url: `/r2/characters/teams/${teamId}/sheets/mia.png`,
+      storagePath: `teams/${teamId}/sheets/mia.png`,
+      inputHash: null,
+      model: 'test-model',
+    });
+    expect(
+      (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
+        .status
+    ).toBe('stale');
+    // The ledger row holds the team; the next seed deletes teams.
+    await db.delete(uploadAttestations);
   });
 });
 

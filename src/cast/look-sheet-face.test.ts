@@ -38,7 +38,7 @@ describe('lookSheetFaceMessage', () => {
       'Drawn from the default look, Clean white shirt. The face stays; the outfit changes.'
     );
     expect(lookSheetFaceMessage('Clean white shirt', 'missing')).toBe(
-      'Drawn from the default look, Clean white shirt. Generate that sheet first.'
+      'Drawn from the default look, Clean white shirt. Generate that sheet first, or upload one for this look.'
     );
     expect(lookSheetFaceMessage('Clean white shirt', 'generating')).toBe(
       'Drawn from the default look, Clean white shirt. That sheet is still generating.'
@@ -130,7 +130,7 @@ describe('lookSheetFaceRefusal', () => {
     });
     expect(defaultLookFaceState(never)).toBe('missing');
     expect(lookSheetFaceRefusal(never, false)).toBe(
-      'Drawn from the default look, Clean white shirt. Generate that sheet first.'
+      'Drawn from the default look, Clean white shirt. Generate that sheet first, or upload one for this look.'
     );
     expect(defaultLookFace(never)).toBeNull();
     // A failed first attempt is still "never had one".
@@ -144,7 +144,7 @@ describe('lookSheetFaceRefusal', () => {
         false
       )
     ).toBe(
-      'Drawn from the default look, Clean white shirt. Generate that sheet first.'
+      'Drawn from the default look, Clean white shirt. Generate that sheet first, or upload one for this look.'
     );
   });
 

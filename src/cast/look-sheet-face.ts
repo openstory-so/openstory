@@ -109,5 +109,5 @@ export function lookSheetFaceMessage(
   if (state === 'generating') {
     return `Drawn from ${who}. That sheet is still generating.`;
   }
-  return `Drawn from ${who}. Generate that sheet first.`;
+  return `Drawn from ${who}. Generate that sheet first, or upload one for this look.`;
 }

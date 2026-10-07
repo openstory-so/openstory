@@ -5,7 +5,7 @@
  * `media-upload.fn.ts` for the staleness and DAG contracts.
  */
 import { wearLook } from '@/cast/character-looks';
-import { defaultLookFace, lookSheetFaceRefusal } from '@/cast/look-sheet-face';
+import { defaultLookFace } from '@/cast/look-sheet-face';
 import {
   requireCharacterLook,
   requireLiveLook,
@@ -582,10 +582,10 @@ export async function setCharacterSheetFromUpload(
   const look = requireLiveLook(
     await requireCharacterLook(scopedDb, owner, data.lookId)
   );
-  // Same rule as generate: a look other than the default keeps the default
-  // look's face, and cannot be uploaded until that sheet exists.
-  const refusal = lookSheetFaceRefusal(owner.looks, look.isDefault);
-  if (refusal) throw new ValidationError(refusal);
+  // An upload is the user's own image: it needs no face to be drawn from, so
+  // it is allowed before the default look has a sheet (decided 2026-10-07).
+  // It is stamped with whatever face exists now, null when none, so it reads
+  // stale once a (new) default sheet lands, as a generated look would.
   const face = look.isDefault ? null : defaultLookFace(owner.looks);
   const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(

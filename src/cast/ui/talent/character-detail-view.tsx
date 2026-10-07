@@ -712,7 +712,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     pendingLabel="Uploading…"
                     accept="image/*"
                     isPending={uploadSheet.isPending}
-                    disabled={isSheetGenerating || faceBlocked}
+                    // Upload needs no face; only Generate waits for one.
+                    disabled={isSheetGenerating}
                     onFile={(file) =>
                       uploadSheet.mutate(
                         { file, sequenceId, characterId, lookId: activeLookId },
