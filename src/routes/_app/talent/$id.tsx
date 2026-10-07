@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { routeParams } from '@/ui/layout/breadcrumbs';
-import { EditTalentDialog } from '@/cast/ui/talent-library/edit-talent-dialog';
+import {
+  EditTalentDialog,
+  isParkedSheet,
+} from '@/cast/ui/talent-library/edit-talent-dialog';
 import { TalentMediaUpload } from '@/cast/ui/talent-library/talent-media-upload';
 import { PageContainer } from '@/ui/layout/page-container';
 import { getCurrentUserProfileFn } from '@/platform/user.fn';
@@ -14,23 +17,24 @@ import { useTalentSheetRealtime } from '@/cast/ui/use-talent-realtime';
 import {
   useTalentById,
   useDeleteTalent,
+  useDiscardTalentSheet,
   useGenerateTalentSheet,
-  useSetDefaultSheet,
+  useSelectTalentSheet,
   useToggleTalentFavorite,
+  useUndiscardTalentSheet,
 } from '@/cast/ui/use-talent';
 import { sheetProgressCopy } from '@/cast/sheet-progress-copy';
+import type { TalentSheet } from '@/platform/server/db/schema';
 import { cn } from '@/ui/utils';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
-  ImageIcon,
   Loader2,
   Pencil,
   Sparkles,
   Star,
   Trash2,
-  Upload,
   User,
 } from 'lucide-react';
 
@@ -53,6 +57,19 @@ export const Route = createFileRoute('/_app/talent/$id')({
   },
 });
 
+const SHEET_SOURCE_LABEL: Record<TalentSheet['source'], string> = {
+  ai_generated: 'Generated',
+  manual_upload: 'Uploaded',
+  script_analysis: 'From a character',
+};
+
+/** What a history row is, in one word, beside its source. */
+function sheetState(sheet: TalentSheet): string | null {
+  if (sheet.discardedAt) return 'Discarded';
+  if (isParkedSheet(sheet)) return 'Made after an edit, not in use';
+  return null;
+}
+
 function TalentDetailPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
@@ -67,7 +84,9 @@ function TalentDetailPage() {
   const toggleFavorite = useToggleTalentFavorite();
   const deleteTalent = useDeleteTalent();
   const generateSheet = useGenerateTalentSheet();
-  const setDefaultSheet = useSetDefaultSheet();
+  const selectSheet = useSelectTalentSheet();
+  const discardSheet = useDiscardTalentSheet();
+  const undiscardSheet = useUndiscardTalentSheet();
   const [dropFiles, setDropFiles] = useState<File[]>([]);
 
   const canManageTalent = Boolean(
@@ -151,6 +170,14 @@ function TalentDetailPage() {
     );
   }
 
+  const referenceSheet =
+    talent.sheets.find((s) => s.id === talent.selectedSheetId) ?? null;
+  const history = talent.sheets.filter((s) => s.id !== talent.selectedSheetId);
+  const sheetAction = (sheet: TalentSheet) => ({
+    sheetId: sheet.id,
+    talentId: talent.id,
+  });
+
   return (
     <div className="h-full overflow-auto">
       <PageContainer>
@@ -181,6 +208,9 @@ function TalentDetailPage() {
                 <Button
                   variant="outline"
                   size="icon"
+                  aria-label={
+                    talent.isFavorite ? 'Remove favourite' : 'Favourite'
+                  }
                   onClick={() => toggleFavorite.mutate(talent.id)}
                   disabled={toggleFavorite.isPending}
                 >
@@ -196,6 +226,7 @@ function TalentDetailPage() {
                 <Button
                   variant="outline"
                   size="icon"
+                  aria-label="Delete talent"
                   onClick={handleDelete}
                   disabled={deleteTalent.isPending}
                 >
@@ -206,15 +237,16 @@ function TalentDetailPage() {
           }
         >
           <h1 className="sr-only">{talent.name}</h1>
+          {/* Rights: a signed real-person likeness, or an AI face. */}
           <div className="flex items-center gap-3">
             {talent.isHuman ? (
               <span className="px-2 py-1 bg-muted rounded text-xs font-medium">
-                Human
+                Real person, rights signed
               </span>
             ) : (
               <span className="px-2 py-1 bg-muted rounded text-xs font-medium flex items-center gap-1">
                 <Sparkles className="h-3 w-3" />
-                AI
+                AI face
               </span>
             )}
           </div>
@@ -223,180 +255,198 @@ function TalentDetailPage() {
           )}
         </PageHeader>
 
-        {/* Media Section */}
-        {talent.media.length > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold mb-4">
-              Reference Media ({talent.media.length})
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {talent.media.map((media) => (
-                <Card key={media.id} className="overflow-hidden">
-                  <div className="aspect-square bg-muted">
-                    {media.type === 'image' && (
-                      <img
-                        src={media.url}
-                        alt="Reference"
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                    {media.type === 'video' && (
-                      <video
-                        src={media.url}
-                        className="w-full h-full object-cover"
-                        muted
-                      />
-                    )}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </section>
-        )}
-        {/* Talent Sheets Section */}
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <ImageIcon className="h-5 w-5" />
-              Talent Sheets ({talent.sheets.length})
-            </h2>
-            {canManageTalent && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleGenerateSheet}
-                disabled={isGeneratingSheet}
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                {isGeneratingSheet
-                  ? sheetProgressCopy(generatingPhase)
-                  : 'Generate Sheet'}
-              </Button>
-            )}
-          </div>
-
-          {/* eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard */}
-          {sheetError ? (
-            <p className="text-destructive text-sm mb-3" role="alert">
-              {sheetError}
-            </p>
-          ) : null}
-          {isGeneratingSheet && talent.sheets.length === 0 ? (
-            <Card className="p-8 text-center">
-              <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-muted-foreground" />
-              <p className="text-muted-foreground">
-                {sheetProgressCopy(generatingPhase, 'long')}
-              </p>
-            </Card>
-          ) : talent.sheets.length === 0 ? (
-            <Card className="p-8 text-center">
-              <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
-              <p className="text-muted-foreground mb-3">
-                No talent sheets yet. Drop a character sheet or generate one
-                from the name and description.
-              </p>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {isGeneratingSheet ? (
-                <Card className="overflow-hidden">
-                  <div className="aspect-video bg-muted flex flex-col items-center justify-center gap-3">
-                    <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      {sheetProgressCopy(generatingPhase)}
-                    </p>
-                  </div>
-                </Card>
-              ) : null}
-              {talent.sheets.map((sheet) => (
-                <Card
-                  key={sheet.id}
-                  className={cn(
-                    'overflow-hidden',
-                    sheet.isDefault && 'ring-2 ring-primary'
-                  )}
+        <div className="flex flex-col gap-8">
+          {/* Reference sheet: the face every cast character draws from. */}
+          <section className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold">Reference sheet</h2>
+              {canManageTalent && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGenerateSheet}
+                  disabled={isGeneratingSheet}
                 >
-                  <div className="relative bg-muted">
-                    {sheet.imageUrl ? (
-                      <img
-                        src={sheet.imageUrl}
-                        alt={sheet.name}
-                        className="h-auto w-full"
-                      />
-                    ) : (
-                      <div className="flex aspect-video w-full items-center justify-center">
-                        <User className="h-12 w-12 text-muted-foreground/30" />
-                      </div>
-                    )}
+                  {isGeneratingSheet
+                    ? sheetProgressCopy(generatingPhase)
+                    : referenceSheet
+                      ? 'Generate a new sheet'
+                      : 'Generate sheet'}
+                </Button>
+              )}
+            </div>
+            {sheetError ? (
+              <p className="text-destructive text-sm" role="alert">
+                {sheetError}
+              </p>
+            ) : null}
+            {referenceSheet?.imageUrl ? (
+              <Card className="overflow-hidden">
+                <img
+                  src={referenceSheet.imageUrl}
+                  alt={`${talent.name} reference sheet`}
+                  className="h-auto w-full"
+                />
+                <p className="p-3 text-xs text-muted-foreground">
+                  {SHEET_SOURCE_LABEL[referenceSheet.source]}. Characters cast
+                  with this talent draw their face from this sheet.
+                </p>
+              </Card>
+            ) : isGeneratingSheet ? (
+              <Card className="p-8 text-center">
+                <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-muted-foreground" />
+                <p className="text-muted-foreground">
+                  {sheetProgressCopy(generatingPhase, 'long')}
+                </p>
+              </Card>
+            ) : (
+              <Card className="p-8 text-center">
+                <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground/30" />
+                <p className="text-muted-foreground">
+                  No reference sheet yet. Drop a character sheet or generate one
+                  from the photos and description.
+                </p>
+              </Card>
+            )}
+          </section>
 
-                    {/* Source badge */}
-                    <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 backdrop-blur-sm rounded text-xs">
-                      {sheet.source === 'ai_generated' && (
-                        <span className="flex items-center gap-1">
-                          <Sparkles className="h-3 w-3" />
-                          AI
-                        </span>
+          {/* Reference media */}
+          {talent.media.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold">
+                Reference media ({talent.media.length})
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {talent.media.map((media) => (
+                  <Card key={media.id} className="overflow-hidden">
+                    <div className="aspect-square bg-muted">
+                      {media.type === 'image' && (
+                        <img
+                          src={media.url}
+                          alt="Reference"
+                          className="w-full h-full object-cover"
+                        />
                       )}
-                      {sheet.source === 'manual_upload' && (
-                        <span className="flex items-center gap-1">
-                          <Upload className="h-3 w-3" />
-                          Upload
-                        </span>
+                      {media.type === 'video' && (
+                        <video
+                          src={media.url}
+                          className="w-full h-full object-cover"
+                          muted
+                        />
                       )}
                     </div>
-
-                    {/* Default badge */}
-                    {sheet.isDefault && (
-                      <div className="absolute top-2 right-2 px-2 py-1 bg-primary text-primary-foreground rounded text-xs font-medium">
-                        Default
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-3 flex items-center justify-between gap-2">
-                    <p className="font-medium text-sm line-clamp-1">
-                      {sheet.name}
-                    </p>
-                    {canManageTalent &&
-                      talent.sheets.length > 1 &&
-                      !sheet.isDefault && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() =>
-                            setDefaultSheet.mutate({
-                              sheetId: sheet.id,
-                              talentId: talent.id,
-                            })
-                          }
-                          disabled={setDefaultSheet.isPending}
-                        >
-                          Set as Default
-                        </Button>
-                      )}
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))}
+              </div>
+            </section>
           )}
-        </section>
 
-        {canManageTalent ? (
-          <section className="mb-8 flex flex-col gap-3">
-            <h2 className="text-lg font-semibold">Drop a sheet or photos</h2>
-            <p className="text-sm text-muted-foreground">
-              Drop a character sheet to use it as-is, or drop photos to generate
-              a sheet. A photo of a real person asks for your rights sign-off
-              first.
-            </p>
-            <TalentMediaUpload
-              files={dropFiles}
-              onFilesChange={setDropFiles}
-              talentId={talent.id}
-              onComplete={() => setDropFiles([])}
-            />
-          </section>
-        ) : null}
+          {/* Sheet history: older, parked and discarded sheets. */}
+          {history.length > 0 && (
+            <section className="flex flex-col gap-4">
+              <h2 className="text-lg font-semibold">
+                Other sheets ({history.length})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {history.map((sheet) => {
+                  const state = sheetState(sheet);
+                  return (
+                    <Card
+                      key={sheet.id}
+                      className={cn(
+                        'overflow-hidden',
+                        sheet.discardedAt && 'opacity-60'
+                      )}
+                    >
+                      <div className="bg-muted">
+                        {sheet.imageUrl ? (
+                          <img
+                            src={sheet.imageUrl}
+                            alt={`${talent.name} sheet`}
+                            className="h-auto w-full"
+                          />
+                        ) : (
+                          <div className="flex aspect-video w-full items-center justify-center">
+                            <User className="h-12 w-12 text-muted-foreground/30" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground">
+                          {state
+                            ? `${SHEET_SOURCE_LABEL[sheet.source]} · ${state}`
+                            : SHEET_SOURCE_LABEL[sheet.source]}
+                        </p>
+                        {canManageTalent && (
+                          <div className="flex items-center gap-2">
+                            {sheet.discardedAt ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  undiscardSheet.mutate(sheetAction(sheet))
+                                }
+                                disabled={undiscardSheet.isPending}
+                              >
+                                {undiscardSheet.isPending
+                                  ? 'Restoring…'
+                                  : 'Restore'}
+                              </Button>
+                            ) : (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    selectSheet.mutate(sheetAction(sheet))
+                                  }
+                                  disabled={selectSheet.isPending}
+                                >
+                                  {selectSheet.isPending
+                                    ? 'Selecting…'
+                                    : 'Use as reference'}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    discardSheet.mutate(sheetAction(sheet))
+                                  }
+                                  disabled={discardSheet.isPending}
+                                >
+                                  {discardSheet.isPending
+                                    ? 'Discarding…'
+                                    : 'Discard'}
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {canManageTalent ? (
+            <section className="flex flex-col gap-3">
+              <h2 className="text-lg font-semibold">Drop a sheet or photos</h2>
+              <p className="text-sm text-muted-foreground">
+                Drop a character sheet to use it as the reference sheet, or drop
+                photos to generate one. A photo of a real person asks for your
+                rights sign-off first.
+              </p>
+              <TalentMediaUpload
+                files={dropFiles}
+                onFilesChange={setDropFiles}
+                talentId={talent.id}
+                onComplete={() => setDropFiles([])}
+              />
+            </section>
+          ) : null}
+        </div>
       </PageContainer>
     </div>
   );

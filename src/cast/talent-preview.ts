@@ -9,32 +9,17 @@
 
 type SheetLike = {
   imageUrl?: string | null;
-  isDefault?: boolean | null;
-  divergedAt?: Date | string | null;
 };
 
 export type TalentPreviewInput = {
   imageUrl?: string | null;
-  defaultSheet?: SheetLike | null;
-  sheets?: readonly SheetLike[] | null;
+  /** The reference sheet (#2018): the row `talent.selectedSheetId` names. */
+  referenceSheet?: SheetLike | null;
 };
 
-function sheetUrlIfConvergent(
-  sheet: SheetLike | null | undefined
-): string | null {
-  if (!sheet || sheet.divergedAt) return null;
-  return sheet.imageUrl ?? null;
-}
-
-/** Default / first convergent sheet url. Divergent rows are not an identity. */
+/** The reference sheet's url; a talent with no sheet yet has none. */
 export function talentSheetUrl(talent: TalentPreviewInput): string | null {
-  const fromDefault = sheetUrlIfConvergent(talent.defaultSheet);
-  if (fromDefault) return fromDefault;
-  const sheets = talent.sheets ?? [];
-  const preferred =
-    sheets.find((s) => s.isDefault && !s.divergedAt) ??
-    sheets.find((s) => !s.divergedAt);
-  return preferred?.imageUrl ?? null;
+  return talent.referenceSheet?.imageUrl ?? null;
 }
 
 export type TalentSquarePreview = {

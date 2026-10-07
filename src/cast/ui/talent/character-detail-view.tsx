@@ -770,13 +770,17 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                         { sequenceId, characterId: character.id },
                         {
                           onSuccess: () =>
-                            toast.success(`Saved ${character.name} as talent`),
+                            toast.success(
+                              `Saving ${character.name}'s face as talent…`
+                            ),
                         }
                       )
                     }
-                    disabled={saveAsTalent.isPending}
+                    disabled={
+                      saveAsTalent.isPending || !character.sheetImageUrl
+                    }
                   >
-                    {saveAsTalent.isPending ? 'Saving…' : 'Save as talent'}
+                    {saveAsTalent.isPending ? 'Saving…' : 'Save face as talent'}
                   </Button>
                 )}
                 {!character.voiceOnly && (

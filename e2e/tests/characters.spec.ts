@@ -164,7 +164,7 @@ test.describe('Characters page', () => {
     await expect(addButton(page)).toBeVisible({ timeout: HYDRATION_TIMEOUT });
     // The old copy is still offered, under its own name.
     await expect(
-      page.getByRole('button', { name: 'Save as talent' })
+      page.getByRole('button', { name: 'Save face as talent' })
     ).toBeVisible();
     await addButton(page).click();
     await expect(removeButton(page)).toBeVisible();
@@ -199,7 +199,7 @@ test.describe('Characters page', () => {
     ).toHaveCount(0);
     // The sequence's own detail view is what shows below.
     await expect(
-      page.getByRole('button', { name: 'Save as talent' })
+      page.getByRole('button', { name: 'Save face as talent' })
     ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   });
 
