@@ -111,6 +111,11 @@ WHERE t.`id` = `talent_sheets`.`talent_id`
 --> statement-breakpoint
 
 -- 4. Talent carrying role data splits off a library character.
+--    `is_person` is 1 for every split character: the SAFE state (a person
+--    until the likeness check says otherwise — `registersWithArk`, #1682).
+--    `talent.is_human` means "signed real-person release", a different
+--    question; 0 there is "not signed or never classified", never "not a
+--    person", so it must not fail the gate open.
 --    "split" below is: not stock, and a personality, movement or voice on
 --    the row, or a sheet copied from a character (`script_analysis`).
 --    Replay: the role columns are left in place, so the set is stable; each
@@ -121,7 +126,7 @@ INSERT INTO `characters` (
 )
 SELECT
   t.`id`, t.`team_id`, 1, t.`id`, t.`name`,
-  0, t.`is_human`, 'completed', t.`created_at`, t.`updated_at`
+  0, 1, 'completed', t.`created_at`, t.`updated_at`
 FROM `talent` t
 LEFT JOIN (
   SELECT `talent_id` FROM `talent_sheets`
@@ -151,7 +156,7 @@ SELECT
   COALESCE(json_extract(s.`metadata`, '$.physicalDescription'), t.`description`),
   json_extract(s.`metadata`, '$.standardClothing'),
   json_extract(s.`metadata`, '$.distinguishingFeatures'),
-  t.`personality`, t.`movement`, 0, t.`is_human`,
+  t.`personality`, t.`movement`, 0, 1,
   json_extract(s.`metadata`, '$.consistencyTag'),
   t.`id`, 'backfill', t.`updated_at`, t.`created_by`
 FROM `characters` c
