@@ -181,10 +181,14 @@ export async function restoreCharacter(
   });
 }
 
+const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
+
 /**
  * Delete one of the team's characters for good (#2065). Refused while a
  * sequence, archived ones included, still casts it: the delete would take
- * that cast link with it. Its voice is released first, provider before row
+ * that cast link with it. The db delete carries the same condition, so a
+ * sequence that casts it between the check and the write still stops it.
+ * Its voice is released first, provider before row
  * (`releaseCharacterVoice`), so a failed release leaves the character.
  */
 export async function deleteTeamCharacter(
@@ -193,7 +197,7 @@ export async function deleteTeamCharacter(
   characterId: string
 ) {
   if (await scopedDb.characters.getCastInAnySequenceOrArchive(characterId)) {
-    throw new ConflictError('Remove it from its sequences first.');
+    throw new ConflictError(STILL_CAST_MESSAGE);
   }
   await releaseCharacterVoice(
     scopedDb,
@@ -206,7 +210,10 @@ export async function deleteTeamCharacter(
   for (const voiceId of owed) {
     await releaseVoiceIfUnreferenced(scopedDb, voiceId);
   }
-  await scopedDb.characters.delete(characterId, { releasedVoiceIds: owed });
+  const deleted = await scopedDb.characters.delete(characterId, {
+    releasedVoiceIds: owed,
+  });
+  if (!deleted) throw new ConflictError(STILL_CAST_MESSAGE);
   return { characterId };
 }
 

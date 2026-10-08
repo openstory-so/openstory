@@ -200,7 +200,9 @@ are too. The methods keyed on a voice version id alone are not yet.
   sequence casts the character. It is refused while any sequence, archived
   ones included, has a link to it that is not removed
   (`getCastInAnySequenceOrArchive`): the delete would take that link with
-  it. It releases the voice, then hard-deletes the character with
+  it. `characters.delete` carries the same condition in every statement of
+  its batch, so a sequence that casts the character between the check and
+  the write still stops it. It releases the voice, then hard-deletes the character with
   everything keyed to it (`characters.delete`, § Hard deletes).
 - **Every team character** is on the list, in `list_library_characters`
   and in the `@` picker (#2065). The tool keeps its name.

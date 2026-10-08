@@ -1441,6 +1441,8 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     );
     if (!a || !b || !x || !y) throw new Error('test setup: create failed');
 
+    // A character goes only once no sequence casts it (#2065).
+    await chars.softDelete(sequenceId, a.id, { actorId });
     expect(await chars.delete(a.id, NO_VOICES)).toBe(true);
     expect(await locs.delete(x.id)).toBe(true);
 
@@ -1659,6 +1661,7 @@ describe('team characters (#2017)', () => {
     expect(await rowsOf(created.id)).toEqual(before);
 
     // The caller ran voice-a through releaseVoiceIfUnreferenced and says so.
+    await chars().softDelete(sequenceId, created.id, { actorId });
     expect(
       await chars().delete(created.id, { releasedVoiceIds: ['voice-a'] })
     ).toBe(true);
@@ -1695,6 +1698,7 @@ describe('team characters (#2017)', () => {
     await expect(
       chars().delete(created.id, { releasedVoiceIds: ['voice-a'] })
     ).rejects.toThrow(/1 saved voice\(s\) would be stranded/);
+    await chars().softDelete(sequenceId, created.id, { actorId });
     expect(
       await chars().delete(created.id, { releasedVoiceIds: ['voice-b'] })
     ).toBe(true);
@@ -1724,6 +1728,7 @@ describe('team characters (#2017)', () => {
     );
 
     expect(await chars().getVoiceIdsToRelease(created.id)).toEqual([]);
+    await chars().softDelete(sequenceId, created.id, { actorId });
     expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
     expect(await rowsOf(created.id)).toEqual(NOTHING);
   });
@@ -2741,6 +2746,10 @@ describe('team characters (#2017)', () => {
       name: 'Ada',
     });
 
+    // Still cast: nothing goes, whoever asks (#2065).
+    expect(await chars().delete(created.id, NO_VOICES)).toBe(false);
+    expect(await linksOf(created.id)).toHaveLength(1);
+    await chars().softDelete(sequenceId, created.id, { actorId });
     expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
     expect(await linksOf(created.id)).toEqual([]);
   });

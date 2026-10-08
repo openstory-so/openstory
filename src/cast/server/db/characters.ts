@@ -1973,7 +1973,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
     /**
      * Hard-delete one of the team's characters with everything keyed to it.
      * Every statement names the team's character, so another team's id
-     * deletes nothing. Refused while a saved voice would be stranded:
+     * deletes nothing. Nothing is deleted, and `false` comes back, while a
+     * sequence (archived ones included) has a cast link to it that is not
+     * removed: the condition is in every statement of the batch, so a link
+     * made after the caller's own check still stops it (#2065). Refused
+     * while a saved voice would be stranded:
      * `releasedVoiceIds` are the ids from {@link getVoiceIdsToRelease} the
      * caller has run through `releaseVoiceIfUnreferenced`
      * ({@link assertVoicesReleased}).
@@ -1982,8 +1986,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       id: string,
       opts: { releasedVoiceIds: readonly string[] }
     ): Promise<boolean> => {
-      const mine = sql`${eq(characters.id, id)} and ${inTeam}`;
-      await assertVoicesReleased(db, mine, opts.releasedVoiceIds);
+      await assertVoicesReleased(
+        db,
+        sql`${eq(characters.id, id)} and ${inTeam}`,
+        opts.releasedVoiceIds
+      );
+      const mine = sql`${eq(characters.id, id)} and ${inTeam} and NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.removed_at IS NULL)`;
       // Two cast statements, then six for the character; the last is its own.
       const [, , , , , , , result] = await db.batch([
         ...deleteCastStatements(
