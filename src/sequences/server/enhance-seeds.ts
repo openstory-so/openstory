@@ -50,8 +50,9 @@ function pick(list: string | readonly string[], random: () => number): string {
 }
 
 // One name is not enough: the second character went back to the model's
-// favourite (the same name in 6 of 20 scripts with a single name drawn).
-const NAME_COUNT = 3;
+// favourite (the same name in 6 of 20 scripts with a single name drawn). Two
+// of each, labelled, so the model never has to guess whose name it is.
+const NAME_COUNT = 2;
 
 function pickNames(list: string, random: () => number): string[] {
   const pool = list.split('|');
@@ -83,13 +84,14 @@ export function drawEnhanceSeeds(
   if (!input.invent && words >= THIN_BRIEF_WORDS) return undefined;
 
   const country = input.country || pick(COUNTRIES_WITH_NAMES, random);
-  const names = NAMES[country];
+  const [women, men] = NAMES[country]?.split(';') ?? [];
   const towns = TOWNS[country];
   const countryName = new Intl.DisplayNames(['en'], { type: 'region' }).of(
     country
   );
   return {
-    names: names ? pickNames(names, random) : [],
+    womenNames: women ? pickNames(women, random) : [],
+    menNames: men ? pickNames(men, random) : [],
     town: towns ? `${pick(towns, random)}, ${countryName ?? country}` : null,
     venue: pick(ENHANCE_SEED_DATA.venues, random),
     occupation: pick(ENHANCE_SEED_DATA.jobs, random),
