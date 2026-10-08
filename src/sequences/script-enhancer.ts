@@ -27,6 +27,19 @@ export const enhanceElementSchema = z.object({
 
 type EnhanceElement = z.infer<typeof enhanceElementSchema>;
 
+/**
+ * Starting points drawn in code, not chosen by the model (#2076). `null` means
+ * nothing was drawn for that one: no name list for the country, or a genre the
+ * style or the brief already settles.
+ */
+export type EnhanceSeeds = {
+  readonly name: string | null;
+  readonly town: string | null;
+  readonly venue: string;
+  readonly occupation: string;
+  readonly genre: string | null;
+};
+
 export function createUserPrompt(
   originalScript: string,
   options?: {
@@ -36,6 +49,8 @@ export function createUserPrompt(
     elements?: EnhanceElement[];
     /** Nothing to expand — invent the idea (#1393). */
     invent?: boolean;
+    /** Only for invent mode and thin briefs: see `drawEnhanceSeeds`. */
+    seeds?: EnhanceSeeds;
   }
 ): string {
   const durationSeconds = options?.targetDuration ?? 30;
@@ -65,6 +80,19 @@ ${buildDurationPromptParagraph({
   targetSeconds: durationSeconds,
 })}`,
   ];
+
+  const seeds = options?.seeds;
+  if (seeds) {
+    const lines = [
+      'Starting points, drawn at random so this film does not begin where every other one does. Where the brief, the style and the elements leave the person, the place or the work open, use these instead of choosing your own. Anything they already decide wins; leave out a starting point that cannot fit. Do not mention that they were given to you.',
+    ];
+    if (seeds.name) lines.push(`- A character's first name: ${seeds.name}`);
+    if (seeds.town) lines.push(`- Town: ${seeds.town}`);
+    lines.push(`- Kind of place: ${seeds.venue}`);
+    lines.push(`- A character's job: ${seeds.occupation}`);
+    if (seeds.genre) lines.push(`- Genre: ${seeds.genre}`);
+    parts.push(`\n${lines.join('\n')}`);
+  }
 
   if (options?.elements && options.elements.length > 0) {
     const hasImages = options.elements.some(
