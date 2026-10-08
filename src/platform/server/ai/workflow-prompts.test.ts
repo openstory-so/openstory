@@ -43,6 +43,13 @@ describe('scene-splitting-boundaries-chat — shots vs scenes (#1486)', () => {
     expect(system).toContain('Cut to...');
     expect(system).toMatch(/same scene/i);
   });
+
+  it('leaves front matter out of the scenes (#2077)', () => {
+    expect(system).toContain('Front matter is not a scene');
+    expect(system).toContain('A script with no scene headings is all story');
+    expect(system).not.toContain('Scene 1 always starts at the very top');
+    expect(system).not.toContain('do not skip a title line');
+  });
 });
 
 describe('scene-shot-list-chat', () => {
@@ -62,6 +69,8 @@ describe('scene-shot-list-chat', () => {
     expect(system).toContain(
       'the system divides it across the scene\x27s shots'
     );
+    expect(system).toContain('A scene with NO `duration:` line');
+    expect(system).toContain('Do not stretch the scene to its word count');
     expect(system).not.toContain('hits the target running time');
     expect(system).not.toContain('A scene with no internal cut is ONE shot');
     expect(prompt?.[1]?.content).toContain('{{scenes}}');

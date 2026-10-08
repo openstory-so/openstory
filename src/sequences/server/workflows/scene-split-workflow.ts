@@ -796,19 +796,19 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           finalBoundaries
         );
 
-        // Slices are adjacent substrings by construction — this assert is a
-        // pure-logic invariant, not an LLM behaviour: a failure means a bug
-        // in boundary-split, so fail loud rather than persist drifted text.
-        if (assembled.slices.join('') !== script) {
+        // Slices are adjacent substrings from the first resolved quote to
+        // the end. A leading gap is front matter the model did not quote
+        // (#2077). A failure means a bug in boundary-split, so fail loud
+        // rather than persist drifted text. The bibles call still receives
+        // the whole guttered script.
+        const covered = script.slice(assembled.sceneOffsets[0] ?? 0);
+        if (assembled.slices.join('') !== covered) {
           throw new NonRetryableError(
-            `[SceneSplitWorkflow:cf] boundary slices do not reassemble the script (${assembled.slices.join('').length} vs ${script.length} chars)`,
+            `[SceneSplitWorkflow:cf] boundary slices do not reassemble the script from the first scene (${assembled.slices.join('').length} vs ${covered.length} chars)`,
             'WorkflowValidationError'
           );
         }
         const scenes = assembled.scenes;
-        // Scene-index offsets, not the raw partition. Front matter before
-        // the first heading is in `slices` (so they still reassemble the
-        // script) and absent from `scenes` (#2077).
         const offsets = assembled.sceneOffsets;
 
         logger.info(

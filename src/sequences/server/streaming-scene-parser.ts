@@ -21,8 +21,6 @@ import {
 import { sceneBoundarySchema } from '@/sequences/response-schemas';
 import {
   buildSceneFromSlice,
-  filmableOffsets,
-  filmableSlices,
   inheritMissingLocation,
 } from '@/sequences/scene-from-slice';
 import type {
@@ -103,21 +101,17 @@ export function assembleScenes(
   scenes: SceneSplittingScene[];
   resolution: ReturnType<typeof resolveBoundaries>;
   /**
-   * Raw boundary partition. `slices.join('') === script`. Front matter stays
-   * in here so the invariant holds; it is not a scene (#2077).
+   * Scene slices. `slices.join('') === script.slice(offsets[0] ?? 0)`.
+   * Text before the model's first quote is not a scene (#2077).
    */
   slices: string[];
-  /**
-   * Offsets of {@link scenes}. Differs from `resolution.offsets` when text
-   * before the first scene heading was dropped.
-   */
+  /** Offsets of {@link scenes}. The same list as `resolution.offsets`. */
   sceneOffsets: number[];
 } {
   const resolution = resolveBoundaries(script, result.boundaries);
-  const slices = sliceScenes(script, resolution.offsets);
-  const sceneOffsets = filmableOffsets(script, resolution.offsets);
-  const played = filmableSlices(script, resolution.offsets);
-  const scenes = played.map((slice, i) =>
+  const sceneOffsets = resolution.offsets;
+  const slices = sliceScenes(script, sceneOffsets);
+  const scenes = slices.map((slice, i) =>
     buildSceneFromSlice(sceneIdFor(i), i, slice)
   );
   for (let i = 1; i < scenes.length; i++) {
@@ -185,10 +179,9 @@ export function createStreamingSceneParser(
       );
 
       const resolution = resolveBoundaries(script, boundaries);
-      // Filmable slices, not the raw partition: text before the first scene
-      // heading is not a scene (#2077). The last slice stays open until
+      // The model's quotes are the scenes. The last slice stays open until
       // `done` — its end is the script end, or a boundary still streaming.
-      const slices = filmableSlices(script, resolution.offsets);
+      const slices = sliceScenes(script, resolution.offsets);
       const finalized = done ? slices.length : Math.max(0, slices.length - 1);
 
       for (let i = emittedScenes; i < finalized; i++) {

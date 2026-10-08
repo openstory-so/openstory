@@ -180,7 +180,7 @@ describe('createStreamingSceneParser', () => {
     expect(parser.feed('The scenes are as follows:')).toEqual([]);
   });
 
-  it('does not emit the title page as a scene, and the final assemble reuses those ids (#2077)', () => {
+  it('starts scenes at the model quotes, and the final assemble reuses those ids (#2077)', () => {
     const screenplay = [
       'THE RAIN SHIFT',
       '',
@@ -196,8 +196,8 @@ describe('createStreamingSceneParser', () => {
       'EXT. STREET - NIGHT',
       'They step into the rain.',
     ].join('\n');
+    // The model quotes the first filmable scene, not the title page.
     const screenplayBoundaries = [
-      { hintLine: 1, quote: 'THE RAIN SHIFT' },
       { hintLine: 6, quote: 'INT. KITCHEN - NIGHT' },
       { hintLine: 12, quote: 'EXT. STREET - NIGHT' },
     ];
@@ -229,7 +229,8 @@ describe('createStreamingSceneParser', () => {
       { boundaries: screenplayBoundaries },
       (index) => parser.mintedSceneIds().get(index) ?? `missing-${index}`
     );
-    expect(assembled.slices.join('')).toBe(screenplay);
+    const start = assembled.sceneOffsets[0] ?? 0;
+    expect(assembled.slices.join('')).toBe(screenplay.slice(start));
     expect(assembled.scenes.map((scene) => scene.sceneId)).toEqual([
       'id-1',
       'id-2',

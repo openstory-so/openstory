@@ -149,27 +149,6 @@ describe('estimateStoryboardPreflightCost', () => {
     expect(underFloor).toBe(auto);
   });
 
-  it('does not bill a title page on an unlabelled screenplay (#2077)', () => {
-    const scene = [
-      'INT. KITCHEN - NIGHT',
-      'Sarah fills the kettle and watches the rain.',
-      '',
-      'SARAH',
-      'Tea?',
-    ].join('\n');
-    const front = `${'A tired detective who has not slept in days. '.repeat(400)}\n\n`;
-    const quote = (script: string) =>
-      Number(
-        estimateStoryboardPreflightCost({
-          ...base,
-          script,
-          autoGenerateMotion: true,
-          videoModels: [DEFAULT_VIDEO_MODEL],
-        })
-      );
-    expect(quote(front + scene)).toBe(quote(scene));
-  });
-
   it('keeps labelled scene totals when a title page precedes them (#2077)', () => {
     const labeled = 'Scene 1 — 10s\nINT. HALL - NIGHT\nShe opens the door.';
     const withFront = `THE RAIN SHIFT\n\nCHARACTERS\nSara, tired.\n\n${labeled}`;

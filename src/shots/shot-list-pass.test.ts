@@ -264,7 +264,8 @@ describe('attachShotLists', () => {
       'She opens the door',
       'Cut to the hallway beyond',
     ]);
-    // Two shots divide the 8s label: on a 4s-minimum grid that is 4 + 4.
+    // No Scene N label: the model's 4s + 4s are kept, not stretched to the
+    // 8s word-count ceiling on the scene.
     expect(scene.shots?.map((s) => s.durationSeconds)).toEqual([4, 4]);
   });
 
@@ -291,6 +292,70 @@ describe('attachShotLists', () => {
     expect(attached[0]?.shots).toHaveLength(1);
     expect(attached[1]?.shots).toHaveLength(1);
     expect(attached[1]?.shots?.[0]?.durationSeconds).toBe(5);
+  });
+
+  it('keeps the model seconds on an unlabelled scene instead of the word-count ceiling (#2077)', () => {
+    const extract = [
+      'INT. KITCHEN - NIGHT',
+      'Sarah fills the kettle and watches rain streak the dark window, the street below empty, the clock over the stove stuck.',
+      '',
+      'SARAH',
+      'Tea?',
+      '',
+      'JOHN',
+      'Please.',
+    ].join('\n');
+    const scene = makeScene(1, extract, {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 40 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [{ ...twoShotSpec(1), durationSeconds: 4 }],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([4]);
+    expect(attached?.metadata.durationSeconds).toBe(4);
+    const words = extract.split(/\s+/).filter(Boolean).length;
+    expect(attached?.metadata.durationSeconds).toBeLessThan(
+      Math.round(words / 3)
+    );
+  });
+
+  it('splits an overfull unlabelled shot without counting the parent duration twice (#2077)', () => {
+    const line = (n: number) => ({
+      character: 'SARAH',
+      line: `line ${n} ${'word '.repeat(9).trim()}`,
+      tone: '',
+    });
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah talks.');
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [
+              {
+                ...twoShotSpec(1),
+                durationSeconds: 6,
+                dialogue: [1, 2, 3, 4].map(line),
+              },
+            ],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    const seconds = attached?.shots?.map((shot) => shot.durationSeconds) ?? [];
+    expect(seconds.length).toBeGreaterThan(1);
+    expect(seconds.reduce((sum, value) => sum + value, 0)).toBe(6);
   });
 });
 
@@ -397,11 +462,14 @@ describe('formatCastForShotList', () => {
 describe('film length is the sum of the scene labels (#1593)', () => {
   it('whatever the shot count the pass emits, each scene sums to its label', () => {
     const scenes = [
-      makeScene(1, 'She opens the door. Cut to the hallway beyond.'),
-      makeScene(2, 'She walks on.', {
+      makeScene(
+        1,
+        'Scene 1 — 8s\nShe opens the door. Cut to the hallway beyond.'
+      ),
+      makeScene(2, 'Scene 2 — 12s\nShe walks on.', {
         metadata: { ...makeScene(2, '').metadata, durationSeconds: 12 },
       }),
-      makeScene(3, 'She stops.', {
+      makeScene(3, 'Scene 3 — 5s\nShe stops.', {
         metadata: { ...makeScene(3, '').metadata, durationSeconds: 5 },
       }),
     ];
@@ -520,7 +588,12 @@ describe('formatDirectorStyleForShotList', () => {
 describe('formatScenesForShotListPrompt', () => {
   it('numbers slices with title, location, duration and shot budget', () => {
     const text = formatScenesForShotListPrompt(
-      [makeScene(1, 'She opens the door. Cut to the hallway beyond.')],
+      [
+        makeScene(
+          1,
+          'Scene 1 — 8s\nShe opens the door. Cut to the hallway beyond.'
+        ),
+      ],
       SEEDANCE
     );
     expect(text).toContain('## Scene 1 — Scene 1');
@@ -532,7 +605,7 @@ describe('formatScenesForShotListPrompt', () => {
   it('a short label still allows inserts; a very long one needs a floor', () => {
     const tiny = formatScenesForShotListPrompt(
       [
-        makeScene(2, 'Blink.', {
+        makeScene(2, 'Scene 2 — 5s\nBlink.', {
           metadata: { ...makeScene(2, '').metadata, durationSeconds: 5 },
         }),
       ],
@@ -542,7 +615,7 @@ describe('formatScenesForShotListPrompt', () => {
     // 993s on a 15s max clip needs 67 clips; editorial 1s holds 993.
     const long = formatScenesForShotListPrompt(
       [
-        makeScene(4, 'Siege.', {
+        makeScene(4, 'Scene 4 — 993s\nSiege.', {
           metadata: { ...makeScene(4, '').metadata, durationSeconds: 993 },
         }),
       ],
@@ -553,6 +626,21 @@ describe('formatScenesForShotListPrompt', () => {
     expect(
       formatScenesForShotListPrompt([makeScene(3, 'x')], NO_GRID)
     ).not.toContain('shots:');
+  });
+
+  it('omits the duration total when the slice has no Scene N label (#2077)', () => {
+    const text = formatScenesForShotListPrompt(
+      [
+        makeScene(
+          1,
+          'INT. KITCHEN - NIGHT\nSarah fills the kettle.\nSARAH\nTea?'
+        ),
+      ],
+      SEEDANCE
+    );
+    expect(text).not.toContain('duration:');
+    expect(text).toContain('shots: up to 8');
+    expect(text).not.toContain('shots: 1 to');
   });
 });
 

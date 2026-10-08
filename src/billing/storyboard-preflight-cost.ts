@@ -15,7 +15,7 @@ import {
   parseSceneDurationLabels,
 } from '@/models/enhance-duration';
 import { durationGridForModel } from '@/motion/snap-duration';
-import { estimateUnlabelledScriptSeconds } from '@/sequences/scene-from-slice';
+import { estimateSecondsFromText } from '@/sequences/scene-from-slice';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
   DEFAULT_VIDEO_MODEL,
@@ -51,8 +51,9 @@ export type StoryboardPreflightInput = {
   draftMotion?: boolean;
   /**
    * The Enhance target when Enhance ran (#1593). Without it the script's own
-   * length is used: its labels, else the unlabelled playing-time rule
-   * (front matter excluded; dialogue and action timed apart, #2077).
+   * length is used: its labels, else a word-count ceiling (three words a
+   * second). The shot-list model times an unlabelled script (#2077); this
+   * quote runs before that call, so it can only hold the ceiling.
    * Values below 5s are treated as auto (same floor as the chip).
    */
   targetDurationSeconds?: number;
@@ -74,8 +75,9 @@ export function estimateStoryboardPreflightCost(
 ): Microdollars {
   const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
   // How long the script plays: the Enhance target when Enhance ran, else its
-  // labels, else the unlabelled playing-time rule the scene split applies
-  // (#1593, #2077).
+  // labels, else a word-count ceiling. The shot-list model replaces that
+  // ceiling for an unlabelled paste (#1593, #2077); the quote cannot, because
+  // it is computed before any model call.
   const labeledSeconds = assessDurationFit(
     opts.script,
     primaryVideo
@@ -87,9 +89,7 @@ export function estimateStoryboardPreflightCost(
       ? opts.targetDurationSeconds
       : undefined;
   const scriptSeconds =
-    targetSeconds ??
-    labeledSeconds ??
-    estimateUnlabelledScriptSeconds(opts.script);
+    targetSeconds ?? labeledSeconds ?? estimateSecondsFromText(opts.script);
   // Shots to bill. A known count from continue wins. Else the scene labels
   // (`Scene N — Xs`) — one guessed shot per scene; the shot-list pass decides
   // the real coverage. An unlabelled paste holds at least one typical clip

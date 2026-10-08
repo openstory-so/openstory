@@ -11,20 +11,25 @@
  * the scene's `originalScript.dialogue` is rebuilt from those, each line
  * stamped with its shot.
  *
- * Length is per scene (#1593). A scene's running time is its script label
- * (`metadata.durationSeconds`); its shots divide it and never extend it. The
- * LLM decides coverage — how many shots, 1..N — capped at one shot per
- * editorial second, and `allocateClipDurations` spreads the label over them
- * on 1s…max (not the model's shortest clip). Leftover packs under the model
- * floor snap at render. Enhance no longer labels shots (#1621): the
- * shot-list pass is the only place shot count and durations are decided. The
- * film target never enters here. Prompts are assembled later by `deriveShots` —
- * this pass does not re-author them.
+ * Length is per scene (#1593). A slice with a `Scene N — Xs` label plays
+ * for that many seconds (`metadata.durationSeconds`); its shots divide it
+ * and never extend it. A slice with no such label is timed by this model
+ * (#2077): `durationSeconds` are the shot's real seconds, and the scene's
+ * length becomes their sum. The word-count estimate stays only as a ceiling
+ * on how many shots the pass may return. The LLM decides coverage — how
+ * many shots, 1..N — capped at one shot per editorial second, and
+ * `allocateClipDurations` spreads a label over them on 1s…max (not the
+ * model's shortest clip). Leftover packs under the model floor snap at
+ * render. Enhance no longer labels shots (#1621): the shot-list pass is the
+ * only place shot count and durations are decided. The film target never
+ * enters here. Prompts are assembled later by `deriveShots` — this pass
+ * does not re-author them.
  */
 
 import type { NewShot } from '@/platform/server/db/schema';
 import { dialogueWordBudget, spokenWordCount } from '@/motion/dialogue-tts';
 import { allocateClipDurations } from '@/motion/snap-duration';
+import { sliceHasDurationLabel } from '@/sequences/scene-from-slice';
 import type { StyleConfig } from '@/look/style-config';
 import type {
   CharacterBibleEntry,
@@ -268,17 +273,91 @@ export function scriptForShot(
 }
 
 /**
- * One scene with the pass's shots attached: allocated over its label
- * (`allocateSceneShots` on `grid`), its dialogue rebuilt from them.
+ * Pieces split from one shot share its `shotNumber` and each copy its full
+ * duration (`splitOverfullShots`). On an unlabelled scene those copies
+ * would be counted once per piece. Spread the parent's seconds across the
+ * pieces by how much each one says.
+ */
+function divideCopiedDurations(
+  shots: readonly ShotSpec[],
+  grid: readonly number[]
+): ShotSpec[] {
+  const groups: ShotSpec[][] = [];
+  for (const shot of shots) {
+    const last = groups.at(-1);
+    if (last?.[0] && last[0].shotNumber === shot.shotNumber) last.push(shot);
+    else groups.push([shot]);
+  }
+  return groups.flatMap((group) => {
+    const first = group[0];
+    if (!first || group.length === 1) return group;
+    const parent = Math.max(1, first.durationSeconds || 1);
+    const weights = group.map((shot) =>
+      Math.max(
+        1,
+        spokenWordCount(shot.dialogue.map((line) => ({ text: line.line })))
+      )
+    );
+    const seconds = allocateClipDurations(weights, parent, editorialGrid(grid));
+    return group.map((shot, index) => ({
+      ...shot,
+      durationSeconds: seconds[index] ?? shot.durationSeconds,
+    }));
+  });
+}
+
+function clampToClip(seconds: number, maxClip: number): number {
+  const rounded = Math.max(1, Math.round(seconds) || 1);
+  if (!Number.isFinite(maxClip) || maxClip <= 0) return rounded;
+  return Math.min(maxClip, rounded);
+}
+
+/**
+ * Unlabelled scene (#2077): keep the model's seconds. Clamp each shot to
+ * the clip grid, cap the count at the word-count ceiling, and do not
+ * stretch the scene out to that ceiling.
+ */
+function timeUnlabelledShots(
+  shots: ReadonlyArray<ShotSpec> | null | undefined,
+  scene: Pick<SceneSplittingScene, 'metadata'>,
+  grid: readonly number[]
+): ShotSpec[] {
+  if (!shots || shots.length === 0) return [defaultSingleShot(3)];
+  const ordered = [...shots].sort((a, b) => a.shotNumber - b.shotNumber);
+  const ceiling = maxShotsForScene(sceneDurationSeconds(scene), grid);
+  const kept = divideCopiedDurations(
+    keepShots(splitOverfullShots(ordered, grid), ceiling),
+    grid
+  );
+  const maxClip = Math.max(...grid.filter((n) => n > 0));
+  return kept.map((shot, index) => ({
+    ...shot,
+    shotNumber: index + 1,
+    durationSeconds: clampToClip(shot.durationSeconds, maxClip),
+  }));
+}
+
+/**
+ * One scene with the pass's shots attached and its dialogue rebuilt from
+ * them. A `Scene N — Xs` slice is divided across the grid
+ * (`allocateSceneShots`). A slice with no such label keeps the model's
+ * seconds (#2077).
  */
 export function attachSceneShots(
   scene: SceneSplittingScene,
   listed: ReadonlyArray<ShotSpec>,
   grid: readonly number[]
 ): SceneSplittingScene {
-  const shots = allocateSceneShots(listed, scene, grid);
+  const labelled = sliceHasDurationLabel(scene.originalScript.extract);
+  const shots = labelled
+    ? allocateSceneShots(listed, scene, grid)
+    : timeUnlabelledShots(listed, scene, grid);
+  const durationSeconds = labelled
+    ? scene.metadata.durationSeconds
+    : shots.reduce((sum, shot) => sum + shot.durationSeconds, 0);
   return {
     ...scene,
+    metadata: { ...scene.metadata, durationSeconds },
     shots,
     originalScript: {
       ...scene.originalScript,
@@ -402,6 +481,16 @@ export function formatCastForShotList(
  * decides coverage within this range on its own — Enhance no longer locks
  * the count via its own shot labels.
  */
+/** No label: no minimum shot count. The ceiling is the word-count estimate. */
+function unlabelledShotBudget(
+  scene: Pick<SceneSplittingScene, 'metadata'>,
+  grid: readonly number[]
+): string | undefined {
+  const cap = maxShotsForScene(scene.metadata.durationSeconds || 3, grid);
+  if (!Number.isFinite(cap)) return undefined;
+  return `shots: up to ${cap}`;
+}
+
 function shotBudgetLine(
   scene: Pick<SceneSplittingScene, 'metadata'>,
   grid: readonly number[]
@@ -426,10 +515,15 @@ export function formatScenesForShotListPrompt(
       const title = scene.metadata.title || `Scene ${scene.sceneNumber}`;
       const lines = [`## Scene ${scene.sceneNumber} — ${title}`];
       if (scene.metadata.location) lines.push(scene.metadata.location);
-      if (scene.metadata.durationSeconds) {
+      // Only our enhancer total is a duration the system divides. A
+      // word-count estimate is a shot ceiling, not a running time (#2077).
+      const labelled = sliceHasDurationLabel(scene.originalScript.extract);
+      if (labelled && scene.metadata.durationSeconds) {
         lines.push(`duration: ${scene.metadata.durationSeconds}s`);
       }
-      const budget = shotBudgetLine(scene, grid);
+      const budget = labelled
+        ? shotBudgetLine(scene, grid)
+        : unlabelledShotBudget(scene, grid);
       if (budget) lines.push(budget);
       return `${lines.join('\n')}\n\n${scene.originalScript.extract.trim()}`;
     })
