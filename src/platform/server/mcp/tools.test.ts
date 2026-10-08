@@ -3225,13 +3225,43 @@ describe('cast and music edits (#1979)', () => {
     expect(list.find((c) => c.id === cast.id)?.isPerson).toBe(true);
     expect(list.find((c) => c.id === photo.id)?.isPerson).toBe(true);
     expect(list.find((c) => c.id === drawing.id)?.isPerson).toBe(false);
-    expect(await personLockOf(scopedDb, { talentId, looks: [] })).toEqual({
+    // From no sequence every sequence's sheets count, an archived
+    // sequence's too: the edit is refused and the read says why.
+    const teamLock = async (character: { id: string }) =>
+      await personLockOf(scopedDb, { id: character.id, talentId: null });
+    // A bible version is shared: another sequence that casts her, with no
+    // upload of its own, cannot make her not a person either.
+    const sequenceA = generateId();
+    await db.insert(sequences).values({
+      id: sequenceA,
+      teamId,
+      title: 'A',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    await scopedDb.characters.attach(sequenceA, photo.id, { actorId });
+    await expect(
+      updateCharacter(scopedDb, actor, sequenceA, photo.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
+    const [inA] = await scopedDb.characters.listWithTalent(sequenceA);
+    expect(inA?.looks.some((look) => look.sheetImageUrl)).toBe(false);
+    expect(await personLocksOf(scopedDb, inA ? [inA] : [])).toEqual([
+      { reason: 'upload' },
+    ]);
+    await db
+      .update(sequences)
+      .set({ status: 'archived' })
+      .where(eq(sequences.id, sequenceId));
+    await expect(
+      updateTeamCharacter(scopedDb, actor, photo.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
+    expect(await teamLock(photo)).toEqual({ reason: 'upload' });
+    expect(await teamLock(drawing)).toBeNull();
+    await updateTeamCharacter(scopedDb, actor, photo.id, { isPerson: true });
+    await updateTeamCharacter(scopedDb, actor, drawing.id, notPerson);
+    expect(await personLockOf(scopedDb, { id: cast.id, talentId })).toEqual({
       reason: 'talent',
       talentName: 'Ada Vale',
     });
-    expect(
-      await personLockOf(scopedDb, { talentId: null, looks: [] })
-    ).toBeNull();
   });
 
   it('reads and selects character voices and sheet versions', async () => {

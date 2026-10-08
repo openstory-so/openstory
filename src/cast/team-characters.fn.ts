@@ -156,11 +156,7 @@ export const getCurrentTeamCharacterFn = createServerFn({ method: 'GET' })
       data.characterId
     );
     if (!character) return null;
-    // No sequence, so no sheet: only the cast talent can hold it a person.
-    const personLock = await personLockOf(context.scopedDb, {
-      talentId: character.talentId,
-      looks: [],
-    });
+    const personLock = await personLockOf(context.scopedDb, character);
     return { ...character, personLock };
   });
 

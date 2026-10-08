@@ -239,13 +239,9 @@ export async function updateTeamCharacter(
     ...update
   }: Omit<CharacterBibleUpdate, 'voiceDescription'> & LegacyFeaturesInput
 ) {
-  // No sequence, so no sheet: only the cast talent can hold it a person.
   if (update.isPerson === false) {
     const before = await requireCurrentCharacter(scopedDb, characterId);
-    await requirePersonEditAllowed(scopedDb, update, {
-      talentId: before.talentId,
-      looks: [],
-    });
+    await requirePersonEditAllowed(scopedDb, update, before);
   }
   const character = await scopedDb.characters.updateBible(
     null,

@@ -1,8 +1,13 @@
 /**
  * Whether a character must stay a person (#2065). One function decides it
- * for the read the bible form shows and for the edit the server refuses, so
- * the two cannot disagree. Whether an image shows a real person never comes
+ * for the reads the bible form shows and for the edit the server refuses, so
+ * they cannot disagree. Whether an image shows a real person never comes
  * from the client: the talent's `isHuman` and the upload ledger answer.
+ *
+ * The sheets that count are the character's in EVERY sequence, not only the
+ * one being edited: a bible version is shared, so a version made not a
+ * person in one sequence can be adopted by another whose sheet is a real
+ * person's photo (Update this sequence).
  */
 import { personLockMessage } from '@/cast/likeness';
 import type { PersonLock } from '@/cast/likeness';
@@ -10,53 +15,55 @@ import { realPersonUrls } from '@/cast/server/upload-rights';
 import { ConflictError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 
-type LockLook = { deletedAt: Date | null; sheetImageUrl: string | null };
+type LockDb = Pick<ScopedDb, 'compliance' | 'characterLooks'>;
 type Lockable = {
+  id: string;
   /** The talent the character's bible version is cast with. */
   talent: { name: string; isHuman: boolean | null } | null;
-  /** Its looks as one sequence casts them; none off no sequence. */
-  looks: readonly LockLook[];
 };
 
-/** Each character's lock, in order. One ledger read for all of them. */
+/**
+ * Each character's lock, in order. Two reads for all of them: their sheets
+ * in every sequence, then the ledger.
+ */
 export async function personLocksOf(
-  scopedDb: Pick<ScopedDb, 'compliance'>,
+  scopedDb: LockDb,
   characters: readonly Lockable[]
 ): Promise<(PersonLock | null)[]> {
-  const castWithPerson = (character: Lockable) =>
-    character.talent?.isHuman === true;
-  const liveSheets = (character: Lockable) =>
-    character.looks.flatMap((look) =>
-      look.deletedAt === null && look.sheetImageUrl ? [look.sheetImageUrl] : []
-    );
-  const urls = characters
-    .filter((character) => !castWithPerson(character))
-    .flatMap(liveSheets);
+  const sheets = await scopedDb.characterLooks.listCastSheetUrls(
+    characters
+      .filter((character) => character.talent?.isHuman !== true)
+      .map((character) => character.id)
+  );
   const real =
-    urls.length === 0
+    sheets.length === 0
       ? new Set<string>()
-      : await realPersonUrls(scopedDb, urls);
+      : await realPersonUrls(
+          scopedDb,
+          sheets.map((sheet) => sheet.url)
+        );
+  const photographed = new Set(
+    sheets
+      .filter((sheet) => real.has(sheet.url))
+      .map((sheet) => sheet.characterId)
+  );
   return characters.map((character) => {
-    if (character.talent && castWithPerson(character)) {
+    if (character.talent?.isHuman === true) {
       return { reason: 'talent', talentName: character.talent.name };
     }
-    return liveSheets(character).some((url) => real.has(url))
-      ? { reason: 'upload' }
-      : null;
+    return photographed.has(character.id) ? { reason: 'upload' } : null;
   });
 }
 
 /** One character's lock, by the talent id its bible version carries. */
 export async function personLockOf(
-  scopedDb: Pick<ScopedDb, 'compliance' | 'talent'>,
-  character: { talentId: string | null; looks: readonly LockLook[] }
+  scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
+  character: { id: string; talentId: string | null }
 ): Promise<PersonLock | null> {
   const talent = character.talentId
     ? ((await scopedDb.talent.getById(character.talentId)) ?? null)
     : null;
-  const [lock] = await personLocksOf(scopedDb, [
-    { talent, looks: character.looks },
-  ]);
+  const [lock] = await personLocksOf(scopedDb, [{ id: character.id, talent }]);
   return lock ?? null;
 }
 
@@ -65,9 +72,9 @@ export async function personLockOf(
  * it to a person, or leaving the field out, is always allowed.
  */
 export async function requirePersonEditAllowed(
-  scopedDb: Pick<ScopedDb, 'compliance' | 'talent'>,
+  scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
   update: { isPerson?: boolean | null },
-  character: { talentId: string | null; looks: readonly LockLook[] }
+  character: { id: string; talentId: string | null }
 ): Promise<void> {
   if (update.isPerson !== false) return;
   const lock = await personLockOf(scopedDb, character);

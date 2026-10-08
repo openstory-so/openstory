@@ -985,6 +985,48 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       ),
 
     /**
+     * The selected sheet of every look of these characters in every
+     * sequence that casts them (#2065), whatever the state of the look, the
+     * link or the sequence: removed and archived ones still count. What the
+     * person lock reads. Chunked below D1's 100-bound-parameter cap.
+     */
+    listCastSheetUrls: async (
+      characterIds: readonly string[]
+    ): Promise<{ characterId: string; url: string }[]> => {
+      const sheets: { characterId: string; url: string }[] = [];
+      for (let i = 0; i < characterIds.length; i += 80) {
+        const rows = await db
+          .selectDistinct({
+            characterId: characters.id,
+            url: characterSheetVariants.url,
+          })
+          .from(sequenceCastLooks)
+          .innerJoin(
+            characterLooks,
+            eq(characterLooks.id, sequenceCastLooks.lookId)
+          )
+          .innerJoin(characters, eq(characters.id, characterLooks.characterId))
+          .innerJoin(
+            characterSheetVariants,
+            eq(
+              characterSheetVariants.id,
+              sequenceCastLooks.selectedSheetVersionId
+            )
+          )
+          .where(
+            and(
+              eq(characters.teamId, teamId),
+              inArray(characters.id, characterIds.slice(i, i + 80))
+            )
+          );
+        for (const { characterId, url } of rows) {
+          if (url) sheets.push({ characterId, url });
+        }
+      }
+      return sheets;
+    },
+
+    /**
      * Every look of these characters, removed ones included: a scene that
      * still picks a removed look keeps wearing it. Chunked below D1's
      * 100-bound-parameter cap.

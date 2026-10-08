@@ -220,8 +220,11 @@ export async function likenessFromLedger(
 
 /**
  * The URLs among these the ledger saw a real person in: `likenessFromLedger`
- * is `real`, for many URLs in one read (#2065). A row under a retired
- * statement is unchecked, as no row is, so a list read never fails on one.
+ * is `real`, for many URLs in one read (#2065). It never throws, so a list
+ * read always loads, and it fails closed: a row under a retired statement
+ * counts as a real person, where `likenessFromLedger` would throw. Only a
+ * cleared row, or no row, is not one. This is a safety gate, and an old row
+ * must not be the way to make a character not a person.
  */
 export async function realPersonUrls(
   scopedDb: Pick<ScopedDb, 'compliance'>,
@@ -242,8 +245,7 @@ export async function realPersonUrls(
     const url = urlByHash.get(row.subjectId);
     if (
       url !== undefined &&
-      (row.statementVersion === LIKENESS_DETECTED_V1.version ||
-        row.statementVersion === PORTRAIT_RIGHTS_V1.version)
+      row.statementVersion !== LIKENESS_CLEARED_V1.version
     ) {
       real.add(url);
     }

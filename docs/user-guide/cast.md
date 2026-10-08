@@ -43,7 +43,7 @@ All properties are automatically extracted from your script:
 
 ### Looks
 
-**Person** says whether the character is a person (a robot or an animal is not). It stays **Person**, and cannot be changed, while the character is cast with a talent who is a real person or its sheet is an uploaded photo of a real person; the form says which.
+**Person** says whether the character is a person (a robot or an animal is not). It stays **Person**, and cannot be changed, while the character is cast with a talent who is a real person or its sheet is an uploaded photo of a real person; the form says which. A sheet in any sequence that uses the character counts.
 
 What a character wears is a look: a name, **Clothing**, and **Hair, makeup, injuries**. Every character has a default look, and you can add more for other outfits. Each look has its own sheet.
 
