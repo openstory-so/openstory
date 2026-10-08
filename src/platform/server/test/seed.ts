@@ -179,12 +179,19 @@ export async function createOtpVerification(
 async function deleteSequenceVersionRows(where: SQL | undefined) {
   const db = getDb();
   const ids = db.select({ id: sequences.id }).from(sequences).where(where);
-  // The sequences' characters (#2017), read before their cast links go. One
-  // bound parameter however many there are.
+  // The sequences' characters (#2017), read before their cast links go — only
+  // the ones no other sequence still casts (a library character attached to
+  // a second sequence stays, as `charactersOnlyIn` keeps it: its remaining
+  // link would refuse the delete). One bound parameter however many there are.
   const cast = await db
     .select({ id: sequenceCast.characterId })
     .from(sequenceCast)
-    .where(inArray(sequenceCast.sequenceId, ids));
+    .where(
+      and(
+        inArray(sequenceCast.sequenceId, ids),
+        sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id NOT IN ${ids})`
+      )
+    );
   const theirs = sql`(SELECT value FROM json_each(${JSON.stringify(
     cast.map((row) => row.id)
   )}))`;

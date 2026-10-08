@@ -1,16 +1,61 @@
 import { describe, expect, it } from 'vitest';
 import {
+  characterReferenceEntityKeys,
   liveReferenceIdentity,
   referenceKeysFrom,
   referenceKeysMoved,
   referenceProvenanceKey,
 } from './reference-provenance';
 
+describe('a one-off copy answers for its original (#2017)', () => {
+  const copy = {
+    id: 'copy',
+    copiedFromCharacterId: 'orig',
+    selectedSheetVersionId: 'csv-1',
+    sheetImageUrl: '/r2/a.png',
+  };
+  const live = liveReferenceIdentity({
+    characters: [copy],
+    locations: [],
+    elements: [],
+  });
+  const referenced = new Set(characterReferenceEntityKeys(copy));
+  it('keeps a clip stamped with the original id and the same sheet fresh', () => {
+    expect(referenced).toEqual(new Set(['character:copy', 'character:orig']));
+    expect(
+      referenceKeysMoved(
+        [referenceProvenanceKey('character', 'orig', 'csv-1')],
+        live,
+        referenced
+      )
+    ).toBe(false);
+  });
+  it('stales it once the copy selects another sheet', () => {
+    expect(
+      referenceKeysMoved(
+        [referenceProvenanceKey('character', 'orig', 'csv-0')],
+        live,
+        referenced
+      )
+    ).toBe(true);
+  });
+});
+
 describe('reference provenance (#1657)', () => {
   const live = liveReferenceIdentity({
     characters: [
-      { id: 'c1', selectedSheetVersionId: 'csv-2', sheetImageUrl: '/r2/a.png' },
-      { id: 'c2', selectedSheetVersionId: null, sheetImageUrl: '/r2/b.png' },
+      {
+        id: 'c1',
+        copiedFromCharacterId: null,
+        selectedSheetVersionId: 'csv-2',
+        sheetImageUrl: '/r2/a.png',
+      },
+      {
+        id: 'c2',
+        copiedFromCharacterId: null,
+        selectedSheetVersionId: null,
+        sheetImageUrl: '/r2/b.png',
+      },
     ],
     locations: [
       {

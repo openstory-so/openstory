@@ -113,7 +113,7 @@ export async function archiveSequence(
     if (await scopedDb.characters.getHeldElsewhere(sequence.id, character.id)) {
       continue;
     }
-    await releaseCharacterVoice(scopedDb, character, actor.userId);
+    await releaseCharacterVoice(scopedDb, character, sequence.id, actor.userId);
   }
   await scopedDb.sequence(sequence.id).updateStatus('archived');
   await scopedDb.sequenceEvents.record({

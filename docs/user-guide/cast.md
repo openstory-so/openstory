@@ -83,6 +83,16 @@ Analysis then reads the cast you attached: it keeps the character's bible and lo
 
 Two characters in one sequence cannot have the same name when one is added from the library: rename one first. If analysis itself makes two characters of one name, rename one before recording dialogue.
 
+## When a Character Changes in Another Sequence
+
+A library character is one character in every sequence that casts it, but each sequence keeps the version it has. Editing the character in one sequence does not change the others.
+
+- **Not the current version** — When another sequence has changed the character (its bible, voice or an outfit), the cast card shows this badge and the character page shows a notice. Nothing in your sequence changed; it still uses the version it had.
+- **Update this sequence** — Moves your sequence to the current version. Nothing is generated yet: the sheets and shots that used the old version show as out of date, and **Update all** redraws them, with the exact price.
+- **Move sequences** — Lists every sequence that casts the character, with what would change, how many shots are affected and the most it could cost. Tick the sequences to move and confirm. Each moved sequence then shows what to update; none of them re-renders on its own.
+- **Make a one-off copy** — Gives this sequence its own copy of a library character at the version it has now. Edits here stop reaching the other sequences, and theirs stop reaching here. Sheets and shots stay as they are, so nothing re-renders. Not available while a sheet is generating.
+- **Recasting across sequences** — The recast confirmation lists the other sequences that cast the character. Tick the ones that should use the new talent too; they move to the new version and redraw from their own Update. Unticked sequences keep the previous version and show **Not the current version**.
+
 ## Real-Time Updates
 
 Character sheet regeneration happens asynchronously. The UI subscribes to real-time events (`generation.character-sheet:progress`) and automatically updates when:

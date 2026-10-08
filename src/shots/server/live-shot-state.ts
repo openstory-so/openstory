@@ -10,7 +10,10 @@ import {
   voicedDialogueLines,
   type VoiceCharacter,
 } from '@/motion/dialogue-tts';
-import { liveReferenceIdentity } from '@/motion/reference-provenance';
+import {
+  characterReferenceEntityKeys,
+  liveReferenceIdentity,
+} from '@/motion/reference-provenance';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import type { LoadedShotInputs } from '@/shots/scene-segments';
@@ -38,6 +41,8 @@ export async function loadLiveShotInputs(
     name: string;
     characterId: string;
     consistencyTag: string | null;
+    /** A one-off copy answers for its original's reference keys (#2017). */
+    copiedFromCharacterId: string | null;
     selectedSheetVersionId: string | null;
     sheetImageUrl: string | null;
   })[],
@@ -96,7 +101,7 @@ export async function loadLiveShotInputs(
     referencedEntitiesByShot.set(
       shot.id,
       new Set([
-        ...resolved.characters.map((c) => `character:${c.id}`),
+        ...resolved.characters.flatMap(characterReferenceEntityKeys),
         ...resolved.locations.map((l) => `location:${l.id}`),
         ...resolved.elements.map((e) => `element:${e.id}`),
       ])

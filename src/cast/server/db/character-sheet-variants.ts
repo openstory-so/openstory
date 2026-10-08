@@ -23,8 +23,12 @@ import {
   sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
-import { liveLookSheetVersionId, requireLook } from './character-looks';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import {
+  getLookByCastLookId,
+  liveLookSheetVersionId,
+  requireLook,
+} from './character-looks';
+import { and, asc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
@@ -43,6 +47,35 @@ const ofLook = (lookId: string) =>
     and(
       isNull(characterSheetVariants.lookId),
       eq(characterSheetVariants.characterId, lookId)
+    )
+  );
+
+/**
+ * The sheets one sequence can pick from for a look (#2017): the ones its cast
+ * look made, the one it has selected, and rows whose sequence is unknown
+ * (`castLookId` null, from before the column: listed everywhere, as before).
+ */
+const ofCastLook = (
+  lookId: string,
+  look: { castLookId: string; selectedSheetVersionId: string | null }
+) =>
+  or(
+    // Drawn for this cast look — of this look, or of the look it pointed at
+    // before a one-off copy repointed it.
+    eq(characterSheetVariants.castLookId, look.castLookId),
+    and(ofLook(lookId), isNull(characterSheetVariants.castLookId)),
+    look.selectedSheetVersionId === null
+      ? undefined
+      : eq(characterSheetVariants.id, look.selectedSheetVersionId)
+  );
+
+/** Sheets parked by a run of `sequenceId`, or of an unknown sequence. */
+const parkedFor = (sequenceId: string) =>
+  or(
+    isNull(characterSheetVariants.castLookId),
+    inArray(
+      characterSheetVariants.castLookId,
+      sql`(SELECT scl.id FROM sequence_cast_looks scl JOIN sequence_cast sc ON sc.id = scl.cast_id WHERE sc.sequence_id = ${sequenceId})`
     )
   );
 
@@ -81,21 +114,27 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * Selectable history: completed, not discarded, oldest-first so a
-     * left-to-right strip can label v1, v2, … from position (same as
-     * frame / video versions). Includes parked divergent rows so the user
-     * can pick one instead of promoting through the banner.
+     * Selectable history of a look IN ONE SEQUENCE (#2017): completed, not
+     * discarded, oldest-first so a left-to-right strip can label v1, v2, …
+     * from position (same as frame / video versions). Includes parked
+     * divergent rows so the user can pick one instead of promoting through
+     * the banner. Only the sheets this sequence made (`castLookId` is its cast
+     * look) or selected, plus rows whose sequence is unknown (`castLookId`
+     * null, from before the column): a sheet another sequence drew for its
+     * own style and model is not this sequence's to pick from.
      */
     listHistoryByLook: async (
+      sequenceId: string,
       lookId: string
     ): Promise<CharacterSheetVariant[]> => {
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       return db
         .select()
         .from(characterSheetVariants)
         .where(
           and(
             ofTeam(),
-            ofLook(lookId),
+            ofCastLook(lookId, look),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
           )
@@ -122,11 +161,15 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * List active (non-discarded) divergent alternates for a character. The
-     * UI banner / corner-dot reads through this so the surfaces clear once
-     * the user discards or promotes.
+     * List active (non-discarded) divergent alternates for a character, as
+     * parked by runs of ONE sequence (#2017): a sheet a run of another
+     * sequence parked is that sequence's banner, not this one's. Rows whose
+     * sequence is unknown (`castLookId` null) show in every sequence, as
+     * every row did before. The UI banner / corner-dot reads through this so
+     * the surfaces clear once the user discards or promotes.
      */
     listDivergentActiveByCharacter: async (
+      sequenceId: string,
       characterId: string
     ): Promise<CharacterSheetVariant[]> => {
       return db
@@ -136,6 +179,7 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
+            parkedFor(sequenceId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
           )
@@ -144,6 +188,7 @@ export function createCharacterSheetVariantsMethods(
     },
 
     listDivergentActiveByCharacters: async (
+      sequenceId: string,
       characterIds: string[]
     ): Promise<CharacterSheetVariant[]> => {
       if (characterIds.length === 0) return [];
@@ -154,6 +199,7 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             inArray(characterSheetVariants.characterId, characterIds),
+            parkedFor(sequenceId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
           )
@@ -234,6 +280,8 @@ export function createCharacterSheetVariantsMethods(
           id: generateId(),
           characterId: look.characterId,
           lookId,
+          // Uploaded for this sequence (#2017): its strip lists it.
+          castLookId: look.castLookId,
           model,
           url,
           storagePath,
@@ -277,14 +325,28 @@ export function createCharacterSheetVariantsMethods(
       const [version] = await db
         .select()
         .from(characterSheetVariants)
-        .where(
-          and(
-            ofTeam(),
-            eq(characterSheetVariants.id, versionId),
-            eq(characterSheetVariants.characterId, characterId)
-          )
-        );
+        .where(and(ofTeam(), eq(characterSheetVariants.id, versionId)));
       if (!version) {
+        throw new NotFoundError(
+          `CharacterSheetVariant ${versionId} not found for character ${characterId}`
+        );
+      }
+      // The sheet is the look's own, or was drawn for this sequence's cast
+      // look before a one-off copy moved that cast look onto a new look
+      // (#2017): a copy keeps pointing at the original's sheet rows.
+      const copied =
+        version.characterId !== characterId && version.castLookId !== null
+          ? await getLookByCastLookId(
+              db,
+              teamId,
+              sequenceId,
+              version.castLookId
+            )
+          : null;
+      if (
+        version.characterId !== characterId &&
+        copied?.characterId !== characterId
+      ) {
         throw new NotFoundError(
           `CharacterSheetVariant ${versionId} not found for character ${characterId}`
         );
@@ -300,12 +362,14 @@ export function createCharacterSheetVariantsMethods(
         );
       }
 
-      const look = await requireLook(
-        db,
-        teamId,
-        sequenceId,
-        version.lookId ?? characterId
-      );
+      const look =
+        copied ??
+        (await requireLook(
+          db,
+          teamId,
+          sequenceId,
+          version.lookId ?? characterId
+        ));
       const [existing] = await db
         .select({ name: characterBibleColumns.name })
         .from(sequenceCast)
@@ -442,41 +506,60 @@ export function createCharacterSheetVariantsMethods(
      * first.
      */
     discard: async (variantId: string): Promise<Date> => {
-      // The variant's own look, by primary key; a row with no look is its
-      // character's default look's, whose id is the character's.
-      const [live] = await db
+      // Both "is it live" checks sit in the UPDATE's WHERE, so a select
+      // landing between a check and the write cannot discard a sheet that
+      // was just selected. The variant's own look, by primary key; a row
+      // with no look is its character's default look's, whose id is the
+      // character's.
+      const live = db
         .select({ id: characterLooks.id })
         .from(characterLooks)
         .innerJoin(
           sequenceCastLooks,
           eq(sequenceCastLooks.lookId, characterLooks.id)
         )
-        .innerJoin(
-          characterSheetVariants,
-          eq(
-            characterLooks.id,
-            sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
-          )
-        )
         .where(
           and(
-            eq(characterSheetVariants.id, variantId),
-            eq(liveLookSheetVersionId, variantId)
+            eq(
+              characterLooks.id,
+              sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
+            ),
+            eq(liveLookSheetVersionId, characterSheetVariants.id)
           )
         );
-      if (live) {
-        throw new ConflictError(
-          'Cannot discard the selected sheet version; select another first.'
+      // A one-off copy's cast look selects a sheet of another look (#2017).
+      const selectedElsewhere = db
+        .select({ id: sequenceCastLooks.id })
+        .from(sequenceCastLooks)
+        .where(
+          eq(
+            sequenceCastLooks.selectedSheetVersionId,
+            characterSheetVariants.id
+          )
         );
-      }
       const discardedAt = new Date();
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt, updatedAt: discardedAt })
-        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
+        .where(
+          and(
+            ofTeam(),
+            eq(characterSheetVariants.id, variantId),
+            notExists(live),
+            notExists(selectedElsewhere)
+          )
+        )
         .returning();
       if (result.length === 0) {
-        throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        const [row] = await db
+          .select({ id: characterSheetVariants.id })
+          .from(characterSheetVariants)
+          .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
+        if (!row)
+          throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        throw new ConflictError(
+          'Cannot discard the selected sheet version; select another first.'
+        );
       }
       return discardedAt;
     },

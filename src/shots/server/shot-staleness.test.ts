@@ -87,6 +87,8 @@ function makeScopedDb(overrides: {
   dialogueVersions?: unknown[];
   /** Location bible history rows (#1600), oldest first. */
   locationBibleVersions?: unknown[];
+  /** Events that moved this sequence's cast pins (#2017), oldest first. */
+  pinMoves?: unknown[];
   /** When the selected motion prompt was written. */
   motionSelectedAt?: Date;
   /** Text of the selected motion prompt. */
@@ -120,6 +122,11 @@ function makeScopedDb(overrides: {
       listStyleVersions: vi
         .fn()
         .mockResolvedValue(overrides.styleVersions ?? []),
+    },
+    sequenceEvents: {
+      listByTarget: vi.fn().mockResolvedValue([]),
+      // The pin moves the causes walk (#2017).
+      listPinMoves: vi.fn().mockResolvedValue(overrides.pinMoves ?? []),
     },
     sequenceElements: { list: vi.fn().mockResolvedValue([]) },
     styles: { getById: vi.fn().mockResolvedValue({ config: {} }) },
@@ -501,6 +508,7 @@ describe('staleness causes (#1194)', () => {
         listBySequence: vi.fn().mockResolvedValue([]),
       },
       sequenceEvents: {
+        listPinMoves: vi.fn().mockResolvedValue([]),
         listByTarget: vi.fn().mockResolvedValue([
           {
             kind: 'sequence.settings-changed',
@@ -609,25 +617,48 @@ describe('staleness causes (#1194)', () => {
       motionSelectedHash: 'motion-stored',
       visualSelected: { text: 'WOMAN in a dress; MAN behind her.' },
       characterBibleVersions: [
-        { ...bible, characterId: 'c-woman', createdAt: before },
-        { ...bible, name: 'Man', characterId: 'c-man', createdAt: before },
+        { id: 'bw1', ...bible, characterId: 'c-woman', createdAt: before },
+        {
+          id: 'bm1',
+          ...bible,
+          name: 'Man',
+          characterId: 'c-man',
+          createdAt: before,
+        },
       ],
       // Clothing is the look's (#2015). An edit after the still: the second
-      // version is the one live now.
+      // version is the one this sequence pins now.
       characterLookVersions: [
         {
+          id: 'lw1',
           lookId: 'c-woman',
           clothing: 'coat',
           styling: null,
           createdAt: before,
         },
         {
+          id: 'lw2',
           lookId: 'c-woman',
           clothing: 'dress',
           styling: null,
           createdAt: afterGen,
         },
-        { lookId: 'c-man', clothing: 'coat', styling: null, createdAt: before },
+        {
+          id: 'lm1',
+          lookId: 'c-man',
+          clothing: 'coat',
+          styling: null,
+          createdAt: before,
+        },
+      ],
+      // The edit moved this sequence's pin (#2017): the cause walks it back.
+      pinMoves: [
+        {
+          kind: 'look.updated',
+          targetId: 'c-woman',
+          createdAt: afterGen,
+          data: { lookId: 'c-woman', lookVersion: { from: 'lw1', to: 'lw2' } },
+        },
       ],
     });
     Object.assign(scopedDb, {
@@ -636,7 +667,6 @@ describe('staleness causes (#1194)', () => {
         getSelected: vi.fn().mockResolvedValue({ createdAt: before }),
         listBySequence: vi.fn().mockResolvedValue([]),
       },
-      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
     });
 
     const result = await computeShotStaleness({
@@ -661,9 +691,10 @@ describe('staleness causes (#1194)', () => {
             styling: null,
             lookId: 'c-woman',
             lookName: 'Default',
-            looks: [],
+            looks: [{ id: 'c-woman', lookVersionId: 'lw2' }],
             id: 'c-woman',
             characterId: 'woman',
+            selectedBibleVersionId: 'bw1',
             updatedAt: afterGen,
             sheetGeneratedAt: afterGen,
           },
@@ -674,9 +705,10 @@ describe('staleness causes (#1194)', () => {
             styling: null,
             lookId: 'c-man',
             lookName: 'Default',
-            looks: [],
+            looks: [{ id: 'c-man', lookVersionId: 'lm1' }],
             id: 'c-man',
             characterId: 'man',
+            selectedBibleVersionId: 'bm1',
             updatedAt: afterGen,
             sheetGeneratedAt: null,
           },
@@ -711,6 +743,8 @@ describe('staleness causes (#1194)', () => {
       sheetStatus: 'completed',
       sheetInputHash: null,
       selectedSheetVersionId: null,
+      // The version this sequence pins (#2017).
+      lookVersionId: id === 'gala' ? 'g2' : 'w1',
     });
     const woman = {
       id: 'c-woman',
@@ -726,6 +760,7 @@ describe('staleness causes (#1194)', () => {
       voiceOnly: false,
       isPerson: true,
       consistencyTag: 'woman',
+      selectedBibleVersionId: 'bw1',
       // Off the read she wears her default look.
       lookId: 'c-woman',
       lookName: 'Default',
@@ -746,16 +781,18 @@ describe('staleness causes (#1194)', () => {
         motionSelectedHash: 'motion-stored',
         visualSelected: { text: 'WOMAN at the top of the stairs.' },
         characterBibleVersions: [
-          { ...woman, characterId: 'c-woman', createdAt: before },
+          { ...woman, id: 'bw1', characterId: 'c-woman', createdAt: before },
         ],
         characterLookVersions: [
           {
+            id: 'w1',
             lookId: 'c-woman',
             clothing: 'office suit',
             styling: null,
             createdAt: before,
           },
           {
+            id: 'g1',
             lookId: 'gala',
             clothing: 'red gown',
             styling: null,
@@ -763,10 +800,20 @@ describe('staleness causes (#1194)', () => {
           },
           // The gown was edited after the still; the default look was not.
           {
+            id: 'g2',
             lookId: 'gala',
             clothing: 'blue gown',
             styling: null,
             createdAt: afterGen,
+          },
+        ],
+        // The edit moved this sequence's pin on the gown (#2017).
+        pinMoves: [
+          {
+            kind: 'look.updated',
+            targetId: 'c-woman',
+            createdAt: afterGen,
+            data: { lookId: 'gala', lookVersion: { from: 'g1', to: 'g2' } },
           },
         ],
       });
@@ -784,7 +831,6 @@ describe('staleness causes (#1194)', () => {
           getSelected: vi.fn().mockResolvedValue({ createdAt: before }),
           listBySequence: vi.fn().mockResolvedValue(sceneHistory),
         },
-        sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
       });
       const result = await computeShotStaleness({
         dialogue: NO_LINES,
@@ -869,7 +915,10 @@ describe('staleness causes (#1194)', () => {
         }),
         listBySequence: vi.fn().mockResolvedValue([]),
       },
-      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+      sequenceEvents: {
+        listByTarget: vi.fn().mockResolvedValue([]),
+        listPinMoves: vi.fn().mockResolvedValue([]),
+      },
     });
 
     const result = await computeShotStaleness({
@@ -979,7 +1028,10 @@ describe('staleness causes (#1194)', () => {
           { version: live },
         ]),
       },
-      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+      sequenceEvents: {
+        listByTarget: vi.fn().mockResolvedValue([]),
+        listPinMoves: vi.fn().mockResolvedValue([]),
+      },
     });
 
     const result = await computeShotStaleness({
@@ -1316,7 +1368,10 @@ describe('causes left for #1787', () => {
           .fn()
           .mockResolvedValue(versions.map((version) => ({ version }))),
       },
-      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+      sequenceEvents: {
+        listByTarget: vi.fn().mockResolvedValue([]),
+        listPinMoves: vi.fn().mockResolvedValue([]),
+      },
     });
 
   beforeEach(() => {
@@ -1490,6 +1545,7 @@ describe('style causes (#1600)', () => {
     });
     Object.assign(scopedDb, {
       sequenceEvents: {
+        listPinMoves: vi.fn().mockResolvedValue([]),
         listByTarget: vi.fn().mockResolvedValue([
           {
             kind: 'sequence.settings-changed',
@@ -1560,7 +1616,9 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
       lookId: `c-${id}`,
       lookName: 'Default',
       styling: null,
-      looks: [],
+      // The versions this sequence pins now (#2017): the live ones.
+      selectedBibleVersionId: `c-${id}-v2`,
+      looks: [{ id: `c-${id}`, lookVersionId: `c-${id}-l2` }],
       name: capitalised(id),
       consistencyTag: id,
       voiceDescription: '',
@@ -1584,10 +1642,44 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
     const { standardClothing: _then, ...bibleThen } = bible;
     const { standardClothing: _now, ...bibleNow } = row;
     return [
-      { ...bibleNow, ...bibleThen, characterId: row.id, createdAt: before },
-      { ...bibleNow, characterId: row.id, createdAt: row.updatedAt },
+      {
+        ...bibleNow,
+        ...bibleThen,
+        id: `${row.id}-v1`,
+        characterId: row.id,
+        createdAt: before,
+      },
+      {
+        ...bibleNow,
+        id: `${row.id}-v2`,
+        characterId: row.id,
+        createdAt: row.updatedAt,
+      },
     ];
   };
+  /** The pin moves an edited person's sequence recorded (#2017). */
+  const pinMoves = (row: ShotStalenessRefs['characters'][number]) =>
+    row.updatedAt === before
+      ? []
+      : [
+          {
+            kind: 'character.updated',
+            targetId: row.id,
+            createdAt: row.updatedAt,
+            data: {
+              bibleVersion: { from: `${row.id}-v1`, to: `${row.id}-v2` },
+            },
+          },
+          {
+            kind: 'look.updated',
+            targetId: row.id,
+            createdAt: row.updatedAt,
+            data: {
+              lookId: row.lookId,
+              lookVersion: { from: `${row.id}-l1`, to: `${row.id}-l2` },
+            },
+          },
+        ];
   const locationVersions = (row: ShotStalenessRefs['locations'][number]) => [
     { ...row, ...room, locationId: row.id, createdAt: before },
     { ...row, locationId: row.id, createdAt: row.updatedAt },
@@ -1648,14 +1740,22 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
       // Clothing is the default look's (#2015): bare at the stamp, then
       // whatever the row wears now.
       characterLookVersions: [kylie, dazza].flatMap((row) => [
-        { lookId: row.lookId, clothing: '', styling: null, createdAt: before },
         {
+          id: `${row.id}-l1`,
+          lookId: row.lookId,
+          clothing: '',
+          styling: null,
+          createdAt: before,
+        },
+        {
+          id: `${row.id}-l2`,
           lookId: row.lookId,
           clothing: row.standardClothing,
           styling: null,
           createdAt: row.updatedAt,
         },
       ]),
+      pinMoves: [...pinMoves(kylie), ...pinMoves(dazza)],
       locationBibleVersions: [
         ...locationVersions(bathroom),
         ...locationVersions(verandah),
@@ -1672,7 +1772,6 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
         getSelected: vi.fn().mockResolvedValue(null),
         listBySequence: vi.fn().mockResolvedValue([]),
       },
-      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
     });
     return computeShotStaleness({
       dialogue: NO_LINES,

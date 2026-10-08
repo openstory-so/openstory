@@ -79,6 +79,9 @@ const lookColumns = {
   sheetStatus: sequenceCastLooks.sheetStatus,
   sheetError: sequenceCastLooks.sheetError,
   lookVersionId: characterLookVersions.id,
+  // The look's current version, next to the pin, so a read can tell "a newer
+  // version exists" without a second query.
+  currentLookVersionId: characterLooks.selectedLookVersionId,
   name: characterLookVersions.name,
   clothing: characterLookVersions.clothing,
   styling: characterLookVersions.styling,
@@ -257,6 +260,26 @@ export const requireLook = async (
 };
 
 /**
+ * The look behind one `sequence_cast_looks` row, as its sequence uses it
+ * (#2017): how a sheet row that names the cast look it was drawn for finds
+ * the look it now belongs to, after a one-off copy repointed that cast look.
+ */
+export const getLookByCastLookId = async (
+  db: Database,
+  teamId: string,
+  sequenceId: string,
+  castLookId: string
+): Promise<CharacterLook | null> =>
+  (
+    await selectLooks(
+      db,
+      teamId,
+      sequenceId,
+      eq(sequenceCastLooks.id, castLookId)
+    )
+  )[0] ?? null;
+
+/**
  * A character's cast link in one sequence (#2017): where its looks' cast
  * looks go, and the name its events carry.
  */
@@ -342,7 +365,9 @@ export const lookDefinitionWrite = (
   };
   const after = mergeDefined(before, patch, LOOK_FIELDS);
   const moved = lookChanged(before, after);
-  if (moved.length === 0) return { moved, after, statements: [] };
+  if (moved.length === 0) {
+    return { moved, after, versionId: null, statements: [] };
+  }
   const versionId = generateId();
   const touchesSheet = moved.some((key) =>
     (LOOK_SHEET_FIELDS as readonly string[]).includes(key)
@@ -350,6 +375,8 @@ export const lookDefinitionWrite = (
   return {
     moved,
     after,
+    /** The version appended; the event names the pin move from → to. */
+    versionId,
     statements: [
       db.insert(characterLookVersions).values({
         id: versionId,
@@ -600,9 +627,32 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         look: CharacterLook,
         patch: Partial<LookDefinition>
       ) => {
-        const { statements } = lookDefinitionWrite(db, look, patch, opts);
+        const { statements, versionId } = lookDefinitionWrite(
+          db,
+          look,
+          patch,
+          opts
+        );
         const [first, ...rest] = statements;
-        if (first) await db.batch([first, ...rest]);
+        if (!first || versionId === null) return;
+        // The pin moved: the staleness causes walk these events back to the
+        // version a shot was made from (#2017).
+        await db.batch([
+          first,
+          ...rest,
+          buildEventInsert(db, {
+            sequenceId,
+            actorId: null,
+            kind: 'look.updated',
+            targetType: 'character',
+            targetId: characterId,
+            summary: `Re-analysed look ${patch.name ?? look.name} of ${owner.name}`,
+            data: {
+              lookId: look.id,
+              lookVersion: { from: look.lookVersionId, to: versionId },
+            },
+          }),
+        ]);
       };
       const key = (name: string) => name.trim().toLowerCase();
       const matched = new Set<string>();
@@ -882,12 +932,14 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           look.id
         );
       }
-      const { moved, statements } = lookDefinitionWrite(db, look, patch, {
-        source: opts.source,
-        createdBy: opts.actorId,
-      });
+      const { moved, statements, versionId } = lookDefinitionWrite(
+        db,
+        look,
+        patch,
+        { source: opts.source, createdBy: opts.actorId }
+      );
       const [first, ...rest] = statements;
-      if (!first) return look;
+      if (!first || versionId === null) return look;
       const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
       await db.batch([
         first,
@@ -903,6 +955,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
             lookId,
             prevState: Object.fromEntries(moved.map((key) => [key, look[key]])),
             prevLookVersionId: look.lookVersionId,
+            // The pin move (#2017): the staleness causes walk these back.
+            lookVersion: { from: look.lookVersionId, to: versionId },
           },
         }),
       ]);
@@ -963,6 +1017,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
             lookId,
             versionId,
             prevLookVersionId: look.lookVersionId,
+            // The pin move (#2017): the staleness causes walk these back.
+            lookVersion: { from: look.lookVersionId, to: versionId },
           },
         }),
       ]);

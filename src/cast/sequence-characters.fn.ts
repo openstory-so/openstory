@@ -22,6 +22,7 @@ import {
 } from '@/cast/server/cast-edit';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
+import { moveSequenceToCurrent } from '@/cast/server/version-moves';
 import {
   getElevenLabsApiKey,
   isElevenLabsConfigured,
@@ -264,6 +265,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     // A Seed take IS its voice (#1765): nothing to save, no slot to spend.
     if (voiceProviderOf(take.generatedVoiceId) === 'seed') {
       await context.scopedDb.characters.updateVoice(
+        data.sequenceId,
         character.id,
         { voiceId: take.generatedVoiceId, voicePreviews: previews },
         'generated',
@@ -324,6 +326,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
       throw error;
     }
     await context.scopedDb.characters.updateVoice(
+      data.sequenceId,
       character.id,
       {
         voiceId,
@@ -408,6 +411,7 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
     }
     const voiceDescription = (data.description ?? data.name)?.trim();
     await context.scopedDb.characters.updateVoice(
+      data.sequenceId,
       character.id,
       { voiceId, ...(voiceDescription ? { voiceDescription } : {}) },
       'library',
@@ -453,6 +457,41 @@ export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
       data.versionId
     );
   });
+
+/**
+ * "Update this sequence" (#2017): move this sequence's cast link to the
+ * character's current bible, voice and look versions. A pointer write; the
+ * sequence's sheets and shots then read stale and its own Update redraws them.
+ */
+export const updateCastToCurrentFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(
+    async ({ context, data }) =>
+      await moveSequenceToCurrent(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.characterId
+      )
+  );
+
+/**
+ * "Make a one-off copy" (#2017): a new character from the version this
+ * sequence pins, this sequence's cast link repointed at it. Free: the copy
+ * keeps pointing at the original's sheet rows, so nothing re-renders.
+ */
+export const copyCharacterForSequenceFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(characterIdInput))
+  .handler(
+    async ({ context, data }) =>
+      await context.scopedDb.characters.copyForSequence(
+        data.sequenceId,
+        data.characterId,
+        { actorId: context.user.id }
+      )
+  );
 
 /** Undo a character soft-delete. */
 export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
@@ -528,7 +567,11 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
       ).status
   );
 
-/** Recast a character with different talent, triggering sheet regeneration */
+/**
+ * Recast a character with different talent, triggering sheet regeneration.
+ * `applyToSequenceIds`: the other sequences to move to the recast version
+ * (#2017); the rest keep theirs.
+ */
 export const recastCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
@@ -537,6 +580,7 @@ export const recastCharacterFn = createServerFn({ method: 'POST' })
         sequenceId: ulidSchema,
         characterId: z.string().min(1),
         talentId: ulidSchema,
+        applyToSequenceIds: z.array(ulidSchema),
       })
     )
   )

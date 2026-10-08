@@ -58,6 +58,12 @@ export const characters = snakeCase.table(
     // In the team library: offered to new sequences. A character that is not
     // lives only as long as some sequence casts it.
     inLibrary: integer({ mode: 'boolean' }).default(false).notNull(),
+    // The character this one is a one-off copy of (#2017, PR 3): null when
+    // it is not a copy. The copying sequence's clips were stamped with the
+    // original's id (`referenceKeys`), so the live reference identity answers
+    // for that id too and no clip reads stale. No FK: the original may go
+    // later, and the copy's stamps still name it.
+    copiedFromCharacterId: text(),
     // The character's CURRENT `character_bible_versions` row (#1600, #2017):
     // the one a new sequence adopts. A sequence reads the version its cast
     // link pins, not this. No FK (same cycle-avoidance as the sheet pointer).
@@ -179,6 +185,17 @@ export type CharacterCast = {
   deletedAt: Date | null;
   /** The bible version this sequence pins. */
   selectedBibleVersionId: string;
+  /** The voice version this sequence pins; null when it has no voice here. */
+  selectedVoiceVersionId: string | null;
+  /**
+   * The character's CURRENT bible version (`characters.selectedBibleVersionId`),
+   * the one a new sequence adopts. Differs from the pin once another sequence
+   * edited the character: "Newer version" (#2017). Null only on a row an
+   * older worker wrote before #1600.
+   */
+  currentBibleVersionId: string | null;
+  /** The character's current voice version; see `currentBibleVersionId`. */
+  currentVoiceVersionId: string | null;
 };
 
 /**
@@ -210,6 +227,7 @@ export type Character = Omit<
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
   | 'selectedBibleVersionId'
+  | 'selectedVoiceVersionId'
 > &
   CharacterCast &
   CharacterBible &

@@ -73,6 +73,13 @@ export const characterSheetVariants = snakeCase.table(
     // the trigger. Null on rows from before looks and on uploads, which read
     // no look.
     lookVersionId: text(),
+    // The `sequence_cast_looks` row the sheet was drawn or uploaded for
+    // (#2017, PR 3): a sheet also depends on that sequence's style and image
+    // model, so another sequence using the look lists it only once it selects
+    // it. No FK. Null on a row from before the column whose look had more than
+    // one cast look at backfill, so its sequence is unknown: such a row is
+    // listed for every sequence, as every row was before.
+    castLookId: text(),
     divergedAt: integer({ mode: 'timestamp' }),
     // Soft-delete marker; preserves the artifact for the toast Undo.
     discardedAt: integer({ mode: 'timestamp' }),

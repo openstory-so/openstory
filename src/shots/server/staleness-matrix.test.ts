@@ -319,7 +319,7 @@ function shotDb(
     scenes: { getById: none },
     sequences: { listStyleVersions: empty },
     shotDialogue: { getSelectedBySequence: empty },
-    sequenceEvents: { listByTarget: empty },
+    sequenceEvents: { listByTarget: empty, listPinMoves: empty },
   });
 }
 

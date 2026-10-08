@@ -163,7 +163,7 @@ export async function deleteCharacter(
   // The voice is the character's own (#2017): it goes only when nothing
   // else holds the character.
   if (!(await scopedDb.characters.getHeldElsewhere(sequenceId, characterId))) {
-    await releaseCharacterVoice(scopedDb, existing, actor.userId);
+    await releaseCharacterVoice(scopedDb, existing, sequenceId, actor.userId);
   }
   return { characterId, name: existing.name, deletedAt };
 }
@@ -201,6 +201,8 @@ export async function setCharacterInLibrary(
     await releaseCharacterVoice(
       scopedDb,
       await scopedDb.characters.getVoice(characterId),
+      // No sequence casts the character, so no pin moves.
+      null,
       actor.userId
     );
   }
@@ -221,13 +223,14 @@ export async function setCharacterVoiceEnabled(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   await scopedDb.characters.updateVoice(
+    sequenceId,
     character.id,
     { useVoice: enabled },
     enabled ? 'user-edit' : 'disabled',
     actor.userId
   );
   if (!enabled) {
-    await releaseCharacterVoice(scopedDb, character, actor.userId);
+    await releaseCharacterVoice(scopedDb, character, sequenceId, actor.userId);
   }
   return { characterId: character.id, name: character.name, useVoice: enabled };
 }
@@ -245,6 +248,7 @@ export async function selectCharacterVoiceVersion(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const updated = await scopedDb.characters.selectVoiceVersion(
+    sequenceId,
     character.id,
     versionId
   );

@@ -23,7 +23,7 @@ import type {
   SequenceEventData,
   SequenceEventTargetType,
 } from '@/platform/server/db/schema';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 
@@ -112,6 +112,27 @@ export function createSequenceEventsMethods(db: Database) {
       return await query;
     },
 
+    /**
+     * Every event that moved a cast pin in the sequence (#2017), oldest
+     * first: a bible edit or re-analysis (`character.updated` with
+     * `bibleVersion`), a look edit, re-analysis or version pick (`look.updated`
+     * / `look.version-selected` with `lookVersion`) and a move to the current
+     * version (`character.version-moved`). The staleness causes walk them
+     * back from the pin a sequence holds now to the version a shot read.
+     */
+    listPinMoves: async (sequenceId: string): Promise<SequenceEvent[]> =>
+      await db
+        .select()
+        .from(sequenceEvents)
+        .where(
+          and(
+            eq(sequenceEvents.sequenceId, sequenceId),
+            eq(sequenceEvents.targetType, 'character'),
+            inArray(sequenceEvents.kind, [...PIN_MOVE_EVENT_KINDS])
+          )
+        )
+        .orderBy(asc(sequenceEvents.id)),
+
     getById: async (eventId: string): Promise<SequenceEvent | null> => {
       const [row] = await db
         .select()
@@ -153,6 +174,19 @@ export function createSequenceEventsMethods(db: Database) {
  * for staleness it cannot cause.
  */
 export const SETTINGS_CHANGED_EVENT = 'sequence.settings-changed';
+
+/**
+ * The events that move a cast link's pins (#2017). Each carries the move in
+ * `data`: `bibleVersion: { from, to }` on a bible write, `lookVersion: { from,
+ * to }` with `lookId` on a look write or pick, and `bible` / `looks[]` on a
+ * move to the current version. `findStalenessCauses` walks them.
+ */
+const PIN_MOVE_EVENT_KINDS = [
+  'character.updated',
+  'character.version-moved',
+  'look.updated',
+  'look.version-selected',
+] as const;
 
 export const SETTINGS_CHANGED_LABELS: Record<string, string> = {
   styleId: 'Style',

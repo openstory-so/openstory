@@ -21,6 +21,12 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
+  characterReferenceEntityKeys,
+  liveReferenceIdentity,
+  referenceKeysMoved,
+  referenceProvenanceKey,
+} from '@/motion/reference-provenance';
+import {
   characterBibleVersions,
   characterLookVersions,
   characterLooks,
@@ -187,6 +193,7 @@ describe('characters bible CRUD + soft-remove', () => {
     expect(original?.description).toBe('Warm Australian alto');
 
     const a = await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-a', voicePreviews: [], useVoice: true },
       'generated',
@@ -196,6 +203,7 @@ describe('characters bible CRUD + soft-remove', () => {
       actorId
     );
     const b = await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-b' },
       'library',
@@ -221,7 +229,11 @@ describe('characters bible CRUD + soft-remove', () => {
     if (!first) throw new Error('first voice version missing');
 
     // Select restores the whole mirror, not just the id.
-    const restored = await methods.selectVoiceVersion(created.id, first.id);
+    const restored = await methods.selectVoiceVersion(
+      sequenceId,
+      created.id,
+      first.id
+    );
     expect(restored.voiceId).toBe('voice-a');
     expect(restored.useVoice).toBe(true);
     expect(restored.voicePreviews).toEqual([]);
@@ -239,6 +251,7 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     const saved = await methods.updateVoice(
+      sequenceId,
       created.id,
       {
         voiceId: 'voice-a',
@@ -336,6 +349,7 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     const saved = await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
       'generated',
@@ -358,6 +372,7 @@ describe('characters bible CRUD + soft-remove', () => {
       saved.selectedVoiceVersionId
     );
     const promoted = await methods.promoteVoiceClaimIfPending(
+      sequenceId,
       created.id,
       husk.id
     );
@@ -440,6 +455,7 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     const saved = await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-a', voiceDescription: 'Original' },
       'generated',
@@ -457,6 +473,7 @@ describe('characters bible CRUD + soft-remove', () => {
       throw new Error('expected a selected voice version');
     }
     const restored = await methods.selectVoiceVersion(
+      sequenceId,
       created.id,
       saved.selectedVoiceVersionId
     );
@@ -475,6 +492,7 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
       'generated',
@@ -497,6 +515,7 @@ describe('characters bible CRUD + soft-remove', () => {
       ],
     });
     const promoted = await methods.promoteVoiceClaimIfPending(
+      sequenceId,
       created.id,
       husk.id
     );
@@ -516,6 +535,7 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
       'generated',
@@ -529,6 +549,7 @@ describe('characters bible CRUD + soft-remove', () => {
       voiceId: 'voice-new',
     });
     await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-lib' },
       'library',
@@ -539,7 +560,7 @@ describe('characters bible CRUD + soft-remove', () => {
         ?.pendingPromoteVoiceVersionId
     ).toBeNull();
     expect(
-      await methods.promoteVoiceClaimIfPending(created.id, husk.id)
+      await methods.promoteVoiceClaimIfPending(sequenceId, created.id, husk.id)
     ).toBeNull();
     const live = await methods.getById(sequenceId, created.id);
     expect(live?.voiceId).toBe('voice-lib');
@@ -561,11 +582,11 @@ describe('characters bible CRUD + soft-remove', () => {
       actorId
     );
     expect(
-      await methods.promoteVoiceClaimIfPending(created.id, husk.id)
+      await methods.promoteVoiceClaimIfPending(sequenceId, created.id, husk.id)
     ).toBeNull();
     await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null });
     expect(
-      await methods.promoteVoiceClaimIfPending(created.id, husk.id)
+      await methods.promoteVoiceClaimIfPending(sequenceId, created.id, husk.id)
     ).toBeNull();
   });
 
@@ -580,6 +601,7 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-a' },
       'generated',
@@ -590,6 +612,7 @@ describe('characters bible CRUD + soft-remove', () => {
       actorId
     );
     await methods.updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-lib' },
       'library',
@@ -599,7 +622,7 @@ describe('characters bible CRUD + soft-remove', () => {
     expect(live?.pendingPromoteVoiceVersionId).toBeNull();
     expect(live?.voiceId).toBe('voice-lib');
     expect(
-      await methods.promoteVoiceClaimIfPending(created.id, husk.id)
+      await methods.promoteVoiceClaimIfPending(sequenceId, created.id, husk.id)
     ).toBeNull();
   });
 
@@ -618,7 +641,7 @@ describe('characters bible CRUD + soft-remove', () => {
       actorId
     );
     await expect(
-      methods.selectVoiceVersion(created.id, husk.id)
+      methods.selectVoiceVersion(sequenceId, created.id, husk.id)
     ).rejects.toThrow(/not finished/i);
   });
 
@@ -638,7 +661,7 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null });
     await expect(
-      methods.selectVoiceVersion(created.id, husk.id)
+      methods.selectVoiceVersion(sequenceId, created.id, husk.id)
     ).rejects.toThrow(/no saved take/i);
   });
 
@@ -661,13 +684,26 @@ describe('characters bible CRUD + soft-remove', () => {
       { source: 'analysis', createdBy: null }
     );
     await methods.updateVoice(
+      sequenceId,
       maya.id,
       { voiceId: 'shared' },
       'generated',
       null
     );
-    await methods.updateVoice(otto.id, { voiceId: 'shared' }, 'library', null);
-    await methods.updateVoice(maya.id, { voiceId: 'kept' }, 'library', null);
+    await methods.updateVoice(
+      sequenceId,
+      otto.id,
+      { voiceId: 'shared' },
+      'library',
+      null
+    );
+    await methods.updateVoice(
+      sequenceId,
+      maya.id,
+      { voiceId: 'kept' },
+      'library',
+      null
+    );
 
     // The id is deleted at ElevenLabs once, for everyone (#1657).
     await methods.markVoiceReleased('shared');
@@ -687,7 +723,7 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     if (!released) throw new Error('released voice version missing');
     await expect(
-      methods.selectVoiceVersion(maya.id, released.id)
+      methods.selectVoiceVersion(sequenceId, maya.id, released.id)
     ).rejects.toThrow(/deleted when it stopped being used/);
     // The refusal changed nothing.
     const unchanged = await methods.getById(sequenceId, maya.id);
@@ -696,9 +732,9 @@ describe('characters bible CRUD + soft-remove', () => {
     // Another character's version is not this character's to select.
     const ottos = ottoVersions[0];
     if (!ottos) throw new Error('otto voice version missing');
-    await expect(methods.selectVoiceVersion(maya.id, ottos.id)).rejects.toThrow(
-      /not found for character/
-    );
+    await expect(
+      methods.selectVoiceVersion(sequenceId, maya.id, ottos.id)
+    ).rejects.toThrow(/not found for character/);
   });
 
   it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {
@@ -781,7 +817,13 @@ describe('characters bible CRUD + soft-remove', () => {
       { sequenceId, characterId: 'ref_moved', name: 'C', voiceId: shared },
       { source: 'analysis', createdBy: null }
     );
-    await methods.updateVoice(moved.id, { voiceId: 'other' }, 'library', null);
+    await methods.updateVoice(
+      sequenceId,
+      moved.id,
+      { voiceId: 'other' },
+      'library',
+      null
+    );
     const [seq] = await db
       .select({ teamId: sequences.teamId })
       .from(sequences)
@@ -792,9 +834,18 @@ describe('characters bible CRUD + soft-remove', () => {
       .values({ teamId: seq.teamId, name: 'T', voiceId: shared });
 
     expect(live.voiceId).toBe(shared);
-    expect(await methods.getVoiceReferenceCount(shared)).toBe(3);
-    expect(await methods.getVoiceReferenceCount('other')).toBe(1);
+    // A's current pointer and A's live pin, B's current pointer (its link is
+    // removed, so its pin holds nothing), the talent (#2017).
+    expect(await methods.getVoiceReferenceCount(shared)).toBe(4);
+    // C's current pointer and C's pin both moved to 'other'.
+    expect(await methods.getVoiceReferenceCount('other')).toBe(2);
     expect(await methods.getVoiceReferenceCount('nobody')).toBe(0);
+    // What A's own release would drop: its pointer and this sequence's pin.
+    expect(await methods.getOwnVoiceHolds(shared, live.id, sequenceId)).toBe(2);
+    expect(await methods.getOwnVoiceHolds(shared, live.id, null)).toBe(1);
+    expect(await methods.getOwnVoiceHolds(shared, deleted.id, sequenceId)).toBe(
+      1
+    );
   });
 
   it('update refuses a voice field, and a bible description edit records one', async () => {
@@ -862,9 +913,26 @@ describe('characters bible CRUD + soft-remove', () => {
       .from(sequenceEvents)
       .where(eq(sequenceEvents.kind, 'character.updated'));
     expect(event?.targetId).toBe(created.id);
+    // The pin move rides on the event (#2017): the staleness causes walk it.
     expect(event?.data).toEqual({
       prevState: { physicalDescription: 'tall, brown hair', age: null },
+      bibleVersion: {
+        from: created.selectedBibleVersionId,
+        to: updated.selectedBibleVersionId,
+      },
     });
+    // An edit that appends no version says so.
+    await m.updateBible(
+      sequenceId,
+      created.id,
+      { age: '40s' },
+      { source: 'edit', actorId }
+    );
+    const events = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'character.updated'));
+    expect(events.at(-1)?.data).toMatchObject({ bibleVersion: null });
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
@@ -1538,12 +1606,14 @@ describe('team characters (#2017)', () => {
       status: 'completed',
     });
     await chars().updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-a' },
       'library',
       null
     );
     await chars().updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-b' },
       'library',
@@ -1611,7 +1681,13 @@ describe('team characters (#2017)', () => {
   it('an unselected voice version that still holds a slot stops the delete', async () => {
     const created = await withSheetAndVoices('char_001');
     // What releaseCharacterVoice writes: the live pointer is dropped.
-    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
+    await chars().updateVoice(
+      sequenceId,
+      created.id,
+      { voiceId: null },
+      'removed',
+      null
+    );
     // Neither id is selected any more, and neither is released.
     expect((await chars().getVoiceIdsToRelease(created.id)).sort()).toEqual([
       'voice-a',
@@ -1639,6 +1715,7 @@ describe('team characters (#2017)', () => {
     );
     // A Seed voice holds no provider slot.
     await chars().updateVoice(
+      sequenceId,
       created.id,
       { voiceId: newSeedVoiceId() },
       'generated',
@@ -1647,6 +1724,7 @@ describe('team characters (#2017)', () => {
     // A voice copied from a talent: the talent still points at it.
     await db.insert(talent).values({ teamId, name: 'T', voiceId: 'voice-t' });
     await chars().updateVoice(
+      sequenceId,
       created.id,
       { voiceId: 'voice-t' },
       'library',
@@ -1867,6 +1945,34 @@ describe('team characters (#2017)', () => {
       sheetImageUrl: null,
       sheetStatus: 'generating',
     });
+    // The strip is the sequence's (#2017): the sheet the second drew is in
+    // its strip and not the first's; a sheet of unknown origin is in both.
+    const sheets = createCharacterSheetVariantsMethods(db, teamId);
+    expect(
+      (await sheets.listHistoryByLook(other, created.lookId)).map((r) => r.id)
+    ).toEqual([claimB.versionId]);
+    expect(await sheets.listHistoryByLook(sequenceId, created.lookId)).toEqual(
+      []
+    );
+    const unknown = await sheets.insert({
+      characterId: created.id,
+      lookId: created.lookId,
+      model: 'm',
+      url: 'https://x.test/old.png',
+      status: 'completed',
+    });
+    expect(
+      (await sheets.listHistoryByLook(sequenceId, created.lookId)).map(
+        (r) => r.id
+      )
+    ).toEqual([unknown.id]);
+    // The first sequence selecting the second's sheet lists it from then on.
+    await sheets.select(sequenceId, created.id, claimB.versionId, { actorId });
+    expect(
+      (await sheets.listHistoryByLook(sequenceId, created.lookId))
+        .map((r) => r.id)
+        .sort()
+    ).toEqual([claimB.versionId, unknown.id].sort());
 
     // Remove from the first: the second still casts it.
     expect(await chars().getHeldElsewhere(sequenceId, created.id)).toBe(true);
@@ -1889,6 +1995,369 @@ describe('team characters (#2017)', () => {
     await sequencesDb.delete(other, NO_VOICES);
     expect(await db.select().from(characters)).toEqual([]);
     expect(await linksOf(created.id)).toEqual([]);
+  });
+
+  it('a voice write from one sequence moves its pin and the current pointer; the other keeps what it pinned (#2017)', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const first = await chars().updateVoice(
+      sequenceId,
+      created.id,
+      { voiceId: 'voice-1' },
+      'generated',
+      null
+    );
+    await chars().setInLibrary(created.id, true);
+    const other = await secondSequence();
+    // Attach pins the character's current voice (#2050).
+    const attached = await chars().attach(other, created.id, { actorId });
+    expect(attached.selectedVoiceVersionId).toBe(first.selectedVoiceVersionId);
+    expect(attached.voiceId).toBe('voice-1');
+
+    // A new voice from the second sequence: its pin and the current pointer
+    // move; the first sequence still speaks in voice-1.
+    const second = await chars().updateVoice(
+      other,
+      created.id,
+      { voiceId: 'voice-2' },
+      'library',
+      actorId
+    );
+    expect(await chars().getById(other, created.id)).toMatchObject({
+      voiceId: 'voice-2',
+      selectedVoiceVersionId: second.selectedVoiceVersionId,
+      currentVoiceVersionId: second.selectedVoiceVersionId,
+    });
+    expect(await chars().getById(sequenceId, created.id)).toMatchObject({
+      voiceId: 'voice-1',
+      selectedVoiceVersionId: first.selectedVoiceVersionId,
+      currentVoiceVersionId: second.selectedVoiceVersionId,
+    });
+    // Each sequence's history marks its own pin as current.
+    const current = async (inSequence: string) =>
+      (await chars().listVoiceHistoryBySequence(inSequence))
+        .filter((row) => row.current)
+        .map((row) => row.voiceId);
+    expect(await current(sequenceId)).toEqual(['voice-1']);
+    expect(await current(other)).toEqual(['voice-2']);
+    // voice-1 is held by the first sequence's pin alone; voice-2 by the
+    // second's pin and the current pointer.
+    expect(await chars().getVoiceReferenceCount('voice-1')).toBe(1);
+    expect(await chars().getVoiceReferenceCount('voice-2')).toBe(2);
+    expect(
+      await chars().getOwnVoiceHolds('voice-1', created.id, sequenceId)
+    ).toBe(1);
+    expect(await chars().getOwnVoiceHolds('voice-1', created.id, other)).toBe(
+      0
+    );
+
+    // Re-selecting the first voice from the second sequence moves only that
+    // sequence's pin (and the current pointer) back.
+    if (!first.selectedVoiceVersionId) throw new Error('unreachable');
+    await chars().selectVoiceVersion(
+      other,
+      created.id,
+      first.selectedVoiceVersionId
+    );
+    expect(await current(other)).toEqual(['voice-1']);
+    expect(await chars().getVoiceReferenceCount('voice-2')).toBe(0);
+
+    // A Voice Design husk promoted for the first sequence pins it there only.
+    const husk = await chars().createPendingVoiceClaim(created.id, actorId);
+    await chars().completeVoiceClaimIfLive(husk.version.id, {
+      voiceId: 'voice-3',
+    });
+    const promoted = await chars().promoteVoiceClaimIfPending(
+      sequenceId,
+      created.id,
+      husk.version.id
+    );
+    expect(promoted?.voiceId).toBe('voice-3');
+    expect(await current(sequenceId)).toEqual(['voice-3']);
+    expect(await current(other)).toEqual(['voice-1']);
+  });
+
+  it('an edit from one sequence leaves the other behind; moving it to the current version moves every pin and revokes its claims (#2017)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    await chars().updateVoice(
+      sequenceId,
+      created.id,
+      { voiceId: 'voice-1' },
+      'generated',
+      null
+    );
+    await chars().setInLibrary(created.id, true);
+    const other = await secondSequence();
+    await chars().attach(other, created.id, { actorId });
+    const behind = async () =>
+      (await chars().listCastOfCharacter(created.id)).map((row) => [
+        row.sequenceId,
+        row.behind,
+      ]);
+    expect(await behind()).toEqual(
+      expect.arrayContaining([
+        [sequenceId, false],
+        [other, false],
+      ])
+    );
+    // Nothing to move: nothing is written.
+    expect(
+      (await chars().moveCastToCurrent(other, created.id, { actorId })).moved
+    ).toBe(false);
+
+    // The first sequence edits the bible, the default look's clothing and
+    // the voice, and adds a look. The second is now behind.
+    await chars().updateBible(
+      sequenceId,
+      created.id,
+      { age: '40s', standardClothing: 'gown' },
+      { actorId, source: 'edit' }
+    );
+    await chars().updateVoice(
+      sequenceId,
+      created.id,
+      { voiceId: 'voice-2' },
+      'library',
+      actorId
+    );
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala', clothing: 'sequins', styling: null },
+      { source: 'edit', actorId }
+    );
+    expect(await behind()).toEqual(
+      expect.arrayContaining([
+        [sequenceId, false],
+        [other, true],
+      ])
+    );
+    const stale = await chars().getById(other, created.id);
+    if (!stale) throw new Error('unreachable');
+    expect(stale).toMatchObject({ age: null, voiceId: 'voice-1' });
+    expect(stale.selectedBibleVersionId).not.toBe(stale.currentBibleVersionId);
+    expect(stale.looks).toHaveLength(1);
+    expect(stale.looks[0]?.lookVersionId).not.toBe(
+      stale.looks[0]?.currentLookVersionId
+    );
+    // A sheet run in flight in the second sequence holds a claim.
+    const claim = await looks().claimSheet(
+      other,
+      created.lookId,
+      {
+        lookVersionId: stale.looks[0]?.lookVersionId ?? '',
+        bibleVersionId: stale.selectedBibleVersionId,
+        talentId: null,
+      },
+      { markGenerating: true }
+    );
+    expect(claim.held).toBe(true);
+
+    // Move the second sequence: every pin is current, the new look is cast
+    // there, the claim is revoked, the first sequence is untouched, and no
+    // version row was written.
+    const versionsBefore = (await versionsOf(created.id)).length;
+    const moved = await chars().moveCastToCurrent(other, created.id, {
+      actorId,
+    });
+    expect(moved.moved).toBe(true);
+    expect(moved.character).toMatchObject({
+      age: '40s',
+      standardClothing: 'gown',
+      voiceId: 'voice-2',
+    });
+    expect(moved.character.selectedBibleVersionId).toBe(
+      moved.character.currentBibleVersionId
+    );
+    expect(moved.character.selectedVoiceVersionId).toBe(
+      moved.character.currentVoiceVersionId
+    );
+    expect(moved.character.looks.map((look) => look.id).sort()).toEqual(
+      [created.lookId, gala.id].sort()
+    );
+    for (const look of moved.character.looks) {
+      expect(look.lookVersionId).toBe(look.currentLookVersionId);
+      expect(look.pendingPromoteSheetVersionId).toBeNull();
+    }
+    expect(await behind()).toEqual(
+      expect.arrayContaining([
+        [sequenceId, false],
+        [other, false],
+      ])
+    );
+    expect((await versionsOf(created.id)).length).toBe(versionsBefore);
+    expect(await eventKinds()).toContain('character.version-moved');
+    // The first sequence still pins what it wrote.
+    expect(await chars().getById(sequenceId, created.id)).toMatchObject({
+      age: '40s',
+      voiceId: 'voice-2',
+    });
+    // voice-1 is held by nothing now.
+    expect(await chars().getVoiceReferenceCount('voice-1')).toBe(0);
+  });
+
+  it('a one-off copy owns a new character, bible, voice and looks, keeps the original sheet rows, and repoints only this sequence (#2017)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    await chars().updateVoice(
+      sequenceId,
+      created.id,
+      { voiceId: 'voice-1' },
+      'generated',
+      null
+    );
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala', clothing: 'gown', styling: 'updo' },
+      { source: 'edit', actorId }
+    );
+    // A sheet of the default look, selected here.
+    const sheets = createCharacterSheetVariantsMethods(db, teamId);
+    const { version: sheet } = await sheets.applyConvergent({
+      sequenceId,
+      lookId: created.lookId,
+      url: 'https://x.test/a.png',
+      storagePath: 'a.png',
+      inputHash: null,
+      model: 'm',
+    });
+    await chars().setInLibrary(created.id, true);
+    const other = await secondSequence();
+    await chars().attach(other, created.id, { actorId });
+    const versionsBefore = (await versionsOf(created.id)).length;
+
+    const copy = await chars().copyForSequence(sequenceId, created.id, {
+      actorId,
+    });
+    expect(copy.id).not.toBe(created.id);
+    expect(copy).toMatchObject({
+      name: 'Ada',
+      characterId: 'char_001',
+      standardClothing: 'coat',
+      voiceId: 'voice-1',
+      inLibrary: false,
+      // The original's sheet row, shared: nothing re-renders.
+      selectedSheetVersionId: sheet.id,
+      sheetImageUrl: 'https://x.test/a.png',
+    });
+    expect(copy.lookId).toBe(copy.id);
+    expect(copy.looks.map((look) => look.name).sort()).toEqual([
+      'Default',
+      'Gala',
+    ]);
+    expect(copy.looks.every((look) => look.characterId === copy.id)).toBe(true);
+    // The copy's pins are its own current versions.
+    expect(copy.selectedBibleVersionId).toBe(copy.currentBibleVersionId);
+    expect(copy.selectedVoiceVersionId).toBe(copy.currentVoiceVersionId);
+    // This sequence casts the copy; the other still casts the original, and
+    // the original's rows are untouched.
+    expect((await chars().list(sequenceId)).map((c) => c.id)).toEqual([
+      copy.id,
+    ]);
+    expect((await chars().list(other)).map((c) => c.id)).toEqual([created.id]);
+    expect((await versionsOf(created.id)).length).toBe(versionsBefore);
+    expect(await looks().listByCharacter(other, created.id)).toHaveLength(2);
+    expect(
+      (await sheets.listHistoryByLook(sequenceId, copy.lookId)).map((r) => r.id)
+    ).toEqual([sheet.id]);
+    // The shared voice id is held by both.
+    expect(await chars().getVoiceReferenceCount('voice-1')).toBe(4);
+    // The copy can re-pick the shared sheet, and nobody can discard it.
+    await sheets.select(sequenceId, copy.id, sheet.id, { actorId });
+    await expect(sheets.discard(sheet.id)).rejects.toThrow(/selected/);
+    expect(await eventKinds()).toContain('character.copied');
+    void gala;
+
+    // No clip reads stale: a clip stamped with the original's id and sheet
+    // still resolves through the copy (`copiedFromCharacterId`), and a
+    // sheet re-selected on the copy still stales it.
+    expect(copy.copiedFromCharacterId).toBe(created.id);
+    const stamped = referenceProvenanceKey('character', created.id, sheet.id);
+    const live = liveReferenceIdentity({
+      characters: [copy],
+      locations: [],
+      elements: [],
+    });
+    const referenced = new Set(characterReferenceEntityKeys(copy));
+    expect(referenceKeysMoved([stamped], live, referenced)).toBe(false);
+    expect(
+      referenceKeysMoved(
+        [referenceProvenanceKey('character', created.id, 'another-sheet')],
+        live,
+        referenced
+      )
+    ).toBe(true);
+  });
+
+  it('a one-off copy of a character whose default sheet is the pointer-less pre-#1419 row carries that sheet across (#2017)', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    await chars().setInLibrary(created.id, true);
+    // The #1419 row: keyed to the character's own id, no look, no pointer.
+    await db.insert(characterSheetVariants).values({
+      id: created.id,
+      characterId: created.id,
+      model: 'm',
+      url: 'https://x.test/legacy.png',
+      storagePath: 'legacy.png',
+      status: 'completed',
+      inputHash: 'h-legacy',
+    });
+    const before = await chars().getById(sequenceId, created.id);
+    expect(before).toMatchObject({
+      sheetImageUrl: 'https://x.test/legacy.png',
+      selectedSheetVersionId: null,
+      sheetInputHash: 'h-legacy',
+    });
+    const copy = await chars().copyForSequence(sequenceId, created.id, {
+      actorId,
+    });
+    // Same image and hash, pointer still null: the still's sheet ingredient
+    // (`selectedSheetVersionId ?? sheetInputHash`) and the clip's key do not
+    // move.
+    expect(copy).toMatchObject({
+      sheetImageUrl: 'https://x.test/legacy.png',
+      selectedSheetVersionId: null,
+      sheetInputHash: 'h-legacy',
+    });
+    const live = liveReferenceIdentity({
+      characters: [copy],
+      locations: [],
+      elements: [],
+    });
+    expect(
+      referenceKeysMoved(
+        [
+          referenceProvenanceKey(
+            'character',
+            created.id,
+            'https://x.test/legacy.png'
+          ),
+        ],
+        live,
+        new Set(characterReferenceEntityKeys(copy))
+      )
+    ).toBe(false);
   });
 
   it('attaches a library character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {

@@ -19,12 +19,14 @@ import {
   assignCharacterVoiceFn,
   chooseCharacterVoiceTakeFn,
   cancelCharacterVoiceFn,
+  copyCharacterForSequenceFn,
   generateCharacterVoiceFn,
   listCharacterVoiceVersionsFn,
   selectCharacterVoiceVersionFn,
   setCharacterVoiceEnabledFn,
   restoreSequenceCharacterFn,
   softDeleteSequenceCharacterFn,
+  updateCastToCurrentFn,
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
@@ -140,6 +142,50 @@ function invalidateAfterVoiceChange(
     queryKey: segmentKeys.list(sequenceId),
   });
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+}
+
+/**
+ * A sequence's cast link moved to the character's current version (#2017):
+ * the cast list, its sheets and voice, and every staleness verdict in the
+ * sequence follow the pins.
+ */
+export function invalidateAfterVersionMove(
+  queryClient: QueryClient,
+  sequenceId: string
+): void {
+  invalidateAfterVoiceChange(queryClient, sequenceId);
+  void queryClient.invalidateQueries({
+    queryKey: ['character-sheet-variants'],
+  });
+  void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
+}
+
+/**
+ * "Make a one-off copy": a new character for this sequence alone. The cast
+ * list and the team list (a new character, one fewer sequence on the
+ * original) both move.
+ */
+export function useCopyCharacterForSequence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      copyCharacterForSequenceFn({ data }),
+    onSuccess: (_copy, { sequenceId }) => {
+      invalidateCastMembership(queryClient, sequenceId);
+      void queryClient.invalidateQueries({ queryKey: ['team-characters'] });
+    },
+  });
+}
+
+/** "Update this sequence": move this sequence's pins to the current version. */
+export function useUpdateCastToCurrent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      updateCastToCurrentFn({ data }),
+    onSuccess: (_result, { sequenceId }) =>
+      invalidateAfterVersionMove(queryClient, sequenceId),
+  });
 }
 
 /** Cancel a voice still generating; the character keeps the voice it had. */
@@ -437,14 +483,20 @@ export function useRecastCharacter() {
       sequenceId: string;
       characterId: string;
       talentId: string;
+      /** Other sequences to move to the recast version (#2017). */
+      applyToSequenceIds: string[];
     }) => recastCharacterFn({ data }),
-    onSuccess: () => {
+    onSuccess: (_result, { applyToSequenceIds }) => {
       // Invalidate sequence characters to refresh the list
       void queryClient.invalidateQueries({
         queryKey: sequenceCharacterKeys.all,
       });
       // Invalidate shots that contain this character
       void queryClient.invalidateQueries({ queryKey: ['shots'] });
+      for (const sequenceId of applyToSequenceIds) {
+        invalidateAfterVersionMove(queryClient, sequenceId);
+      }
+      void queryClient.invalidateQueries({ queryKey: ['team-characters'] });
     },
   });
 }

@@ -109,11 +109,17 @@ const regenerateCharacterSheetTool = openstoryTool({
 const recastCharacterTool = openstoryTool({
   name: 'recast_character',
   description:
-    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and the shots that wear the default look are regenerated (spends credits). Other looks a scene wears are not redrawn now: they and their shots go stale once the new sheet lands (looksLeftStale), and plan_generation / execute_generation redraws them. Refused for a voice-only character.',
+    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and the shots that wear the default look are regenerated (spends credits). Other looks a scene wears are not redrawn now: they and their shots go stale once the new sheet lands (looksLeftStale), and plan_generation / execute_generation redraws them. The recast is a new version pinned by this sequence; applyToSequenceIds names the other sequences casting the character (preview_version_move) to move to it now — each then reads stale and redraws through its own plan_generation / execute_generation, nothing is generated for them here — and sequencesLeftBehind lists those still on an older version. Refused for a voice-only character.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: characterInput.extend({
     talentId: ulidSchema.describe('Library talent ID (list_talent).'),
+    applyToSequenceIds: z
+      .array(ulidSchema)
+      .default([])
+      .describe(
+        'Other sequences to move to the recast version. Omit to recast this sequence only.'
+      ),
   }),
   outputSchema: z.object({
     characterId: z.string(),
@@ -121,6 +127,12 @@ const recastCharacterTool = openstoryTool({
     sheetWorkflowRunId: z.string(),
     affectedShotIds: z.array(z.string()),
     looksLeftStale: z.array(z.object({ lookId: z.string(), name: z.string() })),
+    movedSequences: z.array(
+      z.object({ sequenceId: z.string(), moved: z.boolean() })
+    ),
+    sequencesLeftBehind: z.array(
+      z.object({ sequenceId: z.string(), title: z.string() })
+    ),
   }),
   run: async (input, { scopedDb, userId }) => {
     const character = await productionAccess(scopedDb).character(
@@ -134,8 +146,10 @@ const recastCharacterTool = openstoryTool({
         sequenceId: input.sequenceId,
         characterId: character.id,
         talentId: input.talentId,
+        applyToSequenceIds: input.applyToSequenceIds,
       }
     );
+    const moved = result.movedSequences.filter((row) => row.moved).length;
     return {
       data: {
         characterId: result.character.id,
@@ -143,8 +157,10 @@ const recastCharacterTool = openstoryTool({
         sheetWorkflowRunId: result.sheetWorkflowRunId,
         affectedShotIds: result.affectedShotIds,
         looksLeftStale: result.looksLeftStale,
+        movedSequences: result.movedSequences,
+        sequencesLeftBehind: result.sequencesLeftBehind,
       },
-      summary: `Recasting ${character.name}; ${result.affectedShotIds.length} shots will regenerate.${result.looksLeftStale.length > 0 ? ` Stale until the next update: ${result.looksLeftStale.map((look) => look.name).join(', ')}.` : ''}`,
+      summary: `Recasting ${character.name}; ${result.affectedShotIds.length} shots will regenerate.${result.looksLeftStale.length > 0 ? ` Stale until the next update: ${result.looksLeftStale.map((look) => look.name).join(', ')}.` : ''}${moved > 0 ? ` ${moved} other sequence(s) moved to the new version; each redraws from its own update.` : ''}${result.sequencesLeftBehind.length > 0 ? ` Still on an older version: ${result.sequencesLeftBehind.map((row) => row.title).join(', ')}.` : ''}`,
     };
   },
 });

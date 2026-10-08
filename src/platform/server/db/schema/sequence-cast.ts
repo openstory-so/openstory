@@ -45,6 +45,13 @@ export const sequenceCast = snakeCase.table(
     // The `character_bible_versions` row this sequence uses. No FK, like the
     // character's own pointer. The cast talent is that version's `talentId`.
     bibleVersionId: text().notNull(),
+    // The `character_voice_versions` row this sequence speaks in (#2017, PR
+    // 3). No FK, like the character's own pointer. Null when the character
+    // has no voice here: a legitimate state, not an unknown. A voice write
+    // made from a sequence moves this and the character's current pointer;
+    // the other sequences keep what they pinned, and a provider voice is held
+    // while any live link pins a version naming it.
+    voiceVersionId: text(),
     // Soft-remove from the sequence, undoable. The character itself stays.
     removedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })

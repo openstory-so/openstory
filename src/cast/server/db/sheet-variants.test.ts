@@ -401,7 +401,10 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     });
     await methods.discard(a.id);
 
-    const active = await methods.listDivergentActiveByCharacter(characterId);
+    const active = await methods.listDivergentActiveByCharacter(
+      sequenceId,
+      characterId
+    );
     expect(active).toHaveLength(1);
     expect(active[0]?.inputHash).toBe('hash-b');
   });
@@ -651,7 +654,9 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
 describe('sheet-variants list filters and empty-input short-circuits', () => {
   it('character listDivergentActiveByCharacters returns [] for empty input (no SQL roundtrip)', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
-    expect(await methods.listDivergentActiveByCharacters([])).toEqual([]);
+    expect(
+      await methods.listDivergentActiveByCharacters(sequenceId, [])
+    ).toEqual([]);
   });
 
   it('talent listDivergentActiveByTalents returns [] for empty input', async () => {
@@ -736,7 +741,10 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     });
     await methods.discard(v1.id);
 
-    const active = await methods.listDivergentActiveByCharacter(characterId);
+    const active = await methods.listDivergentActiveByCharacter(
+      sequenceId,
+      characterId
+    );
     expect(active).toHaveLength(1);
 
     const allDivergent = await methods.listDivergentByCharacter(characterId);
@@ -831,7 +839,7 @@ describe('character sheet versions (append + select)', () => {
     expect(live?.sheetImageUrl).toBe('https://example.com/new.png');
     expect(live?.sheetInputHash).toBe('hash-new');
 
-    const history = await methods.listHistoryByLook(characterId);
+    const history = await methods.listHistoryByLook(sequenceId, characterId);
     expect(history).toHaveLength(2);
     expect(history.map((row) => row.url)).toEqual([
       'https://example.com/old.png',
@@ -883,7 +891,7 @@ describe('character sheet versions (append + select)', () => {
     expect(live?.sheetImageUrl).toBe('https://example.com/a.png');
     expect(live?.sheetInputHash).toBe('hash-a');
 
-    const history = await methods.listHistoryByLook(characterId);
+    const history = await methods.listHistoryByLook(sequenceId, characterId);
     expect(history).toHaveLength(2);
     expect(history.map((row) => row.id)).toEqual([
       first.version.id,
