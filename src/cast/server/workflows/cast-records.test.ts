@@ -270,7 +270,7 @@ describe('createCastRecords (attached cast, #2050)', () => {
   });
 });
 
-describe('createCastRecords (talent match, #1561)', () => {
+describe('createCastRecords (talent match: a likeness, #2018)', () => {
   const sarah = {
     characterId: 'char_1',
     name: 'Sarah',
@@ -289,15 +289,13 @@ describe('createCastRecords (talent match, #1561)', () => {
     consistencyTag: 'sarah',
   };
   const match = {
-    voiceId: null,
-    voiceDescription: null,
     characterId: 'char_1',
     talentId: 'tal_1',
     talentName: 'Ada',
     sheetImageUrl: '/r2/ada.png',
   };
 
-  const run = async (personality: string, movement: string) => {
+  const run = async () => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
@@ -311,7 +309,7 @@ describe('createCastRecords (talent match, #1561)', () => {
       sequenceId: 'seq_1',
       cast: [],
       characterBible: [sarah],
-      talentMatches: [{ ...match, personality, movement }],
+      talentMatches: [match],
       locationBible: [],
       locationMatches: [],
       elementBible: [],
@@ -320,18 +318,12 @@ describe('createCastRecords (talent match, #1561)', () => {
     return characterCreate.mock.calls[0]?.[0];
   };
 
-  test("the talent's own performance wins", async () => {
-    expect(await run('swaggering', 'hip swivel')).toMatchObject({
+  test('the role keeps its own performance and voice; only the face is cast', async () => {
+    expect(await run()).toMatchObject({
       talentId: 'tal_1',
-      personality: 'swaggering',
-      movement: 'hip swivel',
-    });
-  });
-
-  test("a talent with none keeps the script's", async () => {
-    expect(await run('', '')).toMatchObject({
       personality: 'anxious',
       movement: 'restless hands',
+      voiceId: null,
     });
   });
 
@@ -349,9 +341,7 @@ describe('createCastRecords (talent match, #1561)', () => {
       sequenceId: 'seq_1',
       cast: [],
       characterBible: [sarah],
-      talentMatches: [
-        { ...match, personality: '', movement: '', hasSignedRelease: true },
-      ],
+      talentMatches: [{ ...match, hasSignedRelease: true }],
       locationBible: [],
       locationMatches: [],
       elementBible: [],

@@ -1,7 +1,7 @@
 /**
  * After an image lands on an existing talent: promote it as a sheet if
  * vision says it already is one, otherwise generate a 4-panel only when
- * the talent has no convergent sheet yet.
+ * the talent has no reference sheet yet.
  */
 
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
@@ -43,7 +43,6 @@ export async function maybePromoteOrGenerateSheet(
   }
 
   const imageMedia = talentRecord.media.filter((m) => m.type === 'image');
-  const convergentSheets = talentRecord.sheets.filter((s) => !s.divergedAt);
 
   let uploadedSheetUrl: string | undefined;
   let uploadedSheetMetadata: CharacterBibleEntry | undefined;
@@ -68,7 +67,7 @@ export async function maybePromoteOrGenerateSheet(
     });
   }
 
-  if (!uploadedSheetUrl && convergentSheets.length > 0) {
+  if (!uploadedSheetUrl && talentRecord.selectedSheetId) {
     return;
   }
 
@@ -79,7 +78,6 @@ export async function maybePromoteOrGenerateSheet(
     talentName: talentRecord.name,
     talentDescription: talentRecord.description ?? undefined,
     referenceImageUrls: imageMedia.map((m) => m.url).sort(),
-    sheetName: uploadedSheetUrl ? 'Uploaded Sheet' : 'Default Sheet',
     uploadedSheetUrl,
     uploadedSheetMetadata,
   };

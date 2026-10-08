@@ -177,7 +177,7 @@ export function useStudioLibrary(): StudioLibrary {
         };
       }),
       cast: (talent ?? []).flatMap((t) => {
-        const url = t.defaultSheet?.imageUrl ?? t.imageUrl;
+        const url = t.referenceSheet?.imageUrl ?? t.imageUrl;
         return url
           ? [{ url, label: t.name, kind: 'image' as const, alias: t.name }]
           : [];

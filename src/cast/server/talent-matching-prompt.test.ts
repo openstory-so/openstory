@@ -24,7 +24,7 @@ const talent = {
   id: 'tal-1',
   name: 'Sam',
   description: 'A ranch hand in a grey shirt',
-  defaultSheet: {
+  referenceSheet: {
     metadata: {
       characterId: 'sam',
       name: 'Sam',

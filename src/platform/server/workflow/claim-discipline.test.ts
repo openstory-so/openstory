@@ -101,12 +101,15 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'locations.updateReferenceIfClaimed',
     userSelect: 'locationSheetVariants.promoteAtomically',
   },
+  // The talent's reference sheet is a pointer on the talent row (#2018);
+  // `talent_sheets` is its history and a parked run is a row of it.
+  // `talent_sheet_variants` is unwritten since #2018, kept until dropped.
   'talent sheets': {
     tables: ['talent_sheets', 'talent_sheet_variants'],
     claim: 'talent.claimSheet',
     clear: 'talent.clearSheetClaimIf',
     promote: 'talent.landSheet',
-    userSelect: 'talentSheetVariants.promoteAtomically',
+    userSelect: 'talent.selectSheet',
   },
   // Pointer claim, taken together with the generating husk (#1715).
   voices: {
@@ -236,10 +239,9 @@ const UNCLAIMED_CALL_SITES: Record<string, string> = {
     'pre-#1786 user edit; the rescue write is select: false',
   'src/stills/server/workflows/soften-image-prompt.ts: framePromptVersions.write':
     'select: false, lands unselected (#1786)',
-  // A library sheet payload queued before #1113 carries no claim (drain path;
-  // character and sequence-location runs land through the claim batch in its
-  // unclaimed mode). The library talent twin is `talent.sheets.create`,
-  // nested past this scan.
+  // A library location payload queued before #1113 carries no claim (drain
+  // path; character and sequence-location runs land through the claim batch
+  // in its unclaimed mode; the talent run requires its claim since #2018).
   'src/cast/server/workflows/library-location-sheet-workflow.ts: locations.updateReference':
     'pre-#1113 payload, no claim',
   // The music prompt pass selects its output with no claim (#1115); a track

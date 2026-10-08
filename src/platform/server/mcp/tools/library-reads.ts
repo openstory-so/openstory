@@ -59,7 +59,6 @@ const childLibraryInput = z.strictObject({
   kind: z.enum([
     'talent_sheet',
     'talent_media',
-    'talent_sheet_version',
     'location_sheet',
     'location_sheet_version',
   ]),
@@ -86,7 +85,8 @@ const libraryEntryTools = (
       kind: 'talent',
       list: 'list_talent',
       get: 'get_talent',
-      label: 'library talent, including public talent',
+      label:
+        'library talent (a likeness: face, reference sheet, rights), including public talent',
     },
     {
       kind: 'location',
@@ -173,7 +173,7 @@ const listLibraryResourcesInput = z.discriminatedUnion('kind', [
   rootLibraryInput.extend(pageInput.shape),
 ]);
 const listLibraryResourcesDescription =
-  'List talent sheets, reference media and sheet versions, library location sheets and versions, audio or VFX. parentId is required: talent id for talent_sheet/media, sheet id for talent_sheet_version, and library location id for location_sheet/version. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
+  'List talent sheets (the sheet history; the reference sheet is the one the talent’s selectedSheetId names), talent reference media, library location sheets and versions, audio or VFX. parentId is required: talent id for talent_sheet/media, library location id for location_sheet/version. Audio/VFX have no parent. Includes discarded rows; divergence markers are preserved.';
 const listLibraryResources = readToolDefinition({
   name: 'list_library_resources',
   description: listLibraryResourcesDescription,

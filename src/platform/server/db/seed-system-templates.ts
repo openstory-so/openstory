@@ -343,30 +343,32 @@ async function syncSystemTemplates(
     const talentRecord = allSystemTalent.find((t) => t.name === template.name);
     if (!talentRecord) continue;
 
-    // Check if a default sheet already exists
-    const existingSheets = await db
-      .select()
-      .from(talentSheets)
-      .where(
-        and(
-          eq(talentSheets.talentId, talentRecord.id),
-          eq(talentSheets.isDefault, true)
-        )
-      );
+    // A reference sheet already (#2018): nothing to do.
+    if (talentRecord.selectedSheetId) continue;
 
-    if (existingSheets.length > 0) continue;
-
-    await db.insert(talentSheets).values({
-      id: generateId(),
-      talentId: talentRecord.id,
-      name: 'Default',
-      imageUrl: getTalentSheetUrl(template.name),
-      imagePath: `talent/${template.name.toLowerCase().replace(/\s+/g, '-')}/sheet.webp`,
-      isDefault: true,
-      source: 'ai_generated',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    // The stock sheet reuses its talent's ULID (the backfill rule): a re-seed
+    // finds the pointer set and stops above.
+    const sheetId = talentRecord.id;
+    const now = new Date();
+    await db.batch([
+      db
+        .insert(talentSheets)
+        .values({
+          id: sheetId,
+          talentId: talentRecord.id,
+          legacyName: 'Default',
+          imageUrl: getTalentSheetUrl(template.name),
+          imagePath: `talent/${template.name.toLowerCase().replace(/\s+/g, '-')}/sheet.webp`,
+          source: 'ai_generated',
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoNothing(),
+      db
+        .update(talent)
+        .set({ selectedSheetId: sheetId, updatedAt: now })
+        .where(eq(talent.id, talentRecord.id)),
+    ]);
     talentSheetsInserted++;
     log(`+ talent sheet ${template.name}`);
   }

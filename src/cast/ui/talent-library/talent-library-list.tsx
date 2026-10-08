@@ -2,11 +2,9 @@ import { TalentLibraryCard } from './talent-library-card';
 import { Button } from '@/ui/shadcn/button';
 import { Card } from '@/ui/shadcn/card';
 import { useTalentSheetsRealtime } from '@/cast/ui/use-talent-sheets-realtime';
-import { useTeamTalentDivergentVariants } from '@/cast/ui/use-talent-sheet-variants';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
 import { sheetProgressCopy } from '@/cast/sheet-progress-copy';
 import type React from 'react';
-import { useMemo } from 'react';
 
 type TalentLibraryListProps = {
   talent?: TalentWithSheets[];
@@ -42,27 +40,6 @@ export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
   const { isGenerating, generatingActivity } =
     useTalentSheetsRealtime(talentIds);
 
-  // Collapse divergent variants to one dot per talent (oldest divergence wins).
-  const { data: divergentVariants } = useTeamTalentDivergentVariants();
-  const sheetIdToTalentId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const t of talent ?? []) {
-      for (const sheet of t.sheets) {
-        map.set(sheet.id, t.id);
-      }
-    }
-    return map;
-  }, [talent]);
-  const divergentByTalentId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of divergentVariants ?? []) {
-      const talentId = sheetIdToTalentId.get(v.talentSheetId);
-      if (!talentId) continue;
-      if (!map.has(talentId)) map.set(talentId, v.id);
-    }
-    return map;
-  }, [divergentVariants, sheetIdToTalentId]);
-
   if (isLoading) {
     return <LibraryGridSkeleton />;
   }
@@ -88,11 +65,10 @@ export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
         <TalentLibraryCard
           key={t.id}
           talent={t}
-          isGenerating={isGenerating(t.id) && t.sheets.length === 0}
+          isGenerating={isGenerating(t.id) && !t.referenceSheet}
           generatingLabel={sheetProgressCopy(
             generatingActivity(t.id) ?? 'sheet'
           )}
-          divergentVariantId={divergentByTalentId.get(t.id)}
         />
       ))}
     </div>

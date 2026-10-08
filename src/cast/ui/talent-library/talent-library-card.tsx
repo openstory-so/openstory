@@ -17,14 +17,12 @@ type TalentLibraryCardProps = {
   talent: TalentWithSheets;
   isGenerating?: boolean;
   generatingLabel?: string;
-  divergentVariantId?: string;
 };
 
 export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
   talent,
   isGenerating = false,
   generatingLabel = 'Generating sheet…',
-  divergentVariantId,
 }) => {
   const toggleFavorite = useToggleTalentFavorite();
   const preview = talentSquarePreview(talent);
@@ -139,7 +137,7 @@ export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
         />
       </Button>
 
-      {divergentVariantId && (
+      {talent.parkedSheetId && (
         <div
           // The favourite star already occupies `right-2`; offset to its
           // left so both indicators are visible.
@@ -149,7 +147,7 @@ export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
           <SheetStalenessBanners
             density="corner-dot"
             entityType="talent"
-            divergentVariantId={divergentVariantId}
+            divergentVariantId={talent.parkedSheetId}
           />
         </div>
       )}

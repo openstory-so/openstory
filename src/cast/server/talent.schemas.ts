@@ -1,6 +1,5 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
-import { characterBibleEntrySchema } from '@/shots/scene-analysis.schema';
-import { talent, talentSheets } from '@/platform/server/db/schema';
+import { talent } from '@/platform/server/db/schema';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { z } from 'zod';
 
@@ -25,6 +24,14 @@ export const SERVER_MANAGED_TALENT_COLUMNS = {
   isTemplate: true,
   // The sheet claim (#1113) moves only through claimSheet / its demotes.
   pendingPromoteSheetId: true,
+  // The reference sheet moves only through landSheet / selectSheet (#2018).
+  selectedSheetId: true,
+  // The recorded voice is minted server-side (#1631), never typed in.
+  voiceId: true,
+  // Unread since #2018; dropped in a later PR.
+  legacyPersonality: true,
+  legacyMovement: true,
+  legacyVoiceDescription: true,
 } as const;
 
 export type ServerManagedTalentColumn =
@@ -46,18 +53,15 @@ export const createTalentSchema = createInsertSchema(talent, {
     characterSheetImageUrls: z.array(mediaUrlSchema).optional(),
   });
 
-export const updateTalentSchema = createUpdateSchema(talent).omit(
-  SERVER_MANAGED_TALENT_COLUMNS
-);
-
-// Talent sheet schemas
-export const createTalentSheetSchema = createInsertSchema(talentSheets, {
-  name: z.string().min(1).max(255),
-  metadata: () => characterBibleEntrySchema.nullish(),
-}).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+/**
+ * What a person may edit on a talent: its name, description and favourite
+ * flag. The headshot is the sheet run's; `isHuman` is the likeness ledger's
+ * (#1581), never the client's.
+ */
+export const updateTalentSchema = createUpdateSchema(talent).pick({
+  name: true,
+  description: true,
+  isFavorite: true,
 });
 
 // Filter schemas

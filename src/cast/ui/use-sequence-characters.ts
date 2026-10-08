@@ -75,8 +75,9 @@ export function useSequenceCharacters(sequenceId: string) {
 }
 
 /**
- * Save a sequence's character as a new talent (what "Add to Library" did
- * before the library flag, #2017).
+ * Save a character's face as a new talent (#2018): its sheet, as this
+ * sequence selects it, becomes the talent's reference sheet. Nothing else
+ * crosses. What "Add to Library" did before the library flag (#2017).
  */
 export function useSaveCharacterAsTalent() {
   const queryClient = useQueryClient();

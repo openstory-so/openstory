@@ -83,8 +83,6 @@ function makeScopedDb(opts: {
     id: string;
     name: string;
     description: string | null;
-    personality: string | null;
-    movement: string | null;
   }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
   musicPrompt?: string | null;
@@ -422,8 +420,6 @@ describe('triggerStoryboard', () => {
           id: 'tal_1',
           name: 'Alice',
           description: 'Lead',
-          personality: 'guarded',
-          movement: null,
         },
       ],
       locations: [{ id: 'loc_1', name: 'Docks', description: null }],
@@ -443,8 +439,6 @@ describe('triggerStoryboard', () => {
           talentId: 'tal_1',
           name: 'Alice',
           description: 'Lead',
-          personality: 'guarded',
-          movement: '',
         },
       ],
       suggestedLocations: [

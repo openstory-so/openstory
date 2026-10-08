@@ -216,10 +216,6 @@ async function resolveStoryboardPayload(
       talentId: t.id,
       name: t.name,
       description: t.description,
-      personality: t.personality ?? '',
-      movement: t.movement ?? '',
-      voiceId: t.voiceId,
-      voiceDescription: t.voiceDescription,
     })),
     suggestedLocations: suggestedLocationRows.map((l) => ({
       locationId: l.id,

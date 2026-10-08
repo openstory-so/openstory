@@ -43,13 +43,12 @@ Library detail tools take `id` and return revision-checked JSON document windows
 | Kind                                       | Parent              |
 | ------------------------------------------ | ------------------- |
 | `talent_sheet`, `talent_media`             | Talent ID           |
-| `talent_sheet_version`                     | Talent sheet ID     |
 | `location_sheet`, `location_sheet_version` | Library location ID |
 | `audio`, `vfx`                             | No parent           |
 
 Library sheet versions include discarded entries and retain divergence/discard markers. Sequence-location versions remain under `list_versions`; the type-tagged parent prevents confusing them with library-location history.
 
-For a complete talent read, follow `list_talent` → `get_talent` → `list_library_resources(kind: "talent_sheet" / "talent_media", parentId: talentId)` → `get_library_resource` for each ID. Follow each sheet through `talent_sheet_version`. For locations, use `location_sheet` and `location_sheet_version` with the library location ID. These lists include public resources as well as the current team's private resources.
+For a complete talent read, follow `list_talent` → `get_talent` → `list_library_resources(kind: "talent_sheet" / "talent_media", parentId: talentId)` → `get_library_resource` for each ID. `talent_sheet` is the whole sheet history (#2018): the reference sheet is the row `get_talent`'s `selectedSheetId` names; `divergedAt` marks a parked run, `discardedAt` a discarded row. For locations, use `location_sheet` and `location_sheet_version` with the library location ID. These lists include public resources as well as the current team's private resources.
 
 For Studio, use `list_generated_assets({ source: "studio" })` and `get_generated_asset({ id })`, plus `list_studio_uploads`. `list_models` carries each model's `studio` capabilities (modes, durations, reference limits, end frame); `get_studio_edit_history` reads an edit chain. Omit `source` to include retained catalog runs. For Gallery, use `list_gallery_samples` and then `get_style` for settings and all persisted samples.
 

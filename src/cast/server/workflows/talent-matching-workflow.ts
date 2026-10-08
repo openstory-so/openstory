@@ -42,7 +42,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
     // given AI-generated portraits — that path never waits for sheets.
     //
     // For PRE-CAST talent, though, we DO need the casting reference: the
-    // matches below read `defaultSheet?.imageUrl`. Talent the user just added
+    // matches below read `referenceSheet?.imageUrl`. Talent the user just added
     // while creating this sequence may still be generating their sheet in the
     // fire-and-forget `/library-talent-sheet` workflow, so wait (bounded) for
     // those sheets before reading them — otherwise the cast character is
@@ -75,24 +75,16 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
         : [];
 
     // The wait's final poll IS the read: re-querying here would discard a
-    // fresher result and re-open the race it just closed. Name/description/
-    // performance come from the trigger-time snapshot — only the sheet image is
-    // allowed to arrive late, so an edit mid-run must not change who we cast.
+    // fresher result and re-open the race it just closed. Name and description
+    // come from the trigger-time snapshot — only the sheet image is allowed to
+    // arrive late, so an edit mid-run must not change who we cast.
     const snapshotById = new Map(
       (input.suggestedTalent ?? []).map((t) => [t.talentId, t])
     );
     const talentList = sheetRows.map((row) => {
       const snapshot = snapshotById.get(row.id);
       return snapshot
-        ? {
-            ...row,
-            name: snapshot.name,
-            description: snapshot.description,
-            personality: snapshot.personality,
-            movement: snapshot.movement,
-            voiceId: snapshot.voiceId,
-            voiceDescription: snapshot.voiceDescription,
-          }
+        ? { ...row, name: snapshot.name, description: snapshot.description }
         : row;
     });
     const matchingPromptVariables =
@@ -125,15 +117,15 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
     const talentCharacterMatches: TalentCharacterMatch[] = await step.do(
       'build-matches',
       async () => {
-        const usedTalentIds = new Set<string>();
+        const castCharacterIds = new Set<string>();
         const matches: TalentCharacterMatch[] = [];
 
         for (const match of talentMatches) {
-          // Ensure each talent is only cast once (but characters can have multiple talents
-          // when there are more talents than characters)
-          if (usedTalentIds.has(match.talentId)) {
+          // Each character has ONE talent; a talent may play several
+          // characters (twins, a one-person skit, #2018).
+          if (castCharacterIds.has(match.characterId)) {
             logger.warn(
-              `[TalentMatchingWorkflow:cf] Skipping duplicate talent ${match.talentId}`
+              `[TalentMatchingWorkflow:cf] Skipping second talent for character ${match.characterId}`
             );
             continue;
           }
@@ -156,19 +148,15 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             continue;
           }
 
-          usedTalentIds.add(match.talentId);
+          castCharacterIds.add(match.characterId);
           matches.push({
             characterId: match.characterId,
             talentId: match.talentId,
             talentName: talent.name,
-            sheetImageUrl: talent.defaultSheet?.imageUrl ?? '',
-            sheetMetadata: talent.defaultSheet?.metadata ?? undefined,
-            sheetInputHash: talent.defaultSheet?.inputHash ?? null,
+            sheetImageUrl: talent.referenceSheet?.imageUrl ?? '',
+            sheetMetadata: talent.referenceSheet?.metadata ?? undefined,
+            sheetInputHash: talent.referenceSheet?.inputHash ?? null,
             talentDescription: talent.description ?? undefined,
-            personality: talent.personality ?? '',
-            movement: talent.movement ?? '',
-            voiceId: talent.voiceId,
-            voiceDescription: talent.voiceDescription,
             hasSignedRelease: talent.isHuman === true,
           });
         }

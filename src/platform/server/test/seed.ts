@@ -435,14 +435,17 @@ export async function createTestTalent(
   await db.insert(talentSheets).values({
     id: sheetId,
     talentId,
-    name: 'Default',
+    legacyName: 'Default',
     imageUrl: `http://localhost:3020/api/test/image?w=512&h=512&label=sheet`,
     imagePath: `talent/${name.toLowerCase().replace(/\s+/g, '-')}/sheet.webp`,
-    isDefault: true,
     source: 'manual_upload',
     createdAt: now,
     updatedAt: now,
   });
+  await db
+    .update(talent)
+    .set({ selectedSheetId: sheetId })
+    .where(eq(talent.id, talentId));
 
   return { id: talentId, teamId, name, defaultSheetId: sheetId };
 }
@@ -478,13 +481,16 @@ export async function createTestTalentWithMedia(
   await db.insert(talentSheets).values({
     id: sheetId,
     talentId,
-    name: 'Default',
+    legacyName: 'Default',
     imageUrl: `http://localhost:3020/api/test/image?w=512&h=512&label=sheet`,
-    isDefault: true,
     source: 'manual_upload',
     createdAt: now,
     updatedAt: now,
   });
+  await db
+    .update(talent)
+    .set({ selectedSheetId: sheetId })
+    .where(eq(talent.id, talentId));
 
   const mediaIds: string[] = [];
   for (let i = 0; i < mediaCount; i++) {
@@ -811,17 +817,18 @@ export async function getSystemTalentByName(name: string): Promise<{
       `System talent "${name}" not found in test DB — was \`bun scripts/seed.ts --test\` run during global setup?`
     );
   }
-  const sheets = await db
-    .select()
-    .from(talentSheets)
-    .where(
-      and(eq(talentSheets.talentId, found.id), eq(talentSheets.isDefault, true))
-    )
-    .limit(1);
+  // The reference sheet (#2018): the row the pointer names.
+  const sheets = found.selectedSheetId
+    ? await db
+        .select()
+        .from(talentSheets)
+        .where(eq(talentSheets.id, found.selectedSheetId))
+        .limit(1)
+    : [];
   const defaultSheet = sheets[0];
   if (!defaultSheet) {
     throw new Error(
-      `System talent "${name}" has no default sheet — re-run seed`
+      `System talent "${name}" has no reference sheet — re-run seed`
     );
   }
   return {

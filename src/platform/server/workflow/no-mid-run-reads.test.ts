@@ -541,7 +541,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     {
       read: 'talent.getByIds',
       bucket: 'WAIT-GATE',
-      why: "Polls for /library-talent-sheet's write. NOTE defaultSheet's identity: the isDefault sheet, else a newest-first (createdAt DESC) scan of non-diverged sheets (src/cast/server/db/talent.ts:234) — so the gate opens on the newest convergent sheet, not necessarily the one the user will see as default later.",
+      why: "Polls for /library-talent-sheet's write: `referenceSheet` is the row `talent.selectedSheetId` names (#2018), so the gate opens exactly when the reference sheet lands.",
     },
     {
       read: 'locations.getByIds',

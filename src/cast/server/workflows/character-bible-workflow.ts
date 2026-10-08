@@ -185,8 +185,6 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         ? buildCastingAttributes(character, {
             sheetMetadata: talentMatch.sheetMetadata,
             talentName: talentMatch.talentName,
-            personality: talentMatch.personality,
-            movement: talentMatch.movement,
           })
         : null;
 

@@ -69,7 +69,9 @@ const createCharacterSchema = z
     name: entityName,
     description: entityDescription,
     isHuman: z.boolean().optional().meta({
-      description: 'Whether the character is a human (vs creature/object).',
+      description:
+        'Ignored. Whether a talent is a real person is decided by the likeness check of its referenceImageUrls (and the portraitAttestation), never by this flag; with no images the talent is not a real person.',
+      deprecated: true,
     }),
     referenceImageUrls,
     portraitAttestation,

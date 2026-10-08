@@ -163,17 +163,15 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'library',
     summary:
-      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character bible once. The character sheet keeps reading the talent: its description and default sheet are in the sheet hash, so editing either re-stales the cast character sheet.',
+      "A likeness (#2018): a face, its photos, one reference sheet and the rights to use them. Cast onto a character automatically at the Script stage or by hand; casting copies the face fields onto the character bible once, nothing else — personality, movement and voice are the character's. One talent may play several characters. The character sheet keeps reading the talent: its description and reference sheet are in the sheet hash, so editing either re-stales the cast character sheet.",
     counts: [
       'Description (talent sheet and cast character sheet)',
       'Reference photos',
-      'The default talent sheet image and look (cast character sheet)',
+      'The reference sheet image and look (cast character sheet)',
     ],
     ignored: [
       'Name',
-      {
-        gap: 'A redesigned talent voice never reaches a cast character: the id is copied once at cast, and talent voices have no history to select from',
-      },
+      'The recorded voice (#1631): a character selects it as a voice version; nothing is copied',
     ],
   },
   {
@@ -404,13 +402,13 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   // --- References ----------------------------------------------------------
   {
     id: 'talentSheet',
-    versionedIn: 'talent_sheet_variants',
+    versionedIn: 'talent_sheets',
     optional: 'when a character is cast as library talent',
     label: 'Talent sheet',
     kind: 'artifact',
     band: 'references',
     summary:
-      'The talent as a sequence sees it. A cast character usually reuses this sheet as its own and always draws from it, so "the talent changed" means "the selected talent sheet changed".',
+      'The talent\'s reference sheet, the row talent.selectedSheetId names (#2018); talent_sheets is its history. A cast character usually reuses this sheet as its own and always draws from it, so "the talent changed" means "the reference sheet changed" — a new run landing while its claim holds, or the user picking another sheet.',
     counts: ['Talent description', 'Reference photo hashes', 'Image model'],
     ignored: [
       'Talent name',

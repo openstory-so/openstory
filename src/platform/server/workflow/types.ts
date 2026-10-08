@@ -1084,15 +1084,10 @@ export type TalentCharacterMatch = {
   sheetMetadata?: CharacterBibleEntry;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
-  // Talent performance (#1561) from the trigger-time snapshot; `''` = library
-  // has none, use the script's (`||` in buildCastingAttributes, which also
-  // tolerates pre-#1561 checkpoints that lack the keys).
-  personality: string;
-  movement: string;
-  // Talent voice (#1553), copied onto the character at cast. `null` = the
-  // library has none (pre-#1553 checkpoints lack the keys: `?? null`).
-  voiceId: string | null;
-  voiceDescription: string | null;
+  // A talent is a likeness (#2018): casting copies the face fields and the
+  // reference sheet, nothing else. Personality, movement and the voice are
+  // the character's own. A checkpoint from before #2018 may still carry those
+  // keys; nothing reads them.
   /**
    * Signed real-person portrait (`talent.isHuman`). Stamps character
    * `isPerson: true` at insert (#1682). Absent on pre-stamp checkpoints.
@@ -1113,10 +1108,10 @@ export interface TalentMatchingWorkflowInput extends SequenceWorkflowContext {
   analysisModelId: AnalysisModelId;
   suggestedTalentIds?: string[];
   /**
-   * Name/description/performance per suggested talent, snapshotted at the
-   * trigger. The workflow re-reads the talent rows only for `defaultSheet.imageUrl`, which
-   * genuinely arrives late (fire-and-forget `/library-talent-sheet`); the
-   * casting identity itself must not drift mid-run.
+   * Name and description per suggested talent, snapshotted at the trigger.
+   * The workflow re-reads the talent rows only for `referenceSheet.imageUrl`,
+   * which genuinely arrives late (fire-and-forget `/library-talent-sheet`);
+   * the casting identity itself must not drift mid-run.
    */
   suggestedTalent?: SuggestedTalentSnapshot[];
   /** Pre-extracted character bible from scene splitting. Skips extraction LLM call when provided. */
@@ -1128,10 +1123,6 @@ type SuggestedTalentSnapshot = {
   talentId: string;
   name: string;
   description: string | null;
-  personality: string;
-  movement: string;
-  voiceId: string | null;
-  voiceDescription: string | null;
 };
 
 /** @see LocationMatchingWorkflowInput.suggestedLocations */
@@ -1366,12 +1357,11 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
   referenceImageUrls?: string[];
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Name for the generated sheet */
-  sheetName?: string;
   /**
-   * Existing character/talent sheet the user uploaded. When set, the
-   * workflow stores this image as the sheet instead of generating a new
-   * 4-panel, then crops the close-up panel as the portrait.
+   * Existing character/talent sheet the user uploaded (or a character's
+   * sheet being saved as a likeness, #2018). When set, the workflow stores
+   * this image as the sheet instead of generating a new 4-panel, then crops
+   * the close-up panel as the portrait.
    */
   uploadedSheetUrl?: string;
   /** Appearance metadata extracted from the uploaded sheet, when available. */
@@ -1379,10 +1369,10 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: TalentSheetInputHash;
   /**
-   * The sheet claim (#1113): the id of the `talent_sheets` row this run writes, taken at the trigger
-   * (`talent.claimSheet`). The run lands only while the claim still names it,
-   * else it parks as divergent. Absent only on a run queued before #1113,
-   * which lands unconditionally.
+   * The sheet claim (#1113): the id of the `talent_sheets` row this run
+   * writes, taken at the trigger (`talent.claimSheet`, before the run
+   * starts, #1863). The run lands only while the claim still names it, else
+   * it parks.
    */
   sheetId: string;
 }
