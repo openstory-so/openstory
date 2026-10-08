@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildSceneFromSlice,
+  estimateUnlabelledScriptSeconds,
   extractDialogueFromSlice,
+  filmableSlices,
   inheritMissingLocation,
   parseSceneHeading,
 } from './scene-from-slice';
@@ -172,13 +174,15 @@ describe('buildSceneFromSlice', () => {
     expect('shotLabelSeconds' in scene).toBe(false);
   });
 
-  it('no scene label and only stray shot-shaped lines: falls to the word-count estimate (#1621)', () => {
+  it('no scene label and only stray shot-shaped lines: those lines are action, not durations (#1621)', () => {
+    // Slugline is free. The four remaining lines are 13 action words at six
+    // a second, which rounds under the 3s floor. The "4s" / "6s" are not read.
     const scene = buildSceneFromSlice(
       'scene_1',
       0,
       'INT. HALLWAY - NIGHT\nShot 1 — 4s\nShe opens the door.\nShot 2 — 6s\nBeyond.'
     );
-    expect(scene.metadata.durationSeconds).toBe(6);
+    expect(scene.metadata.durationSeconds).toBe(3);
   });
 
   it('unlabelled scene length is its word count at three words a second, uncapped (#1593)', () => {
@@ -198,6 +202,70 @@ describe('buildSceneFromSlice', () => {
   it('has no shotLabelSeconds when the slice is unlabelled', () => {
     const scene = buildSceneFromSlice('scene_1', 0, 'A man walks in.');
     expect('shotLabelSeconds' in scene).toBe(false);
+  });
+
+  it('drops front matter and times a dialogue-light scene below its raw word count (#2077)', () => {
+    const front = [
+      'THE RAIN SHIFT',
+      'Episode 4',
+      'A format note: keep it quiet.',
+      '',
+      'CHARACTERS',
+      'SARAH — a detective who has not slept.',
+      'JOHN — her partner, always early.',
+    ].join('\n');
+    const light = [
+      'INT. KITCHEN - NIGHT',
+      '',
+      'Sarah fills the kettle and watches rain streak the dark window, the street below empty, the clock over the stove stuck at a minute she does not trust.',
+      '',
+      'SARAH',
+      'Tea?',
+      '',
+      'JOHN',
+      'Please.',
+    ].join('\n');
+    const next = ['EXT. STREET - NIGHT', '', 'They step into the rain.'].join(
+      '\n'
+    );
+    const script = [front, '', light, '', next].join('\n');
+    // The boundary call pinned the title page to slice 1 and opened the
+    // street scene at its heading — the same cut that used to film the
+    // character list.
+    const slices = filmableSlices(script, [
+      0,
+      script.indexOf('EXT. STREET - NIGHT'),
+    ]);
+
+    expect(slices).toHaveLength(2);
+    expect(slices[0]?.startsWith('INT. KITCHEN - NIGHT')).toBe(true);
+    expect(slices.join('')).not.toContain('CHARACTERS');
+    expect(slices.join('')).not.toContain('THE RAIN SHIFT');
+
+    const scene = buildSceneFromSlice('kitchen', 0, slices[0] ?? '');
+    const rawWords = (slices[0] ?? '').split(/\s+/).filter(Boolean).length;
+    expect(scene.metadata.durationSeconds).toBeLessThan(
+      Math.round(rawWords / 3)
+    );
+    expect(scene.metadata.location).toBe('INT. KITCHEN - NIGHT');
+    expect(scene.metadata.durationSeconds).toBe(6);
+
+    const body = [light, '', next].join('\n');
+    expect(estimateUnlabelledScriptSeconds(script)).toBe(
+      estimateUnlabelledScriptSeconds(body)
+    );
+  });
+
+  it('keeps a prose split with no scene heading, timed as its word count (#2077)', () => {
+    const prose = 'She walks in and sits.\n\nHe looks up from the paper.';
+    const cut = prose.indexOf('He looks');
+    expect(filmableSlices(prose, [0, cut])).toEqual([
+      prose.slice(0, cut),
+      prose.slice(cut),
+    ]);
+    expect(
+      buildSceneFromSlice('scene_1', 0, prose).metadata.durationSeconds
+    ).toBe(Math.round(prose.split(/\s+/).filter(Boolean).length / 3));
   });
 });
 

@@ -806,7 +806,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           );
         }
         const scenes = assembled.scenes;
-        const offsets = assembled.resolution.offsets;
+        // Scene-index offsets, not the raw partition. Front matter before
+        // the first heading is in `slices` (so they still reassemble the
+        // script) and absent from `scenes` (#2077).
+        const offsets = assembled.sceneOffsets;
 
         logger.info(
           `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] Complete | ${chunkCount} chunks | ${scenes.length} scenes`

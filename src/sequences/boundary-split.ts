@@ -26,8 +26,8 @@ export type BoundaryAnnotation = {
 
 export type ResolvedBoundaries = {
   /**
-   * Raw-script start offset of each kept scene. `offsets[0] === 0` always
-   * (leading text belongs to scene 1); strictly increasing.
+   * Raw-script start offset of each kept slice. `offsets[0] === 0` always
+   * (the partition covers the script); strictly increasing.
    */
   offsets: number[];
   /**
@@ -204,8 +204,10 @@ function resolveOne(
 /**
  * Resolve boundary annotations to raw offsets with a monotonic cursor.
  *
- * The first boundary is always kept and pinned to offset 0 — leading text
- * belongs to scene 1 regardless of where its quote matched. Later boundaries
+ * The first boundary is always kept and pinned to offset 0 — the partition
+ * covers the whole script regardless of where its quote matched. A title
+ * page before the first scene heading is dropped later, when slices become
+ * scenes (#2077); this pin is not that decision. Later boundaries
  * must resolve strictly after the previous kept offset; anything else is
  * dropped (the scene merges into its predecessor). Pure and deterministic, so
  * incremental (mid-stream) and final resolution agree.
@@ -225,8 +227,8 @@ export function resolveBoundaries(
     if (i === 0) {
       offsets.push(0);
       kept.push(0);
-      // Pin-to-0 is the product rule (leading text belongs to scene 1), not
-      // a repair. Count a repair only when the quote itself needed the
+      // Pin-to-0 keeps the partition covering the whole script. It is not a
+      // repair. Count a repair only when the quote itself needed the
       // normalized/fuzzy rung or did not resolve.
       const match = resolveOne(script, norm, boundary, 0);
       if (!match || match.repaired) repairs++;

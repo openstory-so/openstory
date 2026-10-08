@@ -6,14 +6,26 @@
  * cut — no second generation, no re-emitted script text. Dialogue is only
  * previewed here (screenplay cues); the shot-list call supplies it (#1585).
  * Continuity tags are assigned later from bibles ∩ slice.
+ *
+ * Text before the first scene heading is not a scene (#2077). The boundary
+ * partition still covers it; `filmmableSlices` is what becomes a scene. The
+ * bibles call is given the whole script, so a character list written there
+ * is still cast.
  */
 
+import { DIALOGUE_WORDS_PER_SECOND } from '@/motion/dialogue-tts';
 import { plainSceneTitle } from '@/platform/markdown-plain';
 import type {
   Continuity,
   DialogueLine,
   SceneMetadata,
 } from '@/shots/scene-analysis.schema';
+
+/**
+ * Action is watched, not spoken (#2077). Three times the speaking rate: a
+ * wordy action line takes a third of the time it would take to say.
+ */
+const ACTION_WORDS_PER_SECOND = DIALOGUE_WORDS_PER_SECOND * 3;
 
 const SCENE_HEADING_PREFIX = /^(?:INT\.|EXT\.|INT\/EXT\.|I\/E\.)(?:\s|$)/i;
 const TIME_WORD = 'DAY|NIGHT|DAWN|DUSK|EVENING|MORNING|CONTINUOUS|LATER|SAME';
@@ -194,16 +206,166 @@ export function extractDialogueFromSlice(slice: string): DialogueLine[] {
   return dialogue;
 }
 
+function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
 /**
- * Playing time of unlabelled screenplay text: the rule of thumb (a page is a
- * minute, ~170 words) is about three words a second. No ceiling — a pasted
- * feature's two-page scene is two minutes, and its shot budget follows
- * (#1593). Floor keeps a one-liner renderable. The credit pre-flight applies
- * the same rule to the whole script so its quote tracks the split.
+ * Playing time of prose with no scene heading and no speaker cue. The rule
+ * of thumb (a page is a minute, ~170 words) is about three words a second.
+ * No ceiling — a pasted feature's two-page scene is two minutes, and its
+ * shot budget follows (#1593). Floor keeps a one-liner renderable.
  */
-export function estimateSecondsFromText(text: string): number {
-  const words = text.split(/\s+/).filter(Boolean).length;
-  return Math.max(3, Math.round(words / 3));
+function estimateSecondsFromText(text: string): number {
+  return Math.max(3, Math.round(wordCount(text) / 3));
+}
+
+function plainLine(trimmed: string): string {
+  return plainSceneTitle(trimmed) || trimmed;
+}
+
+/** A slugline, a location-time heading, or an enhancer `Scene N — Xs` label. */
+function isSceneStartLine(trimmed: string): boolean {
+  const plain = plainLine(trimmed);
+  return SCENE_DURATION_LABEL.test(plain) || isSceneHeading(plain);
+}
+
+/**
+ * Offset where the first filmable scene starts. `null` when the script has
+ * no scene heading and no `Scene N — Xs` label — a prose paste has no front
+ * matter to find (#2077).
+ */
+function sceneStartOffset(script: string): number | null {
+  let offset = 0;
+  const lines = script.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? '';
+    if (line.trim().length > 0 && isSceneStartLine(line.trim())) return offset;
+    offset += line.length + (i < lines.length - 1 ? 1 : 0);
+  }
+  return null;
+}
+
+/**
+ * Boundary offsets with the preamble before the first scene heading removed
+ * (#2077). Offsets are unchanged when the script has no scene start, or
+ * already begins on one — including a prose split, which stays as the
+ * boundary resolver cut it.
+ */
+export function filmableOffsets(script: string, offsets: number[]): number[] {
+  const start = sceneStartOffset(script);
+  if (start == null || start <= 0) return offsets;
+  const kept = offsets.filter((offset) => offset >= start);
+  if (kept.length === 0 || kept[0] !== start) kept.unshift(start);
+  return kept;
+}
+
+/** Slices a filmable-offset list the way `sliceScenes` slices a partition. */
+export function filmableSlices(script: string, offsets: number[]): string[] {
+  const played = filmableOffsets(script, offsets);
+  if (played.length === 0) return script.length > 0 ? [script] : [];
+  return played.map((start, i) =>
+    script.slice(start, played[i + 1] ?? script.length)
+  );
+}
+
+function usesPlayedTiming(text: string): boolean {
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const plain = plainLine(trimmed);
+    if (isSceneHeading(plain) || SCENE_DURATION_LABEL.test(plain)) return true;
+    if (isCharacterCue(trimmed)) return true;
+    const inline = trimmed.match(INLINE_CUE);
+    if (inline?.[1] && inline[2] && !isSceneHeading(plainLine(inline[1]))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Words that play. Sluglines, enhancer scene labels and speaker names do
+ * not. Dialogue follows the cue walk in `extractDialogueFromSlice`.
+ */
+function playedWords(text: string): { dialogue: number; action: number } {
+  const lines = text.split('\n');
+  let dialogue = 0;
+  let action = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]?.trim() ?? '';
+    if (trimmed.length === 0) continue;
+    const plain = plainLine(trimmed);
+    if (isSceneHeading(plain) || SCENE_DURATION_LABEL.test(plain)) continue;
+
+    const inline = trimmed.match(INLINE_CUE);
+    if (inline?.[1] && inline[2] && !isSceneHeading(plainLine(inline[1]))) {
+      dialogue += wordCount(inline[2]);
+      continue;
+    }
+
+    if (!isCharacterCue(trimmed)) {
+      action += wordCount(trimmed);
+      continue;
+    }
+
+    let spoken = 0;
+    i += 1;
+    while (i < lines.length) {
+      const next = lines[i]?.trim() ?? '';
+      if (next.length === 0) {
+        if (spoken > 0) break;
+        i += 1;
+        continue;
+      }
+      if (PARENTHETICAL.test(next)) {
+        i += 1;
+        continue;
+      }
+      if (
+        isCharacterCue(next) ||
+        isSceneHeading(plainLine(next)) ||
+        SCENE_DURATION_LABEL.test(plainLine(next)) ||
+        TRANSITION.test(next)
+      ) {
+        i -= 1;
+        break;
+      }
+      spoken += wordCount(next);
+      i += 1;
+    }
+    dialogue += spoken;
+  }
+
+  return { dialogue, action };
+}
+
+/**
+ * Playing time of one unlabelled slice (#2077). Screenplay structure
+ * (a heading or a speaker cue) times dialogue at the speaking rate and
+ * action faster; sluglines and speaker names are free. Anything else — a
+ * prose paste with no heading to find — stays at three words a second.
+ * Floor keeps a one-liner renderable. A `Scene N — Xs` label is read by
+ * `buildSceneFromSlice` and never reaches here.
+ */
+function estimatePlayingSeconds(text: string): number {
+  if (!usesPlayedTiming(text)) return estimateSecondsFromText(text);
+  const { dialogue, action } = playedWords(text);
+  const seconds =
+    dialogue / DIALOGUE_WORDS_PER_SECOND + action / ACTION_WORDS_PER_SECOND;
+  return Math.max(3, Math.round(seconds));
+}
+
+/**
+ * Playing time of a whole unlabelled script, for the credit pre-flight.
+ * Front matter before the first scene heading is not timed. A script with
+ * no scene heading uses {@link estimateSecondsFromText} on all of it.
+ */
+export function estimateUnlabelledScriptSeconds(script: string): number {
+  const start = sceneStartOffset(script);
+  if (start == null) return estimateSecondsFromText(script);
+  return estimatePlayingSeconds(script.slice(start));
 }
 
 export function buildSceneFromSlice(
@@ -229,7 +391,7 @@ export function buildSceneFromSlice(
     },
     metadata: {
       title,
-      durationSeconds: lead.durationSeconds ?? estimateSecondsFromText(slice),
+      durationSeconds: lead.durationSeconds ?? estimatePlayingSeconds(slice),
       location: heading.location,
       timeOfDay: heading.timeOfDay,
       storyBeat: '',
