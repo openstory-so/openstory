@@ -3005,6 +3005,20 @@ describe('cast and music edits (#1979)', () => {
     await db
       .delete(sequenceEvents)
       .where(eq(sequenceEvents.targetId, characterId));
+    // Appending never takes the styling past the look's own limit: the
+    // third 2,000 characters would, so that call is refused and writes
+    // nothing.
+    const feature = (letter: string) => ({
+      sequenceId,
+      characterId,
+      voiceOnly: false,
+      distinguishingFeatures: letter.repeat(2000),
+    });
+    await data('update_character', feature('a'));
+    await data('update_character', feature('b'));
+    const full = (await read()).looks;
+    expect((await call('update_character', feature('c'))).isError).toBe(true);
+    expect((await read()).looks).toEqual(full);
   });
 
   it('creates, edits, deletes and restores a character, readable at each step', async () => {

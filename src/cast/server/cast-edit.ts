@@ -32,6 +32,7 @@ import {
   type locationBibleFieldsSchema,
 } from '@/cast/bible-field';
 import { effectiveStyling } from '@/cast/character-looks';
+import { LOOK_TEXT_MAX } from '@/cast/look-field';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
   releaseCharacterVoice,
@@ -62,6 +63,9 @@ async function emitQuietly(emit: () => Promise<unknown>) {
  * MCP): the default look's styling owns that text, so it is appended there
  * unless the styling already holds it. Blank is ignored: there is no field
  * left to clear. `sequenceId` null writes the look's current version.
+ * Refused when the joined text would pass the look's own limit: this write
+ * does not go through `lookFieldsSchema`, and repeated calls would otherwise
+ * grow the styling without bound.
  */
 async function foldFeaturesIntoDefaultLook(
   scopedDb: Pick<ScopedDb, 'characterLooks'>,
@@ -72,6 +76,11 @@ async function foldFeaturesIntoDefaultLook(
 ): Promise<void> {
   const styling = effectiveStyling(defaultLook.styling, features);
   if (!features?.trim() || styling === defaultLook.styling) return;
+  if (styling !== null && styling.length > LOOK_TEXT_MAX) {
+    throw new ValidationError(
+      `Hair, makeup, injuries would pass ${LOOK_TEXT_MAX} characters. Edit the default look instead.`
+    );
+  }
   const opts = { source: 'edit' as const, actorId: actor.userId };
   if (sequenceId === null) {
     await scopedDb.characterLooks.update(
