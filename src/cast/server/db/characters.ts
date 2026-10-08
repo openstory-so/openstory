@@ -1740,6 +1740,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
             id: talent.id,
             name: talent.name,
             imageUrl: talent.imageUrl,
+            isHuman: talent.isHuman,
           },
         })
         .from(sequenceCast)

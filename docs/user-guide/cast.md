@@ -43,6 +43,8 @@ All properties are automatically extracted from your script:
 
 ### Looks
 
+**Person** says whether the character is a person (a robot or an animal is not). It stays **Person**, and cannot be changed, while the character is cast with a talent who is a real person or its sheet is an uploaded photo of a real person; the form says which.
+
 What a character wears is a look: a name, **Clothing**, and **Hair, makeup, injuries**. Every character has a default look, and you can add more for other outfits. Each look has its own sheet.
 
 The character form has no clothing or distinguishing-features field: both belong to the default look. Text that was in Distinguishing Features shows in the default look's Hair, makeup, injuries. Other looks have only what you write for them. A permanent mark, such as a scar or a tattoo, belongs in Physical Description.

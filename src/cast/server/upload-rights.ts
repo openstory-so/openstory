@@ -219,6 +219,39 @@ export async function likenessFromLedger(
 }
 
 /**
+ * The URLs among these the ledger saw a real person in: `likenessFromLedger`
+ * is `real`, for many URLs in one read (#2065). A row under a retired
+ * statement is unchecked, as no row is, so a list read never fails on one.
+ */
+export async function realPersonUrls(
+  scopedDb: Pick<ScopedDb, 'compliance'>,
+  urls: readonly string[]
+): Promise<Set<string>> {
+  const urlByHash = new Map<string, string>();
+  for (const url of new Set(urls)) urlByHash.set(await sha256Hex(url), url);
+  const rows = await scopedDb.compliance.attestations.listForSubjects(
+    'uploaded_image',
+    [...urlByHash.keys()]
+  );
+  const real = new Set<string>();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    // Newest first: only a subject's first row is its verdict.
+    if (seen.has(row.subjectId)) continue;
+    seen.add(row.subjectId);
+    const url = urlByHash.get(row.subjectId);
+    if (
+      url !== undefined &&
+      (row.statementVersion === LIKENESS_DETECTED_V1.version ||
+        row.statementVersion === PORTRAIT_RIGHTS_V1.version)
+    ) {
+      real.add(url);
+    }
+  }
+  return real;
+}
+
+/**
  * After a finalize moves an object, cover the new URL with the same row so
  * the library copy passes the gate without a second look.
  */

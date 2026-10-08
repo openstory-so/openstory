@@ -41,6 +41,9 @@ import { readLookSheetStaleness } from '@/cast/server/production-staleness';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
+import type { CharacterWithTalent } from '@/platform/server/db/schema';
+import type { PersonLock } from './likeness';
+import { personLocksOf } from '@/cast/server/person-lock';
 import {
   cancelCharacterVoice,
   generateCharacterVoice,
@@ -52,11 +55,25 @@ import {
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 
+/** A cast member as the cast panel reads it. */
+export type SequenceCharacter = CharacterWithTalent & {
+  /** Why it must stay a person; null leaves `isPerson` editable. */
+  personLock: PersonLock | null;
+};
+
 /** Get all characters for a sequence with their assigned talent */
 export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
-    return context.scopedDb.characters.listWithTalent(context.sequence.id);
+    const characters = await context.scopedDb.characters.listWithTalent(
+      context.sequence.id
+    );
+    // Why `isPerson` cannot be turned off, for the bible form (#2065).
+    const locks = await personLocksOf(context.scopedDb, characters);
+    return characters.map((character, index): SequenceCharacter => ({
+      ...character,
+      personLock: locks[index] ?? null,
+    }));
   });
 
 // ============================================================================

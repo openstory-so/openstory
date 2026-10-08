@@ -1,3 +1,5 @@
+import { personLockMessage } from '@/cast/likeness';
+import type { PersonLock } from '@/cast/likeness';
 import { BibleField } from '@/cast/ui/bible-field';
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
@@ -47,7 +49,10 @@ type BibleFormCharacter = Pick<
   | 'movement'
   | 'voiceOnly'
   | 'isPerson'
->;
+> & {
+  /** Why it must stay a person (#2065); null leaves the select editable. */
+  personLock: PersonLock | null;
+};
 
 /**
  * Editable character bible (#1108 Phase 2). Uncontrolled inputs seeded from
@@ -166,15 +171,27 @@ export const CharacterBibleForm: React.FC<
         >
           Person
         </Label>
+        {/* Locked (#2065): shows Person, and with no `name` it is not
+            submitted, so the server keeps what it holds. */}
         <Select
-          name="isPerson"
-          defaultValue={character.isPerson ? 'true' : 'false'}
+          // Uncontrolled: reseed when the lock lands or lifts.
+          key={character.personLock?.reason ?? 'unlocked'}
+          name={character.personLock ? undefined : 'isPerson'}
+          disabled={character.personLock !== null}
+          defaultValue={
+            character.personLock || character.isPerson ? 'true' : 'false'
+          }
           items={{
             true: 'Person',
             false: 'Not a person',
           }}
         >
-          <SelectTrigger id="character-isPerson">
+          <SelectTrigger
+            id="character-isPerson"
+            aria-describedby={
+              character.personLock ? 'character-isPerson-reason' : undefined
+            }
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -182,6 +199,14 @@ export const CharacterBibleForm: React.FC<
             <SelectItem value="false">Not a person</SelectItem>
           </SelectContent>
         </Select>
+        {character.personLock && (
+          <p
+            id="character-isPerson-reason"
+            className="text-xs text-muted-foreground"
+          >
+            {personLockMessage(character.personLock)}
+          </p>
+        )}
       </div>
       {/* The way back from a bible call that misfiled an on-screen character
           as a voice (#1585): untick, save, then generate the sheet. */}

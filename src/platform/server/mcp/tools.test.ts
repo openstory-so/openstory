@@ -93,6 +93,14 @@ import {
   sceneDetailSchema,
 } from '@/shots/inspection.schema';
 import { serializeShot } from '@/shots/server/inspection';
+import { updateCharacter, updateTeamCharacter } from '@/cast/server/cast-edit';
+import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
+import {
+  LIKENESS_CLEARED_V1,
+  PORTRAIT_RIGHTS_V1,
+} from '@/platform/compliance/attestations';
+import { sha256Hex } from '@/platform/compliance/hash';
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 let client: Client;
@@ -3102,6 +3110,128 @@ describe('cast and music edits (#1979)', () => {
     expect(
       await data('create_character', { sequenceId, name: 'Maya Ross' })
     ).toMatchObject({ token: 'char_maya_ross_2' });
+  });
+
+  it('keeps a character a person while a real talent or an uploaded photo says so (#2065)', async () => {
+    const actor = { userId: actorId };
+    const talentId = generateId();
+    await db.insert(talent).values({
+      id: talentId,
+      teamId,
+      name: 'Ada Vale',
+      isHuman: true,
+      imagePath: 'private',
+      imageUrl: '/r2/ada.jpg',
+    });
+    const cast = await castCharacter({
+      sequenceId,
+      characterId: 'char_cast',
+      name: 'Cast',
+      talentId,
+    });
+    const photo = await castCharacter({
+      sequenceId,
+      characterId: 'char_photo',
+      name: 'Photo',
+    });
+    const drawing = await castCharacter({
+      sequenceId,
+      characterId: 'char_drawing',
+      name: 'Drawing',
+    });
+    // An uploaded sheet on each default look: one the ledger signed as a
+    // real person, one it cleared.
+    const sheets = [
+      { look: photo.id, statement: PORTRAIT_RIGHTS_V1, real: true },
+      { look: drawing.id, statement: LIKENESS_CLEARED_V1, real: false },
+    ];
+    for (const { look, statement, real } of sheets) {
+      const url = `/r2/characters/${teamId}/uploads/${look}.png`;
+      await scopedDb.characterSheetVariants.applyConvergent({
+        sequenceId,
+        lookId: look,
+        url,
+        storagePath: `characters/${teamId}/uploads/${look}.png`,
+        inputHash: null,
+        model: USER_UPLOAD_MODEL,
+      });
+      await scopedDb.compliance.attestations.record({
+        subjectType: 'uploaded_image',
+        subjectId: await sha256Hex(url),
+        statementVersion: statement.version,
+        statementSha256: 'x'.repeat(64),
+        depictsRealPerson: real,
+      });
+    }
+    const notPerson = { isPerson: false };
+    const castWith = 'Cast with Ada Vale, a real person.';
+    const uploadedPhoto = 'Its sheet is an uploaded photo of a real person.';
+
+    // The shared edit refuses both, and says why.
+    await expect(
+      updateCharacter(scopedDb, actor, sequenceId, cast.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: castWith });
+    await expect(
+      updateCharacter(scopedDb, actor, sequenceId, photo.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
+    // From no sequence there is no sheet: the talent still holds it.
+    await expect(
+      updateTeamCharacter(scopedDb, actor, cast.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: castWith });
+    // The MCP tool is the same edit.
+    for (const characterId of [cast.id, photo.id]) {
+      expect(
+        await call('update_character', {
+          sequenceId,
+          characterId,
+          voiceOnly: false,
+          isPerson: false,
+        })
+      ).toMatchObject(refusal('CONFLICT'));
+    }
+
+    // A person is always allowed, as is an edit that leaves the field out.
+    for (const characterId of [cast.id, photo.id]) {
+      await data('update_character', {
+        sequenceId,
+        characterId,
+        voiceOnly: false,
+        isPerson: true,
+        movement: 'Strides',
+      });
+      await updateCharacter(scopedDb, actor, sequenceId, characterId, {
+        movement: 'Glides',
+      });
+    }
+    // A character nothing holds can still be made not a person.
+    await data('update_character', {
+      sequenceId,
+      characterId: drawing.id,
+      voiceOnly: false,
+      isPerson: false,
+    });
+
+    // The read the form shows is the same answer.
+    const list = await scopedDb.characters.listWithTalent(sequenceId);
+    const locks = await personLocksOf(scopedDb, list);
+    const lockOf = (id: string) =>
+      locks[list.findIndex((character) => character.id === id)];
+    expect(lockOf(cast.id)).toEqual({
+      reason: 'talent',
+      talentName: 'Ada Vale',
+    });
+    expect(lockOf(photo.id)).toEqual({ reason: 'upload' });
+    expect(lockOf(drawing.id)).toBeNull();
+    expect(list.find((c) => c.id === cast.id)?.isPerson).toBe(true);
+    expect(list.find((c) => c.id === photo.id)?.isPerson).toBe(true);
+    expect(list.find((c) => c.id === drawing.id)?.isPerson).toBe(false);
+    expect(await personLockOf(scopedDb, { talentId, looks: [] })).toEqual({
+      reason: 'talent',
+      talentName: 'Ada Vale',
+    });
+    expect(
+      await personLockOf(scopedDb, { talentId: null, looks: [] })
+    ).toBeNull();
   });
 
   it('reads and selects character voices and sheet versions', async () => {

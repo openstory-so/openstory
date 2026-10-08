@@ -167,6 +167,40 @@ export function createComplianceMethods(
             )
         );
       },
+
+      /**
+       * {@link listForSubject} for many uploads in one read (#2065), in the
+       * same order, so the first row of each subject is its latest.
+       */
+      async listForSubjects(
+        subjectType: AttestationSubjectType,
+        subjectIds: string[]
+      ): Promise<UploadAttestation[]> {
+        const rows: UploadAttestation[] = [];
+        // D1 binds at most 100 values a statement; two are the scope.
+        for (let i = 0; i < subjectIds.length; i += 90) {
+          rows.push(
+            ...(await db
+              .select()
+              .from(uploadAttestations)
+              .where(
+                and(
+                  eq(uploadAttestations.teamId, teamId),
+                  eq(uploadAttestations.subjectType, subjectType),
+                  inArray(
+                    uploadAttestations.subjectId,
+                    subjectIds.slice(i, i + 90)
+                  )
+                )
+              )
+              .orderBy(
+                desc(uploadAttestations.attestedAt),
+                desc(uploadAttestations.id)
+              ))
+          );
+        }
+        return rows;
+      },
     },
 
     /**

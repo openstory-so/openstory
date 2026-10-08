@@ -344,5 +344,7 @@ export type CharacterWithTalent = CharacterWithSheet & {
     id: string;
     name: string;
     imageUrl: string | null;
+    /** A real person, from the upload ledger; holds `isPerson` (#2065). */
+    isHuman: boolean | null;
   } | null;
 };

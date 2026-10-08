@@ -23,6 +23,7 @@ import {
   previewVersionMove,
 } from '@/cast/server/version-moves';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { personLockOf } from '@/cast/server/person-lock';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
@@ -150,10 +151,18 @@ export const createTeamCharacterFn = createServerFn({ method: 'POST' })
 export const getCurrentTeamCharacterFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(characterIdSchema))
-  .handler(
-    async ({ context, data }) =>
-      await context.scopedDb.characters.getCurrent(data.characterId)
-  );
+  .handler(async ({ context, data }) => {
+    const character = await context.scopedDb.characters.getCurrent(
+      data.characterId
+    );
+    if (!character) return null;
+    // No sequence, so no sheet: only the cast talent can hold it a person.
+    const personLock = await personLockOf(context.scopedDb, {
+      talentId: character.talentId,
+      looks: [],
+    });
+    return { ...character, personLock };
+  });
 
 /** Edit a character's bible from no sequence: only its current version moves. */
 export const updateTeamCharacterFn = createServerFn({ method: 'POST' })

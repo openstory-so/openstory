@@ -196,7 +196,7 @@ const addCharacterToSequenceTool = openstoryTool({
 const updateCharacterTool = openstoryTool({
   name: 'update_character',
   description:
-    'Edit a character’s bible (read it with get_character). An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. The character’s sheet and the prompts that use it become stale; no generation starts.',
+    'Edit a character’s bible (read it with get_character). An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. isPerson cannot be set to false while the character is cast with a talent who is a real person, or its sheet is an uploaded photo of a real person. The character’s sheet and the prompts that use it become stale; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: characterBibleFieldsSchema

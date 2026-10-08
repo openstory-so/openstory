@@ -32,6 +32,7 @@ import {
   type locationBibleFieldsSchema,
 } from '@/cast/bible-field';
 import { effectiveStyling } from '@/cast/character-looks';
+import { requirePersonEditAllowed } from '@/cast/server/person-lock';
 import { LOOK_TEXT_MAX } from '@/cast/look-field';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
@@ -238,6 +239,14 @@ export async function updateTeamCharacter(
     ...update
   }: Omit<CharacterBibleUpdate, 'voiceDescription'> & LegacyFeaturesInput
 ) {
+  // No sequence, so no sheet: only the cast talent can hold it a person.
+  if (update.isPerson === false) {
+    const before = await requireCurrentCharacter(scopedDb, characterId);
+    await requirePersonEditAllowed(scopedDb, update, {
+      talentId: before.talentId,
+      looks: [],
+    });
+  }
   const character = await scopedDb.characters.updateBible(
     null,
     characterId,
@@ -274,7 +283,8 @@ export async function attachLibraryCharacter(
 
 /**
  * Edit a character's bible fields. Only the sent fields change; the sheet and
- * prompts that project them re-stale by hash derivation.
+ * prompts that project them re-stale by hash derivation. `isPerson: false`
+ * is refused while the character must be a person (#2065, `person-lock.ts`).
  */
 export async function updateCharacter(
   scopedDb: ScopedDb,
@@ -287,6 +297,7 @@ export async function updateCharacter(
   }: CharacterBibleUpdate & LegacyFeaturesInput
 ) {
   const before = await requireCharacter(scopedDb, sequenceId, characterId);
+  await requirePersonEditAllowed(scopedDb, update, before);
   const character = await scopedDb.characters.updateBible(
     sequenceId,
     characterId,

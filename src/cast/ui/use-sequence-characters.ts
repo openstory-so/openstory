@@ -35,7 +35,7 @@ import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
 import { elevenLabsVoiceKeys } from '@/cast/ui/use-elevenlabs-voices';
-import type { CharacterWithTalent } from '@/platform/server/db/schema';
+import type { SequenceCharacter } from '@/cast/sequence-characters.fn';
 
 export const sequenceCharacterKeys = {
   all: ['sequence-characters'] as const,
@@ -60,7 +60,7 @@ export const sequenceCharacterKeys = {
 };
 
 export function useSequenceCharacters(sequenceId: string) {
-  return useQuery<CharacterWithTalent[]>({
+  return useQuery<SequenceCharacter[]>({
     queryKey: sequenceCharacterKeys.list(sequenceId),
     queryFn: async () => {
       return getSequenceCharactersFn({ data: { sequenceId } });
