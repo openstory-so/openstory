@@ -42,6 +42,13 @@ vi.mock('@/cast/server/workflows/sheet-snapshots', () => ({
     face,
     snapshotInputHash: `hash-${draft.lookId}-${face?.versionId ?? 'none'}`,
   }),
+  // The digest a pre-#2065 sheet carries: the same inputs, with the look's
+  // stored parts beside them.
+  computeCharacterSheetHashFromDtoBefore2065: async (
+    payload: { snapshotInputHash: string },
+    legacy: { distinguishingFeatures: string | null; styling: string | null }
+  ) =>
+    `old-${payload.snapshotInputHash}-${legacy.distinguishingFeatures}-${legacy.styling}`,
 }));
 vi.mock('@/cast/server/sheets/location-sheet-trigger', () => ({
   buildRegenerateLocationSheetPayload: vi.fn(),
@@ -298,14 +305,46 @@ describe('plan reference sheet reuse by hash (#2017)', () => {
       {
         payload: expect.objectContaining({ lookId: 'maya' }),
         sheetVersionId: 'ep1-maya',
+        matchedInputHash: 'hash-maya',
+        url: '/r2/ep1-maya.png',
+        storagePath: 'ep1-maya.png',
+      },
+    ]);
+    expect(findReusable).toHaveBeenCalledTimes(1);
+    expect(result?.cost.sheets).toBe(0);
+    expect(estimateSheets).toHaveBeenCalledWith(
+      expect.objectContaining({ characterSheets: 0 })
+    );
+  });
+  it('reuses a sheet stamped before #2065: the second lookup is by the old digest of the same inputs, and the run adopts by it', async () => {
+    // Episode 1 drew her sheet before #2065: the row carries the old
+    // digest, made from the features on her bible and the look's own styling.
+    const stampedBefore2065 = 'old-hash-maya-scar-hair up';
+    findReusable.mockImplementation(async ({ inputHash }) =>
+      inputHash === stampedBefore2065 ? finished('ep1-maya') : null
+    );
+    const result = await references({
+      legacyDistinguishingFeatures: 'scar',
+      looks: [{ ...look('maya', true), storedStyling: 'hair up' }],
+    });
+    expect(findReusable.mock.calls.map(([args]) => args.inputHash)).toEqual([
+      'hash-maya',
+      stampedBefore2065,
+    ]);
+    expect(result?.characterSheets).toEqual([]);
+    expect(result?.reusedSheets).toEqual([
+      {
+        payload: expect.objectContaining({
+          lookId: 'maya',
+          snapshotInputHash: 'hash-maya',
+        }),
+        sheetVersionId: 'ep1-maya',
+        matchedInputHash: stampedBefore2065,
         url: '/r2/ep1-maya.png',
         storagePath: 'ep1-maya.png',
       },
     ]);
     expect(result?.cost.sheets).toBe(0);
-    expect(estimateSheets).toHaveBeenCalledWith(
-      expect.objectContaining({ characterSheets: 0 })
-    );
   });
   it('wins over the talent copy: the look has its own sheet in this style', async () => {
     findReusable.mockResolvedValueOnce(finished('ep1-maya'));

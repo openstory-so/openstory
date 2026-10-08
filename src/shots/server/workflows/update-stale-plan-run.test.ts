@@ -625,6 +625,8 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       snapshotInputHash: 'hash-maya',
     },
     sheetVersionId: 'ep1-maya',
+    // The row was drawn before #2065: the plan matched it by the old digest.
+    matchedInputHash: 'pre-2065-hash-maya',
     url: 'https://x/ep1-maya.png',
     storagePath: 'ep1-maya.png',
   };
@@ -657,7 +659,8 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       claimVersionId: 'csv-maya',
       sheetVersionId: 'ep1-maya',
       model: 'nano_banana_2',
-      inputHash: 'hash-maya',
+      // The digest the plan matched the row by, not the payload's own.
+      inputHash: 'pre-2065-hash-maya',
     });
     expect(spawned()).not.toContain('spawn-character-sheet-maya');
     expect(emit).toHaveBeenCalledWith('generation.character-sheet:progress', {

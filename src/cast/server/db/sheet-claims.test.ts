@@ -773,6 +773,12 @@ describe('look sheet claims (#2015)', () => {
       'Gala gown is worn in scene 2. Pick another look there first.'
     );
     expect((await lookOf(gala.id)).deletedAt).toBeNull();
+    // From the Characters page (no sequence, #2065) the casting sequence
+    // refuses too, named by its title.
+    await expect(
+      looks().remove(null, gala.id, { actorId: userId })
+    ).rejects.toThrow('Gala gown is worn in S. Pick another look there first.');
+    expect((await lookOf(gala.id)).deletedAt).toBeNull();
   });
 
   it('refuses to remove a look another sequence wears, naming it; an archived one does not refuse', async () => {

@@ -355,6 +355,7 @@ describe('resolveTalentIds: team characters (#2050, #2065)', () => {
         physicalDescription: null,
         voiceOnly: false,
         lastUsedAt: null,
+        castAnywhere: false,
         sequences: [],
       })),
   });

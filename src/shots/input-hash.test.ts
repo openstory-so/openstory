@@ -951,6 +951,13 @@ describe('prompt input hashes', () => {
       expect(effectiveStyling(`hair pinned up\n${FEATURES}`, FEATURES)).toBe(
         `hair pinned up\n${FEATURES}`
       );
+      expect(effectiveStyling(` ${FEATURES} `, FEATURES)).toBe(` ${FEATURES} `);
+      // Held means the whole text, not a substring of another word.
+      expect(effectiveStyling('red scarf', 'scar')).toBe('red scarf\nscar');
+      expect(effectiveStyling('scar tissue', 'scar')).toBe('scar tissue\nscar');
+      expect(effectiveStyling('red scarf\nscar', 'scar')).toBe(
+        'red scarf\nscar'
+      );
     });
 
     it.each(cases)(

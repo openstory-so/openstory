@@ -2999,6 +2999,16 @@ describe('cast and music edits (#1979)', () => {
         styling: 'scar on left cheek\nsilver watch',
       },
     ]);
+    // Held means a whole line: "scar" is new, though a line contains it.
+    await data('update_character', {
+      sequenceId,
+      characterId,
+      voiceOnly: false,
+      distinguishingFeatures: 'scar',
+    });
+    expect((await read()).looks[0]?.styling).toBe(
+      'scar on left cheek\nsilver watch\nscar'
+    );
     // A character from before #2065 still holds the text on its bible
     // version: the old field reports it, and the look's styling includes it.
     await db
@@ -3007,7 +3017,7 @@ describe('cast and music edits (#1979)', () => {
       .where(eq(characterBibleVersions.characterId, characterId));
     expect(await read()).toMatchObject({
       distinguishingFeatures: 'birthmark',
-      looks: [{ styling: 'scar on left cheek\nsilver watch\nbirthmark' }],
+      looks: [{ styling: 'scar on left cheek\nsilver watch\nscar\nbirthmark' }],
     });
     // This file's tests share one database: leave no event behind.
     await db
