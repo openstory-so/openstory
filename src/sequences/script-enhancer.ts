@@ -28,12 +28,13 @@ export const enhanceElementSchema = z.object({
 type EnhanceElement = z.infer<typeof enhanceElementSchema>;
 
 /**
- * Starting points drawn in code, not chosen by the model (#2076). `null` means
- * nothing was drawn for that one: no name list for the country, or a genre the
- * style or the brief already settles.
+ * Starting points drawn in code, not chosen by the model (#2076). `names` is
+ * empty where the country has no name list. A `null` means nothing was drawn
+ * for that one: no town list, or a genre the style or the brief already
+ * settles.
  */
 export type EnhanceSeeds = {
-  readonly name: string | null;
+  readonly names: readonly string[];
   readonly town: string | null;
   readonly venue: string;
   readonly occupation: string;
@@ -86,7 +87,10 @@ ${buildDurationPromptParagraph({
     const lines = [
       'Starting points, drawn at random so this film does not begin where every other one does. Where the brief, the style and the elements leave the person, the place or the work open, use these instead of choosing your own. Anything they already decide wins; leave out a starting point that cannot fit. Do not mention that they were given to you.',
     ];
-    if (seeds.name) lines.push(`- A character's first name: ${seeds.name}`);
+    if (seeds.names.length)
+      lines.push(
+        `- First names for characters, in the order you need them: ${seeds.names.join(', ')}`
+      );
     if (seeds.town) lines.push(`- Town: ${seeds.town}`);
     lines.push(`- Kind of place: ${seeds.venue}`);
     lines.push(`- A character's job: ${seeds.occupation}`);

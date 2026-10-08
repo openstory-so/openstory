@@ -13,7 +13,7 @@ describe('drawEnhanceSeeds (#2076)', () => {
       first
     );
     expect(seeds).toEqual({
-      name: ENHANCE_SEED_DATA.names.AU.split('|')[0],
+      names: ENHANCE_SEED_DATA.names.AU.split('|').slice(0, 3),
       town: `${ENHANCE_SEED_DATA.towns.AU.split('|')[0]}, Australia`,
       venue: ENHANCE_SEED_DATA.venues.split('|')[0],
       occupation: ENHANCE_SEED_DATA.jobs.split('|')[0],
@@ -43,7 +43,7 @@ describe('drawEnhanceSeeds (#2076)', () => {
       script: 'a brand film',
       country: 'FJ',
     });
-    expect(seeds?.name).toBeNull();
+    expect(seeds?.names).toEqual([]);
     expect(seeds?.town).toMatch(/, Fiji$/);
   });
 
@@ -52,21 +52,21 @@ describe('drawEnhanceSeeds (#2076)', () => {
       { ...thin, script: 'a brand film', country: undefined },
       first
     );
-    expect(seeds?.name).toBeTruthy();
+    expect(seeds?.names).toHaveLength(3);
     expect(seeds?.town).toBeTruthy();
   });
 
   it('reaches the user prompt', () => {
     const prompt = createUserPrompt('a brand film', {
       seeds: {
-        name: 'Matilda',
+        names: ['Matilda', 'Hudson'],
         town: 'Ballarat, Australia',
         venue: 'ice rink',
         occupation: 'Crane Operator',
         genre: null,
       },
     });
-    expect(prompt).toContain("- A character's first name: Matilda");
+    expect(prompt).toContain('you need them: Matilda, Hudson');
     expect(prompt).toContain('- Town: Ballarat, Australia');
     expect(prompt).toContain('- Kind of place: ice rink');
     expect(prompt).toContain("- A character's job: Crane Operator");

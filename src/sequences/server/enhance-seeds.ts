@@ -49,13 +49,26 @@ function pick(list: string | readonly string[], random: () => number): string {
   return items[Math.floor(random() * items.length)] ?? '';
 }
 
+// One name is not enough: the second character went back to the model's
+// favourite (the same name in 6 of 20 scripts with a single name drawn).
+const NAME_COUNT = 3;
+
+function pickNames(list: string, random: () => number): string[] {
+  const pool = list.split('|');
+  const out: string[] = [];
+  while (out.length < NAME_COUNT && pool.length > 0) {
+    out.push(...pool.splice(Math.floor(random() * pool.length), 1));
+  }
+  return out;
+}
+
 /**
  * The starting points for one enhance call, or `undefined` when the brief is
  * specific: the user already made the choices.
  *
  * Names and towns follow the user's country. With no country, one is drawn so
  * the name and the town still belong together. A country with no name list
- * gets no name rather than another country's.
+ * gets no names rather than another country's.
  */
 export function drawEnhanceSeeds(
   input: {
@@ -76,7 +89,7 @@ export function drawEnhanceSeeds(
     country
   );
   return {
-    name: names ? pick(names, random) : null,
+    names: names ? pickNames(names, random) : [],
     town: towns ? `${pick(towns, random)}, ${countryName ?? country}` : null,
     venue: pick(ENHANCE_SEED_DATA.venues, random),
     occupation: pick(ENHANCE_SEED_DATA.jobs, random),
