@@ -12,9 +12,20 @@ import {
   buildRegenerateCharacterSheetPayload,
 } from '@/cast/server/sheets/character-sheet-trigger';
 import type { CharacterSheetDraft } from '@/cast/server/workflows/sheet-snapshots';
-import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  computeCharacterSheetHashFromDtoBefore2065,
+  finishCharacterSheetPayload,
+} from '@/cast/server/workflows/sheet-snapshots';
+import { characterSheetInputHash } from '@/shots/input-hash';
+import type {
+  CharacterSheetInputHash,
+  LegacyStylingParts,
+} from '@/shots/input-hash';
 import { buildRegenerateLocationSheetPayload } from '@/cast/server/sheets/location-sheet-trigger';
-import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import {
+  characterToBible,
+  legacyStylingParts,
+} from '@/cast/server/bibles-from-scoped';
 import { wearLook } from '@/cast/character-looks';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
@@ -49,6 +60,12 @@ export type ReusedCharacterSheet = {
   payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>;
   /** The `character_sheet_variants` row to point at. */
   sheetVersionId: string;
+  /**
+   * The digest that row is stamped with: the payload's own, or the
+   * `pre-2065` shape of the same inputs for a sheet drawn before #2065. The
+   * run's adopt is conditional on the row still carrying it.
+   */
+  matchedInputHash: CharacterSheetInputHash;
   url: string;
   storagePath: string;
 };
@@ -140,17 +157,33 @@ export async function buildPlanReferences(args: {
     [];
   const reusedSheets: ReusedCharacterSheet[] = [];
   const reuseOrDraw = async (
-    payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>
+    payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>,
+    /** The look's stored parts, for the digest a pre-#2065 sheet carries. */
+    legacy: LegacyStylingParts
   ) => {
-    const existing = await scopedDb.characterSheetVariants.findReusable({
-      lookId: payload.lookId,
-      model: payload.imageModel ?? DEFAULT_IMAGE_MODEL,
-      inputHash: payload.snapshotInputHash,
-    });
+    const find = (inputHash: CharacterSheetInputHash) =>
+      scopedDb.characterSheetVariants.findReusable({
+        lookId: payload.lookId,
+        model: payload.imageModel ?? DEFAULT_IMAGE_MODEL,
+        inputHash,
+      });
+    let matchedInputHash = payload.snapshotInputHash;
+    let existing = await find(matchedInputHash);
+    if (!existing) {
+      // A sheet drawn before #2065 is stamped in the `pre-2065` shape: the
+      // same inputs, so the same image, and a live verify reads it fresh.
+      // Missing it would redraw every such sheet once (credits, and a
+      // BytePlus portrait slot each). Delete with `LEGACY_HASH_UNTIL`.
+      matchedInputHash = characterSheetInputHash(
+        await computeCharacterSheetHashFromDtoBefore2065(payload, legacy)
+      );
+      existing = await find(matchedInputHash);
+    }
     if (existing) {
       reusedSheets.push({
         payload,
         sheetVersionId: existing.id,
+        matchedInputHash,
         url: existing.url,
         storagePath: existing.storagePath,
       });
@@ -184,7 +217,10 @@ export async function buildPlanReferences(args: {
             talentDescription: payload.castTalentDescription,
           });
         }
-        const existing = await reuseOrDraw(payload);
+        const existing = await reuseOrDraw(
+          payload,
+          legacyStylingParts(dressed)
+        );
         if (existing && dressed.lookId === character.id) {
           reusedDefaults.set(character.id, {
             url: existing.url,
@@ -206,9 +242,12 @@ export async function buildPlanReferences(args: {
         lookId: dressed.lookId,
       });
       const face = reusedDefaults.get(character.id);
-      if (face)
-        await reuseOrDraw(await finishCharacterSheetPayload(draft, face));
-      else lookSheetsAfterDefault.push(draft);
+      if (face) {
+        await reuseOrDraw(
+          await finishCharacterSheetPayload(draft, face),
+          legacyStylingParts(dressed)
+        );
+      } else lookSheetsAfterDefault.push(draft);
     })
   );
   const locationSheets = await Promise.all(

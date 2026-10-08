@@ -61,14 +61,28 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /**
  * The seam for a character bible entry written before #2065, which still
- * carries `distinguishingFeatures`: the text is folded into the entry's
- * FIRST look's styling (`effectiveStyling`) and the key is dropped, so
+ * carries `distinguishingFeatures`: the text is folded into the styling of
+ * the entry's DEFAULT look (`effectiveStyling`) and the key is dropped, so
  * nothing downstream reads it. Any other value is returned as it is.
  *
- * The first look is the default one on the bibles call and on a payload
- * frozen from a cast read, which is where such entries come from. An entry
- * with no looks is left alone: the caller decides what that means (a
- * recorded bibles response gets a look, a payload from before #2015 is
+ * Which look is the default:
+ *
+ * - Looks under slug ids (the bibles call, before the cast is persisted):
+ *   the default's slug is `default` (`bibleFromWire`), wherever it sits. An
+ *   entry dressed for a scene lists the worn look first, so the default may
+ *   not be first, or not there at all (`wornLookOnly`). Then no look takes
+ *   the text and it is dropped for that run, which is what a live verify
+ *   computes for a look that is not the default.
+ * - Looks under persisted ids (a payload frozen from a cast read): the
+ *   entry does not say which is the default. The default look's id is its
+ *   character's row id, but an entry carries only the script id, and a look
+ *   entry has no flag. So the FIRST look takes the text. That is the default
+ *   look unless the entry was dressed for a scene that picks another look
+ *   (`update-stale-plan`, `regenerate-shot-prompt`): there the worn look
+ *   takes it, as the prompt queued before #2065 would have read it.
+ *
+ * An entry with no looks is left alone: the caller decides what that means
+ * (a recorded bibles response gets a look, a payload from before #2015 is
  * failed).
  */
 export function foldLegacyFeatures(entry: unknown): unknown {
@@ -76,20 +90,29 @@ export function foldLegacyFeatures(entry: unknown): unknown {
     return entry;
   }
   const { distinguishingFeatures, ...rest } = entry;
-  const [first, ...others]: unknown[] = Array.isArray(rest.looks)
-    ? rest.looks
-    : [];
-  if (!isRecord(first)) return entry;
-  const own = typeof first.styling === 'string' ? first.styling : '';
+  const looks: unknown[] = Array.isArray(rest.looks) ? rest.looks : [];
+  if (!isRecord(looks[0])) return entry;
+  const idOf = (look: unknown) =>
+    isRecord(look) && typeof look.lookId === 'string' ? look.lookId : '';
+  // Slug ids (`<characterId>:<slug>`, which no persisted id looks like) name
+  // their default; persisted ids do not, so the first it is.
+  const target = looks.every((look) => idOf(look).includes(':'))
+    ? looks.findIndex((look) => idOf(look).endsWith(':default'))
+    : 0;
   return {
     ...rest,
-    looks: [
-      {
-        ...first,
-        styling: effectiveStyling(own, distinguishingFeatures) ?? '',
-      },
-      ...others,
-    ],
+    looks: looks.map((look, index) =>
+      index === target && isRecord(look)
+        ? {
+            ...look,
+            styling:
+              effectiveStyling(
+                typeof look.styling === 'string' ? look.styling : '',
+                distinguishingFeatures
+              ) ?? '',
+          }
+        : look
+    ),
   };
 }
 

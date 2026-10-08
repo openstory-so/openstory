@@ -87,8 +87,9 @@ const ofCastLook = (
  * bible, the look, the talent, the style, the image model and the default
  * look's face, so a match is the same image from the same inputs. Completed
  * with a file, not discarded, not parked as divergent (a parked row is some
- * sequence's banner, and `select` would clear it). A row stamped in an older
- * hash shape never matches, which costs a draw, never a wrong sheet.
+ * sequence's banner, and `select` would clear it). The hash is the caller's:
+ * the plan asks in the current shape, then in the `pre-2065` one. A row in
+ * any older shape never matches, which costs a draw, never a wrong sheet.
  */
 const reusableFor = (args: {
   lookId: string;

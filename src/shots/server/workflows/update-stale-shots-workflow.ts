@@ -530,7 +530,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               claimVersionId: sheetVersionId,
               sheetVersionId: reused.sheetVersionId,
               model: payload.imageModel ?? DEFAULT_IMAGE_MODEL,
-              inputHash: payload.snapshotInputHash,
+              // The digest the plan matched the row by (its own shape, or
+              // the pre-#2065 one): the row must still carry it.
+              inputHash: reused.matchedInputHash,
             })
           );
           if (outcome === 'refused') {

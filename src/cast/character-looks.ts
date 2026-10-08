@@ -34,10 +34,13 @@ type WearableLook = CharacterLookMinimal &
  * (`legacyDistinguishingFeatures`), and the look's styling is its own
  * joined with it. Any other look's styling is its own; pass `null`.
  *
- * Blank parts are skipped, and features the styling already holds are not
- * repeated, so a look version written from the effective text stays right
- * while a sequence still pins the older bible version. This is the designed read, not a fallback: every look read, prompt
- * and current digest goes through it.
+ * Blank parts are skipped, and features the styling already ends with are
+ * not repeated, so a look version written from the effective text stays
+ * right while a sequence still pins the older bible version. "Already
+ * holds" is exact: the styling is the features, or ends with the
+ * `\n<features>` this function writes. A substring is not enough ("red
+ * scarf" does not hold "scar"). This is the designed read, not a fallback:
+ * every look read, prompt and current digest goes through it.
  */
 export function effectiveStyling(
   styling: string | null | undefined,
@@ -46,7 +49,9 @@ export function effectiveStyling(
   const own = (styling ?? '').trim();
   const features = (legacyFeatures ?? '').trim();
   // No features to join: the look's own value, untouched.
-  if (!features || own.includes(features)) return styling ?? null;
+  if (!features || own === features || own.endsWith(`\n${features}`)) {
+    return styling ?? null;
+  }
   return own ? `${own}\n${features}` : features;
 }
 

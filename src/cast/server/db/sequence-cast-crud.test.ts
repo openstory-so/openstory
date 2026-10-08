@@ -3454,6 +3454,77 @@ describe('team characters (#2017)', () => {
       });
     });
 
+    it('text moved to the look in one sequence does not come back when another sequence edits the bible', async () => {
+      const ada = await adaWithFeatures();
+      const other = await secondSequence();
+      await chars().attach(other, ada.id, { actorId });
+      // In the first sequence the styling is rewritten: the scar is gone.
+      await looks().update(
+        sequenceId,
+        ada.lookId,
+        { styling: 'hair down' },
+        { source: 'edit', actorId }
+      );
+      // The other sequence, still pinning the version with "scar", edits the
+      // age. Its new version is the current one.
+      const edited = await chars().updateBible(
+        other,
+        ada.id,
+        { age: '31' },
+        { actorId, source: 'edit' }
+      );
+      expect(edited.legacyDistinguishingFeatures).toBeNull();
+      const current = await chars().getCurrent(ada.id);
+      expect(current).toMatchObject({
+        age: '31',
+        legacyDistinguishingFeatures: null,
+      });
+      expect(current?.looks[0]).toMatchObject({ styling: 'hair down' });
+      // The first sequence takes the age edit: its styling is what it wrote.
+      await chars().moveCastToCurrent(sequenceId, ada.id, { actorId });
+      expect(await read(ada.id)).toMatchObject({
+        age: '31',
+        styling: 'hair down',
+      });
+      // And so is the other's, once it moves to the current look.
+      await chars().moveCastToCurrent(other, ada.id, { actorId });
+      expect(await read(ada.id, other)).toMatchObject({ styling: 'hair down' });
+      // A fresh cast reads the same.
+      const third = await secondSequence();
+      expect(await chars().attach(third, ada.id, { actorId })).toMatchObject({
+        styling: 'hair down',
+      });
+    });
+
+    it('text moved to the look on the Characters page does not come back when the sequence edits the bible', async () => {
+      const ada = await adaWithFeatures();
+      await looks().update(
+        null,
+        ada.lookId,
+        { styling: 'hair down' },
+        { source: 'edit', actorId }
+      );
+      // The sequence still pins the version with "scar".
+      expect(await read(ada.id)).toMatchObject({ styling: 'hair up\nscar' });
+      await chars().updateBible(
+        sequenceId,
+        ada.id,
+        { age: '31' },
+        { actorId, source: 'edit' }
+      );
+      const current = await chars().getCurrent(ada.id);
+      expect(current).toMatchObject({
+        age: '31',
+        legacyDistinguishingFeatures: null,
+      });
+      expect(current?.looks[0]).toMatchObject({ styling: 'hair down' });
+      await chars().moveCastToCurrent(sequenceId, ada.id, { actorId });
+      expect(await read(ada.id)).toMatchObject({
+        age: '31',
+        styling: 'hair down',
+      });
+    });
+
     it('a one-off copy carries the features and each look’s own styling as stored', async () => {
       const ada = await adaWithFeatures();
       const other = await secondSequence();

@@ -319,14 +319,15 @@ describe('bibleFromWire with an echoed cast character (#2050)', () => {
 });
 
 describe('an entry written before the default look took the features (#2065)', () => {
+  // Persisted look ids, as a payload frozen from a cast read carries.
   const office = {
-    lookId: 'L1',
+    lookId: '01JZZZZZZZZZZZZZZZZZZZZZZ1',
     name: 'Default',
     clothing: 'suit',
     styling: 'hair up',
   };
   const gala = {
-    lookId: 'L2',
+    lookId: '01JZZZZZZZZZZZZZZZZZZZZZZ2',
     name: 'Gala',
     clothing: 'gown',
     styling: 'split lip',
@@ -351,6 +352,35 @@ describe('an entry written before the default look took the features (#2065)', (
     expect(foldLegacyFeatures(current)).toBe(current);
     const noLooks = old([]);
     expect(foldLegacyFeatures(noLooks)).toBe(noLooks);
+  });
+
+  it('folds onto the default look of an entry under slug ids, wherever it sits; with no default there, no look takes the text', () => {
+    const slug = (lookId: string, styling: string) => ({
+      lookId,
+      name: lookId,
+      clothing: 'x',
+      styling,
+    });
+    const byDefault = slug('char_mia:default', 'hair up');
+    const rain = slug('char_mia:rain', 'wet hair');
+    // Dressed for a scene that picks the rain look: worn first.
+    expect(foldLegacyFeatures(old([rain, byDefault]))).toEqual({
+      ...wire({ characterId: 'char_mia' }),
+      looks: [rain, { ...byDefault, styling: 'hair up\nscar' }],
+    });
+    // Only the worn look was frozen: it is not the default, so it reads no
+    // features, as a live verify of that look computes.
+    expect(foldLegacyFeatures(old([rain]))).toEqual({
+      ...wire({ characterId: 'char_mia' }),
+      looks: [rain],
+    });
+    // A wire look has no id yet: the first is the default.
+    const { lookId: _a, ...wireDefault } = byDefault;
+    const { lookId: _b, ...wireRain } = rain;
+    expect(foldLegacyFeatures(old([wireDefault, wireRain]))).toEqual({
+      ...wire({ characterId: 'char_mia' }),
+      looks: [{ ...wireDefault, styling: 'hair up\nscar' }, wireRain],
+    });
   });
 
   it('4e: a bibles response recorded with the old field still parses, into the default look', () => {

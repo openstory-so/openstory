@@ -98,10 +98,18 @@ a stray reader does not compile.
   event recording the pin move. That is the move, done once. A rename or a
   clothing edit writes the look's own stored styling to the new version and
   leaves the bible alone, so it stales nothing the old code did not.
-- **Carried, never dropped.** `bibleWrite` takes the legacy text of the
-  version it reads from as a required field and writes it to the next one:
-  an age edit, a recast and a re-analysis all keep it. A one-off copy carries
+- **Carried while it is still on the bible.** `bibleWrite` takes the
+  legacy text of the version it reads from (the one the editing sequence
+  pins) as a required field and writes it to the next one: an age edit, a
+  recast and a re-analysis all keep it. But only while the character's
+  CURRENT version still holds it. Once the move has nulled it anywhere,
+  every new version has null, decided inside the insert: a sequence that
+  still pins an old version with the text must not make a new current
+  version that brings back a mark its writer removed. A one-off copy carries
   it and each look's stored styling. New characters never have it.
+  `effectiveStyling` treats the text as already held only when the styling
+  is the text or ends with the `\n<text>` the resolver writes; a substring
+  ("red scarf" and "scar") is not held.
 - **Digests.** The current sheet and prompt digests hash the effective
   styling and have no features key. Verify also accepts `pre-2065`, the same
   body with the features under their own key and the look's own styling,
@@ -119,7 +127,13 @@ a stray reader does not compile.
   One written before #2065 is folded at a seam (`foldLegacyFeatures`,
   `src/cast/bible-looks.ts`): every workflow payload once, in the workflow
   base (`foldLegacyFeaturesInPayload`), and the bibles response in its wire
-  schema, so a recorded fixture still parses. A sheet payload keeps its
+  schema, so a recorded fixture still parses. The entry's default look takes the text. Under slug ids it
+  is the `default` slug wherever it sits, and an entry with no default look
+  (only the worn look frozen) drops the text for that run. Under persisted
+  ids an entry does not say which look is the default (it carries the script
+  id, not the row id the default look shares), so the first look takes it:
+  the worn one, on a prompt payload dressed for a scene that picks another
+  look, as that queued prompt would have read it. A sheet payload keeps its
   look's styling beside the entry: the features join `lookStyling` on the
   default look (`face` null), and the pair as queued rides along as
   `queuedLegacyStyling` for the run's check of its own snapshot hash. A step
@@ -144,9 +158,16 @@ a stray reader does not compile.
   into the default looks, delete the `pre-2065` shape and the fold seams,
   and drop the column (a native `DROP COLUMN`).
 
-Edges, known and left: a sequence that pins an older bible version beside a
-newer look version (or the other way round) reads the text once or not at
-all until it moves to the current version, which moves both. A look's
+Edges, known and left: once the text has moved (the default look's styling
+was edited in another sequence or on the Characters page), a sequence that
+still pins the old bible version and the old look version reads the old
+joined text until it does one of two things. Moving to the current version
+moves both pins and reads the new styling. Editing the bible there (an age
+edit, a recast, a re-analysis) appends a version without the text and pins
+it beside the old look version, so that sequence reads the old look's own
+styling with the features gone; its default sheet and the shots that wear
+it read stale, and "Not the current version" is how it takes the new
+styling. The text never comes back on the current version either way. A look's
 version history lists each version's own styling, so a default look not yet
 edited shows less there than in the editor. A character an older worker
 wrote before #1600 has no bible version to append to, so its legacy text
@@ -246,8 +267,12 @@ against the talent's default sheet.
   non-default look — the default look's selected sheet version, so a
   series gets reuse only while it keeps its style and model fixed. A row
   that is parked (divergent), discarded, failed or still generating is not
-  a candidate; a sheet stamped in an older hash shape is simply missed,
-  which costs a draw and never a wrong sheet. A match wins over the talent
+  a candidate. A sheet drawn before #2065 carries the `pre-2065` digest, so
+  a miss on the payload's own hash is followed by one lookup by that digest
+  of the same inputs (the look's stored parts, as a live verify reads
+  them); the plan records which hash matched (`matchedInputHash`) and the
+  run's adopt is conditional on the row still carrying it. Any older shape
+  is simply missed, which costs a draw and never a wrong sheet. A match wins over the talent
   copy. A default that is reused gives its other looks their face at plan
   time, so they are hashed and checked too and a whole cast reuses.
   The plan lists it in `reusedSheets`, not `characterSheets`, so the

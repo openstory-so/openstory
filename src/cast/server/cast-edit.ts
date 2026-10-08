@@ -74,8 +74,13 @@ async function foldFeaturesIntoDefaultLook(
   defaultLook: { id: string; styling: string | null },
   features: string | null | undefined
 ): Promise<void> {
-  const styling = effectiveStyling(defaultLook.styling, features);
-  if (!features?.trim() || styling === defaultLook.styling) return;
+  const text = features?.trim();
+  // Already there: one of the styling's lines, wherever an earlier call put
+  // it. Whole lines, so "scar" is not held by "red scarf".
+  if (!text || `\n${defaultLook.styling ?? ''}\n`.includes(`\n${text}\n`)) {
+    return;
+  }
+  const styling = effectiveStyling(defaultLook.styling, text);
   if (styling !== null && styling.length > LOOK_TEXT_MAX) {
     throw new ValidationError(
       `Hair, makeup, injuries would pass ${LOOK_TEXT_MAX} characters. Edit the default look instead.`

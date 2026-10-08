@@ -698,7 +698,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
    *
    * The legacy features text (#2065) is carried to the new version as it
    * is: an edit to the age must not move it, or drop it. Only the default
-   * look's styling edit nulls it (`lookDefinitionWrite`).
+   * look's styling edit nulls it (`lookDefinitionWrite`). Carried only
+   * while the character's CURRENT version still holds it: `existing` is the
+   * version the editing sequence pins, and once the text has moved to the
+   * look anywhere, a new current version that brought it back would show a
+   * mark its writer had removed. Decided inside the insert, so a move that
+   * lands between the read and this batch still wins.
    */
   const bibleWrite = (
     existing: CharacterBible & {
@@ -734,7 +739,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
           id: versionId,
           characterId: existing.id,
           ...after,
-          legacyDistinguishingFeatures: existing.legacyDistinguishingFeatures,
+          legacyDistinguishingFeatures:
+            existing.legacyDistinguishingFeatures === null
+              ? null
+              : sql`CASE WHEN EXISTS (SELECT 1 FROM ${characters} c JOIN ${characterBibleVersions} cur ON cur.id = c.selected_bible_version_id WHERE c.id = ${existing.id} AND cur.distinguishing_features IS NULL) THEN NULL ELSE ${existing.legacyDistinguishingFeatures} END`,
           talentId,
           source: opts.source,
           createdBy: opts.createdBy,
