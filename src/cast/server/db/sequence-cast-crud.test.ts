@@ -2947,6 +2947,125 @@ describe('team characters (#2017)', () => {
     expect(after?.currentBibleVersionId).not.toBe(cast.selectedBibleVersionId);
   });
 
+  it("a look edit from no sequence moves only the look's current pointer: the casting sequence's cast look keeps its version, sheet and claim (#2065)", async () => {
+    const made = await chars().createForTeam(
+      { name: 'Ada', standardClothing: 'coat' },
+      { createdBy: actorId }
+    );
+    const cast = await chars().attach(sequenceId, made.id, { actorId });
+    const sheets = createCharacterSheetVariantsMethods(db, teamId);
+    const { version: sheet } = await sheets.applyConvergent({
+      sequenceId,
+      lookId: made.id,
+      url: 'https://x.test/a.png',
+      storagePath: 'a.png',
+      inputHash: null,
+      model: 'm',
+    });
+    // A sheet run in flight here: a clothing edit made IN the sequence
+    // would revoke this claim.
+    const castLookOf = async () =>
+      (
+        await db
+          .select()
+          .from(sequenceCastLooks)
+          .where(eq(sequenceCastLooks.castId, cast.castId))
+      )[0];
+    await db
+      .update(sequenceCastLooks)
+      .set({ pendingPromoteSheetVersionId: 'claim-1' })
+      .where(eq(sequenceCastLooks.castId, cast.castId));
+    const before = await castLookOf();
+    expect(before).toMatchObject({
+      selectedSheetVersionId: sheet.id,
+      pendingPromoteSheetVersionId: 'claim-1',
+    });
+
+    const edited = await looks().update(
+      null,
+      made.id,
+      { clothing: 'gown', styling: 'hair up' },
+      { source: 'edit', actorId }
+    );
+    expect(edited.lookVersionId).not.toBe(before?.lookVersionId);
+    const [lookRow] = await db
+      .select()
+      .from(characterLooks)
+      .where(eq(characterLooks.id, made.id));
+    expect(lookRow?.selectedLookVersionId).toBe(edited.lookVersionId);
+    expect(await castLookOf()).toMatchObject({
+      lookVersionId: before?.lookVersionId,
+      selectedSheetVersionId: sheet.id,
+      pendingPromoteSheetVersionId: 'claim-1',
+    });
+    expect(await chars().getById(sequenceId, made.id)).toMatchObject({
+      standardClothing: 'coat',
+      styling: null,
+    });
+  });
+
+  it("a one-off copy and a re-attach are the writer's: analysis rewrites neither, whatever the link was (#2065)", async () => {
+    // Analysis made her here (the link is not an attach); a second sequence
+    // casts her, so this one can copy her away.
+    const ada = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        physicalDescription: 'grey eyes',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    expect((await linksOf(ada.id))[0]).toMatchObject({ attached: false });
+    await chars().attach(await secondSequence(), ada.id, { actorId });
+    const copy = await chars().copyForSequence(sequenceId, ada.id, { actorId });
+    expect((await linksOf(copy.id))[0]).toMatchObject({ attached: true });
+
+    // The next analysis echoes her script id with its own idea of her.
+    const same = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada (older)',
+        physicalDescription: 'MODEL',
+        standardClothing: 'MODEL',
+      },
+      analysis
+    );
+    expect(same).toMatchObject({
+      id: copy.id,
+      name: 'Ada',
+      physicalDescription: 'grey eyes',
+      standardClothing: 'coat',
+    });
+    await looks().syncFromAnalysis(sequenceId, copy.id, [
+      { lookId: copy.id, name: 'Renamed', clothing: 'MODEL', styling: 'x' },
+    ]);
+    expect(await versionsOf(copy.id)).toHaveLength(1);
+    expect(await chars().getById(sequenceId, copy.id)).toMatchObject({
+      name: 'Ada',
+      lookName: 'Default',
+      standardClothing: 'coat',
+    });
+
+    // A character analysis made, removed, then picked again by the writer.
+    const bob = await chars().create(
+      { sequenceId, characterId: 'char_002', name: 'Bob' },
+      analysis
+    );
+    await chars().softDelete(sequenceId, bob.id, { actorId });
+    expect((await linksOf(bob.id))[0]).toMatchObject({ attached: false });
+    await chars().attach(sequenceId, bob.id, { actorId });
+    expect((await linksOf(bob.id))[0]).toMatchObject({
+      attached: true,
+      removedAt: null,
+    });
+    expect(await chars().getAnalysisMayNotRewrite(sequenceId, bob.id)).toBe(
+      true
+    );
+  });
+
   it('analysis never rewrites a character the writer attached, even when no other sequence casts her (#2065)', async () => {
     const made = await chars().createForTeam(
       {

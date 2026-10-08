@@ -13,7 +13,6 @@ import { useUpdateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
 import { useUpdateTeamCharacter } from '@/cast/ui/use-team-characters';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -245,7 +244,6 @@ export const CharacterBibleForm: React.FC<
       )}
       <div className="flex justify-end">
         <Button type="submit" disabled={isPending}>
-          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>

@@ -275,7 +275,8 @@ the script then names her like any cast member.
   script id is `char_<name>` uniqued against every link of the sequence,
   removed ones included. The link is `attached` (#2065). The event is
   `character.attached`. Nothing is copied. Bringing back a removed link
-  leaves `attached` as it was.
+  through the attach sets `attached` too, whatever it was: the writer picked
+  her again. (A `restore` from the bin, and an analysis revive, leave it.)
 - **Refused** unless the
   sequence is the team's (`NotFoundError`, checked in the db method, not
   only by its callers), and while a live cast member of the sequence already
@@ -483,7 +484,9 @@ lookId)` lists the sheets that sequence made or has selected, and
 - **Make a one-off copy** (`characters.copyForSequence(sequenceId, id)`,
   offered while another live sequence casts the character): a NEW team character from the version
   this sequence pins, and this sequence's link repointed at it, in one
-  batch. The copy **owns** its row, one bible version
+  batch. The repointed link is `attached` (#2065): a copy is the writer's
+  deliberate character, so analysis never rewrites it. The copy **owns** its
+  row, one bible version
   (the pinned bible, with its talent), one voice version naming the same
   provider voice id (held by both until the last lets go), and one look row
   per live look (the default's id is the copy's id) with one version each;
