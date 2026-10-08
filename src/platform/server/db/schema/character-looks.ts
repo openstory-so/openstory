@@ -152,6 +152,14 @@ export type CharacterLook = Omit<
   'selectedLookVersionId' | LegacyLookCastColumn
 > &
   LookDefinition & {
+    /**
+     * LEGACY (#2065): the pinned look version's own `styling` column.
+     * `styling` is the effective one (`effectiveStyling`), which on a
+     * default look also holds the bible's legacy features text. Read only
+     * by the digests stamped before #2065 and by a write that copies the
+     * version forward.
+     */
+    storedStyling: string | null;
     /** The `sequence_cast_looks` row this read came through. */
     castLookId: string;
     /** The look version the sequence pins. */

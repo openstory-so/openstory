@@ -142,9 +142,10 @@ export function shouldReuseTalentSheet(input: ReuseTalentSheetInput): boolean {
  * could afford.
  */
 export function reusesTalentSheet(
+  /** The default look: its clothing and its (effective) styling (#2065). */
   character: {
     standardClothing?: string | null;
-    distinguishingFeatures?: string | null;
+    styling?: string | null;
   },
   talentMatch:
     | {
@@ -161,7 +162,7 @@ export function reusesTalentSheet(
   if (!talentMatch?.sheetImageUrl) return false;
   return shouldReuseTalentSheet({
     characterClothing: character.standardClothing,
-    characterFeatures: character.distinguishingFeatures,
+    characterFeatures: character.styling,
     talentClothing: talentMatch.sheetMetadata?.standardClothing,
     talentFeatures: talentMatch.sheetMetadata?.distinguishingFeatures,
     talentPhysical: talentMatch.sheetMetadata?.physicalDescription,

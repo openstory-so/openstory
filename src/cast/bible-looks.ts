@@ -16,6 +16,7 @@ import type {
   CharacterBibleEntry,
   CharacterLookEntry,
 } from '@/shots/scene-analysis.schema';
+import { effectiveStyling } from './character-looks';
 import type { SceneLookPicks } from './character-looks';
 
 /** The name a default look carries until someone renames it. */
@@ -53,6 +54,101 @@ export function withBibleLooks(
           },
         ];
   return { ...entry, looks, standardClothing: looks[0]?.clothing ?? '' };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * The seam for a character bible entry written before #2065, which still
+ * carries `distinguishingFeatures`: the text is folded into the entry's
+ * FIRST look's styling (`effectiveStyling`) and the key is dropped, so
+ * nothing downstream reads it. Any other value is returned as it is.
+ *
+ * The first look is the default one on the bibles call and on a payload
+ * frozen from a cast read, which is where such entries come from. An entry
+ * with no looks is left alone: the caller decides what that means (a
+ * recorded bibles response gets a look, a payload from before #2015 is
+ * failed).
+ */
+export function foldLegacyFeatures(entry: unknown): unknown {
+  if (!isRecord(entry) || typeof entry.distinguishingFeatures !== 'string') {
+    return entry;
+  }
+  const { distinguishingFeatures, ...rest } = entry;
+  const [first, ...others]: unknown[] = Array.isArray(rest.looks)
+    ? rest.looks
+    : [];
+  if (!isRecord(first)) return entry;
+  const own = typeof first.styling === 'string' ? first.styling : '';
+  return {
+    ...rest,
+    looks: [
+      {
+        ...first,
+        styling: effectiveStyling(own, distinguishingFeatures) ?? '',
+      },
+      ...others,
+    ],
+  };
+}
+
+/** Payload keys that hold a TALENT's metadata: its features are its own. */
+const TALENT_METADATA_KEYS = new Set([
+  'talentMetadata',
+  'sheetMetadata',
+  'uploadedSheetMetadata',
+  // A talent sheet row's own column, wherever a payload carries one.
+  'metadata',
+]);
+
+/**
+ * A workflow payload queued or frozen before #2065, made the current shape
+ * (the payload seam, run once by the workflow base):
+ *
+ * - every character bible entry anywhere in it goes through
+ *   {@link foldLegacyFeatures};
+ * - a sheet payload keeps its look's styling beside the entry
+ *   (`characterMetadata` + `lookStyling`), so the features join `lookStyling`
+ *   there — on the default look only (`face` null), since no other look
+ *   inherits them. The pair as queued is kept as `queuedLegacyStyling`, for
+ *   the run's check of its own snapshot hash.
+ *
+ * A talent's metadata is not a character's and is left alone. A payload of
+ * the current shape comes back unchanged.
+ */
+export function foldLegacyFeaturesInPayload<T>(payload: T): T {
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (!isRecord(value)) return value;
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      // `characterMetadata` is folded below, with the styling beside it.
+      out[key] =
+        TALENT_METADATA_KEYS.has(key) || key === 'characterMetadata'
+          ? child
+          : walk(child);
+    }
+    const metadata = out.characterMetadata;
+    if (
+      isRecord(metadata) &&
+      typeof metadata.distinguishingFeatures === 'string'
+    ) {
+      const { distinguishingFeatures, ...rest } = metadata;
+      out.characterMetadata = rest;
+      const own = typeof out.lookStyling === 'string' ? out.lookStyling : null;
+      // The two as they were queued: the run's own snapshot hash was
+      // stamped from them (`queuedLegacyStyling`).
+      out.queuedLegacyStyling = { distinguishingFeatures, styling: own };
+      if (out.face === null || out.face === undefined) {
+        out.lookStyling = effectiveStyling(own, distinguishingFeatures);
+      }
+      return out;
+    }
+    return typeof out.characterId === 'string' ? foldLegacyFeatures(out) : out;
+  };
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the walk rebuilds the same shape, minus a key the type no longer has
+  return walk(payload) as T;
 }
 
 /** The styling of the look an entry is wearing; `''` when none. */

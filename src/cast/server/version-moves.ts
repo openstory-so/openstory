@@ -24,6 +24,7 @@ import {
   characterBibleChanged,
   pickCharacterBible,
 } from '@/cast/server/db/bible-versions';
+import { effectiveStyling } from '@/cast/character-looks';
 import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { NotFoundError } from '@/platform/errors';
@@ -93,6 +94,9 @@ export async function previewVersionMove(
     if (!character) throw new NotFoundError('Character not found');
     const moved: string[] = [];
     let sheetsTouched = false;
+    // The legacy features of the bible version the move lands on (#2065):
+    // the default look's styling there is its own joined with them.
+    let featuresAfter = character.legacyDistinguishingFeatures;
     if (character.currentBibleVersionId === null) {
       throw new Error(
         `Character ${characterId} has no current bible version to move to`
@@ -107,6 +111,7 @@ export async function previewVersionMove(
         pickCharacterBible(current)
       );
       moved.push(...fields);
+      featuresAfter = current.legacyDistinguishingFeatures;
       if (current.talentId !== character.talentId) moved.push('talent');
       sheetsTouched =
         current.talentId !== character.talentId ||
@@ -134,8 +139,15 @@ export async function previewVersionMove(
             `Look ${look.id} points at version ${look.currentLookVersionId}, which does not exist`
           );
         }
+        // As the look read resolves it, on both sides.
+        const after = {
+          ...current,
+          styling: look.isDefault
+            ? effectiveStyling(current.styling, featuresAfter)
+            : current.styling,
+        };
         const fields = LOOK_FIELDS.filter(
-          (key) => (look[key] ?? null) !== (current[key] ?? null)
+          (key) => (look[key] ?? null) !== (after[key] ?? null)
         );
         moved.push(
           ...fields.map((field) =>

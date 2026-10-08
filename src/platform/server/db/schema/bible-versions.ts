@@ -57,7 +57,12 @@ export const characterBibleVersions = snakeCase.table(
     // character with no look, and to say what a sheet made before looks was
     // drawn in; never written.
     legacyStandardClothing: text('standard_clothing'),
-    distinguishingFeatures: text(),
+    // LEGACY (#2065): the default look's styling owns this text. Read only
+    // by `effectiveStyling` (the default look's styling is its own joined
+    // with this) and by the digests stamped before #2065; nulled by the
+    // first edit of the default look's styling, otherwise carried forward
+    // unchanged. Backfilled and dropped after `LEGACY_HASH_UNTIL`.
+    legacyDistinguishingFeatures: text('distinguishing_features'),
     personality: text(),
     movement: text(),
     voiceOnly: integer({ mode: 'boolean' }).notNull(),
@@ -127,7 +132,6 @@ export const CHARACTER_BIBLE_FIELDS = [
   'gender',
   'ethnicity',
   'physicalDescription',
-  'distinguishingFeatures',
   'personality',
   'movement',
   'voiceOnly',

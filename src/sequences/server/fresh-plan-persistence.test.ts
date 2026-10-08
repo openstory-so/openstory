@@ -56,7 +56,6 @@ const character: CharacterBibleEntry = {
   physicalDescription: 'dark hair',
   standardClothing: 'yellow coat',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',

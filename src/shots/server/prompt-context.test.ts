@@ -27,6 +27,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
   Scene,
+  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 
 const style: StyleConfig = migrateStyleConfigV1ToV2({
@@ -48,7 +49,6 @@ const alice: CharacterBibleEntry = {
   physicalDescription: '',
   standardClothing: '',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
@@ -442,7 +442,6 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     physicalDescription: 'Tall, blonde hair, blue eyes',
     standardClothing: 'Dark trench coat',
     looks: [],
-    distinguishingFeatures: 'Scar on left cheek',
     personality: '',
     movement: '',
     voiceDescription: '',
@@ -450,7 +449,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     isPerson: true,
     consistencyTag: 'detective_sarah_blonde_30s',
   };
-  const talentSheet: CharacterBibleEntry = {
+  const talentSheet: TalentSheetMetadata = {
     characterId: 'talent_1',
     name: 'Elvis Presley',
     age: '25',
@@ -494,7 +493,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     ethnicity: b.ethnicity,
     physicalDescription: b.physicalDescription,
     standardClothing: b.standardClothing,
-    distinguishingFeatures: b.distinguishingFeatures,
+    legacyDistinguishingFeatures: null,
     personality: '',
     movement: '',
     voiceOnly: b.voiceOnly,

@@ -33,6 +33,7 @@ import { landSheetRun } from './sheet-divergence';
 import type { SheetRunOutcome } from './sheet-divergence';
 import {
   characterSheetHashMatchesStored,
+  queuedLegacyStyling,
   assertQueuedWithFace,
   assertQueuedWithLooks,
 } from './sheet-snapshots';
@@ -220,7 +221,11 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // Accepts the pre-#1785 shape too, so a run queued before the
       // hash grew a channel does not read as tampered.
       if (
-        !(await characterSheetHashMatchesStored(input.snapshotInputHash, input))
+        !(await characterSheetHashMatchesStored(
+          input.snapshotInputHash,
+          input,
+          queuedLegacyStyling(input)
+        ))
       ) {
         throw new WorkflowValidationError(
           'snapshotInputHash does not match the inlined DTO; payload was tampered with or serialized inconsistently'

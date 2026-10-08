@@ -5,6 +5,10 @@ import type {
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
 import type {
+  LegacyStylingByCharacter,
+  LegacyStylingParts,
+} from '@/shots/input-hash';
+import type {
   CharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
@@ -45,7 +49,6 @@ export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
     ethnicity: c.ethnicity ?? '',
     physicalDescription: c.physicalDescription ?? '',
     standardClothing: c.standardClothing ?? '',
-    distinguishingFeatures: c.distinguishingFeatures ?? '',
     personality: c.personality ?? '',
     movement: c.movement ?? '',
     voiceDescription: c.voiceDescription ?? '',
@@ -53,6 +56,34 @@ export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
     isPerson: c.isPerson,
     consistencyTag: c.consistencyTag ?? '',
   };
+}
+
+/**
+ * The stored parts a digest stamped before #2065 hashed for this character,
+ * in the look it is wearing: that look's own styling and the bible's legacy
+ * features. Verify only (`LegacyStylingParts`).
+ */
+export function legacyStylingParts(
+  c: Pick<
+    CharacterWithSheet,
+    'legacyDistinguishingFeatures' | 'lookId' | 'looks'
+  >
+): LegacyStylingParts {
+  return {
+    distinguishingFeatures: c.legacyDistinguishingFeatures,
+    // A character with no look row yet has no styling of its own.
+    styling:
+      c.looks.find((look) => look.id === c.lookId)?.storedStyling ?? null,
+  };
+}
+
+/** {@link legacyStylingParts} of each character, by its script id. */
+export function legacyStylingByCharacter(
+  rows: readonly CharacterWithSheet[]
+): LegacyStylingByCharacter {
+  return Object.fromEntries(
+    rows.map((row) => [row.characterId, legacyStylingParts(row)])
+  );
 }
 
 export function charactersToBible(

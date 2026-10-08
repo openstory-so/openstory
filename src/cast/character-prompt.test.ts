@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type {
+  CharacterBibleEntry,
+  TalentSheetMetadata,
+} from '@/shots/scene-analysis.schema';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import {
@@ -22,7 +25,6 @@ const scriptEntry: CharacterBibleEntry = {
   physicalDescription: 'Tall, blonde hair, blue eyes',
   standardClothing: 'Dark trench coat, badge on belt',
   looks: [],
-  distinguishingFeatures: 'Small scar on left cheek',
   personality: '',
   movement: '',
   voiceDescription: '',
@@ -31,7 +33,7 @@ const scriptEntry: CharacterBibleEntry = {
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
-const talentMetadata: CharacterBibleEntry = {
+const talentMetadata: TalentSheetMetadata = {
   characterId: 'talent_sheet_1',
   name: 'Elvis Presley',
   age: '25',
@@ -150,7 +152,7 @@ describe('buildCastingAttributes', () => {
     expect(blank.movement).toBe('restless hands');
   });
 
-  test('keeps costume and distinguishing features from script', () => {
+  test('keeps the costume from the script; the styling is its looks, not a casting attribute (#2065)', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
@@ -158,7 +160,7 @@ describe('buildCastingAttributes', () => {
     });
 
     expect(result.standardClothing).toBe('Dark trench coat, badge on belt');
-    expect(result.distinguishingFeatures).toBe('Small scar on left cheek');
+    expect(result).not.toHaveProperty('distinguishingFeatures');
   });
 
   test('generates consistencyTag from characterId + talent name', () => {
@@ -183,7 +185,7 @@ describe('buildCastingAttributes', () => {
   });
 
   test('anchors physicalDescription to the reference image (never the talent name) when talent metadata has no physicalDescription', () => {
-    const sparseMetadata: CharacterBibleEntry = {
+    const sparseMetadata: TalentSheetMetadata = {
       ...talentMetadata,
       physicalDescription: '',
     };
@@ -216,7 +218,7 @@ describe('buildCastingAttributes', () => {
   });
 
   test('uses sparse talent fields over script when available', () => {
-    const partialMeta: CharacterBibleEntry = {
+    const partialMeta: TalentSheetMetadata = {
       ...talentMetadata,
       age: '40',
       gender: '',
@@ -247,7 +249,6 @@ describe('buildCastCharacterBible', () => {
     physicalDescription: 'Short, dark hair',
     standardClothing: 'Grey suit',
     looks: [],
-    distinguishingFeatures: 'Glasses',
     personality: '',
     movement: '',
     voiceDescription: '',
@@ -456,7 +457,7 @@ describe('buildCharacterSheetPrompt with talent', () => {
     expect(prompt).toContain('DO NOT alter their fundamental physical');
   });
 
-  test("a look's styling notes join the costume; none leaves the prompt as it was (#2015)", () => {
+  test("a look's styling notes join the costume as ONE section; none leaves the prompt as it was (#2015, #2065)", () => {
     const plain = buildCharacterSheetPrompt(
       scriptEntry,
       undefined,
@@ -477,9 +478,37 @@ describe('buildCharacterSheetPrompt with talent', () => {
       'hair pinned up, split lip',
       null
     ).prompt;
+    // The default look's styling holds what the bible called distinguishing
+    // features (#2065), under the heading that section had: the recorded
+    // e2e image fixtures match on these words.
     expect(styled).toContain(
+      'Costume:\nDark trench coat, badge on belt\n\nDistinguishing Features:\nhair pinned up, split lip'
+    );
+    expect(styled).not.toContain('for this look:');
+    // Cast: the same one section, as makeup notes on the actor.
+    const cast = buildCharacterSheetPrompt(
+      scriptEntry,
+      { sheetMetadata: talentMetadata, sheetImageUrl: 'https://e/t.png' },
+      undefined,
+      'hair pinned up, split lip',
+      null
+    ).prompt;
+    expect(cast).toContain(
+      'Makeup & Styling (apply to achieve the character look):\nhair pinned up, split lip'
+    );
+    expect(cast).not.toContain('Distinguishing Features:\n');
+    // Another look, drawn from the default look's sheet.
+    const other = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      undefined,
+      'hair pinned up, split lip',
+      'https://e/default.png'
+    ).prompt;
+    expect(other).toContain(
       'Hair, Makeup & Condition for this look:\nhair pinned up, split lip'
     );
+    expect(other).not.toContain('Distinguishing Features:\n');
   });
 
   test('a look drawn from the default sheet uses that image and no other', () => {

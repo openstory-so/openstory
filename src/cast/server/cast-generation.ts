@@ -372,7 +372,7 @@ export async function recastCharacter(
       defaultSheet?.imageUrl &&
       shouldReuseTalentSheet({
         characterClothing: look.clothing,
-        characterFeatures: character.distinguishingFeatures,
+        characterFeatures: look.styling,
         talentClothing: defaultSheet.metadata?.standardClothing,
         talentFeatures: defaultSheet.metadata?.distinguishingFeatures,
         talentPhysical: defaultSheet.metadata?.physicalDescription,

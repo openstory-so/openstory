@@ -51,9 +51,8 @@ export const UncastCharacterEditor: React.FC<{ characterId: string }> = ({
           </p>
         </div>
         <CharacterBibleForm
-          // Uncontrolled inputs: reseed when the bible version or the default
-          // look's clothing moves.
-          key={`${character.bibleVersionId}:${character.standardClothing ?? ''}`}
+          // Uncontrolled inputs: reseed when the bible version moves.
+          key={character.bibleVersionId}
           sequenceId={null}
           character={character}
         />

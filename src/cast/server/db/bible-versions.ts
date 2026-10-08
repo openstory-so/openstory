@@ -45,9 +45,6 @@ export const characterBibleColumns = {
   physicalDescription: sql<
     string | null
   >`${live(cbv.id, cbv.physicalDescription, characters.legacyPhysicalDescription)}`,
-  distinguishingFeatures: sql<
-    string | null
-  >`${live(cbv.id, cbv.distinguishingFeatures, characters.legacyDistinguishingFeatures)}`,
   personality: sql<
     string | null
   >`${live(cbv.id, cbv.personality, characters.legacyPersonality)}`,
@@ -74,6 +71,16 @@ export const characterBibleColumns = {
 export const legacyBibleClothing = sql<
   string | null
 >`${live(cbv.id, cbv.legacyStandardClothing, characters.legacyStandardClothing)}`;
+
+/**
+ * The features text a character's bible still holds (#2065). The default
+ * look's styling owns it now: read it only to resolve that styling
+ * (`effectiveStyling`), to verify a digest stamped before #2065, and to carry
+ * it to the next bible version.
+ */
+export const legacyBibleFeatures = sql<
+  string | null
+>`${live(cbv.id, cbv.legacyDistinguishingFeatures, characters.legacyDistinguishingFeatures)}`;
 
 /** Select fields: a sequence location's bible, resolved. */
 export const locationBibleColumns = {
@@ -105,7 +112,6 @@ export const pickCharacterBible = (c: CharacterBible): CharacterBible => ({
   gender: c.gender,
   ethnicity: c.ethnicity,
   physicalDescription: c.physicalDescription,
-  distinguishingFeatures: c.distinguishingFeatures,
   personality: c.personality,
   movement: c.movement,
   voiceOnly: c.voiceOnly,

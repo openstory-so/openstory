@@ -1,4 +1,5 @@
 import { wearLook } from '@/cast/character-looks';
+import { legacyStylingParts } from '@/cast/server/bibles-from-scoped';
 import { requireCharacterLook } from '@/cast/server/character-look';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { productionAccess } from '@/sequences/server/production-access';
@@ -97,7 +98,11 @@ export async function readLookSheetStaleness(
   if (!payload.snapshotInputHash)
     return { status: 'untracked', applicable: true };
   return {
-    status: (await characterSheetHashMatchesStored(stored, payload))
+    status: (await characterSheetHashMatchesStored(
+      stored,
+      payload,
+      legacyStylingParts(character)
+    ))
       ? 'fresh'
       : 'stale',
     applicable: true,

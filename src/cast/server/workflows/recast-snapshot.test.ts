@@ -42,7 +42,7 @@ function makeCharacter(
     ethnicity: null,
     physicalDescription: null,
     standardClothing: null,
-    distinguishingFeatures: null,
+    legacyDistinguishingFeatures: null,
     personality: null,
     movement: null,
     voiceOnly: false,

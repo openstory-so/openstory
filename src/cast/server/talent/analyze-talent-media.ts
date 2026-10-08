@@ -8,7 +8,7 @@ import {
   type TalentMediaAnalysis,
   type TalentVisionResult,
 } from '@/cast/server/talent-vision';
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -81,7 +81,7 @@ function slugifyName(name: string): string {
 export function sheetMetadataFromAnalysis(
   name: string,
   analysis: TalentMediaAnalysis
-): CharacterBibleEntry {
+): TalentSheetMetadata {
   const slug = slugifyName(name);
   return {
     characterId: slug,

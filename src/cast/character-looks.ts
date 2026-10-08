@@ -27,6 +27,29 @@ type WearableLook = CharacterLookMinimal &
     >
   >;
 
+/**
+ * The one resolver of a look's styling (#2065). A character's DEFAULT look
+ * owns what the bible called distinguishing features: until its styling is
+ * next edited, that text still sits on the bible version
+ * (`legacyDistinguishingFeatures`), and the look's styling is its own
+ * joined with it. Any other look's styling is its own; pass `null`.
+ *
+ * Blank parts are skipped, and features the styling already holds are not
+ * repeated, so a look version written from the effective text stays right
+ * while a sequence still pins the older bible version. This is the designed read, not a fallback: every look read, prompt
+ * and current digest goes through it.
+ */
+export function effectiveStyling(
+  styling: string | null | undefined,
+  legacyFeatures: string | null | undefined
+): string | null {
+  const own = (styling ?? '').trim();
+  const features = (legacyFeatures ?? '').trim();
+  // No features to join: the look's own value, untouched.
+  if (!features || own.includes(features)) return styling ?? null;
+  return own ? `${own}\n${features}` : features;
+}
+
 /** `character`, wearing `look`. */
 export function wearLook<T extends object>(character: T, look: WearableLook) {
   return {

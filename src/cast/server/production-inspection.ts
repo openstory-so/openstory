@@ -107,7 +107,17 @@ export const characterReadSchema = createSelectSchema(characters)
   // The sheet and the clothing are the character's default look's (#2015).
   .extend(castLookSheetShape)
   .extend({
-    standardClothing: createSelectSchema(characterLookVersions).shape.clothing,
+    standardClothing: createSelectSchema(
+      characterLookVersions
+    ).shape.clothing.meta({
+      description:
+        'Deprecated: the default look’s clothing. Read looks[].clothing.',
+    }),
+    // Derived (#2065): the default look's styling owns this text.
+    distinguishingFeatures: z.string().nullable().meta({
+      description:
+        'Deprecated: features text not yet moved into the default look’s styling, else null. Read looks[].styling, which already includes it.',
+    }),
   })
   // The bible lives on its version row (#1600).
   .extend(
@@ -117,7 +127,6 @@ export const characterReadSchema = createSelectSchema(characters)
       gender: true,
       ethnicity: true,
       physicalDescription: true,
-      distinguishingFeatures: true,
       personality: true,
       movement: true,
       voiceOnly: true,
@@ -242,6 +251,7 @@ function inspectCharacter(
     characterReadSchema,
     {
       ...row,
+      distinguishingFeatures: row.legacyDistinguishingFeatures,
       effectiveUseVoice: usesVoice(row, { generateVoices }),
       selectedSheet: sheet,
       looks: row.looks.map((look) => ({

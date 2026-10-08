@@ -81,7 +81,6 @@ const RAW_ADA: CharacterBibleEntry = {
   physicalDescription: 'as written in the script',
   standardClothing: 'lab coat',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',

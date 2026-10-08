@@ -16,6 +16,7 @@ import {
   computeCharacterSheetHashFromDto,
 } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
+import { wornStyling } from '@/cast/bible-looks';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
@@ -192,7 +193,13 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
       // Shared with the reservation gate, which counts the sheets that will
       // actually be billed — see `reusesTalentSheet`.
-      const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
+      const reuseTalentSheet = reusesTalentSheet(
+        {
+          standardClothing: character.standardClothing,
+          styling: wornStyling(character),
+        },
+        talentMatch
+      );
 
       const created = createdByDbId.get(characterDbId);
       // A created row means `create-character-records` had the sequence.

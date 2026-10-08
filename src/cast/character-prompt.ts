@@ -7,7 +7,10 @@
  * @module lib/services/character.service
  */
 
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type {
+  CharacterBibleEntry,
+  TalentSheetMetadata,
+} from '@/shots/scene-analysis.schema';
 
 import type {
   CharacterMinimal,
@@ -155,7 +158,7 @@ Hyper-accurate rendering of all fabrics, skin textures, hardware, and micro-deta
  */
 type TalentAppearanceData = {
   /** Talent sheet metadata containing physical appearance data */
-  sheetMetadata?: CharacterBibleEntry;
+  sheetMetadata?: TalentSheetMetadata;
   /** Talent name (used for consistencyTag and fallback descriptions) */
   talentName: string;
   /** Talent description/notes */
@@ -168,7 +171,8 @@ type TalentAppearanceData = {
 
 /**
  * Result of merging talent appearance with character role attributes.
- * Physical attributes come from the talent, costume/styling from the role.
+ * Physical attributes come from the talent, costume from the role. The
+ * role's styling is its looks', which the entry keeps (#2065).
  */
 type CastingAttributes = {
   age: string;
@@ -176,7 +180,6 @@ type CastingAttributes = {
   ethnicity: string;
   physicalDescription: string;
   standardClothing: string;
-  distinguishingFeatures: string;
   personality: string;
   movement: string;
   consistencyTag: string;
@@ -195,7 +198,7 @@ const slugify = (name: string): string =>
  * Merge talent appearance with character role attributes for casting.
  *
  * Physical appearance (age, gender, ethnicity, physicalDescription) comes from the TALENT.
- * Costume/styling (standardClothing, distinguishingFeatures) comes from the CHARACTER role.
+ * Costume (standardClothing) comes from the CHARACTER role, and so does the styling, which its looks carry.
  * Performance (personality, movement) is the talent's when non-blank, else the role's.
  * ConsistencyTag is regenerated from the character ID + talent name.
  *
@@ -221,9 +224,8 @@ export const buildCastingAttributes = (
     physicalDescription:
       meta?.physicalDescription ||
       `Match the appearance of the person shown in this character's reference image exactly.${talent.talentDescription ? ` ${talent.talentDescription}` : ''}`,
-    // Costume/styling: always from the character role
+    // Costume: always from the character role
     standardClothing: scriptEntry.standardClothing,
-    distinguishingFeatures: scriptEntry.distinguishingFeatures,
     // Performance: the talent's own where the library has it, else the role's
     personality: talent.personality.trim() || scriptEntry.personality,
     movement: talent.movement.trim() || scriptEntry.movement,
@@ -251,7 +253,7 @@ export const buildCastCharacterBible = (
   talentMatches: readonly {
     characterId: string;
     talentName: string;
-    sheetMetadata?: CharacterBibleEntry;
+    sheetMetadata?: TalentSheetMetadata;
     personality: string;
     movement: string;
   }[]
@@ -275,7 +277,7 @@ export const buildCastCharacterBible = (
  */
 type TalentOverrides = {
   /** Talent sheet metadata containing physical appearance data */
-  sheetMetadata?: CharacterBibleEntry;
+  sheetMetadata?: TalentSheetMetadata;
   /** Talent description/notes to include in prompt */
   description?: string;
   /** Talent sheet image URL to use as reference */
@@ -308,8 +310,10 @@ type CharacterSheetPromptResult = {
  * @param entry - The character bible entry from script analysis
  * @param talentOverrides - Optional talent data for casting
  * @param styleConfig - Optional sequence style to apply instead of default studio look
- * @param styling - The look's hair / makeup / injury notes (#2015); null when
- *   the look changes none. `entry.standardClothing` is the look's clothing.
+ * @param styling - The look's hair / makeup / injury notes (#2015), as
+ *   `effectiveStyling` resolves them: on the default look they hold what the
+ *   bible called distinguishing features (#2065). Null when the look has
+ *   none. `entry.standardClothing` is the look's clothing.
  * @param faceSheetUrl - The default look's completed sheet. When set, it is
  *   the only reference: this look keeps that person and changes the costume.
  *   The talent image is not sent.
@@ -359,24 +363,26 @@ export const buildCharacterSheetPrompt = (
   // Costume/wardrobe: always from the character (the role they're playing)
   const standardClothing = entry.standardClothing;
 
-  // Distinguishing features: character's features as makeup/styling notes
-  // These get applied on top of the talent's natural appearance
-  const characterFeatures = entry.distinguishingFeatures;
+  // One styling section (#2065): the look's effective styling, which on the
+  // default look holds what the bible called distinguishing features. The
+  // headings are the ones the two old sections had, kept word for word: the
+  // recorded e2e image fixtures match on the whole prompt.
+  const notes = styling?.trim() ?? '';
+  let stylingSection = '';
+  if (notes && fromDefaultLook) {
+    stylingSection = `Hair, Makeup & Condition for this look:\n${notes}`;
+  } else if (notes && hasTalent) {
+    stylingSection = `
+Makeup & Styling (apply to achieve the character look):
+${notes}`;
+  } else if (notes) {
+    stylingSection = `Distinguishing Features:\n${notes}`;
+  }
 
   const ageStr = age ? `Age: ${age}` : '';
 
   const genderLine = gender ? `Gender: ${gender}` : '';
   const ethnicityLine = ethnicity ? `Ethnicity: ${ethnicity}` : '';
-
-  // Build the makeup/styling section for character-specific features
-  let makeupStylingSection = '';
-  if (hasTalent && characterFeatures) {
-    makeupStylingSection = `
-Makeup & Styling (apply to achieve the character look):
-${characterFeatures}`;
-  } else if (characterFeatures) {
-    makeupStylingSection = `Distinguishing Features:\n${characterFeatures}`;
-  }
 
   // Build reference image instruction
   let referenceInstruction = '';
@@ -405,8 +411,8 @@ ${physicalDescription}
 
 Costume:
 ${standardClothing}
-${styling?.trim() ? `\nHair, Makeup & Condition for this look:\n${styling.trim()}\n` : ''}
-${makeupStylingSection}`.trim();
+
+${stylingSection}`.trim();
 
   const prompt = buildBaseSheetPrompt(
     identitySection,

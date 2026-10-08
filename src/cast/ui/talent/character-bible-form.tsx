@@ -23,8 +23,6 @@ const characterFormSchema = z.object({
   gender: z.string().max(2000).default(''),
   ethnicity: z.string().max(2000).default(''),
   physicalDescription: z.string().max(2000).default(''),
-  standardClothing: z.string().max(2000).default(''),
-  distinguishingFeatures: z.string().max(2000).default(''),
   personality: z.string().max(2000),
   movement: z.string().max(2000).default(''),
   // A checked box submits 'on'; an unchecked one is absent from FormData.
@@ -45,8 +43,6 @@ type BibleFormCharacter = Pick<
   | 'gender'
   | 'ethnicity'
   | 'physicalDescription'
-  | 'standardClothing'
-  | 'distinguishingFeatures'
   | 'personality'
   | 'movement'
   | 'voiceOnly'
@@ -58,6 +54,8 @@ type BibleFormCharacter = Pick<
  * the row (key the form by character id at the call site so switching
  * characters reseeds); one Save persists every field — an emptied input clears
  * that field server-side. Prompts/sheet staleness follows by hash derivation.
+ * Clothing, hair, makeup and marks that come and go are not here: they are
+ * the looks' (#2065), edited in the looks row.
  *
  * `sequenceId` null is the Characters page, for a character no sequence
  * casts (#2065): the same fields without the voice, which needs a sequence.
@@ -158,24 +156,6 @@ export const CharacterBibleForm: React.FC<
           label="Physical Description"
           name="physicalDescription"
           defaultValue={character.physicalDescription}
-          textarea
-        />
-      )}
-      {showAppearance(character.standardClothing) && (
-        <BibleField
-          idPrefix="character"
-          label="Standard Clothing"
-          name="standardClothing"
-          defaultValue={character.standardClothing}
-          textarea
-        />
-      )}
-      {showAppearance(character.distinguishingFeatures) && (
-        <BibleField
-          idPrefix="character"
-          label="Distinguishing Features"
-          name="distinguishingFeatures"
-          defaultValue={character.distinguishingFeatures}
           textarea
         />
       )}

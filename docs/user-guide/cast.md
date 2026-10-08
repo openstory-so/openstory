@@ -31,17 +31,21 @@ During regeneration, a loading spinner replaces the image with "Regenerating cha
 
 All properties are automatically extracted from your script:
 
-| Property                    | Description                                                                                      |
-| --------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Name**                    | Character's name                                                                                 |
-| **Age**                     | Approximate age                                                                                  |
-| **Gender**                  | Character's gender                                                                               |
-| **Ethnicity**               | Ethnic background                                                                                |
-| **Physical Description**    | Detailed physical appearance                                                                     |
-| **Standard Clothing**       | Default wardrobe                                                                                 |
-| **Distinguishing Features** | Unique visual identifiers                                                                        |
-| **First Appears**           | Scene number and line where the character first appears, with the quoted text                    |
-| **Consistency Tag**         | Internal tag used to maintain visual consistency across scenes (shown as a monospace code badge) |
+| Property                 | Description                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| **Name**                 | Character's name                                                                                 |
+| **Age**                  | Approximate age                                                                                  |
+| **Gender**               | Character's gender                                                                               |
+| **Ethnicity**            | Ethnic background                                                                                |
+| **Physical Description** | Detailed physical appearance, including permanent marks (a scar, a birthmark, a tattoo)          |
+| **First Appears**        | Scene number and line where the character first appears, with the quoted text                    |
+| **Consistency Tag**      | Internal tag used to maintain visual consistency across scenes (shown as a monospace code badge) |
+
+### Looks
+
+What a character wears is a look: a name, **Clothing**, and **Hair, makeup, injuries**. Every character has a default look, and you can add more for other outfits. Each look has its own sheet.
+
+The character form has no clothing or distinguishing-features field: both belong to the default look. Text that was in Distinguishing Features shows in the default look's Hair, makeup, injuries. Other looks have only what you write for them. A permanent mark, such as a scar or a tattoo, belongs in Physical Description.
 
 ### Casting Status
 

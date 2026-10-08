@@ -29,6 +29,7 @@ import type { GenerationStage } from '@/sequences/pipeline';
 import type { musicDesignResultSchema } from '@/sequences/response-schemas';
 import type {
   CharacterSheetInputHash,
+  LegacyStylingParts,
   LibraryLocationReferenceInputHash,
   LocationSheetInputHash,
   ShotImageInputHash,
@@ -47,6 +48,7 @@ import type {
   MotionDialogue,
   MotionPrompt,
   Scene,
+  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
@@ -826,8 +828,19 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * only while the look still points at it.
    */
   lookVersionId: string;
-  /** The look's hair / makeup / injury notes; null when it changes none. */
+  /**
+   * The look's hair / makeup / injury notes as `effectiveStyling` resolves
+   * them (#2065); null when it has none.
+   */
   lookStyling: string | null;
+  /**
+   * Set only by the payload seam (`foldLegacyFeaturesInPayload`), on a run
+   * queued before #2065: the look's styling and the bible's features as
+   * they were queued, which is what its `snapshotInputHash` was stamped
+   * from. Optional because no trigger writes it. Delete with
+   * `LEGACY_HASH_UNTIL`.
+   */
+  queuedLegacyStyling?: LegacyStylingParts;
   /**
    * The default look's selected sheet, which a look other than the default
    * is drawn from, and only from. Null exactly when this look IS the
@@ -855,7 +868,7 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** Reference image URL (e.g., from talent sheet) for recasting */
   referenceImageUrl?: string;
   /** Talent metadata from talent sheet (for appearance overrides when recasting) */
-  talentMetadata?: CharacterBibleEntry;
+  talentMetadata?: TalentSheetMetadata;
   /** Talent description to include in prompt */
   talentDescription?: string;
   /**
@@ -1031,7 +1044,7 @@ export interface RecastCharacterWorkflowInput
   /** Reference image URL from talent sheet */
   referenceImageUrl?: string;
   /** Talent metadata for appearance overrides */
-  talentMetadata?: CharacterBibleEntry;
+  talentMetadata?: TalentSheetMetadata;
   /** Talent description */
   talentDescription?: string;
   /**
@@ -1081,7 +1094,7 @@ export type TalentCharacterMatch = {
   /** Talent's default sheet image URL for reference */
   sheetImageUrl: string;
   /** Talent sheet metadata for appearance blending */
-  sheetMetadata?: CharacterBibleEntry;
+  sheetMetadata?: TalentSheetMetadata;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
   // Talent performance (#1561) from the trigger-time snapshot; `''` = library
@@ -1375,7 +1388,7 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
    */
   uploadedSheetUrl?: string;
   /** Appearance metadata extracted from the uploaded sheet, when available. */
-  uploadedSheetMetadata?: CharacterBibleEntry;
+  uploadedSheetMetadata?: TalentSheetMetadata;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: TalentSheetInputHash;
   /**

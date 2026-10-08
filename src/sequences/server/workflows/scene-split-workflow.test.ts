@@ -574,7 +574,6 @@ describe('SceneSplitWorkflow stream step config', () => {
                   styling: '',
                 },
               ],
-              distinguishingFeatures: '',
               personality: '',
               movement: '',
               voiceDescription: '',

@@ -2935,6 +2935,78 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject(refusal('CONFLICT'));
   });
 
+  it('the deprecated character fields still work: clothing goes to the default look, features into its styling (#2065)', async () => {
+    const { characterId } = z.object({ characterId: z.string() }).parse(
+      await data('create_character', {
+        sequenceId,
+        name: 'Ines Kato',
+        standardClothing: 'coat',
+        distinguishingFeatures: 'scar on left cheek',
+      })
+    );
+    const read = async () =>
+      z
+        .object({
+          character: z.object({
+            standardClothing: z.string().nullable(),
+            distinguishingFeatures: z.string().nullable(),
+            looks: z.array(
+              z.object({
+                isDefault: z.boolean(),
+                clothing: z.string().nullable(),
+                styling: z.string().nullable(),
+              })
+            ),
+          }),
+        })
+        .parse(await data('get_character', { sequenceId, characterId }))
+        .character;
+    // Nothing is left on the bible: the look owns the text.
+    expect(await read()).toEqual({
+      standardClothing: 'coat',
+      distinguishingFeatures: null,
+      looks: [
+        { isDefault: true, clothing: 'coat', styling: 'scar on left cheek' },
+      ],
+    });
+    // Appended once; sending what is already there changes nothing, and a
+    // blank is ignored.
+    for (const distinguishingFeatures of [
+      'silver watch',
+      'silver watch',
+      'scar on left cheek',
+      '',
+    ]) {
+      await data('update_character', {
+        sequenceId,
+        characterId,
+        voiceOnly: false,
+        distinguishingFeatures,
+      });
+    }
+    expect((await read()).looks).toEqual([
+      {
+        isDefault: true,
+        clothing: 'coat',
+        styling: 'scar on left cheek\nsilver watch',
+      },
+    ]);
+    // A character from before #2065 still holds the text on its bible
+    // version: the old field reports it, and the look's styling includes it.
+    await db
+      .update(characterBibleVersions)
+      .set({ legacyDistinguishingFeatures: 'birthmark' })
+      .where(eq(characterBibleVersions.characterId, characterId));
+    expect(await read()).toMatchObject({
+      distinguishingFeatures: 'birthmark',
+      looks: [{ styling: 'scar on left cheek\nsilver watch\nbirthmark' }],
+    });
+    // This file's tests share one database: leave no event behind.
+    await db
+      .delete(sequenceEvents)
+      .where(eq(sequenceEvents.targetId, characterId));
+  });
+
   it('creates, edits, deletes and restores a character, readable at each step', async () => {
     const created = z
       .object({ characterId: z.string(), token: z.string() })

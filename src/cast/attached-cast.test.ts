@@ -20,7 +20,6 @@ const entry = (
   looks: [
     { lookId: 'look-default', name: 'Default', clothing: 'coat', styling: '' },
   ],
-  distinguishingFeatures: '',
   personality: 'dry',
   movement: 'brisk',
   voiceDescription: '',

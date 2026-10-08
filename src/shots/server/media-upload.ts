@@ -607,7 +607,6 @@ export async function setCharacterSheetFromUpload(
       ethnicity: character.ethnicity,
       physicalDescription: character.physicalDescription,
       standardClothing: character.standardClothing,
-      distinguishingFeatures: character.distinguishingFeatures,
       consistencyTag: character.consistencyTag,
     },
     styling: character.styling,

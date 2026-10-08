@@ -10,8 +10,14 @@ const character: CharacterBibleEntry = {
   ethnicity: '',
   physicalDescription: 'Wiry, sunburnt',
   standardClothing: 'dusty leather duster and a cowboy hat',
-  looks: [],
-  distinguishingFeatures: 'scar on left cheek',
+  looks: [
+    {
+      lookId: 'jack:default',
+      name: 'Default',
+      clothing: 'dusty leather duster and a cowboy hat',
+      styling: 'scar on left cheek',
+    },
+  ],
   personality: '',
   movement: '',
   voiceDescription: '',

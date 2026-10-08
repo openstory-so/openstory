@@ -1593,12 +1593,16 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
     ethnicity: '',
     physicalDescription: 'old',
     standardClothing: '',
-    distinguishingFeatures: 'old',
+    // Written before #2065: the features text still sits on the bible
+    // version, and the default look's styling reads as its own joined with it.
+    legacyDistinguishingFeatures: 'old',
     personality: '',
     movement: '',
     voiceOnly: false,
     isPerson: true,
   };
+  /** An edit of the default look's styling moves the features text (#2065). */
+  const stylingEdited = (edited: Record<string, string>) => 'styling' in edited;
   const room = {
     type: 'interior',
     description: 'old',
@@ -1615,7 +1619,8 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
       // In its default look (#2015), whose clothing is `standardClothing`.
       lookId: `c-${id}`,
       lookName: 'Default',
-      styling: null,
+      styling: edited.styling ?? 'old',
+      legacyDistinguishingFeatures: stylingEdited(edited) ? null : 'old',
       // The versions this sequence pins now (#2017): the live ones.
       selectedBibleVersionId: `c-${id}-v2`,
       looks: [{ id: `c-${id}`, lookVersionId: `c-${id}-l2` }],
@@ -1694,7 +1699,7 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
       ctx.characterBible
         .map(
           (c) =>
-            `${c.characterId}:${c.physicalDescription}/${c.distinguishingFeatures}/${c.standardClothing}`
+            `${c.characterId}:${c.physicalDescription}/${c.looks[0]?.styling ?? ''}/${c.standardClothing}`
         )
         .join('|'),
       ctx.locationBible
@@ -1751,7 +1756,9 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
           id: `${row.id}-l2`,
           lookId: row.lookId,
           clothing: row.standardClothing,
-          styling: null,
+          // The look's own: nothing until the styling itself is edited.
+          styling:
+            row.legacyDistinguishingFeatures === null ? row.styling : null,
           createdAt: row.updatedAt,
         },
       ]),
@@ -1804,7 +1811,7 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
       dazza: { physicalDescription: 'new' },
     });
     const bucketShot = await staleness('A drip falls. No people.', {
-      kylie: { distinguishingFeatures: 'new' },
+      kylie: { styling: 'new' },
       dazza: { physicalDescription: 'new' },
     });
 
@@ -1834,13 +1841,26 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
 
   it('stales on the person the shot shows, and names only them', async () => {
     const result = await staleness('KYLIE sits in the BATHROOM.', {
-      kylie: { distinguishingFeatures: 'new' },
+      kylie: { styling: 'new' },
       dazza: { physicalDescription: 'new' },
     });
 
     expect(result.visualPrompt).toBe('untracked');
     expect(result.motionPrompt).toBe('stale');
-    expect(result.causes).toEqual(['Character "Kylie": features']);
+    // The default look's styling edit, which took the bible's features with
+    // it (#2065): one cause, the styling.
+    expect(result.causes).toEqual(['Character "Kylie": styling']);
+  });
+
+  it('does not name the styling when only where the features are stored differs (#2065)', async () => {
+    // Then: the look's own styling was empty and the bible held "old". Now
+    // the look read joins them. The text is the same, so only the edit is named.
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
+      kylie: { physicalDescription: 'new' },
+    });
+
+    expect(result.motionPrompt).toBe('stale');
+    expect(result.causes).toEqual(['Character "Kylie": description']);
   });
 
   it('stales on the room the shot shows', async () => {

@@ -56,8 +56,16 @@ export const characterBibleFieldsSchema = z.object({
   gender: bibleField.optional(),
   ethnicity: bibleField.optional(),
   physicalDescription: bibleField.optional(),
-  standardClothing: bibleField.optional(),
-  distinguishingFeatures: bibleField.optional(),
+  standardClothing: bibleField.optional().meta({
+    description:
+      'Deprecated: the default look’s clothing. Edit the look instead.',
+  }),
+  // Not a bible field any more (#2065): `cast-edit` folds it into the
+  // default look's styling.
+  distinguishingFeatures: bibleField.optional().meta({
+    description:
+      'Deprecated: appended to the default look’s styling unless already there; blank is ignored. Edit the look’s styling instead.',
+  }),
   personality: bibleField.optional(),
   movement: bibleField.optional(),
   voiceDescription: bibleField.optional(),

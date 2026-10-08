@@ -58,7 +58,6 @@ export function buildCharacterInsert(args: {
     physicalDescription:
       castingAttrs?.physicalDescription ?? character.physicalDescription,
     standardClothing: character.standardClothing,
-    distinguishingFeatures: character.distinguishingFeatures,
     personality: castingAttrs?.personality ?? character.personality,
     movement: castingAttrs?.movement ?? character.movement,
     voiceOnly: character.voiceOnly,

@@ -215,7 +215,11 @@ export type CharacterWornLook = {
   lookId: string;
   lookName: string;
   standardClothing: string | null;
-  /** Hair, makeup, injuries. */
+  /**
+   * Hair, makeup, injuries. On the default look this is the EFFECTIVE
+   * styling (`effectiveStyling`, #2065): the look's own joined with the
+   * bible's legacy features text.
+   */
   styling: string | null;
   sheetStatus: SheetStatus;
   sheetError: string | null;
@@ -243,6 +247,13 @@ export type Character = Omit<
   CharacterBible &
   CharacterWornLook &
   CharacterVoice & {
+    /**
+     * LEGACY (#2065): the features text the pinned bible version still
+     * holds. Already part of the default look's `styling`; read only by
+     * the digests stamped before #2065, by the write that carries it to
+     * the next bible version, and by the deprecated API field.
+     */
+    legacyDistinguishingFeatures: string | null;
     /** Every look, default first; removed ones included (`deletedAt`). */
     looks: CharacterLook[];
   };

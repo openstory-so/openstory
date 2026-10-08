@@ -74,7 +74,6 @@ const entry = (
   physicalDescription: '',
   standardClothing: '',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',

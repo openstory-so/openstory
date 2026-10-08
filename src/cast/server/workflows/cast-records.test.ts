@@ -99,7 +99,6 @@ describe('createCastRecords', () => {
           physicalDescription: 'tall',
           standardClothing: 'coat',
           looks: [],
-          distinguishingFeatures: '',
           personality: '',
           movement: '',
           voiceDescription: '',
@@ -387,7 +386,6 @@ describe('createCastRecords (voice only, #1585)', () => {
           physicalDescription: '',
           standardClothing: '',
           looks: [],
-          distinguishingFeatures: '',
           personality: 'dry, unhurried, faintly amused',
           movement: '',
           voiceDescription: '',
@@ -435,7 +433,6 @@ describe('createCastRecords (voice only, #1585)', () => {
           physicalDescription: '',
           standardClothing: '',
           looks: [],
-          distinguishingFeatures: '',
           personality: 'dry, unhurried, faintly amused',
           movement: '',
           voiceDescription:

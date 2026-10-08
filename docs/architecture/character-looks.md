@@ -66,6 +66,92 @@ old field names (`standardClothing`, `sheetStatus`, `sheetImageUrl`,
 `looks`. Editing clothing through the character form or `update_character`
 writes a look version on the default look.
 
+## The default look owns the features (#2065)
+
+The character form has no clothing field and no distinguishing-features
+field. Clothing was already the default look's. What the bible called
+distinguishing features is the default look's `styling` ("Hair, makeup,
+injuries"). No other look inherits it.
+
+**Lazy move, no data migration.** `character_bible_versions.distinguishing_features`
+is `legacyDistinguishingFeatures` in Drizzle (the SQL name is unchanged), so
+a stray reader does not compile.
+
+- **Read: one resolver.** `effectiveStyling(styling, legacyFeatures)`
+  (`src/cast/character-looks.ts`). A default look's styling is its own joined
+  with the legacy text of the bible version read beside it (the one the
+  sequence pins, or the current one from no sequence): blank parts skipped,
+  a newline between, and the features not repeated when the styling already
+  holds them. Any other look's styling is its own. The look reads
+  (`selectLooks`, `selectCurrentLooks`) resolve it, so every `styling` a
+  caller sees is the effective one: the editor, the prompts, the payloads,
+  the current digests. A look also carries `storedStyling`, the version's own
+  column, and a character `legacyDistinguishingFeatures`. Those two are for
+  the legacy digests (`legacyStylingParts`), a write that copies a version
+  forward, and the deprecated API field. Nothing else reads them.
+- **Write: `lookDefinitionWrite`.** It diffs the patch against the effective
+  styling, so a save of what the field showed writes nothing. When the
+  styling itself is edited on a default look, the look version takes the
+  submitted text and, in the same batch, a bible version with the legacy
+  text null is appended, made current and pinned (`legacyFeaturesMove`),
+  with every sheet claim of the cast revoked and a `character.updated`
+  event recording the pin move. That is the move, done once. A rename or a
+  clothing edit writes the look's own stored styling to the new version and
+  leaves the bible alone, so it stales nothing the old code did not.
+- **Carried, never dropped.** `bibleWrite` takes the legacy text of the
+  version it reads from as a required field and writes it to the next one:
+  an age edit, a recast and a re-analysis all keep it. A one-off copy carries
+  it and each look's stored styling. New characters never have it.
+- **Digests.** The current sheet and prompt digests hash the effective
+  styling and have no features key. Verify also accepts `pre-2065`, the same
+  body with the features under their own key and the look's own styling,
+  built from the stored parts, through the existing legacy-kind lists and
+  `LEGACY_HASH_UNTIL`. The verify functions take the stored parts as a
+  required argument. `pre-2065` reads the spec and the voice-only flag as
+  the current shape does, so it is accepted whatever else moved.
+- **What goes stale.** Nothing on deploy. The first edit of the default
+  look's styling stales its sheet and the shots that wear it, like any
+  styling edit. It also stales the sheets and prompts of the character's
+  other looks that were stamped before #2065: they were stamped with the
+  features, which are gone from the bible. Those drawn from the default
+  sheet were going to be redrawn with it anyway.
+- **Payloads and recordings.** A bible entry has no `distinguishingFeatures`.
+  One written before #2065 is folded at a seam (`foldLegacyFeatures`,
+  `src/cast/bible-looks.ts`): every workflow payload once, in the workflow
+  base (`foldLegacyFeaturesInPayload`), and the bibles response in its wire
+  schema, so a recorded fixture still parses. A sheet payload keeps its
+  look's styling beside the entry: the features join `lookStyling` on the
+  default look (`face` null), and the pair as queued rides along as
+  `queuedLegacyStyling` for the run's check of its own snapshot hash. A step
+  result cached before the deploy is not folded: a run that resumes across
+  it reads the entry without the text.
+- **Sheet prompt.** One styling section. Its heading is the one the old
+  section had ("Distinguishing Features:", or "Makeup & Styling…" when cast;
+  "Hair, Makeup & Condition for this look:" on a look drawn from the default
+  sheet), because the recorded e2e image fixtures match on the whole prompt.
+- **Analysis.** The bibles call is not asked for the field. A permanent mark
+  (a scar, a birthmark, a tattoo) goes in `physicalDescription`; hair,
+  makeup, jewelry, accessories, injuries and dirt go in the look's styling.
+  The user message is unchanged: the recorded bibles fixture matches on it.
+- **API and MCP.** Inputs still take `standardClothing` (the default look's
+  clothing) and `distinguishingFeatures` (appended to the default look's
+  styling unless already there; blank is ignored), in `cast-edit.ts`.
+  Outputs still carry both, derived and marked deprecated:
+  `distinguishingFeatures` is the legacy text not yet moved, else null.
+- **A talent's sheet metadata** keeps its own `distinguishingFeatures`
+  (`TalentSheetMetadata`). It describes the talent, not a character.
+- **Later.** After `LEGACY_HASH_UNTIL`: backfill the remaining legacy text
+  into the default looks, delete the `pre-2065` shape and the fold seams,
+  and drop the column (a native `DROP COLUMN`).
+
+Edges, known and left: a sequence that pins an older bible version beside a
+newer look version (or the other way round) reads the text once or not at
+all until it moves to the current version, which moves both. A look's
+version history lists each version's own styling, so a default look not yet
+edited shows less there than in the editor. A character an older worker
+wrote before #1600 has no bible version to append to, so its legacy text
+stays joined.
+
 ## Dressing
 
 `src/cast/character-looks.ts` (pure): `wearLook(character, look)` swaps a
@@ -200,8 +286,8 @@ stored URL), so reuse is also what keeps a series inside the ~45-slot pool:
 ## Hashes and staleness
 
 - **Sheet hash**: the clothing keeps the bible's old key
-  (`characterBible.standardClothing`), fed from the look; `styling` joins only
-  when set, in every digest shape. A backfilled default look therefore hashes
+  (`characterBible.standardClothing`), fed from the look; `styling` (the
+  effective one, #2065) joins only when set, in every digest shape. A backfilled default look therefore hashes
   to the digest its sheet was stamped with. On every other look,
   `faceSheetVersionId` (the default look's selected sheet version, or that
   look's id when the pointer is still null — the #1419 row) joins the
@@ -235,6 +321,9 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   clamps, and a clamped line would dress the wrong scene.
 - The default outfit is asked for twice (`standardClothing` and the first
   look); a blank first look keeps `standardClothing`.
+- No `distinguishingFeatures` (#2065): a permanent mark is physical
+  description, the rest is the first look's styling. A response recorded
+  with the field folds it into the first look.
 - A repeated look name in one response gets a number (`Gala`, `Gala 2`).
 - After a re-analysis, a look the script no longer names is soft-removed
   only when nothing is lost: every version of it came from analysis, it has
@@ -283,3 +372,7 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   objects.
 - Never read `characters.legacy*` sheet columns or
   `character_bible_versions.legacyStandardClothing` outside the fallbacks.
+- Never read `legacyDistinguishingFeatures` or a look's `storedStyling` to
+  show or prompt with: `styling` already holds the text (#2065). Never write
+  a look version from `styling` when copying one forward: that is the move.
+  Copy `storedStyling`.

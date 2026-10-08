@@ -116,7 +116,6 @@ type CharacterBibleInput = {
   ethnicity?: string;
   physicalDescription?: string;
   standardClothing?: string;
-  distinguishingFeatures?: string;
   personality?: string;
   movement?: string;
   voiceDescription?: string;

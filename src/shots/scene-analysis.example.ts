@@ -15,7 +15,6 @@ export const sceneAnalysisExample: SceneAnalysis = {
       physicalDescription: 'Complete physical description for prompts',
       standardClothing: 'Complete clothing description for prompts',
       looks: [],
-      distinguishingFeatures: 'Unique identifiers',
       personality: 'Temperament and how they react',
       movement: 'Gait, posture, habitual gestures',
       voiceDescription: '',

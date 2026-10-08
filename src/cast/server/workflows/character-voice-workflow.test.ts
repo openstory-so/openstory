@@ -150,7 +150,6 @@ const characterBible: CharacterBibleEntry = {
   physicalDescription: '',
   standardClothing: 'duster',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',

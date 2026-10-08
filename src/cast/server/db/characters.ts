@@ -84,6 +84,7 @@ import {
   characterBibleChanged,
   characterBibleColumns,
   legacyBibleClothing,
+  legacyBibleFeatures,
   pickCharacterBible,
   mergeDefined,
 } from './bible-versions';
@@ -104,7 +105,7 @@ import {
   heldElsewhere,
 } from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
-import { pickedLook, wearLook } from '@/cast/character-looks';
+import { effectiveStyling, pickedLook, wearLook } from '@/cast/character-looks';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
@@ -114,7 +115,6 @@ const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
   gender: null,
   ethnicity: null,
   physicalDescription: null,
-  distinguishingFeatures: null,
   personality: null,
   movement: null,
   voiceOnly: false,
@@ -129,7 +129,6 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
   gender: data.gender,
   ethnicity: data.ethnicity,
   physicalDescription: data.physicalDescription,
-  distinguishingFeatures: data.distinguishingFeatures,
   personality: data.personality,
   movement: data.movement,
   voiceOnly: data.voiceOnly,
@@ -164,7 +163,6 @@ export type CharacterBibleUpdate = Partial<
     | 'ethnicity'
     | 'physicalDescription'
     | 'standardClothing'
-    | 'distinguishingFeatures'
     | 'personality'
     | 'movement'
     | 'voiceOnly'
@@ -295,6 +293,7 @@ const characterColumns = {
   // Null when the link pins a version that is not there; see resolveLooks.
   pinnedBibleVersionId: characterBibleVersions.id,
   ...characterBibleColumns,
+  legacyDistinguishingFeatures: legacyBibleFeatures,
   ...legacyLookColumns,
   // The voice IS the version row the cast link pins (#1788, #2017); all null
   // without one.
@@ -342,6 +341,8 @@ export type CurrentCharacter = CharacterBible & {
   /** The current bible version; an edit appends the next. */
   bibleVersionId: string;
   talentId: string | null;
+  /** The legacy features the current bible version still holds (#2065). */
+  legacyDistinguishingFeatures: string | null;
   /** The default look's clothing, under the name a cast read gives it. */
   standardClothing: string | null;
   /** Every look, default first; removed ones included (`deletedAt`). */
@@ -560,7 +561,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
         lookId: row.id,
         lookName: DEFAULT_LOOK_NAME,
         standardClothing: legacyStandardClothing,
-        styling: null,
+        // No look row, so the default look's own styling is none (#2065).
+        styling: effectiveStyling(null, row.legacyDistinguishingFeatures),
         sheetStatus: legacySheetStatus,
         sheetError: legacySheetError,
         selectedSheetVersionId: legacySelectedSheetVersionId,
@@ -653,6 +655,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         bibleVersionId: characterBibleVersions.id,
         talentId: characterBibleVersions.talentId,
         ...characterBibleColumns,
+        legacyDistinguishingFeatures: legacyBibleFeatures,
       })
       .from(characters)
       .leftJoin(
@@ -687,9 +690,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
    * in-flight sheet claim of every look of that cast (#1113, #2015) in the
    * same batch. Empty when nothing moved. `castId` null is a write made from
    * no sequence (#2065): only the character's current pointer moves.
+   *
+   * The legacy features text (#2065) is carried to the new version as it
+   * is: an edit to the age must not move it, or drop it. Only the default
+   * look's styling edit nulls it (`lookDefinitionWrite`).
    */
   const bibleWrite = (
     existing: CharacterBible & {
+      legacyDistinguishingFeatures: string | null;
       id: string;
       talentId: string | null;
       castId: string | null;
@@ -721,6 +729,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           id: versionId,
           characterId: existing.id,
           ...after,
+          legacyDistinguishingFeatures: existing.legacyDistinguishingFeatures,
           talentId,
           source: opts.source,
           createdBy: opts.createdBy,
@@ -1236,6 +1245,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
           id: bibleVersionId,
           characterId: copyId,
           ...pickCharacterBible(existing),
+          // A copy moves nothing (#2065): the legacy features and each
+          // look's own styling go across as stored.
+          legacyDistinguishingFeatures: existing.legacyDistinguishingFeatures,
           talentId: existing.talentId,
           source: 'edit',
           createdBy: opts.actorId,
@@ -1282,7 +1294,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
             lookId,
             name: look.name,
             clothing: look.clothing,
-            styling: look.styling,
+            styling: look.storedStyling,
             source: 'edit',
             createdBy: opts.actorId,
           }),
@@ -1357,11 +1369,13 @@ export function createCharactersMethods(db: Database, teamId: string) {
         if (!defaultLook)
           throw new Error(`Character ${id} has no default look`);
         statements.push(
-          ...lookDefinitionWrite(
-            db,
-            { ...defaultLook, castLookId: null },
-            { clothing: standardClothing },
-            { source: 'edit', createdBy: opts.actorId }
+          ...(
+            await lookDefinitionWrite(
+              db,
+              { ...defaultLook, castLookId: null },
+              { clothing: standardClothing },
+              { source: 'edit', createdBy: opts.actorId }
+            )
           ).statements
         );
       }
@@ -1402,7 +1416,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
     const look =
       standardClothing === undefined
         ? { statements: [] }
-        : lookDefinitionWrite(
+        : await lookDefinitionWrite(
             db,
             defaultLook,
             { clothing: standardClothing },
@@ -1863,7 +1877,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         physicalDescription: _pd,
         standardClothing: clothing,
         sheetStatus,
-        distinguishingFeatures: _df,
         personality: _p,
         movement: _m,
         voiceOnly: _vo,
@@ -1891,6 +1904,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
           existing.lookId
         );
         const now = new Date();
+        const clothingWrite = await lookDefinitionWrite(
+          db,
+          defaultLook,
+          { clothing },
+          look
+        );
         // A field left out keeps its value, as the column upsert did.
         // A talent left out keeps the cast; null uncasts.
         const bible = bibleWrite(existing, bibleOf(data), {
@@ -1941,8 +1960,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
                   .set({ sheetStatus, updatedAt: now })
                   .where(eq(sequenceCastLooks.id, defaultLook.castLookId)),
               ]),
-          ...lookDefinitionWrite(db, defaultLook, { clothing }, look)
-            .statements,
+          ...clothingWrite.statements,
         ]);
       } else {
         const bible = mergeBible(

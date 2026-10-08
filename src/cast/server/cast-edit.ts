@@ -31,6 +31,7 @@ import {
   type characterBibleFieldsSchema,
   type locationBibleFieldsSchema,
 } from '@/cast/bible-field';
+import { effectiveStyling } from '@/cast/character-looks';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
   releaseCharacterVoice,
@@ -42,6 +43,8 @@ const logger = getLogger(['openstory', 'cast', 'cast-edit']);
 type Actor = { userId: string };
 type CharacterBibleFields = z.output<typeof characterBibleFieldsSchema>;
 type LocationBibleFields = z.output<typeof locationBibleFieldsSchema>;
+/** The deprecated input the API and MCP may still send (#2065). */
+type LegacyFeaturesInput = Pick<CharacterBibleFields, 'distinguishingFeatures'>;
 
 /** Realtime emits only bust caches; a failed one must not fail the write. */
 async function emitQuietly(emit: () => Promise<unknown>) {
@@ -53,6 +56,48 @@ async function emitQuietly(emit: () => Promise<unknown>) {
 }
 
 // ── Characters ──────────────────────────────────────────────────────────────
+
+/**
+ * `distinguishingFeatures` on a character input (#2065, kept for the API and
+ * MCP): the default look's styling owns that text, so it is appended there
+ * unless the styling already holds it. Blank is ignored: there is no field
+ * left to clear. `sequenceId` null writes the look's current version.
+ */
+async function foldFeaturesIntoDefaultLook(
+  scopedDb: Pick<ScopedDb, 'characterLooks'>,
+  actor: Actor,
+  sequenceId: string | null,
+  defaultLook: { id: string; styling: string | null },
+  features: string | null | undefined
+): Promise<void> {
+  const styling = effectiveStyling(defaultLook.styling, features);
+  if (!features?.trim() || styling === defaultLook.styling) return;
+  const opts = { source: 'edit' as const, actorId: actor.userId };
+  if (sequenceId === null) {
+    await scopedDb.characterLooks.update(
+      null,
+      defaultLook.id,
+      { styling },
+      opts
+    );
+  } else {
+    await scopedDb.characterLooks.update(
+      sequenceId,
+      defaultLook.id,
+      { styling },
+      opts
+    );
+  }
+}
+
+/** The default look of a character read; every character has one. */
+function defaultLookOf<
+  L extends { id: string; isDefault: boolean },
+>(character: { id: string; looks: readonly L[] }): L {
+  const look = character.looks.find((candidate) => candidate.isDefault);
+  if (!look) throw new Error(`Character ${character.id} has no default look`);
+  return look;
+}
 
 /** The character, when it belongs to this sequence (live or soft-deleted). */
 export async function requireCharacter(
@@ -75,7 +120,11 @@ export async function createCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   sequenceId: string,
-  { name, ...bible }: CharacterBibleFields & { name: string }
+  {
+    name,
+    distinguishingFeatures,
+    ...bible
+  }: CharacterBibleFields & { name: string }
 ) {
   const base = identityToken('char', name);
   const taken = new Set<string>();
@@ -95,6 +144,13 @@ export async function createCharacter(
       sheetStatus: 'pending',
     },
     { source: 'edit', createdBy: actor.userId }
+  );
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    sequenceId,
+    defaultLookOf(character),
+    distinguishingFeatures
   );
   await scopedDb.sequenceEvents.record({
     sequenceId,
@@ -121,10 +177,11 @@ export async function createTeamCharacter(
   {
     name,
     standardClothing,
+    distinguishingFeatures,
     ...bible
   }: Omit<CharacterBibleFields, 'voiceDescription'> & { name: string }
 ) {
-  return await scopedDb.characters.createForTeam(
+  const character = await scopedDb.characters.createForTeam(
     {
       name,
       ...bible,
@@ -138,6 +195,24 @@ export async function createTeamCharacter(
     },
     { createdBy: actor.userId }
   );
+  if (!distinguishingFeatures?.trim()) return character;
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    null,
+    defaultLookOf(character),
+    distinguishingFeatures
+  );
+  return await requireCurrentCharacter(scopedDb, character.id);
+}
+
+async function requireCurrentCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  characterId: string
+) {
+  const character = await scopedDb.characters.getCurrent(characterId);
+  if (!character) throw new NotFoundError('Character not found');
+  return character;
 }
 
 /**
@@ -149,12 +224,26 @@ export async function updateTeamCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   characterId: string,
-  update: Omit<CharacterBibleUpdate, 'voiceDescription'>
+  {
+    distinguishingFeatures,
+    ...update
+  }: Omit<CharacterBibleUpdate, 'voiceDescription'> & LegacyFeaturesInput
 ) {
-  return await scopedDb.characters.updateBible(null, characterId, update, {
-    actorId: actor.userId,
-    source: 'edit',
-  });
+  const character = await scopedDb.characters.updateBible(
+    null,
+    characterId,
+    update,
+    { actorId: actor.userId, source: 'edit' }
+  );
+  if (!distinguishingFeatures?.trim()) return character;
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    null,
+    defaultLookOf(character),
+    distinguishingFeatures
+  );
+  return await requireCurrentCharacter(scopedDb, characterId);
 }
 
 /**
@@ -183,10 +272,13 @@ export async function updateCharacter(
   actor: Actor,
   sequenceId: string,
   characterId: string,
-  update: CharacterBibleUpdate
+  {
+    distinguishingFeatures,
+    ...update
+  }: CharacterBibleUpdate & LegacyFeaturesInput
 ) {
-  await requireCharacter(scopedDb, sequenceId, characterId);
-  return await scopedDb.characters.updateBible(
+  const before = await requireCharacter(scopedDb, sequenceId, characterId);
+  const character = await scopedDb.characters.updateBible(
     sequenceId,
     characterId,
     update,
@@ -195,6 +287,14 @@ export async function updateCharacter(
       source: 'edit',
     }
   );
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    sequenceId,
+    defaultLookOf(before),
+    distinguishingFeatures
+  );
+  return character;
 }
 
 /**

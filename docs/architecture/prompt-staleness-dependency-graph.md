@@ -103,9 +103,10 @@ no-context case.
 `recompute(now)` reads the **current persisted state** and re-derives the hash.
 Helpers live in [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts). The
 compare is not `stored === live`: `visualPromptInputHashMatches` /
-`motionPromptInputHashMatches` also accept the previous digest shapes (v4, and
-the v5 named / titled variants) until `LEGACY_HASH_UNTIL` (2026-12-31, #1371),
-so a version bump doesn't re-stale the world.
+`motionPromptInputHashMatches` also accept the previous digest shapes (v4, the
+v5 named / titled variants, and `pre-2065`: the current body with each
+character's features under their own key) until `LEGACY_HASH_UNTIL`
+(2026-12-31, #1371), so a version bump doesn't re-stale the world.
 
 **The invariant that must hold:** the hash computed at **stamp time** (inside the
 generating workflow) and the hash computed at **verify time** (inside
@@ -319,6 +320,31 @@ listPinMoves`). With two sequences the newest version at a timestamp may be
     pick is not hashed on its own: it acts through the sheet and the clothing
     it selects, so a scene stored before looks (no `characterLooks` at all)
     reads exactly as it did.
+- **The default look owns the features (#2065).** The bible has no
+  `distinguishingFeatures`: that text is the default look's `styling`.
+  Nothing was migrated. A bible version from before #2065 still holds the
+  text (`legacyDistinguishingFeatures`), and every look read resolves the
+  default look's styling as its own joined with it (`effectiveStyling`,
+  `src/cast/character-looks.ts`). So:
+  - the current digests hash that effective styling and no features key;
+  - a sheet or prompt stamped before #2065 verifies against the `pre-2065`
+    shape, rebuilt from the two STORED parts (the look version's own
+    `styling`, the bible version's legacy text): the default look and every
+    other look stay fresh on deploy;
+  - the first edit of the default look's styling moves the text: the look
+    version takes what was submitted and a bible version without the legacy
+    text is appended in the same batch. That is a real edit, so the default
+    look's sheet and the shots that read it go stale. So do sheets and
+    prompts of the character's OTHER looks that were stamped before #2065,
+    because the features they were stamped with are gone from the bible;
+    one stamped since never read them and stays fresh;
+  - a save that submits what the field showed writes nothing; a rename or a
+    clothing edit keeps the look's own styling as stored; an unrelated bible
+    edit carries the legacy text to its new version;
+  - a cause compares the styling as resolved then and now, so text that only
+    changed where it is stored is never named.
+    After `LEGACY_HASH_UNTIL` a follow-up backfills the remaining text into the
+    default looks and drops the column with the `pre-2065` shape.
 - **Voice ids bind on the clip**, not the motion prompt. A voice id (an
   ElevenLabs id, or a `seed:` id for a Seed voice, #1765) is in
   `VideoManifestEntry.audioSourceKey` (shape-stable: omitted when
@@ -478,11 +504,14 @@ sha256Hex({
     // bible's old ones, so a default look backfilled from the bible hashes to
     // the digest its sheet was stamped with.
     standardClothing: trim(standardClothing),
-    distinguishingFeatures: trim(distinguishingFeatures),
+    // No `distinguishingFeatures` (#2065). The `pre-2065` verify shape and
+    // the older ones still carry it, from the bible version's legacy column.
     consistencyTag: trim(consistencyTag),
   },
-  // #2015 — the look's hair / makeup / injury notes. Joined only when set
-  // (in every digest shape, legacy ones included), so no stored digest moved.
+  // #2015 — the look's hair / makeup / injury notes, as `effectiveStyling`
+  // resolves them (#2065: on the default look, its own joined with the
+  // bible's legacy features). Joined only when set. A legacy shape hashes
+  // the look's own stored styling here instead.
   styling: trim(styling),
   talentSheetHash: talentSheetHash ?? null, // ← cascade from the talent sheet above
   // #1785 — only when cast, so no uncast digest moved. What the sheet prompt
@@ -502,8 +531,9 @@ sha256Hex({
 One resolver, `resolveCastTalent` (`sheet-snapshots.ts`), feeds the
 regenerate/verify payload, the upload stamp and the workflow's divergence
 recompute, so the three cannot pick different talent sheets. Pre-#1785 digests
-(no talent channel) still verify until `LEGACY_HASH_UNTIL`
-(2026-12-31, #1371).
+(no talent channel) and pre-#2065 digests (the features under their own key)
+still verify until `LEGACY_HASH_UNTIL` (2026-12-31, #1371). A verify passes
+the look's stored parts (`legacyStylingParts`) as a required argument.
 
 #### 2. Location sheet — `computeLocationSheetInputHash`
 
@@ -583,14 +613,10 @@ entries are still sorted by their identity field, but only the fields that shape
 the prose are hashed; identity / provenance / image-gen tags are dropped:
 
 ```ts
-// character → 6 driving fields (drops characterId, name, consistencyTag)
+// character → 5 driving fields (drops characterId, name, consistencyTag),
+// plus the worn look's effective `styling` when set (#2015, #2065)
 {
-  (age,
-    gender,
-    ethnicity,
-    physicalDescription,
-    standardClothing,
-    distinguishingFeatures);
+  (age, gender, ethnicity, physicalDescription, standardClothing);
 }
 
 // + MOTION only (#1561): personality, movement — each joined only when non-empty,
@@ -779,16 +805,16 @@ in #867, measured against what the prompt LLM was handed
 `sceneBefore`, `sceneAfter`, `scene`, `characterBible`, `locationBible`,
 `elementBible`, `styleConfig`, `aspectRatio`.
 
-| LLM receives                                                                                                                                                                             | Real prompt driver?                                        | In the hash?                            | Verdict                                                                |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------- |
-| `scene` appearance surface (`originalScript`, metadata `title`/`location`/`timeOfDay`/`storyBeat`)                                                                                       | yes                                                        | yes                                     | ✅ aligned                                                             |
-| `scene.metadata.durationSeconds`                                                                                                                                                         | no (video param)                                           | no — stripped                           | under-hash, intentional (#767)                                         |
-| `sceneBefore` / `sceneAfter` (neighbour scenes)                                                                                                                                          | **yes** (continuity context)                               | **no**                                  | under-hash, **deliberate** (#1785, see §6; no longer sent since #1903) |
-| **all** character / location / element entries                                                                                                                                           | yes (LLM sees the full set as context)                     | **narrowed** to referenced entries      | ⚠️ under-hash on unreferenced entries (intentional, #683)              |
-| referenced entry → appearance fields (`name`, `age`, `gender`, `ethnicity`, `physicalDescription`, `standardClothing`, `distinguishingFeatures`; location `description`/`keyFeatures`/…) | yes                                                        | yes (whole entry)                       | ✅ aligned                                                             |
-| referenced entry → **provenance / identity / tags** (`characterId`, `locationId`, `consistencyTag`, `firstMention`)                                                                      | **no** — internal IDs, an image-gen tag, script provenance | **yes** (rides in the whole-entry hash) | 🔴 **over-hash**                                                       |
-| `styleConfig` (all fields)                                                                                                                                                               | mostly                                                     | yes (full)                              | ✅ (possible minor over-hash if the template ignores a field)          |
-| `aspectRatio`, `analysisModel`                                                                                                                                                           | yes                                                        | yes                                     | ✅ aligned                                                             |
+| LLM receives                                                                                                                                                                              | Real prompt driver?                                        | In the hash?                            | Verdict                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------- |
+| `scene` appearance surface (`originalScript`, metadata `title`/`location`/`timeOfDay`/`storyBeat`)                                                                                        | yes                                                        | yes                                     | ✅ aligned                                                             |
+| `scene.metadata.durationSeconds`                                                                                                                                                          | no (video param)                                           | no — stripped                           | under-hash, intentional (#767)                                         |
+| `sceneBefore` / `sceneAfter` (neighbour scenes)                                                                                                                                           | **yes** (continuity context)                               | **no**                                  | under-hash, **deliberate** (#1785, see §6; no longer sent since #1903) |
+| **all** character / location / element entries                                                                                                                                            | yes (LLM sees the full set as context)                     | **narrowed** to referenced entries      | ⚠️ under-hash on unreferenced entries (intentional, #683)              |
+| referenced entry → appearance fields (`name`, `age`, `gender`, `ethnicity`, `physicalDescription`, `standardClothing`, the worn look's `styling`; location `description`/`keyFeatures`/…) | yes                                                        | yes (whole entry)                       | ✅ aligned                                                             |
+| referenced entry → **provenance / identity / tags** (`characterId`, `locationId`, `consistencyTag`, `firstMention`)                                                                       | **no** — internal IDs, an image-gen tag, script provenance | **yes** (rides in the whole-entry hash) | 🔴 **over-hash**                                                       |
+| `styleConfig` (all fields)                                                                                                                                                                | mostly                                                     | yes (full)                              | ✅ (possible minor over-hash if the template ignores a field)          |
+| `aspectRatio`, `analysisModel`                                                                                                                                                            | yes                                                        | yes                                     | ✅ aligned                                                             |
 
 **Net:** the hash is **narrower** than the real LLM input in scope (it drops
 `sceneBefore`/`sceneAfter`, `durationSeconds`, and unreferenced entries) but
@@ -986,7 +1012,7 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
   (#1785). The motion hash keeps it (delivery), and marks it
   `voiceOnly: true` because the motion LLM is sent the flag (#1787). The mark
   joins only when set, so a cast with no voice-only character hashes as
-  before. Every digest before the current shape (`v5-voiced` and older)
+  before. Every digest before `pre-2065` (`v5-voiced` and older)
   ignores the flag, so it would equal the stamp after a toggle. Verify
   therefore accepts those digests only while no character's `voiceOnly`
   moved since the prompt was made (`voiceOnlyMovedSince` over the character

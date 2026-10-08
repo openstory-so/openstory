@@ -118,7 +118,6 @@ type TeamBibleInput = {
   ethnicity?: string;
   physicalDescription?: string;
   standardClothing?: string;
-  distinguishingFeatures?: string;
   personality?: string;
   movement?: string;
 };

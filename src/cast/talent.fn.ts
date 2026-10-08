@@ -516,7 +516,12 @@ export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
       name: 'Default',
       imageUrl: character.sheetImageUrl,
       imagePath: character.sheetImagePath ?? undefined,
-      metadata: characterToBible(character),
+      // The talent's features are its own field. The character's are its
+      // default look's styling (#2065), which is what this sheet shows.
+      metadata: {
+        ...characterToBible(character),
+        distinguishingFeatures: character.styling ?? '',
+      },
       isDefault: true,
       source: 'script_analysis',
     });

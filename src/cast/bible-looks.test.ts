@@ -4,6 +4,8 @@ import type { CharacterBibleWireEntry } from '@/sequences/response-schemas';
 import { sceneSplitBiblesResultSchema } from '@/sequences/response-schemas';
 import {
   bibleFromWire,
+  foldLegacyFeatures,
+  foldLegacyFeaturesInPayload,
   relabelBibleLooks,
   relabelLookPicks,
   wearBibleLooks,
@@ -23,7 +25,6 @@ const wire = (
   physicalDescription: '',
   standardClothing: 'office suit',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
@@ -314,5 +315,130 @@ describe('bibleFromWire with an echoed cast character (#2050)', () => {
       'ada',
       'ada_2',
     ]);
+  });
+});
+
+describe('an entry written before the default look took the features (#2065)', () => {
+  const office = {
+    lookId: 'L1',
+    name: 'Default',
+    clothing: 'suit',
+    styling: 'hair up',
+  };
+  const gala = {
+    lookId: 'L2',
+    name: 'Gala',
+    clothing: 'gown',
+    styling: 'split lip',
+  };
+  const old = (looks: unknown[]) => ({
+    ...wire({ characterId: 'char_mia' }),
+    distinguishingFeatures: 'scar',
+    looks,
+  });
+
+  it('folds the features into the first look’s styling and drops the key', () => {
+    expect(foldLegacyFeatures(old([office, gala]))).toEqual({
+      ...wire({ characterId: 'char_mia' }),
+      looks: [{ ...office, styling: 'hair up\nscar' }, gala],
+    });
+    // Blank features only lose the key; the look keeps its own text.
+    expect(
+      foldLegacyFeatures({ ...old([office]), distinguishingFeatures: '  ' })
+    ).toEqual({ ...wire({ characterId: 'char_mia' }), looks: [office] });
+    // An entry of the current shape, and one with no looks, come back as is.
+    const current = wire({ characterId: 'char_mia' });
+    expect(foldLegacyFeatures(current)).toBe(current);
+    const noLooks = old([]);
+    expect(foldLegacyFeatures(noLooks)).toBe(noLooks);
+  });
+
+  it('4e: a bibles response recorded with the old field still parses, into the default look', () => {
+    const { looks: _looks, ...beforeLooks } = wire({ characterId: 'char_old' });
+    const parsed = sceneSplitBiblesResultSchema.parse({
+      characterBible: [
+        { ...beforeLooks, distinguishingFeatures: 'coral lipstick' },
+        { ...mia, distinguishingFeatures: 'gold hoops' },
+      ],
+      locationBible: [],
+      elementBible: [],
+    });
+    const { characterBible } = bibleFromWire(
+      parsed.characterBible,
+      sceneIdForLine,
+      30,
+      new Map()
+    );
+    expect(characterBible[0]).not.toHaveProperty('distinguishingFeatures');
+    // Recorded before looks: the default look is made from the clothing,
+    // and takes the features.
+    expect(characterBible[0]?.looks).toEqual([
+      {
+        lookId: 'char_old:default',
+        name: 'Default',
+        clothing: 'office suit',
+        styling: 'coral lipstick',
+      },
+    ]);
+    // Recorded with looks: the first is the default, and only it takes them.
+    expect(characterBible[1]?.looks.map((look) => look.styling)).toEqual([
+      'gold hoops',
+      'hair pinned up',
+    ]);
+  });
+
+  it('4e: a queued payload is folded wherever it carries a bible entry; a talent’s metadata is not', () => {
+    const talent = { ...old([office]), characterId: 'talent_1' };
+    const payload = {
+      userId: 'u',
+      teamId: 't',
+      characterBible: [old([office, gala])],
+      attachedCast: [{ id: 'row', shared: false, entry: old([office]) }],
+      plan: { context: { characterBible: [old([office])] } },
+      talentMatches: [{ characterId: 'char_mia', sheetMetadata: talent }],
+    };
+    const folded = foldLegacyFeaturesInPayload(payload);
+    const moved = {
+      ...wire({ characterId: 'char_mia' }),
+      looks: [{ ...office, styling: 'hair up\nscar' }],
+    };
+    expect(folded.characterBible[0]).toEqual({
+      ...moved,
+      looks: [...moved.looks, gala],
+    });
+    expect(folded.attachedCast[0]?.entry).toEqual(moved);
+    expect(folded.plan.context.characterBible[0]).toEqual(moved);
+    expect(folded.talentMatches[0]?.sheetMetadata).toBe(talent);
+    // The current shape comes back equal.
+    expect(foldLegacyFeaturesInPayload(folded)).toEqual(folded);
+  });
+
+  it('4e: a queued sheet payload keeps its look’s styling beside the entry: the default look takes the features, another look does not', () => {
+    const queued = (face: { url: string; versionId: string } | null) => ({
+      characterMetadata: old([office]),
+      lookStyling: 'hair up' as string | null,
+      face,
+      talentMetadata: { ...old([office]), characterId: 'talent_1' },
+    });
+    const parts = { distinguishingFeatures: 'scar', styling: 'hair up' };
+    const byDefault = foldLegacyFeaturesInPayload(queued(null));
+    expect(byDefault).toMatchObject({
+      lookStyling: 'hair up\nscar',
+      queuedLegacyStyling: parts,
+    });
+    expect(byDefault.characterMetadata).not.toHaveProperty(
+      'distinguishingFeatures'
+    );
+    expect(byDefault.talentMetadata.distinguishingFeatures).toBe('scar');
+    const other = foldLegacyFeaturesInPayload(
+      queued({ url: '/r2/face.png', versionId: 'v1' })
+    );
+    expect(other).toMatchObject({
+      lookStyling: 'hair up',
+      queuedLegacyStyling: parts,
+    });
+    expect(other.characterMetadata).not.toHaveProperty(
+      'distinguishingFeatures'
+    );
   });
 });

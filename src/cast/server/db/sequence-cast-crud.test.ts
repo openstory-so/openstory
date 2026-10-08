@@ -3077,4 +3077,270 @@ describe('team characters (#2017)', () => {
     expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
     expect(await linksOf(created.id)).toEqual([]);
   });
+
+  describe('the default look owns the features (#2065)', () => {
+    /** The visual-prompt hash over the cast as this sequence reads it. */
+    const castHash = async () =>
+      await hashVisualPromptInput({
+        scene: HASH_SCENE,
+        styleConfig: STYLE_CONFIG,
+        characterBible: charactersToBible(await chars().list(sequenceId)),
+        locationBible: [],
+        elementBible: [],
+        aspectRatio: '16:9',
+        analysisModel: 'test-model',
+      });
+    const lookVersionsOf = async (lookId: string) =>
+      await db
+        .select()
+        .from(characterLookVersions)
+        .where(eq(characterLookVersions.lookId, lookId));
+    /**
+     * Ada as she stood before #2065: "scar" on her bible version, "hair up"
+     * on her default look, and a gala look with styling of its own.
+     */
+    const adaWithFeatures = async () => {
+      const created = await chars().create(
+        {
+          sequenceId,
+          characterId: 'char_001',
+          name: 'Ada',
+          age: '30',
+          standardClothing: 'coat',
+        },
+        analysis
+      );
+      await looks().update(
+        sequenceId,
+        created.lookId,
+        { styling: 'hair up' },
+        { source: 'edit', actorId }
+      );
+      const gala = await looks().create(
+        sequenceId,
+        created.id,
+        { name: 'Gala', clothing: 'gown', styling: 'split lip' },
+        { source: 'edit', actorId }
+      );
+      await db
+        .update(characterBibleVersions)
+        .set({ legacyDistinguishingFeatures: 'scar' })
+        .where(eq(characterBibleVersions.characterId, created.id));
+      return { id: created.id, lookId: created.lookId, galaId: gala.id };
+    };
+    const read = async (id: string, inSequence = sequenceId) => {
+      const character = await chars().getById(inSequence, id);
+      if (!character) throw new Error('test setup: character not found');
+      return character;
+    };
+
+    it('reads the default look’s styling joined with the bible’s features; another look’s is its own', async () => {
+      const ada = await adaWithFeatures();
+      const character = await read(ada.id);
+      expect(character).toMatchObject({
+        styling: 'hair up\nscar',
+        legacyDistinguishingFeatures: 'scar',
+      });
+      expect(character).not.toHaveProperty('distinguishingFeatures');
+      expect(character.looks).toMatchObject([
+        { id: ada.lookId, styling: 'hair up\nscar', storedStyling: 'hair up' },
+        { id: ada.galaId, styling: 'split lip', storedStyling: 'split lip' },
+      ]);
+      expect(await looks().getById(sequenceId, ada.lookId)).toMatchObject({
+        styling: 'hair up\nscar',
+      });
+      // With no sequence, the same answer from the current versions.
+      expect((await chars().getCurrent(ada.id))?.looks).toMatchObject([
+        { styling: 'hair up\nscar', storedStyling: 'hair up' },
+        { styling: 'split lip' },
+      ]);
+    });
+
+    it('4c: a save of what the field showed writes nothing', async () => {
+      const ada = await adaWithFeatures();
+      const before = {
+        hash: await castHash(),
+        bible: await versionsOf(ada.id),
+        look: await lookVersionsOf(ada.lookId),
+        events: await eventKinds(),
+      };
+      await looks().update(
+        sequenceId,
+        ada.lookId,
+        { name: 'Default', clothing: 'coat', styling: 'hair up\nscar' },
+        { source: 'edit', actorId }
+      );
+      expect(await versionsOf(ada.id)).toEqual(before.bible);
+      expect(await lookVersionsOf(ada.lookId)).toEqual(before.look);
+      expect(await eventKinds()).toEqual(before.events);
+      expect(await castHash()).toBe(before.hash);
+    });
+
+    it('a rename or a clothing edit of the default look keeps the text where it is stored', async () => {
+      const ada = await adaWithFeatures();
+      const bible = await versionsOf(ada.id);
+      await looks().update(
+        sequenceId,
+        ada.lookId,
+        // The form posts every field: the styling is what it showed.
+        { name: 'Office', clothing: 'suit', styling: 'hair up\nscar' },
+        { source: 'edit', actorId }
+      );
+      // The new look version holds the look's OWN styling, not the joined
+      // text, and no bible version was appended.
+      const character = await read(ada.id);
+      expect(character.looks[0]).toMatchObject({
+        name: 'Office',
+        clothing: 'suit',
+        styling: 'hair up\nscar',
+        storedStyling: 'hair up',
+      });
+      expect(character.legacyDistinguishingFeatures).toBe('scar');
+      expect(await versionsOf(ada.id)).toEqual(bible);
+    });
+
+    it('4d: an edit to the age carries the features to the new bible version and moves nothing else', async () => {
+      const ada = await adaWithFeatures();
+      const lookVersions = await lookVersionsOf(ada.lookId);
+      const before = await read(ada.id);
+      const edited = await chars().updateBible(
+        sequenceId,
+        ada.id,
+        { age: '31' },
+        { actorId, source: 'edit' }
+      );
+      expect(edited.selectedBibleVersionId).not.toBe(
+        before.selectedBibleVersionId
+      );
+      expect(edited).toMatchObject({
+        age: '31',
+        styling: 'hair up\nscar',
+        legacyDistinguishingFeatures: 'scar',
+      });
+      expect(edited.looks[0]).toMatchObject({ storedStyling: 'hair up' });
+      expect(await lookVersionsOf(ada.lookId)).toEqual(lookVersions);
+    });
+
+    it('4b: the first edit of the default look’s styling moves the text: the look takes it, the bible lets go, and the pin move is recorded', async () => {
+      const ada = await adaWithFeatures();
+      // A second sequence casts her at the same versions.
+      const other = await secondSequence();
+      await chars().attach(other, ada.id, { actorId });
+      const before = await read(ada.id);
+      const hashBefore = await castHash();
+
+      await looks().update(
+        sequenceId,
+        ada.lookId,
+        { styling: 'hair down' },
+        { source: 'edit', actorId }
+      );
+
+      const after = await read(ada.id);
+      expect(after).toMatchObject({
+        styling: 'hair down',
+        legacyDistinguishingFeatures: null,
+        age: '30',
+      });
+      expect(after.looks[0]).toMatchObject({
+        styling: 'hair down',
+        storedStyling: 'hair down',
+      });
+      // A real edit: the derived hash moves.
+      expect(await castHash()).not.toBe(hashBefore);
+      // One new bible version, by the editor, and it is current and pinned.
+      expect(after.selectedBibleVersionId).not.toBe(
+        before.selectedBibleVersionId
+      );
+      expect(after.currentBibleVersionId).toBe(after.selectedBibleVersionId);
+      const [moved] = (await versionsOf(ada.id)).filter(
+        (v) => v.id === after.selectedBibleVersionId
+      );
+      expect(moved).toMatchObject({
+        legacyDistinguishingFeatures: null,
+        source: 'edit',
+        createdBy: actorId,
+        name: 'Ada',
+        age: '30',
+      });
+      // The staleness causes walk the pin back through this event.
+      const events = await db.select().from(sequenceEvents);
+      expect(
+        events.filter((e) => e.kind === 'character.updated').map((e) => e.data)
+      ).toContainEqual({
+        prevState: {},
+        bibleVersion: {
+          from: before.selectedBibleVersionId,
+          to: after.selectedBibleVersionId,
+        },
+      });
+      // The gala look never held the text, and reads as it did.
+      expect(after.looks[1]).toMatchObject({ styling: 'split lip' });
+      // The other sequence still pins the versions it had: nothing of its
+      // moves until it updates to the current version.
+      expect(await read(ada.id, other)).toMatchObject({
+        styling: 'hair up\nscar',
+        legacyDistinguishingFeatures: 'scar',
+        selectedBibleVersionId: before.selectedBibleVersionId,
+      });
+      // The move is done once.
+      const bibleCount = (await versionsOf(ada.id)).length;
+      await looks().update(
+        sequenceId,
+        ada.lookId,
+        { styling: 'hair loose' },
+        { source: 'edit', actorId }
+      );
+      expect(await versionsOf(ada.id)).toHaveLength(bibleCount);
+    });
+
+    it('a styling edit of another look moves nothing on the bible', async () => {
+      const ada = await adaWithFeatures();
+      const bible = await versionsOf(ada.id);
+      await looks().update(
+        sequenceId,
+        ada.galaId,
+        { styling: 'black eye' },
+        { source: 'edit', actorId }
+      );
+      expect(await versionsOf(ada.id)).toEqual(bible);
+      expect(await read(ada.id)).toMatchObject({ styling: 'hair up\nscar' });
+    });
+
+    it('from no sequence the edit moves the current versions, and no pin', async () => {
+      const ada = await adaWithFeatures();
+      const before = await read(ada.id);
+      await looks().update(
+        null,
+        ada.lookId,
+        { styling: 'hair down' },
+        { source: 'edit', actorId }
+      );
+      const current = await chars().getCurrent(ada.id);
+      expect(current).toMatchObject({ legacyDistinguishingFeatures: null });
+      expect(current?.looks[0]).toMatchObject({ styling: 'hair down' });
+      expect(current?.bibleVersionId).not.toBe(before.selectedBibleVersionId);
+      // The sequence keeps what it pinned.
+      expect(await read(ada.id)).toMatchObject({
+        styling: 'hair up\nscar',
+        selectedBibleVersionId: before.selectedBibleVersionId,
+      });
+    });
+
+    it('a one-off copy carries the features and each look’s own styling as stored', async () => {
+      const ada = await adaWithFeatures();
+      const other = await secondSequence();
+      await chars().attach(other, ada.id, { actorId });
+      const hashBefore = await castHash();
+      const copy = await chars().copyForSequence(sequenceId, ada.id, {
+        actorId,
+      });
+      expect(copy).toMatchObject({
+        styling: 'hair up\nscar',
+        legacyDistinguishingFeatures: 'scar',
+      });
+      expect(copy.looks[0]).toMatchObject({ storedStyling: 'hair up' });
+      expect(await castHash()).toBe(hashBefore);
+    });
+  });
 });

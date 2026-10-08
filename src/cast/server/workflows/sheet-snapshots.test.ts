@@ -19,9 +19,13 @@ import type {
 } from '@/platform/server/workflow/types';
 import type { SheetPayload } from './sheet-snapshots';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import {
   assertQueuedWithFace,
+  characterSheetHashMatchesStored,
   computeCharacterSheetHashFromDto,
+  computeCharacterSheetHashFromDtoBefore2065,
+  queuedLegacyStyling,
   finishCharacterSheetPayload,
   computeLibraryLocationSheetHashFromDto,
   computeLibraryTalentSheetHashFromDto,
@@ -60,7 +64,6 @@ describe('character-sheet hash', () => {
       physicalDescription: '',
       standardClothing: '',
       looks: [],
-      distinguishingFeatures: '',
       personality: '',
       movement: '',
       voiceDescription: '',
@@ -100,6 +103,69 @@ describe('character-sheet hash', () => {
     expect(faced).not.toBe(plain);
     // The version is the identity: the url is where the run fetches it.
     expect(movedUrlOnly).toBe(faced);
+  });
+
+  it('4e: a sheet run queued before #2065 folds at the payload seam and still passes its own snapshot check', async () => {
+    // As queued: the features on the bible entry, the look's own styling
+    // beside it, and a snapshot hash stamped from the two.
+    const stored = { distinguishingFeatures: 'scar', styling: 'hair up' };
+    const queued = {
+      ...baseInput,
+      lookStyling: stored.styling,
+      characterMetadata: {
+        ...baseInput.characterMetadata,
+        distinguishingFeatures: stored.distinguishingFeatures,
+      },
+      snapshotInputHash: await computeCharacterSheetHashFromDtoBefore2065(
+        baseInput,
+        stored
+      ),
+    };
+    const run = foldLegacyFeaturesInPayload(queued);
+    expect(run.lookStyling).toBe('hair up\nscar');
+    expect(run.characterMetadata).not.toHaveProperty('distinguishingFeatures');
+    // The run's tamper check, on the folded payload.
+    expect(
+      await characterSheetHashMatchesStored(
+        run.snapshotInputHash,
+        run,
+        queuedLegacyStyling(run)
+      )
+    ).toBe(true);
+    expect(
+      await characterSheetHashMatchesStored(
+        run.snapshotInputHash,
+        { ...run, imageModel: 'flux_2_dev' },
+        queuedLegacyStyling(run)
+      )
+    ).toBe(false);
+    // The sheet lands stamped with that hash, and a later live verify — the
+    // stored parts off the rows, the styling as the look read resolves it —
+    // reads it fresh.
+    expect(
+      await characterSheetHashMatchesStored(
+        run.snapshotInputHash,
+        { ...baseInput, lookStyling: 'hair up\nscar' },
+        stored
+      )
+    ).toBe(true);
+    // A payload of the current shape checks against its own current stamp.
+    const current = {
+      ...baseInput,
+      lookStyling: 'hair up\nscar',
+      snapshotInputHash: await computeCharacterSheetHashFromDto({
+        ...baseInput,
+        lookStyling: 'hair up\nscar',
+      }),
+    };
+    expect(foldLegacyFeaturesInPayload(current)).toEqual(current);
+    expect(
+      await characterSheetHashMatchesStored(
+        current.snapshotInputHash,
+        current,
+        queuedLegacyStyling(current)
+      )
+    ).toBe(true);
   });
 
   it('refuses a payload queued before every look carried a face', () => {

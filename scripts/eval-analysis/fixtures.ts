@@ -66,9 +66,14 @@ export const TALENT_CASE = {
       physicalDescription:
         '5\'6", lean, shoulder-length dark brown hair, olive-tan skin, dark brown eyes.',
       standardClothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
-      looks: [],
-      distinguishingFeatures:
-        'Signature glossy coral lipstick, gold hoop earrings.',
+      looks: [
+        {
+          lookId: 'default',
+          name: 'Default',
+          clothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
+          styling: 'Signature glossy coral lipstick, gold hoop earrings.',
+        },
+      ],
       personality: 'Sharp, self-possessed, performs ease for the camera.',
       movement: 'Quick precise hands, chin up, never hurries her feet.',
       voiceDescription: '',
@@ -83,11 +88,16 @@ export const TALENT_CASE = {
       gender: 'Male',
       ethnicity: 'White',
       physicalDescription:
-        '6\'1", broad-shouldered, salt-and-pepper stubble, short grey-brown hair.',
+        '6\'1", broad-shouldered, salt-and-pepper stubble, short grey-brown hair, a scar through the left eyebrow.',
       standardClothing: 'Navy chore coat over a faded tee, work jeans.',
-      looks: [],
-      distinguishingFeatures:
-        'Scar through the left eyebrow, scuffed silver watch.',
+      looks: [
+        {
+          lookId: 'default',
+          name: 'Default',
+          clothing: 'Navy chore coat over a faded tee, work jeans.',
+          styling: 'Scuffed silver watch.',
+        },
+      ],
       personality: 'Guarded, dry, slow to trust.',
       movement: 'Heavy deliberate stride, favours the left knee.',
       voiceDescription: '',

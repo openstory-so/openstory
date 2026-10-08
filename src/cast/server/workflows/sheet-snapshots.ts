@@ -13,6 +13,7 @@
 import {
   characterSheetInputHashMatches,
   computeCharacterSheetInputHash,
+  computeCharacterSheetInputHashLegacy,
   computeLibraryLocationReferenceInputHash,
   computeShotImageInputHash,
   computeLocationSheetInputHash,
@@ -22,6 +23,7 @@ import {
   type CharacterBibleHashFields,
   type CharacterSheetInputHash,
   type CharacterSheetTalentHashFields,
+  type LegacyStylingParts,
   type LibraryLocationReferenceInputHash,
   type LocationSheetBibleHashFields,
   type LocationSheetInputHash,
@@ -162,7 +164,6 @@ function characterBibleFields(
     ethnicity: metadata.ethnicity,
     physicalDescription: metadata.physicalDescription,
     standardClothing: metadata.standardClothing,
-    distinguishingFeatures: metadata.distinguishingFeatures,
     consistencyTag: metadata.consistencyTag,
   };
 }
@@ -221,16 +222,62 @@ export async function computeCharacterSheetHashFromDto(
   });
 }
 
-/** Dual-hash verify against a stored sheet digest. */
+/**
+ * Verify a stored sheet digest against the DTO, in the current shape or a
+ * legacy one. `legacy` is the look's stored parts (#2065): off the rows for
+ * a live verify (`legacyStylingParts`), off the payload for a run's own
+ * snapshot ({@link queuedLegacyStyling}).
+ */
 export async function characterSheetHashMatchesStored(
   stored: string | null,
-  input: SheetPayload<CharacterSheetWorkflowInput>
+  input: SheetPayload<CharacterSheetWorkflowInput>,
+  legacy: LegacyStylingParts
 ): Promise<boolean> {
-  return characterSheetInputHashMatches(stored, {
-    ...characterSheetHashInput(input),
-    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-  });
+  return characterSheetInputHashMatches(
+    stored,
+    {
+      ...characterSheetHashInput(input),
+      styleConfigHash: await computeStyleConfigHash(input.styleConfig),
+    },
+    legacy
+  );
 }
+
+/**
+ * The digest a sheet payload was stamped with before #2065. Verify/tests
+ * only — delete after `LEGACY_HASH_UNTIL`.
+ */
+export async function computeCharacterSheetHashFromDtoBefore2065(
+  input: SheetPayload<CharacterSheetWorkflowInput>,
+  legacy: LegacyStylingParts
+): Promise<string> {
+  return computeCharacterSheetInputHashLegacy(
+    {
+      ...characterSheetHashInput(input),
+      styleConfigHash: await computeStyleConfigHash(input.styleConfig),
+    },
+    legacy,
+    'pre-2065'
+  );
+}
+
+/**
+ * The legacy parts of a sheet payload's OWN snapshot hash. A run queued
+ * before #2065 carried the bible's features beside the look's styling; the
+ * payload seam (`foldLegacyFeaturesInPayload`) folds them into `lookStyling`
+ * and keeps the two as they were queued here. A payload of the current shape
+ * has none, and was stamped in the current shape.
+ */
+export const queuedLegacyStyling = (
+  input: Pick<
+    CharacterSheetWorkflowInput,
+    'lookStyling' | 'queuedLegacyStyling'
+  >
+): LegacyStylingParts =>
+  input.queuedLegacyStyling ?? {
+    distinguishingFeatures: null,
+    styling: input.lookStyling,
+  };
 
 /** Every bible field the location-sheet prompt reads (#1785). */
 export function locationSheetBibleFields(

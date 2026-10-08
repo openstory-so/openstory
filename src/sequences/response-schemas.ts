@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 
+import { foldLegacyFeatures } from '@/cast/bible-looks';
 import {
   characterBibleEntrySchema,
   elementBibleEntrySchema,
@@ -138,9 +139,26 @@ const wireLookSchema = z.object({
  * Required on the wire; a response recorded before looks parses to none, and
  * `bibleFromWire` gives the character a default look.
  */
-const characterBibleWireEntrySchema = characterBibleEntrySchema.extend({
-  looks: z.preprocess((value) => value ?? [], z.array(wireLookSchema)),
-});
+const characterBibleWireEntrySchema = z.preprocess(
+  // A response recorded before #2065 still names `distinguishingFeatures`.
+  // It is no longer asked for; the text joins the default (first) look's
+  // styling, which one with no looks gets here so the text is not dropped.
+  (value) =>
+    foldLegacyFeatures(
+      typeof value === 'object' &&
+        value !== null &&
+        'distinguishingFeatures' in value &&
+        !('looks' in value && Array.isArray(value.looks) && value.looks.length)
+        ? {
+            ...value,
+            looks: [{ name: '', clothing: '', styling: '', lines: [] }],
+          }
+        : value
+    ),
+  characterBibleEntrySchema.extend({
+    looks: z.preprocess((value) => value ?? [], z.array(wireLookSchema)),
+  })
+);
 export type CharacterBibleWireEntry = z.infer<
   typeof characterBibleWireEntrySchema
 >;
