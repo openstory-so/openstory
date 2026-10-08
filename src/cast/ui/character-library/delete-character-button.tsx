@@ -13,19 +13,23 @@ import {
   AlertDialogTrigger,
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
-import { useDeleteTeamCharacter } from '@/cast/ui/use-team-characters';
+import {
+  useDeleteTeamCharacter,
+  useRestoreTeamCharacter,
+} from '@/cast/ui/use-team-characters';
 import { errorMessage } from '@/platform/errors';
 import { useHydrated } from '@/ui/use-hydrated';
 
 /**
- * Delete one of the team's characters for good (#2065). Offered only while
- * no sequence casts it; the server refuses otherwise.
+ * Delete one of the team's characters (#2065), with Undo on the toast.
+ * Offered only while no sequence casts it; the server refuses otherwise.
  */
 export const DeleteCharacterButton: React.FC<{
   characterId: string;
   name: string;
 }> = ({ characterId, name }) => {
   const remove = useDeleteTeamCharacter();
+  const restore = useRestoreTeamCharacter();
   const navigate = useNavigate();
   const hydrated = useHydrated();
 
@@ -40,8 +44,8 @@ export const DeleteCharacterButton: React.FC<{
         <AlertDialogHeader>
           <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
           <AlertDialogDescription>
-            Its looks, sheets and voice history go with it. This cannot be
-            undone.
+            It leaves your characters and the @ picker. A saved voice is
+            released.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -52,7 +56,22 @@ export const DeleteCharacterButton: React.FC<{
                 { characterId },
                 {
                   onSuccess: () => {
-                    toast.success(`Deleted ${name}`);
+                    toast.success(`Deleted ${name}`, {
+                      action: {
+                        label: 'Undo',
+                        onClick: () =>
+                          restore.mutate(
+                            { characterId },
+                            {
+                              onSuccess: () =>
+                                void navigate({
+                                  to: '/characters/$id',
+                                  params: { id: characterId },
+                                }),
+                            }
+                          ),
+                      },
+                    });
                     void navigate({ to: '/characters' });
                   },
                   onError: (error) =>

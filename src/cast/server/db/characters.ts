@@ -241,6 +241,8 @@ const {
   legacyIsPerson: _isPerson,
   legacyConsistencyTag: _consistencyTag,
   legacyInLibrary: _inLibrary,
+  // A cast read's `deletedAt` is its link's `removedAt`.
+  deletedAt: _teamDeletedAt,
   legacySheetStatus: _sheetStatus,
   legacySheetError: _sheetError,
   legacySelectedSheetVersionId: _selectedSheetVersionId,
@@ -911,7 +913,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         characterSheetVariants,
         eq(characterSheetVariants.id, liveLookSheetVersionId)
       )
-      .where(and(inTeam, where))
+      .where(and(inTeam, isNull(characters.deletedAt), where))
       .groupBy(characters.id)
       .orderBy(
         sql`${lastUsedAt} DESC NULLS LAST`,
@@ -1289,7 +1291,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
           characterBibleVersions,
           eq(characterBibleVersions.id, characters.selectedBibleVersionId)
         )
-        .where(and(eq(characters.id, id), inTeam));
+        .where(
+          and(eq(characters.id, id), inTeam, isNull(characters.deletedAt))
+        );
       if (!character) throw new NotFoundError('Character not found');
       if (character.bibleVersionId === null || character.name === null) {
         throw new Error(
@@ -2382,9 +2386,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
       await assertNameFree(db, sequenceId, existing.name, id);
       const now = new Date();
       await db.batch([
+        // Bringing it back into a sequence brings it back to the team too.
         db
           .update(characters)
-          .set({ updatedAt: now })
+          .set({ updatedAt: now, deletedAt: null })
           .where(eq(characters.id, id)),
         db
           .update(sequenceCast)
@@ -2437,9 +2442,45 @@ export function createCharactersMethods(db: Database, teamId: string) {
     },
 
     /**
+     * Delete one of the team's characters (#2065): soft, so it leaves the
+     * Characters page and the `@` picker and every row of it stays. One
+     * guarded UPDATE: nothing is written, and `false` comes back, while a
+     * sequence (archived ones included) has a cast link to it that is not
+     * removed, so a link made after the caller's own check still stops it.
+     */
+    softDeleteForTeam: async (id: string): Promise<boolean> => {
+      const rows = await db
+        .update(characters)
+        .set({ deletedAt: new Date() })
+        .where(
+          and(
+            eq(characters.id, id),
+            inTeam,
+            isNull(characters.deletedAt),
+            sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.removed_at IS NULL)`
+          )
+        )
+        .returning({ id: characters.id });
+      return rows.length > 0;
+    },
+
+    /** Undo {@link softDeleteForTeam}. False when it was not deleted. */
+    restoreForTeam: async (id: string): Promise<boolean> => {
+      const rows = await db
+        .update(characters)
+        .set({ deletedAt: null })
+        .where(
+          and(eq(characters.id, id), inTeam, isNotNull(characters.deletedAt))
+        )
+        .returning({ id: characters.id });
+      return rows.length > 0;
+    },
+
+    /**
      * Whether any sequence, archived ones included, has a cast link to the
-     * character that is not removed. A delete would take those links with
-     * it, so it is refused while one exists (#2065).
+     * character that is not removed. A delete would leave that sequence
+     * casting a character the team no longer lists, so it is refused while
+     * one exists (#2065).
      */
     getCastInAnySequenceOrArchive: async (id: string): Promise<boolean> => {
       const [row] = await db

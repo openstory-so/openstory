@@ -30,7 +30,6 @@ import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
   releaseCharacterVoice,
   releaseReplacedVoice,
-  releaseVoiceIfUnreferenced,
 } from '@/cast/server/voice/release-voice';
 
 const logger = getLogger(['openstory', 'cast', 'cast-edit']);
@@ -184,12 +183,14 @@ export async function restoreCharacter(
 const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
 
 /**
- * Delete one of the team's characters for good (#2065). Refused while a
- * sequence, archived ones included, still casts it: the delete would take
- * that cast link with it. The db delete carries the same condition, so a
- * sequence that casts it between the check and the write still stops it.
- * Its voice is released first, provider before row
- * (`releaseCharacterVoice`), so a failed release leaves the character.
+ * Delete one of the team's characters (#2065). Soft: it leaves the
+ * Characters page and the `@` picker, and `restoreTeamCharacter` brings it
+ * back. Refused while a sequence, archived ones included, still casts it;
+ * the db write carries the same condition, so a sequence that casts it
+ * between the check and the write still stops it. A voice it still points
+ * at is released first, provider before row (`releaseCharacterVoice`), so a
+ * failed release leaves the character. Restoring does not bring the voice
+ * back.
  */
 export async function deleteTeamCharacter(
   scopedDb: ScopedDb,
@@ -206,14 +207,19 @@ export async function deleteTeamCharacter(
     null,
     actor.userId
   );
-  const owed = await scopedDb.characters.getVoiceIdsToRelease(characterId);
-  for (const voiceId of owed) {
-    await releaseVoiceIfUnreferenced(scopedDb, voiceId);
+  if (!(await scopedDb.characters.softDeleteForTeam(characterId))) {
+    throw new ConflictError(STILL_CAST_MESSAGE);
   }
-  const deleted = await scopedDb.characters.delete(characterId, {
-    releasedVoiceIds: owed,
-  });
-  if (!deleted) throw new ConflictError(STILL_CAST_MESSAGE);
+  return { characterId };
+}
+
+export async function restoreTeamCharacter(
+  scopedDb: ScopedDb,
+  characterId: string
+) {
+  if (!(await scopedDb.characters.restoreForTeam(characterId))) {
+    throw new NotFoundError('Character not found');
+  }
   return { characterId };
 }
 

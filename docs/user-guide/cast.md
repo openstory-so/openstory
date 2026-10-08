@@ -68,7 +68,7 @@ Recasting regenerates the character's reference sheet using the talent's referen
 
 Every character belongs to your team. **Characters** in the main navigation lists all of them, most recently used first. Open a character to see which sequences cast it and how many shots it is in.
 
-A character stays in the team when a sequence removes it. To get rid of one for good, open it from **Characters** and click **Delete**. Delete is offered only when no sequence casts it. A saved voice is released when no sequence casts the character.
+A character stays in the team when a sequence removes it. To take one off the list, open it from **Characters** and click **Delete**. Delete is offered only when no sequence casts it, and the message that follows has **Undo**. A saved voice is released when no sequence casts the character.
 
 Click **Save as talent** to copy the character into your Talent Library. A talent can be cast as a character in any sequence.
 

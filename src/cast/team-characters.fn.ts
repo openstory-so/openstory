@@ -5,7 +5,10 @@
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { deleteTeamCharacter } from '@/cast/server/cast-edit';
+import {
+  deleteTeamCharacter,
+  restoreTeamCharacter,
+} from '@/cast/server/cast-edit';
 import {
   moveCastsToCurrent,
   previewVersionMove,
@@ -91,7 +94,7 @@ export const getTeamCharacterShotCountsFn = createServerFn({ method: 'GET' })
     return counts;
   });
 
-/** Delete a character no sequence casts, with everything keyed to it. */
+/** Delete a character no sequence casts. Soft: `restoreTeamCharacterFn` undoes it. */
 export const deleteTeamCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(characterIdSchema))
@@ -102,4 +105,12 @@ export const deleteTeamCharacterFn = createServerFn({ method: 'POST' })
         { userId: context.user.id },
         data.characterId
       )
+  );
+
+export const restoreTeamCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(characterIdSchema))
+  .handler(
+    async ({ context, data }) =>
+      await restoreTeamCharacter(context.scopedDb, data.characterId)
   );

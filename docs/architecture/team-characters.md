@@ -150,7 +150,7 @@ What follows from one character in two sequences:
     character (`characters.getHeldElsewhere`).
   - Deleting a character releases the voice first (`deleteTeamCharacter` in
     `cast-edit.ts`). Provider first, row second (`elevenlabs.md`); a failed
-    release leaves the character.
+    release leaves the character listed.
   - Unarchiving finds the character with no saved voice, as it does today.
 - **Sheet variants are the look's**, with no sequence on the row. A sheet
   parked as divergent by one sequence's run is listed for every sequence
@@ -197,13 +197,22 @@ are too. The methods keyed on a voice version id alone are not yet.
   scene tags in memory, one sequence at a time
   (`getTeamCharacterShotCountsFn`).
 - **Delete** (`deleteTeamCharacterFn`) is on that page while no live
-  sequence casts the character. It is refused while any sequence, archived
-  ones included, has a link to it that is not removed
-  (`getCastInAnySequenceOrArchive`): the delete would take that link with
-  it. `characters.delete` carries the same condition in every statement of
-  its batch, so a sequence that casts the character between the check and
-  the write still stops it. It releases the voice, then hard-deletes the character with
-  everything keyed to it (`characters.delete`, § Hard deletes).
+  sequence casts the character. It is soft: `characters.deleted_at` is
+  stamped, the character leaves the list, the `@` picker and every other
+  team read (`selectTeam`, `attach`), and every row of it stays. The toast's
+  Undo clears the stamp (`restoreTeamCharacterFn`).
+  - Refused while any sequence, archived ones included, has a link to it
+    that is not removed (`getCastInAnySequenceOrArchive`): that sequence
+    would cast a character the team no longer lists. The write
+    (`softDeleteForTeam`) is one UPDATE with the same condition, so a
+    sequence that casts the character between the check and the write still
+    stops it.
+  - A voice it still points at is released first; Undo does not bring it
+    back.
+  - Restoring it in a sequence that removed it (the existing Restore) clears
+    the stamp too.
+  - `characters.deleted_at` is not `sequence_cast.removed_at`. A cast read's
+    `deletedAt` is still its link's `removedAt`.
 - **Every team character** is on the list, in `list_library_characters`
   and in the `@` picker (#2065). The tool keeps its name.
 
@@ -315,7 +324,7 @@ the script then names her like any cast member.
   picker, the new-sequence talent picker and the studio today. It stays
   until #2018 defines what a talent is. Hidden for a talent-cast or
   voice-only character, as the old button was.
-- **A character the page cannot list** (another team's, or gone) reads "Character not found" with a way
+- **A character the page cannot list** (another team's, deleted, or gone) reads "Character not found" with a way
   back, not an error.
 - MCP: `list_library_characters`.
 

@@ -15,6 +15,7 @@ import {
   moveCharacterCastsFn,
   previewCharacterVersionMoveFn,
   deleteTeamCharacterFn,
+  restoreTeamCharacterFn,
 } from '@/cast/team-characters.fn';
 import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
 import {
@@ -112,6 +113,20 @@ export function useDeleteTeamCharacter() {
   return useMutation({
     mutationFn: (data: { characterId: string }) =>
       deleteTeamCharacterFn({ data }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
+    },
+  });
+}
+
+/** Undo a delete, from its toast. */
+export function useRestoreTeamCharacter() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { globalError: true },
+    mutationFn: (data: { characterId: string }) =>
+      restoreTeamCharacterFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
     },

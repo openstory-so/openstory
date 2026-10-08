@@ -31,7 +31,7 @@ import {
 import { relations } from '@/platform/server/db/schema/relations';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { asStub } from '@/test/as-stub';
-import { deleteTeamCharacter } from './cast-edit';
+import { deleteTeamCharacter, restoreTeamCharacter } from './cast-edit';
 import { createCharactersMethods } from './db/characters';
 
 const { mockDelete, mockGetVoice } = vi.hoisted(() => ({
@@ -168,7 +168,7 @@ describe('deleteTeamCharacter', () => {
     expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
   });
 
-  it('deletes the character and releases its voice when nothing casts it', async () => {
+  it('soft-deletes the character and releases its voice when nothing casts it; restore brings it back without the voice', async () => {
     const { sequenceId, created } = await voiced();
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     // Still listed, with no sequence.
@@ -181,16 +181,50 @@ describe('deleteTeamCharacter', () => {
     await deleteTeamCharacter(scoped(), { userId }, created.id);
 
     expect(mockDelete).toHaveBeenCalledWith('key', VOICE);
+    // Off the list and not attachable; every row of it is still there.
     expect(await chars().getTeamCharacter(created.id)).toBeNull();
+    expect(await chars().listTeam()).toEqual([]);
+    await expect(
+      chars().attach(await newSequence('B'), created.id, { actorId: userId })
+    ).rejects.toThrow('Character not found');
     expect(
       await db.select().from(characters).where(eq(characters.id, created.id))
-    ).toEqual([]);
+    ).toHaveLength(1);
     expect(
       await db
         .select()
         .from(sequenceCast)
         .where(eq(sequenceCast.characterId, created.id))
-    ).toEqual([]);
+    ).toHaveLength(1);
+
+    await restoreTeamCharacter(scoped(), created.id);
+    expect(await chars().getTeamCharacter(created.id)).toMatchObject({
+      id: created.id,
+      sequences: [],
+    });
+    expect((await chars().getVoice(created.id)).voiceId).toBeNull();
+    // Only a deleted character restores.
+    await expect(restoreTeamCharacter(scoped(), created.id)).rejects.toThrow(
+      'Character not found'
+    );
+  });
+
+  it('restoring it in the sequence that removed it brings it back to the team', async () => {
+    const { sequenceId, created } = await voiced();
+    await chars().softDelete(sequenceId, created.id, { actorId: userId });
+    mockDelete.mockResolvedValue(undefined);
+    await deleteTeamCharacter(scoped(), { userId }, created.id);
+
+    await chars().restore(sequenceId, created.id, { actorId: userId });
+
+    expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
+  });
+
+  it('a sequence that casts it after the check still stops the delete', async () => {
+    const { created } = await voiced();
+    // Still cast: the guarded write refuses on its own.
+    expect(await chars().softDeleteForTeam(created.id)).toBe(false);
+    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
   });
 
   it('leaves the character when the provider delete fails, so it can be retried', async () => {

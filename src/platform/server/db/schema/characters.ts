@@ -131,6 +131,10 @@ export const characters = snakeCase.table(
       'pending_promote_sheet_version_id'
     ),
     // Timestamps
+    // Deleted from the team (#2065): off the Characters page and the `@`
+    // picker, rows kept. Null while live. Not the same as a sequence
+    // removing it, which is `sequence_cast.removedAt`.
+    deletedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
