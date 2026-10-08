@@ -176,6 +176,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.get_library_location',
       'openstory.list_styles',
       'openstory.get_style',
+      'openstory.list_library_characters',
       'openstory.list_library_resources',
       'openstory.get_library_resource',
       'openstory.list_gallery_samples',

@@ -425,10 +425,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. When cast, it is usually the talent sheet reused; a costumed one is generated only when that look's clothing or the role's features diverge from the talent. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
+      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
       'Character bible (age, gender, ethnicity, description, features, consistency tag)',
       "The look's clothing, and its styling once set",
+      "The default look's sheet version, on every other look",
       'Talent sheet hash, when cast',
       "The talent's description and default sheet image and look, when cast",
       'Style config',
@@ -785,7 +786,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'look',
     to: 'characterSheet',
     tracking: 'hash',
-    note: "the look's clothing, and its styling once set. Each look has its own sheet, so an edit reaches only that one (#2015)",
+    note: "the look's clothing, and its styling once set. A look other than the default also hashes the default look's sheet version, and is drawn from that sheet (#2015)",
   },
   {
     from: 'script',

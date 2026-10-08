@@ -301,6 +301,15 @@ export type CharacterSheetHashInput = {
    * moves.
    */
   styling: string | null;
+  /**
+   * The default look's sheet version, when this look is drawn from it
+   * (#2015): the selected version, or that look's id when the pointer is
+   * still null (the #1419 row). Null on the default look, and on a look whose
+   * default has no sheet yet. Joins every digest shape
+   * once set, so a look sheet drawn from a description does not stay fresh
+   * after the default sheet exists.
+   */
+  faceSheetVersionId: string | null;
   /** Required; `null` is "no talent sheet". */
   talentSheetHash: string | null;
   /** Required; `null` is "not cast". */
@@ -327,9 +336,13 @@ function characterSheetHashBody(
   // styling, and dropping it there would let a styling edit verify as fresh
   // against the pre-#1785 shape of an uncast sheet.
   const styling = trim(input.styling);
+  // Every shape, same as styling: a legacy digest that omitted the face
+  // must not verify a look once the default sheet's version is known.
+  const faceSheetVersionId = trim(input.faceSheetVersionId);
   return {
     artifact: 'character:sheet',
     ...(styling ? { styling } : {}),
+    ...(faceSheetVersionId ? { faceSheetVersionId } : {}),
     characterBible: {
       ...(kind === 'named' ? { name: trim(cb.name) } : {}),
       age: trim(cb.age),
@@ -387,6 +400,7 @@ export const CHARACTER_SHEET_BIBLE_FIELDS =
 const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
   styling: z.string().nullable(),
+  faceSheetVersionId: z.string().nullable(),
   talentSheetHash: z.string().nullable(),
   talent: characterSheetTalentHashFieldsSchema.nullable(),
   styleConfigHash: z.string(),

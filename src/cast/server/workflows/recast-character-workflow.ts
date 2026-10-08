@@ -168,6 +168,9 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           lookId: input.lookId,
           lookVersionId: input.lookVersionId,
           lookStyling: input.lookStyling,
+          // A recast redraws the default look, which has no face to be drawn
+          // from: it is the face.
+          face: null,
           talentId: input.talentId,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,

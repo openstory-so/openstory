@@ -95,12 +95,22 @@ Generation preconditions (`SHOT_UNITS`, plus `music` ← `prompt:music`), not th
   (reference-only) + `dialogue` when the shot has one.
 - `dialogue` ← a `voice` on every speaker.
 - `music` ← `prompt:music`.
+- A `sheet:character` whose id is not the character's (a look other than the
+  default) ← `sheet:character:<characterId>`, the default look's sheet it is
+  drawn from. `characterId` is required on every plan sheet; it equals `id`
+  on the default look.
 
 Cascade, in kind order: an upstream `missing` / `stale` turns a `done` unit
 `stale` with `cascaded: true` (a sheet in the plan puts its stills in the
 plan); an upstream `running` / `blocked` turns a unit with work `blocked`. A
-`done` unit keeps its artifact. `requires` is the graph resolved to the
-plan's own units.
+`done` unit keeps its artifact. A look follows its default sheet by the same
+rules: a default this run makes puts the look in the same run (a `done` look
+cascades `stale`, because its face is about to move), and a default running
+elsewhere blocks it. The run draws such a look after the default lands, from
+the sheet it landed (the second references wave, see
+`docs/developer-guide/workflow.md`), so one run makes every look a script
+uses, with the stills and clips that wear them. `requires` is the graph
+resolved to the plan's own units.
 
 ## What a continue does
 

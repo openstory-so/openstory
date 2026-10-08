@@ -75,7 +75,7 @@ export function productionAccess(scopedDb: ScopedDb) {
     async character(sequenceId: string, id: string) {
       await sequence(sequenceId);
       return owned(
-        await scopedDb.characters.getById(id),
+        await scopedDb.characters.getById(sequenceId, id),
         sequenceId,
         'Character'
       );
@@ -86,9 +86,9 @@ export function productionAccess(scopedDb: ScopedDb) {
      * is also how a character with no look row yet is reached.
      */
     async look(sequenceId: string, id: string) {
-      const found = await scopedDb.characterLooks.getById(id);
+      const found = await scopedDb.characterLooks.getById(sequenceId, id);
       const character = owned(
-        await scopedDb.characters.getById(found?.characterId ?? id),
+        await scopedDb.characters.getById(sequenceId, found?.characterId ?? id),
         sequenceId,
         'Character'
       );

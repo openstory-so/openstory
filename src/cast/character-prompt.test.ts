@@ -355,6 +355,7 @@ describe('buildCharacterSheetPrompt with styleConfig', () => {
       scriptEntry,
       undefined,
       undefined,
+      null,
       null
     );
 
@@ -368,6 +369,7 @@ describe('buildCharacterSheetPrompt with styleConfig', () => {
       scriptEntry,
       undefined,
       neoNoirStyle,
+      null,
       null
     );
 
@@ -388,6 +390,7 @@ describe('buildCharacterSheetPrompt with styleConfig', () => {
       scriptEntry,
       undefined,
       neoNoirStyle,
+      null,
       null
     );
 
@@ -405,6 +408,7 @@ describe('buildCharacterSheetPrompt with styleConfig', () => {
         sheetImageUrl: 'https://example.com/sheet.png',
       },
       neoNoirStyle,
+      null,
       null
     );
 
@@ -428,6 +432,7 @@ describe('buildCharacterSheetPrompt with talent', () => {
       scriptEntry,
       { description: 'This character should look like Elvis Presley' },
       undefined,
+      null,
       null
     );
 
@@ -443,6 +448,7 @@ describe('buildCharacterSheetPrompt with talent', () => {
         sheetImageUrl: 'https://example.com/sheet.png',
       },
       undefined,
+      null,
       null
     );
 
@@ -455,21 +461,65 @@ describe('buildCharacterSheetPrompt with talent', () => {
       scriptEntry,
       undefined,
       undefined,
+      null,
       null
     ).prompt;
     expect(plain).not.toContain('for this look');
     expect(
-      buildCharacterSheetPrompt(scriptEntry, undefined, undefined, '  ').prompt
+      buildCharacterSheetPrompt(scriptEntry, undefined, undefined, '  ', null)
+        .prompt
     ).toBe(plain);
 
     const styled = buildCharacterSheetPrompt(
       scriptEntry,
       undefined,
       undefined,
-      'hair pinned up, split lip'
+      'hair pinned up, split lip',
+      null
     ).prompt;
     expect(styled).toContain(
       'Hair, Makeup & Condition for this look:\nhair pinned up, split lip'
+    );
+  });
+
+  test('a look drawn from the default sheet uses that image and no other', () => {
+    const { prompt, referenceUrls } = buildCharacterSheetPrompt(
+      scriptEntry,
+      {
+        sheetMetadata: talentMetadata,
+        description: 'This character should look like Elvis Presley',
+        sheetImageUrl: 'https://example.com/talent.png',
+      },
+      undefined,
+      'hair pinned up',
+      'https://example.com/default-look.png'
+    );
+
+    expect(referenceUrls).toEqual(['https://example.com/default-look.png']);
+    expect(prompt).toContain("this character's default look");
+    expect(prompt).toContain('Change the costume');
+    expect(prompt).not.toContain('Elvis Presley');
+    expect(prompt).not.toContain('https://example.com/talent.png');
+    expect(prompt).toContain('hair pinned up');
+  });
+
+  test('the image wins for the person, the text wins for the outfit', () => {
+    const { prompt } = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      undefined,
+      null,
+      'https://example.com/default-look.png'
+    );
+    expect(prompt).toContain(
+      'For face, body, skin and hair, the IMAGE takes priority over any text.'
+    );
+    expect(prompt).toContain(
+      'For the clothing, the TEXT takes priority over the image: the reference wears another outfit.'
+    );
+    // Never the unscoped rule, which would keep the default look's costume.
+    expect(prompt).not.toContain(
+      'If any text conflicts with the reference image, the IMAGE takes priority.'
     );
   });
 });

@@ -6,7 +6,16 @@
  * "the character's sheet" is its default look's sheet.
  */
 
-import { and, asc, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  getTableColumns,
+  inArray,
+  ne,
+  sql,
+} from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import {
   ConflictError,
@@ -32,10 +41,10 @@ import {
   characters,
   sequenceCast,
   sequenceCastLooks,
+  sequences,
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
-import { oneLinkEach, onlyLink } from './sequence-cast';
 
 /**
  * A look's live sheet version in the sequence that uses it (#2017): the cast
@@ -90,11 +99,17 @@ export type LookSheetSnapshot = {
 };
 
 /**
- * The team's looks as the sequence that uses them sees them (#2017): each
- * joined to its cast look, and to the version that pins. A look with no cast
- * look is not returned, nor is another team's.
+ * The team's looks as ONE sequence uses them (#2017): each joined to that
+ * sequence's cast look, and to the version that pins. A look the sequence
+ * does not use is not returned, nor is another team's. A sequence links a
+ * character once and a cast holds a look once, so a look comes back once.
  */
-const selectLooks = (db: Database, teamId: string, where: SQL | undefined) =>
+const selectLooks = (
+  db: Database,
+  teamId: string,
+  sequenceId: string,
+  where: SQL | undefined
+) =>
   db
     .select(lookColumns)
     .from(characterLooks)
@@ -103,6 +118,7 @@ const selectLooks = (db: Database, teamId: string, where: SQL | undefined) =>
       sequenceCastLooks,
       eq(sequenceCastLooks.lookId, characterLooks.id)
     )
+    .innerJoin(sequenceCast, eq(sequenceCast.id, sequenceCastLooks.castId))
     .innerJoin(
       characterLookVersions,
       eq(characterLookVersions.id, sequenceCastLooks.lookVersionId)
@@ -111,7 +127,13 @@ const selectLooks = (db: Database, teamId: string, where: SQL | undefined) =>
       characterSheetVariants,
       eq(characterSheetVariants.id, liveLookSheetVersionId)
     )
-    .where(and(eq(characters.teamId, teamId), where));
+    .where(
+      and(
+        eq(characters.teamId, teamId),
+        eq(sequenceCast.sequenceId, sequenceId),
+        where
+      )
+    );
 
 /** Default first, then the order they were added. */
 const lookOrder = [
@@ -130,6 +152,7 @@ const lookOrder = [
 const backfillDefaultLook = async (
   db: Database,
   teamId: string,
+  sequenceId: string,
   characterId: string
 ): Promise<void> => {
   const rows = await db
@@ -155,10 +178,11 @@ const backfillDefaultLook = async (
       and(
         eq(characters.id, characterId),
         eq(characters.teamId, teamId),
+        eq(sequenceCast.sequenceId, sequenceId),
         sql`NOT EXISTS (SELECT 1 FROM ${characterLooks} WHERE ${characterLooks.id} = ${characters.id})`
       )
     );
-  const legacy = onlyLink(rows, `Character ${characterId}`);
+  const [legacy] = rows;
   if (!legacy) return;
   await db.batch([
     db
@@ -204,36 +228,41 @@ const backfillDefaultLook = async (
 const getLook = async (
   db: Database,
   teamId: string,
+  sequenceId: string,
   id: string
 ): Promise<CharacterLook | null> =>
-  onlyLink(
-    await selectLooks(db, teamId, eq(characterLooks.id, id)),
-    `Look ${id}`
-  ) ?? null;
+  (await selectLooks(db, teamId, sequenceId, eq(characterLooks.id, id)))[0] ??
+  null;
 
 /**
- * The look a write is about to touch. A character with no look yet answers
- * to its own id (the id its default look takes), so that case is filled in
- * here rather than at every writer.
+ * The look a write is about to touch, as `sequenceId` uses it. A character
+ * with no look yet answers to its own id (the id its default look takes), so
+ * that case is filled in here rather than at every writer.
  */
 export const requireLook = async (
   db: Database,
   teamId: string,
+  sequenceId: string,
   id: string
 ): Promise<CharacterLook> => {
-  const found = await getLook(db, teamId, id);
+  const found = await getLook(db, teamId, sequenceId, id);
   if (found) return found;
-  await backfillDefaultLook(db, teamId, id);
-  const look = await getLook(db, teamId, id);
+  await backfillDefaultLook(db, teamId, sequenceId, id);
+  const look = await getLook(db, teamId, sequenceId, id);
   if (!look) throw new NotFoundError(`Look ${id} not found`);
   return look;
 };
 
 /**
- * The cast link of a look's character (#2017): where its looks' cast looks
- * go, and the sequence and name its events carry.
+ * A character's cast link in one sequence (#2017): where its looks' cast
+ * looks go, and the name its events carry.
  */
-const ownerOf = async (db: Database, teamId: string, characterId: string) => {
+const ownerOf = async (
+  db: Database,
+  teamId: string,
+  sequenceId: string,
+  characterId: string
+) => {
   const owners = await db
     .select({
       castId: sequenceCast.id,
@@ -249,10 +278,11 @@ const ownerOf = async (db: Database, teamId: string, characterId: string) => {
     .where(
       and(
         eq(sequenceCast.characterId, characterId),
+        eq(sequenceCast.sequenceId, sequenceId),
         eq(characters.teamId, teamId)
       )
     );
-  const owner = onlyLink(owners, `Character ${characterId}`);
+  const [owner] = owners;
   if (!owner) throw new NotFoundError(`Character ${characterId} not found`);
   return owner;
 };
@@ -348,6 +378,7 @@ export const lookDefinitionWrite = (
 const requireFreeName = async (
   db: Database,
   teamId: string,
+  sequenceId: string,
   characterId: string,
   name: string,
   exceptLookId: string | null
@@ -355,6 +386,7 @@ const requireFreeName = async (
   const taken = await selectLooks(
     db,
     teamId,
+    sequenceId,
     and(
       eq(characterLooks.characterId, characterId),
       sql`${characterLooks.deletedAt} IS NULL`
@@ -402,30 +434,34 @@ export const deleteLooksOfCharacters = (
 
 export function createCharacterLooksMethods(db: Database, teamId: string) {
   return {
-    getById: (id: string) => getLook(db, teamId, id),
+    /** The look as `sequenceId` uses it. */
+    getById: (sequenceId: string, id: string) =>
+      getLook(db, teamId, sequenceId, id),
 
     /** A character's default look: its id is the character's. */
-    ensureDefault: (characterId: string) =>
-      requireLook(db, teamId, characterId),
+    ensureDefault: (sequenceId: string, characterId: string) =>
+      requireLook(db, teamId, sequenceId, characterId),
 
-    /** A character's looks, default first. Removed ones only on request. */
+    /**
+     * A character's looks as `sequenceId` uses them, default first. Removed
+     * ones only on request.
+     */
     listByCharacter: async (
+      sequenceId: string,
       characterId: string,
       options?: { includeRemoved?: boolean }
     ): Promise<CharacterLook[]> =>
-      oneLinkEach(
-        await selectLooks(
-          db,
-          teamId,
-          and(
-            eq(characterLooks.characterId, characterId),
-            options?.includeRemoved
-              ? undefined
-              : sql`${characterLooks.deletedAt} IS NULL`
-          )
-        ).orderBy(...lookOrder),
-        'Look'
-      ),
+      await selectLooks(
+        db,
+        teamId,
+        sequenceId,
+        and(
+          eq(characterLooks.characterId, characterId),
+          options?.includeRemoved
+            ? undefined
+            : sql`${characterLooks.deletedAt} IS NULL`
+        )
+      ).orderBy(...lookOrder),
 
     /**
      * Every look of these characters, removed ones included: a scene that
@@ -433,6 +469,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * 100-bound-parameter cap.
      */
     listByCharacters: async (
+      sequenceId: string,
       characterIds: readonly string[]
     ): Promise<CharacterLook[]> => {
       const rows: CharacterLook[] = [];
@@ -441,10 +478,11 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           ...(await selectLooks(
             db,
             teamId,
+            sequenceId,
             inArray(characterLooks.characterId, characterIds.slice(i, i + 80))
           ).orderBy(...lookOrder))
         );
-      return oneLinkEach(rows, 'Look');
+      return rows;
     },
 
     /** Definition history of one of the team's looks, newest first. */
@@ -520,6 +558,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * and one a scene wears are never touched.
      */
     syncFromAnalysis: async (
+      sequenceId: string,
       characterId: string,
       analysed: readonly {
         lookId: string;
@@ -529,12 +568,18 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       }[]
     ): Promise<Record<string, string>> => {
       const opts = { source: 'analysis' as const, createdBy: null };
-      const defaultLook = await requireLook(db, teamId, characterId);
-      const owner = await ownerOf(db, teamId, characterId);
+      const defaultLook = await requireLook(
+        db,
+        teamId,
+        sequenceId,
+        characterId
+      );
+      const owner = await ownerOf(db, teamId, sequenceId, characterId);
       const others = (
         await selectLooks(
           db,
           teamId,
+          sequenceId,
           eq(characterLooks.characterId, characterId)
         )
       ).filter((row) => !row.isDefault);
@@ -616,7 +661,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         const worn = new Set(
           [
             ...(
-              await loadSceneContextBySequenceFromDb(db, owner.sequenceId)
+              await loadSceneContextBySequenceFromDb(db, sequenceId)
             ).values(),
           ].flatMap(({ scene }) =>
             Object.values(scene.continuity?.characterLooks ?? {})
@@ -638,7 +683,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
               .set({ deletedAt, updatedAt: deletedAt })
               .where(eq(characterLooks.id, row.id)),
             buildEventInsert(db, {
-              sequenceId: owner.sequenceId,
+              sequenceId,
               actorId: null,
               kind: 'look.removed',
               targetType: 'character',
@@ -654,15 +699,23 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
 
     /** Add a look to a character. It has no sheet until someone asks for one. */
     create: async (
+      sequenceId: string,
       characterId: string,
       definition: LookDefinition,
       opts: { source: LookVersionSource; actorId: string | null }
     ): Promise<CharacterLook> => {
-      const owner = await ownerOf(db, teamId, characterId);
+      const owner = await ownerOf(db, teamId, sequenceId, characterId);
       // A character with no look yet gets its default first, so the new one
       // is never the only look and never mistaken for the default.
-      await requireLook(db, teamId, characterId);
-      await requireFreeName(db, teamId, characterId, definition.name, null);
+      await requireLook(db, teamId, sequenceId, characterId);
+      await requireFreeName(
+        db,
+        teamId,
+        sequenceId,
+        characterId,
+        definition.name,
+        null
+      );
       const [last] = await db
         .select({ sortOrder: characterLooks.sortOrder })
         .from(characterLooks)
@@ -687,7 +740,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           createdBy: opts.actorId,
         }),
         buildEventInsert(db, {
-          sequenceId: owner.sequenceId,
+          sequenceId,
           actorId: opts.actorId,
           kind: 'look.created',
           targetType: 'character',
@@ -696,7 +749,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           data: { lookId: id, name: definition.name },
         }),
       ]);
-      return await requireLook(db, teamId, id);
+      return await requireLook(db, teamId, sequenceId, id);
     },
 
     /**
@@ -706,15 +759,17 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * and the shots of the scenes that pick it read stale by derivation.
      */
     update: async (
+      sequenceId: string,
       lookId: string,
       patch: Partial<LookDefinition>,
       opts: { source: LookVersionSource; actorId: string | null }
     ): Promise<CharacterLook> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       if (patch.name !== undefined) {
         await requireFreeName(
           db,
           teamId,
+          sequenceId,
           look.characterId,
           patch.name,
           look.id
@@ -726,12 +781,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       });
       const [first, ...rest] = statements;
       if (!first) return look;
-      const owner = await ownerOf(db, teamId, look.characterId);
+      const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
       await db.batch([
         first,
         ...rest,
         buildEventInsert(db, {
-          sequenceId: owner.sequenceId,
+          sequenceId,
           actorId: opts.actorId,
           kind: 'look.updated',
           targetType: 'character',
@@ -744,7 +799,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           },
         }),
       ]);
-      return await requireLook(db, teamId, lookId);
+      return await requireLook(db, teamId, sequenceId, lookId);
     },
 
     /**
@@ -752,11 +807,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * styling moving with it revokes the sheet claim, like an edit.
      */
     selectVersion: async (
+      sequenceId: string,
       lookId: string,
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<CharacterLook> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       const [version] = await db
         .select()
         .from(characterLookVersions)
@@ -772,7 +828,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       }
       if (version.id === look.lookVersionId) return look;
-      const owner = await ownerOf(db, teamId, look.characterId);
+      const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
       const sheetMoved = LOOK_SHEET_FIELDS.some(
         (key) => (version[key] ?? null) !== (look[key] ?? null)
       );
@@ -790,7 +846,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           })
           .where(eq(sequenceCastLooks.id, look.castLookId)),
         buildEventInsert(db, {
-          sequenceId: owner.sequenceId,
+          sequenceId,
           actorId: opts.actorId,
           kind: 'look.version-selected',
           targetType: 'character',
@@ -803,7 +859,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           },
         }),
       ]);
-      return await requireLook(db, teamId, lookId);
+      return await requireLook(db, teamId, sequenceId, lookId);
     },
 
     /**
@@ -813,28 +869,59 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * timestamp for the toast Undo.
      */
     remove: async (
+      sequenceId: string,
       lookId: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       if (look.isDefault) {
         throw new ValidationError('The default look cannot be removed.');
       }
       if (look.deletedAt) return look.deletedAt;
-      const owner = await ownerOf(db, teamId, look.characterId);
-      const wornIn = [
-        ...(
-          await loadSceneContextBySequenceFromDb(db, owner.sequenceId)
-        ).values(),
-      ]
-        .filter(({ scene }) =>
-          Object.values(scene.continuity?.characterLooks ?? {}).includes(lookId)
-        )
-        .sort((a, b) => a.scene.orderIndex - b.scene.orderIndex)
-        .map(({ scene }) => `scene ${scene.orderIndex + 1}`);
+      const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
+      const scenesWearing = async (inSequence: string) =>
+        [...(await loadSceneContextBySequenceFromDb(db, inSequence)).values()]
+          .filter(({ scene }) =>
+            Object.values(scene.continuity?.characterLooks ?? {}).includes(
+              lookId
+            )
+          )
+          .sort((a, b) => a.scene.orderIndex - b.scene.orderIndex)
+          .map(({ scene }) => `scene ${scene.orderIndex + 1}`);
+      const wornIn = await scenesWearing(sequenceId);
       if (wornIn.length > 0) {
         throw new ConflictError(
           `${look.name} is worn in ${wornIn.join(', ')}. Pick another look there first.`
+        );
+      }
+      // The removal is the look's own, so it reaches every sequence that
+      // uses the look (#2017): one of them still wearing it refuses too, and
+      // is named. An archived sequence does not refuse: it casts nothing
+      // while archived, and a scene that points at a removed look keeps
+      // wearing it when the sequence comes back.
+      const users = await db
+        .select({ sequenceId: sequences.id, title: sequences.title })
+        .from(sequenceCastLooks)
+        .innerJoin(sequenceCast, eq(sequenceCast.id, sequenceCastLooks.castId))
+        .innerJoin(sequences, eq(sequences.id, sequenceCast.sequenceId))
+        .where(
+          and(
+            eq(sequenceCastLooks.lookId, lookId),
+            ne(sequences.id, sequenceId),
+            ne(sequences.status, 'archived'),
+            sql`${sequenceCast.removedAt} IS NULL`
+          )
+        )
+        .orderBy(asc(sequences.title), asc(sequences.id));
+      const elsewhere: string[] = [];
+      for (const user of users) {
+        if ((await scenesWearing(user.sequenceId)).length > 0) {
+          elsewhere.push(user.title);
+        }
+      }
+      if (elsewhere.length > 0) {
+        throw new ConflictError(
+          `${look.name} is worn in ${elsewhere.join(', ')}. Pick another look there first.`
         );
       }
       const deletedAt = new Date();
@@ -844,7 +931,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           .set({ deletedAt, updatedAt: deletedAt })
           .where(eq(characterLooks.id, lookId)),
         buildEventInsert(db, {
-          sequenceId: owner.sequenceId,
+          sequenceId,
           actorId: opts.actorId,
           kind: 'look.removed',
           targetType: 'character',
@@ -858,20 +945,28 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
 
     /** Undo a remove. */
     restore: async (
+      sequenceId: string,
       lookId: string,
       opts: { actorId: string | null }
     ): Promise<CharacterLook> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       if (!look.deletedAt) return look;
-      await requireFreeName(db, teamId, look.characterId, look.name, look.id);
-      const owner = await ownerOf(db, teamId, look.characterId);
+      await requireFreeName(
+        db,
+        teamId,
+        sequenceId,
+        look.characterId,
+        look.name,
+        look.id
+      );
+      const owner = await ownerOf(db, teamId, sequenceId, look.characterId);
       await db.batch([
         db
           .update(characterLooks)
           .set({ deletedAt: null, updatedAt: new Date() })
           .where(eq(characterLooks.id, lookId)),
         buildEventInsert(db, {
-          sequenceId: owner.sequenceId,
+          sequenceId,
           actorId: opts.actorId,
           kind: 'look.restored',
           targetType: 'character',
@@ -880,7 +975,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           data: { lookId, name: look.name },
         }),
       ]);
-      return await requireLook(db, teamId, lookId);
+      return await requireLook(db, teamId, sequenceId, lookId);
     },
 
     /**
@@ -899,11 +994,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * write already set it.
      */
     claimSheet: async (
+      sequenceId: string,
       lookId: string,
       snapshot: LookSheetSnapshot,
       opts: { markGenerating: boolean }
     ): Promise<{ versionId: string; held: boolean }> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       const versionId = generateId();
       const result = await db
         .update(sequenceCastLooks)
@@ -966,11 +1062,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * run queued before #1113, which holds no claim.
      */
     failSheetClaim: async (
+      sequenceId: string,
       lookId: string,
       versionId: string | null,
       error: string
     ): Promise<void> => {
-      const look = await requireLook(db, teamId, lookId);
+      const look = await requireLook(db, teamId, sequenceId, lookId);
       await db
         .update(sequenceCastLooks)
         .set({

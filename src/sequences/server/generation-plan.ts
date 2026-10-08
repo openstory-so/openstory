@@ -302,6 +302,9 @@ async function loadPlanInput(
         ])
         .map(async (c) => ({
           id: c.lookId,
+          // A look other than the default is drawn from this character's
+          // default sheet (the look whose id is the character's).
+          characterId: c.id,
           sheet: await sheetVerdict(
             !!c.sheetImageUrl,
             c.sheetStatus === 'generating' ||

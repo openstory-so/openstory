@@ -211,6 +211,7 @@ describe('computeCharacterSheetInputHash', () => {
       consistencyTag: 'sarah_blonde_30s',
     },
     styling: null,
+    faceSheetVersionId: null,
     talentSheetHash: 'talent-sha',
     talent: null,
     styleConfigHash: 'style-sha',
@@ -251,6 +252,43 @@ describe('computeCharacterSheetInputHash', () => {
           ...base.characterBible,
           physicalDescription: 'short, dark hair',
         },
+      })
+    ).toBe(false);
+  });
+
+  it('hashes the default look’s sheet version only once a look is drawn from it', async () => {
+    // The default look carries none, and neither did any digest before.
+    const plain = await computeCharacterSheetInputHash(base);
+
+    const faced = await computeCharacterSheetInputHash({
+      ...base,
+      faceSheetVersionId: 'sheet-v1',
+    });
+    const moved = await computeCharacterSheetInputHash({
+      ...base,
+      faceSheetVersionId: 'sheet-v2',
+    });
+    expect(faced).not.toBe(plain);
+    expect(moved).not.toBe(faced);
+    // Every digest shape carries the face, so a sheet stamped without it
+    // does not stay fresh once the default sheet exists.
+    expect(
+      await characterSheetInputHashMatches(plain, {
+        ...base,
+        faceSheetVersionId: 'sheet-v1',
+      })
+    ).toBe(false);
+    expect(
+      await characterSheetInputHashMatches(faced, {
+        ...base,
+        faceSheetVersionId: 'sheet-v1',
+      })
+    ).toBe(true);
+    const named = await computeCharacterSheetInputHashLegacy(base);
+    expect(
+      await characterSheetInputHashMatches(named, {
+        ...base,
+        faceSheetVersionId: 'sheet-v1',
       })
     ).toBe(false);
   });
@@ -583,6 +621,7 @@ describe('canonical serialization', () => {
         consistencyTag: 'alice_30s',
       },
       styling: null,
+      faceSheetVersionId: null,
       talentSheetHash: 'talent',
       talent: null,
       styleConfigHash: 'style',
@@ -593,6 +632,7 @@ describe('canonical serialization', () => {
       imageModel: 'flux-pro',
       styleConfigHash: 'style',
       styling: null,
+      faceSheetVersionId: null,
       talentSheetHash: 'talent',
       talent: null,
       characterBible: {

@@ -11,6 +11,7 @@ import {
   updateAllUnits,
   planUnits,
   planWork,
+  type ArtifactVerdict,
   type PlanInput,
   type PlanShot,
   type PlanUnit,
@@ -75,9 +76,9 @@ describe('planUnits — scenario table (#1816)', () => {
     const plan = planUnits(
       input({
         characterSheets: [
-          { id: 'maya', sheet: 'done' },
-          { id: 'ravi', sheet: 'missing' },
-          { id: 'ana', sheet: 'missing' },
+          { id: 'maya', characterId: 'maya', sheet: 'done' },
+          { id: 'ravi', characterId: 'ravi', sheet: 'missing' },
+          { id: 'ana', characterId: 'ana', sheet: 'missing' },
         ],
         shots: [
           // The bible edit moved these prompts' hashes: stale by verdict.
@@ -113,7 +114,7 @@ describe('planUnits — scenario table (#1816)', () => {
   it('reference-only: no still or visual prompt; the clip requires the sheets', () => {
     const plan = planUnits(
       input({
-        characterSheets: [{ id: 'maya', sheet: 'stale' }],
+        characterSheets: [{ id: 'maya', characterId: 'maya', sheet: 'stale' }],
         shots: [
           shot('s1', {
             usesStartFrame: false,
@@ -178,7 +179,9 @@ describe('planUnits — scenario table (#1816)', () => {
   it('a failed sheet is missing and stales the stills that reference it', () => {
     const plan = planUnits(
       input({
-        characterSheets: [{ id: 'maya', sheet: 'missing' }],
+        characterSheets: [
+          { id: 'maya', characterId: 'maya', sheet: 'missing' },
+        ],
         shots: [shot('s1', { references: refs('maya') })],
       }),
       SEQ
@@ -232,7 +235,9 @@ describe('planUnits — scenario table (#1816)', () => {
       input({
         processing: true,
         runStopAt: 'references',
-        characterSheets: [{ id: 'maya', sheet: 'missing' }],
+        characterSheets: [
+          { id: 'maya', characterId: 'maya', sheet: 'missing' },
+        ],
         shots: [shot('s1', { visualPrompt: 'missing', still: 'missing' })],
       }),
       SEQ
@@ -250,7 +255,9 @@ describe('planUnits — scenario table (#1816)', () => {
       input({
         processing: true,
         runStopAt: 'music',
-        characterSheets: [{ id: 'maya', sheet: 'missing' }],
+        characterSheets: [
+          { id: 'maya', characterId: 'maya', sheet: 'missing' },
+        ],
         shots: [
           shot('s1', {
             references: refs('maya'),
@@ -291,13 +298,101 @@ describe('planUnits — scenario table (#1816)', () => {
     expect(planUnits(input(), SEQ)).toEqual([]);
     expect(firstStageWithWork([])).toBeNull();
   });
+
+  it('a look is drawn from its default sheet, in the same run that makes it (#2015)', () => {
+    const maya = (sheet: ArtifactVerdict) => ({
+      id: 'maya',
+      characterId: 'maya',
+      sheet,
+    });
+    const gala = (sheet: ArtifactVerdict) => ({
+      id: 'gala',
+      characterId: 'maya',
+      sheet,
+    });
+
+    // Neither sheet exists: one run owes both, and the stills that wear the
+    // look. The run draws the look after the default lands.
+    const both = planUnits(
+      input({
+        characterSheets: [maya('missing'), gala('missing')],
+        shots: [shot('s1', { references: refs('gala'), still: 'missing' })],
+      }),
+      SEQ
+    );
+    expect(states(both)).toMatchObject({
+      'sheet:character:maya': 'missing',
+      'sheet:character:gala': 'missing',
+    });
+    expect(
+      planWork(both, 'images').map((unit) => `${unit.kind}:${unit.id}`)
+    ).toEqual(
+      expect.arrayContaining([
+        'sheet:character:maya',
+        'sheet:character:gala',
+        'still:s1',
+      ])
+    );
+
+    // The default exists: the look is drawn now, from it.
+    const drawing = planUnits(
+      input({ characterSheets: [maya('done'), gala('missing')] }),
+      SEQ
+    );
+    expect(planWork(drawing, 'references').map((unit) => unit.id)).toEqual([
+      'gala',
+    ]);
+
+    // Redrawing the default redraws the looks drawn from it, in that run:
+    // their face is about to move.
+    const redraw = planUnits(
+      input({ characterSheets: [maya('stale'), gala('done')] }),
+      SEQ
+    );
+    expect(states(redraw)).toMatchObject({
+      'sheet:character:maya': 'stale',
+      'sheet:character:gala': 'stale',
+    });
+    expect(
+      planWork(redraw, 'references')
+        .map((unit) => unit.id)
+        .sort()
+    ).toEqual(['gala', 'maya']);
+
+    // The run holding the sequence makes both, and the stills that wear it.
+    const during = planUnits(
+      input({
+        processing: true,
+        runStopAt: 'images',
+        characterSheets: [maya('missing'), gala('missing')],
+        shots: [shot('s1', { references: refs('gala'), still: 'missing' })],
+      }),
+      SEQ
+    );
+    expect(states(during)).toMatchObject({
+      'sheet:character:maya': 'running',
+      'sheet:character:gala': 'running',
+      'still:s1': 'running',
+    });
+
+    // A default sheet running elsewhere holds the look.
+    const elsewhere = planUnits(
+      input({ characterSheets: [maya('running'), gala('missing')] }),
+      SEQ
+    );
+    expect(states(elsewhere)).toMatchObject({
+      'sheet:character:gala': 'blocked by sheet:character:maya',
+    });
+  });
 });
 
 describe('planWork', () => {
   it('caps the work at stopAt', () => {
     const plan = planUnits(
       input({
-        characterSheets: [{ id: 'maya', sheet: 'missing' }],
+        characterSheets: [
+          { id: 'maya', characterId: 'maya', sheet: 'missing' },
+        ],
         shots: [shot('s1', { still: 'missing', clip: 'missing' })],
       }),
       SEQ
@@ -466,8 +561,8 @@ describe('updateAllUnits — Update all is the plan filtered to stale (#1819)', 
   const plan = planUnits(
     input({
       characterSheets: [
-        { id: 'maya', sheet: 'stale' },
-        { id: 'ravi', sheet: 'missing' },
+        { id: 'maya', characterId: 'maya', sheet: 'stale' },
+        { id: 'ravi', characterId: 'ravi', sheet: 'missing' },
       ],
       voices: [
         { id: 'maya', voice: 'done' },

@@ -28,7 +28,7 @@ import {
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
-import { addCharacterToLibraryFn } from '@/cast/talent.fn';
+import { saveCharacterAsTalentFn } from '@/cast/talent.fn';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
@@ -73,15 +73,16 @@ export function useSequenceCharacters(sequenceId: string) {
 }
 
 /**
- * Hook for adding a sequence character to the team's talent library
+ * Save a sequence's character as a new talent (what "Add to Library" did
+ * before the library flag, #2017).
  */
-export function useAddCharacterToLibrary() {
+export function useSaveCharacterAsTalent() {
   const queryClient = useQueryClient();
 
   return useMutation({
     meta: { globalError: true },
-    mutationFn: (characterId: string) =>
-      addCharacterToLibraryFn({ data: { characterId } }),
+    mutationFn: (data: { sequenceId: string; characterId: string }) =>
+      saveCharacterAsTalentFn({ data }),
     onSuccess: () => {
       // Invalidate talent queries to refresh library
       void queryClient.invalidateQueries({ queryKey: ['talent'] });
@@ -432,8 +433,11 @@ export function useRecastCharacter() {
 
   return useMutation({
     meta: { globalError: true },
-    mutationFn: (data: { characterId: string; talentId: string }) =>
-      recastCharacterFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      characterId: string;
+      talentId: string;
+    }) => recastCharacterFn({ data }),
     onSuccess: () => {
       // Invalidate sequence characters to refresh the list
       void queryClient.invalidateQueries({

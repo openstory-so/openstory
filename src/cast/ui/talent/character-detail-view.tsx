@@ -5,6 +5,13 @@ import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog'
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { SheetVersionStrip } from '@/cast/ui/sheets/sheet-version-strip';
 import { wearLook } from '@/cast/character-looks';
+import {
+  defaultLookCaption,
+  defaultLookFaceState,
+  defaultLookName,
+  lookSheetFaceMessage,
+} from '@/cast/look-sheet-face';
+import { CharacterLibraryButton } from '@/cast/ui/character-library/character-library-button';
 import { CharacterLooksRow } from '@/cast/ui/talent/character-looks-row';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Badge } from '@/ui/shadcn/badge';
@@ -24,11 +31,11 @@ import {
 import {
   restoreSequenceCharacter,
   sequenceCharacterKeys,
-  useAddCharacterToLibrary,
   useCharacterSheetStaleness,
   useRegenerateCharacterSheet,
   useShotIdsForCharacter,
   useRecastCharacter,
+  useSaveCharacterAsTalent,
   useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
@@ -56,15 +63,7 @@ import { estimateImageCost } from '@/billing/cost-estimation';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import {
-  ArrowLeft,
-  Library,
-  Loader2,
-  Mic,
-  RefreshCw,
-  Trash2,
-  User,
-} from 'lucide-react';
+import { ArrowLeft, Loader2, Mic, RefreshCw, Trash2, User } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CharacterBibleForm } from './character-bible-form';
@@ -76,11 +75,17 @@ import { AppImage } from '@/ui/shadcn/app-image';
 type CharacterDetailViewProps = {
   sequenceId: string;
   characterId: string;
+  /**
+   * `sequence`: its own header, with the way back to the sequence's cast.
+   * `none`: the page around it names the character (the Characters page).
+   */
+  header: 'sequence' | 'none';
 };
 
 export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   sequenceId,
   characterId,
+  header,
 }) => {
   const queryClient = useQueryClient();
   const {
@@ -88,7 +93,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     isLoading,
     error,
   } = useSequenceCharacters(sequenceId);
-  const addToLibrary = useAddCharacterToLibrary();
+  const saveAsTalent = useSaveCharacterAsTalent();
   const recastCharacter = useRecastCharacter();
   const regenerateSheet = useRegenerateCharacterSheet();
   const { data: sequence } = useSequence(sequenceId);
@@ -101,6 +106,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     liveLooks.find((look) => look.id === pickedLookId) ??
     liveLooks.find((look) => look.isDefault);
   const activeLookId = activeLook?.id ?? characterId;
+  // A look other than the default is drawn from the default look's sheet.
+  const faceState = defaultLookFaceState(liveLooks);
+  const faceBlocked = activeLook?.isDefault === false && faceState !== 'ready';
+  const faceMessage =
+    activeLook?.isDefault === false
+      ? lookSheetFaceMessage(defaultLookName(liveLooks), faceState)
+      : activeLook
+        ? defaultLookCaption(
+            activeLook.name,
+            liveLooks.some((look) => !look.isDefault)
+          )
+        : null;
   // Everything below reads the character wearing that look: its sheet,
   // status, versions and staleness are the look's.
   const character = owner && activeLook ? wearLook(owner, activeLook) : owner;
@@ -370,10 +387,21 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {
       pricing: falPricing,
-      // Talent refs go through the model's edit endpoint (same as the workflow).
-      edit: Boolean(character?.talentId),
+      // A reference image uses the model's edit endpoint. The default look
+      // sends the talent sheet; every other look sends the default look's sheet.
+      edit:
+        activeLook?.isDefault === false
+          ? faceState === 'ready'
+          : Boolean(character?.talentId),
     });
-  }, [falPricing, pricingPending, selectedSheetModel, character?.talentId]);
+  }, [
+    falPricing,
+    pricingPending,
+    selectedSheetModel,
+    character?.talentId,
+    activeLook?.isDefault,
+    faceState,
+  ]);
 
   const handleRegenerateSheet = useCallback(() => {
     regenerateSheet.mutate(
@@ -401,11 +429,19 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     if (!selectedTalent || !character) return;
 
     recastCharacter.mutate(
-      { characterId: character.id, talentId: selectedTalent.id },
+      { sequenceId, characterId: character.id, talentId: selectedTalent.id },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           setIsConfirmOpen(false);
           setSelectedTalent(null);
+          // Other looks are drawn from the new default sheet, so the recast
+          // leaves them for the next update (#2015). Say which.
+          if (result.looksLeftStale.length > 0) {
+            toast(
+              `Update redraws ${result.looksLeftStale.map((look) => look.name).join(', ')} once the new sheet lands.`,
+              { duration: 60_000 }
+            );
+          }
         },
       }
     );
@@ -460,17 +496,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {/* Header with back button */}
-      <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
-        <Link
-          to="/sequences/$id/cast"
-          params={{ id: sequenceId }}
-          className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
-        <h1 className="text-lg font-semibold">{character.name}</h1>
-      </div>
+      {header === 'sequence' && (
+        <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
+          <Link
+            to="/sequences/$id/cast"
+            params={{ id: sequenceId }}
+            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h1 className="text-lg font-semibold">{character.name}</h1>
+        </div>
+      )}
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-6 p-4">
@@ -478,7 +515,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
             entityType="character"
             divergentVariantId={characterDivergentVariant?.id}
             isStale={isSheetStale}
-            onRegenerate={handleRegenerateSheet}
+            onRegenerate={faceBlocked ? undefined : handleRegenerateSheet}
             onCompareDivergent={
               characterDivergentVariant
                 ? () => setCompareVariant(characterDivergentVariant)
@@ -518,9 +555,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     activeLookId={activeLookId}
                     onSelect={setPickedLookId}
                   />
+                  {faceMessage ? (
+                    <p className="text-sm text-muted-foreground">
+                      {faceMessage}
+                    </p>
+                  ) : null}
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">Sheet</p>
-                    {isSheetStale && (
+                    <p className="text-sm font-medium">
+                      {activeLook?.isDefault
+                        ? 'Default look'
+                        : (activeLook?.name ?? 'Sheet')}
+                    </p>
+                    {isSheetStale && !faceBlocked && (
                       <StalenessIndicator
                         artifact="sheet"
                         entityType="character"
@@ -605,7 +651,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                   </p>
                   <Button
                     onClick={handleRegenerateSheet}
-                    disabled={regenerateSheet.isPending}
+                    disabled={regenerateSheet.isPending || faceBlocked}
                   >
                     <InButtonCost estimate={sheetCostEstimate}>
                       {regenerateSheet.isPending ? (
@@ -628,14 +674,27 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
               )}
 
               <div className="flex flex-wrap gap-2">
+                {header === 'sequence' && (
+                  <CharacterLibraryButton
+                    characterId={character.id}
+                    inLibrary={character.inLibrary}
+                  />
+                )}
                 {!character.talent && !character.voiceOnly && (
                   <Button
                     variant="outline"
-                    onClick={() => addToLibrary.mutate(character.id)}
-                    disabled={addToLibrary.isPending}
+                    onClick={() =>
+                      saveAsTalent.mutate(
+                        { sequenceId, characterId: character.id },
+                        {
+                          onSuccess: () =>
+                            toast.success(`Saved ${character.name} as talent`),
+                        }
+                      )
+                    }
+                    disabled={saveAsTalent.isPending}
                   >
-                    <Library className="mr-2 h-4 w-4" />
-                    {addToLibrary.isPending ? 'Adding…' : 'Add to Library'}
+                    {saveAsTalent.isPending ? 'Saving…' : 'Save as talent'}
                   </Button>
                 )}
                 {!character.voiceOnly && (
@@ -653,6 +712,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     pendingLabel="Uploading…"
                     accept="image/*"
                     isPending={uploadSheet.isPending}
+                    // Upload needs no face; only Generate waits for one.
                     disabled={isSheetGenerating}
                     onFile={(file) =>
                       uploadSheet.mutate(

@@ -98,7 +98,7 @@ function makeScopedDb(opts?: {
   const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({ id: 'ver-1' }));
   const updateVoice = vi.fn(async () => ({ id: 'char-1' }));
   const markVoiceReleased = vi.fn(async () => undefined);
-  const getById = vi.fn(async () => ({
+  const getVoice = vi.fn(async () => ({
     id: 'char-1',
     voiceId: opts?.voiceId ?? null,
     selectedVoiceVersionId: opts?.selectedVoiceVersionId ?? null,
@@ -122,7 +122,7 @@ function makeScopedDb(opts?: {
       markVoiceReleased,
     },
     liveRead: {
-      characters: { getById, getVoiceReferenceCount },
+      characters: { getVoice, getVoiceReferenceCount },
     },
     claims: {
       characters: { getVoiceVersionById },

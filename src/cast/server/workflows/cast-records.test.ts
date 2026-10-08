@@ -58,7 +58,11 @@ describe('findMissingElementEntries', () => {
 // Each analysed look lands on a `character_looks` row (#2015); the stub
 // answers with the id the look was given.
 const syncFromAnalysis = vi.fn(
-  async (characterId: string, looks: { lookId: string }[]) =>
+  async (
+    _sequenceId: string,
+    characterId: string,
+    looks: { lookId: string }[]
+  ) =>
     Object.fromEntries(
       looks.map((look, i) => [
         look.lookId,

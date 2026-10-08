@@ -24,7 +24,6 @@ import {
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
 import { liveLookSheetVersionId, requireLook } from './character-looks';
-import { onlyLink } from './sequence-cast';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
@@ -206,6 +205,8 @@ export function createCharacterSheetVariantsMethods(
      * backfill gave every such row a version of its own.
      */
     applyConvergent: async (args: {
+      /** The sequence whose pointer moves (#2017). */
+      sequenceId: string;
       /** The look the sheet is of (#2015). */
       lookId: string;
       url: string;
@@ -215,9 +216,16 @@ export function createCharacterSheetVariantsMethods(
       model: string;
       workflowRunId?: string | null;
     }): Promise<{ version: CharacterSheetVariant }> => {
-      const { lookId, url, storagePath, inputHash, model, workflowRunId } =
-        args;
-      const look = await requireLook(db, teamId, lookId);
+      const {
+        sequenceId,
+        lookId,
+        url,
+        storagePath,
+        inputHash,
+        model,
+        workflowRunId,
+      } = args;
+      const look = await requireLook(db, teamId, sequenceId, lookId);
 
       const now = new Date();
       const [version] = await db
@@ -254,13 +262,14 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * Repoint a look's live sheet at one of its completed versions — the look
-     * is the version's own (#2015). Only moves the pointer — reads resolve
+     * Repoint a look's live sheet, in one sequence, at one of its completed
+     * versions — the look is the version's own (#2015). Only moves the pointer — reads resolve
      * url / path / hash from the version it names (#1419). A divergent row
      * is unmarked so the banner clears. Previous pointer is recorded on the
      * event for undo.
      */
     select: async (
+      sequenceId: string,
       characterId: string,
       versionId: string,
       opts: { actorId: string | null }
@@ -291,12 +300,14 @@ export function createCharacterSheetVariantsMethods(
         );
       }
 
-      const look = await requireLook(db, teamId, version.lookId ?? characterId);
-      const owners = await db
-        .select({
-          sequenceId: sequenceCast.sequenceId,
-          name: characterBibleColumns.name,
-        })
+      const look = await requireLook(
+        db,
+        teamId,
+        sequenceId,
+        version.lookId ?? characterId
+      );
+      const [existing] = await db
+        .select({ name: characterBibleColumns.name })
         .from(sequenceCast)
         .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
         .leftJoin(
@@ -306,10 +317,10 @@ export function createCharacterSheetVariantsMethods(
         .where(
           and(
             eq(sequenceCast.characterId, characterId),
+            eq(sequenceCast.sequenceId, sequenceId),
             eq(characters.teamId, teamId)
           )
         );
-      const existing = onlyLink(owners, `Character ${characterId}`);
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
       }
@@ -332,7 +343,7 @@ export function createCharacterSheetVariantsMethods(
           .set({ divergedAt: null, updatedAt: now })
           .where(eq(characterSheetVariants.id, versionId)),
         buildEventInsert(db, {
-          sequenceId: existing.sequenceId,
+          sequenceId,
           actorId: opts.actorId,
           kind: 'sheet.selected',
           targetType: 'character',
@@ -355,10 +366,14 @@ export function createCharacterSheetVariantsMethods(
      * and select it only while the claim still names it; otherwise park it
      * as divergent. See {@link landCharacterSheet}.
      */
-    promoteIfPending: async (
-      args: Omit<Parameters<typeof landCharacterSheet>[1], 'castLookId'>
-    ) => {
-      const look = await requireLook(db, teamId, args.lookId);
+    promoteIfPending: async ({
+      sequenceId,
+      ...args
+    }: Omit<Parameters<typeof landCharacterSheet>[1], 'castLookId'> & {
+      /** The sequence the run drew the sheet for (#2017). */
+      sequenceId: string;
+    }) => {
+      const look = await requireLook(db, teamId, sequenceId, args.lookId);
       return await landCharacterSheet(db, {
         ...args,
         castLookId: look.castLookId,

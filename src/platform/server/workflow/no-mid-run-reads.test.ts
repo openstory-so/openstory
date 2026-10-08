@@ -329,7 +329,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The platform ElevenLabs key, resolved inside the design and save steps that spend it (#1553).',
     },
     {
-      read: 'characters.getById',
+      read: 'characters.getVoice',
       bucket: 'EXISTENCE-GUARD',
       why: 'pendingPromoteVoiceVersionId at persist: the user may have picked another voice mid-run, so promote must read the live pointer (#1715).',
     },

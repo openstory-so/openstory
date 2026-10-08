@@ -166,9 +166,9 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         );
         return { voiceId, emit: 'completed' as const };
       }
-      const live = await scopedDb.liveRead.characters.getById(characterDbId);
+      const live = await scopedDb.liveRead.characters.getVoice(characterDbId);
       const shouldPromote =
-        live?.pendingPromoteVoiceVersionId === targetVersionId;
+        live.pendingPromoteVoiceVersionId === targetVersionId;
       if (!shouldPromote) {
         // Persist replay after promote: pointer is already cleared and this
         // husk is the selected voice. Do not treat that as a demote.
@@ -177,8 +177,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         if (
           existing?.status === 'completed' &&
           existing.voiceId === voiceId &&
-          (live?.selectedVoiceVersionId === targetVersionId ||
-            live?.voiceId === voiceId)
+          (live.selectedVoiceVersionId === targetVersionId ||
+            live.voiceId === voiceId)
         ) {
           return { voiceId, emit: 'completed' as const };
         }

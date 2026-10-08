@@ -14,6 +14,24 @@ type TalentLibraryListProps = {
   error?: Error | null;
 };
 
+/** The library grid: talent and team characters lay out the same. */
+export const LIBRARY_GRID_CLASS =
+  'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4';
+
+export const LibraryGridSkeleton: React.FC = () => (
+  <div className={LIBRARY_GRID_CLASS}>
+    {[1, 2, 3, 4, 5, 6].map((n) => (
+      <Card key={`skeleton-${n}`} className="overflow-hidden animate-pulse">
+        <div className="aspect-square bg-muted" />
+        <div className="p-4">
+          <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+          <div className="h-3 bg-muted rounded w-1/2" />
+        </div>
+      </Card>
+    ))}
+  </div>
+);
+
 export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
   talent,
   isLoading,
@@ -46,19 +64,7 @@ export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
   }, [divergentVariants, sheetIdToTalentId]);
 
   if (isLoading) {
-    return (
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {[1, 2, 3, 4, 5, 6].map((n) => (
-          <Card key={`skeleton-${n}`} className="overflow-hidden animate-pulse">
-            <div className="aspect-square bg-muted" />
-            <div className="p-4">
-              <div className="h-4 bg-muted rounded w-3/4 mb-2" />
-              <div className="h-3 bg-muted rounded w-1/2" />
-            </div>
-          </Card>
-        ))}
-      </div>
-    );
+    return <LibraryGridSkeleton />;
   }
 
   if (error) {
@@ -77,7 +83,7 @@ export const TalentLibraryList: React.FC<TalentLibraryListProps> = ({
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+    <div className={LIBRARY_GRID_CLASS}>
       {talent.map((t) => (
         <TalentLibraryCard
           key={t.id}

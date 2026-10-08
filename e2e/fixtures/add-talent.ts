@@ -29,7 +29,7 @@ export function addTalentDialog(page: Page): Locator {
 }
 
 export async function openAddTalentFromLibrary(page: Page): Promise<Locator> {
-  await page.goto('/talent');
+  await page.goto('/characters?tab=talent');
   await waitForLibraryPageLoad(page, 'Add Talent');
   await page.getByRole('button', { name: 'Add Talent' }).first().click();
   const dialog = addTalentDialog(page);

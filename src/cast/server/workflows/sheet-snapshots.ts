@@ -87,6 +87,40 @@ export const queuedBeforeLooks = () =>
     'Queued before character looks shipped. Run it again.'
   );
 
+/**
+ * A sheet payload queued before every look carried `face` (#2015): the one
+ * check, at the top of the run, so no field below defaults it.
+ */
+export function assertQueuedWithFace(input: object): void {
+  if (!('face' in input)) {
+    throw new WorkflowValidationError(
+      'Queued before looks were drawn from the default look. Run it again.'
+    );
+  }
+}
+
+/**
+ * A character sheet payload before its face: everything the trigger
+ * snapshots except the default look's sheet and the hash that covers it.
+ * A look whose default sheet the same run makes waits in this shape.
+ */
+export type CharacterSheetDraft = Omit<
+  SheetPayload<CharacterSheetWorkflowInput>,
+  'face'
+>;
+
+/** Give a draft its face and stamp the hash, which covers the face. */
+export async function finishCharacterSheetPayload(
+  draft: CharacterSheetDraft,
+  face: CharacterSheetWorkflowInput['face']
+): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
+  const fields = { ...draft, face };
+  return {
+    ...fields,
+    snapshotInputHash: await computeCharacterSheetHashFromDto(fields),
+  };
+}
+
 /** The payload fields a cast talent supplies to a character sheet. */
 export type CastTalentFields = Pick<
   CharacterSheetWorkflowInput,
@@ -162,6 +196,7 @@ function characterSheetHashInput(
   return {
     characterBible: characterBibleFields(input.characterMetadata),
     styling: input.lookStyling,
+    faceSheetVersionId: input.face === null ? null : input.face.versionId,
     talentSheetHash: input.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(input),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,

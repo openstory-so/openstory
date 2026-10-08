@@ -143,7 +143,8 @@ describe('computeGenerationPlan', () => {
   const planStates = async (
     includeMusic: boolean,
     existingMusic = false,
-    ownProcessing = false
+    ownProcessing = false,
+    mayaSheet: string | null = 'https://x/maya.png'
   ) => {
     const plan = await computeGenerationPlan(
       asScopedDb({
@@ -168,7 +169,7 @@ describe('computeGenerationPlan', () => {
         characters: {
           list: () =>
             Promise.resolve([
-              character('maya', 'Maya', 'https://x/maya.png'),
+              character('maya', 'Maya', mayaSheet),
               character('ravi', 'Ravi', null),
             ]),
         },
@@ -218,6 +219,20 @@ describe('computeGenerationPlan', () => {
         'sheet:character:ravi': 'missing',
       });
       expect(states).not.toHaveProperty(['sheet:character:unworn']);
+    } finally {
+      sceneLooks = null;
+    }
+  });
+
+  it('a worn look is owed in the run that makes its default sheet (#2015)', async () => {
+    sceneLooks = { maya: 'gala' };
+    try {
+      const states = await planStates(true, false, false, null);
+      // Drawn after the default lands, in the same run: both are its work.
+      expect(states).toMatchObject({
+        'sheet:character:maya': 'missing',
+        'sheet:character:gala': 'missing',
+      });
     } finally {
       sceneLooks = null;
     }

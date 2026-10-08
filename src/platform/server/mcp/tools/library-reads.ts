@@ -21,6 +21,7 @@ import {
 import { listAssets, readAsset } from '@/models/server/asset-inspection';
 import { listStudioUploadReads } from '@/studio/server/upload-reads';
 import { buildSampleEntries } from '@/look/ui/sample-entries';
+import { pageRows, readPage } from '@/platform/server/read-page';
 import { productionRead, readToolDefinition } from '../tool-context';
 
 const pageInput = z.strictObject({
@@ -131,6 +132,42 @@ const libraryEntryTools = (
     }
   ),
 ]);
+const libraryCharactersSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      physicalDescription: z.string().nullable(),
+      voiceOnly: z.boolean(),
+      lastUsedAt: z.string().nullable(),
+      sequences: z.array(
+        z.object({
+          id: z.string(),
+          title: z.string(),
+          sheetImageUrl: z.string().nullable(),
+        })
+      ),
+    })
+  ),
+  nextCursor: z.string().nullable(),
+});
+const listLibraryCharacters = productionRead(
+  'list_library_characters',
+  'List the characters in the team library: team characters flagged with Add to Library (not talent, which is list_talent). Ascending ID pagination. Each lists the live sequences that cast it, the most recently changed first, with the default look sheet that sequence selected, and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.',
+  pageInput,
+  libraryCharactersSchema,
+  async (input, { scopedDb, origin }) =>
+    projectRead(
+      libraryCharactersSchema,
+      await readPage(
+        input,
+        // Bound to the team, like the other library cursors.
+        ['library_characters', scopedDb.teamId],
+        pageRows(await scopedDb.characters.listTeam({ inLibrary: true }))
+      ),
+      origin
+    )
+);
 const listLibraryResourcesInput = z.discriminatedUnion('kind', [
   childLibraryInput.extend(pageInput.shape),
   rootLibraryInput.extend(pageInput.shape),
@@ -291,6 +328,7 @@ const listStudioUploads = productionRead(
 
 export const libraryReadTools = [
   ...libraryEntryTools,
+  listLibraryCharacters,
   listLibraryResources,
   getLibraryResource,
   listGallerySamples,

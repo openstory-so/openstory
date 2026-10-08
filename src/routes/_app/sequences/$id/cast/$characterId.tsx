@@ -40,6 +40,7 @@ function CharacterDetailPage() {
       key={characterId}
       sequenceId={sequenceId}
       characterId={characterId}
+      header="sequence"
     />
   );
 }

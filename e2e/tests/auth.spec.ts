@@ -256,9 +256,9 @@ test.describe('Authenticated User', () => {
   });
 
   test('can access talent page', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/talent');
+    await authenticatedPage.goto('/characters?tab=talent');
 
-    await expect(authenticatedPage).toHaveURL(/\/talent/);
+    await expect(authenticatedPage).toHaveURL(/\/characters\?tab=talent/);
   });
 
   test('session persists across navigation', async ({ authenticatedPage }) => {
@@ -267,8 +267,8 @@ test.describe('Authenticated User', () => {
     await expect(authenticatedPage).toHaveURL(/\/sequences/);
 
     // Navigate to talent
-    await authenticatedPage.goto('/talent');
-    await expect(authenticatedPage).toHaveURL(/\/talent/);
+    await authenticatedPage.goto('/characters?tab=talent');
+    await expect(authenticatedPage).toHaveURL(/\/characters\?tab=talent/);
 
     // Navigate back to sequences
     await authenticatedPage.goto('/sequences');

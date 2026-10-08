@@ -5,6 +5,7 @@
  * `media-upload.fn.ts` for the staleness and DAG contracts.
  */
 import { wearLook } from '@/cast/character-looks';
+import { defaultLookFace } from '@/cast/look-sheet-face';
 import {
   requireCharacterLook,
   requireLiveLook,
@@ -24,7 +25,11 @@ import {
   type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
-import { AttestationRequiredError, NotFoundError } from '@/platform/errors';
+import {
+  AttestationRequiredError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import {
   characterSheetTalentHashFields,
   computeStyleConfigHash,
@@ -43,7 +48,6 @@ import type { Sequence, User } from '@/platform/server/db/schema';
 import type { ShotEditContext } from '@/shots/server/shot-context';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { ValidationError } from '@/platform/errors';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { getGenerationChannel } from '@/platform/realtime';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
@@ -568,15 +572,21 @@ export async function setCharacterSheetFromUpload(
     context.teamId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
-  const owner = await scopedDb.characters.getById(data.characterId);
-  if (!owner || owner.sequenceId !== sequence.id) {
-    throw new NotFoundError('Character not found');
-  }
+  const owner = await scopedDb.characters.getById(
+    sequence.id,
+    data.characterId
+  );
+  if (!owner) throw new NotFoundError('Character not found');
   // The sheet is one look's (#2015): the hash below reads that look's
   // clothing and styling, as a generated sheet's would.
   const look = requireLiveLook(
     await requireCharacterLook(scopedDb, owner, data.lookId)
   );
+  // An upload is the user's own image: it needs no face to be drawn from, so
+  // it is allowed before the default look has a sheet (decided 2026-10-07).
+  // It is stamped with whatever face exists now, null when none, so it reads
+  // stale once a (new) default sheet lands, as a generated look would.
+  const face = look.isDefault ? null : defaultLookFace(owner.looks);
   const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(
     character.isPerson,
@@ -601,6 +611,7 @@ export async function setCharacterSheetFromUpload(
       consistencyTag: character.consistencyTag,
     },
     styling: character.styling,
+    faceSheetVersionId: face === null ? null : face.versionId,
     talentSheetHash: cast.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(cast),
     styleConfigHash,
@@ -611,6 +622,7 @@ export async function setCharacterSheetFromUpload(
   // row, only when it moved.
   if (isPerson !== character.isPerson) {
     await scopedDb.characters.updateBible(
+      sequence.id,
       character.id,
       { isPerson },
       { actorId: user.id, source: 'edit' }
@@ -622,13 +634,14 @@ export async function setCharacterSheetFromUpload(
   // inputs didn't change.
   const { version: variant } =
     await scopedDb.characterSheetVariants.applyConvergent({
+      sequenceId: sequence.id,
       lookId: look.id,
       url: data.publicUrl,
       storagePath,
       inputHash,
       model: USER_UPLOAD_MODEL,
     });
-  const updated = await scopedDb.characters.getById(character.id);
+  const updated = await scopedDb.characters.getById(sequence.id, character.id);
   if (!updated) throw new NotFoundError('Character not found');
   await scopedDb.sequenceEvents.record({
     sequenceId: sequence.id,

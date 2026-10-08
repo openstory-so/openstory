@@ -48,7 +48,6 @@ import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 const talentIdSchema = z.object({ talentId: ulidSchema });
 const sheetIdSchema = z.object({ sheetId: ulidSchema });
 const mediaIdSchema = z.object({ mediaId: ulidSchema });
-const characterIdSchema = z.object({ characterId: ulidSchema });
 
 // List Talent
 
@@ -472,21 +471,30 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
     };
   });
 
-export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
+/**
+ * Save a sequence's character as a new talent: its description, voice and
+ * sheet, as that sequence casts it. This is what "Add to Library" did before
+ * the library became a flag on the character (#2017). It stays, as "Save as
+ * talent", until #2018 says what a talent is.
+ */
+export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(characterIdSchema))
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, characterId: ulidSchema }))
+  )
   .handler(async ({ context, data }) => {
+    // Verify the sequence belongs to this team
+    await context.scopedDb.sequences.getForUser({
+      sequenceId: data.sequenceId,
+    });
+
     const character = await context.scopedDb.characters.getById(
+      data.sequenceId,
       data.characterId
     );
     if (!character) {
       throw new Error('Character not found');
     }
-
-    // Verify the character's sequence belongs to this team
-    await context.scopedDb.sequences.getForUser({
-      sequenceId: character.sequenceId,
-    });
 
     const newTalent = await context.scopedDb.talent.create({
       name: character.name,

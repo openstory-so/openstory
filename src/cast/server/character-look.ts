@@ -12,13 +12,16 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
  */
 export async function requireCharacterLook(
   scopedDb: Pick<ScopedDb, 'characterLooks'>,
-  character: Pick<CharacterWithSheet, 'id' | 'looks'>,
+  character: Pick<CharacterWithSheet, 'id' | 'sequenceId' | 'looks'>,
   lookId: string
 ): Promise<CharacterLook> {
   const look =
     character.looks.find((l) => l.id === lookId) ??
     (lookId === character.id
-      ? await scopedDb.characterLooks.ensureDefault(character.id)
+      ? await scopedDb.characterLooks.ensureDefault(
+          character.sequenceId,
+          character.id
+        )
       : null);
   if (!look) {
     throw new NotFoundError(

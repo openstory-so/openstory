@@ -33,6 +33,7 @@ import { landSheetRun } from './sheet-divergence';
 import type { SheetRunOutcome } from './sheet-divergence';
 import {
   characterSheetHashMatchesStored,
+  assertQueuedWithFace,
   assertQueuedWithLooks,
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -66,6 +67,7 @@ async function landSheet(
   return landSheetRun({
     land: () =>
       scopedDb.characterSheetVariants.promoteIfPending({
+        sequenceId,
         characterId: input.characterDbId,
         lookId: input.lookId,
         lookVersionId: input.lookVersionId,
@@ -210,6 +212,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const input = event.payload;
     const workflowRunId = event.instanceId;
     assertQueuedWithLooks(input);
+    assertQueuedWithFace(input);
 
     // Validate the snapshot hash inside the workflow body: a tampered
     // payload must halt the run from inside a step, not silently.
@@ -239,7 +242,9 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       }
     });
 
-    if (input.reuseTalentSheet) {
+    // A look other than the default is drawn from that look's sheet. The
+    // talent-sheet copy is only for the default look's first sheet.
+    if (input.reuseTalentSheet && input.face === null) {
       return persistReusedTalentSheet({
         event,
         step,
@@ -277,7 +282,8 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           input.characterMetadata,
           talentOverrides,
           input.styleConfig,
-          input.lookStyling
+          input.lookStyling,
+          input.face === null ? null : input.face.url
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
@@ -478,8 +484,10 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // Mark the look's sheet as failed — through the claim, so a newer run's
     // claim and `generating` status survive this one's failure (#1113).
+    // A run with no sequence was refused at the top, and names no cast look
+    // either (#2017).
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
-    if (!input.lookId) {
+    if (!input.lookId || !input.sequenceId) {
       // Its claim is found by the claim's own id, never by a guessed look.
       await scopedDb.characterLooks.failSheetClaimByVersion(
         input.sheetVersionId,
@@ -489,6 +497,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     }
     if (input.characterDbId) {
       await scopedDb.characterLooks.failSheetClaim(
+        input.sequenceId,
         input.lookId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         input.sheetVersionId ?? null,

@@ -111,9 +111,42 @@ that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
 The References stage makes one sheet per look some scene uses: a
 `sheet:character` plan unit is a look id — each character's default look
 always, any other once a live scene picks it. A look nobody wears gets a
-sheet only when someone asks. Talent reuse (`reusesTalentSheet`) is decided
-per look, against the talent's default sheet. A recast redraws the default
-look and every other look a live scene wears.
+sheet only when someone asks. A look other than the
+default is drawn from the default look's sheet: the run draws the person
+from that image and changes the costume, and the talent image is not also
+sent. Talent reuse (`reusesTalentSheet`) applies only to the default look,
+against the talent's default sheet.
+
+- **The face** is the default look's selected sheet, whatever its last
+  attempt did (`populatedDefaultSheet`). A failed or running re-roll leaves
+  that sheet selected and on screen, and it is still the face. The plan,
+  the trigger, the upload and the panel all ask this one question.
+- **The payload** carries `face: { url, versionId } | null`, required; null
+  exactly when the look is the default. The trigger refuses a non-default
+  look with no face (`buildRegenerateCharacterSheetPayload`), so no path
+  draws a look from the talent instead. A payload from before the field is
+  failed at the top of `CharacterSheetWorkflow` (`assertQueuedWithFace`).
+- **One run makes every look.** In the plan the default sheet is the look's
+  upstream, with the ordinary rules: a default this run makes puts the look
+  in the same run (a look that was done goes stale by cascade, since its
+  face is about to move). `buildPlanReferences` drafts such a look without
+  a face (`lookSheetsAfterDefault`), and `UpdateStaleShotsWorkflow` draws it
+  in a second references wave from the sheet the run just landed. A default
+  that fails or parks fails the look, which holds the shots that wear it.
+- **Upload** of a non-default look is allowed at any time (decided
+  2026-10-07): the user supplies the image, so nothing is drawn from a face.
+  It is stamped with the face that exists at upload, null when none, so it
+  reads stale once a default sheet lands (or a new one replaces it). Only
+  Generate waits for the default sheet.
+- **Recast** redraws the default look only, and re-renders the shots that
+  wear it. Other looks a scene wears go stale once the new sheet lands,
+  with their shots, and the next Update or Continue redraws them. The
+  recast result names them (`looksLeftStale`) and the panel says so.
+- **Existing look sheets go stale (decided 2026-10-07).** Every
+  non-default look sheet made before this change was stamped without a
+  face, so it reads stale once its default sheet exists, and the plan
+  redraws it (credits), with the shots that wear it. No legacy hash shape
+  keeps them fresh.
 
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
 stored URL). See `byteplus-ark.md` for slot pressure.
@@ -123,7 +156,12 @@ stored URL). See `byteplus-ark.md` for slot pressure.
 - **Sheet hash**: the clothing keeps the bible's old key
   (`characterBible.standardClothing`), fed from the look; `styling` joins only
   when set, in every digest shape. A backfilled default look therefore hashes
-  to the digest its sheet was stamped with.
+  to the digest its sheet was stamped with. On every other look,
+  `faceSheetVersionId` (the default look's selected sheet version, or that
+  look's id when the pointer is still null — the #1419 row) joins the
+  same way, in every digest shape including the legacy ones, and only when
+  set. A look sheet drawn before that face existed goes stale once the
+  default sheet is completed, and is redrawn from it.
 - **Prompt hashes** read the worn look's clothing, and its styling only when
   set.
 - **Still and clip** read the sheet of the look the scene picks.
@@ -175,9 +213,14 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
 - Two live looks of one character never share a name.
 - A removed look can be read and restored, but not edited, drawn or uploaded
   to (`requireLiveLook`).
-- UI: the character panel has a row of looks; picking one shows that look's
-  sheet, versions, staleness and divergence. A scene's cast card has a look
-  picker. MCP: see `mcp-capability-map.md`.
+- UI: the character panel has a row of looks. The default chip is badged
+  "Default look", and the sheet heading says "Default look" while that look
+  is open. The line under the chips names it ("This is the default look,
+  Clean white shirt…"). On any other look the heading is that look's name,
+  and the line says it is drawn from the default look. Generate stays
+  disabled until the default look has a sheet — the same sentence the
+  refusal returns. Upload is always enabled. A scene's look picker labels the default "(default look)".
+  MCP: see `mcp-capability-map.md`.
 
 ## Traps
 
