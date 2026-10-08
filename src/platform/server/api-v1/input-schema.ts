@@ -193,10 +193,6 @@ export const apiCreateSequenceSchema = z
       description: `How far the run goes, in order: ${GENERATION_STAGES.join(', ')}. Overrides motion and music when set. Omitted, the run stops at ${stopAtFromFlags({})} unless motion or music is true.`,
       examples: ['dialogue'],
     }),
-    voices: z.boolean().default(false).meta({
-      description:
-        'Design a voice per speaking character. Needed for dialogue audio; each saved voice uses an account-wide slot. Default false.',
-    }),
     audioModels: z
       .array(z.string())
       .min(1)

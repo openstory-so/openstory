@@ -25,7 +25,7 @@ type GenerationStopAlertProps = {
   stopAt: GenerationStage;
   /** Start frames on/off rides with the stop-at: off hides the Images stop. */
   generateStartFrames: boolean;
-  /** The run records dialogue; a deployment fact, not a choice (#2004). */
+  /** The run records dialogue wherever voice design is configured (#2067). */
   generateVoices: boolean;
   /** Draft first (#1756); the switch shows only when `offerDraftMotion`. */
   draftMotion: boolean;

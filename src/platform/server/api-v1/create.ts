@@ -399,7 +399,8 @@ export async function runOneShotCreate(
       stopAt: input.stopAt,
       autoGenerateMotion: input.motion,
       autoGenerateMusic: input.music,
-      generateVoices: input.voices,
+      // Voices are not a caller choice (#2067). Omitted here, createSequences
+      // turns them on wherever voice design is configured.
       // The API keeps the frame-based workflow: motion is opt-in spend here, and
       // reference-only (the app default) cannot exist without it.
       generateStartFrames: true,
