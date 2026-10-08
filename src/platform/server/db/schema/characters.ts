@@ -232,6 +232,10 @@ export type Character = Omit<
   CharacterRow,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
+  | 'legacyInLibrary'
+  // The row's own `deletedAt` (deleted from the team); a cast read carries
+  // its link's, from `CharacterCast`.
+  | 'deletedAt'
   | 'selectedBibleVersionId'
   | 'selectedVoiceVersionId'
 > &
@@ -284,6 +288,8 @@ export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
+  | 'legacyInLibrary'
+  | 'deletedAt'
   | 'selectedBibleVersionId'
   // The scoped module's own team.
   | 'teamId'
