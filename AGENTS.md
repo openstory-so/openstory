@@ -245,7 +245,11 @@ changing the area, and update it in the same PR.**
   `resolveShotReferences` take the scene's `characterLooks` (required) and
   return the cast dressed. A default look's id is its character's id. Look
   sheets land only through `characterLooks.claimSheet`, which is conditional
-  on the snapshot. Never read the `legacy*` sheet or clothing columns.
+  on the snapshot. Never read the `legacy*` sheet or clothing columns. A
+  plan reuses a finished sheet of the same look by input hash
+  (`findReusable` at the plan, `adoptIfPending` in the run): one row pointed
+  at by two cast looks, never a copy, never a quiet draw when the match is
+  gone.
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. One
   character can be cast in several sequences. A character or look method
   whose answer depends on the sequence takes it as a required first

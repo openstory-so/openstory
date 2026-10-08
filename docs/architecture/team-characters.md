@@ -453,6 +453,17 @@ reference-provenance.ts`), so a clip stamped before the copy stays
     copy would orphan it, listed nowhere and holding its voice for ever —
     "only in this sequence; edit it directly". Event `character.copied`.
 
+## Sheet reuse by hash (PR 4)
+
+An episode that owes a look's sheet points at a finished one instead of
+drawing it, when one exists with the same inputs. Decided at the plan,
+landed by id in the run, counted at zero in both places the copied talent
+sheet is. The rules, what the hash covers, and why the row is shared rather
+than copied: `character-looks.md` § Sheets and claims, "Sheet reuse by
+hash". The one row referenced by two cast looks is the same shape a one-off
+copy already uses (above), so the strip, the discard guard and
+`characterSheetVariants.select` needed nothing new.
+
 ## Hard deletes
 
 Nothing cascades from a sequence to a character, or from a character to its

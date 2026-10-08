@@ -197,8 +197,10 @@ refetch on focus, invalidated by realtime and by any refused continue —
 - **The continue button** (`Generate`, or `Regenerate` when every unit it owes
   exists and is only stale — `planWorkLabel`; under it `2 references, 12
 prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
-  work names it apart, `8 videos, 1 music track · redo 15 prompts, 8 images` —
-  and a line per blocked noun,
+  work names it apart, `8 videos, 1 music track · redo 15 prompts, 8 images`,
+  and a sheet the run points at instead of drawing is counted apart,
+  `2 references (1 reused)` (`PlanUnit.reused`, #2017; the quote prices it
+  at zero) — and a line per blocked noun,
   `blockedLines`) shows when the
   plan's first work is before Motion.
 - **A switch shows only when it changes a step the run takes.** Start frames
@@ -340,7 +342,11 @@ retaining actual artifact claims. Frozen stop-at, switches and model choices
 remain authoritative. The reservation grows from this materialized plan before
 rendering. Missing first character sheets reuse a compatible matched talent
 sheet, with zero generation cost; explicit regeneration still renders the edit.
-Voice-only cast never owes a sheet.
+A look's sheet that already exists finished somewhere in the team with the
+same input hash — same bible, look, talent, style and image model — is
+pointed at, not drawn, and counted at zero too (#2017; `PlanReferences.
+reusedSheets`, `character-looks.md`). A series keeps that reuse only while
+it keeps its style and model fixed. Voice-only cast never owes a sheet.
 
 Analysis persists each shot's spec as its first `shot_spec_versions` row
 (#1915), and the visual and motion directions derived from it as ordinary
