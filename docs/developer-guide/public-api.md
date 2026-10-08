@@ -143,7 +143,7 @@ or pass an inline object to create a new one. No `style` (or `"auto"`) is Match
 script, a style derived from the script. `enhance` (`auto` | `always` | `off`)
 controls script expansion; `motion` and `music` toggle video and score, and
 `stopAt` (`script` … `music`) sets how far the run goes, overriding both.
-`voices` designs a voice per speaking character, which dialogue needs.
+Speaking characters get a designed voice wherever this deployment can design one. There is no `voices` field.
 See `GET /api/v1` or the OpenAPI spec for the full request schema.
 
 Response (`202`):

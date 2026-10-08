@@ -38,6 +38,7 @@ import { requireCredits, type Provider } from '@/billing/server/preflight';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import type { Microdollars } from '@/billing/money';
 import { sha256Hex } from '@/shots/input-hash';
+import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { computePlan } from '@/shots/server/update-stale-plan';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { buildUpdateStalePreview } from '@/shots/server/update-stale-preview';
@@ -330,14 +331,16 @@ async function prepareGeneration(
       'mode "missing" (Continue) plans the whole sequence. Omit sceneIds/shotIds, or use mode "stale" for scenes or shots.'
     );
   }
-  // The editor's gate and work list, with the switches as saved.
+  // Voices are on wherever this deployment can design them (#2067). The
+  // caller does not pass a flag. A row stored off still goes back to Dialogue.
+  const generateVoices = isElevenLabsConfigured() || sequence.generateVoices;
   const { work, stopAt, estimate } = await prepareContinue({
     scopedDb,
     sequence,
     stopAt: request.stopAt,
     requested: {
       generateStartFrames: sequence.generateStartFrames,
-      generateVoices: sequence.generateVoices,
+      generateVoices,
     },
     draftMotion: sequence.draftMotion,
     generationPlan,
@@ -360,6 +363,12 @@ async function prepareGeneration(
     // The storyboard mutex is the launch-once guard here: a repeat while the
     // run is live is GENERATION_IN_PROGRESS, and after it PLAN_CHANGED.
     launch: async (_runKey, onLaunched) => {
+      if (generateVoices !== sequence.generateVoices) {
+        await scopedDb.sequences.update({
+          id: sequence.id,
+          generateVoices,
+        });
+      }
       const { workflowRunId } = await triggerContinue(scopedDb, {
         userId: actor.userId,
         teamId: actor.teamId,

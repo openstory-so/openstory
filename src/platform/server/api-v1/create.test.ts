@@ -96,7 +96,6 @@ const baseInput = {
   enhance: 'off' as const,
   motion: false,
   music: false,
-  voices: false,
 };
 
 function pngResponse(): Response {
@@ -193,19 +192,18 @@ describe('runOneShotCreate', () => {
     });
   });
 
-  it('passes stop-at and voices through, with Match script when no style is named', async () => {
-    await runOneShotCreate(
-      { ...baseInput, stopAt: 'dialogue', voices: true },
-      ctx
-    );
+  it('passes stop-at through and leaves voices to the deployment, with Match script when no style is named', async () => {
+    await runOneShotCreate({ ...baseInput, stopAt: 'dialogue' }, ctx);
     expect(mocks.createSequences).toHaveBeenCalledWith(
       expect.objectContaining({
         stopAt: 'dialogue',
-        generateVoices: true,
         styleId: 'auto',
       }),
       expect.anything()
     );
+    expect(
+      mocks.createSequences.mock.calls[0]?.[0].generateVoices
+    ).toBeUndefined();
   });
 
   it('ingests every character reference before insert and enqueues sheets only after the sequence exists', async () => {

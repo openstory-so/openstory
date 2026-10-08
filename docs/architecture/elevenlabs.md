@@ -56,12 +56,12 @@ before the workflow step returns (Cloudflare Workflows' 1 MiB `step.do` cap).
 
 **Character voices (#1553).** `sequences.generateVoices` is the sequence
 default; `characters.useVoice` overrides it per character (NULL = inherit) —
-resolve with `usesVoice()`. There is no sequence-level switch (#2004): a new
-sequence is on wherever voice design is configured
-(`getVoiceDesignAvailableFn`), the public API included unless it sends
-`false`, and a voice is turned off on the character. Older sequences keep
-what they stored. The launcher refuses the flag when
-`isElevenLabsConfigured()` is false.
+resolve with `usesVoice()`. Voices are on wherever voice design is configured.
+There is no `voices` field on the public API or MCP, and no sequence switch
+(#2067). A row stored off (the old API default) is still on: Continue asks
+for voices and caps the run at Dialogue. A voice is turned off on the
+character. The launcher refuses the flag when `isElevenLabsConfigured()` is
+false.
 In-flight Voice Design is a stills-style husk (#1715): a
 `character_voice_versions` row with `status: 'generating'` (no `voiceId` /
 previews yet) and `characters.pendingPromoteVoiceVersionId` pointing at it.
