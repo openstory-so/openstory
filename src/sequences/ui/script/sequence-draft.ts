@@ -39,6 +39,9 @@ const sequenceDraftSchema = z.object({
   sampleStyleId: z.string().nullable().default(null),
   selectedTalentIds: z.array(z.string()).default([]),
   selectedLocationIds: z.array(z.string()).default([]),
+  // Library characters picked with `@` on the create screen (#2050); a draft
+  // saved before the field has none.
+  castCharacterIds: z.array(z.string()).default([]),
   elementUploads: z.array(draftElementSchema).default([]),
   savedAt: z.number().default(0),
 });

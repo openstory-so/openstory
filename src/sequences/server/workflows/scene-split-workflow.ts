@@ -57,7 +57,16 @@
  * JSON-stringified around the boundary for CF's `Rpc.Serializable<T>` check.
  */
 
-import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  queuedBeforeCast,
+  queuedBeforeLooks,
+} from '@/cast/server/workflows/sheet-snapshots';
+import {
+  applyAttachedCast,
+  castEchoProblem,
+  castTags,
+  formatCastBlock,
+} from '@/cast/attached-cast';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -532,6 +541,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const input = event.payload;
     const { sequenceId, modelId, elements = [] } = input;
     const script = input.script;
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2050
+    if (!input.cast) throw queuedBeforeCast();
+    // The attached cast (#2050): the bibles call echoes these ids and look
+    // names. Empty when nothing is cast, and then absent from the message.
+    const castBlock = formatCastBlock(input.cast);
 
     const elementsBlock =
       elements.length > 0
@@ -832,6 +846,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         promptVars: {
           script: gutteredScript,
           elements: elementsBlock,
+          cast: castBlock,
           userCountry: input.userCountry ?? '',
         },
         responseSchema: sceneSplitBiblesResultSchema,
@@ -878,10 +893,22 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     if (biblesResult.characterBible.some((entry) => !entry.looks)) {
       throw queuedBeforeLooks();
     }
-    const { characterBible, sceneLooks } = bibleFromWire(
+    // A shared cast character keeps her pinned bible and looks (#2050); the
+    // model's entry only says which looks she wears and which are new. An
+    // entry that mislabels the cast fails the run here, before anything is
+    // written.
+    const echo = castEchoProblem(biblesResult.characterBible, input.cast);
+    if (echo) throw new NonRetryableError(echo, 'WorkflowValidationError');
+    const wire = bibleFromWire(
       biblesResult.characterBible,
       sceneIdForLine,
-      script.split('\n').length
+      script.split('\n').length,
+      castTags(input.cast)
+    );
+    const { characterBible, sceneLooks } = applyAttachedCast(
+      wire.characterBible,
+      wire.sceneLooks,
+      input.cast
     );
     // sceneId first: downstream prompt interpolation serializes these entries
     // with JSON.stringify, and the aimock fixtures match on that text — keep

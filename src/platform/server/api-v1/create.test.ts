@@ -119,6 +119,7 @@ describe('runOneShotCreate', () => {
     scopedDb: asStub<ScopedDb>({
       styles: { list: async () => [makeStyle()] },
       talent: { list: async () => [], delete: talentDelete },
+      characters: { listTeam: async () => [] },
       locations: { list: async () => [], delete: locationDelete },
     }),
   };

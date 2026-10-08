@@ -26,6 +26,7 @@ import { withBibleLooks } from '@/cast/bible-looks';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import type {
+  AttachedCastSnapshot,
   ElementSheetEntry,
   LibraryLocationMatch,
   TalentCharacterMatch,
@@ -157,6 +158,8 @@ export async function createCastRecords(
   scopedDb: WorkflowScopedDb,
   args: {
     sequenceId: string;
+    /** The trigger's cast snapshot (#2050): which entries are shared characters. */
+    cast: readonly AttachedCastSnapshot[];
     characterBible: CharacterBibleEntry[];
     talentMatches: TalentCharacterMatch[];
     locationBible: LocationBibleEntry[];
@@ -175,8 +178,27 @@ export async function createCastRecords(
   const talentByCharacter = new Map(
     args.talentMatches.map((m) => [m.characterId, m])
   );
+  const sharedById = new Map(
+    args.cast.filter((c) => c.shared).map((c) => [c.entry.characterId, c.id])
+  );
   const lookIds: Record<string, string> = {};
   for (const character of args.characterBible) {
+    // A character the library or another sequence holds (#2050) is linked,
+    // never rewritten: no bible version, no look edit, no look removed. Her
+    // looks are matched by name and a new one is added for a name she lacks.
+    const sharedId = sharedById.get(character.characterId);
+    if (sharedId) {
+      if (character.voiceOnly) continue;
+      Object.assign(
+        lookIds,
+        await scopedDb.characterLooks.linkFromAnalysis(
+          sequenceId,
+          sharedId,
+          withBibleLooks(character).looks
+        )
+      );
+      continue;
+    }
     const created = await scopedDb.characters.create(
       buildCharacterInsert({
         sequenceId,

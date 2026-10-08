@@ -2883,6 +2883,68 @@ describe('cast and music edits (#1979)', () => {
     return id;
   }
 
+  it('add_character_to_sequence casts a library character into another sequence, once (#2050)', async () => {
+    const ada = await castCharacter({
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
+      standardClothing: 'coat',
+    });
+    const otherSequence = generateId();
+    await db.insert(sequences).values({
+      id: otherSequence,
+      teamId,
+      title: 'Other',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    // Not in the library yet: refused.
+    expect(
+      await call('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    await scopedDb.characters.setInLibrary(ada.id, true);
+    expect(
+      await data('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toEqual({ characterId: ada.id, token: 'char_ada', name: 'Ada' });
+    // Idempotent, and readable as the other sequence casts her.
+    expect(
+      await data('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toMatchObject({ token: 'char_ada' });
+    expect(
+      await data('get_character', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toMatchObject({ character: { name: 'Ada', standardClothing: 'coat' } });
+    // A library character whose name a live cast member here already has.
+    const twin = await castCharacter({
+      sequenceId: otherSequence,
+      characterId: 'char_twin',
+      name: 'Bo',
+    });
+    const bo = await castCharacter({
+      sequenceId,
+      characterId: 'char_bo',
+      name: 'bo',
+    });
+    await scopedDb.characters.setInLibrary(bo.id, true);
+    expect(twin.name).toBe('Bo');
+    expect(
+      await call('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: bo.id,
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+  });
+
   it('creates, edits, deletes and restores a character, readable at each step', async () => {
     const created = z
       .object({ characterId: z.string(), token: z.string() })

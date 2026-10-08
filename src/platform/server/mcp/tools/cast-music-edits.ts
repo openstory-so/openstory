@@ -15,6 +15,7 @@ import {
 } from '@/cast/bible-field';
 import { lookFieldsSchema } from '@/cast/look-field';
 import {
+  attachLibraryCharacter,
   createCharacter,
   createCharacterLook,
   removeCharacterLook,
@@ -154,6 +155,40 @@ const createCharacterTool = openstoryTool({
         name: character.name,
       },
       summary: `Added character ${character.name}.`,
+    };
+  },
+});
+
+const addCharacterToSequenceTool = openstoryTool({
+  name: 'add_character_to_sequence',
+  description:
+    'Cast a library character (list_library_characters) into a sequence (#2050): one cast link pinning its current version, every look, nothing copied, no generation. The script names the character in capitals; analysis then links to it rather than making a new character. Refused while a live cast member of the sequence already has that name (CONFLICT), or when the character is not in the library. Idempotent for a character the sequence already casts.',
+  scope: 'sequences:write',
+  annotations: idempotent,
+  inputSchema: characterInput,
+  outputSchema: z.object({
+    characterId: z.string(),
+    token: z.string(),
+    name: z.string(),
+  }),
+  run: async (
+    { sequenceId: id, characterId: charId },
+    { scopedDb, userId }
+  ) => {
+    const sequence = await productionAccess(scopedDb).sequence(id);
+    const character = await attachLibraryCharacter(
+      scopedDb,
+      { userId },
+      sequence.id,
+      charId
+    );
+    return {
+      data: {
+        characterId: character.id,
+        token: character.characterId,
+        name: character.name,
+      },
+      summary: `Added ${character.name} from the library.`,
     };
   },
 });
@@ -996,6 +1031,7 @@ export const castMusicTools = [
   listCharacterVoices,
   listDeletedCastTool,
   createCharacterTool,
+  addCharacterToSequenceTool,
   updateCharacterTool,
   deleteCharacterTool,
   restoreCharacterTool,

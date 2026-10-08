@@ -106,6 +106,21 @@ export interface UserWorkflowContext {
 export interface SequenceWorkflowContext extends UserWorkflowContext {
   sequenceId?: string;
 }
+
+/**
+ * One cast character as the trigger found it (#2050): the bible entry as
+ * the sequence casts her (`charactersToBible`, look ids are `character_looks`
+ * ids), frozen for the whole run. `shared` says the library or another
+ * sequence holds her too: analysis then links to her and adds looks, and
+ * never rewrites her bible or looks. A character only this sequence holds is
+ * still this sequence's to rewrite on re-analysis.
+ */
+export type AttachedCastSnapshot = {
+  /** `characters.id`. */
+  id: string;
+  shared: boolean;
+  entry: CharacterBibleEntry;
+};
 /**
  * Image generation workflow input
  */
@@ -280,6 +295,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * late and are read live; which elements exist must not.
    */
   elementIds: string[];
+  /** The sequence's live cast at the trigger (#2050); see {@link AttachedCastSnapshot}. */
+  cast: AttachedCastSnapshot[];
   /**
    * Provenance for the music prompt this run may write, snapshotted from the
    * sequence row by `triggerStoryboard`. Threaded down analyze-script →
@@ -385,6 +402,7 @@ export type StoryboardTriggerInput = Omit<
   | 'imageModel'
   | 'videoModel'
   | 'elementIds'
+  | 'cast'
   | 'musicPromptSource'
   | 'suggestedTalent'
   | 'suggestedLocations'
@@ -415,6 +433,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   imageModel: TextToImageModel;
   /** @see StoryboardWorkflowInput.elementIds — passed straight through. */
   elementIds: string[];
+  /** @see StoryboardWorkflowInput.cast — passed straight through. */
+  cast: AttachedCastSnapshot[];
   /** @see StoryboardWorkflowInput.musicPromptSource — passed straight through. */
   musicPromptSource: 'ai-generated' | 'regenerated';
   /** Multiple image models for variant generation (first is primary) */
@@ -465,6 +485,8 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   userCountry?: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
+  /** @see StoryboardWorkflowInput.cast — the `<CAST>` block the bibles call reads. */
+  cast: AttachedCastSnapshot[];
   /**
    * Clip grid for the shot-list pass (#1593): caps how many shots a scene's
    * label can hold and spreads the label over them. Absent → no cap, an even

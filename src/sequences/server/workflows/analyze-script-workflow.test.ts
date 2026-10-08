@@ -234,6 +234,7 @@ function makeEvent(
     imageModel: DEFAULT_IMAGE_MODEL,
     videoModel: DEFAULT_VIDEO_MODEL,
     elementIds: [],
+    cast: [],
     musicPromptSource: 'ai-generated',
     referenceOnly: false,
     // An automatic style whose recipe this run is meant to derive (#1213).

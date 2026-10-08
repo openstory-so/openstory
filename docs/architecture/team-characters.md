@@ -5,9 +5,9 @@ holds a **cast link** that pins the version of the character it uses. A lead
 who is in 100 episodes is one character, with one set of looks.
 
 This doc covers the tables, the backfill, every read and write going through
-the cast link, the Characters page and the library flag. Still to come:
-attaching a library character to a sequence (#2050), moving an episode to a
-newer version, and analysis that reads the attached cast.
+the cast link, the Characters page and the library flag, attaching a library
+character to a sequence and what analysis does with the attached cast
+(#2050). Still to come: moving an episode to a newer version.
 
 ## Data
 
@@ -163,10 +163,110 @@ are too. The methods keyed on a voice version id alone are not yet.
   scene tags in memory, one sequence at a time
   (`getTeamCharacterShotCountsFn`).
 - **Add to Library** sets `characters.in_library`; Remove from Library
-  clears it. Nothing is copied and no talent is made. Nothing can cast a
-  library character into another sequence until #2050; today the flag keeps
-  the character listed and feeds the Library filter and
-  `list_library_characters`.
+  clears it. Nothing is copied and no talent is made. The flag keeps the
+  character listed, feeds the Library filter and `list_library_characters`,
+  and decides what the `@` picker offers.
+
+## Attach and `@` references (#2050)
+
+A character is reused only when the writer says so. Analysis never reads the
+team library; a library character reaches a sequence by an attach, and the
+script then names her like any cast member.
+
+- **Nothing is stored in the text.** The script holds her name in capitals,
+  as it does for every character; the sequence's cast link says what it is
+  bound to. No `@`, no id, no serializer change (the same rule as elements
+  and the studio's mention extension, `src/ui/text-editor/mention/`).
+- **The attach** is `characters.attach(sequenceId, id)`: one `sequence_cast`
+  link pinning her **current** bible version, and one cast look per live look
+  she has, each pinned at its current version and sheet-less (a sheet depends
+  on the sequence's style and image model, so the first run draws them). Her
+  script id is `char_<name>` uniqued against every link of the sequence,
+  removed ones included. The event is `character.attached`. Nothing is
+  copied.
+- **Refused** unless she is in the library (`ValidationError`), unless the
+  sequence is the team's (`NotFoundError`, checked in the db method, not
+  only by its callers), and while a live cast member of the sequence already
+  has her name (`ConflictError`, `assertNameFree`): the text could not tell
+  two ADAs apart. A script-created SARAH already cast plus an attach of
+  library Sarah is refused with that message; nothing renames or picks one.
+  The same check runs before a removed link is brought back, by an attach or
+  by Restore. Two characters may still share a plain name when analysis made
+  them; nothing refuses that. Attaching a character the sequence already
+  casts is idempotent.
+- **Surfaces.** The script editor's `@` dropdown lists the library characters
+  not cast here, most recently used first (`libraryMentionItems`, the
+  `listTeam` order), as pick-only rows: picking one inserts her name in
+  capitals and attaches her (`attachLibraryCharacterFn`); on the create
+  screen the pick goes onto the draft (`castCharacterIds`) and
+  `createSequences` attaches before the storyboard trigger, so the first
+  analysis reads her. A pick-only row never pills: a plain name is prose until
+  she is attached. The cast panel's **Add from library** attaches with no
+  script change. API: a string in `create_sequence`'s `characters` names a
+  library character first (id or name; two of one name is a `CONFLICT` that
+  asks for the id), then talent. MCP: `add_character_to_sequence`.
+- **Detach** is the existing Remove (soft, the link's `removedAt`).
+- **A rename** in a later version leaves the script saying the old name until
+  the episode moves version (version moves, a later PR).
+
+## Analysis reads the attached cast (#2050)
+
+- **Snapshot.** `triggerStoryboard` freezes the sequence's live cast onto the
+  payload (`cast: AttachedCastSnapshot[]`, required on the storyboard,
+  analyze-script and scene-split inputs): each as the sequence casts her
+  (`characterToBible`, look ids are `character_looks` ids) with `shared` —
+  the library or another sequence holds her too (`getHeldElsewhere`). No
+  mid-run read; a payload without the field fails at the top
+  (`queuedBeforeCast`).
+- **The bibles call** sees a `<CAST>` block shaped like `<ELEMENTS>`
+  (`formatCastBlock`): script id, name, appearance, look names. It echoes
+  the ids and look names of the characters the script uses, adds a look only
+  when none fits, and makes a new character for any name it cannot place.
+  With nobody cast the block is absent and the message is byte-for-byte what
+  it was, so the recorded `script-bibles` fixture replays.
+- **A shared character is linked, never edited.** `applyAttachedCast`
+  replaces her entry with the snapshot (the pinned bible wins over anything
+  the model wrote), keeps her looks by id, appends the looks the model named
+  that she lacks, and re-points scene picks from a slug to the look it named.
+  `create-cast-records` skips `characters.create` for her (no bible version)
+  and calls `characterLooks.linkFromAnalysis`: a cast look where this
+  sequence lacks one (pinned at the look's current version), matched by id or
+  by name among every live look she has, cast here or not; a new look for a
+  name she lacks; nothing rewritten, nothing removed. She is left out of
+  talent matching: her talent is on the pinned version.
+- **A character only this sequence holds** (not in the library, cast nowhere
+  else) is re-analysed as before: bible rewritten, looks synced by name,
+  unused analysis-made looks retired.
+- **The db layer decides, every time.** `shared` on the payload only shapes
+  the prompt. `characters.create` and `characterLooks.syncFromAnalysis` ask
+  `heldElsewhere` (the library flag, or a live link in another unarchived
+  sequence) on every call: a held character's live link is returned as it
+  is and her looks are linked (`linkFromAnalysis`); her **removed** link is
+  left removed, and an entry that reused its script id becomes a new
+  character under the next free id (`char_001_2`). So a character attached
+  elsewhere, or put in the library, between the click and the write is
+  still safe, and so is one the model reached through a link the snapshot
+  did not list.
+- **The model must echo the cast.** Before anything is written, scene-split
+  checks the reply against the block (`castEchoProblem`): an entry that
+  carries a cast id with another name, or a cast character's name under a
+  new id, fails the run with a plain message ("Run it again"). The prompt
+  says a script character with a cast character's name IS that character.
+- **Plain names, where two characters share one.** Analysis may make two
+  "Sarah"s, and a hand-made one may sit beside an analysed one. What is
+  keyed on the character and what is not:
+  - Look picks: keyed on the character's tag. An entry that echoes a cast
+    id keeps that character's own tag (so a re-analysis moves nothing of
+    hers); a NEW entry whose tag is in use gets a number (`sarah`,
+    `sarah_2`), so two characters' picks never overwrite each other.
+  - Dialogue speakers: a line names a speaker by text and has no id, so
+    `matchSpeaker` refuses two whole-name matches (`ConflictError`, "Rename
+    one so dialogue knows who speaks") rather than taking the first. The
+    generation plan and dialogue audio surface it.
+  - Scene tags: `reconcileSceneTags` scans each scene's text for the name,
+    so both characters are tagged wherever the name appears, and both
+    sheets reach those shots. A known limit until a scene tag can name the
+    cast link; rename one of them.
 - **Save as talent** is what Add to Library did before: it copies the
   character, as one sequence casts it, into a new talent
   (`saveCharacterAsTalentFn`). It is how a character reaches the recast

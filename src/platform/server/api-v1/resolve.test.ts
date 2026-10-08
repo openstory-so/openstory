@@ -156,14 +156,19 @@ describe('resolveStyle', () => {
 });
 
 describe('resolveTalentIds', () => {
+  const noLibrary = { listTeam: async () => [] };
   it('resolves existing talent by name and id (no create)', async () => {
     const talent = [
       makeTalent({ id: 't-ada', name: 'Ada Lovelace' }),
       makeTalent({ id: 't-grace', name: 'Grace Hopper' }),
     ];
     const createTalent = vi.fn();
-    const ids = await resolveTalentIds(
-      { talent: { list: async () => talent }, createTalent },
+    const { talentIds: ids } = await resolveTalentIds(
+      {
+        talent: { list: async () => talent },
+        characters: noLibrary,
+        createTalent,
+      },
       ['Ada Lovelace', 't-grace']
     );
     expect(ids).toEqual(['t-ada', 't-grace']);
@@ -175,8 +180,12 @@ describe('resolveTalentIds', () => {
     const createTalent = vi.fn(async (input: { name: string }) => ({
       id: `new-${input.name}`,
     }));
-    const ids = await resolveTalentIds(
-      { talent: { list: async () => talent }, createTalent },
+    const { talentIds: ids } = await resolveTalentIds(
+      {
+        talent: { list: async () => talent },
+        characters: noLibrary,
+        createTalent,
+      },
       ['Ada Lovelace', { name: 'Hero', description: 'brave', isHuman: true }]
     );
     expect(ids).toEqual(['t-ada', 'new-Hero']);
@@ -190,7 +199,11 @@ describe('resolveTalentIds', () => {
   it('throws NotFound when a referenced talent is missing', async () => {
     await expect(
       resolveTalentIds(
-        { talent: { list: async () => [] }, createTalent: vi.fn() },
+        {
+          talent: { list: async () => [] },
+          characters: noLibrary,
+          createTalent: vi.fn(),
+        },
         ['Nobody']
       )
     ).rejects.toThrow(/No character\/talent found/);
@@ -198,8 +211,12 @@ describe('resolveTalentIds', () => {
 
   it('dedupes overlapping ids', async () => {
     const talent = [makeTalent({ id: 't-ada', name: 'Ada Lovelace' })];
-    const ids = await resolveTalentIds(
-      { talent: { list: async () => talent }, createTalent: vi.fn() },
+    const { talentIds: ids } = await resolveTalentIds(
+      {
+        talent: { list: async () => talent },
+        characters: noLibrary,
+        createTalent: vi.fn(),
+      },
       ['t-ada', 'Ada Lovelace']
     );
     expect(ids).toEqual(['t-ada']);
@@ -208,8 +225,12 @@ describe('resolveTalentIds', () => {
   it('reuses an existing talent by name instead of creating a duplicate', async () => {
     const talent = [makeTalent({ id: 't-ada', name: 'Ada Lovelace' })];
     const createTalent = vi.fn();
-    const ids = await resolveTalentIds(
-      { talent: { list: async () => talent }, createTalent },
+    const { talentIds: ids } = await resolveTalentIds(
+      {
+        talent: { list: async () => talent },
+        characters: noLibrary,
+        createTalent,
+      },
       [{ name: 'Ada Lovelace', isHuman: true }]
     );
     expect(ids).toEqual(['t-ada']);
@@ -220,8 +241,8 @@ describe('resolveTalentIds', () => {
     const createTalent = vi.fn(async (input: { name: string }) => ({
       id: `new-${input.name}`,
     }));
-    const ids = await resolveTalentIds(
-      { talent: { list: async () => [] }, createTalent },
+    const { talentIds: ids } = await resolveTalentIds(
+      { talent: { list: async () => [] }, characters: noLibrary, createTalent },
       [{ name: 'Hero' }, { name: 'Hero' }]
     );
     expect(ids).toEqual(['new-Hero']);
@@ -323,5 +344,52 @@ describe('ingestElements', () => {
     await expect(
       ingestElements('team-1', [{ url: 'https://host/missing.png' }])
     ).rejects.toThrow(/could not be fetched/);
+  });
+});
+
+describe('resolveTalentIds: library characters (#2050)', () => {
+  const library = (rows: Array<{ id: string; name: string }>) => ({
+    listTeam: async () =>
+      rows.map((row) => ({
+        ...row,
+        physicalDescription: null,
+        voiceOnly: false,
+        inLibrary: true,
+        lastUsedAt: null,
+        sequences: [],
+      })),
+  });
+
+  it('a ref naming a library character casts her, by id or name, before talent is tried', async () => {
+    const talent = [makeTalent({ id: 't-ada', name: 'Ada Lovelace' })];
+    const { talentIds, castCharacterIds } = await resolveTalentIds(
+      {
+        talent: { list: async () => talent },
+        characters: library([
+          { id: 'c-ada', name: 'Ada Lovelace' },
+          { id: 'c-bo', name: 'Bo' },
+        ]),
+        createTalent: vi.fn(),
+      },
+      ['Ada Lovelace', 'c-bo', 'c-bo']
+    );
+    expect(castCharacterIds).toEqual(['c-ada', 'c-bo']);
+    expect(talentIds).toEqual([]);
+  });
+
+  it('a name two library characters share is refused and asks for the id', async () => {
+    await expect(
+      resolveTalentIds(
+        {
+          talent: { list: async () => [] },
+          characters: library([
+            { id: 'c-1', name: 'Sarah' },
+            { id: 'c-2', name: 'sarah' },
+          ]),
+          createTalent: vi.fn(),
+        },
+        ['Sarah']
+      )
+    ).rejects.toThrow(/names 2 library characters\. Use the id: c-1, c-2/);
   });
 });

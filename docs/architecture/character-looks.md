@@ -197,6 +197,11 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   names again comes back as the same row.
 - Voice design sees no outfits (`withoutLooks`); the shot rewrite sees only
   the look worn in that shot's scene (`wornLookOnly`).
+- A character the library or another sequence holds (#2050) is not synced:
+  `characterLooks.linkFromAnalysis` gives this sequence a cast look for each
+  look the model named (by id, or by name among every live look she has) and
+  adds a look only for a name she lacks. No look of hers is rewritten or
+  removed by another sequence's analysis. See `team-characters.md`.
 
 ## Editing
 

@@ -124,6 +124,7 @@ function makeEvent(
     imageModel: DEFAULT_IMAGE_MODEL,
     videoModel: DEFAULT_VIDEO_MODEL,
     elementIds: [],
+    cast: [],
     referenceOnly: false,
     ownerEmail: 'owner@example.com',
     sequenceUrl: 'https://openstory.so/sequences/seq_1/scenes',

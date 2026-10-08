@@ -214,6 +214,7 @@ describe('tools/list and whoami', () => {
       'openstory.list_character_voices',
       'openstory.list_deleted_cast',
       'openstory.create_character',
+      'openstory.add_character_to_sequence',
       'openstory.update_character',
       'openstory.delete_character',
       'openstory.restore_character',
@@ -326,6 +327,7 @@ describe('tools/list and whoami', () => {
       'openstory.select_shot_image_version',
       'openstory.select_shot_video_version',
       'openstory.create_character',
+      'openstory.add_character_to_sequence',
       'openstory.update_character',
       'openstory.delete_character',
       'openstory.restore_character',
@@ -721,6 +723,10 @@ describe('structure edit authorization', () => {
       },
     ],
     ['create_character', { sequenceId: ids.sequenceId, name: 'Ada' }],
+    [
+      'add_character_to_sequence',
+      { sequenceId: ids.sequenceId, characterId: ids.sceneId },
+    ],
     [
       'delete_character',
       { sequenceId: ids.sequenceId, characterId: ids.sceneId },

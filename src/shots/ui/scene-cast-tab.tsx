@@ -4,6 +4,7 @@
  */
 
 import { AddCharacterDialog } from './add-character-dialog';
+import { AddFromLibraryDialog } from './add-from-library-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -305,6 +306,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   // so a newly added one (referenced by no scene yet) would not appear here,
   // and the click would read as a no-op.
   const canAdd = shotIds === null;
+  const castIds = new Set((characters ?? []).map((c) => c.id));
 
   if (scopedCast.length === 0) {
     return (
@@ -317,7 +319,15 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             ? 'No cast yet'
             : 'No cast in this selection — clear the selection to add one'}
         </p>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <div className="flex gap-2">
+            <AddCharacterDialog sequenceId={sequenceId} />
+            <AddFromLibraryDialog
+              sequenceId={sequenceId}
+              castCharacterIds={castIds}
+            />
+          </div>
+        )}
       </div>
     );
   }
@@ -333,7 +343,15 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             {scopedCast.length === 1 ? 'character' : 'characters'}
           </span>
         </div>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <div className="flex gap-2">
+            <AddCharacterDialog sequenceId={sequenceId} />
+            <AddFromLibraryDialog
+              sequenceId={sequenceId}
+              castCharacterIds={castIds}
+            />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">

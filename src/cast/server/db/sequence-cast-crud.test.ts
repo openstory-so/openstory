@@ -22,6 +22,7 @@ import { generateId } from '@/platform/id';
 import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
   characterBibleVersions,
+  characterLookVersions,
   characterLooks,
   characterSheetVariants,
   characterVoiceVersions,
@@ -1888,6 +1889,281 @@ describe('team characters (#2017)', () => {
     await sequencesDb.delete(other, NO_VOICES);
     expect(await db.select().from(characters)).toEqual([]);
     expect(await linksOf(created.id)).toEqual([]);
+  });
+
+  it('attaches a library character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada Lovelace',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala', clothing: 'gown', styling: null },
+      { source: 'edit', actorId }
+    );
+    const other = await secondSequence();
+
+    // Not in the library: refused, and nothing written.
+    await expect(
+      chars().attach(other, created.id, { actorId })
+    ).rejects.toThrow('not in the library');
+    expect(await linksOf(created.id)).toHaveLength(1);
+
+    await chars().setInLibrary(created.id, true);
+    const attached = await chars().attach(other, created.id, { actorId });
+    expect(attached).toMatchObject({
+      id: created.id,
+      sequenceId: other,
+      characterId: 'char_ada_lovelace',
+      selectedBibleVersionId: created.selectedBibleVersionId,
+      standardClothing: 'coat',
+      sheetStatus: 'pending',
+    });
+    // The whole character once, with two links.
+    expect(await db.select().from(characters)).toHaveLength(1);
+    expect(await linksOf(created.id)).toHaveLength(2);
+    // Every live look came across, pinned at its current version, sheet-less.
+    const otherLooks = await looks().listByCharacter(other, created.id);
+    expect(otherLooks.map((look) => [look.id, look.lookVersionId])).toEqual([
+      [created.lookId, created.looks[0]?.lookVersionId],
+      [gala.id, gala.lookVersionId],
+    ]);
+    expect(
+      otherLooks.every((look) => look.selectedSheetVersionId === null)
+    ).toBe(true);
+    expect(await eventKinds()).toContain('character.attached');
+
+    // Idempotent: the same link comes back.
+    expect(await chars().attach(other, created.id, { actorId })).toMatchObject({
+      castId: attached.castId,
+    });
+    // Removed from the second, attached again: the link is restored.
+    await chars().softDelete(other, created.id, { actorId });
+    expect(
+      (await chars().attach(other, created.id, { actorId })).deletedAt
+    ).toBeNull();
+
+    // A second library character with the same name is refused: the script
+    // names a character in capitals, and ADA LOVELACE would be two people.
+    const twin = await chars().create(
+      { sequenceId, characterId: 'char_002', name: 'ada lovelace' },
+      analysis
+    );
+    await chars().setInLibrary(twin.id, true);
+    await expect(chars().attach(other, twin.id, { actorId })).rejects.toThrow(
+      'already a name'
+    );
+    // Another team's character is not found.
+    await expect(
+      createCharactersMethods(db, generateId()).attach(other, created.id, {
+        actorId,
+      })
+    ).rejects.toThrow('not found');
+  });
+
+  it('analysis never writes a held character, even through her removed link: a reused script id makes a new character (#2050)', async () => {
+    const ada = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        physicalDescription: 'grey eyes',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    await chars().setInLibrary(ada.id, true);
+    const other = await secondSequence();
+    await chars().attach(other, ada.id, { actorId });
+    await chars().softDelete(sequenceId, ada.id, { actorId });
+
+    // The model's first character takes char_001 again: Bob, not Ada.
+    const bob = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Bob',
+        physicalDescription: 'bearded',
+        standardClothing: 'armor',
+      },
+      analysis
+    );
+    expect(bob.id).not.toBe(ada.id);
+    expect(bob).toMatchObject({ name: 'Bob', characterId: 'char_001_2' });
+    expect(await chars().getTeamCharacter(ada.id)).toMatchObject({
+      name: 'Ada',
+    });
+    expect(await versionsOf(ada.id)).toHaveLength(1);
+    expect(
+      (await chars().getById(sequenceId, ada.id))?.deletedAt
+    ).not.toBeNull();
+    expect(await chars().getById(other, ada.id)).toMatchObject({
+      name: 'Ada',
+      standardClothing: 'coat',
+    });
+
+    // Through her live link in the other sequence, the same call writes
+    // nothing and hands her back as she is; the looks sync only links.
+    const same = await chars().create(
+      {
+        sequenceId: other,
+        characterId: 'char_ada',
+        name: 'Ada (older)',
+        standardClothing: 'gown',
+        sheetStatus: 'generating',
+      },
+      analysis
+    );
+    expect(same).toMatchObject({
+      id: ada.id,
+      name: 'Ada',
+      standardClothing: 'coat',
+      // The per-sequence status is still written: the references stage is
+      // drawing her sheet here.
+      sheetStatus: 'generating',
+    });
+    expect(await versionsOf(ada.id)).toHaveLength(1);
+    expect((await chars().getById(sequenceId, ada.id))?.sheetStatus).toBe(
+      'pending'
+    );
+    const ids = await looks().syncFromAnalysis(other, ada.id, [
+      {
+        lookId: 'char_ada:default',
+        name: 'Default',
+        clothing: 'gown',
+        styling: '',
+      },
+      { lookId: 'char_ada:rain', name: 'Rain', clothing: 'mac', styling: '' },
+    ]);
+    expect(ids['char_ada:default']).toBe(ada.lookId);
+    expect((await looks().getById(other, ada.lookId))?.clothing).toBe('coat');
+    expect(await looks().listByCharacter(other, ada.id)).toHaveLength(2);
+    expect(await looks().listByCharacter(sequenceId, ada.id)).toHaveLength(1);
+  });
+
+  it("a revive or restore runs the name check, and an attach refuses another team's sequence (#2050)", async () => {
+    const ada = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    await chars().setInLibrary(ada.id, true);
+    const other = await secondSequence();
+    await chars().attach(other, ada.id, { actorId });
+    await chars().softDelete(other, ada.id, { actorId });
+    await chars().create(
+      { sequenceId: other, characterId: 'char_002', name: '  ada ' },
+      analysis
+    );
+    await expect(chars().attach(other, ada.id, { actorId })).rejects.toThrow(
+      'already a name'
+    );
+    await expect(chars().restore(other, ada.id, { actorId })).rejects.toThrow(
+      'already a name'
+    );
+    expect(await chars().list(other)).toHaveLength(1);
+
+    const foreignTeam = generateId();
+    const foreignSequence = generateId();
+    await db
+      .insert(teams)
+      .values({ id: foreignTeam, name: 'F', slug: foreignTeam });
+    await db.insert(sequences).values({
+      id: foreignSequence,
+      teamId: foreignTeam,
+      title: 'F',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    await expect(
+      chars().attach(foreignSequence, ada.id, { actorId })
+    ).rejects.toThrow('Sequence not found');
+    expect(
+      await db
+        .select()
+        .from(sequenceCast)
+        .where(eq(sequenceCast.sequenceId, foreignSequence))
+    ).toEqual([]);
+  });
+
+  it('analysis links a shared character: looks by id or name, a new look added, nothing rewritten or removed (#2050)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'coat',
+      },
+      analysis
+    );
+    await chars().setInLibrary(created.id, true);
+    const other = await secondSequence();
+    const attached = await chars().attach(other, created.id, { actorId });
+    // A look added in the first sequence after the attach: the second has no
+    // cast look for it, and the snapshot there does not know it.
+    const gala = await looks().create(
+      sequenceId,
+      created.id,
+      { name: 'Gala gown', clothing: 'gown', styling: null },
+      { source: 'edit', actorId }
+    );
+    await chars().softDelete(other, created.id, { actorId });
+
+    const ids = await looks().linkFromAnalysis(other, created.id, [
+      {
+        lookId: created.lookId,
+        name: 'Default',
+        clothing: 'MODEL',
+        styling: 'x',
+      },
+      {
+        lookId: 'char_ada:gala_gown',
+        name: 'gala gown',
+        clothing: 'y',
+        styling: '',
+      },
+      {
+        lookId: 'char_ada:rain',
+        name: 'Rain',
+        clothing: 'mac',
+        styling: 'wet',
+      },
+    ]);
+    expect(ids[created.lookId]).toBe(created.lookId);
+    expect(ids['char_ada:gala_gown']).toBe(gala.id);
+    const rainId = ids['char_ada:rain'];
+    if (!rainId) throw new Error('expected the new look');
+
+    // The link came back; the second sequence now has all three looks.
+    expect((await chars().getById(other, created.id))?.deletedAt).toBeNull();
+    const otherLooks = await looks().listByCharacter(other, created.id);
+    expect(otherLooks.map((l) => [l.id, l.name, l.clothing])).toEqual([
+      [created.lookId, 'Default', 'coat'],
+      [gala.id, 'Gala gown', 'gown'],
+      [rainId, 'Rain', 'mac'],
+    ]);
+    expect(otherLooks.find((l) => l.id === gala.id)?.lookVersionId).toBe(
+      gala.lookVersionId
+    );
+    // Nothing of hers was written: one bible version, one version per look.
+    expect(await versionsOf(created.id)).toHaveLength(1);
+    expect(
+      await db
+        .select()
+        .from(characterLookVersions)
+        .where(eq(characterLookVersions.lookId, created.lookId))
+    ).toHaveLength(1);
+    // The first sequence does not wear the new look.
+    expect(await looks().listByCharacter(sequenceId, created.id)).toHaveLength(
+      2
+    );
+    expect(attached.castId).toBe(
+      (await chars().getById(other, created.id))?.castId
+    );
   });
 
   it('lists the team characters by the latest sequence casting them, then by how many', async () => {

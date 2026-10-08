@@ -13,10 +13,12 @@ import {
   eq,
   getTableColumns,
   inArray,
+  isNull,
   ne,
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
 import {
   ConflictError,
   NotFoundError,
@@ -45,6 +47,7 @@ import {
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
+import { heldElsewhere } from './sequence-cast';
 
 /**
  * A look's live sheet version in the sequence that uses it (#2017): the cast
@@ -433,7 +436,7 @@ export const deleteLooksOfCharacters = (
 };
 
 export function createCharacterLooksMethods(db: Database, teamId: string) {
-  return {
+  const methods = {
     /** The look as `sequenceId` uses it. */
     getById: (sequenceId: string, id: string) =>
       getLook(db, teamId, sequenceId, id),
@@ -567,6 +570,16 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         styling: string;
       }[]
     ): Promise<Record<string, string>> => {
+      // A character the library or another live sequence holds is linked,
+      // never synced (#2050): decided here, on every call, so no payload flag
+      // that went stale mid-run can reach her.
+      if (await heldElsewhere(db, teamId, characterId, sequenceId)) {
+        return await methods.linkFromAnalysis(
+          sequenceId,
+          characterId,
+          analysed
+        );
+      }
       const opts = { source: 'analysis' as const, createdBy: null };
       const defaultLook = await requireLook(
         db,
@@ -694,6 +707,100 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           ]);
         }
       }
+      return ids;
+    },
+
+    /**
+     * Link a shared character's analysed looks (#2050) and say which look each
+     * analysis id landed on. Nothing of hers is rewritten or removed: a look
+     * named by id or by NAME (case-blind, among every live look she has, cast
+     * here or not) gets a cast look in this sequence if it lacks one, pinned
+     * at the look's current version; a name she does not have becomes a new
+     * look. The cast link is revived if it was removed, as `create` revives
+     * an analysed character.
+     */
+    linkFromAnalysis: async (
+      sequenceId: string,
+      characterId: string,
+      analysed: readonly {
+        lookId: string;
+        name: string;
+        clothing: string;
+        styling: string;
+      }[]
+    ): Promise<Record<string, string>> => {
+      const owner = await ownerOf(db, teamId, sequenceId, characterId);
+      const own = await db
+        .select({
+          id: characterLooks.id,
+          versionId: characterLooks.selectedLookVersionId,
+          sortOrder: characterLooks.sortOrder,
+          name: characterLookVersions.name,
+        })
+        .from(characterLooks)
+        .innerJoin(
+          characterLookVersions,
+          eq(characterLookVersions.id, characterLooks.selectedLookVersionId)
+        )
+        .where(
+          and(
+            eq(characterLooks.characterId, characterId),
+            isNull(characterLooks.deletedAt)
+          )
+        );
+      const key = (name: string) => name.trim().toLowerCase();
+      const ids: Record<string, string> = {};
+      const statements: BatchItem<'sqlite'>[] = [
+        db
+          .update(sequenceCast)
+          .set({ removedAt: null })
+          .where(eq(sequenceCast.id, owner.castId)),
+      ];
+      let nextSort = Math.max(0, ...own.map((look) => look.sortOrder)) + 1;
+      for (const look of analysed) {
+        const existing =
+          own.find((row) => row.id === look.lookId) ??
+          own.find((row) => key(row.name) === key(look.name));
+        if (existing) {
+          ids[look.lookId] = existing.id;
+          statements.push(
+            db
+              .insert(sequenceCastLooks)
+              .values({
+                castId: owner.castId,
+                lookId: existing.id,
+                lookVersionId: existing.versionId,
+                sheetStatus: 'pending',
+              })
+              .onConflictDoNothing()
+          );
+          continue;
+        }
+        const id = generateId();
+        const versionId = generateId();
+        statements.push(
+          ...newLookStatements(db, {
+            id,
+            versionId,
+            characterId,
+            castId: owner.castId,
+            sortOrder: nextSort++,
+          }),
+          db.insert(characterLookVersions).values({
+            id: versionId,
+            lookId: id,
+            name: look.name.trim() || DEFAULT_LOOK_NAME,
+            clothing: look.clothing.trim() || null,
+            styling: look.styling.trim() || null,
+            source: 'analysis',
+            createdBy: null,
+          })
+        );
+        own.push({ id, versionId, sortOrder: nextSort, name: look.name });
+        ids[look.lookId] = id;
+      }
+      const [first, ...rest] = statements;
+      if (first) await db.batch([first, ...rest]);
       return ids;
     },
 
@@ -1086,4 +1193,5 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
     },
   };
+  return methods;
 }

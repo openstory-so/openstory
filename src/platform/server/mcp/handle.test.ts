@@ -216,6 +216,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.list_character_voices',
       'openstory.list_deleted_cast',
       'openstory.create_character',
+      'openstory.add_character_to_sequence',
       'openstory.update_character',
       'openstory.delete_character',
       'openstory.restore_character',

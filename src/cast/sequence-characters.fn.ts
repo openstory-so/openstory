@@ -11,6 +11,7 @@ import { isValidTextToImageModel } from '@/models/models';
 import { markPreviewUnusable, previewListWithChosenTake } from '@/cast/voice';
 import { characterBibleFieldsSchema } from './bible-field';
 import {
+  attachLibraryCharacter,
   createCharacter,
   deleteCharacter,
   requireCharacter,
@@ -87,6 +88,26 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
       fields
     );
   });
+
+/**
+ * Cast a library character into the sequence (#2050). Idempotent for a
+ * character the sequence already casts; refused while a live cast member has
+ * the same name.
+ */
+export const attachLibraryCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, characterId: ulidSchema }))
+  )
+  .handler(
+    async ({ context, data }) =>
+      await attachLibraryCharacter(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.characterId
+      )
+  );
 
 /**
  * Edit a character's bible fields. Only provided fields change; prompts and
