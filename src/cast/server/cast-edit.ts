@@ -32,7 +32,10 @@ import {
   type locationBibleFieldsSchema,
 } from '@/cast/bible-field';
 import { effectiveStyling } from '@/cast/character-looks';
-import { requirePersonEditAllowed } from '@/cast/server/person-lock';
+import {
+  requirePersonEditAllowed,
+  requirePersonEditStillAllowed,
+} from '@/cast/server/person-lock';
 import { LOOK_TEXT_MAX } from '@/cast/look-field';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
@@ -249,6 +252,14 @@ export async function updateTeamCharacter(
     update,
     { actorId: actor.userId, source: 'edit' }
   );
+  await requirePersonEditStillAllowed(scopedDb, update, character, () =>
+    scopedDb.characters.updateBible(
+      null,
+      characterId,
+      { isPerson: true },
+      { actorId: actor.userId, source: 'edit' }
+    )
+  );
   if (!distinguishingFeatures?.trim()) return character;
   await foldFeaturesIntoDefaultLook(
     scopedDb,
@@ -302,6 +313,14 @@ export async function updateCharacter(
       actorId: actor.userId,
       source: 'edit',
     }
+  );
+  await requirePersonEditStillAllowed(scopedDb, update, character, () =>
+    scopedDb.characters.updateBible(
+      sequenceId,
+      characterId,
+      { isPerson: true },
+      { actorId: actor.userId, source: 'edit' }
+    )
   );
   await foldFeaturesIntoDefaultLook(
     scopedDb,

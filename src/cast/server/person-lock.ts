@@ -80,3 +80,26 @@ export async function requirePersonEditAllowed(
   const lock = await personLockOf(scopedDb, character);
   if (lock) throw new ConflictError(personLockMessage(lock));
 }
+
+/**
+ * The same check again, after the edit wrote `isPerson: false`. D1 has no
+ * interactive transaction, so a recast or an uploaded sheet can land between
+ * {@link requirePersonEditAllowed} and the write. If the character is locked
+ * now, `putBack` writes it a person again and the edit is refused.
+ *
+ * Not covered: an upload whose sheet lands after this re-check, having read
+ * the character as a person before the edit (it then writes no bible
+ * version). The same user would have to race their own two requests.
+ */
+export async function requirePersonEditStillAllowed(
+  scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
+  update: { isPerson?: boolean | null },
+  character: { id: string; talentId: string | null },
+  putBack: () => Promise<unknown>
+): Promise<void> {
+  if (update.isPerson !== false) return;
+  const lock = await personLockOf(scopedDb, character);
+  if (!lock) return;
+  await putBack();
+  throw new ConflictError(personLockMessage(lock));
+}
