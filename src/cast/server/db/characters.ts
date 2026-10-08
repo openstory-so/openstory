@@ -325,6 +325,11 @@ export type TeamCharacter = {
   /** When a sequence casting it last changed; null when none casts it. */
   lastUsedAt: Date | null;
   /**
+   * Whether any sequence, archived ones included, has a cast link to it
+   * that is not removed: what a delete is refused on (#2065).
+   */
+  castAnywhere: boolean;
+  /**
    * The live sequences that cast it, the most recently changed first, each
    * with the default look's sheet as that sequence selected it.
    */
@@ -941,6 +946,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
         physicalDescription: characterBibleColumns.physicalDescription,
         voiceOnly: characterBibleColumns.voiceOnly,
         lastUsedAt: lastUsedAt.mapWith(sequences.updatedAt),
+        castAnywhere: sql<number>`count(${sequenceCast.id}) > 0`.mapWith(
+          Boolean
+        ),
         cast: sql<string>`json_group_array(json_object('id', ${sequences.id}, 'title', ${sequences.title}, 'updatedAt', ${sequences.updatedAt}, 'sheetImageUrl', ${characterSheetVariants.url})) FILTER (WHERE ${sequences.id} IS NOT NULL)`,
       })
       .from(characters)
@@ -1305,7 +1313,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
         ]),
         db
           .update(sequenceCast)
-          .set({ characterId: copyId, bibleVersionId, voiceVersionId })
+          // The copy is the writer's deliberate character: never analysis's
+          // to rewrite, whoever made the original (#2065).
+          .set({
+            characterId: copyId,
+            bibleVersionId,
+            voiceVersionId,
+            attached: true,
+          })
           .where(eq(sequenceCast.id, existing.castId)),
         buildEventInsert(db, {
           sequenceId,
@@ -1553,7 +1568,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * the script names a character in capitals, and two of one name could
      * not be told apart.
      * Attaching a character the sequence already casts is idempotent: a
-     * removed link comes back, a live one is returned as it is.
+     * removed link comes back as an attach, a live one is returned as it is.
      */
     attach: async (
       sequenceId: string,
@@ -1594,7 +1609,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
         await assertNameFree(db, sequenceId, name, id);
         await db
           .update(sequenceCast)
-          .set({ removedAt: null })
+          // The writer picked her again: an attach, whatever it was (#2065).
+          .set({ removedAt: null, attached: true })
           .where(eq(sequenceCast.id, existing.castId));
         return await reread(sequenceId, id);
       }
@@ -1643,7 +1659,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           kind: 'character.attached',
           targetType: 'character',
           targetId: id,
-          summary: `Added ${name} from the library`,
+          summary: `Added ${name}`,
           data: { name, characterId: scriptCharacterId },
         }),
       ]);
@@ -1924,9 +1940,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
             .update(sequenceCast)
             .set({ removedAt: null })
             .where(eq(sequenceCast.id, existing.castId)),
+          // Cast again, so back in the team too, as `restore` does (#2065).
           db
             .update(characters)
-            .set({ updatedAt: now })
+            .set({ updatedAt: now, deletedAt: null })
             .where(eq(characters.id, id)),
           ...bible.statements,
           // The pin moved: the staleness causes walk these events back to

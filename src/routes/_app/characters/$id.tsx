@@ -91,7 +91,7 @@ function TeamCharacterContent({ id }: { id: string }) {
             </Link>
           </Button>
           <h1 className="text-lg font-semibold">{character.name}</h1>
-          {sequences.length === 0 && (
+          {!character.castAnywhere && (
             <DeleteCharacterButton
               characterId={character.id}
               name={character.name}

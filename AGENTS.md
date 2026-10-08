@@ -265,8 +265,9 @@ changing the area, and update it in the same PR.**
   is listed and attachable, and stays when its last sequence lets it go.
   Whoever lets a character go (a sequence removing it, an archive, a
   delete) releases its voice only when no other live sequence casts it:
-  `characters.getHeldElsewhere` / `getCastInAnySequence`, never a
-  hand-written check.
+  `characters.getHeldElsewhere`, never a hand-written check. A delete is
+  soft (`characters.deleted_at`) and refused while any sequence, archived
+  ones included, casts it (`getCastInAnySequenceOrArchive`).
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
   character belongs to the team; a sequence uses it through a `sequence_cast`
   link that pins its bible version, and `sequence_cast_looks` pins each look
