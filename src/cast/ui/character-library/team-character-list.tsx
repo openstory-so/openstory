@@ -28,10 +28,9 @@ const gridColumns = () =>
  * scroller.
  */
 export const TeamCharacterList: React.FC<{
-  inLibrary: boolean;
   scrollRef: React.RefObject<HTMLDivElement | null>;
-}> = ({ inLibrary, scrollRef }) => {
-  const { data: characters } = useTeamCharacters(inLibrary);
+}> = ({ scrollRef }) => {
+  const { data: characters } = useTeamCharacters();
   const columns = useSyncExternalStore(subscribeToResize, gridColumns, () => 2);
   // Where the list starts inside the page's scroller, measured when the
   // list mounts (a ref callback, not a read of a ref during render).
@@ -52,12 +51,8 @@ export const TeamCharacterList: React.FC<{
     return (
       <EmptyState
         icon={<User className="h-12 w-12" />}
-        title={inLibrary ? 'Library is empty' : 'No characters yet'}
-        description={
-          inLibrary
-            ? 'Open a character and add it to the library.'
-            : 'Characters appear here when a sequence is analysed.'
-        }
+        title="No characters yet"
+        description="Characters appear here when a sequence is analysed."
       />
     );
   }

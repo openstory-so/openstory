@@ -91,7 +91,7 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Cast a library character into the sequence (#2050). Idempotent for a
+ * Cast a team character into the sequence (#2050). Idempotent for a
  * character the sequence already casts; refused while a live cast member has
  * the same name.
  */

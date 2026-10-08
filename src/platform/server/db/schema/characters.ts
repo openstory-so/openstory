@@ -55,9 +55,11 @@ export const characters = snakeCase.table(
     teamId: text()
       .notNull()
       .references(() => teams.id),
-    // In the team library: offered to new sequences. A character that is not
-    // lives only as long as some sequence casts it.
-    inLibrary: integer({ mode: 'boolean' }).default(false).notNull(),
+    // Unread since #2065: every team character is listed and attachable.
+    // Dropped in a follow-up (a native drop, no rebuild).
+    legacyInLibrary: integer('in_library', { mode: 'boolean' })
+      .default(false)
+      .notNull(),
     // The character this one is a one-off copy of (#2017, PR 3): null when
     // it is not a copy. The copying sequence's clips were stamped with the
     // original's id (`referenceKeys`), so the live reference identity answers

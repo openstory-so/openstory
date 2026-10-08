@@ -101,11 +101,7 @@ beforeEach(async () => {
     { source: 'analysis', createdBy: null }
   );
   characterId = sam.id;
-  // Episode 2 casts the same character (#2050's attach, library only).
-  await db
-    .update(characters)
-    .set({ inLibrary: true })
-    .where(eq(characters.id, characterId));
+  // Episode 2 casts the same character (#2050's attach).
   await chars().attach(episode2, characterId, { actorId: null });
 });
 

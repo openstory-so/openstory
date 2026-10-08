@@ -1855,23 +1855,22 @@ describe('Studio, Gallery and library reads', () => {
         expect(item).not.toHaveProperty('input');
       }
   });
-  it('lists only the library characters of the team, with the sequences casting them, and pages them', async () => {
+  it('lists every character of the team, with the sequences casting them, and pages them', async () => {
     const [ada, bea, cy] = [
       await castCharacter({ sequenceId, characterId: 'lib_ada', name: 'Ada' }),
       await castCharacter({ sequenceId, characterId: 'lib_bea', name: 'Bea' }),
       await castCharacter({ sequenceId, characterId: 'lib_cy', name: 'Cy' }),
     ];
-    await scopedDb.characters.setInLibrary(ada.id, true);
-    await scopedDb.characters.setInLibrary(bea.id, true);
     const page = z.object({
       items: z.array(z.record(z.string(), z.unknown())),
       nextCursor: z.string().nullable(),
     });
 
     const all = page.parse(await data('list_library_characters', {}));
-    // Ascending id; the unflagged character is not there.
-    expect(all.items.map((item) => item.id)).toEqual([ada.id, bea.id].sort());
-    expect(all.items.map((item) => item.id)).not.toContain(cy.id);
+    // Ascending id, every one of them (#2065).
+    expect(all.items.map((item) => item.id)).toEqual(
+      [ada.id, bea.id, cy.id].sort()
+    );
     expect(all.nextCursor).toBeNull();
     expect(all.items.find((item) => item.id === ada.id)).toEqual({
       id: ada.id,
@@ -1896,7 +1895,7 @@ describe('Studio, Gallery and library reads', () => {
       })
     );
     expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
-    expect(second.nextCursor).toBeNull();
+    expect(second.nextCursor).not.toBeNull();
     // A cursor from another collection does not continue this one.
     expect(
       (await call('list_talent', { cursor: first.nextCursor })).isError
@@ -2883,7 +2882,7 @@ describe('cast and music edits (#1979)', () => {
     return id;
   }
 
-  it('add_character_to_sequence casts a library character into another sequence, once (#2050)', async () => {
+  it('add_character_to_sequence casts a team character into another sequence, once (#2050)', async () => {
     const ada = await castCharacter({
       sequenceId,
       characterId: 'char_001',
@@ -2897,14 +2896,6 @@ describe('cast and music edits (#1979)', () => {
       title: 'Other',
       styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
     });
-    // Not in the library yet: refused.
-    expect(
-      await call('add_character_to_sequence', {
-        sequenceId: otherSequence,
-        characterId: ada.id,
-      })
-    ).toMatchObject(refusal('VALIDATION_ERROR'));
-    await scopedDb.characters.setInLibrary(ada.id, true);
     expect(
       await data('add_character_to_sequence', {
         sequenceId: otherSequence,
@@ -2924,7 +2915,7 @@ describe('cast and music edits (#1979)', () => {
         characterId: ada.id,
       })
     ).toMatchObject({ character: { name: 'Ada', standardClothing: 'coat' } });
-    // A library character whose name a live cast member here already has.
+    // A character whose name a live cast member here already has.
     const twin = await castCharacter({
       sequenceId: otherSequence,
       characterId: 'char_twin',
@@ -2935,7 +2926,6 @@ describe('cast and music edits (#1979)', () => {
       characterId: 'char_bo',
       name: 'bo',
     });
-    await scopedDb.characters.setInLibrary(bo.id, true);
     expect(twin.name).toBe('Bo');
     expect(
       await call('add_character_to_sequence', {

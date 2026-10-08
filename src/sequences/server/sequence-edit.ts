@@ -107,8 +107,8 @@ export async function archiveSequence(
   // attempt retries the rows still holding an id.
   // Known gap: a voice child still running lands its id after this loop;
   // that slot is only freed by a later soft-delete or regenerate.
-  // A voice is the character's own (#2017): one the library or another
-  // sequence still holds keeps it.
+  // A voice is the character's own (#2017): one another live sequence
+  // still casts keeps it.
   for (const character of await scopedDb.characters.list(sequence.id)) {
     if (await scopedDb.characters.getHeldElsewhere(sequence.id, character.id)) {
       continue;

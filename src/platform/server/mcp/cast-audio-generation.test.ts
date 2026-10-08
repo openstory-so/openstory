@@ -372,7 +372,6 @@ describe('recast across a range and the move preview (#2017)', () => {
       name: 'Ada',
       age: '30s',
     });
-    await scopedDb.characters.setInLibrary(created.id, true);
     const b = await sequence('B');
     const c = await sequence('C');
     await scopedDb.characters.attach(b, created.id, { actorId });
@@ -473,7 +472,6 @@ describe('moves and copies on the real scoped db (#2017)', () => {
       name: 'Ada',
       age: '30s',
     });
-    await scopedDb.characters.setInLibrary(created.id, true);
     const b = await sequence('B');
     const c = await sequence('C');
     await scopedDb.characters.attach(b, created.id, { actorId });

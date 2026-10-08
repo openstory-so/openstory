@@ -1,4 +1,4 @@
-import { CharacterLibraryButton } from '@/cast/ui/character-library/character-library-button';
+import { DeleteCharacterButton } from '@/cast/ui/character-library/delete-character-button';
 import { CharacterDetailView } from '@/cast/ui/talent/character-detail-view';
 import {
   useTeamCharacter,
@@ -8,7 +8,6 @@ import {
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { routeParams } from '@/ui/layout/breadcrumbs';
-import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
@@ -60,15 +59,13 @@ function ShotCount({
 function TeamCharacterContent({ id }: { id: string }) {
   const { sequence: pickedSequenceId } = Route.useSearch();
   const { data: character } = useTeamCharacter(id);
-  // Gone, another team's, or held by nothing: not in the library and cast in
-  // no live sequence. Reached from a stale link, and from this page when the
-  // last holder lets go (the Undo toast still brings it back).
+  // Gone or another team's. Reached from a stale link.
   if (!character) {
     return (
       <EmptyState
         icon={<User className="h-12 w-12" />}
         title="Character not found"
-        description="It is not in the library and no sequence casts it."
+        description="It was deleted, or it belongs to another team."
         action={
           <Button variant="outline" asChild>
             <Link to="/characters">Back to Characters</Link>
@@ -93,11 +90,12 @@ function TeamCharacterContent({ id }: { id: string }) {
             </Link>
           </Button>
           <h1 className="text-lg font-semibold">{character.name}</h1>
-          {character.inLibrary && <Badge variant="secondary">Library</Badge>}
-          <CharacterLibraryButton
-            characterId={character.id}
-            inLibrary={character.inLibrary}
-          />
+          {sequences.length === 0 && (
+            <DeleteCharacterButton
+              characterId={character.id}
+              name={character.name}
+            />
+          )}
         </div>
         {sequences.length > 0 && (
           <nav

@@ -48,11 +48,6 @@ export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
               <User className="h-16 w-16 text-muted-foreground/30" />
             </div>
           )}
-          {character.inLibrary && (
-            <div className="absolute top-2 left-2 px-2 py-1 bg-background/80 backdrop-blur-sm rounded text-xs font-medium">
-              Library
-            </div>
-          )}
         </div>
 
         <div className="flex flex-col gap-1 p-4">

@@ -1,6 +1,5 @@
 import { TeamCharacterList } from '@/cast/ui/character-library/team-character-list';
 import { AddTalentDialog } from '@/cast/ui/talent-library/add-talent-dialog';
-import { LibraryFilters } from '@/cast/ui/talent-library/talent-library-filters';
 import { LibraryGridSkeleton } from '@/cast/ui/talent-library/talent-library-list';
 import { TalentLibraryTab } from '@/cast/ui/talent-library/talent-library-tab';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
@@ -19,16 +18,9 @@ import { z } from 'zod';
 // live in the component.
 const searchParamsSchema = z.object({
   tab: z.enum(['characters', 'talent']).optional(),
-  /** Characters tab: every character, or the library only. */
-  show: z.enum(['all', 'library']).optional(),
   /** Talent tab. */
   filter: z.enum(['all', 'favorites']).optional(),
 });
-
-const CHARACTER_FILTERS = [
-  { value: 'all', label: 'All Characters' },
-  { value: 'library', label: 'Library' },
-] as const;
 
 export const Route = createFileRoute('/_app/characters/')({
   validateSearch: searchParamsSchema,
@@ -44,7 +36,6 @@ function CharactersPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Signed out, the page is the public talent catalogue.
   const tab = search.tab ?? (isAuthenticated ? 'characters' : 'talent');
-  const show = search.show ?? 'all';
 
   return (
     <div ref={scrollRef} className="h-full overflow-auto">
@@ -56,8 +47,7 @@ function CharactersPage() {
         </PageIntro>
       ) : (
         <PageIntro title="Characters">
-          Every character your team's sequences cast. Library shows the ones you
-          added to the library.
+          Every character your team has. Use one in a script with @.
         </PageIntro>
       )}
       <PageContainer padding="none" className="pb-8">
@@ -79,23 +69,9 @@ function CharactersPage() {
             </TabsList>
             <TabsContent value="characters" className="flex flex-col gap-6">
               {isAuthenticated ? (
-                <>
-                  <LibraryFilters
-                    current={show}
-                    filters={CHARACTER_FILTERS}
-                    onSelect={(next) =>
-                      void navigate({
-                        search: { tab: 'characters', show: next },
-                      })
-                    }
-                  />
-                  <Suspense fallback={<LibraryGridSkeleton />}>
-                    <TeamCharacterList
-                      inLibrary={show === 'library'}
-                      scrollRef={scrollRef}
-                    />
-                  </Suspense>
-                </>
+                <Suspense fallback={<LibraryGridSkeleton />}>
+                  <TeamCharacterList scrollRef={scrollRef} />
+                </Suspense>
               ) : isPending ? (
                 <LibraryGridSkeleton />
               ) : (

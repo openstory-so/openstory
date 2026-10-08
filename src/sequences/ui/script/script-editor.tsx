@@ -26,7 +26,7 @@ type ScriptEditorProps = {
    * elements' tokens (#1079); pass the full sequence sets once analysed.
    */
   mentionItems?: MentionItem[];
-  /** Map the chosen `@` row to the item to insert; the composer attaches a library character here (#2050). */
+  /** Map the chosen `@` row to the item to insert; the composer attaches a team character here (#2050). */
   onMentionSelect?: (item: MentionItem) => MentionItem;
 };
 

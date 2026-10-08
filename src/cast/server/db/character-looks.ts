@@ -47,7 +47,7 @@ import {
 } from '@/platform/server/db/schema';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { characterBibleColumns, mergeDefined } from './bible-versions';
-import { heldElsewhere } from './sequence-cast';
+import { castEverElsewhere } from './sequence-cast';
 
 /**
  * A look's live sheet version in the sequence that uses it (#2017): the cast
@@ -597,10 +597,10 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         styling: string;
       }[]
     ): Promise<Record<string, string>> => {
-      // A character the library or another live sequence holds is linked,
-      // never synced (#2050): decided here, on every call, so no payload flag
+      // A character another sequence has ever cast is linked, never synced
+      // (#2050, #2065): decided here, on every call, so no payload flag
       // that went stale mid-run can reach her.
-      if (await heldElsewhere(db, teamId, characterId, sequenceId)) {
+      if (await castEverElsewhere(db, teamId, characterId, sequenceId)) {
         return await methods.linkFromAnalysis(
           sequenceId,
           characterId,

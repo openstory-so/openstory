@@ -45,7 +45,7 @@ export function splitMentions(
   // so a longer slug wins over a shorter one that's a prefix of it.
   const forms: Array<{ form: string; item: MentionItem }> = [];
   for (const item of items) {
-    // A pick-only row (an unattached library character, #2050) is for the
+    // A pick-only row (a team character not cast here, #2050) is for the
     // dropdown: her name in the text is prose until she is attached.
     if (item.pickOnly) continue;
     // Skip empty forms: a malformed row with an empty `tag` would otherwise add

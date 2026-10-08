@@ -33,10 +33,33 @@ export const castElsewhere = (
   sql`EXISTS (SELECT 1 FROM sequence_cast o JOIN sequences os ON os.id = o.sequence_id WHERE o.character_id = ${characterId} AND o.removed_at IS NULL AND os.status != 'archived' AND (${exceptSequenceId} IS NULL OR o.sequence_id != ${exceptSequenceId}))`;
 
 /**
- * Whether something other than `exceptSequenceId` holds the character: the
- * library flag, or another live sequence casting it ({@link castElsewhere}).
- * What analysis in one sequence may never rewrite (#2050), and what a
- * sequence may not take the voice with when it lets the character go.
+ * Whether another sequence has ever cast the character: any link, removed
+ * or in an archived sequence included. What analysis in `sequenceId` may
+ * never rewrite (#2050). Wider than {@link heldElsewhere} on purpose: with
+ * no library flag (#2065), a character attached here from a sequence that
+ * has since been archived is still not this sequence's to rewrite.
+ */
+export const castEverElsewhere = async (
+  db: Database,
+  teamId: string,
+  characterId: string,
+  sequenceId: string
+): Promise<boolean> => {
+  const [row] = await db
+    .select({
+      shared: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${characterId} AND o.sequence_id != ${sequenceId})`,
+    })
+    .from(characters)
+    .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
+  if (!row) throw new NotFoundError(`Character ${characterId} not found`);
+  return Boolean(row.shared);
+};
+
+/**
+ * Whether a live sequence other than `exceptSequenceId` casts the character
+ * ({@link castElsewhere}). What a sequence may not take the voice with when
+ * it lets the character go. The character itself stays in the team either
+ * way (#2065).
  */
 export const heldElsewhere = async (
   db: Database,
@@ -46,7 +69,7 @@ export const heldElsewhere = async (
 ): Promise<boolean> => {
   const [row] = await db
     .select({
-      held: sql<number>`(${characters.inLibrary} OR ${castElsewhere(characterId, exceptSequenceId)})`,
+      held: sql<number>`${castElsewhere(characterId, exceptSequenceId)}`,
     })
     .from(characters)
     .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
@@ -130,9 +153,9 @@ export const deleteCastStatements = (db: Database, where: SQL) =>
   ] as const;
 
 /**
- * The team's characters that go when a sequence does: the ones only it casts
- * and the library does not hold. Read before the delete, because the links that
- * say so are deleted first. A condition on `characters`.
+ * The team's characters that go when a sequence is hard-deleted: the ones
+ * only it ever cast. Read before the delete, because the links that say so
+ * are deleted first. A condition on `characters`.
  */
 export const charactersOnlyIn = async (
   db: Database,
@@ -147,7 +170,6 @@ export const charactersOnlyIn = async (
       and(
         eq(sequenceCast.sequenceId, sequenceId),
         eq(characters.teamId, teamId),
-        eq(characters.inLibrary, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id != ${sequenceId})`
       )
     );

@@ -1,8 +1,8 @@
 /**
- * The library flag and the voice (#2017), on real SQLite with the provider
- * stubbed: taking a character out of the library when no sequence casts it
- * releases its saved voice, provider first and row second, and a link in an
- * archived sequence is not a holder.
+ * Deleting a team character and its voice (#2065), on real SQLite with the
+ * provider stubbed: refused while any sequence casts it, otherwise the saved
+ * voice is released, provider first and row second. A link in an archived
+ * sequence is not a holder of the voice (#2017).
  */
 import {
   afterAll,
@@ -31,7 +31,7 @@ import {
 import { relations } from '@/platform/server/db/schema/relations';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { asStub } from '@/test/as-stub';
-import { setCharacterInLibrary } from './cast-edit';
+import { deleteTeamCharacter } from './cast-edit';
 import { createCharactersMethods } from './db/characters';
 
 const { mockDelete, mockGetVoice } = vi.hoisted(() => ({
@@ -61,7 +61,7 @@ let userId = '';
 let styleId = '';
 
 const chars = () => createCharactersMethods(db, teamId);
-// The surface `setCharacterInLibrary` and the release touch.
+// The surface `deleteTeamCharacter` and the release touch.
 const scoped = () => asStub<ScopedDb>({ characters: chars() });
 
 async function newSequence(title: string) {
@@ -140,61 +140,70 @@ beforeEach(async () => {
   styleId = style.id;
 });
 
-describe('setCharacterInLibrary', () => {
-  it('sets and clears the flag without touching the voice while a sequence casts the character', async () => {
+describe('deleteTeamCharacter', () => {
+  it('is refused while a live sequence casts the character', async () => {
     const { created } = await voiced();
-    await setCharacterInLibrary(scoped(), { userId }, created.id, true);
-    expect((await chars().getTeamCharacter(created.id))?.inLibrary).toBe(true);
 
-    await setCharacterInLibrary(scoped(), { userId }, created.id, false);
-    expect((await chars().getTeamCharacter(created.id))?.inLibrary).toBe(false);
+    await expect(
+      deleteTeamCharacter(scoped(), { userId }, created.id)
+    ).rejects.toThrow('Remove it from its sequences first.');
+
     expect(mockDelete).not.toHaveBeenCalled();
     expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
+    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
   });
 
-  it('releases the voice when the library was the last thing holding the character', async () => {
+  it('is refused while only an archived sequence casts the character', async () => {
     const { sequenceId, created } = await voiced();
-    await setCharacterInLibrary(scoped(), { userId }, created.id, true);
-    await chars().softDelete(sequenceId, created.id, { actorId: userId });
-    // The library holds it, so the remove kept the voice.
-    expect(await chars().getHeldElsewhere(sequenceId, created.id)).toBe(true);
+    await archive(sequenceId);
+    // Not cast as the list counts it, but the link is still there.
     expect(await chars().getCastInAnySequence(created.id)).toBe(false);
+    expect(await chars().getCastInAnySequenceOrArchive(created.id)).toBe(true);
+
+    await expect(
+      deleteTeamCharacter(scoped(), { userId }, created.id)
+    ).rejects.toThrow('Remove it from its sequences first.');
+
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
+  });
+
+  it('deletes the character and releases its voice when nothing casts it', async () => {
+    const { sequenceId, created } = await voiced();
+    await chars().softDelete(sequenceId, created.id, { actorId: userId });
+    // Still listed, with no sequence.
+    expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
 
     // Provider first: the row still names the voice when the delete runs.
     mockDelete.mockImplementation(async () => {
       expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
     });
-    await setCharacterInLibrary(scoped(), { userId }, created.id, false);
+    await deleteTeamCharacter(scoped(), { userId }, created.id);
 
     expect(mockDelete).toHaveBeenCalledWith('key', VOICE);
-    expect((await chars().getVoice(created.id)).voiceId).toBeNull();
-    // Unlisted now, with nothing left behind at the provider.
     expect(await chars().getTeamCharacter(created.id)).toBeNull();
+    expect(
+      await db.select().from(characters).where(eq(characters.id, created.id))
+    ).toEqual([]);
+    expect(
+      await db
+        .select()
+        .from(sequenceCast)
+        .where(eq(sequenceCast.characterId, created.id))
+    ).toEqual([]);
   });
 
-  it('keeps the flag when the provider delete fails, so the release can be retried', async () => {
+  it('leaves the character when the provider delete fails, so it can be retried', async () => {
     const { sequenceId, created } = await voiced();
-    await setCharacterInLibrary(scoped(), { userId }, created.id, true);
     await chars().softDelete(sequenceId, created.id, { actorId: userId });
     mockDelete.mockRejectedValue(new Error('ElevenLabs 503'));
 
     await expect(
-      setCharacterInLibrary(scoped(), { userId }, created.id, false)
+      deleteTeamCharacter(scoped(), { userId }, created.id)
     ).rejects.toThrow('ElevenLabs 503');
 
-    expect((await chars().getTeamCharacter(created.id))?.inLibrary).toBe(true);
+    expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
     expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
-  });
-
-  it('counts an archived sequence as not casting, like the list does', async () => {
-    const { sequenceId, created } = await voiced();
-    await setCharacterInLibrary(scoped(), { userId }, created.id, true);
-    await archive(sequenceId);
-    expect(await chars().getCastInAnySequence(created.id)).toBe(false);
-    expect((await chars().getTeamCharacter(created.id))?.sequences).toEqual([]);
-
-    await setCharacterInLibrary(scoped(), { userId }, created.id, false);
-    expect(mockDelete).toHaveBeenCalledWith('key', VOICE);
   });
 });
 
@@ -230,12 +239,5 @@ describe('getHeldElsewhere', () => {
     await archive(a);
     expect(await chars().getHeldElsewhere(b, created.id)).toBe(false);
     expect(await chars().getCastInAnySequence(created.id)).toBe(false);
-
-    // The library is a holder whatever the sequences do.
-    await db
-      .update(characters)
-      .set({ inLibrary: true })
-      .where(eq(characters.id, created.id));
-    expect(await chars().getHeldElsewhere(a, created.id)).toBe(true);
   });
 });

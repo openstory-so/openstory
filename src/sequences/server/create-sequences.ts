@@ -321,13 +321,11 @@ export const createSequences = createServerOnlyFn(
       pricing: await getEffectiveFalPricing(),
     });
 
-    // Library characters the script references (#2050) are checked before any
-    // row is written: every pick must be in the library, and no two may share
+    // Team characters the script references (#2050) are checked before any
+    // row is written: every pick must be the team's, and no two may share
     // a name, or the attach after the insert would leave an empty sequence.
     if (castCharacterIds?.length) {
-      const library = await context.scopedDb.characters.listTeam({
-        inLibrary: true,
-      });
+      const library = await context.scopedDb.characters.listTeam();
       const names = new Map<string, string>();
       for (const id of new Set(castCharacterIds)) {
         const character = library.find((c) => c.id === id);
@@ -400,7 +398,7 @@ export const createSequences = createServerOnlyFn(
                 : undefined,
             });
 
-            // Library characters the script references (#2050) are cast
+            // Team characters the script references (#2050) are cast
             // before the trigger, so the launcher's cast snapshot has them.
             for (const characterId of castCharacterIds ?? []) {
               await attachLibraryCharacter(

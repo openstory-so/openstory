@@ -180,7 +180,7 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
   const db = getDb();
   const ids = db.select({ id: sequences.id }).from(sequences).where(where);
   // The sequences' characters (#2017), read before their cast links go — only
-  // the ones no other sequence still casts (a library character attached to
+  // the ones no other sequence still casts (a team character attached to
   // a second sequence stays, as `charactersOnlyIn` keeps it: its remaining
   // link would refuse the delete). One bound parameter however many there are.
   const cast = await db

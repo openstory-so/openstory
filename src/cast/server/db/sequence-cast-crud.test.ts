@@ -1551,17 +1551,13 @@ describe('team characters (#2017)', () => {
     expect(await versionsOf(created.id)).toHaveLength(3);
   });
 
-  it('deleting a sequence keeps a library character and one another sequence casts', async () => {
-    const [oneOff, inLibrary, shared] = await Promise.all(
-      ['One', 'Lib', 'Shared'].map((name, i) =>
+  it('deleting a sequence keeps only a character another sequence casts', async () => {
+    const [oneOff, shared] = await Promise.all(
+      ['One', 'Shared'].map((name, i) =>
         chars().create({ sequenceId, characterId: `char_${i}`, name }, analysis)
       )
     );
-    if (!oneOff || !inLibrary || !shared) throw new Error('test setup');
-    await db
-      .update(characters)
-      .set({ inLibrary: true })
-      .where(eq(characters.id, inLibrary.id));
+    if (!oneOff || !shared) throw new Error('test setup');
     const other = await secondSequence();
     await db.insert(sequenceCast).values({
       sequenceId: other,
@@ -1575,14 +1571,10 @@ describe('team characters (#2017)', () => {
     );
 
     const left = await db.select({ id: characters.id }).from(characters);
-    expect(left.map((row) => row.id).sort()).toEqual(
-      [inLibrary.id, shared.id].sort()
-    );
+    expect(left.map((row) => row.id)).toEqual([shared.id]);
     expect(await versionsOf(oneOff.id)).toEqual([]);
-    expect(await versionsOf(inLibrary.id)).toHaveLength(1);
-    // The library character has no link left; the shared one keeps the
-    // other sequence's.
-    expect(await linksOf(inLibrary.id)).toEqual([]);
+    expect(await versionsOf(shared.id)).toHaveLength(1);
+    // The shared one keeps the other sequence's link.
     expect(await linksOf(shared.id)).toMatchObject([{ sequenceId: other }]);
     expect(
       await db
@@ -1755,13 +1747,8 @@ describe('team characters (#2017)', () => {
     expect(await db.select().from(characterVoiceVersions)).toEqual([]);
   });
 
-  it('a library character and one another sequence casts keep their voices when a sequence is deleted', async () => {
-    const inLibrary = await withSheetAndVoices('char_001');
+  it('a character another sequence casts keeps its voices when a sequence is deleted', async () => {
     const shared = await withSheetAndVoices('char_002');
-    await db
-      .update(characters)
-      .set({ inLibrary: true })
-      .where(eq(characters.id, inLibrary.id));
     const other = await secondSequence();
     await db.insert(sequenceCast).values({
       sequenceId: other,
@@ -1770,15 +1757,19 @@ describe('team characters (#2017)', () => {
       bibleVersionId: shared.selectedBibleVersionId,
     });
     const sequencesDb = createSequencesMethods(db, teamId, actorId);
-    // Neither is deleted, so no voice is in the way.
+    // It is not deleted, so no voice is in the way.
     expect(await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual(
       []
     );
     await sequencesDb.delete(sequenceId, NO_VOICES);
 
-    const kept = { sheets: 1, voices: 2, looks: 1, versions: 1 };
-    expect(await rowsOf(inLibrary.id)).toEqual({ ...kept, links: 0 });
-    expect(await rowsOf(shared.id)).toEqual({ ...kept, links: 1 });
+    expect(await rowsOf(shared.id)).toEqual({
+      sheets: 1,
+      voices: 2,
+      looks: 1,
+      versions: 1,
+      links: 1,
+    });
     const [voiced] = await db
       .select({ selected: characters.selectedVoiceVersionId })
       .from(characters)
@@ -2009,7 +2000,6 @@ describe('team characters (#2017)', () => {
       'generated',
       null
     );
-    await chars().setInLibrary(created.id, true);
     const other = await secondSequence();
     // Attach pins the character's current voice (#2050).
     const attached = await chars().attach(other, created.id, { actorId });
@@ -2096,7 +2086,6 @@ describe('team characters (#2017)', () => {
       'generated',
       null
     );
-    await chars().setInLibrary(created.id, true);
     const other = await secondSequence();
     await chars().attach(other, created.id, { actorId });
     const behind = async () =>
@@ -2239,7 +2228,6 @@ describe('team characters (#2017)', () => {
       inputHash: null,
       model: 'm',
     });
-    await chars().setInLibrary(created.id, true);
     const other = await secondSequence();
     await chars().attach(other, created.id, { actorId });
     const versionsBefore = (await versionsOf(created.id)).length;
@@ -2253,7 +2241,6 @@ describe('team characters (#2017)', () => {
       characterId: 'char_001',
       standardClothing: 'coat',
       voiceId: 'voice-1',
-      inLibrary: false,
       // The original's sheet row, shared: nothing re-renders.
       selectedSheetVersionId: sheet.id,
       sheetImageUrl: 'https://x.test/a.png',
@@ -2312,7 +2299,8 @@ describe('team characters (#2017)', () => {
       { sequenceId, characterId: 'char_001', name: 'Ada' },
       analysis
     );
-    await chars().setInLibrary(created.id, true);
+    // Another sequence casts her, or there is nothing to copy her away from.
+    await chars().attach(await secondSequence(), created.id, { actorId });
     // The #1419 row: keyed to the character's own id, no look, no pointer.
     await db.insert(characterSheetVariants).values({
       id: created.id,
@@ -2360,7 +2348,7 @@ describe('team characters (#2017)', () => {
     ).toBe(false);
   });
 
-  it('attaches a library character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
+  it('attaches a team character to a second sequence: one link, every look pinned, no copy (#2050)', async () => {
     const created = await chars().create(
       {
         sequenceId,
@@ -2378,13 +2366,6 @@ describe('team characters (#2017)', () => {
     );
     const other = await secondSequence();
 
-    // Not in the library: refused, and nothing written.
-    await expect(
-      chars().attach(other, created.id, { actorId })
-    ).rejects.toThrow('not in the library');
-    expect(await linksOf(created.id)).toHaveLength(1);
-
-    await chars().setInLibrary(created.id, true);
     const attached = await chars().attach(other, created.id, { actorId });
     expect(attached).toMatchObject({
       id: created.id,
@@ -2418,13 +2399,12 @@ describe('team characters (#2017)', () => {
       (await chars().attach(other, created.id, { actorId })).deletedAt
     ).toBeNull();
 
-    // A second library character with the same name is refused: the script
+    // A second character with the same name is refused: the script
     // names a character in capitals, and ADA LOVELACE would be two people.
     const twin = await chars().create(
       { sequenceId, characterId: 'char_002', name: 'ada lovelace' },
       analysis
     );
-    await chars().setInLibrary(twin.id, true);
     await expect(chars().attach(other, twin.id, { actorId })).rejects.toThrow(
       'already a name'
     );
@@ -2447,9 +2427,10 @@ describe('team characters (#2017)', () => {
       },
       analysis
     );
-    await chars().setInLibrary(ada.id, true);
     const other = await secondSequence();
     await chars().attach(other, ada.id, { actorId });
+    // Removed from the sequence that made her: `other` is now the only live
+    // sequence casting her, and still may not rewrite her (#2065).
     await chars().softDelete(sequenceId, ada.id, { actorId });
 
     // The model's first character takes char_001 again: Bob, not Ada.
@@ -2521,7 +2502,6 @@ describe('team characters (#2017)', () => {
       { sequenceId, characterId: 'char_001', name: 'Ada' },
       analysis
     );
-    await chars().setInLibrary(ada.id, true);
     const other = await secondSequence();
     await chars().attach(other, ada.id, { actorId });
     await chars().softDelete(other, ada.id, { actorId });
@@ -2569,7 +2549,6 @@ describe('team characters (#2017)', () => {
       },
       analysis
     );
-    await chars().setInLibrary(created.id, true);
     const other = await secondSequence();
     const attached = await chars().attach(other, created.id, { actorId });
     // A look added in the first sequence after the attach: the second has no
@@ -2683,14 +2662,13 @@ describe('team characters (#2017)', () => {
     await touch(sequenceId, '2026-01-01T00:00:00Z');
     await touch(other, '2026-02-01T00:00:00Z');
 
-    // Removed from its only sequence and not in the library: left out.
-    expect(await chars().listTeam({ inLibrary: false })).toEqual([
+    // Removed from its only sequence: still the team's, listed last (#2065).
+    expect(await chars().listTeam()).toEqual([
       {
         id: busy.id,
         name: 'Busy',
         physicalDescription: null,
         voiceOnly: false,
-        inLibrary: false,
         lastUsedAt: new Date('2026-02-01T00:00:00Z'),
         sequences: [
           { id: other, title: 'S2', sheetImageUrl: 'https://x.test/busy.png' },
@@ -2702,24 +2680,16 @@ describe('team characters (#2017)', () => {
         lastUsedAt: new Date('2026-01-01T00:00:00Z'),
         sequences: [{ id: sequenceId, title: 'S', sheetImageUrl: null }],
       }),
+      expect.objectContaining({
+        id: removed.id,
+        lastUsedAt: null,
+        sequences: [],
+      }),
     ]);
-
-    // The flag is the character's own: no copy, no talent, no link moves.
-    await chars().setInLibrary(removed.id, true);
-    await chars().setInLibrary(old.id, true);
-    expect(await db.select().from(talent)).toEqual([]);
-    expect(await db.select().from(characters)).toHaveLength(3);
-    expect(await linksOf(old.id)).toHaveLength(1);
-    expect(
-      (await chars().listTeam({ inLibrary: true })).map((row) => row.name)
-    ).toEqual(['Old', 'Removed']);
     expect(await chars().getTeamCharacter(removed.id)).toMatchObject({
-      inLibrary: true,
       lastUsedAt: null,
       sequences: [],
     });
-    await chars().setInLibrary(removed.id, false);
-    expect(await chars().getTeamCharacter(removed.id)).toBeNull();
 
     // An archived sequence does not count as casting.
     await db
@@ -2730,14 +2700,12 @@ describe('team characters (#2017)', () => {
       (await chars().getTeamCharacter(busy.id))?.sequences.map((row) => row.id)
     ).toEqual([sequenceId]);
 
-    // Another team sees none of it, and cannot set the flag.
+    // Another team sees none of it.
     const otherTeam = generateId();
     await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
     const theirs = createCharactersMethods(db, otherTeam);
-    expect(await theirs.listTeam({ inLibrary: false })).toEqual([]);
-    await expect(theirs.setInLibrary(busy.id, true)).rejects.toThrow(
-      /not found/
-    );
+    expect(await theirs.listTeam()).toEqual([]);
+    expect(await theirs.getTeamCharacter(busy.id)).toBeNull();
   });
 
   it('another team cannot read, edit or delete a character or its looks', async () => {

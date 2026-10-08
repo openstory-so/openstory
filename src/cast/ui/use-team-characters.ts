@@ -1,6 +1,6 @@
 /**
  * The team's characters (#2017): the Characters page list, one character
- * with the sequences that cast it, and the library flag.
+ * with the sequences that cast it, and its delete.
  */
 import {
   useMutation,
@@ -14,7 +14,7 @@ import {
   listTeamCharactersFn,
   moveCharacterCastsFn,
   previewCharacterVersionMoveFn,
-  setCharacterInLibraryFn,
+  deleteTeamCharacterFn,
 } from '@/cast/team-characters.fn';
 import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
 import {
@@ -24,8 +24,7 @@ import {
 
 const teamCharacterKeys = {
   all: ['team-characters'] as const,
-  list: (inLibrary: boolean) =>
-    [...teamCharacterKeys.all, 'list', { inLibrary }] as const,
+  list: () => [...teamCharacterKeys.all, 'list'] as const,
   detail: (id: string) => [...teamCharacterKeys.all, 'detail', id] as const,
   shotCounts: (id: string) =>
     [...teamCharacterKeys.all, 'shot-counts', id] as const,
@@ -68,22 +67,22 @@ export function useMoveCharacterCasts() {
 }
 
 /** The team's characters, sorted by use. Signed-in only. */
-export function useTeamCharacters(inLibrary: boolean) {
+export function useTeamCharacters() {
   return useSuspenseQuery({
-    queryKey: teamCharacterKeys.list(inLibrary),
-    queryFn: () => listTeamCharactersFn({ data: { inLibrary } }),
+    queryKey: teamCharacterKeys.list(),
+    queryFn: () => listTeamCharactersFn(),
     staleTime: 30_000,
   });
 }
 
 /**
- * The library for the `@` picker (#2050): never suspends the composer, and
- * asks nothing while signed out.
+ * The team's characters for the `@` picker (#2050): never suspends the
+ * composer, and asks nothing while signed out.
  */
 export function useLibraryCharacters(enabled: boolean) {
   return useQuery({
-    queryKey: teamCharacterKeys.list(true),
-    queryFn: () => listTeamCharactersFn({ data: { inLibrary: true } }),
+    queryKey: teamCharacterKeys.list(),
+    queryFn: () => listTeamCharactersFn(),
     staleTime: 30_000,
     enabled,
   });
@@ -106,26 +105,21 @@ export function useTeamCharacterShotCounts(characterId: string) {
   });
 }
 
-/** Put a character in the team library, or take it out. Nothing is copied. */
-export function useSetCharacterInLibrary() {
+/** Delete a character no sequence casts. Its own page shows the failure. */
+export function useDeleteTeamCharacter() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    meta: { globalError: true },
-    mutationFn: (data: { characterId: string; inLibrary: boolean }) =>
-      setCharacterInLibraryFn({ data }),
+    mutationFn: (data: { characterId: string }) =>
+      deleteTeamCharacterFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
-      // The flag rides on every cast read of the character.
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.all,
-      });
     },
   });
 }
 
 /**
- * Cast a library character into a sequence (#2050). The sequence's cast and
+ * Cast a team character into a sequence (#2050). The sequence's cast and
  * the team list (sort and sequence counts) both move.
  */
 export function useAttachLibraryCharacter() {

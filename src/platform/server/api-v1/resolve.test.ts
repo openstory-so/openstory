@@ -347,21 +347,20 @@ describe('ingestElements', () => {
   });
 });
 
-describe('resolveTalentIds: library characters (#2050)', () => {
+describe('resolveTalentIds: team characters (#2050, #2065)', () => {
   const library = (rows: Array<{ id: string; name: string }>) => ({
     listTeam: async () =>
       rows.map((row) => ({
         ...row,
         physicalDescription: null,
         voiceOnly: false,
-        inLibrary: true,
         lastUsedAt: null,
         sequences: [],
       })),
   });
 
-  it('a ref naming a library character casts her, by id or name, before talent is tried', async () => {
-    const talent = [makeTalent({ id: 't-ada', name: 'Ada Lovelace' })];
+  it('a ref naming a team character casts her, by id or name, before talent is tried', async () => {
+    const talent = [makeTalent({ id: 't-grace', name: 'Grace Hopper' })];
     const { talentIds, castCharacterIds } = await resolveTalentIds(
       {
         talent: { list: async () => talent },
@@ -377,7 +376,7 @@ describe('resolveTalentIds: library characters (#2050)', () => {
     expect(talentIds).toEqual([]);
   });
 
-  it('a name two library characters share is refused and asks for the id', async () => {
+  it('a name two characters share is refused and asks for the id', async () => {
     await expect(
       resolveTalentIds(
         {
@@ -390,6 +389,39 @@ describe('resolveTalentIds: library characters (#2050)', () => {
         },
         ['Sarah']
       )
-    ).rejects.toThrow(/names 2 library characters\. Use the id: c-1, c-2/);
+    ).rejects.toThrow(/names 2 characters\. Use the id: c-1, c-2/);
+  });
+
+  it('a name a character and a talent share is refused and asks for the id', async () => {
+    await expect(
+      resolveTalentIds(
+        {
+          talent: {
+            list: async () => [makeTalent({ id: 't-ada', name: 'Ada' })],
+          },
+          characters: library([{ id: 'c-ada', name: 'ada' }]),
+          createTalent: vi.fn(),
+        },
+        ['Ada']
+      )
+    ).rejects.toThrow(
+      '"Ada" names a character and a talent. Use the id: c-ada (character) or t-ada (talent).'
+    );
+  });
+
+  it('an id still resolves when a talent shares the name', async () => {
+    const deps = {
+      talent: { list: async () => [makeTalent({ id: 't-ada', name: 'Ada' })] },
+      characters: library([{ id: 'c-ada', name: 'Ada' }]),
+      createTalent: vi.fn(),
+    };
+    expect(await resolveTalentIds(deps, ['c-ada'])).toMatchObject({
+      talentIds: [],
+      castCharacterIds: ['c-ada'],
+    });
+    expect(await resolveTalentIds(deps, ['t-ada'])).toMatchObject({
+      talentIds: ['t-ada'],
+      castCharacterIds: [],
+    });
   });
 });

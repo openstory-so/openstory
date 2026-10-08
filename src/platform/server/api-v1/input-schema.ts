@@ -96,7 +96,7 @@ const characterRefSchema = z
   .meta({
     id: 'CharacterRef',
     description:
-      'Existing library character or talent by id or name (string), or an inline create object. A library character is cast into the sequence; a name two library characters share is a conflict that asks for the id.',
+      'Existing team character or talent by id or name (string), or an inline create object. A team character is cast into the sequence; a name two team characters share, or a character and a talent share, is a conflict that asks for the id.',
   });
 const locationRefSchema = z
   .union([z.string().min(1), createLocationSchema])

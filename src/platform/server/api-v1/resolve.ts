@@ -2,7 +2,7 @@
  * Resolvers that turn the public API's human-friendly references into the
  * concrete ids / uploads `createSequences` expects:
  *   - style:   id | name | slug  → styleId (auto-pick a default when omitted)
- *   - character: id | name     → castCharacterIds (a library character, #2050), else suggestedTalentIds (talent)
+ *   - character: id | name     → castCharacterIds (a team character, #2050), else suggestedTalentIds (talent)
  *   - location:id | name         → suggestedLocationIds
  *   - element: hosted URL        → ingested DraftElementUploadInput
  *
@@ -54,7 +54,7 @@ type LocationCreate = Exclude<
 
 type TalentResolveDeps = {
   talent: Pick<ScopedDb['talent'], 'list'>;
-  /** The team library (#2050): a string ref names a library character first. */
+  /** The team library (#2050): a string ref names a team character first. */
   characters: Pick<ScopedDb['characters'], 'listTeam'>;
   createTalent: (input: TalentCreate) => Promise<{ id: string }>;
 };
@@ -109,10 +109,10 @@ export async function resolveStyle(
 
 /**
  * Resolve a mixed list of character items — reference strings (id|name) and
- * inline create objects — into the library characters to cast into the new
+ * inline create objects — into the team characters to cast into the new
  * sequence (`castCharacterIds`, #2050) and the talent ids for
- * `suggestedTalentIds`. A string ref is a library character when one matches
- * by id or name; two library characters of that name is a conflict that asks
+ * `suggestedTalentIds`. A string ref is a team character when one matches
+ * by id or name; two team characters of that name is a conflict that asks
  * for the id; otherwise it is talent, as before. Inline creates matching an
  * existing talent name (or a name already created in this list) reuse that
  * id. New names are delegated to `deps.createTalent`.
@@ -127,7 +127,7 @@ export async function resolveTalentIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
   const castCharacterIds: string[] = [];
-  const library = await deps.characters.listTeam({ inLibrary: true });
+  const library = await deps.characters.listTeam();
 
   const all = await deps.talent.list();
   const seen = new Map<string, string>();
@@ -140,11 +140,19 @@ export async function resolveTalentIds(
     const characters = library.filter((c) => matchesRef(ref, c));
     if (characters.length > 1) {
       throw new ConflictError(
-        `"${ref}" names ${characters.length} library characters. Use the id: ${characters.map((c) => c.id).join(', ')}.`
+        `"${ref}" names ${characters.length} characters. Use the id: ${characters.map((c) => c.id).join(', ')}.`
       );
     }
     const [character] = characters;
     if (character) {
+      // Every team character can be named since #2065, one-offs included, so
+      // a name a talent also has is not guessed at.
+      const talent = all.find((t) => matchesRef(ref, t));
+      if (talent && ref !== character.id) {
+        throw new ConflictError(
+          `"${ref}" names a character and a talent. Use the id: ${character.id} (character) or ${talent.id} (talent).`
+        );
+      }
       castCharacterIds.push(character.id);
       continue;
     }

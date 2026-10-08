@@ -1,6 +1,6 @@
 /**
- * Characters page E2E (#2017): the team's characters, the library flag, and
- * one character's page. Nothing here generates anything.
+ * Characters page E2E (#2017, #2065): the team's characters, one character's
+ * page, and deleting one no sequence casts. Nothing here generates anything.
  */
 
 import { expect, type Page } from 'playwright/test';
@@ -20,20 +20,8 @@ const SHEET_URL = '/api/test/image?w=512&h=512&label=sheet';
 let sequence: TestSequence;
 let character: TestCharacter;
 
-const addButton = (page: Page) =>
-  page.getByRole('button', { name: 'Add to Library', exact: true });
-const removeButton = (page: Page) =>
-  page.getByRole('button', { name: 'Remove from Library', exact: true });
 const card = (page: Page) =>
   page.getByRole('link', { name: character.name, exact: true });
-
-/** Undo from one toast: several can be up at once. */
-const undo = (page: Page, toast: string) =>
-  page
-    .getByRole('listitem')
-    .filter({ hasText: toast })
-    .getByRole('button', { name: 'Undo' })
-    .click();
 
 async function openCharacterPage(page: Page) {
   await page.goto(`/characters/${character.id}`);
@@ -87,50 +75,14 @@ test.describe('Characters page', () => {
     ).toHaveAttribute('aria-current', 'page');
   });
 
-  test('Add to Library sets the flag, the Library filter shows it, Undo and Remove clear it', async ({
-    page,
-  }) => {
-    await openCharacterPage(page);
-    await addButton(page).click();
-    await expect(page.getByText('Added to Library')).toBeVisible();
-    await expect(removeButton(page)).toBeVisible();
-
-    await page.goto('/characters?tab=characters&show=library');
-    await expect(card(page)).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-
-    // Remove, then take it back from the toast.
-    await openCharacterPage(page);
-    await removeButton(page).click();
-    await expect(page.getByText('Removed from Library')).toBeVisible();
-    await expect(addButton(page)).toBeVisible();
-    await undo(page, 'Removed from Library');
-    await expect(removeButton(page)).toBeVisible();
-
-    // Remove for good: it leaves the Library filter and stays under All.
-    await removeButton(page).click();
-    await expect(addButton(page)).toBeVisible();
-    await page.goto('/characters?tab=characters&show=library');
-    await expect(
-      page.getByRole('button', { name: 'Library', exact: true })
-    ).toHaveAttribute('aria-pressed', 'true', { timeout: HYDRATION_TIMEOUT });
-    await expect(card(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'All Characters' }).click();
-    await expect(page).toHaveURL(/show=all/);
-    await expect(card(page)).toBeVisible();
-  });
-
-  /** Library flag on, then "Add from library" on `other`'s cast facet. */
+  /** "Add existing character" on `other`'s cast facet. */
   async function castIntoSecondSequence(page: Page, other: TestSequence) {
-    await openCharacterPage(page);
-    await addButton(page).click();
-    await expect(removeButton(page)).toBeVisible();
-
     await page.goto(`/sequences/${other.id}/scenes?facet=cast`);
     await page
-      .getByRole('button', { name: 'Add from library' })
+      .getByRole('button', { name: 'Add existing character' })
       .click({ timeout: HYDRATION_TIMEOUT });
-    const dialog = page.getByRole('dialog', { name: 'Add from library' });
-    await dialog.getByLabel('Search the library').fill(character.name);
+    const dialog = page.getByRole('dialog', { name: 'Add existing character' });
+    await dialog.getByLabel('Search characters').fill(character.name);
     await dialog
       .getByRole('button', { name: new RegExp(character.name) })
       .click();
@@ -141,7 +93,7 @@ test.describe('Characters page', () => {
     ).toBeVisible();
   }
 
-  test('Add from library casts the character into a second sequence (#2050)', async ({
+  test('Add existing character casts the character into a second sequence (#2050)', async ({
     page,
     testUser,
   }) => {
@@ -258,27 +210,6 @@ test.describe('Characters page', () => {
     }
   });
 
-  test('the sequence cast page and the character page toggle the same flag', async ({
-    page,
-  }) => {
-    await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
-    await expect(addButton(page)).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-    // The old copy is still offered, under its own name.
-    await expect(
-      page.getByRole('button', { name: 'Save as talent' })
-    ).toBeVisible();
-    await addButton(page).click();
-    await expect(removeButton(page)).toBeVisible();
-
-    await openCharacterPage(page);
-    await expect(removeButton(page)).toBeVisible();
-    await removeButton(page).click();
-    await expect(addButton(page)).toBeVisible();
-
-    await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
-    await expect(addButton(page)).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-  });
-
   test('a sequence that does not cast the character is said so, and the picker puts the right one in the URL', async ({
     page,
   }) => {
@@ -304,12 +235,15 @@ test.describe('Characters page', () => {
     ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   });
 
-  test('a library character no sequence casts says so; out of the library it is not found, and Undo brings it back', async ({
+  test('a character no sequence casts says so and can be deleted; cast, it has no Delete (#2065)', async ({
     page,
   }) => {
+    const deleteButton = page.getByRole('button', {
+      name: 'Delete',
+      exact: true,
+    });
     await openCharacterPage(page);
-    await addButton(page).click();
-    await expect(removeButton(page)).toBeVisible();
+    await expect(deleteButton).toHaveCount(0);
 
     // Remove it from its only sequence (a soft remove, with a confirm).
     await page.getByRole('button', { name: 'Remove', exact: true }).click();
@@ -329,15 +263,24 @@ test.describe('Characters page', () => {
       )
     ).toBeVisible();
 
-    // The library was the last thing holding it.
-    await removeButton(page).click();
+    // Still listed: nothing has to hold a character.
+    await page.goto('/characters');
+    await expect(card(page)).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+
+    await openCharacterPage(page);
+    await deleteButton.click();
+    await page
+      .getByRole('alertdialog', { name: `Delete ${character.name}?` })
+      .getByRole('button', { name: 'Delete', exact: true })
+      .click();
+    await expect(page.getByText(`Deleted ${character.name}`)).toBeVisible();
+    await expect(page).toHaveURL(/\/characters$/);
+    await expect(card(page)).toHaveCount(0);
+
+    await page.goto(`/characters/${character.id}`);
     await expect(
       page.getByRole('heading', { name: 'Character not found' })
-    ).toBeVisible();
-    await undo(page, 'Removed from Library');
-    await expect(
-      page.getByRole('heading', { name: character.name, level: 1 })
-    ).toBeVisible();
+    ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   });
 
   test('an unknown character is not found, with a way back', async ({

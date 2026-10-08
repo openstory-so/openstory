@@ -19,7 +19,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 /**
- * Cast a library character into this sequence from the cast panel (#2050),
+ * Cast a team character into this sequence from the cast panel (#2050),
  * with no script change. The same attach the `@` picker makes: one link
  * pinning her current version, every look, nothing copied.
  */
@@ -57,12 +57,12 @@ export const AddFromLibraryDialog: React.FC<{
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          Add from library
+          Add existing character
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add from library</DialogTitle>
+          <DialogTitle>Add existing character</DialogTitle>
           <DialogDescription>
             Adds the character at its current version, with every look. Sheets
             are drawn in this sequence's style.
@@ -71,8 +71,8 @@ export const AddFromLibraryDialog: React.FC<{
         <div className="flex flex-col gap-3">
           <Input
             type="search"
-            placeholder="Search the library…"
-            aria-label="Search the library"
+            placeholder="Search characters…"
+            aria-label="Search characters"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -85,7 +85,7 @@ export const AddFromLibraryDialog: React.FC<{
               ))}
             {offered?.length === 0 && (
               <li className="py-6 text-center text-sm text-muted-foreground">
-                {q ? 'No library character matches' : 'Nothing in the library'}
+                {q ? 'No character matches' : 'No other characters yet'}
               </li>
             )}
             {offered?.map((character) => {

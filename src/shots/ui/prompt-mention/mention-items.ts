@@ -74,14 +74,14 @@ export type MentionItem = {
   haystack: string;
   thumbnailUrl?: string | null;
   /**
-   * Offered by the `@` dropdown only (#2050): a library character not yet
+   * Offered by the `@` dropdown only (#2050): a team character not yet
    * cast here. Picking it attaches her; until then her name in the text is
    * plain prose and must not pill as if she were.
    */
   pickOnly?: true;
 };
 
-/** What the `@` picker needs of a library character (#2050). */
+/** What the `@` picker needs of a team character (#2050). */
 export type LibraryCharacterMentionInput = {
   id: string;
   name: string;
@@ -89,7 +89,7 @@ export type LibraryCharacterMentionInput = {
 };
 
 /**
- * The team's library characters the sequence does not cast yet, as `@` rows
+ * The team's team characters the sequence does not cast yet, as `@` rows
  * that attach on pick (#2050). Same tag shape as a cast row (the ALL-CAPS
  * name), so the inserted text is what the cast row will pill once she is
  * attached. In the library's order: most recently used first.
@@ -112,7 +112,7 @@ export function libraryMentionItems(
     }));
 }
 
-/** The library character a picked row names, or null for any other row. */
+/** The team character a picked row names, or null for any other row. */
 export function libraryCharacterIdOf(item: MentionItem): string | null {
   const prefix = 'library-character:';
   return item.pickOnly && item.id.startsWith(prefix)
@@ -121,7 +121,7 @@ export function libraryCharacterIdOf(item: MentionItem): string | null {
 }
 
 /**
- * The picked library characters the script still names in capitals, as a
+ * The picked team characters the script still names in capitals, as a
  * whole word (#2050); undefined when none. A name deleted from the text is a
  * character the create screen must not cast.
  */

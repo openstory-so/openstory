@@ -11,7 +11,6 @@ import {
   defaultLookName,
   lookSheetFaceMessage,
 } from '@/cast/look-sheet-face';
-import { CharacterLibraryButton } from '@/cast/ui/character-library/character-library-button';
 import { CharacterLooksRow } from '@/cast/ui/talent/character-looks-row';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Badge } from '@/ui/shadcn/badge';
@@ -162,7 +161,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     sequenceId
   );
   // "Make a one-off copy": a new character for this sequence alone, free.
-  // Offered on a library character, the one a second sequence can reach.
+  // Offered while another sequence casts the character too.
   const copyForSequence = useCopyCharacterForSequence();
   const [isCopyOpen, setIsCopyOpen] = useState(false);
   const handleCopy = () =>
@@ -771,12 +770,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
               )}
 
               <div className="flex flex-wrap gap-2">
-                {header === 'sequence' && (
-                  <CharacterLibraryButton
-                    characterId={character.id}
-                    inLibrary={character.inLibrary}
-                  />
-                )}
                 {!character.talent && !character.voiceOnly && (
                   <Button
                     variant="outline"
@@ -808,7 +801,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     Move sequences
                   </Button>
                 )}
-                {character.inLibrary && (
+                {castElsewhere && (
                   <Button variant="outline" onClick={() => setIsCopyOpen(true)}>
                     Make a one-off copy
                   </Button>

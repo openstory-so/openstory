@@ -30,6 +30,7 @@ import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
   releaseCharacterVoice,
   releaseReplacedVoice,
+  releaseVoiceIfUnreferenced,
 } from '@/cast/server/voice/release-voice';
 
 const logger = getLogger(['openstory', 'cast', 'cast-edit']);
@@ -104,8 +105,8 @@ export async function createCharacter(
 }
 
 /**
- * Cast a library character into a sequence (#2050): the `@` picker and the
- * cast panel's Add from library. One link pinning her current version, a cast
+ * Cast a team character into a sequence (#2050): the `@` picker and the
+ * cast panel's Add existing character. One link pinning her current version, a cast
  * look per look; nothing is copied and no generation starts. Refused while a
  * live cast member has her name (`characters.attach`).
  */
@@ -181,33 +182,32 @@ export async function restoreCharacter(
 }
 
 /**
- * Put a character in the team library, or take it out (#2017). Taking it out
- * while no sequence casts it leaves nothing holding the character, so its
- * saved voice is released first, as the last remove from a sequence would
- * have: once the flag clears, no page can reach the character to do it.
- * Provider first, row second (`releaseCharacterVoice`); a failed release
- * leaves the flag set.
+ * Delete one of the team's characters for good (#2065). Refused while a
+ * sequence, archived ones included, still casts it: the delete would take
+ * that cast link with it. Its voice is released first, provider before row
+ * (`releaseCharacterVoice`), so a failed release leaves the character.
  */
-export async function setCharacterInLibrary(
+export async function deleteTeamCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
-  characterId: string,
-  inLibrary: boolean
+  characterId: string
 ) {
-  if (
-    !inLibrary &&
-    !(await scopedDb.characters.getCastInAnySequence(characterId))
-  ) {
-    await releaseCharacterVoice(
-      scopedDb,
-      await scopedDb.characters.getVoice(characterId),
-      // No sequence casts the character, so no pin moves.
-      null,
-      actor.userId
-    );
+  if (await scopedDb.characters.getCastInAnySequenceOrArchive(characterId)) {
+    throw new ConflictError('Remove it from its sequences first.');
   }
-  await scopedDb.characters.setInLibrary(characterId, inLibrary);
-  return { characterId, inLibrary };
+  await releaseCharacterVoice(
+    scopedDb,
+    await scopedDb.characters.getVoice(characterId),
+    // No sequence casts the character, so no pin moves.
+    null,
+    actor.userId
+  );
+  const owed = await scopedDb.characters.getVoiceIdsToRelease(characterId);
+  for (const voiceId of owed) {
+    await releaseVoiceIfUnreferenced(scopedDb, voiceId);
+  }
+  await scopedDb.characters.delete(characterId, { releasedVoiceIds: owed });
+  return { characterId };
 }
 
 /**

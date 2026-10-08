@@ -194,12 +194,15 @@ async function resolveStoryboardPayload(
   ]);
 
   // The live cast, frozen for the run (#2050): analysis reads only these,
-  // and must not rewrite one the library or another sequence holds.
+  // and must not rewrite one another sequence has ever cast.
   const castRows = await scopedDb.characters.list(sequenceId);
   const cast = await Promise.all(
     castRows.map(async (row) => ({
       id: row.id,
-      shared: await scopedDb.characters.getHeldElsewhere(sequenceId, row.id),
+      shared: await scopedDb.characters.getCastEverElsewhere(
+        sequenceId,
+        row.id
+      ),
       entry: characterToBible(row),
     }))
   );

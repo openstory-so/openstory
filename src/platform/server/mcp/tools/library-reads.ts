@@ -153,7 +153,7 @@ const libraryCharactersSchema = z.object({
 });
 const listLibraryCharacters = productionRead(
   'list_library_characters',
-  'List the characters in the team library: team characters flagged with Add to Library (not talent, which is list_talent). Ascending ID pagination. Each lists the live sequences that cast it, the most recently changed first, with the default look sheet that sequence selected, and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.',
+  "List the team's characters, every one of them (not talent, which is list_talent). Any of them can be added to a sequence. Ascending ID pagination. Each lists the live sequences that cast it, the most recently changed first, with the default look sheet that sequence selected, and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
   pageInput,
   libraryCharactersSchema,
   async (input, { scopedDb, origin }) =>
@@ -163,7 +163,7 @@ const listLibraryCharacters = productionRead(
         input,
         // Bound to the team, like the other library cursors.
         ['library_characters', scopedDb.teamId],
-        pageRows(await scopedDb.characters.listTeam({ inLibrary: true }))
+        pageRows(await scopedDb.characters.listTeam())
       ),
       origin
     )

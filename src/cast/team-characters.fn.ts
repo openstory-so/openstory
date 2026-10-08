@@ -1,11 +1,11 @@
 /**
  * The team's characters (#2017): the Characters page list, one character
- * with the sequences that cast it, and the library flag.
+ * with the sequences that cast it, and its delete.
  */
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { setCharacterInLibrary } from '@/cast/server/cast-edit';
+import { deleteTeamCharacter } from '@/cast/server/cast-edit';
 import {
   moveCastsToCurrent,
   previewVersionMove,
@@ -55,19 +55,14 @@ export const moveCharacterCastsFn = createServerFn({ method: 'POST' })
 
 export const listTeamCharactersFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(z.object({ inLibrary: z.boolean() })))
-  .handler(
-    async ({ context, data }) =>
-      await context.scopedDb.characters.listTeam({ inLibrary: data.inLibrary })
-  );
+  .handler(async ({ context }) => await context.scopedDb.characters.listTeam());
 
 export const getTeamCharacterFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(characterIdSchema))
   .handler(async ({ context, data }) => {
     // Null, not an error: the page says "not found" for a character that is
-    // gone, another team's, or held by nothing (not in the library and cast
-    // in no live sequence).
+    // gone or another team's.
     return await context.scopedDb.characters.getTeamCharacter(data.characterId);
   });
 
@@ -96,19 +91,15 @@ export const getTeamCharacterShotCountsFn = createServerFn({ method: 'GET' })
     return counts;
   });
 
-/**
- * Put a character in the team library, or take it out. A flag on the
- * character itself: nothing is copied and no talent is made.
- */
-export const setCharacterInLibraryFn = createServerFn({ method: 'POST' })
+/** Delete a character no sequence casts, with everything keyed to it. */
+export const deleteTeamCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(characterIdSchema.extend({ inLibrary: z.boolean() })))
+  .validator(zodValidator(characterIdSchema))
   .handler(
     async ({ context, data }) =>
-      await setCharacterInLibrary(
+      await deleteTeamCharacter(
         context.scopedDb,
         { userId: context.user.id },
-        data.characterId,
-        data.inLibrary
+        data.characterId
       )
   );

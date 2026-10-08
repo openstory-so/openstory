@@ -471,7 +471,7 @@ export const ScriptView: FC<{
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
-    // Library characters picked with `@` before the sequence exists (#2050).
+    // Team characters picked with `@` before the sequence exists (#2050).
     castCharacterIds: [] as string[],
   });
   const {
@@ -653,7 +653,7 @@ export const ScriptView: FC<{
   // registered at init and can't be enabled later.
   const mentionSequenceId = sequence?.id;
   const { requireAuth, isAuthenticated } = useAuthGate();
-  // Library characters not cast here are offered too, and attach on pick
+  // Team characters not cast here are offered too, and attach on pick
   // (#2050): straight onto the sequence when there is one, else onto the
   // draft, which create casts before analysis.
   const { data: libraryCharacters } = useLibraryCharacters(isAuthenticated);
@@ -672,7 +672,7 @@ export const ScriptView: FC<{
       name: c.name,
       sheetImageUrl: c.sequences[0]?.sheetImageUrl ?? null,
     }));
-    // On the create screen a picked library character is the cast — while
+    // On the create screen a picked team character is the cast — while
     // the script still names her; a name deleted from the text puts her
     // back among the library rows, as create will not cast her either.
     const named = new Set(

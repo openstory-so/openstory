@@ -5,14 +5,14 @@ holds a **cast link** that pins the version of the character it uses. A lead
 who is in 100 episodes is one character, with one set of looks.
 
 This doc covers the tables, the backfill, every read and write going through
-the cast link, the Characters page and the library flag, attaching a library
-character to a sequence and what analysis does with the attached cast
+the cast link, the Characters page, attaching a team character to a
+sequence and what analysis does with the attached cast
 (#2050), and moving a sequence to a newer version, the one-off copy and a
 recast applied to a range of sequences (§ Version moves).
 
 ## Data
 
-- **`characters`** — identity: `teamId`, `inLibrary`, the **current** bible
+- **`characters`** — identity: `teamId`, the **current** bible
   version (`selectedBibleVersionId`, the one a new sequence adopts) and the
   voice. Bible versions, looks, sheets and voice versions stay keyed by the
   character id.
@@ -100,7 +100,6 @@ in no sequence, one, or many.
 - The voice: `updateVoice`, `stampPreviewUnusable`, `selectVoiceVersion`,
   the voice-claim methods and `getVoice`. They return the voice state, not a
   cast read. The voice workflow's live read is `liveRead.characters.getVoice`.
-- The library flag: `setInLibrary`.
 - The team reads: `listTeam`, `getTeamCharacter` (§ Characters page).
 - A look's definition history (`listVersions`) and a sheet variant by id.
 
@@ -126,8 +125,8 @@ What follows from one character in two sequences:
   `selectVoiceVersion`, `promoteVoiceClaimIfPending` — the voice workflow's
   payload already carries `sequenceId`); the other sequences keep what they
   pinned, and their dialogue and clips do not move. `updateVoice(null, …)`
-  is the one write made from no sequence (the library letting a character go
-  that nothing casts): only the current pointer moves. Attach pins the
+  is the one write made from no sequence (deleting a character nothing
+  casts): only the current pointer moves. Attach pins the
   current voice version. `useVoice` stays on the character.
 - **A provider voice is held while anything names it** (`voiceReferences`
   in `characters.ts`, the one list behind `getVoiceReferenceCount` and
@@ -140,17 +139,18 @@ What follows from one character in two sequences:
   pin, where they name the voice) and passes them as `heldBy`, so the
   provider delete still comes before the row write and another sequence's
   pin still blocks it.
-- **The voice goes only when nothing holds the character.** "Held" has one
-  meaning (`castElsewhere` in `characters.ts`): the library flag, or a cast
-  link that is not removed in a sequence that is not archived. The list and
-  the character page count a sequence the same way.
+- **The voice goes when no live sequence casts the character.** "Cast" has
+  one meaning (`castElsewhere` in `characters.ts`): a cast link that is not
+  removed, in a sequence that is not archived. The list and the character
+  page count a sequence the same way. The character itself stays in the
+  team (#2065); its voice history stays, and it gets a voice again when it
+  is next cast.
   - Removing a character from a sequence, or archiving the sequence,
-    releases the saved voice unless something else holds the character
-    (`characters.getHeldElsewhere`).
-  - Taking a character out of the library while no sequence casts it
-    releases the voice first (`setCharacterInLibrary` in `cast-edit.ts`):
-    after that no page can reach the character. Provider first, row second
-    (`elevenlabs.md`); a failed release leaves the flag set.
+    releases the saved voice unless another live sequence casts the
+    character (`characters.getHeldElsewhere`).
+  - Deleting a character releases the voice first (`deleteTeamCharacter` in
+    `cast-edit.ts`). Provider first, row second (`elevenlabs.md`); a failed
+    release leaves the character.
   - Unarchiving finds the character with no saved voice, as it does today.
 - **Sheet variants are the look's**, with no sequence on the row. A sheet
   parked as divergent by one sequence's run is listed for every sequence
@@ -169,10 +169,10 @@ characters module. The voice writes that read the character first
 (`updateVoice`, `selectVoiceVersion`, `createPendingVoiceClaim`, `getVoice`)
 are too. The methods keyed on a voice version id alone are not yet.
 
-## Characters page and the library
+## Characters page
 
 - **`/characters`** is on the sidebar. Its Characters tab lists the team's
-  characters (`?show=all|library`); its Talent tab is the talent library.
+  characters, all of them; its Talent tab is the talent library.
   `/talent` redirects to `/characters?tab=talent`; `/talent/$id` is
   unchanged. Signed out, the page opens on the Talent tab (the public
   catalogue) and the Characters tab asks to sign in.
@@ -181,8 +181,9 @@ are too. The methods keyed on a voice version id alone are not yet.
   - Order: the most recently changed sequence casting the character
     (`max(sequences.updated_at)`), then how many sequences cast it.
   - A removed link and an archived sequence do not count.
-  - A character nothing casts and the library does not hold is left out.
-    Its rows stay; nothing deletes them yet.
+  - A character nothing casts is listed last (#2065). There is no library
+    flag: `characters.in_library` is unread (`legacyInLibrary`) and is
+    dropped in a follow-up.
   - The picture is the default look's sheet as the latest sequence that has
     one selected it.
   - Not paged: the page and the MCP tool load the whole list (about 1.1 MB
@@ -195,16 +196,20 @@ are too. The methods keyed on a voice version id alone are not yet.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getTeamCharacterShotCountsFn`).
-- **Add to Library** sets `characters.in_library`; Remove from Library
-  clears it. Nothing is copied and no talent is made. The flag keeps the
-  character listed, feeds the Library filter and `list_library_characters`,
-  and decides what the `@` picker offers.
+- **Delete** (`deleteTeamCharacterFn`) is on that page while no live
+  sequence casts the character. It is refused while any sequence, archived
+  ones included, has a link to it that is not removed
+  (`getCastInAnySequenceOrArchive`): the delete would take that link with
+  it. It releases the voice, then hard-deletes the character with
+  everything keyed to it (`characters.delete`, § Hard deletes).
+- **Every team character** is on the list, in `list_library_characters`
+  and in the `@` picker (#2065). The tool keeps its name.
 
 ## Attach and `@` references (#2050)
 
 A character is reused only when the writer says so. Analysis never reads the
-team library; a library character reaches a sequence by an attach, and the
-script then names her like any cast member.
+team's other characters; a character reaches a sequence by an attach, and
+the script then names her like any cast member.
 
 - **Nothing is stored in the text.** The script holds her name in capitals,
   as it does for every character; the sequence's cast link says what it is
@@ -217,27 +222,29 @@ script then names her like any cast member.
   script id is `char_<name>` uniqued against every link of the sequence,
   removed ones included. The event is `character.attached`. Nothing is
   copied.
-- **Refused** unless she is in the library (`ValidationError`), unless the
+- **Refused** unless the
   sequence is the team's (`NotFoundError`, checked in the db method, not
   only by its callers), and while a live cast member of the sequence already
   has her name (`ConflictError`, `assertNameFree`): the text could not tell
   two ADAs apart. A script-created SARAH already cast plus an attach of
-  library Sarah is refused with that message; nothing renames or picks one.
+  another Sarah is refused with that message; nothing renames or picks one.
   The same check runs before a removed link is brought back, by an attach or
   by Restore. Two characters may still share a plain name when analysis made
   them; nothing refuses that. Attaching a character the sequence already
   casts is idempotent.
-- **Surfaces.** The script editor's `@` dropdown lists the library characters
+- **Surfaces.** The script editor's `@` dropdown lists the team's characters
   not cast here, most recently used first (`libraryMentionItems`, the
   `listTeam` order), as pick-only rows: picking one inserts her name in
   capitals and attaches her (`attachLibraryCharacterFn`); on the create
   screen the pick goes onto the draft (`castCharacterIds`) and
   `createSequences` attaches before the storyboard trigger, so the first
   analysis reads her. A pick-only row never pills: a plain name is prose until
-  she is attached. The cast panel's **Add from library** attaches with no
-  script change. API: a string in `create_sequence`'s `characters` names a
-  library character first (id or name; two of one name is a `CONFLICT` that
-  asks for the id), then talent. MCP: `add_character_to_sequence`.
+  she is attached. The cast panel's **Add existing character** attaches with
+  no script change. API: a string in `create_sequence`'s `characters` names
+  a team character first (id or name), then talent. Two characters of one
+  name, or a name a character and a talent share, is a `CONFLICT` that asks
+  for the id: every character can be named now, one-offs included, so a
+  name is never guessed at. MCP: `add_character_to_sequence`.
 - **Detach** is the existing Remove (soft, the link's `removedAt`).
 - **A rename** in a later version leaves the script saying the old name until
   the sequence moves version (version moves, a later PR).
@@ -248,7 +255,7 @@ script then names her like any cast member.
   payload (`cast: AttachedCastSnapshot[]`, required on the storyboard,
   analyze-script and scene-split inputs): each as the sequence casts her
   (`characterToBible`, look ids are `character_looks` ids) with `shared` —
-  the library or another sequence holds her too (`getHeldElsewhere`). No
+  another sequence has ever cast her (`getCastEverElsewhere`). No
   mid-run read; a payload without the field fails at the top
   (`queuedBeforeCast`).
 - **The bibles call** sees a `<CAST>` block shaped like `<ELEMENTS>`
@@ -267,17 +274,17 @@ script then names her like any cast member.
   by name among every live look she has, cast here or not; a new look for a
   name she lacks; nothing rewritten, nothing removed. She is left out of
   talent matching: her talent is on the pinned version.
-- **A character only this sequence holds** (not in the library, cast nowhere
-  else) is re-analysed as before: bible rewritten, looks synced by name,
+- **A character only this sequence has ever cast** is re-analysed as before: bible rewritten, looks synced by name,
   unused analysis-made looks retired.
 - **The db layer decides, every time.** `shared` on the payload only shapes
   the prompt. `characters.create` and `characterLooks.syncFromAnalysis` ask
-  `heldElsewhere` (the library flag, or a live link in another unarchived
-  sequence) on every call: a held character's live link is returned as it
+  `castEverElsewhere` (any link in another sequence, removed or archived
+  included: with no library flag, a character attached here from a sequence
+  since archived is still not this sequence's to rewrite) on every call: a held character's live link is returned as it
   is and her looks are linked (`linkFromAnalysis`); her **removed** link is
   left removed, and an entry that reused its script id becomes a new
   character under the next free id (`char_001_2`). So a character attached
-  elsewhere, or put in the library, between the click and the write is
+  elsewhere between the click and the write is
   still safe, and so is one the model reached through a link the snapshot
   did not list.
 - **The model must echo the cast.** Before anything is written, scene-split
@@ -300,14 +307,13 @@ script then names her like any cast member.
     so both characters are tagged wherever the name appears, and both
     sheets reach those shots. A known limit until a scene tag can name the
     cast link; rename one of them.
-- **Save as talent** is what Add to Library did before: it copies the
+- **Save as talent** is what Add to Library did before #2017: it copies the
   character, as one sequence casts it, into a new talent
   (`saveCharacterAsTalentFn`). It is how a character reaches the recast
   picker, the new-sequence talent picker and the studio today. It stays
   until #2018 defines what a talent is. Hidden for a talent-cast or
   voice-only character, as the old button was.
-- **A character the page cannot list** (not in the library, cast in no live
-  sequence, another team's, or gone) reads "Character not found" with a way
+- **A character the page cannot list** (another team's, or gone) reads "Character not found" with a way
   back, not an error.
 - MCP: `list_library_characters`.
 
@@ -332,8 +338,9 @@ script then names her like any cast member.
 - **Talent changes** revoke the claims of the cast links whose pinned bible
   version names that talent (`castOfTalent`).
 - **Deleting a sequence** removes its cast looks and links, then only the
-  characters nothing else holds: not in the library and in no other sequence
-  (`charactersOnlyIn`). The ids are read before the batch, because the links
+  characters no other sequence ever cast (`charactersOnlyIn`). No app path
+  hard-deletes a sequence today; when one does, decide first whether those
+  characters should stay in the team instead. The ids are read before the batch, because the links
   that say so go first. See § Hard deletes.
 
 ## Version moves (PR 3)
@@ -411,9 +418,9 @@ lookId)` lists the sheets that sequence made or has selected, and
   `movedSequences` (`moved: false` for one already current) and
   `sequencesLeftBehind`.
 - **Make a one-off copy** (`characters.copyForSequence(sequenceId, id)`,
-  offered on a library character): a NEW team character from the version
+  offered while another live sequence casts the character): a NEW team character from the version
   this sequence pins, and this sequence's link repointed at it, in one
-  batch. The copy **owns** its row (`inLibrary: false`), one bible version
+  batch. The copy **owns** its row, one bible version
   (the pinned bible, with its talent), one voice version naming the same
   provider voice id (held by both until the last lets go), and one look row
   per live look (the default's id is the copy's id) with one version each;
@@ -449,9 +456,8 @@ reference-provenance.ts`), so a clip stamped before the copy stays
     (`selectedSheetVersionId ?? sheetInputHash`) and the clip's key (the
     url) do not move. One copied row, for that legacy case only.
     Refused while a sheet run holds a claim here, and refused when nothing
-    else holds the original (not in the library, cast nowhere else): the
-    copy would orphan it, listed nowhere and holding its voice for ever —
-    "only in this sequence; edit it directly". Event `character.copied`.
+    else casts the original: there is nothing to protect from this
+    sequence's edits — "only in this sequence; edit it directly". Event `character.copied`.
 
 ## Sheet reuse by hash (PR 4)
 
@@ -498,7 +504,7 @@ delete that forgets a child fails instead of taking rows with it.
   - The ids are named, not re-read from `releasedAt`, because a release does
     not always stamp it (a voice that takes no slot, an unconfigured or
     refused key). Re-reading would refuse those deletes for good.
-  - A character kept by the library or by another sequence is not removed,
+  - A character another sequence casts is not removed,
     so its voices are not in the way.
 - Deleting a team is refused while it has characters (`characters.team_id`,
   no action).

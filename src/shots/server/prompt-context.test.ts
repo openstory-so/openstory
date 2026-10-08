@@ -524,7 +524,6 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     // Cast in its sequence (#2017).
     castId: 'cast-1',
     teamId: 'team-1',
-    inLibrary: false,
     copiedFromCharacterId: null,
     selectedBibleVersionId: 'bible-1',
     currentBibleVersionId: 'bible-1',

@@ -97,6 +97,7 @@ import {
 import {
   assertNameFree,
   castElsewhere,
+  castEverElsewhere,
   deleteCastStatements,
   heldElsewhere,
 } from './sequence-cast';
@@ -239,6 +240,7 @@ const {
   legacyVoiceOnly: _voiceOnly,
   legacyIsPerson: _isPerson,
   legacyConsistencyTag: _consistencyTag,
+  legacyInLibrary: _inLibrary,
   legacySheetStatus: _sheetStatus,
   legacySheetError: _sheetError,
   legacySelectedSheetVersionId: _selectedSheetVersionId,
@@ -309,7 +311,7 @@ const teamCastSchema = z.array(
 
 /**
  * One of the team's characters as the team sees it (#2017): its current
- * bible, the library flag and the sequences that cast it. No sequence's pin
+ * bible and the sequences that cast it. No sequence's pin
  * is read, so it answers for a character in no sequence, or in several.
  */
 export type TeamCharacter = {
@@ -317,7 +319,6 @@ export type TeamCharacter = {
   name: string;
   physicalDescription: string | null;
   voiceOnly: boolean;
-  inLibrary: boolean;
   /** When a sequence casting it last changed; null when none casts it. */
   lastUsedAt: Date | null;
   /**
@@ -857,8 +858,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
    * character. A removed link and an archived sequence do not count.
    *
    * Order: the most recently changed sequence casting it, then how many
-   * sequences cast it. A character nothing casts and the library does not
-   * hold is as good as gone, and is left out.
+   * sequences cast it. A character nothing casts is listed last (#2065).
    */
   const selectTeam = async (
     where: SQL | undefined
@@ -868,7 +868,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
     const rows = await db
       .select({
         id: characters.id,
-        inLibrary: characters.inLibrary,
         name: characterBibleColumns.name,
         physicalDescription: characterBibleColumns.physicalDescription,
         voiceOnly: characterBibleColumns.voiceOnly,
@@ -914,7 +913,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
       )
       .where(and(inTeam, where))
       .groupBy(characters.id)
-      .having(sql`${characters.inLibrary} OR ${castCount} > 0`)
       .orderBy(
         sql`${lastUsedAt} DESC NULLS LAST`,
         sql`${castCount} DESC`,
@@ -1165,7 +1163,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         db.insert(characters).values({
           id: copyId,
           teamId,
-          inLibrary: false,
           copiedFromCharacterId: id,
           selectedBibleVersionId: bibleVersionId,
           selectedVoiceVersionId: voiceVersionId,
@@ -1256,34 +1253,23 @@ export function createCharactersMethods(db: Database, teamId: string) {
   return {
     /**
      * The team's characters (#2017), sorted by use; see {@link selectTeam}.
-     * `inLibrary: true` narrows them to the library.
      */
     // ponytail: the whole list in one read; page it when a team passes a few thousand characters.
-    listTeam: async (opts: { inLibrary: boolean }): Promise<TeamCharacter[]> =>
-      await selectTeam(
-        opts.inLibrary ? eq(characters.inLibrary, true) : undefined
-      ),
+    listTeam: async (): Promise<TeamCharacter[]> => await selectTeam(undefined),
 
     /** One of the team's characters, with the sequences that cast it. */
     getTeamCharacter: async (id: string): Promise<TeamCharacter | null> =>
       (await selectTeam(eq(characters.id, id)))[0] ?? null,
 
     /**
-     * Put the character in the team library, or take it out (#2017). A flag
-     * on the character itself: nothing is copied, and no cast link moves.
-     */
-    setInLibrary: async (id: string, inLibrary: boolean): Promise<void> =>
-      await update(id, { inLibrary }),
-
-    /**
-     * Cast one of the team's library characters into `sequenceId` (#2050):
+     * Cast one of the team's characters into `sequenceId` (#2050, #2065):
      * one link pinning her current bible version, and a cast look per live
      * look, each pinned at its current version and sheet-less (a sheet also
      * depends on the sequence's style and image model). Nothing is copied.
      *
-     * Refused unless the character is in the library, and while a live cast
-     * member of the sequence already has her name: the script names a
-     * character in capitals, and two of one name could not be told apart.
+     * Refused while a live cast member of the sequence already has her name:
+     * the script names a character in capitals, and two of one name could
+     * not be told apart.
      * Attaching a character the sequence already casts is idempotent: a
      * removed link comes back, a live one is returned as it is.
      */
@@ -1294,7 +1280,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
     ): Promise<Character> => {
       const [character] = await db
         .select({
-          inLibrary: characters.inLibrary,
           bibleVersionId: characterBibleVersions.id,
           voiceVersionId: characters.selectedVoiceVersionId,
           name: characterBibleColumns.name,
@@ -1312,9 +1297,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         );
       }
       const { name } = character;
-      if (!character.inLibrary) {
-        throw new ValidationError(`${name} is not in the library`);
-      }
       // The sequence must be this team's too: the db method refuses, not
       // only its callers.
       const [sequence] = await db
@@ -1565,14 +1547,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
         data.sequenceId,
         eq(sequenceCast.scriptCharacterId, data.characterId)
       );
-      // A character the library or another live sequence holds is never
-      // written through analysis (#2050), whatever the payload said: a live
+      // A character another sequence has ever cast is never written
+      // through analysis (#2050, #2065), whatever the payload said: a live
       // link is returned as it is (the looks module links, see
       // `syncFromAnalysis`), and a removed link stays removed — the entry
       // becomes a new character under the next free script id. Decided here,
       // on every call, so a snapshot that went stale mid-run cannot reach her.
       const held = found
-        ? await heldElsewhere(db, teamId, found.id, data.sequenceId)
+        ? await castEverElsewhere(db, teamId, found.id, data.sequenceId)
         : false;
       if (found && held && !found.deletedAt) {
         // The sheet status is this sequence's own (the cast look), not hers:
@@ -2414,8 +2396,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
     },
 
     /**
-     * Whether something other than `sequenceId` still holds the character:
-     * the library, or another sequence casting it ({@link castElsewhere}).
+     * Whether a live sequence other than `sequenceId` casts the character
+     * ({@link castElsewhere}).
      * What a sequence may not take with it when it lets the character go
      * (its voice).
      */
@@ -2425,12 +2407,37 @@ export function createCharactersMethods(db: Database, teamId: string) {
     ): Promise<boolean> => await heldElsewhere(db, teamId, id, sequenceId),
 
     /**
-     * Whether any sequence casts the character ({@link castElsewhere}). What
-     * the library must not let go of without its voice being released.
+     * Whether another sequence has ever cast the character
+     * ({@link castEverElsewhere}): what analysis here must not rewrite.
+     */
+    getCastEverElsewhere: async (
+      sequenceId: string,
+      id: string
+    ): Promise<boolean> => await castEverElsewhere(db, teamId, id, sequenceId),
+
+    /**
+     * Whether any live sequence casts the character ({@link castElsewhere}).
+     * A character is deleted only when none does (#2065).
      */
     getCastInAnySequence: async (id: string): Promise<boolean> => {
       const [row] = await db
         .select({ cast: sql<number>`${castElsewhere(id, null)}` })
+        .from(characters)
+        .where(and(eq(characters.id, id), inTeam));
+      if (!row) throw new NotFoundError(`Character ${id} not found`);
+      return Boolean(row.cast);
+    },
+
+    /**
+     * Whether any sequence, archived ones included, has a cast link to the
+     * character that is not removed. A delete would take those links with
+     * it, so it is refused while one exists (#2065).
+     */
+    getCastInAnySequenceOrArchive: async (id: string): Promise<boolean> => {
+      const [row] = await db
+        .select({
+          cast: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.removed_at IS NULL)`,
+        })
         .from(characters)
         .where(and(eq(characters.id, id), inTeam));
       if (!row) throw new NotFoundError(`Character ${id} not found`);
@@ -2535,7 +2542,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * `sequenceId` pins, and this sequence's cast link repointed at it, so
      * edits here stop reaching the other sequences. One batch.
      *
-     * The copy OWNS: its row (`inLibrary: false`), one bible version (the
+     * The copy OWNS: its row, one bible version (the
      * pinned bible, with its talent), one voice version naming the same
      * provider voice id (a shared id, held by both until released), and for
      * each live look a new look row (the default's id is the copy's id) with
@@ -2548,8 +2555,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * (a script version each, after the batch). The script id stays, so scene
      * tags still match. Refused while a sheet run holds a claim here: its
      * landing would address the old look. Refused when nothing else holds
-     * the original (not in the library, cast nowhere else): the copy would
-     * orphan it, listed nowhere and holding its voice for ever.
+     * the original (cast in no other live sequence): there is nothing to
+     * protect from this sequence's edits, so it is edited directly.
      */
     copyForSequence: async (
       sequenceId: string,
@@ -2560,7 +2567,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       if (!existing) throw new NotFoundError(`Character ${id} not found`);
       const [held] = await db
         .select({
-          held: sql<number>`(${characters.inLibrary} OR ${castElsewhere(id, sequenceId)})`,
+          held: sql<number>`${castElsewhere(id, sequenceId)}`,
         })
         .from(characters)
         .where(eq(characters.id, id));
