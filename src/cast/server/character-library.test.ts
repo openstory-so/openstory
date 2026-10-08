@@ -233,6 +233,22 @@ describe('deleteTeamCharacter', () => {
     expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
   });
 
+  it('a re-analysis that revives it in the sequence that removed it brings it back to the team', async () => {
+    const { sequenceId, created } = await voiced();
+    await chars().softDelete(sequenceId, created.id, { actorId: userId });
+    mockDelete.mockResolvedValue(undefined);
+    await deleteTeamCharacter(scoped(), { userId }, created.id);
+
+    // The script still names her: analysis takes her script id again.
+    const revived = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      { source: 'analysis', createdBy: null }
+    );
+
+    expect(revived.id).toBe(created.id);
+    expect((await chars().listTeam()).map((c) => c.id)).toEqual([created.id]);
+  });
+
   it('a sequence that casts it after the check still stops the delete', async () => {
     const { created } = await voiced();
     // Still cast: the guarded write refuses on its own.

@@ -2675,6 +2675,7 @@ describe('team characters (#2017)', () => {
         physicalDescription: null,
         voiceOnly: false,
         lastUsedAt: new Date('2026-02-01T00:00:00Z'),
+        castAnywhere: true,
         sequences: [
           { id: other, title: 'S2', sheetImageUrl: 'https://x.test/busy.png' },
           { id: sequenceId, title: 'S', sheetImageUrl: null },
@@ -2688,6 +2689,7 @@ describe('team characters (#2017)', () => {
       expect.objectContaining({
         id: removed.id,
         lastUsedAt: null,
+        castAnywhere: false,
         sequences: [],
       }),
     ]);
@@ -2704,6 +2706,12 @@ describe('team characters (#2017)', () => {
     expect(
       (await chars().getTeamCharacter(busy.id))?.sequences.map((row) => row.id)
     ).toEqual([sequenceId]);
+    // Its link in the archived sequence still stops a delete (#2065).
+    await chars().softDelete(sequenceId, busy.id, { actorId });
+    expect(await chars().getTeamCharacter(busy.id)).toMatchObject({
+      sequences: [],
+      castAnywhere: true,
+    });
 
     // Another team sees none of it.
     const otherTeam = generateId();

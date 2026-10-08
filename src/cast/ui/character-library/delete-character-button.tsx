@@ -57,6 +57,8 @@ export const DeleteCharacterButton: React.FC<{
                 {
                   onSuccess: () => {
                     toast.success(`Deleted ${name}`, {
+                      // Undo is the only way back from this page.
+                      duration: 60_000,
                       action: {
                         label: 'Undo',
                         onClick: () =>
