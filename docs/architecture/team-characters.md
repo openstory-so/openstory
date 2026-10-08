@@ -196,8 +196,9 @@ are too. The methods keyed on a voice version id alone are not yet.
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getTeamCharacterShotCountsFn`).
-- **Delete** (`deleteTeamCharacterFn`) is on that page while no live
-  sequence casts the character. It is soft: `characters.deleted_at` is
+- **Delete** (`deleteTeamCharacterFn`) is on that page while no sequence,
+  archived ones included, casts the character (`TeamCharacter.castAnywhere`,
+  the server's own condition). It is soft: `characters.deleted_at` is
   stamped, the character leaves the list, the `@` picker and every other
   team read (`selectTeam`, `attach`), and every row of it stays. The toast's
   Undo clears the stamp (`restoreTeamCharacterFn`).
@@ -210,7 +211,8 @@ are too. The methods keyed on a voice version id alone are not yet.
   - A voice it still points at is released first; Undo does not bring it
     back.
   - Restoring it in a sequence that removed it (the existing Restore) clears
-    the stamp too.
+    the stamp too, and so does a re-analysis that revives its removed link
+    there (`characters.create`).
   - `characters.deleted_at` is not `sequence_cast.removed_at`. A cast read's
     `deletedAt` is still its link's `removedAt`.
 - **Every team character** is on the list, in `list_library_characters`

@@ -324,6 +324,11 @@ export type TeamCharacter = {
   /** When a sequence casting it last changed; null when none casts it. */
   lastUsedAt: Date | null;
   /**
+   * Whether any sequence, archived ones included, has a cast link to it
+   * that is not removed: what a delete is refused on (#2065).
+   */
+  castAnywhere: boolean;
+  /**
    * The live sequences that cast it, the most recently changed first, each
    * with the default look's sheet as that sequence selected it.
    */
@@ -874,6 +879,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
         physicalDescription: characterBibleColumns.physicalDescription,
         voiceOnly: characterBibleColumns.voiceOnly,
         lastUsedAt: lastUsedAt.mapWith(sequences.updatedAt),
+        castAnywhere: sql<number>`count(${sequenceCast.id}) > 0`.mapWith(
+          Boolean
+        ),
         cast: sql<string>`json_group_array(json_object('id', ${sequences.id}, 'title', ${sequences.title}, 'updatedAt', ${sequences.updatedAt}, 'sheetImageUrl', ${characterSheetVariants.url})) FILTER (WHERE ${sequences.id} IS NOT NULL)`,
       })
       .from(characters)
@@ -1361,7 +1369,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           kind: 'character.attached',
           targetType: 'character',
           targetId: id,
-          summary: `Added ${name} from the library`,
+          summary: `Added ${name}`,
           data: { name, characterId: scriptCharacterId },
         }),
       ]);
@@ -1636,9 +1644,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
             .update(sequenceCast)
             .set({ removedAt: null })
             .where(eq(sequenceCast.id, existing.castId)),
+          // Cast again, so back in the team too, as `restore` does (#2065).
           db
             .update(characters)
-            .set({ updatedAt: now })
+            .set({ updatedAt: now, deletedAt: null })
             .where(eq(characters.id, id)),
           ...bible.statements,
           // The pin moved: the staleness causes walk these events back to
