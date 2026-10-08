@@ -54,6 +54,10 @@ export const sequenceCast = snakeCase.table(
     voiceVersionId: text(),
     // Soft-remove from the sequence, undoable. The character itself stays.
     removedAt: integer({ mode: 'timestamp' }),
+    // The writer picked this character for the sequence (`characters.attach`,
+    // #2065) rather than analysis making it here. Analysis never rewrites an
+    // attached character, even when no other sequence has cast it.
+    attached: integer({ mode: 'boolean' }).default(false).notNull(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),

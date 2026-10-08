@@ -1,0 +1,1 @@
+ALTER TABLE `sequence_cast` ADD `attached` integer DEFAULT false NOT NULL;

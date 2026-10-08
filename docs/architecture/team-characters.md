@@ -7,8 +7,9 @@ who is in 100 episodes is one character, with one set of looks.
 This doc covers the tables, the backfill, every read and write going through
 the cast link, the Characters page, attaching a team character to a
 sequence and what analysis does with the attached cast
-(#2050), and moving a sequence to a newer version, the one-off copy and a
-recast applied to a range of sequences (§ Version moves).
+(#2050), making and editing a character with no sequence (#2065), and moving
+a sequence to a newer version, the one-off copy and a recast applied to a
+range of sequences (§ Version moves).
 
 ## Data
 
@@ -22,7 +23,12 @@ recast applied to a range of sequences (§ Version moves).
   - `sequenceId`, `characterId`, `scriptCharacterId` (the analysis id, e.g.
     `char_001`), `bibleVersionId` (the pin), `voiceVersionId` (the voice
     pin; null when the character has no voice here), `removedAt`,
-    `createdAt`.
+    `attached`, `createdAt`.
+  - `attached` (#2065): the writer picked the character for this sequence
+    (`characters.attach`) rather than analysis making it here. Analysis
+    never rewrites an attached character. False on every link made before
+    the column, which is right: those were covered by "another sequence has
+    cast it".
   - Unique on (`sequenceId`, `characterId`) and on (`sequenceId`,
     `scriptCharacterId`).
   - Soft-remove from a sequence is the link's `removedAt`. The character
@@ -100,8 +106,27 @@ in no sequence, one, or many.
 - The voice: `updateVoice`, `stampPreviewUnusable`, `selectVoiceVersion`,
   the voice-claim methods and `getVoice`. They return the voice state, not a
   cast read. The voice workflow's live read is `liveRead.characters.getVoice`.
-- The team reads: `listTeam`, `getTeamCharacter` (§ Characters page).
+- The team reads: `listTeam`, `getTeamCharacter` (§ Characters page), and
+  `getCurrent`: the bible and looks at their current versions.
 - A look's definition history (`listVersions`) and a sheet variant by id.
+
+**A write made from no sequence passes `null` (#2065).** The sequence stays
+a required first argument; `null` says "from the Characters page", as
+`updateVoice(null, …)` already did. It appends the version and moves the
+CURRENT pointer only. No pin moves and no sequence event is written.
+
+- `characters.updateBible(null, id, …)`: `source: 'edit'` only, no voice
+  description (the voice is pinned per sequence), returns the character at
+  its current version.
+- `characterLooks.create / update / remove / restore(null, …)`. A name is
+  unique among all the character's live looks. `remove` checks the scenes
+  of every live sequence that uses the look.
+- No sheet, voice, recast or version-select write takes `null`: those are a
+  sequence's.
+- A deleted character (`characters.deleted_at`) is not found by
+  `getCurrent` or by any of these writes until it is restored.
+- A sequence that casts the character keeps the version it pinned and reads
+  "Not the current version" (§ Version moves).
 
 What follows from one character in two sequences:
 
@@ -191,8 +216,23 @@ are too. The methods keyed on a voice version id alone are not yet.
 - **`/characters/$id`** shows the sequences that cast the character and
   embeds the sequence detail view (`CharacterDetailView`) for the one in
   `?sequence=`, or the latest. Looks, sheets and edits there are that
-  sequence's. A character no sequence casts shows its name and description
-  only: there is no pin to edit through.
+  sequence's.
+- **A character no sequence casts** (#2065) is edited there at its current
+  version (`UncastCharacterEditor`): the bible form and the looks row the
+  sequence view uses, each given `sequenceId: null`. The writes are the
+  team fns (`updateTeamCharacterFn`, `createTeamCharacterLookFn`, …,
+  `authWithTeamMiddleware`). Sheets, voice, recast and upload are not
+  offered: "Sheets and voice need a sequence." (a sheet depends on the
+  sequence's style and image model). Once a sequence casts it, the page is
+  the sequence view again.
+- **New character** (#2065) is on the Characters tab. `createTeamCharacterFn`
+  → `createTeamCharacter` → `characters.createForTeam`: one batch writes
+  the character, its first bible version (`source: 'edit'`, by the user),
+  its default look (the character's own id) and that look's first version.
+  No cast link, no sheet, no voice, no event (events are per sequence). The
+  consistency tag is `char_<name>: <name>`, the tag a hand-added character
+  of that name gets in a sequence. The dialog and the cast panel's Add
+  Character share one form (`NewCharacterForm`).
 - **Shot count** is on that page only. A shot is matched to a character by
   scene tags in memory, one sequence at a time
   (`getTeamCharacterShotCountsFn`).
@@ -231,8 +271,9 @@ the script then names her like any cast member.
   she has, each pinned at its current version and sheet-less (a sheet depends
   on the sequence's style and image model, so the first run draws them). Her
   script id is `char_<name>` uniqued against every link of the sequence,
-  removed ones included. The event is `character.attached`. Nothing is
-  copied.
+  removed ones included. The link is `attached` (#2065). The event is
+  `character.attached`. Nothing is copied. Bringing back a removed link
+  leaves `attached` as it was.
 - **Refused** unless the
   sequence is the team's (`NotFoundError`, checked in the db method, not
   only by its callers), and while a live cast member of the sequence already
@@ -266,7 +307,7 @@ the script then names her like any cast member.
   payload (`cast: AttachedCastSnapshot[]`, required on the storyboard,
   analyze-script and scene-split inputs): each as the sequence casts her
   (`characterToBible`, look ids are `character_looks` ids) with `shared` —
-  another sequence has ever cast her (`getCastEverElsewhere`). No
+  she is not this sequence's to rewrite (`getAnalysisMayNotRewrite`). No
   mid-run read; a payload without the field fails at the top
   (`queuedBeforeCast`).
 - **The bibles call** sees a `<CAST>` block shaped like `<ELEMENTS>`
@@ -285,13 +326,17 @@ the script then names her like any cast member.
   by name among every live look she has, cast here or not; a new look for a
   name she lacks; nothing rewritten, nothing removed. She is left out of
   talent matching: her talent is on the pinned version.
-- **A character only this sequence has ever cast** is re-analysed as before: bible rewritten, looks synced by name,
-  unused analysis-made looks retired.
+- **A character analysis made here, that only this sequence has ever cast,**
+  is re-analysed as before: bible rewritten, looks synced by name, unused
+  analysis-made looks retired.
 - **The db layer decides, every time.** `shared` on the payload only shapes
   the prompt. `characters.create` and `characterLooks.syncFromAnalysis` ask
-  `castEverElsewhere` (any link in another sequence, removed or archived
-  included: with no library flag, a character attached here from a sequence
-  since archived is still not this sequence's to rewrite) on every call: a held character's live link is returned as it
+  `analysisMayNotRewrite` (`sequence-cast.ts`, the one place the rule
+  lives) on every call. It is true when this sequence's link is `attached`,
+  or when any other sequence has a link to her, removed or archived
+  included. So a character made on the Characters page and attached to one
+  sequence is safe (#2065), and so is one attached here from a sequence
+  since archived. A held character's live link is returned as it
   is and her looks are linked (`linkFromAnalysis`); her **removed** link is
   left removed, and an entry that reused its script id becomes a new
   character under the next free id (`char_001_2`). So a character attached
@@ -333,23 +378,28 @@ the script then names her like any cast member.
 - **New character** (`characters.create`): one batch inserts the character
   (with the team), its first bible version (with the talent), the cast link,
   the default look, its first look version and the cast look.
+- **New character with no sequence** (`characters.createForTeam`, #2065):
+  the same batch without the cast link and the cast look.
 - **Bible edit** (`bibleWrite`): appends a version carrying the talent, moves
   the current pointer and the link's pin, and revokes the cast's sheet claims
-  when a field the sheets read moved.
+  when a field the sheets read moved. From no sequence (`castId` null) only
+  the version and the current pointer are written.
 - **Recast** (`updateBible` with `source: 'recast'` and the `talentId`): ONE
   bible version, by the person who recast, carrying the new talent and the
   appearance copied from it. The claims are revoked whether or not the
   talent moved. `bibleWrite` takes the talent as a required argument, so
   every writer says who plays the character.
 - **Look edit** (`lookDefinitionWrite`): appends a look version, moves the
-  look's current pointer and the cast look's pin.
+  look's current pointer and the cast look's pin. From no sequence
+  (`castLookId` null) no pin is written.
 - **Remove / restore**: the link's `removedAt`.
 - **Sheet claim, promote, fail, pick**: on the cast look. See
   `character-looks.md` § Sheets and claims; only the row changed.
 - **Talent changes** revoke the claims of the cast links whose pinned bible
   version names that talent (`castOfTalent`).
 - **Deleting a sequence** removes its cast looks and links, then only the
-  characters no other sequence ever cast (`charactersOnlyIn`). No app path
+  characters no other sequence ever cast and the writer did not attach
+  (`charactersOnlyIn`): an attached character is the team's. No app path
   hard-deletes a sequence today; when one does, decide first whether those
   characters should stay in the team instead. The ids are read before the batch, because the links
   that say so go first. See § Hard deletes.
@@ -602,6 +652,13 @@ On remote D1:
 `snapshot.json` is the one drizzle-kit wrote for the generated form of the
 same change, with the custom migration's id. `bun db:generate` reports no
 changes after it.
+
+**The attach flag** (#2065). `20261008052530_cast_attached` is
+generated and unedited: one `ALTER TABLE sequence_cast ADD attached integer
+DEFAULT false NOT NULL`. No rebuild. The previous worker does not name the
+column, so its inserts take the default: an attach it makes in the deploy
+window is not flagged, and is covered only by the "another sequence has cast
+it" half of the rule, as before.
 
 ## The deploy window
 

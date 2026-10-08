@@ -6,10 +6,15 @@
  *
  * Every function takes the sequence id the caller authorised and refuses a
  * row of another sequence (live or soft-deleted rows both pass, so restore
- * can reach them).
+ * can reach them). The `…TeamCharacter…` ones are the Characters page's
+ * (#2065): no sequence, scoped to the team.
  */
 import type { z } from 'zod';
-import { ConflictError, NotFoundError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -101,6 +106,55 @@ export async function createCharacter(
     data: { name, characterId },
   });
   return character;
+}
+
+/**
+ * Make a character with no sequence (#2065, the Characters page). It has a
+ * bible and a default look and nothing else: a sequence casts it later with
+ * `@` or Add existing character, and draws its sheet and designs its voice
+ * then, so no voice field is taken here. No event is recorded: events are
+ * per sequence.
+ */
+export async function createTeamCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  {
+    name,
+    standardClothing,
+    ...bible
+  }: Omit<CharacterBibleFields, 'voiceDescription'> & { name: string }
+) {
+  return await scopedDb.characters.createForTeam(
+    {
+      name,
+      ...bible,
+      standardClothing: standardClothing ?? null,
+      // {@link createCharacter} prefixes the tag with the sequence's script
+      // id. With no sequence there is none, so the prefix is the id a
+      // hand-added character would get from the same name.
+      consistencyTag:
+        bible.consistencyTag ??
+        `${identityToken('char', name)}: ${slugifyTag(name)}`,
+    },
+    { createdBy: actor.userId }
+  );
+}
+
+/**
+ * Edit the bible of a character from no sequence (#2065): a new version and
+ * the character's current pointer. A sequence that casts it keeps the
+ * version it pinned and reads "not the current version".
+ */
+export async function updateTeamCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  update: Omit<CharacterBibleUpdate, 'voiceDescription'>
+) {
+  return await scopedDb.characters.updateBible(null, characterId, update, {
+    actorId: actor.userId,
+    source: 'edit',
+  });
 }
 
 /**
@@ -469,6 +523,95 @@ export async function selectCharacterLookVersion(
     name: updated.name,
     versionId,
   };
+}
+
+// ── Looks from no sequence (#2065) ──────────────────────────────────────────
+
+/** A look of one of the team's characters, at its current version. */
+async function requireTeamLook(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  characterId: string,
+  lookId: string
+) {
+  const character = await scopedDb.characters.getCurrent(characterId);
+  if (!character) throw new NotFoundError('Character not found');
+  const look = character.looks.find((candidate) => candidate.id === lookId);
+  if (!look) throw new NotFoundError('Look not found');
+  return look;
+}
+
+/** Add an outfit from the Characters page. No sequence uses it yet. */
+export async function createTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  input: LookInput
+) {
+  const look = await scopedDb.characterLooks.create(
+    null,
+    characterId,
+    {
+      name: input.name.trim(),
+      clothing: blankToNull(input.clothing) ?? null,
+      styling: blankToNull(input.styling) ?? null,
+    },
+    { source: 'edit', actorId: actor.userId }
+  );
+  return { characterId, lookId: look.id, name: look.name };
+}
+
+/** Rename a look or edit its clothing / styling from the Characters page. */
+export async function updateTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  lookId: string,
+  patch: Partial<LookInput>
+) {
+  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  if (look.deletedAt) {
+    throw new ValidationError(
+      `${look.name} was removed. Restore the look first.`
+    );
+  }
+  const updated = await scopedDb.characterLooks.update(
+    null,
+    look.id,
+    {
+      name: patch.name?.trim(),
+      clothing: blankToNull(patch.clothing),
+      styling: blankToNull(patch.styling),
+    },
+    { source: 'edit', actorId: actor.userId }
+  );
+  return { characterId, lookId: look.id, name: updated.name };
+}
+
+/** Remove a look (undoable). Refused for the default look and a worn one. */
+export async function removeTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  lookId: string
+) {
+  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  const deletedAt = await scopedDb.characterLooks.remove(null, look.id, {
+    actorId: actor.userId,
+  });
+  return { characterId, lookId: look.id, name: look.name, deletedAt };
+}
+
+export async function restoreTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  lookId: string
+) {
+  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  await scopedDb.characterLooks.restore(null, look.id, {
+    actorId: actor.userId,
+  });
+  return { characterId, lookId: look.id, name: look.name };
 }
 
 // ── Locations ───────────────────────────────────────────────────────────────

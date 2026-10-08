@@ -199,7 +199,7 @@ async function resolveStoryboardPayload(
   const cast = await Promise.all(
     castRows.map(async (row) => ({
       id: row.id,
-      shared: await scopedDb.characters.getCastEverElsewhere(
+      shared: await scopedDb.characters.getAnalysisMayNotRewrite(
         sequenceId,
         row.id
       ),

@@ -258,9 +258,7 @@ test.describe('Characters page', () => {
     await openCharacterPage(page);
     await expect(page.getByText('Not cast in a sequence.')).toBeVisible();
     await expect(
-      page.getByText(
-        'Looks, sheets, voice and edits need a sequence that casts this character.'
-      )
+      page.getByText('Sheets and voice need a sequence.')
     ).toBeVisible();
 
     // Still listed: nothing has to hold a character.
@@ -281,6 +279,57 @@ test.describe('Characters page', () => {
     await expect(
       page.getByRole('heading', { name: 'Character not found' })
     ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+  });
+
+  test('New character makes one with no sequence; its bible and looks are edited on its page (#2065)', async ({
+    page,
+  }) => {
+    const name = `Zed ${crypto.randomUUID().slice(0, 8)}`;
+    await page.goto('/characters');
+    await page.getByRole('button', { name: 'New character' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New character' });
+    await dialog.getByLabel('Name').fill(name);
+    await dialog.getByRole('button', { name: 'Create' }).click();
+
+    await expect(page.getByRole('heading', { name, level: 1 })).toBeVisible({
+      timeout: HYDRATION_TIMEOUT,
+    });
+    await expect(page).toHaveURL(/\/characters\/[0-9A-Z]{26}$/);
+    await expect(
+      page.getByText('Sheets and voice need a sequence.')
+    ).toBeVisible();
+
+    // The bible, with no sequence to pin it.
+    await page.getByLabel('Age').fill('36');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('Character saved')).toBeVisible();
+
+    // A second look, then removed again.
+    const looks = page.getByRole('radiogroup', { name: 'Looks' });
+    await page.getByRole('button', { name: 'Add look' }).click();
+    const addForm = page
+      .locator('form')
+      .filter({ has: page.locator('#new-look-name') });
+    await addForm.locator('#new-look-name').fill('Gala');
+    await addForm.getByRole('button', { name: 'Add look' }).click();
+    await expect(looks.getByText('Gala')).toBeVisible();
+    await page.getByRole('button', { name: 'Edit look' }).click();
+    await page.getByRole('button', { name: 'Remove look' }).click();
+    await expect(page.getByText('Removed Gala')).toBeVisible();
+    await expect(looks.getByText('Gala')).toHaveCount(0);
+
+    await page.reload();
+    await expect(page.getByLabel('Age')).toHaveValue('36', {
+      timeout: HYDRATION_TIMEOUT,
+    });
+
+    // Listed with the team's characters, and deletable: nothing casts it.
+    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await page
+      .getByRole('alertdialog', { name: `Delete ${name}?` })
+      .getByRole('button', { name: 'Delete', exact: true })
+      .click();
+    await expect(page.getByText(`Deleted ${name}`)).toBeVisible();
   });
 
   test('an unknown character is not found, with a way back', async ({

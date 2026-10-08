@@ -253,8 +253,12 @@ changing the area, and update it in the same PR.**
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. One
   character can be cast in several sequences. A character or look method
   whose answer depends on the sequence takes it as a required first
-  argument; never resolve "the character's cast link". The voice is the
-  character's own. There is no library flag (#2065): every team character
+  argument; never resolve "the character's cast link". A write made from no
+  sequence (the Characters page, #2065) passes `null` there, never an
+  optional argument, and moves only the current pointer. Analysis never
+  rewrites a character the writer attached or another sequence has cast:
+  ask `analysisMayNotRewrite`, the one place that rule lives. The voice is
+  the character's own. There is no library flag (#2065): every team character
   is listed and attachable, and stays when its last sequence lets it go.
   Whoever lets a character go (a sequence removing it, an archive, a
   delete) releases its voice only when no other live sequence casts it:

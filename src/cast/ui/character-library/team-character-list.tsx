@@ -52,7 +52,7 @@ export const TeamCharacterList: React.FC<{
       <EmptyState
         icon={<User className="h-12 w-12" />}
         title="No characters yet"
-        description="Characters appear here when a sequence is analysed."
+        description="Make one with New character, or analyse a sequence."
       />
     );
   }

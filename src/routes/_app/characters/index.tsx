@@ -1,3 +1,4 @@
+import { NewCharacterDialog } from '@/cast/ui/character-library/new-character-dialog';
 import { TeamCharacterList } from '@/cast/ui/character-library/team-character-list';
 import { AddTalentDialog } from '@/cast/ui/talent-library/add-talent-dialog';
 import { LibraryGridSkeleton } from '@/cast/ui/talent-library/talent-library-list';
@@ -46,7 +47,10 @@ function CharactersPage() {
             : 'Browse system talent. Sign in to add your own and keep characters consistent across sequences.'}
         </PageIntro>
       ) : (
-        <PageIntro title="Characters">
+        <PageIntro
+          title="Characters"
+          actions={isAuthenticated ? <NewCharacterDialog /> : undefined}
+        >
           Every character your team has. Use one in a script with @.
         </PageIntro>
       )}

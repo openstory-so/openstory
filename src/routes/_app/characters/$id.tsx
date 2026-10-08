@@ -1,4 +1,5 @@
 import { DeleteCharacterButton } from '@/cast/ui/character-library/delete-character-button';
+import { UncastCharacterEditor } from '@/cast/ui/character-library/uncast-character-editor';
 import { CharacterDetailView } from '@/cast/ui/talent/character-detail-view';
 import {
   useTeamCharacter,
@@ -157,25 +158,21 @@ function TeamCharacterContent({ id }: { id: string }) {
             header="none"
           />
         </div>
+      ) : sequences.length === 0 ? (
+        <Suspense
+          fallback={
+            <div className="flex flex-col gap-4 p-4">
+              <Skeleton className="h-9 w-64" />
+              <Skeleton className="h-64 w-full rounded-lg" />
+            </div>
+          }
+        >
+          <UncastCharacterEditor characterId={id} />
+        </Suspense>
       ) : (
-        <div className="flex flex-col gap-2 p-4">
-          <p className="text-sm font-medium">
-            {sequences.length === 0
-              ? 'Not cast in a sequence.'
-              : 'Not cast in that sequence. Pick one above.'}
-          </p>
-          {sequences.length === 0 && (
-            <>
-              <p className="text-sm text-muted-foreground">
-                Looks, sheets, voice and edits need a sequence that casts this
-                character.
-              </p>
-              {character.physicalDescription && (
-                <p className="text-sm">{character.physicalDescription}</p>
-              )}
-            </>
-          )}
-        </div>
+        <p className="p-4 text-sm font-medium">
+          Not cast in that sequence. Pick one above.
+        </p>
       )}
     </div>
   );

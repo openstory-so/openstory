@@ -89,15 +89,17 @@ import {
 } from './bible-versions';
 import {
   createCharacterLooksMethods,
+  currentLooksOf,
   deleteLooksOfCharacters,
   liveLookSheetVersionId,
   lookDefinitionWrite,
   requireLook,
 } from './character-looks';
+import type { TeamLook } from './character-looks';
 import {
   assertNameFree,
   castElsewhere,
-  castEverElsewhere,
+  analysisMayNotRewrite,
   deleteCastStatements,
   heldElsewhere,
 } from './sequence-cast';
@@ -328,6 +330,22 @@ export type TeamCharacter = {
    * with the default look's sheet as that sequence selected it.
    */
   sequences: { id: string; title: string; sheetImageUrl: string | null }[];
+};
+
+/**
+ * One of the team's characters at its CURRENT version (#2065): the bible and
+ * the looks a new sequence would adopt. No sequence's pin is read. What the
+ * Characters page edits while no sequence casts the character.
+ */
+export type CurrentCharacter = CharacterBible & {
+  id: string;
+  /** The current bible version; an edit appends the next. */
+  bibleVersionId: string;
+  talentId: string | null;
+  /** The default look's clothing, under the name a cast read gives it. */
+  standardClothing: string | null;
+  /** Every look, default first; removed ones included (`deletedAt`). */
+  looks: TeamLook[];
 };
 
 const RELEASED_VOICE_MESSAGE =
@@ -625,6 +643,41 @@ export function createCharactersMethods(db: Database, teamId: string) {
   };
 
   /**
+   * The character at its current version; see {@link CurrentCharacter}. Null
+   * for a deleted one: it is not read or edited until it is restored.
+   */
+  const currentOf = async (id: string): Promise<CurrentCharacter | null> => {
+    const [row] = await db
+      .select({
+        id: characters.id,
+        bibleVersionId: characterBibleVersions.id,
+        talentId: characterBibleVersions.talentId,
+        ...characterBibleColumns,
+      })
+      .from(characters)
+      .leftJoin(
+        characterBibleVersions,
+        eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+      )
+      .where(and(eq(characters.id, id), inTeam, isNull(characters.deletedAt)));
+    if (!row) return null;
+    const { bibleVersionId } = row;
+    if (bibleVersionId === null) {
+      throw new Error(
+        `Character ${id} points at a bible version that does not exist`
+      );
+    }
+    const ownLooks = await currentLooksOf(db, teamId, id);
+    return {
+      ...row,
+      bibleVersionId,
+      standardClothing:
+        ownLooks.find((look) => look.isDefault)?.clothing ?? null,
+      looks: ownLooks,
+    };
+  };
+
+  /**
    * The one writer of a bible (#1600): the statements that append a version
    * row, make it the character's current one and pin the sequence's cast
    * link to it (#2017), for the caller's own `db.batch`. The version carries
@@ -632,10 +685,15 @@ export function createCharactersMethods(db: Database, teamId: string) {
    * `talentId` is a recast, `existing.talentId` keeps the cast.
    * A change to a field the sheets read, or of the talent, revokes the
    * in-flight sheet claim of every look of that cast (#1113, #2015) in the
-   * same batch. Empty when nothing moved.
+   * same batch. Empty when nothing moved. `castId` null is a write made from
+   * no sequence (#2065): only the character's current pointer moves.
    */
   const bibleWrite = (
-    existing: Character,
+    existing: CharacterBible & {
+      id: string;
+      talentId: string | null;
+      castId: string | null;
+    },
     patch: Partial<CharacterBible>,
     opts: {
       source: BibleVersionSource;
@@ -652,6 +710,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       return { moved, talentMoved, versionId: null, statements: [] };
     }
     const versionId = generateId();
+    const { castId } = existing;
     return {
       moved,
       talentMoved,
@@ -670,18 +729,17 @@ export function createCharactersMethods(db: Database, teamId: string) {
           .update(characters)
           .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
           .where(eq(characters.id, existing.id)),
-        db
-          .update(sequenceCast)
-          .set({ bibleVersionId: versionId })
-          .where(eq(sequenceCast.id, existing.castId)),
-        ...(touchesSheet(moved) || talentMoved
-          ? [
-              demoteCharacterSheetClaims(
-                db,
-                eq(sequenceCast.id, existing.castId)
-              ),
-            ]
-          : []),
+        ...(castId === null
+          ? []
+          : [
+              db
+                .update(sequenceCast)
+                .set({ bibleVersionId: versionId })
+                .where(eq(sequenceCast.id, castId)),
+              ...(touchesSheet(moved) || talentMoved
+                ? [demoteCharacterSheetClaims(db, eq(sequenceCast.id, castId))]
+                : []),
+            ]),
       ],
     };
   };
@@ -1252,6 +1310,147 @@ export function createCharactersMethods(db: Database, teamId: string) {
     }
   }
 
+  type BibleWriteOpts = { actorId: string | null } & (
+    | { /** A person's form or API edit. */ source: 'edit' }
+    | {
+        /** A talent cast; `talentId` null uncasts. */
+        source: 'recast';
+        talentId: string | null;
+      }
+  );
+
+  // `updateBible`'s doc is on the method below; these are its two shapes.
+  async function updateBible(
+    sequenceId: string,
+    id: string,
+    data: CharacterBibleUpdate,
+    opts: BibleWriteOpts
+  ): Promise<Character>;
+  async function updateBible(
+    sequenceId: null,
+    id: string,
+    // The voice is pinned per sequence: no voice write from no sequence.
+    data: Omit<CharacterBibleUpdate, 'voiceDescription'>,
+    opts: { actorId: string | null; source: 'edit' }
+  ): Promise<CurrentCharacter>;
+  async function updateBible(
+    sequenceId: string | null,
+    id: string,
+    data: CharacterBibleUpdate,
+    opts: BibleWriteOpts
+  ): Promise<Character | CurrentCharacter> {
+    if (sequenceId === null) {
+      const current = await currentOf(id);
+      if (!current) throw new NotFoundError(`Character ${id} not found`);
+      const { voiceDescription: _voice, standardClothing, ...bibleData } = data;
+      const statements: BatchItem<'sqlite'>[] = bibleWrite(
+        { ...current, castId: null },
+        bibleData,
+        {
+          source: 'edit',
+          createdBy: opts.actorId,
+          talentId: current.talentId,
+        }
+      ).statements;
+      if (standardClothing !== undefined) {
+        const defaultLook = current.looks.find((look) => look.isDefault);
+        if (!defaultLook)
+          throw new Error(`Character ${id} has no default look`);
+        statements.push(
+          ...lookDefinitionWrite(
+            db,
+            { ...defaultLook, castLookId: null },
+            { clothing: standardClothing },
+            { source: 'edit', createdBy: opts.actorId }
+          ).statements
+        );
+      }
+      const [first, ...rest] = statements;
+      if (first) await db.batch([first, ...rest]);
+      const updated = await currentOf(id);
+      if (!updated) throw new NotFoundError(`Character ${id} not found`);
+      return updated;
+    }
+    const existing = await castOf(sequenceId, id);
+    if (!existing) {
+      throw new Error(`SequenceCharacter ${id} not found`);
+    }
+    const prev: Record<string, string | boolean | null> = {};
+    for (const [key, value] of typedEntries(data)) {
+      if (value === undefined) continue;
+      prev[key] = existing[key] ?? null;
+    }
+    // A character an older worker wrote keeps its clothing on the legacy
+    // bible column, which the version appended below no longer carries
+    // (#2015): give it its default look first.
+    const defaultLook = await requireLook(
+      db,
+      teamId,
+      sequenceId,
+      existing.lookId
+    );
+    const { voiceDescription, standardClothing, ...bibleData } = data;
+    // Appends a version and moves the pointer (#1600); an edit to a field
+    // the sheet reads also revokes an in-flight sheet run's claim (#1113).
+    const { statements, versionId } = bibleWrite(existing, bibleData, {
+      source: opts.source,
+      createdBy: opts.actorId,
+      talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
+    });
+    // Clothing is the default look's (#2015): the same edit, written as a
+    // look version.
+    const look =
+      standardClothing === undefined
+        ? { statements: [] }
+        : lookDefinitionWrite(
+            db,
+            defaultLook,
+            { clothing: standardClothing },
+            { source: lookSource(opts.source), createdBy: opts.actorId }
+          );
+    await db.batch([
+      buildEventInsert(db, {
+        sequenceId: existing.sequenceId,
+        actorId: opts.actorId,
+        kind: 'character.updated',
+        targetType: 'character',
+        targetId: id,
+        summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
+        data: {
+          prevState: prev,
+          // The pin move (#2017), null when no version was appended: the
+          // staleness causes walk these back to the version a shot read.
+          bibleVersion:
+            versionId === null
+              ? null
+              : { from: existing.selectedBibleVersionId, to: versionId },
+        },
+      }),
+      ...statements,
+      ...look.statements,
+      ...(opts.source === 'recast'
+        ? [demoteCharacterSheetClaims(db, eq(sequenceCast.id, existing.castId))]
+        : []),
+    ]);
+    // `voiceDescription` is the selected voice version's, so an edit to it
+    // is a voice write and belongs in the voice history (#1657). Only when it
+    // actually moved: the form posts every field, and a row per unrelated
+    // bible edit would bury the real takes.
+    if (
+      voiceDescription !== undefined &&
+      voiceDescription !== existing.voiceDescription
+    ) {
+      await updateVoice(
+        sequenceId,
+        id,
+        { voiceDescription },
+        'user-edit',
+        opts.actorId
+      );
+    }
+    return await reread(sequenceId, id);
+  }
+
   return {
     /**
      * The team's characters (#2017), sorted by use; see {@link selectTeam}.
@@ -1262,6 +1461,73 @@ export function createCharactersMethods(db: Database, teamId: string) {
     /** One of the team's characters, with the sequences that cast it. */
     getTeamCharacter: async (id: string): Promise<TeamCharacter | null> =>
       (await selectTeam(eq(characters.id, id)))[0] ?? null,
+
+    /**
+     * One of the team's characters at its current version, with its looks
+     * ({@link CurrentCharacter}); null when it is gone or another team's.
+     */
+    getCurrent: async (id: string): Promise<CurrentCharacter | null> =>
+      await currentOf(id),
+
+    /**
+     * Make a character with no sequence (#2065, the Characters page): one
+     * batch inserts the character, its first bible version, its default look
+     * (under the character's own id, as {@link create} does) and that look's
+     * first version. No cast link, so no sheet and no voice: a sequence
+     * casts it later through {@link attach}.
+     */
+    createForTeam: async (
+      data: Pick<CharacterBible, 'name'> &
+        Partial<Omit<CharacterBible, 'name'>> &
+        Pick<CurrentCharacter, 'standardClothing'>,
+      opts: { createdBy: string }
+    ): Promise<CurrentCharacter> => {
+      const { standardClothing, ...fields } = data;
+      const bible = mergeBible(
+        { ...NEW_CHARACTER_BIBLE, name: data.name },
+        fields
+      );
+      const id = generateId();
+      const versionId = generateId();
+      const lookVersionId = generateId();
+      await db.batch([
+        db.insert(characters).values({
+          id,
+          teamId,
+          selectedBibleVersionId: versionId,
+          legacyName: bible.name,
+        }),
+        db.insert(characterBibleVersions).values({
+          id: versionId,
+          characterId: id,
+          ...bible,
+          talentId: null,
+          source: 'edit',
+          createdBy: opts.createdBy,
+        }),
+        db.insert(characterLooks).values({
+          id,
+          characterId: id,
+          isDefault: true,
+          sortOrder: 0,
+          selectedLookVersionId: lookVersionId,
+          // NOT NULL until the column is dropped (#2017).
+          legacySheetStatus: 'pending',
+        }),
+        db.insert(characterLookVersions).values({
+          id: lookVersionId,
+          lookId: id,
+          name: DEFAULT_LOOK_NAME,
+          clothing: standardClothing,
+          styling: null,
+          source: 'edit',
+          createdBy: opts.createdBy,
+        }),
+      ]);
+      const character = await currentOf(id);
+      if (!character) throw new Error(`Character ${id} not found`);
+      return character;
+    },
 
     /**
      * Cast one of the team's characters into `sequenceId` (#2050, #2065):
@@ -1346,6 +1612,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
           scriptCharacterId,
           bibleVersionId: character.bibleVersionId,
           voiceVersionId: character.voiceVersionId,
+          // The writer picked her: never analysis's to rewrite (#2065).
+          attached: true,
         }),
         ...lookRows.map((look) =>
           db.insert(sequenceCastLooks).values({
@@ -1551,14 +1819,15 @@ export function createCharactersMethods(db: Database, teamId: string) {
         data.sequenceId,
         eq(sequenceCast.scriptCharacterId, data.characterId)
       );
-      // A character another sequence has ever cast is never written
-      // through analysis (#2050, #2065), whatever the payload said: a live
+      // A character the writer attached here, or another sequence has ever
+      // cast, is never written through analysis (#2050, #2065), whatever the
+      // payload said: a live
       // link is returned as it is (the looks module links, see
       // `syncFromAnalysis`), and a removed link stays removed — the entry
       // becomes a new character under the next free script id. Decided here,
       // on every call, so a snapshot that went stale mid-run cannot reach her.
       const held = found
-        ? await castEverElsewhere(db, teamId, found.id, data.sequenceId)
+        ? await analysisMayNotRewrite(db, teamId, found.id, data.sequenceId)
         : false;
       if (found && held && !found.deletedAt) {
         // The sheet status is this sequence's own (the cast look), not hers:
@@ -2232,104 +2501,13 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * and the appearance copied from it. The cast talent feeds every look's
      * sheet, so a recast revokes the sheet claims even when the talent did
      * not move (#1113, #2015).
+     *
+     * `sequenceId` null is an edit made from no sequence (#2065, the
+     * Characters page): the version is appended and the character's current
+     * pointer moves; no pin moves, no event is written, and it returns the
+     * character at its current version.
      */
-    updateBible: async (
-      sequenceId: string,
-      id: string,
-      data: CharacterBibleUpdate,
-      opts: { actorId: string | null } & (
-        | { /** A person's form or API edit. */ source: 'edit' }
-        | {
-            /** A talent cast; `talentId` null uncasts. */
-            source: 'recast';
-            talentId: string | null;
-          }
-      )
-    ): Promise<Character> => {
-      const existing = await castOf(sequenceId, id);
-      if (!existing) {
-        throw new Error(`SequenceCharacter ${id} not found`);
-      }
-      const prev: Record<string, string | boolean | null> = {};
-      for (const [key, value] of typedEntries(data)) {
-        if (value === undefined) continue;
-        prev[key] = existing[key] ?? null;
-      }
-      // A character an older worker wrote keeps its clothing on the legacy
-      // bible column, which the version appended below no longer carries
-      // (#2015): give it its default look first.
-      const defaultLook = await requireLook(
-        db,
-        teamId,
-        sequenceId,
-        existing.lookId
-      );
-      const { voiceDescription, standardClothing, ...bibleData } = data;
-      // Appends a version and moves the pointer (#1600); an edit to a field
-      // the sheet reads also revokes an in-flight sheet run's claim (#1113).
-      const { statements, versionId } = bibleWrite(existing, bibleData, {
-        source: opts.source,
-        createdBy: opts.actorId,
-        talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
-      });
-      // Clothing is the default look's (#2015): the same edit, written as a
-      // look version.
-      const look =
-        standardClothing === undefined
-          ? { statements: [] }
-          : lookDefinitionWrite(
-              db,
-              defaultLook,
-              { clothing: standardClothing },
-              { source: lookSource(opts.source), createdBy: opts.actorId }
-            );
-      await db.batch([
-        buildEventInsert(db, {
-          sequenceId: existing.sequenceId,
-          actorId: opts.actorId,
-          kind: 'character.updated',
-          targetType: 'character',
-          targetId: id,
-          summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
-          data: {
-            prevState: prev,
-            // The pin move (#2017), null when no version was appended: the
-            // staleness causes walk these back to the version a shot read.
-            bibleVersion:
-              versionId === null
-                ? null
-                : { from: existing.selectedBibleVersionId, to: versionId },
-          },
-        }),
-        ...statements,
-        ...look.statements,
-        ...(opts.source === 'recast'
-          ? [
-              demoteCharacterSheetClaims(
-                db,
-                eq(sequenceCast.id, existing.castId)
-              ),
-            ]
-          : []),
-      ]);
-      // `voiceDescription` is the selected voice version's, so an edit to it
-      // is a voice write and belongs in the voice history (#1657). Only when it
-      // actually moved: the form posts every field, and a row per unrelated
-      // bible edit would bury the real takes.
-      if (
-        voiceDescription !== undefined &&
-        voiceDescription !== existing.voiceDescription
-      ) {
-        await updateVoice(
-          sequenceId,
-          id,
-          { voiceDescription },
-          'user-edit',
-          opts.actorId
-        );
-      }
-      return await reread(sequenceId, id);
-    },
+    updateBible,
 
     /**
      * Soft-remove from the sequence (undoable): stamp the cast link + a
@@ -2420,13 +2598,15 @@ export function createCharactersMethods(db: Database, teamId: string) {
     ): Promise<boolean> => await heldElsewhere(db, teamId, id, sequenceId),
 
     /**
-     * Whether another sequence has ever cast the character
-     * ({@link castEverElsewhere}): what analysis here must not rewrite.
+     * Whether analysis in `sequenceId` must link the character and never
+     * rewrite it ({@link analysisMayNotRewrite}): the writer attached it
+     * here, or another sequence has ever cast it.
      */
-    getCastEverElsewhere: async (
+    getAnalysisMayNotRewrite: async (
       sequenceId: string,
       id: string
-    ): Promise<boolean> => await castEverElsewhere(db, teamId, id, sequenceId),
+    ): Promise<boolean> =>
+      await analysisMayNotRewrite(db, teamId, id, sequenceId),
 
     /**
      * Whether any live sequence casts the character ({@link castElsewhere}).

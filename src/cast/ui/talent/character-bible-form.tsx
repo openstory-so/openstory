@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 import { useUpdateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
+import { useUpdateTeamCharacter } from '@/cast/ui/use-team-characters';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
 import { Loader2 } from 'lucide-react';
@@ -35,17 +36,45 @@ const characterFormSchema = z.object({
     .optional(),
 });
 
+/** The fields the form seeds from; a cast read and a team read both have them. */
+type BibleFormCharacter = Pick<
+  CharacterWithSheet,
+  | 'id'
+  | 'name'
+  | 'age'
+  | 'gender'
+  | 'ethnicity'
+  | 'physicalDescription'
+  | 'standardClothing'
+  | 'distinguishingFeatures'
+  | 'personality'
+  | 'movement'
+  | 'voiceOnly'
+  | 'isPerson'
+>;
+
 /**
  * Editable character bible (#1108 Phase 2). Uncontrolled inputs seeded from
  * the row (key the form by character id at the call site so switching
  * characters reseeds); one Save persists every field — an emptied input clears
  * that field server-side. Prompts/sheet staleness follows by hash derivation.
+ *
+ * `sequenceId` null is the Characters page, for a character no sequence
+ * casts (#2065): the same fields without the voice, which needs a sequence.
  */
-export const CharacterBibleForm: React.FC<{
-  sequenceId: string;
-  character: CharacterWithSheet;
-}> = ({ sequenceId, character }) => {
-  const updateCharacter = useUpdateSequenceCharacter();
+export const CharacterBibleForm: React.FC<
+  | {
+      sequenceId: string;
+      character: BibleFormCharacter &
+        Pick<CharacterWithSheet, 'voiceDescription'>;
+    }
+  | { sequenceId: null; character: BibleFormCharacter }
+> = (props) => {
+  const { character } = props;
+  const updateSequenceCharacter = useUpdateSequenceCharacter();
+  const updateTeamCharacter = useUpdateTeamCharacter();
+  const isPending =
+    updateSequenceCharacter.isPending || updateTeamCharacter.isPending;
   // A voice-only character (#1585) has no appearance: hide the empty
   // appearance fields (the schema defaults them to '') and label
   // personality as the voice.
@@ -65,15 +94,28 @@ export const CharacterBibleForm: React.FC<{
       });
       return;
     }
-    updateCharacter.mutate(
-      { sequenceId, characterId: character.id, ...result.data },
+    const callbacks = {
+      onSuccess: () => toast.success('Character saved'),
+      onError: (error: Error) =>
+        toast.error('Failed to save character', {
+          description: errorMessage(error),
+        }),
+    };
+    if (props.sequenceId === null) {
+      const { voiceDescription: _noVoiceField, ...bible } = result.data;
+      updateTeamCharacter.mutate(
+        { characterId: character.id, ...bible },
+        callbacks
+      );
+      return;
+    }
+    updateSequenceCharacter.mutate(
       {
-        onSuccess: () => toast.success('Character saved'),
-        onError: (error) =>
-          toast.error('Failed to save character', {
-            description: errorMessage(error),
-          }),
-      }
+        sequenceId: props.sequenceId,
+        characterId: character.id,
+        ...result.data,
+      },
+      callbacks
     );
   };
 
@@ -189,22 +231,22 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
-      <BibleField
-        key={`${character.id}-voice-${character.voiceDescription ?? ''}`}
-        idPrefix="character"
-        label="Voice"
-        name="voiceDescription"
-        defaultValue={character.voiceDescription}
-        textarea
-        placeholder="Native English. Female, mid-50s. Excellent quality. Persona: dry detective. Emotion: unhurried, precise."
-        hint="Language, age, quality, persona, emotion, timbre — what can be heard, not how they look."
-      />
+      {props.sequenceId === null ? null : (
+        <BibleField
+          key={`${character.id}-voice-${props.character.voiceDescription ?? ''}`}
+          idPrefix="character"
+          label="Voice"
+          name="voiceDescription"
+          defaultValue={props.character.voiceDescription}
+          textarea
+          placeholder="Native English. Female, mid-50s. Excellent quality. Persona: dry detective. Emotion: unhurried, precise."
+          hint="Language, age, quality, persona, emotion, timbre — what can be heard, not how they look."
+        />
+      )}
       <div className="flex justify-end">
-        <Button type="submit" disabled={updateCharacter.isPending}>
-          {updateCharacter.isPending && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          {updateCharacter.isPending ? 'Saving…' : 'Save'}
+        <Button type="submit" disabled={isPending}>
+          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </form>

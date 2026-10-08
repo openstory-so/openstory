@@ -33,13 +33,15 @@ export const castElsewhere = (
   sql`EXISTS (SELECT 1 FROM sequence_cast o JOIN sequences os ON os.id = o.sequence_id WHERE o.character_id = ${characterId} AND o.removed_at IS NULL AND os.status != 'archived' AND (${exceptSequenceId} IS NULL OR o.sequence_id != ${exceptSequenceId}))`;
 
 /**
- * Whether another sequence has ever cast the character: any link, removed
- * or in an archived sequence included. What analysis in `sequenceId` may
- * never rewrite (#2050). Wider than {@link heldElsewhere} on purpose: with
- * no library flag (#2065), a character attached here from a sequence that
- * has since been archived is still not this sequence's to rewrite.
+ * Whether the character is not `sequenceId`'s to rewrite (#2050, #2065):
+ * the writer attached it here (the link's `attached`), or another sequence
+ * has ever cast it, a removed link or an archived sequence included. Analysis
+ * in `sequenceId` links such a character and never edits it. Wider than
+ * {@link heldElsewhere} on purpose: a character attached here from a sequence
+ * that has since been archived is still not this sequence's to rewrite, and
+ * nor is one made on the Characters page that only this sequence casts.
  */
-export const castEverElsewhere = async (
+export const analysisMayNotRewrite = async (
   db: Database,
   teamId: string,
   characterId: string,
@@ -47,7 +49,7 @@ export const castEverElsewhere = async (
 ): Promise<boolean> => {
   const [row] = await db
     .select({
-      shared: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${characterId} AND o.sequence_id != ${sequenceId})`,
+      shared: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${characterId} AND (o.sequence_id != ${sequenceId} OR o.attached))`,
     })
     .from(characters)
     .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
@@ -154,7 +156,7 @@ export const deleteCastStatements = (db: Database, where: SQL) =>
 
 /**
  * The team's characters that go when a sequence is hard-deleted: the ones
- * only it ever cast. Read before the delete, because the links that say so
+ * only it ever cast and the writer did not attach. Read before the delete, because the links that say so
  * are deleted first. A condition on `characters`.
  */
 export const charactersOnlyIn = async (
@@ -170,6 +172,8 @@ export const charactersOnlyIn = async (
       and(
         eq(sequenceCast.sequenceId, sequenceId),
         eq(characters.teamId, teamId),
+        // An attached character is the team's, whoever else casts it (#2065).
+        eq(sequenceCast.attached, false),
         sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id != ${sequenceId})`
       )
     );

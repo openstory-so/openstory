@@ -31,7 +31,16 @@ import {
 import { relations } from '@/platform/server/db/schema/relations';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { asStub } from '@/test/as-stub';
-import { deleteTeamCharacter, restoreTeamCharacter } from './cast-edit';
+import {
+  createTeamCharacter,
+  createTeamCharacterLook,
+  deleteTeamCharacter,
+  restoreTeamCharacter,
+  removeTeamCharacterLook,
+  updateTeamCharacter,
+  updateTeamCharacterLook,
+} from './cast-edit';
+import { createCharacterLooksMethods } from './db/character-looks';
 import { createCharactersMethods } from './db/characters';
 
 const { mockDelete, mockGetVoice } = vi.hoisted(() => ({
@@ -62,7 +71,11 @@ let styleId = '';
 
 const chars = () => createCharactersMethods(db, teamId);
 // The surface `deleteTeamCharacter` and the release touch.
-const scoped = () => asStub<ScopedDb>({ characters: chars() });
+const scoped = () =>
+  asStub<ScopedDb>({
+    characters: chars(),
+    characterLooks: createCharacterLooksMethods(db, teamId),
+  });
 
 async function newSequence(title: string) {
   const id = generateId();
@@ -238,6 +251,74 @@ describe('deleteTeamCharacter', () => {
 
     expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
     expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
+  });
+});
+
+describe('a character made with no sequence (#2065)', () => {
+  it('is created, edited and given looks from the Characters page, then cast by an attach', async () => {
+    const actor = { userId };
+    const made = await createTeamCharacter(scoped(), actor, {
+      name: 'Ada Lovelace',
+      physicalDescription: 'grey eyes',
+    });
+    // The tag a hand-added character of that name gets in a sequence.
+    expect(made).toMatchObject({
+      name: 'Ada Lovelace',
+      consistencyTag: 'char_ada_lovelace: ada_lovelace',
+      standardClothing: null,
+    });
+    expect(await chars().listTeam()).toMatchObject([
+      { id: made.id, sequences: [] },
+    ]);
+
+    await updateTeamCharacter(scoped(), actor, made.id, {
+      personality: 'exact',
+      standardClothing: 'coat',
+    });
+    const gala = await createTeamCharacterLook(scoped(), actor, made.id, {
+      name: ' Gala ',
+      clothing: 'gown',
+      styling: '',
+    });
+    await updateTeamCharacterLook(scoped(), actor, made.id, gala.lookId, {
+      styling: 'hair up',
+    });
+    expect(await chars().getCurrent(made.id)).toMatchObject({
+      personality: 'exact',
+      looks: [
+        { name: 'Default', clothing: 'coat' },
+        { name: 'Gala', clothing: 'gown', styling: 'hair up' },
+      ],
+    });
+
+    // A look of another character is not found; a removed one is not edited.
+    const other = await createTeamCharacter(scoped(), actor, { name: 'Bob' });
+    await expect(
+      updateTeamCharacterLook(scoped(), actor, other.id, gala.lookId, {
+        name: 'x',
+      })
+    ).rejects.toThrow('Look not found');
+    await removeTeamCharacterLook(scoped(), actor, made.id, gala.lookId);
+    await expect(
+      updateTeamCharacterLook(scoped(), actor, made.id, gala.lookId, {
+        name: 'x',
+      })
+    ).rejects.toThrow('Restore the look first');
+
+    // Picked for a sequence: cast at her current version, sheet-less.
+    const sequenceId = await newSequence('A');
+    expect(
+      await chars().attach(sequenceId, made.id, { actorId: userId })
+    ).toMatchObject({
+      name: 'Ada Lovelace',
+      characterId: 'char_ada_lovelace',
+      personality: 'exact',
+      standardClothing: 'coat',
+      sheetStatus: 'pending',
+    });
+    expect((await chars().getTeamCharacter(made.id))?.sequences).toHaveLength(
+      1
+    );
   });
 });
 
