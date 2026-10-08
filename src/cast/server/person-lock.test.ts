@@ -4,12 +4,14 @@ import { requirePersonEditStillAllowed } from './person-lock';
 type Db = Parameters<typeof requirePersonEditStillAllowed>[0];
 
 /** A db where the character's talent is, or is not, a real person. */
-const dbWith = (isHuman: boolean) =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only the two reads the lock makes
-  ({
+const dbWith = (isHuman: boolean): Db => {
+  const stub: unknown = {
     talent: { getById: async () => ({ name: 'Mara', isHuman }) },
     characterLooks: { listCastSheetUrls: async () => [] },
-  }) as unknown as Db;
+  };
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub: only the two reads the lock makes
+  return stub as Db;
+};
 
 const character = { id: 'c1', talentId: 't1' };
 
