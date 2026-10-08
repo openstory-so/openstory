@@ -10,7 +10,7 @@ async function waitForComposer(page: Page): Promise<void> {
   ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
 }
 
-test.describe('Images and Videos studio', () => {
+test.describe('Images and Clips studio', () => {
   test('signed-in user can open Images from the sidebar', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Images', exact: true }).click();
@@ -23,10 +23,10 @@ test.describe('Images and Videos studio', () => {
     ).toBeVisible();
   });
 
-  test('signed-in user can open Videos from the sidebar', async ({ page }) => {
+  test('signed-in user can open Clips from the sidebar', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: 'Videos', exact: true }).click();
-    await expect(page).toHaveURL(/\/videos/);
+    await page.getByRole('link', { name: 'Clips', exact: true }).click();
+    await expect(page).toHaveURL(/\/clips/);
     await expect(
       page.getByRole('button', { name: 'Generate video' })
     ).toBeVisible();
@@ -40,7 +40,7 @@ test.describe('Images and Videos studio', () => {
   });
 
   test('video modes follow the model', async ({ page }) => {
-    await page.goto('/videos');
+    await page.goto('/clips');
     await waitForComposer(page);
     const mode = page.getByRole('combobox', { name: 'Video mode' });
     await mode.click();

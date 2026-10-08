@@ -124,9 +124,9 @@ function useLowBalanceWarning() {
 }
 
 const navLinks = [
-  { to: '/sequences', label: 'Sequences', icon: Video },
+  { to: '/sequences', label: 'Sequences', icon: Film },
   { to: '/images', label: 'Images', icon: Images },
-  { to: '/videos', label: 'Videos', icon: Film },
+  { to: '/clips', label: 'Clips', icon: Video },
   ...(MODELS_ENABLED
     ? [{ to: '/models', label: 'Models', icon: Boxes } as const]
     : []),

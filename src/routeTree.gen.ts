@@ -44,6 +44,7 @@ import { Route as OauthLoginRouteImport } from './routes/oauth/login'
 import { Route as R2SplatRouteImport } from './routes/r2.$'
 import { Route as AppAdminModerationRouteImport } from './routes/_app/admin/moderation'
 import { Route as AppAdminUsageRouteImport } from './routes/_app/admin/usage'
+import { Route as AppClipsIndexRouteImport } from './routes/_app/clips/index'
 import { Route as AppGalleryIndexRouteImport } from './routes/_app/gallery/index'
 import { Route as AppImagesIndexRouteImport } from './routes/_app/images/index'
 import { Route as AppLocationsIndexRouteImport } from './routes/_app/locations/index'
@@ -272,6 +273,11 @@ const AppAdminUsageRoute = AppAdminUsageRouteImport.update({
   id: '/usage',
   path: '/usage',
   getParentRoute: () => AppAdminRouteRoute,
+} as any)
+const AppClipsIndexRoute = AppClipsIndexRouteImport.update({
+  id: '/clips/',
+  path: '/clips/',
+  getParentRoute: () => AppRouteRoute,
 } as any)
 const AppGalleryIndexRoute = AppGalleryIndexRouteImport.update({
   id: '/gallery/',
@@ -613,6 +619,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
+  '/clips/': typeof AppClipsIndexRoute
   '/gallery/': typeof AppGalleryIndexRoute
   '/images/': typeof AppImagesIndexRoute
   '/locations/': typeof AppLocationsIndexRoute
@@ -701,6 +708,7 @@ export interface FileRoutesByTo {
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
+  '/clips': typeof AppClipsIndexRoute
   '/gallery': typeof AppGalleryIndexRoute
   '/images': typeof AppImagesIndexRoute
   '/locations': typeof AppLocationsIndexRoute
@@ -794,6 +802,7 @@ export interface FileRoutesById {
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
+  '/_app/clips/': typeof AppClipsIndexRoute
   '/_app/gallery/': typeof AppGalleryIndexRoute
   '/_app/images/': typeof AppImagesIndexRoute
   '/_app/locations/': typeof AppLocationsIndexRoute
@@ -886,6 +895,7 @@ export interface FileRouteTypes {
     | '/api/v1/openapi.json'
     | '/api/v1/sequences'
     | '/api/v1/styles'
+    | '/clips/'
     | '/gallery/'
     | '/images/'
     | '/locations/'
@@ -974,6 +984,7 @@ export interface FileRouteTypes {
     | '/api/v1/openapi.json'
     | '/api/v1/sequences'
     | '/api/v1/styles'
+    | '/clips'
     | '/gallery'
     | '/images'
     | '/locations'
@@ -1066,6 +1077,7 @@ export interface FileRouteTypes {
     | '/api/v1/openapi.json'
     | '/api/v1/sequences'
     | '/api/v1/styles'
+    | '/_app/clips/'
     | '/_app/gallery/'
     | '/_app/images/'
     | '/_app/locations/'
@@ -1376,6 +1388,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/usage'
       preLoaderRoute: typeof AppAdminUsageRouteImport
       parentRoute: typeof AppAdminRouteRoute
+    }
+    '/_app/clips/': {
+      id: '/_app/clips/'
+      path: '/clips'
+      fullPath: '/clips/'
+      preLoaderRoute: typeof AppClipsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
     '/_app/gallery/': {
       id: '/_app/gallery/'
@@ -1841,6 +1860,7 @@ interface AppRouteRouteChildren {
   AppModelsSplatRoute: typeof AppModelsSplatRoute
   AppOauthConsentRoute: typeof AppOauthConsentRoute
   AppTalentIdRoute: typeof AppTalentIdRoute
+  AppClipsIndexRoute: typeof AppClipsIndexRoute
   AppGalleryIndexRoute: typeof AppGalleryIndexRoute
   AppImagesIndexRoute: typeof AppImagesIndexRoute
   AppLocationsIndexRoute: typeof AppLocationsIndexRoute
@@ -1870,6 +1890,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppModelsSplatRoute: AppModelsSplatRoute,
   AppOauthConsentRoute: AppOauthConsentRoute,
   AppTalentIdRoute: AppTalentIdRoute,
+  AppClipsIndexRoute: AppClipsIndexRoute,
   AppGalleryIndexRoute: AppGalleryIndexRoute,
   AppImagesIndexRoute: AppImagesIndexRoute,
   AppLocationsIndexRoute: AppLocationsIndexRoute,
