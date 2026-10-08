@@ -1937,10 +1937,22 @@ export function createCharactersMethods(db: Database, teamId: string) {
         );
         // A field left out keeps its value, as the column upsert did.
         // A talent left out keeps the cast; null uncasts.
-        const bible = bibleWrite(existing, bibleOf(data), {
-          ...opts,
-          talentId: talentId === undefined ? existing.talentId : talentId,
-        });
+        // A re-analysis may turn not-a-person into a person, never the
+        // reverse (#2065): the script's guess does not undo what the row
+        // says, and over-registering is the safe direction. Decided here,
+        // against the row this write already read. The form is how a
+        // person turns it off again.
+        const bible = bibleWrite(
+          existing,
+          {
+            ...bibleOf(data),
+            ...(existing.isPerson ? { isPerson: true } : {}),
+          },
+          {
+            ...opts,
+            talentId: talentId === undefined ? existing.talentId : talentId,
+          }
+        );
         await db.batch([
           // A re-analysis re-extracting a removed character revives it — the
           // script says the character exists again (#1108). Sheet OUTPUT is

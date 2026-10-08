@@ -36,6 +36,12 @@ function makeScopedDb(opts: { currentIn?: string[] } = {}) {
         { sequenceId: C, behind: true },
       ]),
       getById: vi.fn(async () => ({ voiceId: 'voice-1' })),
+      // Already a person at the current version: nothing to repair (#2065).
+      getCurrent: vi.fn(async () => ({
+        id: 'c',
+        talentId: null,
+        isPerson: true,
+      })),
       moveCastToCurrent,
       moveCastsToCurrent: moveMany,
     },

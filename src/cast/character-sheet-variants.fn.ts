@@ -13,6 +13,7 @@ import {
 } from '@/cast/server/cast-edit';
 
 import { requireCharacterLook } from '@/cast/server/character-look';
+import { keepLockedCharacterAPerson } from '@/cast/server/person-lock';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'character-sheet-variants']);
@@ -134,6 +135,13 @@ export const promoteCharacterSheetVariantFn = createServerFn({ method: 'POST' })
       variant.characterId,
       variant.id,
       { actorId: context.user.id }
+    );
+    // As every sheet select does (`selectCharacterSheetVersion`, #2065).
+    await keepLockedCharacterAPerson(
+      context.scopedDb,
+      { userId: context.user.id },
+      context.sequence.id,
+      character
     );
 
     // Realtime emit is purely cache-busting — TanStack Query refetches on the

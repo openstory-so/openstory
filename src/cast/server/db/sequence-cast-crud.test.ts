@@ -1309,6 +1309,33 @@ describe('bible history (#1600)', () => {
     });
   });
 
+  it('a re-analysis may make a character a person, never the reverse (#2065)', async () => {
+    const characters = createCharactersMethods(db, teamId);
+    const analysed = (isPerson: boolean) =>
+      characters.create(
+        { sequenceId, characterId: 'char_001', name: 'Rex', isPerson },
+        analysis
+      );
+    // A new character takes what the script said.
+    const created = await analysed(false);
+    expect(created.isPerson).toBe(false);
+    // Not a person → a person: taken.
+    expect((await analysed(true)).isPerson).toBe(true);
+    expect(await characterVersions(created.id)).toHaveLength(2);
+    // A person → not a person: the row keeps its word, and nothing is
+    // appended for it.
+    expect((await analysed(false)).isPerson).toBe(true);
+    expect(await characterVersions(created.id)).toHaveLength(2);
+    // The form is how a person turns it off again.
+    const edited = await characters.updateBible(
+      sequenceId,
+      created.id,
+      { isPerson: false },
+      { actorId, source: 'edit' }
+    );
+    expect(edited.isPerson).toBe(false);
+  });
+
   it('an edit appends a version by its author; a no-op edit appends none', async () => {
     const m = createCharactersMethods(db, teamId);
     const created = await m.create(

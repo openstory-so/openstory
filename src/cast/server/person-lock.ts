@@ -55,36 +55,92 @@ export async function personLocksOf(
   });
 }
 
-/** One character's lock, by the talent id its bible version carries. */
+/**
+ * One character's lock, by the talent id its bible version carries. The
+ * talent is read as the cast list's join reads it (`getCastIdentity`: by
+ * id, whatever its visibility now), so the form and the edit agree.
+ */
 export async function personLockOf(
   scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
   character: { id: string; talentId: string | null }
 ): Promise<PersonLock | null> {
   const talent = character.talentId
-    ? ((await scopedDb.talent.getById(character.talentId)) ?? null)
+    ? ((await scopedDb.talent.getCastIdentity(character.talentId)) ?? null)
     : null;
   const [lock] = await personLocksOf(scopedDb, [{ id: character.id, talent }]);
   return lock ?? null;
 }
 
 /**
- * Refuse an edit that would make a locked character not a person. Setting
- * it to a person, or leaving the field out, is always allowed.
+ * A bible edit of a character, as the lock allows it. Computed on EVERY
+ * edit, not only one that sends `isPerson`:
+ *
+ * - `isPerson: false` on a locked character is refused;
+ * - any other edit of a locked character writes a person. The new version is
+ *   built from the version the editing sequence pins, which may be an older
+ *   one that says not a person (another sequence's upload made the newer
+ *   one), and a row stored wrong repairs itself on its next save.
+ *
+ * An unlocked character's edit comes back as it was sent.
  */
-export async function requirePersonEditAllowed(
+export async function lockedPersonEdit<U extends { isPerson?: boolean | null }>(
   scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
-  update: { isPerson?: boolean | null },
+  update: U,
   character: { id: string; talentId: string | null }
-): Promise<void> {
-  if (update.isPerson !== false) return;
+): Promise<U> {
   const lock = await personLockOf(scopedDb, character);
-  if (lock) throw new ConflictError(personLockMessage(lock));
+  if (!lock) return update;
+  if (update.isPerson === false) {
+    throw new ConflictError(personLockMessage(lock));
+  }
+  return { ...update, isPerson: true };
+}
+
+/**
+ * A locked character stored as not a person is written a person (#2065),
+ * BEFORE a write that would carry its version forward or pin a sequence to
+ * it, and after one that locks it:
+ *
+ * - a default look's styling edit copies the bible version forward
+ *   (`legacyFeaturesMove`);
+ * - a version move pins a sequence, whose sheet may be a real person's
+ *   photo, to the current version;
+ * - selecting an uploaded photo of a real person locks the character.
+ *
+ * `sequenceId` is whose version `character` was read at: the one that
+ * sequence pins, or the current one from no sequence (`null`). When in
+ * doubt, a person: over-registering is the safe direction.
+ */
+export async function keepLockedCharacterAPerson(
+  scopedDb: LockDb & Pick<ScopedDb, 'talent' | 'characters'>,
+  actor: { userId: string },
+  sequenceId: string | null,
+  character: { id: string; talentId: string | null; isPerson: boolean }
+): Promise<void> {
+  if (character.isPerson) return;
+  if (!(await personLockOf(scopedDb, character))) return;
+  const opts = { actorId: actor.userId, source: 'edit' as const };
+  if (sequenceId === null) {
+    await scopedDb.characters.updateBible(
+      null,
+      character.id,
+      { isPerson: true },
+      opts
+    );
+  } else {
+    await scopedDb.characters.updateBible(
+      sequenceId,
+      character.id,
+      { isPerson: true },
+      opts
+    );
+  }
 }
 
 /**
  * The same check again, after the edit wrote `isPerson: false`. D1 has no
  * interactive transaction, so a recast or an uploaded sheet can land between
- * {@link requirePersonEditAllowed} and the write. If the character is locked
+ * {@link lockedPersonEdit} and the write. If the character is locked
  * now, `putBack` writes it a person again and the edit is refused.
  *
  * Not covered: an upload whose sheet lands after this re-check, having read

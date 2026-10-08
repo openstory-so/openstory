@@ -61,6 +61,9 @@ export function buildCharacterInsert(args: {
     personality: castingAttrs?.personality ?? character.personality,
     movement: castingAttrs?.movement ?? character.movement,
     voiceOnly: character.voiceOnly,
+    // What the script says, or a person when cast with a signed portrait.
+    // For a character that already exists the write keeps a person a
+    // person whatever this says (`characters.create`, #2065).
     isPerson: isPersonFromTalentCast(
       character.isPerson,
       talentMatch?.hasSignedRelease

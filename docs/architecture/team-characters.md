@@ -434,7 +434,11 @@ but a person.
   cast's sheet claims (a pin move changes their inputs under any run in
   flight) and writes `character.version-moved` with every from → to. No
   version row is written and no current pointer moves. Nothing when nothing
-  is behind. After the write, the voice the pin let go of is released
+  is behind. One exception, before the write (#2065): a character that
+  must be a person (`person-lock.ts`) whose current version says it is not
+  gets a person version first, and the move goes to that, so a sequence
+  whose sheet is a real person's photo never lands on a not-a-person
+  version. After the write, the voice the pin let go of is released
   through `releaseReplacedVoice` when nothing holds it any more (the last
   pin moving off a voice is what frees its slot; provider first, row second,
   a failed release logged and retried by a later release).

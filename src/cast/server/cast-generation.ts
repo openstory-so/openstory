@@ -8,7 +8,7 @@
 import { safeTextToImageModel } from '@/models/models';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from '@/cast/character-prompt';
-import { isPersonFromTalentCast } from '@/cast/likeness';
+import { personLocksOf } from '@/cast/server/person-lock';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { getGenerationChannel } from '@/platform/realtime';
 import { requireCharacter } from '@/cast/server/cast-edit';
@@ -231,6 +231,9 @@ export async function recastCharacter(
     movement: talentWithSheets.movement ?? '',
   });
 
+  const [recastLock = null] = await personLocksOf(scopedDb, [
+    { id: data.characterId, talent: talentWithSheets },
+  ]);
   // The talent and its appearance become ONE 'recast' bible version (#1600,
   // #2017).
   await scopedDb.characters.updateBible(
@@ -244,10 +247,10 @@ export async function recastCharacter(
       personality: castingAttrs.personality,
       movement: castingAttrs.movement,
       consistencyTag: castingAttrs.consistencyTag,
-      isPerson: isPersonFromTalentCast(
-        character.isPerson,
-        talentWithSheets.isHuman
-      ),
+      // A person when the new talent is a real one, or when a sheet the
+      // character wears in ANY sequence is a real person's photo (#2065):
+      // the version is shared, and `applyToSequenceIds` moves others to it.
+      isPerson: recastLock !== null || character.isPerson,
     },
     { actorId: actor.userId, source: 'recast', talentId: data.talentId }
   );

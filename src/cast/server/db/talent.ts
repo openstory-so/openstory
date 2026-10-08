@@ -271,6 +271,24 @@ function createTalentReadMethodsScoped(db: Database, teamId: string | null) {
       });
     },
 
+    /**
+     * A cast talent's name and whether it is a real person (#2065), by id,
+     * whatever its visibility now: what the person lock reads. Not scoped
+     * on purpose. The cast list's join (`characters.listWithTalent`) is not
+     * either, so the form and the edit give one answer, and a talent that
+     * has since gone private still locks the characters cast with it.
+     * Nothing else of the row is returned.
+     */
+    getCastIdentity: async (
+      talentId: string
+    ): Promise<{ name: string; isHuman: boolean | null } | undefined> => {
+      const [row] = await db
+        .select({ name: talent.name, isHuman: talent.isHuman })
+        .from(talent)
+        .where(eq(talent.id, talentId));
+      return row;
+    },
+
     getWithRelations: async (talentId: string) => {
       return db.query.talent.findFirst({
         where: { id: talentId, ...queryScope },

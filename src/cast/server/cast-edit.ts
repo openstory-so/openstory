@@ -33,7 +33,8 @@ import {
 } from '@/cast/bible-field';
 import { effectiveStyling } from '@/cast/character-looks';
 import {
-  requirePersonEditAllowed,
+  keepLockedCharacterAPerson,
+  lockedPersonEdit,
   requirePersonEditStillAllowed,
 } from '@/cast/server/person-lock';
 import { LOOK_TEXT_MAX } from '@/cast/look-field';
@@ -247,14 +248,11 @@ export async function updateTeamCharacter(
     ...update
   }: Omit<CharacterBibleUpdate, 'voiceDescription'> & LegacyFeaturesInput
 ) {
-  if (update.isPerson === false) {
-    const before = await requireCurrentCharacter(scopedDb, characterId);
-    await requirePersonEditAllowed(scopedDb, update, before);
-  }
+  const before = await requireCurrentCharacter(scopedDb, characterId);
   const character = await scopedDb.characters.updateBible(
     null,
     characterId,
-    update,
+    await lockedPersonEdit(scopedDb, update, before),
     { actorId: actor.userId, source: 'edit' }
   );
   await requirePersonEditStillAllowed(scopedDb, update, character, () =>
@@ -296,7 +294,8 @@ export async function attachLibraryCharacter(
 /**
  * Edit a character's bible fields. Only the sent fields change; the sheet and
  * prompts that project them re-stale by hash derivation. `isPerson: false`
- * is refused while the character must be a person (#2065, `person-lock.ts`).
+ * is refused while the character must be a person, and any other edit of
+ * such a character writes a person (#2065, `person-lock.ts`).
  */
 export async function updateCharacter(
   scopedDb: ScopedDb,
@@ -309,11 +308,10 @@ export async function updateCharacter(
   }: CharacterBibleUpdate & LegacyFeaturesInput
 ) {
   const before = await requireCharacter(scopedDb, sequenceId, characterId);
-  await requirePersonEditAllowed(scopedDb, update, before);
   const character = await scopedDb.characters.updateBible(
     sequenceId,
     characterId,
-    update,
+    await lockedPersonEdit(scopedDb, update, before),
     {
       actorId: actor.userId,
       source: 'edit',
@@ -481,6 +479,10 @@ export async function selectCharacterSheetVersion(
     versionId,
     { actorId: actor.userId }
   );
+  // The sheet now worn may be an uploaded photo of a real person: the lock
+  // reads it, and a character stored as not a person is written one, as
+  // the upload itself did (#2065).
+  await keepLockedCharacterAPerson(scopedDb, actor, sequenceId, character);
   await emitQuietly(() =>
     getGenerationChannel(sequenceId).emit(
       'generation.character-sheet:progress',
@@ -589,6 +591,12 @@ export async function updateCharacterLook(
   const look = requireLiveLook(
     await requireCharacterLook(scopedDb, character, lookId)
   );
+  // A default look's styling edit may copy the pinned bible version forward
+  // and make it current (the #2065 features move): never a stale "not a
+  // person" on a locked character.
+  if (look.isDefault) {
+    await keepLockedCharacterAPerson(scopedDb, actor, sequenceId, character);
+  }
   const updated = await scopedDb.characterLooks.update(
     sequenceId,
     look.id,
@@ -712,6 +720,16 @@ export async function updateTeamCharacterLook(
   if (look.deletedAt) {
     throw new ValidationError(
       `${look.name} was removed. Restore the look first.`
+    );
+  }
+  // As in {@link updateCharacterLook}: the features move copies the current
+  // bible version forward.
+  if (look.isDefault) {
+    await keepLockedCharacterAPerson(
+      scopedDb,
+      actor,
+      null,
+      await requireCurrentCharacter(scopedDb, characterId)
     );
   }
   const updated = await scopedDb.characterLooks.update(

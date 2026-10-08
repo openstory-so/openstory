@@ -25,6 +25,7 @@ import {
   pickCharacterBible,
 } from '@/cast/server/db/bible-versions';
 import { effectiveStyling } from '@/cast/character-looks';
+import { keepLockedCharacterAPerson } from '@/cast/server/person-lock';
 import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import { durationGridForModel } from '@/motion/model-capabilities';
 import { NotFoundError } from '@/platform/errors';
@@ -233,6 +234,24 @@ export async function assertMovableSequences(
 }
 
 /**
+ * Before any sequence moves to the current version (#2065): the lock is the
+ * character's, in every sequence, so a sequence whose sheet is a real
+ * person's photo must not land on a version stored as not a person. A
+ * locked character's current version is written a person first, and the
+ * move goes to that.
+ */
+async function keepCurrentVersionAPerson(
+  scopedDb: ScopedDb,
+  actor: { userId: string },
+  characterId: string
+): Promise<void> {
+  const current = await scopedDb.characters.getCurrent(characterId);
+  if (current) {
+    await keepLockedCharacterAPerson(scopedDb, actor, null, current);
+  }
+}
+
+/**
  * Move ONE sequence to the character's current version ("Update this
  * sequence"): the pointer write, then the release of the voice its pin let
  * go of, when nothing holds it any more (`releaseReplacedVoice`: provider
@@ -247,6 +266,7 @@ export async function moveSequenceToCurrent(
 ): Promise<{ moved: boolean }> {
   const before = await scopedDb.characters.getById(sequenceId, characterId);
   if (!before) throw new NotFoundError('Character not found');
+  await keepCurrentVersionAPerson(scopedDb, actor, characterId);
   const { moved, character } = await scopedDb.characters.moveCastToCurrent(
     sequenceId,
     characterId,
@@ -274,6 +294,7 @@ export async function moveCastsToCurrent(
   sequenceIds: readonly string[]
 ): Promise<{ sequenceId: string; moved: boolean }[]> {
   await assertMovableSequences(scopedDb, characterId, sequenceIds);
+  await keepCurrentVersionAPerson(scopedDb, actor, characterId);
   const moves = await scopedDb.characters.moveCastsToCurrent(
     sequenceIds,
     characterId,

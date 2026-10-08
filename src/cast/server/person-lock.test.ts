@@ -6,7 +6,7 @@ type Db = Parameters<typeof requirePersonEditStillAllowed>[0];
 /** A db where the character's talent is, or is not, a real person. */
 const dbWith = (isHuman: boolean): Db => {
   const stub: unknown = {
-    talent: { getById: async () => ({ name: 'Mara', isHuman }) },
+    talent: { getCastIdentity: async () => ({ name: 'Mara', isHuman }) },
     characterLooks: { listCastSheetUrls: async () => [] },
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub: only the two reads the lock makes

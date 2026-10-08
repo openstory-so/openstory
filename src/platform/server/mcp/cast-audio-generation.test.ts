@@ -27,6 +27,7 @@ import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
+  characterBibleVersions,
   frames,
   frameVariants,
   locationLibrary,
@@ -42,6 +43,17 @@ import {
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import {
+  selectCharacterSheetVersion,
+  updateCharacter,
+  updateCharacterLook,
+  updateTeamCharacter,
+  updateTeamCharacterLook,
+} from '@/cast/server/cast-edit';
+import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
+import { sha256Hex } from '@/platform/compliance/hash';
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 vi.mock('@/platform/server/workflow/client', () => ({
@@ -522,5 +534,262 @@ describe('moves and copies on the real scoped db (#2017)', () => {
     await expect(
       scopedDb.characters.copyForSequence(sequenceId, created.id, { actorId })
     ).rejects.toThrow('only in this sequence');
+  });
+});
+
+describe('a character that must be a person is stored as one, on every path (#2065)', () => {
+  const actor = () => ({ userId: actorId });
+  const sequence = async (title: string) => {
+    const id = generateId();
+    const [seq] = await db
+      .select({ styleId: sequences.styleId })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!seq) throw new Error('seed sequence missing');
+    await db.insert(sequences).values({
+      id,
+      teamId,
+      styleId: seq.styleId,
+      title,
+      status: 'completed',
+    });
+    return id;
+  };
+  /** Cast in A (the seed sequence) and B, both pinning one bible version. */
+  const castInTwo = async (isPerson: boolean) => {
+    const created = await castCharacter({
+      id: generateId(),
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Xan',
+      age: '30s',
+      isPerson,
+    });
+    const b = await sequence('B');
+    await scopedDb.characters.attach(b, created.id, { actorId });
+    return { id: created.id, b };
+  };
+  /**
+   * An uploaded photo the ledger saw a real person in, selected as the
+   * default look's sheet in `inSequence`. The sheet only: the upload path's
+   * own bible write is the caller's to make or leave out.
+   */
+  const uploadRealPhoto = async (inSequence: string, characterId: string) => {
+    const url = `/r2/characters/${teamId}/uploads/${generateId()}.png`;
+    const { version } = await scopedDb.characterSheetVariants.applyConvergent({
+      sequenceId: inSequence,
+      lookId: characterId,
+      url,
+      storagePath: url.slice('/r2/'.length),
+      inputHash: null,
+      model: USER_UPLOAD_MODEL,
+    });
+    await scopedDb.compliance.attestations.record({
+      subjectType: 'uploaded_image',
+      subjectId: await sha256Hex(url),
+      statementVersion: PORTRAIT_RIGHTS_V1.version,
+      statementSha256: 'x'.repeat(64),
+      depictsRealPerson: true,
+    });
+    return version.id;
+  };
+  /** What the upload path writes when the ledger says a real person. */
+  const markPerson = (inSequence: string, characterId: string) =>
+    scopedDb.characters.updateBible(
+      inSequence,
+      characterId,
+      { isPerson: true },
+      { actorId, source: 'edit' }
+    );
+  const isPersonIn = async (inSequence: string, characterId: string) =>
+    (await scopedDb.characters.getById(inSequence, characterId))?.isPerson;
+  const isPersonNow = async (characterId: string) =>
+    (await scopedDb.characters.getCurrent(characterId))?.isPerson;
+
+  it('C1: an edit from a sequence that pins an older not-a-person version writes a person', async () => {
+    const { id, b } = await castInTwo(false);
+    await uploadRealPhoto(b, id);
+    await markPerson(b, id);
+    expect(await isPersonIn(sequenceId, id)).toBe(false);
+
+    // A edits the age: the new current version is built from A's pin.
+    const edited = await updateCharacter(scopedDb, actor(), sequenceId, id, {
+      age: '40s',
+    });
+    expect(edited).toMatchObject({ age: '40s', isPerson: true });
+    expect(await isPersonNow(id)).toBe(true);
+    // Still refused outright.
+    await expect(
+      updateCharacter(scopedDb, actor(), sequenceId, id, { isPerson: false })
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // A row stored wrong repairs itself on its next save, from no sequence
+    // too.
+    await db
+      .update(characterBibleVersions)
+      .set({ isPerson: false })
+      .where(eq(characterBibleVersions.characterId, id));
+    await updateTeamCharacter(scopedDb, actor(), id, { movement: 'Glides' });
+    expect(await isPersonNow(id)).toBe(true);
+  });
+
+  it('C2: the features move of a default look’s styling edit does not carry a stale not-a-person forward', async () => {
+    const { id, b } = await castInTwo(false);
+    // Before #2065: the features still sit on her bible version.
+    await db
+      .update(characterBibleVersions)
+      .set({ legacyDistinguishingFeatures: 'scar' })
+      .where(eq(characterBibleVersions.characterId, id));
+    await uploadRealPhoto(b, id);
+    await markPerson(b, id);
+
+    // A, still pinning the not-a-person version, edits the styling: the
+    // move copies A's pinned version forward and makes it current.
+    await updateCharacterLook(scopedDb, actor(), sequenceId, id, id, {
+      styling: 'hair down',
+    });
+    expect(await scopedDb.characters.getCurrent(id)).toMatchObject({
+      isPerson: true,
+      legacyDistinguishingFeatures: null,
+    });
+    expect(await isPersonIn(sequenceId, id)).toBe(true);
+  });
+
+  it('C2: the same from the Characters page, for a row stored wrong', async () => {
+    const { id, b } = await castInTwo(true);
+    await uploadRealPhoto(b, id);
+    await db
+      .update(characterBibleVersions)
+      .set({ isPerson: false, legacyDistinguishingFeatures: 'scar' })
+      .where(eq(characterBibleVersions.characterId, id));
+    await updateTeamCharacterLook(scopedDb, actor(), id, id, {
+      styling: 'hair down',
+    });
+    expect(await scopedDb.characters.getCurrent(id)).toMatchObject({
+      isPerson: true,
+      legacyDistinguishingFeatures: null,
+    });
+  });
+
+  it('C3: Update this sequence never lands a real-person sheet on a not-a-person version', async () => {
+    const { moveSequenceToCurrent, moveCastsToCurrent } =
+      await import('@/cast/server/version-moves');
+    const { id, b } = await castInTwo(true);
+    // Nothing locks her yet: A makes her not a person. B is now behind.
+    await updateCharacter(scopedDb, actor(), sequenceId, id, {
+      isPerson: false,
+    });
+    expect(await isPersonNow(id)).toBe(false);
+    // B's sheet becomes a real person's photo. B already pins a person, so
+    // the upload writes no bible version.
+    await uploadRealPhoto(b, id);
+
+    expect(await moveSequenceToCurrent(scopedDb, actor(), b, id)).toEqual({
+      moved: true,
+    });
+    const inB = await scopedDb.characters.getById(b, id);
+    expect(inB?.isPerson).toBe(true);
+    expect(inB?.selectedBibleVersionId).toBe(inB?.currentBibleVersionId);
+
+    // "Move sequences" is the same gate.
+    const c = await sequence('C');
+    await scopedDb.characters.attach(c, id, { actorId });
+    await db
+      .update(characterBibleVersions)
+      .set({ isPerson: false })
+      .where(eq(characterBibleVersions.characterId, id));
+    await moveCastsToCurrent(scopedDb, actor(), id, [c]);
+    expect(await isPersonIn(c, id)).toBe(true);
+  });
+
+  it('C3: a recast with a talent that is not a person, applied to a sequence wearing a real photo, stays a person', async () => {
+    const { id, b } = await castInTwo(false);
+    await uploadRealPhoto(b, id);
+    await markPerson(b, id);
+    const [creature] = await db
+      .insert(talent)
+      .values({ teamId, name: 'Rex', description: 'a dragon', isHuman: false })
+      .returning();
+    if (!creature) throw new Error('talent insert returned nothing');
+
+    // A (pinning the not-a-person version) recasts, and applies it to B.
+    await data('recast_character', {
+      sequenceId,
+      characterId: id,
+      talentId: creature.id,
+      applyToSequenceIds: [b],
+    });
+    const inB = await scopedDb.characters.getById(b, id);
+    expect(inB).toMatchObject({ talentId: creature.id, isPerson: true });
+    // One recast version, pinned by both: A is not left behind by a repair.
+    const inA = await scopedDb.characters.getById(sequenceId, id);
+    expect(inA?.selectedBibleVersionId).toBe(inB?.selectedBibleVersionId);
+    expect(inA?.selectedBibleVersionId).toBe(inA?.currentBibleVersionId);
+  });
+
+  it('C4: selecting an uploaded photo of a real person again makes the character a person', async () => {
+    const created = await castCharacter({
+      id: generateId(),
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Xan',
+      isPerson: false,
+    });
+    const { id } = created;
+    const photo = await uploadRealPhoto(sequenceId, id);
+    await markPerson(sequenceId, id);
+    // Regenerated: a drawn sheet is selected, and the lock lifts.
+    await scopedDb.characterSheetVariants.applyConvergent({
+      sequenceId,
+      lookId: id,
+      url: '/r2/drawn.png',
+      storagePath: 'drawn.png',
+      inputHash: null,
+      model: 'nano_banana_2',
+    });
+    await updateCharacter(scopedDb, actor(), sequenceId, id, {
+      isPerson: false,
+    });
+    expect(await isPersonIn(sequenceId, id)).toBe(false);
+
+    await selectCharacterSheetVersion(scopedDb, actor(), sequenceId, id, photo);
+    expect(await isPersonIn(sequenceId, id)).toBe(true);
+    expect(await isPersonNow(id)).toBe(true);
+  });
+
+  it('C6: a talent that went private still locks, in the list and in the edit alike', async () => {
+    const otherTeam = generateId();
+    await db
+      .insert(teams)
+      .values({ id: otherTeam, name: 'O', slug: otherTeam });
+    // Cast while it was public; private now, so the team-scoped talent read
+    // no longer returns it.
+    const [actress] = await db
+      .insert(talent)
+      .values({
+        teamId: otherTeam,
+        name: 'Ada Vale',
+        isHuman: true,
+        isPublic: false,
+      })
+      .returning();
+    if (!actress) throw new Error('talent insert returned nothing');
+    const created = await castCharacter({
+      id: generateId(),
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Xan',
+      talentId: actress.id,
+    });
+    expect(await scopedDb.talent.getById(actress.id)).toBeUndefined();
+    const lock = { reason: 'talent', talentName: 'Ada Vale' };
+    const list = await scopedDb.characters.listWithTalent(sequenceId);
+    expect(await personLocksOf(scopedDb, list)).toEqual([lock]);
+    expect(await personLockOf(scopedDb, created)).toEqual(lock);
+    await expect(
+      updateCharacter(scopedDb, actor(), sequenceId, created.id, {
+        isPerson: false,
+      })
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 });
