@@ -30,6 +30,7 @@ import {
 } from './player-events';
 import { cn } from '@/ui/utils';
 import { playerFrameClassName } from '@/ui/player-frame';
+import { playbackGapMessage } from './playback-gap';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
 import { StitchedPlayer } from '@openstory/stitch-player/react';
@@ -129,6 +130,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   }, [clipsKey, musicUrl, musicGainDb]);
 
   const frameClassName = playerFrameClassName(aspectRatio, className);
+  const gapMessage = meta ? playbackGapMessage(meta) : null;
 
   const overlay = (
     <>
@@ -143,6 +145,20 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         )}
       </div>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        {gapMessage && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-testid="playback-gap-warning"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-black/50 text-amber-400"
+                aria-label="Playback gaps"
+              >
+                <TriangleAlert className="h-4 w-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{gapMessage}</TooltipContent>
+          </Tooltip>
+        )}
         {meta?.hasMixedResolutions && (
           <Tooltip>
             <TooltipTrigger asChild>

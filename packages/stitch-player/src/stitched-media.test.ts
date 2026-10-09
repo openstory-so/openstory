@@ -23,6 +23,7 @@ const { mocks, lastOpts } = vi.hoisted(() => {
     setMuted: vi.fn(),
     setMusicEnabled: vi.fn(),
     getPlaybackTime: vi.fn(),
+    updateCues: vi.fn(),
   };
   return { mocks, lastOpts };
 });
@@ -41,6 +42,7 @@ vi.mock('./playback.js', () => {
     setMuted = mocks.setMuted;
     setMusicEnabled = mocks.setMusicEnabled;
     getPlaybackTime = mocks.getPlaybackTime;
+    source = { updateCues: mocks.updateCues };
   }
   return { SequencePlayerEngine };
 });
@@ -58,6 +60,7 @@ const meta: SequencePlayerMeta = {
   resolutionsLabel: '1920×1080',
   silentClipIndexes: [],
   missingStillIndexes: [],
+  musicUndecodable: false,
 };
 
 const source = {
@@ -115,6 +118,7 @@ beforeEach(() => {
   mocks.setMuted.mockReset();
   mocks.setMusicEnabled.mockReset();
   mocks.getPlaybackTime.mockReset().mockReturnValue(0);
+  mocks.updateCues.mockReset();
 });
 
 describe('StitchedSequenceMedia capabilities', () => {
@@ -338,6 +342,47 @@ describe('StitchedSequenceMedia subtitles', () => {
     expect(changed).toHaveBeenCalledOnce();
   });
 
+  it('copies new cue text onto the open source without rebuilding', async () => {
+    const media = await preparedMedia();
+    const next = {
+      ...cued,
+      clips: [
+        {
+          videoUrl: '/a.mp4',
+          posterUrl: null,
+          cues: [{ startSeconds: 0, endSeconds: 1, text: 'Now' }],
+        },
+      ],
+    };
+    media.setSource(next);
+    expect(mocks.dispose).not.toHaveBeenCalled();
+    expect(mocks.updateCues).toHaveBeenCalledWith(next.clips);
+    lastOpts.current?.onTimeUpdate?.(0.5);
+    expect(media.activeCueText).toBe('Now');
+  });
+
+  it('leaves captions disabled when a cue-only update repeats subtitles', async () => {
+    const media = await preparedMedia();
+    media.setSource(cued);
+    const track = media.textTracks[0];
+    if (!track) throw new Error('expected a subtitle track');
+    track.mode = 'disabled';
+    media.setSource({
+      ...cued,
+      clips: [
+        {
+          videoUrl: '/a.mp4',
+          posterUrl: null,
+          cues: [{ startSeconds: 1, endSeconds: 2, text: 'Later' }],
+        },
+      ],
+    });
+    expect(mocks.dispose).not.toHaveBeenCalled();
+    expect(media.textTracks[0]?.mode).toBe('disabled');
+    lastOpts.current?.onTimeUpdate?.(1.5);
+    expect(media.activeCueText).toBeNull();
+  });
+
   it('activeCueText follows the playhead and the track mode', async () => {
     const media = await preparedMedia();
     media.setSource(cued);
@@ -348,5 +393,52 @@ describe('StitchedSequenceMedia subtitles', () => {
     const track = media.textTracks[0];
     if (track) track.mode = 'disabled';
     expect(media.activeCueText).toBeNull();
+  });
+});
+
+describe('StitchedSequenceMedia picture-in-picture', () => {
+  const pipCanvas = {
+    captureStream: () => ({}),
+    getContext: () => ({ drawImage() {} }),
+  };
+
+  async function pipMedia(): Promise<
+    InstanceType<typeof StitchedSequenceMedia>
+  > {
+    const play = vi.fn(() => Promise.reject(new Error('play failed')));
+    vi.stubGlobal('document', {
+      pictureInPictureEnabled: true,
+      createElement: () => ({
+        play,
+        addEventListener() {},
+        readyState: 0,
+      }),
+    });
+    vi.stubGlobal('HTMLVideoElement', {
+      prototype: { requestPictureInPicture() {} },
+    });
+    const media = new StitchedSequenceMedia();
+    media.setListeners({
+      onPictureInPictureError: vi.fn(),
+      logger: { warn: vi.fn() },
+    });
+    media.setSource(source);
+    media.attach(asStub<HTMLCanvasElement>(pipCanvas));
+    await mocks.prepare.mock.results[0]?.value;
+    return media;
+  }
+
+  it('reports a play failure and does not float the window', async () => {
+    const onPictureInPictureError = vi.fn();
+    const media = await pipMedia();
+    media.setListeners({
+      onPictureInPictureError,
+      logger: { warn: vi.fn() },
+    });
+    await expect(media.requestPictureInPicture?.()).rejects.toThrow(
+      'play failed'
+    );
+    expect(onPictureInPictureError).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
   });
 });

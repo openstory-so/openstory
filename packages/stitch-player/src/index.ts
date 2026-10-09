@@ -1,7 +1,8 @@
 /**
  * @openstory/stitch-player — plays N clip videos and timed stills as one
  * sequence on a canvas, in the browser, with music, per-clip dialogue and
- * subtitles. Browser-only: WebCodecs (via mediabunny) + Web Audio.
+ * subtitles. Playback and export need WebCodecs (via mediabunny) and Web
+ * Audio. The modules themselves import under Node.
  *
  * Entry points:
  * - `@openstory/stitch-player`         this file: the engine, no framework.

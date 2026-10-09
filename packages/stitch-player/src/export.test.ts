@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackClip } from './playback-clip.js';
 import type {
+  ClipAudioTrack,
   ConcatenatedVideoMeta,
   ConcatenatedVideoSource as SourceType,
 } from './concatenated-video-source.js';
@@ -9,6 +10,9 @@ const canEncodeVideo = vi.fn(async () => true);
 const canEncodeAudio = vi.fn(async () => true);
 const outputCancel = vi.fn(async () => undefined);
 const addedAt: number[] = [];
+const drawn: unknown[] = [];
+const filled: string[] = [];
+const musicInputs: Array<{ dispose: ReturnType<typeof vi.fn> }> = [];
 
 vi.doMock('mediabunny', () => ({
   ALL_FORMATS: [],
@@ -38,9 +42,31 @@ vi.doMock('mediabunny', () => ({
     }
     close() {}
   },
-  AudioBufferSource: class {},
-  AudioBufferSink: class {},
-  Input: class {},
+  AudioBufferSource: class {
+    add() {
+      return Promise.resolve();
+    }
+    close() {}
+  },
+  AudioBufferSink: class {
+    buffers() {
+      return (async function* () {
+        yield { buffer: { duration: 0.25 }, timestamp: 0 };
+      })();
+    }
+  },
+  CustomSource: class {},
+  Input: class {
+    dispose = vi.fn();
+    constructor() {
+      musicInputs.push(this);
+    }
+    getPrimaryAudioTrack() {
+      return Promise.resolve({
+        canDecode: () => Promise.resolve(false),
+      });
+    }
+  },
   UrlSource: class {},
   CanvasSink: class {},
   EncodedPacketSink: class {},
@@ -48,7 +74,7 @@ vi.doMock('mediabunny', () => ({
 
 const { ConcatenatedVideoSource } =
   await import('./concatenated-video-source.js');
-const { exportSequence } = await import('./export.js');
+const { exportSequence, downloadSequence } = await import('./export.js');
 
 const asCanvases = (
   frames: AsyncGenerator<unknown, void, unknown>
@@ -89,7 +115,12 @@ function meta(
 }
 
 async function* oneFrame(): AsyncGenerator<unknown, void, unknown> {
-  yield { canvas: {}, timestamp: 0, duration: 1 };
+  yield { canvas: 'only', timestamp: 0, duration: 1 };
+}
+
+async function* twoFrames(): AsyncGenerator<unknown, void, unknown> {
+  yield { canvas: 'first', timestamp: 0, duration: 0.5 };
+  yield { canvas: 'second', timestamp: 0.5, duration: 0.5 };
 }
 
 async function* noFrames(): AsyncGenerator<unknown, void, unknown> {
@@ -101,12 +132,26 @@ const canvas = {
   height: 0,
   getContext: () => ({
     clearRect() {},
-    drawImage() {},
+    drawImage(source: unknown) {
+      drawn.push(source);
+    },
+    font: '',
+    textAlign: '',
+    textBaseline: '',
+    fillStyle: '',
+    measureText: () => ({ width: 10 }),
+    fillRect() {},
+    fillText(text: string) {
+      filled.push(text);
+    },
   }),
 };
 
 beforeEach(() => {
   addedAt.length = 0;
+  drawn.length = 0;
+  filled.length = 0;
+  musicInputs.length = 0;
   canEncodeVideo.mockResolvedValue(true);
   canEncodeAudio.mockResolvedValue(true);
   vi.spyOn(ConcatenatedVideoSource.prototype, 'prepare').mockResolvedValue(
@@ -229,5 +274,143 @@ describe('exportSequence', () => {
       })
     ).rejects.toThrow('Export cancelled');
     expect(outputCancel).toHaveBeenCalled();
+  });
+
+  it('holds each decoded frame until the next one', async () => {
+    vi.spyOn(ConcatenatedVideoSource.prototype, 'canvases').mockImplementation(
+      () => asCanvases(twoFrames())
+    );
+    await exportSequence({ clips: [clip], ...settings, frameRate: 4 });
+    expect(drawn).toEqual(['first', 'first', 'second', 'second']);
+    expect(addedAt).toEqual([0, 0.25, 0.5, 0.75]);
+  });
+
+  it('places a clip’s sound at its offset', async () => {
+    const starts: number[] = [];
+    vi.stubGlobal(
+      'OfflineAudioContext',
+      class {
+        length = 48_000 * 4;
+        sampleRate = 48_000;
+        destination = {};
+        createGain() {
+          return { gain: { value: 0 }, connect() {} };
+        }
+        createBufferSource() {
+          return {
+            buffer: null as unknown,
+            connect() {},
+            start(at: number) {
+              starts.push(at);
+            },
+          };
+        }
+        startRendering() {
+          return Promise.resolve({});
+        }
+      }
+    );
+    vi.spyOn(ConcatenatedVideoSource.prototype, 'prepare').mockResolvedValue(
+      meta({ totalDurationSeconds: 4 })
+    );
+    vi.spyOn(
+      ConcatenatedVideoSource.prototype,
+      'getClipAudioTracks'
+    ).mockReturnValue([
+      {
+        clipIndex: 0,
+        clipOffsetSeconds: 2,
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the sink only reads the offset
+        track: {} as ClipAudioTrack['track'],
+        isStill: false,
+      },
+    ]);
+    await exportSequence({ clips: [clip], ...settings, frameRate: 1 });
+    expect(starts).toEqual([2]);
+  });
+
+  it('refuses music this browser cannot decode and disposes that input', async () => {
+    await expect(
+      exportSequence({
+        clips: [clip],
+        ...settings,
+        musicUrl: '/score.mp3',
+        musicEnabled: true,
+      })
+    ).rejects.toThrow('The music track cannot be decoded by this browser');
+    expect(musicInputs[0]?.dispose).toHaveBeenCalledOnce();
+  });
+
+  const cued: PlaybackClip = {
+    ...clip,
+    cues: [{ startSeconds: 0, endSeconds: 0.5, text: 'Hello' }],
+  };
+
+  it('returns a sidecar and does not draw captions by default', async () => {
+    const result = await exportSequence({ clips: [cued], ...settings });
+    expect(result.vtt).toContain('Hello');
+    expect(result.vtt).toContain('WEBVTT');
+    expect(filled).toEqual([]);
+  });
+
+  it('burns captions into the frames and returns no sidecar', async () => {
+    const result = await exportSequence({
+      clips: [cued],
+      ...settings,
+      subtitles: 'burn-in',
+      frameRate: 4,
+    });
+    expect(result.vtt).toBeNull();
+    expect(filled).toEqual(['Hello', 'Hello']);
+  });
+
+  it('drops captions when asked', async () => {
+    const result = await exportSequence({
+      clips: [cued],
+      ...settings,
+      subtitles: 'none',
+    });
+    expect(result.vtt).toBeNull();
+    expect(filled).toEqual([]);
+  });
+});
+
+describe('downloadSequence', () => {
+  it('returns false when the save picker is cancelled and does not export', async () => {
+    vi.stubGlobal('showSaveFilePicker', () =>
+      Promise.reject(
+        new DOMException('The user aborted a request.', 'AbortError')
+      )
+    );
+    const prepare = vi.spyOn(ConcatenatedVideoSource.prototype, 'prepare');
+    await expect(
+      downloadSequence({ clips: [clip], ...settings })
+    ).resolves.toBe(false);
+    expect(prepare).not.toHaveBeenCalled();
+  });
+
+  it('throws when the save picker fails for another reason', async () => {
+    vi.stubGlobal('showSaveFilePicker', () =>
+      Promise.reject(new Error('nope'))
+    );
+    await expect(
+      downloadSequence({ clips: [clip], ...settings })
+    ).rejects.toThrow('nope');
+  });
+
+  it('aborts the writable when the export fails after the picker', async () => {
+    const abort = vi.fn(async () => undefined);
+    vi.stubGlobal('showSaveFilePicker', () =>
+      Promise.resolve({
+        createWritable: () => Promise.resolve({ abort, close: vi.fn() }),
+      })
+    );
+    vi.spyOn(ConcatenatedVideoSource.prototype, 'prepare').mockRejectedValue(
+      new Error('encode failed')
+    );
+    await expect(
+      downloadSequence({ clips: [clip], ...settings })
+    ).rejects.toThrow('encode failed');
+    expect(abort).toHaveBeenCalledOnce();
   });
 });

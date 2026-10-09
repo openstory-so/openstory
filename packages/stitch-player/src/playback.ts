@@ -16,8 +16,10 @@
  *   `AudioContext` is suspended — the clock and every queued node stop
  *   together — and `onBuffering` fires, instead of dropping frames or
  *   playing the clip silent.
- * - Codec gating up front via `prepare()`; throws so the host can show its
- *   own fallback.
+ * - Codec gating up front via `prepare()`. A video track or a still's
+ *   dialogue that cannot be decoded throws, so the host can show its own
+ *   fallback. Embedded clip audio and music that cannot be decoded are
+ *   reported and playback continues.
  *
  * Issue numbers (#…) refer to github.com/openstory-so/openstory.
  *
@@ -85,6 +87,11 @@ export type SequencePlayerMeta = {
   hasAudio: boolean;
   /** Clips whose embedded sound this browser cannot decode; they play silent. */
   silentClipIndexes: readonly number[];
+  /**
+   * True when `musicUrl` was set and the file had no decodable audio track.
+   * Playback continues without the score. An export refuses that file.
+   */
+  musicUndecodable: boolean;
   /** Stills with no picture (none given, or none loaded); they hold on a dark frame. */
   missingStillIndexes: readonly number[];
   /**
@@ -190,13 +197,17 @@ export class SequencePlayerEngine {
    * Open every clip's video + the music track, probe decodability, and size
    * the canvas. Must be called once before `play()` / `seek()`.
    *
-   * Throws on an undecodable codec so the host can show its own fallback.
+   * Throws when a video track or a still's dialogue cannot be decoded, so
+   * the host can show its own fallback. Undecodable embedded clip audio
+   * plays silent (`silentClipIndexes`). Undecodable music is omitted
+   * (`musicUndecodable`) and warned; it does not take the picture down.
    */
   async prepare(): Promise<SequencePlayerMeta> {
     const videoMeta = await this.videoSource.prepare(this.opts.onLoadProgress);
 
     let musicSampleRate: number | undefined;
     let hasAudio = false;
+    let musicUndecodable = false;
     if (this.opts.musicUrl) {
       this.musicInput = new Input({
         formats: ALL_FORMATS,
@@ -209,6 +220,10 @@ export class SequencePlayerEngine {
 
         hasAudio = true;
       } else {
+        musicUndecodable = true;
+        this.logger.warn(
+          'Music track cannot be decoded by this browser; playback continues without it'
+        );
         this.musicTrack = null;
         this.musicInput.dispose();
         this.musicInput = null;
@@ -246,6 +261,7 @@ export class SequencePlayerEngine {
       resolutionsLabel: videoMeta.resolutionsLabel,
       silentClipIndexes: videoMeta.silentClipIndexes,
       missingStillIndexes: videoMeta.missingStillIndexes,
+      musicUndecodable,
     };
 
     await this.primeFirstFrame();

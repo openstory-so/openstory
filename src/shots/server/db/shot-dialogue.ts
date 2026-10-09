@@ -261,6 +261,7 @@ export function createShotDialogueMethods(db: Database) {
       Array<{
         shotId: string;
         fromSeconds: number;
+        toSeconds: number;
         speechTurns: DialogueSpeechTurn[];
       }>
     > =>
@@ -268,6 +269,7 @@ export function createShotDialogueMethods(db: Database) {
         .select({
           shotId: shotDialogueSections.shotId,
           fromSeconds: shotDialogueSections.fromSeconds,
+          toSeconds: shotDialogueSections.toSeconds,
           speechTurns: dialogueSpeeches.turns,
         })
         .from(shotDialogueSections)

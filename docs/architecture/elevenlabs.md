@@ -514,9 +514,11 @@ timeline as video frames; it does not encode temporary videos. PCM dialogue
 cut files are decoded with `AudioBufferSink` and scheduled on the existing
 audio clock, so pause, seeking, volume and music work across both kinds of
 entry. Rendered clips use only their embedded audio. Every entry also carries
-the shot's lines as subtitles (`shotCues`): each line for the time its reading
-spoke it, in the spoken wording, or every line over the whole shot when there
-is no reading yet. The timing is `ShotView.dialogueTiming` (#1853), derived on
+the shot's lines as subtitles (`shotCues`): each timed line for the time its
+reading spoke it. Wording is `spokenLines` when the take has them, otherwise
+the written line. A line the reading did not time — every line when there is
+no reading yet, or a line added after it — shares one cue across the whole
+shot, even when other lines are timed. The timing is `ShotView.dialogueTiming` (#1853), derived on
 read from the selected section and its speech's turns (`sectionLineTiming`,
 `getSelectedSectionsBySequence`) — never stored on the clip, so every reading
 ever cut is timed. Image failures fall back to the preview, then a

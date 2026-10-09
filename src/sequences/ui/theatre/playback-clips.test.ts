@@ -236,6 +236,42 @@ describe('shotCues (#1853)', () => {
     ).toEqual(whole);
   });
 
+  it('keeps a timed line and shows a later untimed line across the whole shot', () => {
+    expect(
+      shotCues(
+        {
+          dialogue,
+          audioClips: null,
+          dialogueTiming: [{ index: 0, startSeconds: 0.2, endSeconds: 1.4 }],
+        },
+        0,
+        6
+      )
+    ).toEqual([
+      { startSeconds: 0.2, endSeconds: 1.4, text: 'Ann: Hello there.' },
+      { startSeconds: 0, endSeconds: 6, text: 'Night falls.' },
+    ]);
+  });
+
+  it('clamps a timed line into the shot window', () => {
+    expect(
+      shotCues(
+        {
+          dialogue,
+          audioClips: null,
+          dialogueTiming: [
+            { index: 0, startSeconds: 0.2, endSeconds: 8 },
+            { index: 1, startSeconds: 6, endSeconds: 9 },
+          ],
+        },
+        10,
+        4
+      )
+    ).toEqual([
+      { startSeconds: 10.2, endSeconds: 14, text: 'Ann: Hello there.' },
+    ]);
+  });
+
   it('is empty for a silent shot', () => {
     expect(
       shotCues(

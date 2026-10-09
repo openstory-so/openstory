@@ -7,9 +7,9 @@
  * player's `AudioContext`-clock-driven render loop can compare against a
  * single timeline.
  *
- * Clip durations and display dimensions are precomputed in `prepare()` so that
- * `seek(globalTime)` is O(log N) and the player can build a progress bar before
- * playback begins.
+ * Clip durations and display dimensions are precomputed in `prepare()` so the
+ * player can build a progress bar before playback begins. `locate()` walks
+ * that offset table from the end, which is O(N) in the number of clips.
  */
 
 import {
@@ -119,7 +119,7 @@ function closeStill(image: StillFrame | null): void {
 }
 
 export class ConcatenatedVideoSource {
-  readonly clips: readonly PlaybackClip[];
+  #clips: readonly PlaybackClip[];
   private inputs: Input[] = [];
   private videoTracks: Array<InputVideoTrack | null> = [];
   private images: Array<StillFrame | null> = [];
@@ -129,11 +129,34 @@ export class ConcatenatedVideoSource {
   private disposed = false;
   private readonly logger: StitchLogger;
 
+  /** The clips this source opened. Cue text can change after `prepare()`; see `updateCues`. */
+  get clips(): readonly PlaybackClip[] {
+    return this.#clips;
+  }
+
   /** Throws when a clip breaks an invariant (see `assertPlaybackClips`). Clips play in array order. */
   constructor(clips: readonly PlaybackClip[], logger: StitchLogger = console) {
     this.logger = logger;
     assertPlaybackClips(clips);
-    this.clips = clips;
+    this.#clips = clips;
+  }
+
+  /**
+   * Replace cue text without reopening the media. The lists must be the same
+   * length and in the same order; each entry's cues are checked again.
+   * Playback and export both read `clips`, so a line edit reaches the file.
+   */
+  updateCues(clips: readonly PlaybackClip[]): void {
+    if (clips.length !== this.#clips.length) {
+      throw new Error(
+        `updateCues: ${clips.length} clips for a source of ${this.#clips.length}`
+      );
+    }
+    assertPlaybackClips(clips);
+    this.#clips = this.#clips.map((clip, i) => {
+      const next = clips[i];
+      return next ? { ...clip, cues: next.cues } : clip;
+    });
   }
 
   /**
