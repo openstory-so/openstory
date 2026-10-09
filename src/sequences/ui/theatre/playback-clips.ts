@@ -120,6 +120,15 @@ export function shotVideoSubtitlesVtt(
   return cuesToWebVTT([{ videoUrl: 'shot', posterUrl: null, cues }], [0]);
 }
 
+/** Changes when the WebVTT text changes, so the captions track reloads. */
+export function subtitleTrackRevision(vtt: string): string {
+  let hash = 0;
+  for (let i = 0; i < vtt.length; i++) {
+    hash = (Math.imul(31, hash) + vtt.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
 /** One continuous timeline: rendered clips where available, stills elsewhere. Clips play in array order. */
 export function toPlaybackClips(
   shots: readonly PlaybackShot[],

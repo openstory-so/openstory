@@ -36,7 +36,10 @@ import {
   packedPlaybackGroup,
 } from '@/shots/packed-clip-window';
 import { toast } from 'sonner';
-import { shotVideoSubtitlesVtt } from '@/sequences/ui/theatre/playback-clips';
+import {
+  shotVideoSubtitlesVtt,
+  subtitleTrackRevision,
+} from '@/sequences/ui/theatre/playback-clips';
 import { VideoPlayer } from './video-player';
 import { VideoStateOverlay } from './video-state-overlay';
 import { getShotDownloadUrlFn } from '@/shots/shots.fn';
@@ -184,9 +187,9 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     if (!currentShot?.video?.url) return undefined;
     const members = packedGroup.length > 0 ? packedGroup : [currentShot];
     const vtt = shotVideoSubtitlesVtt(members);
-    return vtt
-      ? `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`
-      : undefined;
+    if (!vtt) return undefined;
+    const revision = subtitleTrackRevision(vtt);
+    return `/api/sequences/${currentShot.sequenceId}/shots/${currentShot.id}/subtitles?v=${revision}`;
   }, [currentShot, packedGroup]);
   const showsStillImage =
     selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
