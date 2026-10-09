@@ -21,10 +21,10 @@ import type { SheetPayload } from './sheet-snapshots';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import {
+  computeCharacterSheetHashFromDtoBefore2065,
   assertQueuedWithFace,
   characterSheetHashMatchesStored,
   computeCharacterSheetHashFromDto,
-  computeCharacterSheetHashFromDtoBefore2065,
   queuedLegacyStyling,
   finishCharacterSheetPayload,
   computeLibraryLocationSheetHashFromDto,
@@ -69,6 +69,7 @@ describe('character-sheet hash', () => {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'jack',
     },
     imageModel: 'nano_banana_2',
@@ -118,25 +119,30 @@ describe('character-sheet hash', () => {
       },
       snapshotInputHash: await computeCharacterSheetHashFromDtoBefore2065(
         baseInput,
-        stored
+        stored,
+        'no-style'
       ),
     };
     const run = foldLegacyFeaturesInPayload(queued);
     expect(run.lookStyling).toBe('hair up\nscar');
     expect(run.characterMetadata).not.toHaveProperty('distinguishingFeatures');
-    // The run's tamper check, on the folded payload.
+    // The folded payload still verifies, given the style it was stamped
+    // with (a live verify supplies it; the run itself fails earlier, at
+    // `assertQueuedWithRendering`).
     expect(
       await characterSheetHashMatchesStored(
         run.snapshotInputHash,
         run,
-        queuedLegacyStyling(run)
+        queuedLegacyStyling(run),
+        'no-style'
       )
     ).toBe(true);
     expect(
       await characterSheetHashMatchesStored(
         run.snapshotInputHash,
         { ...run, imageModel: 'flux_2_dev' },
-        queuedLegacyStyling(run)
+        queuedLegacyStyling(run),
+        null
       )
     ).toBe(false);
     // The sheet lands stamped with that hash, and a later live verify — the
@@ -146,7 +152,8 @@ describe('character-sheet hash', () => {
       await characterSheetHashMatchesStored(
         run.snapshotInputHash,
         { ...baseInput, lookStyling: 'hair up\nscar' },
-        stored
+        stored,
+        'no-style'
       )
     ).toBe(true);
     // A payload of the current shape checks against its own current stamp.
@@ -163,7 +170,8 @@ describe('character-sheet hash', () => {
       await characterSheetHashMatchesStored(
         current.snapshotInputHash,
         current,
-        queuedLegacyStyling(current)
+        queuedLegacyStyling(current),
+        'no-style'
       )
     ).toBe(true);
   });

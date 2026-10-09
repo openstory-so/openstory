@@ -131,6 +131,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Age, gender, ethnicity',
       'Physical description, permanent marks included',
+      'Rendered as (sheet only, #2017): photoreal, 3D animated, cel, the one thing a sheet takes from a style',
       'Personality and movement (motion prompt only)',
       'Consistency tag (sheet only)',
     ],
@@ -435,10 +436,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       "The default look's sheet version, on every other look",
       'Talent sheet hash, when cast',
       "The talent's description and default sheet image and look, when cast",
-      'Style config',
       'Image model it was rendered with',
     ],
     ignored: [
+      "The sequence's style (#2017): a sheet is the character's, drawn on a neutral studio backdrop as the bible's rendering says; the palette, grade and mood apply at the shot",
       'Character name',
       'Personality and movement',
       'Voice-only characters never get one',

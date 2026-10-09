@@ -255,7 +255,10 @@ changing the area, and update it in the same PR.**
   link that holds only the script id, the soft remove and the `attached`
   flag. There are no per-sequence versions, sheets or voices: every sequence
   reads the character's current bible, voice, looks and look sheets, and an
-  edit from any sequence stales the others by derivation. A method takes a
+  edit from any sequence stales the others by derivation. A sheet reads no
+  sequence style: the bible's required `rendering` (`renderingFor`,
+  `renderingOfStyle` in `src/cast/rendering.ts`) is what it takes from one,
+  and `PHOTOREAL_RENDERING` keeps the prompt the talent fixtures match on. A method takes a
   `sequenceId` only for the link's own fields or the event it writes; a write
   made from no sequence (the Characters page, #2065) passes `null` there and
   writes no event. Analysis never rewrites a character the writer attached

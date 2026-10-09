@@ -59,6 +59,10 @@ export const characterBibleColumns = {
     sql`${live(cbv.id, cbv.isPerson, characters.legacyIsPerson)}`.mapWith(
       Boolean
     ),
+  // No legacy column: a row with no version (older than #1600) reads null.
+  rendering: sql<
+    string | null
+  >`CASE WHEN ${cbv.id} IS NULL THEN NULL ELSE ${cbv.rendering} END`,
   consistencyTag: sql<
     string | null
   >`${live(cbv.id, cbv.consistencyTag, characters.legacyConsistencyTag)}`,
@@ -116,6 +120,7 @@ export const pickCharacterBible = (c: CharacterBible): CharacterBible => ({
   movement: c.movement,
   voiceOnly: c.voiceOnly,
   isPerson: c.isPerson,
+  rendering: c.rendering,
   consistencyTag: c.consistencyTag,
 });
 

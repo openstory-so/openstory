@@ -103,7 +103,12 @@ async function seed() {
       { id: sequenceId, teamId: team.id, title: 'S', styleId: style.id },
     ]);
   const character = await createCharactersMethods(db, team.id).create(
-    { sequenceId, characterId: 'char_001', name: 'Alice' },
+    {
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Alice',
+      rendering: 'Photoreal live action',
+    },
     { source: 'analysis', createdBy: null }
   );
   characterId = character.id;

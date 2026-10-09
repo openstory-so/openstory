@@ -42,6 +42,7 @@ export const AddCharacterDialog: React.FC<{ sequenceId: string }> = ({
           </DialogDescription>
         </DialogHeader>
         <NewCharacterForm
+          defaultRendering={null}
           isPending={createCharacter.isPending}
           submitLabel="Add Character"
           pendingLabel="Adding…"

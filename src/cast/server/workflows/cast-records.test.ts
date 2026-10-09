@@ -104,6 +104,7 @@ describe('createCastRecords', () => {
           voiceDescription: '',
           voiceOnly: false,
           isPerson: true,
+          rendering: 'Photoreal live action',
           consistencyTag: 'sarah',
         },
       ],
@@ -218,6 +219,7 @@ describe('createCastRecords (attached cast, #2050)', () => {
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'sarah',
   };
 
@@ -285,6 +287,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'sarah',
   };
   const match = {
@@ -358,6 +361,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     });
     expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
       isPerson: true,
+      rendering: 'Photoreal live action',
     });
   });
 });
@@ -391,6 +395,7 @@ describe('createCastRecords (voice only, #1585)', () => {
           voiceDescription: '',
           voiceOnly: true,
           isPerson: true,
+          rendering: '',
           consistencyTag: 'narrator',
         },
       ],
@@ -405,6 +410,7 @@ describe('createCastRecords (voice only, #1585)', () => {
       voiceDescription: null,
       voiceOnly: true,
       isPerson: true,
+      rendering: null,
       sheetStatus: 'pending',
       talentId: null,
     });
@@ -439,6 +445,7 @@ describe('createCastRecords (voice only, #1585)', () => {
             'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
           voiceOnly: true,
           isPerson: true,
+          rendering: 'Photoreal live action',
           consistencyTag: 'narrator',
         },
       ],

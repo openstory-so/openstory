@@ -245,6 +245,13 @@ series inside the ~45-slot pool: `byteplus-ark.md` has the numbers.
 
 ## Hashes and staleness
 
+- **Sheet hash reads no style (#2017)**: the bible's `rendering` ("Photoreal
+  live action", "3D animated, Pixar-like") is what a sheet takes from a
+  style, and it is the character's, so every sequence hashes the shared
+  sheet alike. The sequence's palette, grade and mood apply at the shot. A
+  digest stamped before this (`pre-rendering`) is verified with the
+  sequence style's digest until `LEGACY_HASH_UNTIL`; a verify with no
+  sequence in view checks the current shape only.
 - **Sheet hash**: the clothing keeps the bible's old key
   (`characterBible.standardClothing`), fed from the look; `styling` (the
   effective one, #2065) joins only when set, in every digest shape. A backfilled default look therefore hashes

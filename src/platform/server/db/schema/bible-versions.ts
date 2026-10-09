@@ -67,6 +67,11 @@ export const characterBibleVersions = snakeCase.table(
     movement: text(),
     voiceOnly: integer({ mode: 'boolean' }).notNull(),
     isPerson: integer({ mode: 'boolean' }).notNull(),
+    // What the character is rendered as (#2017): "Photoreal live action",
+    // "3D animated, Pixar-like". The one thing a sheet takes from a style.
+    // Null exactly when `voiceOnly` (`renderingFor`, `src/cast/rendering.ts`);
+    // a CHECK would need a table rebuild, so the writers enforce it.
+    rendering: text(),
     consistencyTag: text(),
     // Who plays the character in this version (#2017): a recast is a new
     // version. Null when uncast. Not a bible field: it is not authored text
@@ -136,6 +141,7 @@ export const CHARACTER_BIBLE_FIELDS = [
   'movement',
   'voiceOnly',
   'isPerson',
+  'rendering',
   'consistencyTag',
 ] as const satisfies readonly (keyof CharacterBibleVersion)[];
 

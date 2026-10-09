@@ -53,6 +53,7 @@ import { buildLocationInsert } from '@/cast/server/workflows/cast-records';
 import {
   computeCharacterSheetHashFromDtoBefore2065,
   computeLocationSheetHashFromDto,
+  computeStyleConfigHash,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
@@ -129,6 +130,7 @@ const character = (fields: Partial<CharacterRow>): CharacterRow =>
     voiceDescription: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     talentId: null,
     sheetStatus: 'completed',
     selectedBibleVersionId: null,
@@ -1385,7 +1387,8 @@ const SHEET_MATRIX: SheetRow[] = [
         },
       },
     }),
-    character: 'stale',
+    // A character sheet reads no style since `rendering` (#2017).
+    character: 'fresh',
     location: 'stale',
   },
   {
@@ -1498,7 +1501,8 @@ describe('staleness matrix — reference sheets', () => {
         lookId,
         await computeCharacterSheetHashFromDtoBefore2065(
           await payloadOf(row, lookId),
-          { distinguishingFeatures: FEATURES, styling: own }
+          { distinguishingFeatures: FEATURES, styling: own },
+          await computeStyleConfigHash(STYLE)
         )
       );
     const verdictOf = async (row: CharacterRow, lookId: string) =>
@@ -1523,7 +1527,8 @@ describe('staleness matrix — reference sheets', () => {
         expect(
           await computeCharacterSheetHashFromDtoBefore2065(
             payload,
-            legacyStylingParts(row)
+            legacyStylingParts(row),
+            await computeStyleConfigHash(STYLE)
           )
         ).toBe(row.sheetInputHash);
         // 4d: an edit to the age stales it, as before.

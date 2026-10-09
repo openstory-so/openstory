@@ -1,10 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type {
   CharacterBibleEntry,
   TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
-import type { StyleConfig } from '@/platform/server/db/schema';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import {
   buildCastCharacterBible,
@@ -30,6 +28,7 @@ const scriptEntry: CharacterBibleEntry = {
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
@@ -254,6 +253,7 @@ describe('buildCastCharacterBible', () => {
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'bob_grey_suit',
   };
 
@@ -285,6 +285,7 @@ describe('buildCastCharacterBible', () => {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       // The role's looks ride through a cast untouched (#2015).
       looks: [],
       ...expected,
@@ -332,96 +333,64 @@ describe('buildCastCharacterBible', () => {
   });
 });
 
-const neoNoirStyle: StyleConfig = migrateStyleConfigV1ToV2({
-  mood: 'Dark, brooding, and atmospheric',
-  artStyle:
-    'Neo-noir cinematic style with deep shadows and high contrast. Gritty urban realism with expressionist framing.',
-  lighting:
-    'Low-key chiaroscuro lighting with single hard sources. Venetian blind shadows, neon reflections, harsh rim lighting.',
-  colorPalette: ['#0A0A0A', '#1A1A2E', '#E94560', '#16213E', '#533483'],
-  cameraWork:
-    'Dutch angles, low-angle power shots, tight close-ups. Slow deliberate movements with dramatic reveals.',
-  referenceFilms: [
-    'rain-slicked neon-noir cityscape cinematography',
-    'high-contrast graphic-novel monochrome',
-    'synthwave night-drive thriller framing',
-  ],
-  colorGrading:
-    'Desaturated with selective color pops. Teal and orange split toning with crushed blacks.',
-});
-
-describe('buildCharacterSheetPrompt with styleConfig', () => {
-  test('without styleConfig produces default studio prompt', () => {
+describe('buildCharacterSheetPrompt rendering (#2017)', () => {
+  test('photoreal keeps the commercial reference photography studio', () => {
     const { prompt } = buildCharacterSheetPrompt(
       scriptEntry,
-      undefined,
       undefined,
       null,
       null
     );
-
     expect(prompt).toContain('cyclorama');
     expect(prompt).toContain('5500K daylight');
     expect(prompt).toContain('Commercial reference photography');
   });
 
-  test('with styleConfig replaces environment, lighting, and optical sections', () => {
+  test('another rendering names it in the environment and optics, on the same neutral studio', () => {
     const { prompt } = buildCharacterSheetPrompt(
-      scriptEntry,
+      { ...scriptEntry, rendering: '3D animated, Pixar-like' },
       undefined,
-      neoNoirStyle,
       null,
       null
     );
-
-    // Should NOT contain studio defaults
-    expect(prompt).not.toContain('cyclorama');
-    expect(prompt).not.toContain('5500K daylight');
+    expect(prompt).toContain(
+      'Render the character as 3D animated, Pixar-like.'
+    );
+    expect(prompt).toContain('3D animated, Pixar-like rendering.');
     expect(prompt).not.toContain('Commercial reference photography');
-
-    // Should contain style-derived content
-    expect(prompt).toContain('Neo-noir cinematic style');
-    expect(prompt).toContain('chiaroscuro');
-    expect(prompt).toContain('Dark, brooding');
-    expect(prompt).toContain('rain-slicked neon-noir cityscape');
+    // No palette, grade or mood: those are the sequence's, applied at the shot.
+    expect(prompt).toContain('flat neutral white background');
+    expect(prompt).toContain('5500K daylight');
   });
 
-  test('with styleConfig preserves layout and materiality sections', () => {
+  test('the rendering keeps the layout and materiality sections', () => {
     const { prompt } = buildCharacterSheetPrompt(
-      scriptEntry,
+      { ...scriptEntry, rendering: '2D cel animation' },
       undefined,
-      neoNoirStyle,
       null,
       null
     );
-
     expect(prompt).toContain('[LAYOUT]');
     expect(prompt).toContain('four distinct, technical views');
     expect(prompt).toContain('[MATERIALITY]');
     expect(prompt).toContain('Hyper-accurate rendering');
   });
 
-  test('with styleConfig and talentOverrides composes correctly', () => {
+  test('a rendering and talentOverrides compose', () => {
     const { prompt, referenceUrls } = buildCharacterSheetPrompt(
-      scriptEntry,
+      { ...scriptEntry, rendering: '3D animated, Pixar-like' },
       {
         sheetMetadata: talentMetadata,
         sheetImageUrl: 'https://example.com/sheet.png',
       },
-      neoNoirStyle,
       null,
       null
     );
-
-    // Style is applied
-    expect(prompt).toContain('Neo-noir cinematic style');
-    expect(prompt).not.toContain('cyclorama');
-
-    // Talent reference is preserved
+    expect(prompt).toContain(
+      'Render the character as 3D animated, Pixar-like.'
+    );
     expect(prompt).toContain('IMAGE takes priority');
     expect(referenceUrls).toContain('https://example.com/sheet.png');
-
-    // Talent appearance is used
     expect(prompt).toContain('Male');
     expect(prompt).toContain('Dark hair, sideburns');
   });
@@ -432,7 +401,6 @@ describe('buildCharacterSheetPrompt with talent', () => {
     const { prompt } = buildCharacterSheetPrompt(
       scriptEntry,
       { description: 'This character should look like Elvis Presley' },
-      undefined,
       null,
       null
     );
@@ -448,7 +416,6 @@ describe('buildCharacterSheetPrompt with talent', () => {
         sheetMetadata: talentMetadata,
         sheetImageUrl: 'https://example.com/sheet.png',
       },
-      undefined,
       null,
       null
     );
@@ -461,19 +428,16 @@ describe('buildCharacterSheetPrompt with talent', () => {
     const plain = buildCharacterSheetPrompt(
       scriptEntry,
       undefined,
-      undefined,
       null,
       null
     ).prompt;
     expect(plain).not.toContain('for this look');
     expect(
-      buildCharacterSheetPrompt(scriptEntry, undefined, undefined, '  ', null)
-        .prompt
+      buildCharacterSheetPrompt(scriptEntry, undefined, '  ', null).prompt
     ).toBe(plain);
 
     const styled = buildCharacterSheetPrompt(
       scriptEntry,
-      undefined,
       undefined,
       'hair pinned up, split lip',
       null
@@ -489,7 +453,6 @@ describe('buildCharacterSheetPrompt with talent', () => {
     const cast = buildCharacterSheetPrompt(
       scriptEntry,
       { sheetMetadata: talentMetadata, sheetImageUrl: 'https://e/t.png' },
-      undefined,
       'hair pinned up, split lip',
       null
     ).prompt;
@@ -500,7 +463,6 @@ describe('buildCharacterSheetPrompt with talent', () => {
     // Another look, drawn from the default look's sheet.
     const other = buildCharacterSheetPrompt(
       scriptEntry,
-      undefined,
       undefined,
       'hair pinned up, split lip',
       'https://e/default.png'
@@ -519,7 +481,6 @@ describe('buildCharacterSheetPrompt with talent', () => {
         description: 'This character should look like Elvis Presley',
         sheetImageUrl: 'https://example.com/talent.png',
       },
-      undefined,
       'hair pinned up',
       'https://example.com/default-look.png'
     );
@@ -535,7 +496,6 @@ describe('buildCharacterSheetPrompt with talent', () => {
   test('the image wins for the person, the text wins for the outfit', () => {
     const { prompt } = buildCharacterSheetPrompt(
       scriptEntry,
-      undefined,
       undefined,
       null,
       'https://example.com/default-look.png'

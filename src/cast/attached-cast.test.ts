@@ -25,6 +25,7 @@ const entry = (
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'ada',
   ...over,
 });

@@ -105,18 +105,6 @@ export async function buildCharacterSheetDraft(
       `${character.name} is voice-only (#1585): heard, never seen, no sheet to generate`
     );
   }
-  const style =
-    sequence.styleConfig == null && sequence.styleId
-      ? await scopedDb.styles.getById(sequence.styleId)
-      : null;
-  const styleConfig =
-    sequence.styleConfig != null || style
-      ? resolveSequenceStyleConfig({
-          snapshot: sequence.styleConfig,
-          live: style?.config,
-        })
-      : undefined;
-
   const cast = await resolveCastTalent(scopedDb, character.talentId);
 
   const liveVersion = character.selectedSheetVersionId
@@ -147,7 +135,6 @@ export async function buildCharacterSheetDraft(
     talentDescription: cast.castTalentDescription ?? undefined,
     // Always generate: reuse would skip the bible edit the user just saved.
     reuseTalentSheet: false,
-    styleConfig,
   };
   return { draft, isDefault: look.isDefault, liveFace, refusal };
 }

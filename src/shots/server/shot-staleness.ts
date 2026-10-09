@@ -984,6 +984,7 @@ const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
   gender: 'gender',
   ethnicity: 'ethnicity',
   physicalDescription: 'description',
+  rendering: 'rendering',
   personality: 'personality',
   movement: 'movement',
   voiceOnly: 'voice only',

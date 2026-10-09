@@ -243,7 +243,6 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           ? 'This character must exactly match the person shown in the reference image'
           : undefined,
         reuseTalentSheet,
-        styleConfig: input.styleConfig,
         castTalentDescription: talentMatch?.talentDescription ?? null,
         talentSheetInputHash: talentMatch?.sheetInputHash ?? null,
       };

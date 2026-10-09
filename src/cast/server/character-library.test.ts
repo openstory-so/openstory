@@ -86,7 +86,12 @@ async function newSequence(title: string) {
 async function voiced() {
   const sequenceId = await newSequence('A');
   const created = await chars().create(
-    { sequenceId, characterId: 'char_001', name: 'Ada' },
+    {
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
+      rendering: 'Photoreal live action',
+    },
     { source: 'analysis', createdBy: null }
   );
   await chars().updateVoice(created.id, { voiceId: VOICE }, 'generated', null);
@@ -234,7 +239,12 @@ describe('deleteTeamCharacter', () => {
 
     // The script still names her: analysis takes her script id again.
     const revived = await chars().create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       { source: 'analysis', createdBy: null }
     );
 
@@ -267,6 +277,7 @@ describe('a character made with no sequence (#2065)', () => {
   it('is created, edited and given looks from the Characters page, then cast by an attach', async () => {
     const actor = { userId };
     const made = await createTeamCharacter(scoped(), actor, {
+      rendering: 'Photoreal live action',
       name: 'Ada Lovelace',
       physicalDescription: 'grey eyes',
     });
@@ -301,7 +312,10 @@ describe('a character made with no sequence (#2065)', () => {
     });
 
     // A look of another character is not found; a removed one is not edited.
-    const other = await createTeamCharacter(scoped(), actor, { name: 'Bob' });
+    const other = await createTeamCharacter(scoped(), actor, {
+      name: 'Bob',
+      rendering: 'Photoreal live action',
+    });
     await expect(
       updateTeamCharacterLook(scoped(), actor, other.id, gala.lookId, {
         name: 'x',

@@ -22,7 +22,14 @@ character with no sequence (#2065).
   versions are keyed by the character id.
 - **`character_bible_versions`** carries `talentId`: a recast is a new
   version with a different talent, and the cast talent is the current
-  version's.
+  version's. It also carries `rendering` (`src/cast/rendering.ts`): what the
+  character is rendered as, required unless voice-only (`renderingFor`, in
+  every bible writer; a CHECK would need a rebuild). Analysis fills it from
+  the sequence style's medium, else its art style (`renderingOfStyle`); a
+  hand-added character in a sequence takes the same when the form leaves it
+  out; the Characters page requires it. The backfill
+  (`20261009063136_backfill_character_rendering`) took the first casting
+  sequence's style. It is the only thing a sheet takes from a style.
 - **`sequence_cast`** — one row per character per sequence, holding only
   what is the sequence's:
   - `sequenceId`, `characterId`, `scriptCharacterId` (the analysis id, e.g.

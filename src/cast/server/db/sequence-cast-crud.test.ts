@@ -175,6 +175,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_001',
         name: 'Maya',
+        rendering: 'Photoreal live action',
         voiceDescription: 'Warm Australian alto',
       },
       { source: 'analysis', createdBy: null }
@@ -234,6 +235,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_unusable',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -285,6 +287,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -313,6 +316,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_unique',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -331,6 +335,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_keep_live',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -371,6 +376,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_complete',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -407,6 +413,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_fail',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -435,6 +442,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_demote',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -470,6 +478,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_promote',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -511,6 +520,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_promote_demote',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -552,6 +562,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_promote_empty',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -575,6 +586,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_library_demote',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -609,6 +621,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_select',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -628,6 +641,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_husk_empty_select',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -648,6 +662,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_002',
         name: 'Maya',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -656,6 +671,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_003',
         name: 'Otto',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -707,6 +723,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_004',
         name: 'Nora',
+        rendering: 'Photoreal live action',
         voiceId: 'talent-voice',
         voiceDescription: 'Gravelly',
       },
@@ -723,6 +740,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_004',
         name: 'Nora',
+        rendering: 'Photoreal live action',
         voiceId: 'other-voice',
         sheetStatus: 'generating',
       },
@@ -739,6 +757,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_fill',
         name: 'Lia',
+        rendering: 'Photoreal live action',
         voiceDescription: 'Bright',
       },
       { source: 'analysis', createdBy: null }
@@ -749,6 +768,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_fill',
         name: 'Lia',
+        rendering: 'Photoreal live action',
         voiceId: 'talent-voice',
         voiceDescription: 'Husky',
       },
@@ -766,18 +786,36 @@ describe('characters bible CRUD + soft-remove', () => {
     const methods = createCharactersMethods(db, teamId);
     const shared = 'shared-voice';
     const live = await methods.create(
-      { sequenceId, characterId: 'ref_live', name: 'A', voiceId: shared },
+      {
+        sequenceId,
+        characterId: 'ref_live',
+        name: 'A',
+        voiceId: shared,
+        rendering: 'Photoreal live action',
+      },
       { source: 'analysis', createdBy: null }
     );
     const deleted = await methods.create(
-      { sequenceId, characterId: 'ref_deleted', name: 'B', voiceId: shared },
+      {
+        sequenceId,
+        characterId: 'ref_deleted',
+        name: 'B',
+        voiceId: shared,
+        rendering: 'Photoreal live action',
+      },
       { source: 'analysis', createdBy: null }
     );
     await methods.softDelete(sequenceId, deleted.id, { actorId });
     // A completed version holding the id, but no longer selected: not a
     // reference — only the selected row is the character's voice.
     const moved = await methods.create(
-      { sequenceId, characterId: 'ref_moved', name: 'C', voiceId: shared },
+      {
+        sequenceId,
+        characterId: 'ref_moved',
+        name: 'C',
+        voiceId: shared,
+        rendering: 'Photoreal live action',
+      },
       { source: 'analysis', createdBy: null }
     );
     await methods.updateVoice(moved.id, { voiceId: 'other' }, 'library', null);
@@ -809,6 +847,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'voice_005',
         name: 'Pia',
+        rendering: 'Photoreal live action',
       },
       { source: 'analysis', createdBy: null }
     );
@@ -846,6 +885,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         physicalDescription: 'tall, brown hair',
         sheetStatus: 'completed',
       },
@@ -896,6 +936,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         physicalDescription: 'tall, brown hair',
         sheetStatus: 'completed',
       },
@@ -954,6 +995,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         physicalDescription: 'tall, brown hair',
         consistencyTag: 'char_001: alice-red-coat',
         sheetStatus: 'completed',
@@ -993,6 +1035,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         physicalDescription: 'tall, brown hair',
         sheetStatus: 'completed',
       },
@@ -1017,6 +1060,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         physicalDescription: 'tall, brown hair',
         sheetStatus: 'completed',
       },
@@ -1049,6 +1093,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         sheetStatus: 'pending',
       },
       { source: 'analysis', createdBy: null }
@@ -1062,6 +1107,7 @@ describe('characters bible CRUD + soft-remove', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Alice',
+        rendering: 'Photoreal live action',
         sheetStatus: 'pending',
       },
       { source: 'analysis', createdBy: null }
@@ -1219,6 +1265,7 @@ describe('bible history (#1600)', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Ada',
+        rendering: 'Photoreal live action',
         standardClothing: 'coat',
       },
       analysis
@@ -1244,6 +1291,7 @@ describe('bible history (#1600)', () => {
       sequenceId,
       characterId: 'char_001',
       name: 'Ada',
+      rendering: 'Photoreal live action',
       standardClothing: 'coat',
       personality: 'wry',
     };
@@ -1252,7 +1300,13 @@ describe('bible history (#1600)', () => {
     expect(await characterVersions(created.id)).toHaveLength(1);
 
     const moved = await m.create(
-      { sequenceId, characterId: 'char_001', name: 'Ada', age: '40s' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        age: '40s',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     expect(await characterVersions(created.id)).toHaveLength(2);
@@ -1267,7 +1321,13 @@ describe('bible history (#1600)', () => {
     const characters = createCharactersMethods(db, teamId);
     const analysed = (isPerson: boolean) =>
       characters.create(
-        { sequenceId, characterId: 'char_001', name: 'Rex', isPerson },
+        {
+          sequenceId,
+          characterId: 'char_001',
+          name: 'Rex',
+          isPerson,
+          rendering: 'Photoreal live action',
+        },
         analysis
       );
     // A new character takes what the script said.
@@ -1293,7 +1353,12 @@ describe('bible history (#1600)', () => {
   it('an edit appends a version by its author; a no-op edit appends none', async () => {
     const m = createCharactersMethods(db, teamId);
     const created = await m.create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     const edited = await m.updateBible(
@@ -1322,7 +1387,12 @@ describe('bible history (#1600)', () => {
     const m = createCharactersMethods(db, teamId);
     const looks = createCharacterLooksMethods(db, teamId);
     const created = await m.create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     const edited = await m.updateBible(
@@ -1355,6 +1425,7 @@ describe('bible history (#1600)', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Ada',
+        rendering: 'Photoreal live action',
         standardClothing: 'gown',
       },
       analysis
@@ -1408,7 +1479,15 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     const opts = { source: 'analysis' as const, createdBy: null };
     const [a, b] = await Promise.all(
       ['Ann', 'Bo'].map((name, i) =>
-        chars.create({ sequenceId, characterId: `char_${i}`, name }, opts)
+        chars.create(
+          {
+            rendering: 'Photoreal live action',
+            sequenceId,
+            characterId: `char_${i}`,
+            name,
+          },
+          opts
+        )
       )
     );
     const [x, y] = await locs.createBulk(
@@ -1490,7 +1569,12 @@ describe('team characters (#2017)', () => {
   };
   it('a recast is one bible version, by its author, naming the talent', async () => {
     const created = await chars().create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     const talentId = await newTalent();
@@ -1534,7 +1618,15 @@ describe('team characters (#2017)', () => {
   it('deleting a sequence keeps only a character another sequence casts', async () => {
     const [oneOff, shared] = await Promise.all(
       ['One', 'Shared'].map((name, i) =>
-        chars().create({ sequenceId, characterId: `char_${i}`, name }, analysis)
+        chars().create(
+          {
+            rendering: 'Photoreal live action',
+            sequenceId,
+            characterId: `char_${i}`,
+            name,
+          },
+          analysis
+        )
       )
     );
     if (!oneOff || !shared) throw new Error('test setup');
@@ -1566,7 +1658,12 @@ describe('team characters (#2017)', () => {
   /** A character with a sheet on its default look and two voice versions. */
   const withSheetAndVoices = async (scriptId: string) => {
     const created = await chars().create(
-      { sequenceId, characterId: scriptId, name: scriptId },
+      {
+        sequenceId,
+        characterId: scriptId,
+        name: scriptId,
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     await db.insert(characterSheetVariants).values({
@@ -1675,7 +1772,12 @@ describe('team characters (#2017)', () => {
 
   it('a Seed voice and a voice a talent still holds do not stop the delete', async () => {
     const created = await chars().create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     // A Seed voice holds no provider slot.
@@ -1770,6 +1872,7 @@ describe('team characters (#2017)', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Ada Lovelace',
+        rendering: 'Photoreal live action',
         standardClothing: 'coat',
       },
       analysis
@@ -1818,7 +1921,12 @@ describe('team characters (#2017)', () => {
     // A second character with the same name is refused: the script
     // names a character in capitals, and ADA LOVELACE would be two people.
     const twin = await chars().create(
-      { sequenceId, characterId: 'char_002', name: 'ada lovelace' },
+      {
+        sequenceId,
+        characterId: 'char_002',
+        name: 'ada lovelace',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     await expect(chars().attach(other, twin.id, { actorId })).rejects.toThrow(
@@ -1838,6 +1946,7 @@ describe('team characters (#2017)', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Ada',
+        rendering: 'Photoreal live action',
         physicalDescription: 'grey eyes',
         standardClothing: 'coat',
       },
@@ -1855,6 +1964,7 @@ describe('team characters (#2017)', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Bob',
+        rendering: 'Photoreal live action',
         physicalDescription: 'bearded',
         standardClothing: 'armor',
       },
@@ -1881,6 +1991,7 @@ describe('team characters (#2017)', () => {
         sequenceId: other,
         characterId: 'char_ada',
         name: 'Ada (older)',
+        rendering: 'Photoreal live action',
         standardClothing: 'gown',
         sheetStatus: 'generating',
       },
@@ -1914,14 +2025,24 @@ describe('team characters (#2017)', () => {
 
   it("a revive or restore runs the name check, and an attach refuses another team's sequence (#2050)", async () => {
     const ada = await chars().create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     const other = await secondSequence();
     await chars().attach(other, ada.id, { actorId });
     await chars().softDelete(other, ada.id, { actorId });
     await chars().create(
-      { sequenceId: other, characterId: 'char_002', name: '  ada ' },
+      {
+        sequenceId: other,
+        characterId: 'char_002',
+        name: '  ada ',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     await expect(chars().attach(other, ada.id, { actorId })).rejects.toThrow(
@@ -1960,6 +2081,7 @@ describe('team characters (#2017)', () => {
         sequenceId,
         characterId: 'char_001',
         name: 'Ada',
+        rendering: 'Photoreal live action',
         standardClothing: 'coat',
       },
       analysis
@@ -2030,7 +2152,15 @@ describe('team characters (#2017)', () => {
   it('lists the team characters by the latest sequence casting them, then by how many', async () => {
     const [old, busy, removed] = await Promise.all(
       ['Old', 'Busy', 'Removed'].map((name, i) =>
-        chars().create({ sequenceId, characterId: `char_${i}`, name }, analysis)
+        chars().create(
+          {
+            rendering: 'Photoreal live action',
+            sequenceId,
+            characterId: `char_${i}`,
+            name,
+          },
+          analysis
+        )
       )
     );
     if (!old || !busy || !removed) throw new Error('test setup');
@@ -2124,7 +2254,12 @@ describe('team characters (#2017)', () => {
 
   it('makes a character with no sequence: a bible version and a default look, no cast link (#2065)', async () => {
     const made = await chars().createForTeam(
-      { name: 'Ada', physicalDescription: 'grey eyes', standardClothing: null },
+      {
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+        physicalDescription: 'grey eyes',
+        standardClothing: null,
+      },
       { createdBy: actorId }
     );
     expect(made).toMatchObject({
@@ -2172,7 +2307,11 @@ describe('team characters (#2017)', () => {
 
   it('edits a bible and looks with no sequence: a new version, the current pointer moves, no pin or event (#2065)', async () => {
     const made = await chars().createForTeam(
-      { name: 'Ada', standardClothing: 'coat' },
+      {
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+        standardClothing: 'coat',
+      },
       { createdBy: actorId }
     );
 
@@ -2284,7 +2423,11 @@ describe('team characters (#2017)', () => {
 
   it('a deleted character is not read or edited from no sequence until it is restored (#2065)', async () => {
     const made = await chars().createForTeam(
-      { name: 'Ada', standardClothing: 'coat' },
+      {
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+        standardClothing: 'coat',
+      },
       { createdBy: actorId }
     );
     expect(await chars().softDeleteForTeam(made.id)).toBe(true);
@@ -2329,6 +2472,7 @@ describe('team characters (#2017)', () => {
     const made = await chars().createForTeam(
       {
         name: 'Ada',
+        rendering: 'Photoreal live action',
         physicalDescription: 'grey eyes',
         standardClothing: 'coat',
       },
@@ -2346,6 +2490,7 @@ describe('team characters (#2017)', () => {
         sequenceId,
         characterId: cast.characterId,
         name: 'Ada (older)',
+        rendering: 'Photoreal live action',
         physicalDescription: 'MODEL',
         standardClothing: 'MODEL',
       },
@@ -2377,7 +2522,12 @@ describe('team characters (#2017)', () => {
 
     // A character analysis made here is still this sequence's to rewrite.
     const bob = await chars().create(
-      { sequenceId, characterId: 'char_002', name: 'Bob' },
+      {
+        sequenceId,
+        characterId: 'char_002',
+        name: 'Bob',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     expect((await linksOf(bob.id))[0]).toMatchObject({ attached: false });
@@ -2389,6 +2539,7 @@ describe('team characters (#2017)', () => {
         sequenceId,
         characterId: 'char_002',
         name: 'Bob',
+        rendering: 'Photoreal live action',
         physicalDescription: 'bearded',
         standardClothing: 'armor',
       },
@@ -2411,7 +2562,11 @@ describe('team characters (#2017)', () => {
 
   it('deleting a sequence keeps a character the writer attached to it alone (#2065)', async () => {
     const made = await chars().createForTeam(
-      { name: 'Ada', standardClothing: null },
+      {
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+        standardClothing: null,
+      },
       { createdBy: actorId }
     );
     await chars().attach(sequenceId, made.id, { actorId });
@@ -2425,7 +2580,12 @@ describe('team characters (#2017)', () => {
 
   it('another team cannot read, edit or delete a character or its looks', async () => {
     const created = await chars().create(
-      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
       analysis
     );
     const otherTeam = generateId();
@@ -2489,6 +2649,7 @@ describe('team characters (#2017)', () => {
           sequenceId,
           characterId: 'char_001',
           name: 'Ada',
+          rendering: 'Photoreal live action',
           age: '30',
           standardClothing: 'coat',
         },

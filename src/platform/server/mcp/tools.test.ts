@@ -784,6 +784,7 @@ describe('complete production reads', () => {
     musicId = generateId();
     musicPromptId = generateId();
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_001',
@@ -1024,6 +1025,7 @@ describe('complete production reads', () => {
   });
   it('pages entities and binds cursors to collection, sequence, and reference target', async () => {
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: generateId(),
       sequenceId,
       characterId: 'char_002',
@@ -1865,9 +1867,24 @@ describe('Studio, Gallery and library reads', () => {
   });
   it('lists every character of the team, with the sequences casting them, and pages them', async () => {
     const [ada, bea, cy] = [
-      await castCharacter({ sequenceId, characterId: 'lib_ada', name: 'Ada' }),
-      await castCharacter({ sequenceId, characterId: 'lib_bea', name: 'Bea' }),
-      await castCharacter({ sequenceId, characterId: 'lib_cy', name: 'Cy' }),
+      await castCharacter({
+        rendering: 'Photoreal live action',
+        sequenceId,
+        characterId: 'lib_ada',
+        name: 'Ada',
+      }),
+      await castCharacter({
+        rendering: 'Photoreal live action',
+        sequenceId,
+        characterId: 'lib_bea',
+        name: 'Bea',
+      }),
+      await castCharacter({
+        rendering: 'Photoreal live action',
+        sequenceId,
+        characterId: 'lib_cy',
+        name: 'Cy',
+      }),
     ];
     const page = z.object({
       items: z.array(z.record(z.string(), z.unknown())),
@@ -2234,6 +2251,7 @@ describe('update_scene (#1459)', () => {
 describe('update_scene continuity (#1459)', () => {
   it('rescans @-mentions into continuity, merges sent keys and records only moved fields', async () => {
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: generateId(),
       sequenceId,
       characterId: 'char_001',
@@ -2891,6 +2909,7 @@ describe('cast and music edits (#1979)', () => {
 
   it('add_character_to_sequence casts a team character into another sequence, once (#2050)', async () => {
     const ada = await castCharacter({
+      rendering: 'Photoreal live action',
       sequenceId,
       characterId: 'char_001',
       name: 'Ada',
@@ -2924,11 +2943,13 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject({ character: { name: 'Ada', standardClothing: 'coat' } });
     // A character whose name a live cast member here already has.
     const twin = await castCharacter({
+      rendering: 'Photoreal live action',
       sequenceId: otherSequence,
       characterId: 'char_twin',
       name: 'Bo',
     });
     const bo = await castCharacter({
+      rendering: 'Photoreal live action',
       sequenceId,
       characterId: 'char_bo',
       name: 'bo',
@@ -3074,6 +3095,8 @@ describe('cast and music edits (#1979)', () => {
         characterId: 'char_maya_ross',
         voiceOnly: true,
         isPerson: false,
+        // Voice-only: never rendered.
+        rendering: null,
         personality: null,
         movement: 'Glides',
       },
@@ -3133,17 +3156,20 @@ describe('cast and music edits (#1979)', () => {
       imageUrl: '/r2/ada.jpg',
     });
     const cast = await castCharacter({
+      rendering: 'Photoreal live action',
       sequenceId,
       characterId: 'char_cast',
       name: 'Cast',
       talentId,
     });
     const photo = await castCharacter({
+      rendering: 'Photoreal live action',
       sequenceId,
       characterId: 'char_photo',
       name: 'Photo',
     });
     const drawing = await castCharacter({
+      rendering: 'Photoreal live action',
       sequenceId,
       characterId: 'char_drawing',
       name: 'Drawing',
@@ -3194,6 +3220,7 @@ describe('cast and music edits (#1979)', () => {
           characterId,
           voiceOnly: false,
           isPerson: false,
+          rendering: 'Photoreal live action',
         })
       ).toMatchObject(refusal('CONFLICT'));
     }
@@ -3205,6 +3232,7 @@ describe('cast and music edits (#1979)', () => {
         characterId,
         voiceOnly: false,
         isPerson: true,
+        rendering: 'Photoreal live action',
         movement: 'Strides',
       });
       await updateCharacter(scopedDb, actor, sequenceId, characterId, {
@@ -3217,6 +3245,7 @@ describe('cast and music edits (#1979)', () => {
       characterId: drawing.id,
       voiceOnly: false,
       isPerson: false,
+      rendering: 'Photoreal live action',
     });
 
     // The read the form shows is the same answer.
@@ -3282,6 +3311,7 @@ describe('cast and music edits (#1979)', () => {
       generateId(),
     ];
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_ada',
@@ -3752,6 +3782,7 @@ describe('cast and music edits (#1979)', () => {
     const characterId = generateId();
     const track = generateId();
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_ada',
@@ -4463,6 +4494,7 @@ describe('production-context resources (#1462)', () => {
   it('shrinks an over-budget bible to fit, with a real cursor to continue', async () => {
     for (let i = 0; i < 30; i++) {
       await castCharacter({
+        rendering: 'Photoreal live action',
         sequenceId,
         characterId: `char_${i}`,
         name: `C${i}`,

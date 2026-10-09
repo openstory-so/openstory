@@ -176,17 +176,6 @@ export async function recastCharacter(
   const sequence = await scopedDb.sequences.getForUser({
     sequenceId: character.sequenceId,
   });
-  const style =
-    sequence.styleConfig == null && sequence.styleId
-      ? await scopedDb.styles.getById(sequence.styleId)
-      : null;
-  const styleConfig =
-    sequence.styleConfig != null || style
-      ? resolveSequenceStyleConfig({
-          snapshot: sequence.styleConfig,
-          live: style?.config,
-        })
-      : undefined;
 
   const talentWithSheets = await scopedDb.talent.getWithRelations(
     data.talentId
@@ -325,6 +314,7 @@ export async function recastCharacter(
       name: character.name,
       voiceOnly: character.voiceOnly,
       isPerson: updatedCharacter.isPerson,
+      rendering: updatedCharacter.rendering ?? '',
       voiceDescription: character.voiceDescription ?? '',
       ...castingAttrs,
       // The look owns clothing (#2015): the entry wears the look being drawn.
@@ -365,7 +355,6 @@ export async function recastCharacter(
     talentSheetInputHash: defaultSheet?.inputHash ?? null,
     castTalentDescription: talentWithSheets.description,
     sheetVersionId,
-    styleConfig,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     shotSnapshots,

@@ -86,6 +86,7 @@ const RAW_ADA: CharacterBibleEntry = {
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: '',
 };
 const TALENT_MATCH = {

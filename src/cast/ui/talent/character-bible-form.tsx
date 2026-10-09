@@ -24,6 +24,7 @@ const characterFormSchema = z.object({
   gender: z.string().max(2000).default(''),
   ethnicity: z.string().max(2000).default(''),
   physicalDescription: z.string().max(2000).default(''),
+  rendering: z.string().max(2000).default(''),
   personality: z.string().max(2000),
   movement: z.string().max(2000).default(''),
   // A checked box submits 'on'; an unchecked one is absent from FormData.
@@ -44,6 +45,7 @@ type BibleFormCharacter = Pick<
   | 'gender'
   | 'ethnicity'
   | 'physicalDescription'
+  | 'rendering'
   | 'personality'
   | 'movement'
   | 'voiceOnly'
@@ -161,6 +163,15 @@ export const CharacterBibleForm: React.FC<
           name="physicalDescription"
           defaultValue={character.physicalDescription}
           textarea
+        />
+      )}
+      {!character.voiceOnly && (
+        <BibleField
+          idPrefix="character"
+          label="Rendered as"
+          name="rendering"
+          defaultValue={character.rendering}
+          required
         />
       )}
       <div className="flex flex-col gap-1">

@@ -61,6 +61,7 @@ const character: CharacterBibleEntry = {
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'maya',
 };
 const location: LocationBibleEntry = {

@@ -23,6 +23,7 @@ function character(
     movement: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: 'voice-old',
     voiceDescription: 'Warm alto',
     voicePreviews: null,

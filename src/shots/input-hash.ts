@@ -257,6 +257,7 @@ export type CharacterBibleHashFields = {
   ethnicity: string | null;
   physicalDescription: string | null;
   standardClothing: string | null;
+  rendering: string | null;
   consistencyTag: string | null;
   /** Not hashed — BytePlus registration only (#1682). */
   isPerson?: boolean;
@@ -332,19 +333,39 @@ export type CharacterSheetHashInput = {
   talentSheetHash: string | null;
   /** Required; `null` is "not cast". */
   talent: CharacterSheetTalentHashFields | null;
-  styleConfigHash: string;
+  /**
+   * The sequence style's digest. Read only by the legacy shapes (a sheet
+   * read the style before `rendering`, #2017): null skips them, for a
+   * check with no sequence in view.
+   */
+  styleConfigHash: string | null;
   imageModel: string;
 };
 
 /**
- * Sheet digest shapes. `current` hashes the effective styling and no
- * features key (#2065); `pre-2065` is the same body with the bible's
- * features under their own key and the look's own styling; `pre-1785` is
- * that digest without the talent channel; `named` is the pre-#1108 digest.
- * Verify accepts the legacy three until {@link LEGACY_HASH_UNTIL}.
+ * Sheet digest shapes. `current` hashes the bible's `rendering` and no
+ * style (#2017); `pre-rendering` is that body with the sequence style's
+ * digest instead; `pre-2065` is the same with the bible's features under
+ * their own key and the look's own styling; `pre-1785` is that digest
+ * without the talent channel; `named` is the pre-#1108 digest. Verify
+ * accepts the legacy four until {@link LEGACY_HASH_UNTIL}.
  */
-type SheetHashKind = 'current' | 'pre-2065' | 'pre-1785' | 'named';
-type LocationSheetHashKind = Exclude<SheetHashKind, 'pre-2065'>;
+type SheetHashKind =
+  | 'current'
+  | 'pre-rendering'
+  | 'pre-2065'
+  | 'pre-1785'
+  | 'named';
+const LEGACY_SHEET_HASH_KINDS = [
+  'pre-rendering',
+  'pre-2065',
+  'pre-1785',
+  'named',
+] as const;
+type LocationSheetHashKind = Exclude<
+  SheetHashKind,
+  'pre-2065' | 'pre-rendering'
+>;
 
 /** `legacy` is required for every kind but `current`, which never reads it. */
 function characterSheetHashBody(
@@ -354,9 +375,16 @@ function characterSheetHashBody(
 ): unknown {
   const cb = input.characterBible;
   const talent =
-    kind === 'current' || kind === 'pre-2065' ? input.talent : null;
-  if (kind !== 'current' && legacy === null) {
+    kind === 'current' || kind === 'pre-rendering' || kind === 'pre-2065'
+      ? input.talent
+      : null;
+  // `pre-rendering` is the current body with the style: effective styling,
+  // so no legacy parts.
+  if (kind !== 'current' && kind !== 'pre-rendering' && legacy === null) {
     throw new Error(`input-hash: the ${kind} sheet digest needs legacy parts`);
+  }
+  if (kind !== 'current' && input.styleConfigHash === null) {
+    throw new Error(`input-hash: the ${kind} sheet digest needs the style`);
   }
   // Every shape: a legacy digest predates looks, so it was stamped with no
   // styling, and dropping it there would let a styling edit verify as fresh
@@ -379,6 +407,9 @@ function characterSheetHashBody(
       ...(legacy === null
         ? {}
         : { distinguishingFeatures: trim(legacy.distinguishingFeatures) }),
+      // What the character is rendered as (#2017): in the sheet instead of
+      // the sequence style, so every sequence hashes the shared sheet alike.
+      ...(kind === 'current' ? { rendering: trim(cb.rendering) } : {}),
       consistencyTag: trim(cb.consistencyTag),
     },
     talentSheetHash: input.talentSheetHash ?? null,
@@ -401,7 +432,7 @@ function characterSheetHashBody(
           },
         }
       : {}),
-    styleConfigHash: input.styleConfigHash,
+    ...(kind === 'current' ? {} : { styleConfigHash: input.styleConfigHash }),
     imageModel: input.imageModel,
   };
 }
@@ -413,6 +444,7 @@ const characterBibleHashFieldsSchema = z.object({
   ethnicity: z.string().nullable(),
   physicalDescription: z.string().nullable(),
   standardClothing: z.string().nullable(),
+  rendering: z.string().nullable(),
   consistencyTag: z.string().nullable(),
 });
 
@@ -430,7 +462,7 @@ const characterSheetHashInputSchema = z.object({
   faceSheetVersionId: z.string().nullable(),
   talentSheetHash: z.string().nullable(),
   talent: characterSheetTalentHashFieldsSchema.nullable(),
-  styleConfigHash: z.string(),
+  styleConfigHash: z.string().nullable(),
   imageModel: z.string(),
 });
 
@@ -457,9 +489,11 @@ export function computeCharacterSheetInputHashLegacy(
 }
 
 /**
- * Verify: the current digest, or a pre-#2065 / pre-#1785 / pre-#1108 one.
- * `legacy` is the look's stored parts, required so no verify site can forget
- * the shapes every sheet made before #2065 was stamped in.
+ * Verify: the current digest, or a legacy one. `legacy` is the look's stored
+ * parts, required so no verify site can forget the shapes every sheet made
+ * before #2065 was stamped in. With no style digest only the current shape
+ * is checked: a sheet stamped before `rendering` then reads stale, which is
+ * right for a check made with no sequence in view.
  */
 export async function characterSheetInputHashMatches(
   stored: string | null,
@@ -470,9 +504,11 @@ export async function characterSheetInputHashMatches(
   const input = characterSheetHashInputSchema.parse(raw);
   const digests = await Promise.all([
     sha256Hex(characterSheetHashBody(input, 'current', null)),
-    ...(['pre-2065', 'pre-1785', 'named'] as const).map((kind) =>
-      sha256Hex(characterSheetHashBody(input, kind, legacy))
-    ),
+    ...(input.styleConfigHash === null
+      ? []
+      : LEGACY_SHEET_HASH_KINDS.map((kind) =>
+          sha256Hex(characterSheetHashBody(input, kind, legacy))
+        )),
   ]);
   return digests.includes(stored);
 }

@@ -216,6 +216,7 @@ describe('computeCharacterSheetInputHash', () => {
       ethnicity: '',
       physicalDescription: 'tall, blonde, blue eyes',
       standardClothing: 'dark trench coat',
+      rendering: 'Photoreal live action',
       consistencyTag: 'sarah_blonde_30s',
     },
     styling: null,
@@ -323,7 +324,7 @@ describe('computeCharacterSheetInputHash', () => {
     ).toBe(false);
   });
 
-  it('reacts to talent hash, style config, and image model', async () => {
+  it('reacts to talent hash and image model, and not to the style (#2017)', async () => {
     const a = await computeCharacterSheetInputHash(base);
     const talent = await computeCharacterSheetInputHash({
       ...base,
@@ -337,7 +338,9 @@ describe('computeCharacterSheetInputHash', () => {
       ...base,
       imageModel: 'sdxl-v1',
     });
-    expect(new Set([a, talent, style, model]).size).toBe(4);
+    // The style is the sequence's; a sheet is the character's, shared.
+    expect(style).toBe(a);
+    expect(new Set([a, talent, model]).size).toBe(3);
   });
 
   it('a cast talent edit re-stales the sheet; pre-#1785 digests still verify (#1785)', async () => {
@@ -425,6 +428,7 @@ describe('computeCharacterSheetInputHash', () => {
         characterBible: {
           ...base.characterBible,
           standardClothing: 'dark trench coat',
+          rendering: 'Photoreal live action',
         },
         styling: effectiveStyling(
           stored.styling,
@@ -509,6 +513,7 @@ describe('computeCharacterSheetInputHash', () => {
         characterBible: {
           ...base.characterBible,
           standardClothing: 'gala gown',
+          rendering: 'Photoreal live action',
         },
         styling: 'split lip',
         faceSheetVersionId: 'sheet-v1',
@@ -748,6 +753,7 @@ describe('canonical serialization', () => {
         ethnicity: '',
         physicalDescription: 'tall',
         standardClothing: 'jacket',
+        rendering: 'Photoreal live action',
         consistencyTag: 'alice_30s',
       },
       styling: null,
@@ -768,6 +774,7 @@ describe('canonical serialization', () => {
       characterBible: {
         consistencyTag: 'alice_30s',
         standardClothing: 'jacket',
+        rendering: 'Photoreal live action',
         physicalDescription: 'tall',
         ethnicity: '',
         gender: 'female',
@@ -817,6 +824,7 @@ describe('prompt input hashes', () => {
     ethnicity: '',
     physicalDescription: '',
     standardClothing: '',
+    rendering: 'Photoreal live action',
     looks: [],
     personality: '',
     movement: '',
@@ -969,6 +977,7 @@ describe('prompt input hashes', () => {
             {
               ...aliceCharacter,
               standardClothing: worn.clothing,
+              rendering: 'Photoreal live action',
               looks: [worn, ...rest],
             },
           ],
@@ -1025,6 +1034,7 @@ describe('prompt input hashes', () => {
           {
             ...aliceCharacter,
             standardClothing: 'coat',
+            rendering: 'Photoreal live action',
             looks: [edited, gala],
           },
         ],

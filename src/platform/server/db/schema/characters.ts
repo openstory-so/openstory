@@ -293,8 +293,8 @@ export type NewCharacter = Omit<
   // left out keeps the cast and `null` uncasts.
   Pick<CharacterCast, 'sequenceId' | 'characterId'> &
   Partial<Pick<CharacterCast, 'talentId'>> &
-  Pick<CharacterBible, 'name'> &
-  Partial<Omit<CharacterBible, 'name'>> &
+  Pick<CharacterBible, 'name' | 'rendering'> &
+  Partial<Omit<CharacterBible, 'name' | 'rendering'>> &
   // The default look's clothing and sheet lifecycle (#2015). `sheetStatus`
   // defaults to 'pending', as the column did.
   Partial<Pick<CharacterWornLook, 'standardClothing' | 'sheetStatus'>> &

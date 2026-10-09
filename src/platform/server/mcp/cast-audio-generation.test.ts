@@ -298,6 +298,7 @@ describe('cast', () => {
   it('cancels no voice when none is generating', async () => {
     const characterId = generateId();
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_001',
@@ -311,6 +312,7 @@ describe('cast', () => {
   it('refuses to recast a voice-only character', async () => {
     const characterId = generateId();
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_001',
@@ -379,6 +381,7 @@ describe('a character that must be a person is stored as one, on every path (#20
   /** Cast in A (the seed sequence) and B, both pinning one bible version. */
   const castInTwo = async (isPerson: boolean) => {
     const created = await castCharacter({
+      rendering: 'Photoreal live action',
       id: generateId(),
       sequenceId,
       characterId: 'char_001',
@@ -443,6 +446,7 @@ describe('a character that must be a person is stored as one, on every path (#20
     });
     expect(await scopedDb.characters.getCurrent(id)).toMatchObject({
       isPerson: true,
+      rendering: 'Photoreal live action',
       legacyDistinguishingFeatures: null,
     });
     expect(await isPersonIn(sequenceId, id)).toBe(true);
@@ -460,6 +464,7 @@ describe('a character that must be a person is stored as one, on every path (#20
     });
     expect(await scopedDb.characters.getCurrent(id)).toMatchObject({
       isPerson: true,
+      rendering: 'Photoreal live action',
       legacyDistinguishingFeatures: null,
     });
   });
@@ -471,6 +476,7 @@ describe('a character that must be a person is stored as one, on every path (#20
       characterId: 'char_001',
       name: 'Xan',
       isPerson: false,
+      rendering: 'Photoreal live action',
     });
     const { id } = created;
     const photo = await uploadRealPhoto(id);
@@ -485,6 +491,7 @@ describe('a character that must be a person is stored as one, on every path (#20
     });
     await updateCharacter(scopedDb, actor(), sequenceId, id, {
       isPerson: false,
+      rendering: 'Photoreal live action',
     });
     expect(await isPersonIn(sequenceId, id)).toBe(false);
 
@@ -511,6 +518,7 @@ describe('a character that must be a person is stored as one, on every path (#20
       .returning();
     if (!actress) throw new Error('talent insert returned nothing');
     const created = await castCharacter({
+      rendering: 'Photoreal live action',
       id: generateId(),
       sequenceId,
       characterId: 'char_001',
@@ -525,6 +533,7 @@ describe('a character that must be a person is stored as one, on every path (#20
     await expect(
       updateCharacter(scopedDb, actor(), sequenceId, created.id, {
         isPerson: false,
+        rendering: 'Photoreal live action',
       })
     ).rejects.toMatchObject({ code: 'CONFLICT' });
   });

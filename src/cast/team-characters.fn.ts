@@ -92,7 +92,15 @@ export const restoreTeamCharacterFn = createServerFn({ method: 'POST' })
 /** Make a character with no sequence (#2065). */
 export const createTeamCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(teamBibleFieldsSchema.extend({ name: nameSchema })))
+  .validator(
+    zodValidator(
+      teamBibleFieldsSchema.extend({
+        name: nameSchema,
+        // Required here: no sequence style to take it from (#2017).
+        rendering: z.string().trim().min(1).max(2000),
+      })
+    )
+  )
   .handler(
     async ({ context, data }) =>
       await createTeamCharacter(

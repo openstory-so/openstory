@@ -35,6 +35,7 @@ import {
   characterSheetHashMatchesStored,
   queuedLegacyStyling,
   assertQueuedWithFace,
+  assertQueuedWithRendering,
   assertQueuedWithLooks,
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -213,6 +214,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     const workflowRunId = event.instanceId;
     assertQueuedWithLooks(input);
     assertQueuedWithFace(input);
+    assertQueuedWithRendering(input);
 
     // Validate the snapshot hash inside the workflow body: a tampered
     // payload must halt the run from inside a step, not silently.
@@ -223,7 +225,9 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         !(await characterSheetHashMatchesStored(
           input.snapshotInputHash,
           input,
-          queuedLegacyStyling(input)
+          queuedLegacyStyling(input),
+          // Its own snapshot: the current shape, no sequence in view.
+          null
         ))
       ) {
         throw new WorkflowValidationError(
@@ -281,11 +285,10 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             }
           : undefined;
 
-        // Build prompt with character identity + talent appearance + sequence style
+        // Build prompt with character identity + talent appearance + rendering
         const { prompt, referenceUrls } = buildCharacterSheetPrompt(
           input.characterMetadata,
           talentOverrides,
-          input.styleConfig,
           input.lookStyling,
           input.face === null ? null : input.face.url
         );

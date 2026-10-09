@@ -79,6 +79,7 @@ export const TALENT_CASE = {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'scarlett_vega',
     },
     {
@@ -103,6 +104,7 @@ export const TALENT_CASE = {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'jack_cole',
     },
   ] satisfies CharacterBibleEntry[],

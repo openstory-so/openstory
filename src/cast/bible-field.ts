@@ -71,6 +71,10 @@ export const characterBibleFieldsSchema = z.object({
   voiceDescription: bibleField.optional(),
   consistencyTag: bibleField.optional(),
   isPerson: z.boolean().optional(),
+  rendering: bibleField.optional().meta({
+    description:
+      'What the character is rendered as, e.g. "Photoreal live action" or "3D animated, Pixar-like". Required unless voice-only; a new character in a sequence takes the sequence style’s when left out.',
+  }),
 });
 
 /** The user-editable location bible fields (#1108); the library link stays on recast. */

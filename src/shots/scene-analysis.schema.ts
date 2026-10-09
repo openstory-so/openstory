@@ -78,6 +78,9 @@ export const characterBibleEntrySchema = z.object({
   // Narrator, radio voice, a caller on the phone: a voice with no face, so no
   // sheet, no talent match, no place in an image prompt (#1585).
   voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
+  // What the character is rendered as (#2017), filled from the sequence's
+  // style by `bibleFromWire`, never asked of the model. '' when voice-only.
+  rendering: z.string(),
   // Person vs robot/animal/object. Legal `real` is never a bible fact —
   // it is stamped on the character row from a signed talent or upload (#1682).
   isPerson: z
@@ -575,9 +578,11 @@ export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
  * TALENT, with the talent's own distinguishing features. Not a character's
  * (#2065 moved those to the default look); this one stays.
  */
-export const talentSheetMetadataSchema = characterBibleEntrySchema.extend({
-  distinguishingFeatures: z.string(),
-});
+export const talentSheetMetadataSchema = characterBibleEntrySchema
+  .omit({ rendering: true })
+  .extend({
+    distinguishingFeatures: z.string(),
+  });
 export type TalentSheetMetadata = z.infer<typeof talentSheetMetadataSchema>;
 // Bible entry types as consumed downstream: firstMention carries the
 // server-derived sceneId (see FirstMentionWithScene). The raw z.infer of the

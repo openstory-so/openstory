@@ -79,13 +79,14 @@ type TeamBibleInput = {
   standardClothing?: string;
   personality?: string;
   movement?: string;
+  rendering?: string;
 };
 
 /** Make a character with no sequence (#2065). The caller shows the failure. */
 export function useCreateTeamCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string } & TeamBibleInput) =>
+    mutationFn: (data: { name: string; rendering: string } & TeamBibleInput) =>
       createTeamCharacterFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });

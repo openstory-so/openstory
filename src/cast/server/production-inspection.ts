@@ -126,6 +126,7 @@ export const characterReadSchema = createSelectSchema(characters)
       gender: true,
       ethnicity: true,
       physicalDescription: true,
+      rendering: true,
       personality: true,
       movement: true,
       voiceOnly: true,

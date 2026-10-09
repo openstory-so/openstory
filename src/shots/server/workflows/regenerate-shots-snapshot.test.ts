@@ -51,6 +51,7 @@ function makeCharacter(
     movement: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: null,
     voiceDescription: null,
     voicePreviews: null,

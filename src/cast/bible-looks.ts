@@ -222,7 +222,9 @@ export function bibleFromWire(
    * other's picks: a new entry's repeat of a tag in use gets a number
    * (`sarah`, `sarah_2`), as a repeated look name does.
    */
-  castTagsById: ReadonlyMap<string, string>
+  castTagsById: ReadonlyMap<string, string>,
+  /** What every seen character is rendered as (#2017): the sequence style's. */
+  rendering: string
 ): {
   characterBible: CharacterBibleEntry[];
   sceneLooks: Record<string, Record<string, string>>;
@@ -237,7 +239,11 @@ export function bibleFromWire(
         tag = `${canonicalBibleTag(given)}_${n}`;
       tags.add(tag);
     }
-    const entry = { ...given, consistencyTag: tag };
+    const entry = {
+      ...given,
+      consistencyTag: tag,
+      rendering: given.voiceOnly ? '' : rendering,
+    };
     const slugs = new Set<string>();
     const names = new Set<string>();
     const resolved = given.looks.map((look, index) => {

@@ -9,6 +9,8 @@
  * can reach them). The `…TeamCharacter…` ones are the Characters page's
  * (#2065): no sequence, scoped to the team.
  */
+import { renderingOfStyle } from '@/cast/rendering';
+import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
 import type { z } from 'zod';
 import {
   ConflictError,
@@ -152,12 +154,19 @@ export async function createCharacter(
     taken.add(characterId);
     characterId = nextIdentityToken(base, taken);
   }
+  // Rendered as the sequence's style says, unless the caller said (#2017).
+  const sequence = await scopedDb.sequences.getById(sequenceId);
+  if (!sequence) throw new NotFoundError('Sequence not found');
+  const rendering =
+    bible.rendering ??
+    renderingOfStyle(await resolveSequenceStyle(scopedDb, sequence));
   const character = await scopedDb.characters.create(
     {
       sequenceId,
       characterId,
       name,
       ...bible,
+      rendering,
       consistencyTag:
         bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
       sheetStatus: 'pending',
@@ -204,6 +213,7 @@ export async function createTeamCharacter(
     {
       name,
       ...bible,
+      rendering: bible.rendering ?? null,
       standardClothing: standardClothing ?? null,
       // {@link createCharacter} prefixes the tag with the sequence's script
       // id. With no sequence there is none, so the prefix is the id a

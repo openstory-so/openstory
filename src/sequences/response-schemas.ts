@@ -155,7 +155,9 @@ const characterBibleWireEntrySchema = z.preprocess(
           }
         : value
     ),
-  characterBibleEntrySchema.extend({
+  // The model is not asked what a character is rendered as (#2017): the
+  // sequence's style says, and `bibleFromWire` fills it in.
+  characterBibleEntrySchema.omit({ rendering: true }).extend({
     looks: z.preprocess((value) => value ?? [], z.array(wireLookSchema)),
   })
 );

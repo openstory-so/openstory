@@ -260,6 +260,7 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
       sequenceId,
       characterId: 'char_001',
       name: 'Jack',
+      rendering: 'Photoreal live action',
       consistencyTag: 'char_001: Jack-denim-jacket',
       sheetStatus: 'completed',
     },
@@ -783,7 +784,12 @@ describe('character sheet upload for a look other than the default (#2015)', () 
       await import('@/cast/server/upload-rights');
     const scopedDb = createScopedDb(teamId, actorId);
     const mia = await scopedDb.characters.create(
-      { sequenceId, characterId: 'char_001', name: 'Mia' },
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Mia',
+        rendering: 'Photoreal live action',
+      },
       { source: 'analysis', createdBy: null }
     );
     const gala = await scopedDb.characterLooks.create(

@@ -129,6 +129,7 @@ beforeEach(async () => {
       sequenceId,
       characterId: 'char_001',
       name: 'Sam',
+      rendering: 'Photoreal live action',
       physicalDescription: 'tall',
       standardClothing: 'grey suit',
       sheetStatus: 'pending',
@@ -378,10 +379,10 @@ describe('character sheet claims', () => {
     expect(await landCharacter(versionId)).toBe('parked');
   });
 
-  it('is revoked by a style change on the sequence', async () => {
+  it('is not revoked by a style change on the sequence (#2017): a sheet reads no style', async () => {
     const versionId = await claim();
     await db.batch(demoteSequenceSheetClaims(db, sequenceId, sql`1`));
-    expect(await landCharacter(versionId)).toBe('parked');
+    expect(await landCharacter(versionId)).toBe('promoted');
   });
 });
 

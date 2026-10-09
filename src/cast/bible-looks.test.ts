@@ -59,7 +59,8 @@ describe('bibleFromWire', () => {
       [mia, wire({ characterId: 'char_sam' })],
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(characterBible[0]?.looks).toEqual([
       {
@@ -88,7 +89,8 @@ describe('bibleFromWire', () => {
       [wire({ characterId: 'char_sam', standardClothing: 'overalls' })],
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(characterBible[0]?.looks).toEqual([
       {
@@ -120,7 +122,8 @@ describe('bibleFromWire', () => {
       ],
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(characterBible[0]?.standardClothing).toBe('jeans');
     expect(characterBible.flatMap((c) => c.looks.map((l) => l.lookId))).toEqual(
@@ -147,7 +150,8 @@ describe('bibleFromWire', () => {
       ],
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(sceneLooks).toEqual({ scene_2: { mia: 'char_mia:gala_gown' } });
   });
@@ -163,7 +167,8 @@ describe('bibleFromWire', () => {
       ],
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(characterBible[0]).toMatchObject({
       standardClothing: 'grey suit',
@@ -185,7 +190,8 @@ describe('bibleFromWire', () => {
       ],
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(characterBible[0]?.looks.map((look) => look.name)).toEqual([
       'Day',
@@ -203,8 +209,13 @@ describe('bibleFromWire', () => {
     });
     expect(parsed.characterBible[0]?.looks).toEqual([]);
     expect(
-      bibleFromWire(parsed.characterBible, sceneIdForLine, 30, new Map())
-        .characterBible[0]?.looks
+      bibleFromWire(
+        parsed.characterBible,
+        sceneIdForLine,
+        30,
+        new Map(),
+        'Photoreal live action'
+      ).characterBible[0]?.looks
     ).toHaveLength(1);
   });
 });
@@ -214,7 +225,8 @@ describe('wearing a look', () => {
     [mia],
     sceneIdForLine,
     30,
-    new Map()
+    new Map(),
+    'Photoreal live action'
   ).characterBible;
   if (!entry) throw new Error('setup');
 
@@ -282,7 +294,8 @@ describe('bibleFromWire with two characters of one tag (#2050)', () => {
       [mia, twin, wire({ characterId: 'char_003', consistencyTag: 'sam' })],
       sceneIdForLine,
       30,
-      new Map([['char_sam', 'sam']])
+      new Map([['char_sam', 'sam']]),
+      'Photoreal live action'
     );
     expect(characterBible.map((c) => c.consistencyTag)).toEqual([
       'mia',
@@ -309,7 +322,8 @@ describe('bibleFromWire with an echoed cast character (#2050)', () => {
       ],
       sceneIdForLine,
       30,
-      new Map([['char_ada', 'ada']])
+      new Map([['char_ada', 'ada']]),
+      'Photoreal live action'
     );
     expect(characterBible.map((c) => c.consistencyTag)).toEqual([
       'ada',
@@ -397,7 +411,8 @@ describe('an entry written before the default look took the features (#2065)', (
       parsed.characterBible,
       sceneIdForLine,
       30,
-      new Map()
+      new Map(),
+      'Photoreal live action'
     );
     expect(characterBible[0]).not.toHaveProperty('distinguishingFeatures');
     // Recorded before looks: the default look is made from the clothing,

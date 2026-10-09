@@ -7,15 +7,13 @@
  * @module lib/services/character.service
  */
 
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import type {
   CharacterBibleEntry,
   TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 
-import type {
-  CharacterMinimal,
-  StyleConfig,
-} from '@/platform/server/db/schema';
+import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { referenceProvenanceKey } from '@/motion/reference-provenance';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 /**
@@ -72,23 +70,30 @@ export const buildCharacterReferenceImages = (
 };
 
 /**
- * Derive environment, optical, and lighting prompt sections from a sequence style.
- * When provided, these replace the hardcoded studio defaults in character sheets
- * so that character references match the sequence's visual direction.
+ * The environment, optical and lighting sections for what the character is
+ * rendered as (#2017). Photoreal keeps the commercial reference photography
+ * wording every talent sheet was recorded with; anything else is the same
+ * neutral studio with the rendering named. The sequence's palette, grade and
+ * mood never reach a sheet: they apply at the shot.
  */
-const formatStyleForSheet = (
-  styleConfig: StyleConfig
+const renderingSections = (
+  rendering: string
 ): { environment: string; opticalSpecs: string; lighting: string } => {
-  const { look, motion, references } = styleConfig;
-  const colorPaletteStr = look.colorPalette.join(', ');
-  const referencesStr =
-    references.length > 0 ? ` Reference look: ${references.join(', ')}.` : '';
-  const mediumStr = look.medium ? ` Medium: ${look.medium}.` : '';
-
+  const lighting =
+    'Neutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.';
+  if (rendering === PHOTOREAL_RENDERING) {
+    return {
+      environment:
+        'Seamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.',
+      opticalSpecs:
+        'Commercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.',
+      lighting,
+    };
+  }
   return {
-    environment: `Render the character in ${look.artStyle} style.${mediumStr} Background: clean, seamless studio backdrop with no environmental detail — simple flat or gradient tone using the style's color palette: ${colorPaletteStr}. Color grading: ${look.colorGrading}. Mood: ${look.mood}.${referencesStr} All visual interest comes from the character, not the environment.`,
-    opticalSpecs: `${look.artStyle} style rendering. Camera approach: ${motion.camera}. Maintain sharp focus and consistent character detail across all panels.`,
-    lighting: `${look.lighting}. The lighting should be consistent across all four panels and match the overall ${look.mood} mood.`,
+    environment: `Render the character as ${rendering}. Seamless, minimalist studio cyclorama with a flat neutral white background and no environmental detail. Clean, analytical atmosphere designed for clarity: all visual interest comes from the character, not the environment.`,
+    opticalSpecs: `${rendering} rendering. Tack-sharp focus and consistent character detail across all panels, deep depth of field. Flat perspective, no lens distortion.`,
+    lighting,
   };
 };
 
@@ -102,29 +107,20 @@ const formatStyleForSheet = (
  *
  * @param identitySection - The identity section of the prompt
  * @param additionalInstructions - Optional additional instructions (e.g., reference image handling)
- * @param styleConfig - Optional sequence style to apply instead of default studio look
+ * @param rendering - What the subject is rendered as (#2017); photoreal by default
  * @returns Complete prompt string
  */
 const buildBaseSheetPrompt = (
   identitySection: string,
   /** Optional additional instructions (e.g., reference image handling) */
   additionalInstructions: string = '',
-  /** Optional sequence style config — replaces default studio look when provided */
-  styleConfig?: StyleConfig
+  rendering: string = PHOTOREAL_RENDERING
 ): string => {
-  const styled = styleConfig ? formatStyleForSheet(styleConfig) : null;
-
-  const environmentSection = styled
-    ? styled.environment
-    : 'Seamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.';
-
-  const opticalSection = styled
-    ? styled.opticalSpecs
-    : 'Commercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.';
-
-  const lightingSection = styled
-    ? styled.lighting
-    : 'Neutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.';
+  const {
+    environment: environmentSection,
+    opticalSpecs: opticalSection,
+    lighting: lightingSection,
+  } = renderingSections(rendering);
 
   return `A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.
 
@@ -309,7 +305,6 @@ type CharacterSheetPromptResult = {
  *
  * @param entry - The character bible entry from script analysis
  * @param talentOverrides - Optional talent data for casting
- * @param styleConfig - Optional sequence style to apply instead of default studio look
  * @param styling - The look's hair / makeup / injury notes (#2015), as
  *   `effectiveStyling` resolves them: on the default look they hold what the
  *   bible called distinguishing features (#2065). Null when the look has
@@ -322,7 +317,6 @@ type CharacterSheetPromptResult = {
 export const buildCharacterSheetPrompt = (
   entry: CharacterBibleEntry,
   talentOverrides: TalentOverrides | undefined,
-  styleConfig: StyleConfig | undefined,
   styling: string | null,
   faceSheetUrl: string | null
 ): CharacterSheetPromptResult => {
@@ -414,10 +408,11 @@ ${standardClothing}
 
 ${stylingSection}`.trim();
 
+  // What the character is rendered as (#2017): its own, never the sequence's.
   const prompt = buildBaseSheetPrompt(
     identitySection,
     referenceInstruction,
-    styleConfig
+    entry.rendering
   );
 
   return { prompt, referenceUrls };

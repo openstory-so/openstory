@@ -23,6 +23,7 @@ const character: CharacterBibleEntry = {
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'jack',
 };
 
@@ -46,6 +47,7 @@ const talent = {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'sam',
     },
   },

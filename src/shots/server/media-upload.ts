@@ -595,10 +595,7 @@ export async function setCharacterSheetFromUpload(
 
   // Same upstream resolution the character-sheet workflow uses.
   const cast = await resolveCastTalent(scopedDb, character.talentId);
-  const { styleConfigHash, imageModel } = await resolveSheetHashContext(
-    scopedDb,
-    sequence
-  );
+  const { imageModel } = await resolveSheetHashContext(scopedDb, sequence);
   const inputHash = await computeCharacterSheetInputHash({
     characterBible: {
       name: character.name,
@@ -607,13 +604,15 @@ export async function setCharacterSheetFromUpload(
       ethnicity: character.ethnicity,
       physicalDescription: character.physicalDescription,
       standardClothing: character.standardClothing,
+      rendering: character.rendering,
       consistencyTag: character.consistencyTag,
     },
     styling: character.styling,
     faceSheetVersionId: face === null ? null : face.versionId,
     talentSheetHash: cast.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(cast),
-    styleConfigHash,
+    // The current shape reads no style (#2017).
+    styleConfigHash: null,
     imageModel,
   });
 

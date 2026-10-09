@@ -482,6 +482,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         physicalDescription: '',
         standardClothing: 'red gown',
         distinguishingFeatures: '',
+        rendering: 'Photoreal live action',
         consistencyTag: 'maya',
       },
       imageModel: 'nano_banana_2',

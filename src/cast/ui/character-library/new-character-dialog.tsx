@@ -1,4 +1,5 @@
 import type React from 'react';
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -40,23 +41,27 @@ export const NewCharacterDialog: React.FC = () => {
           </DialogDescription>
         </DialogHeader>
         <NewCharacterForm
+          defaultRendering={PHOTOREAL_RENDERING}
           isPending={createCharacter.isPending}
           submitLabel="Create"
           pendingLabel="Creating…"
           onSubmit={(fields) =>
-            createCharacter.mutate(fields, {
-              onSuccess: (character) => {
-                setOpen(false);
-                void navigate({
-                  to: '/characters/$id',
-                  params: { id: character.id },
-                });
-              },
-              onError: (error) =>
-                toast.error('Character not created', {
-                  description: errorMessage(error),
-                }),
-            })
+            createCharacter.mutate(
+              { ...fields, rendering: fields.rendering ?? PHOTOREAL_RENDERING },
+              {
+                onSuccess: (character) => {
+                  setOpen(false);
+                  void navigate({
+                    to: '/characters/$id',
+                    params: { id: character.id },
+                  });
+                },
+                onError: (error) =>
+                  toast.error('Character not created', {
+                    description: errorMessage(error),
+                  }),
+              }
+            )
           }
         />
       </DialogContent>

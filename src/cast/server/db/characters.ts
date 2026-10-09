@@ -62,6 +62,7 @@ import {
   talent,
 } from '@/platform/server/db/schema';
 import { identityToken, nextIdentityToken } from '@/cast/bible-field';
+import { renderingFor } from '@/cast/rendering';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { markPreviewUnusable } from '@/cast/voice';
 import {
@@ -115,6 +116,7 @@ const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
   movement: null,
   voiceOnly: false,
   isPerson: true,
+  rendering: null,
   consistencyTag: null,
 };
 
@@ -129,6 +131,7 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
   movement: data.movement,
   voiceOnly: data.voiceOnly,
   isPerson: data.isPerson,
+  rendering: data.rendering,
   consistencyTag: data.consistencyTag,
 });
 
@@ -136,8 +139,17 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
 const lookSource = (source: BibleVersionSource): LookVersionSource =>
   source === 'recast' ? 'edit' : source;
 
-const mergeBible = (base: CharacterBible, patch: Partial<CharacterBible>) =>
-  mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
+/**
+ * The bible a write stores: the patch over the base, with the rendering
+ * null exactly when voice-only and required otherwise (`renderingFor`).
+ */
+const mergeBible = (
+  base: CharacterBible,
+  patch: Partial<CharacterBible>
+): CharacterBible => {
+  const merged = mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
+  return { ...merged, rendering: renderingFor(merged) };
+};
 
 const touchesSheet = (fields: readonly (keyof CharacterBible)[]) =>
   fields.some((key) =>
@@ -163,6 +175,7 @@ export type CharacterBibleUpdate = Partial<
     | 'movement'
     | 'voiceOnly'
     | 'isPerson'
+    | 'rendering'
     | 'voiceDescription'
     | 'consistencyTag'
   >

@@ -4,6 +4,7 @@
  * visual/motion/music aimock matchers in lockstep with slice-derived metadata.
  */
 
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -186,7 +187,8 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     bibles.characterBible,
     sceneIdForLine,
     script.split('\n').length,
-    new Map()
+    new Map(),
+    PHOTOREAL_RENDERING
   );
   const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
     characterBible: analysed.characterBible,

@@ -12,8 +12,8 @@
 
 import {
   characterSheetInputHashMatches,
-  computeCharacterSheetInputHash,
   computeCharacterSheetInputHashLegacy,
+  computeCharacterSheetInputHash,
   computeLibraryLocationReferenceInputHash,
   computeShotImageInputHash,
   computeLocationSheetInputHash,
@@ -111,6 +111,20 @@ export function assertQueuedWithFace(input: object): void {
 }
 
 /**
+ * A sheet payload queued before the bible carried `rendering` (#2017): the
+ * sheet would read the sequence's style, which is no longer on the payload.
+ */
+export function assertQueuedWithRendering(input: {
+  characterMetadata: object;
+}): void {
+  if (!('rendering' in input.characterMetadata)) {
+    throw new WorkflowValidationError(
+      'Queued before character rendering shipped. Run it again.'
+    );
+  }
+}
+
+/**
  * A character sheet payload before its face: everything the trigger
  * snapshots except the default look's sheet and the hash that covers it.
  * A look whose default sheet the same run makes waits in this shape.
@@ -164,6 +178,7 @@ function characterBibleFields(
     ethnicity: metadata.ethnicity,
     physicalDescription: metadata.physicalDescription,
     standardClothing: metadata.standardClothing,
+    rendering: metadata.rendering,
     consistencyTag: metadata.consistencyTag,
   };
 }
@@ -218,7 +233,7 @@ export async function computeCharacterSheetHashFromDto(
 ): Promise<CharacterSheetInputHash> {
   return computeCharacterSheetInputHash({
     ...characterSheetHashInput(input),
-    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
+    styleConfigHash: null,
   });
 }
 
@@ -226,36 +241,36 @@ export async function computeCharacterSheetHashFromDto(
  * Verify a stored sheet digest against the DTO, in the current shape or a
  * legacy one. `legacy` is the look's stored parts (#2065): off the rows for
  * a live verify (`legacyStylingParts`), off the payload for a run's own
- * snapshot ({@link queuedLegacyStyling}).
+ * snapshot ({@link queuedLegacyStyling}). `styleConfigHash` is the sequence
+ * style's digest (`computeStyleConfigHash`), read only by the shapes stamped
+ * before `rendering` (#2017); a run's own snapshot check passes `null` and
+ * verifies the current shape alone.
  */
 export async function characterSheetHashMatchesStored(
   stored: string | null,
   input: SheetPayload<CharacterSheetWorkflowInput>,
-  legacy: LegacyStylingParts
+  legacy: LegacyStylingParts,
+  styleConfigHash: string | null
 ): Promise<boolean> {
   return characterSheetInputHashMatches(
     stored,
-    {
-      ...characterSheetHashInput(input),
-      styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-    },
+    { ...characterSheetHashInput(input), styleConfigHash },
     legacy
   );
 }
 
 /**
- * The digest a sheet payload was stamped with before #2065. Verify/tests
- * only — delete after `LEGACY_HASH_UNTIL`.
+ * The digest a sheet payload was stamped with before #2065, with the
+ * sequence style it read then. Verify/tests only — delete after
+ * `LEGACY_HASH_UNTIL`.
  */
 export async function computeCharacterSheetHashFromDtoBefore2065(
   input: SheetPayload<CharacterSheetWorkflowInput>,
-  legacy: LegacyStylingParts
+  legacy: LegacyStylingParts,
+  styleConfigHash: string
 ): Promise<string> {
   return computeCharacterSheetInputHashLegacy(
-    {
-      ...characterSheetHashInput(input),
-      styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-    },
+    { ...characterSheetHashInput(input), styleConfigHash },
     legacy,
     'pre-2065'
   );

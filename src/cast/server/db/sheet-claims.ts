@@ -33,7 +33,6 @@ import {
   characterSheetVariants,
   characters,
   locationSheetVariants,
-  sequenceCast,
   sequenceLocations,
   talent,
 } from '@/platform/server/db/schema';
@@ -80,7 +79,7 @@ export const demoteTalentSheetClaim = (db: Database, talentId: string) =>
     );
 
 /**
- * Every sheet claim in a sequence: its style is an input to all of them.
+ * Every location sheet claim in a sequence: its style is an input to them.
  * Each statement evaluates `styleMoved` itself, so the caller's batch revokes
  * only when its style write changes the snapshot (#1863).
  */
@@ -90,16 +89,7 @@ export const demoteSequenceSheetClaims = (
   styleMoved: SQL
 ) =>
   [
-    demoteCharacterSheetClaims(
-      db,
-      sql`${inArray(
-        characters.id,
-        db
-          .select({ id: sequenceCast.characterId })
-          .from(sequenceCast)
-          .where(eq(sequenceCast.sequenceId, sequenceId))
-      )} and ${styleMoved}`
-    ),
+    // A character sheet reads no style since `rendering` (#2017).
     demoteLocationReferenceClaims(
       db,
       sql`${eq(sequenceLocations.sequenceId, sequenceId)} and ${styleMoved}`

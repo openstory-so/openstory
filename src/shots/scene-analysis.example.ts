@@ -20,6 +20,7 @@ export const sceneAnalysisExample: SceneAnalysis = {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'Short tag for continuity',
     },
   ],

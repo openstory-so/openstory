@@ -579,6 +579,7 @@ describe('SceneSplitWorkflow stream step config', () => {
               voiceDescription: '',
               voiceOnly: false,
               isPerson: true,
+              rendering: 'Photoreal live action',
               consistencyTag: 'ada',
             },
           },

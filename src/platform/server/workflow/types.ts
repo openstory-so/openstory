@@ -877,8 +877,6 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * `shouldReuseTalentSheet`.
    */
   reuseTalentSheet?: boolean;
-  /** Sequence style config to apply to the character sheet */
-  styleConfig?: StyleConfig;
   /**
    * Snapshot of the upstream talent sheet's `input_hash` at trigger time.
    * `null` when the character has no talent assignment, or when the talent
@@ -1064,8 +1062,6 @@ export interface RecastCharacterWorkflowInput
   sheetVersionId: string;
   /** See `CharacterSheetWorkflowInput.bibleVersionId`. */
   bibleVersionId: string | null;
-  /** Sequence style config to apply to the character sheet */
-  styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
   resolution?: Resolution;

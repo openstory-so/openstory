@@ -274,6 +274,11 @@ Key consequences of the shape:
   hashes still read the bible's values — but a stale artifact's cause now
   names the fields that moved (`Character "Jack": clothing`) instead of any
   row touched after it.
+- **A sheet reads the bible's `rendering`, not the sequence's style
+  (#2017).** The one thing a sheet took from a style is what the character
+  is rendered as, so that is a bible field now and the style is out of the
+  sheet hash; a style change stales no character sheet. The shot still
+  reads the style.
 - **A character is the team's, and every sequence reads its current
   version (#2017).** The bible a shot's hashes read, the voice its clips
   bind, and a look's clothing, styling and sheet are the character's own,

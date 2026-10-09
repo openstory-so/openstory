@@ -57,6 +57,7 @@
  * JSON-stringified around the boundary for CF's `Rpc.Serializable<T>` check.
  */
 
+import { renderingOfStyle } from '@/cast/rendering';
 import {
   queuedBeforeCast,
   queuedBeforeLooks,
@@ -903,7 +904,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       biblesResult.characterBible,
       sceneIdForLine,
       script.split('\n').length,
-      castTags(input.cast)
+      castTags(input.cast),
+      renderingOfStyle(input.styleConfig)
     );
     const { characterBible, sceneLooks } = applyAttachedCast(
       wire.characterBible,

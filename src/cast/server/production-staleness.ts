@@ -1,4 +1,6 @@
+import { computeStyleConfigHash } from '@/cast/server/workflows/sheet-snapshots';
 import { wearLook } from '@/cast/character-looks';
+import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
 import { legacyStylingParts } from '@/cast/server/bibles-from-scoped';
 import { requireCharacterLook } from '@/cast/server/character-look';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -101,7 +103,11 @@ export async function readLookSheetStaleness(
     status: (await characterSheetHashMatchesStored(
       stored,
       payload,
-      legacyStylingParts(character)
+      legacyStylingParts(character),
+      // The style, for a digest stamped before `rendering` (#2017).
+      await computeStyleConfigHash(
+        await resolveSequenceStyle(scopedDb, context.sequence)
+      )
     ))
       ? 'fresh'
       : 'stale',

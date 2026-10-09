@@ -54,6 +54,7 @@ const alice: CharacterBibleEntry = {
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: '',
 };
 const bob: CharacterBibleEntry = { ...alice, characterId: 'bob', name: 'Bob' };
@@ -447,6 +448,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'detective_sarah_blonde_30s',
   };
   const talentSheet: TalentSheetMetadata = {
@@ -498,6 +500,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     movement: '',
     voiceOnly: b.voiceOnly,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: null,
     voiceDescription: b.voiceDescription || null,
     voicePreviews: null,
