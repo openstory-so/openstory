@@ -604,10 +604,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // Fetch image variants for this sequence (frame_variants kind:'model', #989)
   const { data: imageVariants } = useSequenceImageVariants(sequenceId);
 
-  // Video variants (#545) — per-model coverage and the inspector's
-  // per-model state. The player always shows each shot's current version.
-  const { data: videoVariants } = useSequenceVideoVariants(sequenceId);
-
   // Render segments (#986/#990) — group the shot strip into per-video segments
   // and drive the segment-aware Video tab. Poll while motion is in flight so a
   // freshly-rendered segment's version + staleness land without a manual reload.
@@ -616,6 +612,17 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     [shots]
   );
   const { data: segments, error: segmentsError } = useSequenceSegments(
+    sequenceId,
+    anyVideoGenerating
+      ? { refetchInterval: EDITOR_FALLBACK_POLL_MS }
+      : undefined
+  );
+
+  // Video variants (#545) — per-model coverage and the inspector's
+  // per-model state. The player always shows each shot's current version.
+  // Poll while motion is in flight so completed variants update and clear
+  // generating badges even if realtime events were dropped (#1381).
+  const { data: videoVariants } = useSequenceVideoVariants(
     sequenceId,
     anyVideoGenerating
       ? { refetchInterval: EDITOR_FALLBACK_POLL_MS }
