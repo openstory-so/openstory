@@ -52,7 +52,11 @@ import { UPDATE_STALE_DEPTHS } from '@/shots/update-stale-depth';
 import { GENERATION_STAGES } from '@/sequences/pipeline';
 import { productionAccess } from './production-access';
 import { computeGenerationPlan } from './generation-plan';
-import { CONTINUE_CREDIT_PROVIDERS, prepareContinue } from './continue-plan';
+import {
+  CONTINUE_CREDIT_PROVIDERS,
+  prepareContinue,
+  withContinueSwitches,
+} from './continue-plan';
 import {
   GenerationInProgressError,
   GenerationStatusUnknownError,
@@ -79,6 +83,9 @@ const requestSchema = z.discriminatedUnion('mode', [
   z.object({
     mode: z.literal('missing'),
     stopAt: z.enum(GENERATION_STAGES),
+    // The Continue footer's switches (#2084). Omitted = the saved ones.
+    generateStartFrames: z.boolean().optional(),
+    draftMotion: z.boolean().optional(),
     target: targetSchema,
   }),
   z.object({
@@ -334,19 +341,21 @@ async function prepareGeneration(
   // Voices are on wherever this deployment can design them (#2067). The
   // caller does not pass a flag. A row stored off still goes back to Dialogue.
   const generateVoices = isElevenLabsConfigured() || sequence.generateVoices;
+  const generateStartFrames =
+    request.generateStartFrames ?? sequence.generateStartFrames;
+  const draftMotion = request.draftMotion ?? sequence.draftMotion;
   const { work, stopAt, estimate } = await prepareContinue({
     scopedDb,
     sequence,
     stopAt: request.stopAt,
-    requested: {
-      generateStartFrames: sequence.generateStartFrames,
-      generateVoices,
-    },
-    draftMotion: sequence.draftMotion,
+    requested: { generateStartFrames, generateVoices },
+    draftMotion,
     generationPlan,
   });
   const plan = await computePlan({
     scopedDb,
+    // Planned under the requested switches: they save only at launch.
+    sequenceOverrides: { generateStartFrames, generateVoices, draftMotion },
     sequenceId: sequence.id,
     units: work.map(({ kind, id }) => ({ kind, id })),
     userId: actor.userId,
@@ -363,19 +372,24 @@ async function prepareGeneration(
     // The storyboard mutex is the launch-once guard here: a repeat while the
     // run is live is GENERATION_IN_PROGRESS, and after it PLAN_CHANGED.
     launch: async (_runKey, onLaunched) => {
-      if (generateVoices !== sequence.generateVoices) {
-        await scopedDb.sequences.update({
-          id: sequence.id,
-          generateVoices,
-        });
-      }
-      const { workflowRunId } = await triggerContinue(scopedDb, {
-        userId: actor.userId,
-        teamId: actor.teamId,
+      const { workflowRunId } = await withContinueSwitches(
+        scopedDb,
         sequence,
-        plan,
-        stopAt,
-      });
+        {
+          generationStopAt: stopAt,
+          generateStartFrames,
+          generateVoices,
+          draftMotion,
+        },
+        () =>
+          triggerContinue(scopedDb, {
+            userId: actor.userId,
+            teamId: actor.teamId,
+            sequence,
+            plan,
+            stopAt,
+          })
+      );
       await onLaunched(workflowRunId);
     },
   };

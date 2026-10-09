@@ -172,7 +172,9 @@ describe('buildSceneFromSlice', () => {
     expect('shotLabelSeconds' in scene).toBe(false);
   });
 
-  it('no scene label and only stray shot-shaped lines: falls to the word-count estimate (#1621)', () => {
+  it('no scene label and only stray shot-shaped lines: those lines are action, not durations (#1621)', () => {
+    // Legacy shot labels are not durations. The slice is timed as its word
+    // count (17 words → 6s) until the shot-list model replaces that ceiling.
     const scene = buildSceneFromSlice(
       'scene_1',
       0,

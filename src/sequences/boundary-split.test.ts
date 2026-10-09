@@ -44,15 +44,42 @@ describe('resolveBoundaries', () => {
     expect(repairs).toBe(0);
   });
 
-  it('pins the first boundary to offset 0 even when its quote matches later', () => {
-    const { offsets, repairs } = resolveBoundaries(script, [
-      { hintLine: 3, quote: 'Sarah types.' },
-      { hintLine: 5, quote: 'EXT. STREET - NIGHT' },
+  it('starts the first scene at its quote, so earlier text is not a scene (#2077)', () => {
+    const screenplay = [
+      'THE RAIN SHIFT',
+      '',
+      'CHARACTERS',
+      'SARAH — a detective who has not slept.',
+      '',
+      'INT. KITCHEN - NIGHT',
+      'Sarah fills the kettle.',
+      '',
+      'EXT. STREET - NIGHT',
+      'They step into the rain.',
+    ].join('\n');
+    const { offsets, repairs } = resolveBoundaries(screenplay, [
+      { hintLine: 6, quote: 'INT. KITCHEN - NIGHT' },
+      { hintLine: 9, quote: 'EXT. STREET - NIGHT' },
     ]);
-    expect(offsets[0]).toBe(0);
-    // Pin-to-0 is the product rule, not a repair — a 1-scene titled script
-    // must not trip isExcessivelyRepaired.
+    expect(offsets).toEqual([
+      screenplay.indexOf('INT. KITCHEN - NIGHT'),
+      screenplay.indexOf('EXT. STREET - NIGHT'),
+    ]);
     expect(repairs).toBe(0);
+    const slices = sliceScenes(screenplay, offsets);
+    expect(slices.join('')).toBe(screenplay.slice(offsets[0] ?? 0));
+    expect(slices.join('')).not.toContain('CHARACTERS');
+    expect(slices.join('')).not.toContain('THE RAIN SHIFT');
+    expect(slices[0]?.startsWith('INT. KITCHEN - NIGHT')).toBe(true);
+  });
+
+  it('pins an unresolved first quote to offset 0 without counting a repair', () => {
+    const resolved = resolveBoundaries(script, [
+      { hintLine: 1, quote: 'NO SUCH OPENING ANYWHERE IN THIS SCRIPT' },
+    ]);
+    expect(resolved.offsets).toEqual([0]);
+    expect(resolved.repairs).toBe(0);
+    expect(isExcessivelyRepaired(resolved, 1)).toBe(false);
   });
 
   it('resolves repeated identical quotes to later occurrences via the monotonic cursor', () => {
@@ -164,6 +191,11 @@ describe('sceneIndexForLine', () => {
   it('clamps out-of-range lines', () => {
     expect(sceneIndexForLine(script, offsets, 0)).toBe(0);
     expect(sceneIndexForLine(script, offsets, 999)).toBe(2);
+  });
+
+  it('maps a line before the first scene onto that scene (#2077)', () => {
+    const start = script.indexOf('EXT. STREET');
+    expect(sceneIndexForLine(script, [start], 1)).toBe(0);
   });
 });
 

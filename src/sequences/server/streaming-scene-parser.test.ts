@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  assembleScenes,
   createStreamingSceneParser,
   stripCodeFences,
 } from './streaming-scene-parser';
@@ -177,6 +178,67 @@ describe('createStreamingSceneParser', () => {
   it('returns no events for non-JSON garbage', () => {
     const parser = makeParser();
     expect(parser.feed('The scenes are as follows:')).toEqual([]);
+  });
+
+  it('starts scenes at the model quotes, and the final assemble reuses those ids (#2077)', () => {
+    const screenplay = [
+      'THE RAIN SHIFT',
+      '',
+      'CHARACTERS',
+      'SARAH — a detective who has not slept.',
+      '',
+      'INT. KITCHEN - NIGHT',
+      'Sarah fills the kettle.',
+      '',
+      'SARAH',
+      'Tea?',
+      '',
+      'EXT. STREET - NIGHT',
+      'They step into the rain.',
+    ].join('\n');
+    // The model quotes the first filmable scene, not the title page.
+    const screenplayBoundaries = [
+      { hintLine: 6, quote: 'INT. KITCHEN - NIGHT' },
+      { hintLine: 12, quote: 'EXT. STREET - NIGHT' },
+    ];
+    let n = 0;
+    const parser = createStreamingSceneParser(screenplay, () => `id-${++n}`);
+    const json = JSON.stringify({
+      projectMetadata: { title: 'Rain' },
+      boundaries: screenplayBoundaries,
+    });
+
+    const mid = parser.feed(json.slice(0, json.indexOf('EXT. STREET') + 4));
+    expect(mid.filter((event) => event.type === 'scene')).toEqual([]);
+
+    const done = parser.feed(json, true);
+    const streamed = done.filter((event) => event.type === 'scene');
+    expect(streamed.map((event) => event.scene.metadata.title)).toEqual([
+      'KITCHEN',
+      'STREET',
+    ]);
+    expect(
+      streamed[0]?.scene.originalScript.extract.startsWith('INT. KITCHEN')
+    ).toBe(true);
+    expect(streamed[0]?.scene.originalScript.extract).not.toContain(
+      'CHARACTERS'
+    );
+
+    const assembled = assembleScenes(
+      screenplay,
+      { boundaries: screenplayBoundaries },
+      (index) => parser.mintedSceneIds().get(index) ?? `missing-${index}`
+    );
+    const start = assembled.sceneOffsets[0] ?? 0;
+    expect(assembled.slices.join('')).toBe(screenplay.slice(start));
+    expect(assembled.scenes.map((scene) => scene.sceneId)).toEqual([
+      'id-1',
+      'id-2',
+    ]);
+    expect(assembled.scenes.map((scene) => scene.metadata.title)).toEqual([
+      'KITCHEN',
+      'STREET',
+    ]);
   });
 });
 

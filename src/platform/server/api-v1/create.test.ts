@@ -96,6 +96,8 @@ const baseInput = {
   enhance: 'off' as const,
   motion: false,
   music: false,
+  startFrames: false,
+  draftMotion: true,
 };
 
 function pngResponse(): Response {
@@ -204,6 +206,30 @@ describe('runOneShotCreate', () => {
     expect(
       mocks.createSequences.mock.calls[0]?.[0].generateVoices
     ).toBeUndefined();
+  });
+
+  it('creates what the app creates by default: no start frames, stopping at dialogue', async () => {
+    await runOneShotCreate(baseInput, ctx);
+    expect(mocks.createSequences).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stopAt: 'dialogue',
+        generateStartFrames: false,
+        draftMotion: true,
+      }),
+      expect.anything()
+    );
+    await runOneShotCreate(
+      { ...baseInput, startFrames: true, draftMotion: false, motion: true },
+      ctx
+    );
+    expect(mocks.createSequences).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stopAt: 'motion',
+        generateStartFrames: true,
+        draftMotion: false,
+      }),
+      expect.anything()
+    );
   });
 
   it('ingests every character reference before insert and enqueues sheets only after the sequence exists', async () => {

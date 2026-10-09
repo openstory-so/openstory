@@ -385,6 +385,18 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
 export function getAuth() {
   return (_authInstance ??= createAuth());
 }
+
+/**
+ * The per-isolate Better Auth init promise. `betterAuth()` starts it as
+ * soon as the instance exists; the OAuth provider plugin's `init` reads
+ * `oauth_resource` there, and every `auth.api` / `handler` call awaits the
+ * same promise. The Worker `fetch` handler must `holdInstanceStartup` this
+ * before awaiting it (#2073). Creating it is the start, so call it from the
+ * shared handler, not from one route.
+ */
+export function authStartupPromise(): Promise<unknown> {
+  return getAuth().$context;
+}
 // Type inference for the auth instance with custom fields
 export type Auth = ReturnType<typeof getAuth>;
 export type Session = ReturnType<typeof getAuth>['$Infer']['Session'];
