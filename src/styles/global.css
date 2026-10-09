@@ -20,6 +20,11 @@
   --media-video-border-radius: 0;
 }
 
+/* The shot player draws its own caption layer. The skin's cue box does not paint. */
+.shot-captions video::-webkit-media-text-track-container {
+  display: none;
+}
+
 /* Theatre stitcher renders a canvas, not <video>. The skin only sizes video. */
 .media-skin canvas {
   display: block;

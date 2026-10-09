@@ -28,7 +28,7 @@ const VideoPlayerSurface = lazy(() => import('./video-player-surface'));
 type VideoPlayerProps = {
   src: string;
   chaptersUrl?: string;
-  /** WebVTT captions for this file. Same-origin or `data:` — the browser paints them. */
+  /** WebVTT captions for this file. The surface draws the active cue. */
   subtitlesUrl?: string;
   posterSrc?: string | null;
   aspectRatio: AspectRatio;
