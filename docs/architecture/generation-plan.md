@@ -188,7 +188,9 @@ refetch on focus, invalidated by realtime and by any refused continue —
 `refetchAfterRefusedContinue`).
 
 - **The steps show at every step (#1780 §1)** until every unit is done — a
-  finished sequence hides them: one sticky footer, the slider first, then the Motion / Music / Drafts
+  finished sequence hides them, unless the row says voices are off and this
+  deployment can design one (#2067): Continue still owes the voices, so the
+  steps stay and the thumb caps at Dialogue. One sticky footer, the slider first, then the Motion / Music / Drafts
   controls of whichever step the sequence is at (their own buttons — batch
   motion, Generate Music, Render finals — are unchanged). Stops before the
   first with work are locked (done).
@@ -205,8 +207,10 @@ prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
   plan's first work is before Motion.
 - **A switch shows only when it changes a step the run takes.** Start frames
   from Images, Draft first from Motion, Music at the Music stop. Voices has no
-  switch (#2004): a new sequence records dialogue wherever voice design is
-  configured, and a voice is turned off on the character. Turning on one that was skipped caps
+  switch and no caller boolean (#2067): a sequence owes dialogue wherever
+  voice design is configured, including a row stored off, and a voice is
+  turned off on the character. That stored-off row caps
+  the thumb at Dialogue (`switchStopAt`, saved off, requested on). Turning on a skipped switch caps
   the thumb at its step (Images / Dialogue; `switchStopAt`, shared by the
   footer and the server, so the label, the quote and the run agree) only when
   a later unit is already done or stale. Nothing past that step yet — no clip,

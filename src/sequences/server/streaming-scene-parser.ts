@@ -100,10 +100,18 @@ export function assembleScenes(
 ): {
   scenes: SceneSplittingScene[];
   resolution: ReturnType<typeof resolveBoundaries>;
+  /**
+   * Scene slices. `slices.join('') === script.slice(offsets[0] ?? 0)`.
+   * Text before a resolved first quote is not a scene. An unresolved
+   * first quote is pinned to 0, so that preamble is included (#2077).
+   */
   slices: string[];
+  /** Offsets of {@link scenes}. The same list as `resolution.offsets`. */
+  sceneOffsets: number[];
 } {
   const resolution = resolveBoundaries(script, result.boundaries);
-  const slices = sliceScenes(script, resolution.offsets);
+  const sceneOffsets = resolution.offsets;
+  const slices = sliceScenes(script, sceneOffsets);
   const scenes = slices.map((slice, i) =>
     buildSceneFromSlice(sceneIdFor(i), i, slice)
   );
@@ -113,7 +121,7 @@ export function assembleScenes(
     if (!scene) continue;
     scenes[i] = inheritMissingLocation(scene, previous);
   }
-  return { scenes, resolution, slices };
+  return { scenes, resolution, slices, sceneOffsets };
 }
 
 /**
@@ -172,9 +180,9 @@ export function createStreamingSceneParser(
       );
 
       const resolution = resolveBoundaries(script, boundaries);
+      // The model's quotes are the scenes. The last slice stays open until
+      // `done` — its end is the script end, or a boundary still streaming.
       const slices = sliceScenes(script, resolution.offsets);
-      // Scene i ends where boundary i+1 begins. Once the stream is done,
-      // every scene's end is known (the last ends at script end).
       const finalized = done ? slices.length : Math.max(0, slices.length - 1);
 
       for (let i = emittedScenes; i < finalized; i++) {

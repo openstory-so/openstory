@@ -50,6 +50,7 @@ import {
   waitLink,
 } from './hal';
 import type { ApiCreateSequenceInput } from './input-schema';
+import { apiStopAt } from './input-schema';
 import { sequenceStateResourceSchema } from './state';
 import {
   ingestElements,
@@ -400,13 +401,13 @@ export async function runOneShotCreate(
       analysisModels: input.analysisModels,
       imageModels: input.imageModels,
       videoModels: input.videoModels,
-      stopAt: input.stopAt,
-      autoGenerateMotion: input.motion,
-      autoGenerateMusic: input.music,
-      generateVoices: input.voices,
-      // The API keeps the frame-based workflow: motion is opt-in spend here, and
-      // reference-only (the app default) cannot exist without it.
-      generateStartFrames: true,
+      // Always a stop, never the legacy flags: the app's default when the
+      // caller names none (#2084).
+      stopAt: apiStopAt(input),
+      // Voices are not a caller choice (#2067). Omitted here, createSequences
+      // turns them on wherever voice design is configured.
+      generateStartFrames: input.startFrames,
+      draftMotion: input.draftMotion,
       audioModels: input.audioModels,
       // Only Enhance sets the target (#1593); a verbatim script is auto.
       targetDurationSeconds: enhancedScript ? input.targetSeconds : undefined,

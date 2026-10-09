@@ -96,7 +96,8 @@ const baseInput = {
   enhance: 'off' as const,
   motion: false,
   music: false,
-  voices: false,
+  startFrames: false,
+  draftMotion: true,
 };
 
 function pngResponse(): Response {
@@ -194,16 +195,39 @@ describe('runOneShotCreate', () => {
     });
   });
 
-  it('passes stop-at and voices through, with Match script when no style is named', async () => {
-    await runOneShotCreate(
-      { ...baseInput, stopAt: 'dialogue', voices: true },
-      ctx
-    );
+  it('passes stop-at through and leaves voices to the deployment, with Match script when no style is named', async () => {
+    await runOneShotCreate({ ...baseInput, stopAt: 'dialogue' }, ctx);
     expect(mocks.createSequences).toHaveBeenCalledWith(
       expect.objectContaining({
         stopAt: 'dialogue',
-        generateVoices: true,
         styleId: 'auto',
+      }),
+      expect.anything()
+    );
+    expect(
+      mocks.createSequences.mock.calls[0]?.[0].generateVoices
+    ).toBeUndefined();
+  });
+
+  it('creates what the app creates by default: no start frames, stopping at dialogue', async () => {
+    await runOneShotCreate(baseInput, ctx);
+    expect(mocks.createSequences).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stopAt: 'dialogue',
+        generateStartFrames: false,
+        draftMotion: true,
+      }),
+      expect.anything()
+    );
+    await runOneShotCreate(
+      { ...baseInput, startFrames: true, draftMotion: false, motion: true },
+      ctx
+    );
+    expect(mocks.createSequences).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stopAt: 'motion',
+        generateStartFrames: true,
+        draftMotion: false,
       }),
       expect.anything()
     );

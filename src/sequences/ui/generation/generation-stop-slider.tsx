@@ -31,8 +31,8 @@ type GenerationStopSliderProps = {
   generateStartFrames?: boolean;
   onGenerateStartFramesChange?: (value: boolean) => void;
   /**
-   * The run records dialogue. Not a switch (#2004): on wherever voice design
-   * is configured, and turned off per character.
+   * The run records dialogue. Not a switch (#2067): on wherever voice design
+   * is configured. A character is turned off on the character.
    */
   generateVoices?: boolean;
   /**

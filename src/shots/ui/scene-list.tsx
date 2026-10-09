@@ -29,6 +29,7 @@ import {
   type PlanUnitRef,
 } from '@/sequences/generation-plan';
 import { useGenerationPlan } from '@/sequences/ui/use-generation-plan';
+import { useGenerationSettings } from '@/sequences/ui/use-generation-settings';
 import { sheetLookName } from '@/cast/character-looks';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
@@ -344,10 +345,19 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   useEffect(() => {
     setDraftStartFrames(generateStartFrames);
   }, [generateStartFrames]);
-  const voicesUnavailable = useVoiceDesignAvailable() === false;
-  // No switch (#2004): the sequence's own setting, off where this deployment
-  // cannot design a voice. A character is turned off on the character.
-  const voices = voicesUnavailable ? false : generateVoices;
+  const voiceDesignAvailable = useVoiceDesignAvailable();
+  const { settings: generationSettings, isLoaded: generationSettingsLoaded } =
+    useGenerationSettings();
+  // Voices are on wherever this deployment can design one (#2067). Nobody
+  // passes a boolean. The recorded pipeline pins generation settings off;
+  // until that pin loads, keep the row so a replay does not ask for voices.
+  const voices =
+    voiceDesignAvailable === false
+      ? false
+      : voiceDesignAvailable === true &&
+          !(generationSettingsLoaded && !generationSettings.generateVoices)
+        ? true
+        : generateVoices;
   // Draft first (#1756): one local switch for the batch footer and the
   // continue slider, seeded from the sequence and persisted by either click.
   const [draftBatch, setDraftBatch] = useState(draftMotion);
@@ -472,7 +482,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton &&
     Boolean(onContinueGeneration) &&
     (shots?.length ?? 0) > 0 &&
-    (savedPlan?.some((u) => u.state !== 'done') ?? false);
+    // A row stored with voices off still owes them (#2067). The steps stay
+    // up so Continue goes back to Dialogue without anyone passing a flag.
+    ((savedPlan?.some((u) => u.state !== 'done') ?? false) ||
+      (voices && !generateVoices));
   const switchesMoved =
     draftStartFrames !== generateStartFrames || voices !== generateVoices;
   // While a switch's plan loads the last one stays on screen; the click

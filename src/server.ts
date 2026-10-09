@@ -30,6 +30,8 @@ import {
 } from '@/models/server/reconcile-byteplus-assets';
 import { ensureLocalModelPricingSeeded } from '@/billing/server/seed-model-pricing';
 import { ensureSystemTemplatesSeeded } from '@/platform/server/db/seed-system-templates';
+import { authStartupPromise } from '@/platform/server/auth/config';
+import { holdInstanceStartup } from '@/platform/server/instance-startup';
 
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import {
@@ -47,6 +49,9 @@ const logger = getLogger(['openstory', 'server']);
 // response: a failure logs, arms a cooldown, and a later request retries —
 // the cooldown keeps a permanently broken state (e.g. missing table) from
 // re-running the lock dance and partial sync at request rate.
+// The promise is cached on the isolate. Hold it with `ctx.waitUntil` before
+// awaiting (#2073): a client disconnect otherwise drops the in-flight D1
+// read and leaves the promise pending for every later request.
 const SEED_RETRY_COOLDOWN_MS = 60_000;
 let seedPromise: Promise<void> | null = null;
 let seedRetryAt = 0;
@@ -141,22 +146,33 @@ interface WorkerEnv {
 }
 
 const exportedHandler: ExportedHandler<WorkerEnv> = {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const { pathname } = new URL(request.url);
+    // Media serving (/r2/<key>) never needs templates or sign-in — don't
+    // put either D1 round trip in front of it on cold starts.
+    const servesMedia = pathname.startsWith('/r2/');
 
-    // Media serving (/r2/<key>) never needs templates — don't put the
-    // seed check's D1 round trip in front of it on cold starts.
-    if (!pathname.startsWith('/r2/')) {
-      await ensureSeededOnce(env.DB, env.E2E_TEST);
+    if (!servesMedia) {
+      const seeded = ensureSeededOnce(env.DB, env.E2E_TEST);
+      // Before the await: a disconnect during this read must not stick the
+      // isolate (#2073). Same hold for sign-in, below, once we know this
+      // request will reach a route that can be the first `getAuth()` caller.
+      holdInstanceStartup(ctx, seeded);
+      await seeded;
     }
 
     // Markdown content negotiation for agents (#819): serve a real markdown
     // rendition where one exists; otherwise fall back to HTML rather than
-    // letting the router 500 on a non-HTML Accept header.
+    // letting the router 500 on a non-HTML Accept header. Markdown waits on
+    // the seed only — it never calls `getAuth()`.
     const wantsMarkdown = acceptsMarkdown(request);
     if (wantsMarkdown) {
       const markdown = getMarkdownForPath(pathname);
       if (markdown !== null) return markdownResponse(markdown, request.method);
+    }
+
+    if (!servesMedia) {
+      holdInstanceStartup(ctx, authStartupPromise());
     }
 
     let response = await handler.fetch(

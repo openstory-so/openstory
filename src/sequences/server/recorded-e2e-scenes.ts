@@ -157,7 +157,7 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
 
   const sceneIdForLine = (lineNumber: number): string =>
     assembled.scenes[
-      sceneIndexForLine(script, assembled.resolution.offsets, lineNumber)
+      sceneIndexForLine(script, assembled.sceneOffsets, lineNumber)
     ]?.sceneId ?? '';
 
   const locationBible: LocationBibleEntry[] = bibles.locationBible.map(

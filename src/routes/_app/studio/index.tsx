@@ -10,7 +10,7 @@ export const Route = createFileRoute('/_app/studio/')({
   validateSearch: searchParamsSchema,
   beforeLoad: ({ search }) => {
     throw redirect({
-      to: search.kind === 'video' ? '/videos' : '/images',
+      to: search.kind === 'video' ? '/clips' : '/images',
       search: {
         sort: search.sort,
         favorites: search.favorites,

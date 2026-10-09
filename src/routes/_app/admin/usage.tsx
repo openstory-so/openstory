@@ -399,12 +399,12 @@ const UserRow: React.FC<{ row: UserActivityRow }> = ({ row }) => {
             Images
           </Link>
           <Link
-            to="/videos"
+            to="/clips"
             search={{ user: row.email }}
             className="text-sm text-primary hover:underline"
             aria-label={`Open video support view for ${row.email}`}
           >
-            Videos
+            Clips
           </Link>
         </div>
       </td>
@@ -451,7 +451,7 @@ function toCsv(rows: UserActivityRow[], origin: string): string {
     const encoded = encodeURIComponent(row.email);
     const supportUrl = `${origin}/sequences?user=${encoded}`;
     const imagesSupportUrl = `${origin}/images?user=${encoded}`;
-    const videosSupportUrl = `${origin}/videos?user=${encoded}`;
+    const videosSupportUrl = `${origin}/clips?user=${encoded}`;
     const values: Array<string | number | null> = [
       row.userId,
       row.name,

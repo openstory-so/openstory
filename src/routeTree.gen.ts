@@ -46,6 +46,7 @@ import { Route as AppAdminModerationRouteImport } from './routes/_app/admin/mode
 import { Route as AppAdminUsageRouteImport } from './routes/_app/admin/usage'
 import { Route as AppCharactersIndexRouteImport } from './routes/_app/characters/index'
 import { Route as AppCharactersIdRouteImport } from './routes/_app/characters/$id'
+import { Route as AppClipsIndexRouteImport } from './routes/_app/clips/index'
 import { Route as AppGalleryIndexRouteImport } from './routes/_app/gallery/index'
 import { Route as AppImagesIndexRouteImport } from './routes/_app/images/index'
 import { Route as AppLocationsIndexRouteImport } from './routes/_app/locations/index'
@@ -283,6 +284,11 @@ const AppCharactersIndexRoute = AppCharactersIndexRouteImport.update({
 const AppCharactersIdRoute = AppCharactersIdRouteImport.update({
   id: '/characters/$id',
   path: '/characters/$id',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppClipsIndexRoute = AppClipsIndexRouteImport.update({
+  id: '/clips/',
+  path: '/clips/',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppGalleryIndexRoute = AppGalleryIndexRouteImport.update({
@@ -627,6 +633,7 @@ export interface FileRoutesByFullPath {
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/characters/': typeof AppCharactersIndexRoute
+  '/clips/': typeof AppClipsIndexRoute
   '/gallery/': typeof AppGalleryIndexRoute
   '/images/': typeof AppImagesIndexRoute
   '/locations/': typeof AppLocationsIndexRoute
@@ -717,6 +724,7 @@ export interface FileRoutesByTo {
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/characters': typeof AppCharactersIndexRoute
+  '/clips': typeof AppClipsIndexRoute
   '/gallery': typeof AppGalleryIndexRoute
   '/images': typeof AppImagesIndexRoute
   '/locations': typeof AppLocationsIndexRoute
@@ -812,6 +820,7 @@ export interface FileRoutesById {
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/_app/characters/': typeof AppCharactersIndexRoute
+  '/_app/clips/': typeof AppClipsIndexRoute
   '/_app/gallery/': typeof AppGalleryIndexRoute
   '/_app/images/': typeof AppImagesIndexRoute
   '/_app/locations/': typeof AppLocationsIndexRoute
@@ -906,6 +915,7 @@ export interface FileRouteTypes {
     | '/api/v1/sequences'
     | '/api/v1/styles'
     | '/characters/'
+    | '/clips/'
     | '/gallery/'
     | '/images/'
     | '/locations/'
@@ -996,6 +1006,7 @@ export interface FileRouteTypes {
     | '/api/v1/sequences'
     | '/api/v1/styles'
     | '/characters'
+    | '/clips'
     | '/gallery'
     | '/images'
     | '/locations'
@@ -1090,6 +1101,7 @@ export interface FileRouteTypes {
     | '/api/v1/sequences'
     | '/api/v1/styles'
     | '/_app/characters/'
+    | '/_app/clips/'
     | '/_app/gallery/'
     | '/_app/images/'
     | '/_app/locations/'
@@ -1413,6 +1425,13 @@ declare module '@tanstack/react-router' {
       path: '/characters/$id'
       fullPath: '/characters/$id'
       preLoaderRoute: typeof AppCharactersIdRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/clips/': {
+      id: '/_app/clips/'
+      path: '/clips'
+      fullPath: '/clips/'
+      preLoaderRoute: typeof AppClipsIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/gallery/': {
@@ -1881,6 +1900,7 @@ interface AppRouteRouteChildren {
   AppOauthConsentRoute: typeof AppOauthConsentRoute
   AppTalentIdRoute: typeof AppTalentIdRoute
   AppCharactersIndexRoute: typeof AppCharactersIndexRoute
+  AppClipsIndexRoute: typeof AppClipsIndexRoute
   AppGalleryIndexRoute: typeof AppGalleryIndexRoute
   AppImagesIndexRoute: typeof AppImagesIndexRoute
   AppLocationsIndexRoute: typeof AppLocationsIndexRoute
@@ -1912,6 +1932,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppOauthConsentRoute: AppOauthConsentRoute,
   AppTalentIdRoute: AppTalentIdRoute,
   AppCharactersIndexRoute: AppCharactersIndexRoute,
+  AppClipsIndexRoute: AppClipsIndexRoute,
   AppGalleryIndexRoute: AppGalleryIndexRoute,
   AppImagesIndexRoute: AppImagesIndexRoute,
   AppLocationsIndexRoute: AppLocationsIndexRoute,

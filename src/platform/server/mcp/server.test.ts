@@ -473,6 +473,8 @@ describe('tools/list and whoami', () => {
       name: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
     });
+    // #2084: the icon is declared, not left to the client's favicon guess.
+    expect(JSON.stringify(body.result)).toContain('/icon-512.png');
   });
 
   // #2035: the SDK's listen stream never ends, so Cloudflare cancels it.
@@ -533,6 +535,17 @@ describe('tools/list and whoami', () => {
         z.object({ protocolVersion: z.string() }).parse(body.result)
           .protocolVersion
       ).toBe('2025-11-25');
+      // #2084
+      expect(
+        z
+          .object({
+            serverInfo: z.object({
+              icons: z.array(z.object({ src: z.string() })),
+            }),
+          })
+          .parse(body.result)
+          .serverInfo.icons.map((icon) => new URL(icon.src).pathname)
+      ).toEqual(['/icon-512.png', '/icon.svg']);
     });
 
     it('calls a tool with no session, on any isolate', async () => {

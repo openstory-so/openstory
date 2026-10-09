@@ -79,7 +79,7 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
   const { isAuthenticated } = useAuthGate();
   const { prefs, setPrefs } = useStudioListPrefs(search, navigate);
   const composerRef = useRef<StudioComposerHandle>(null);
-  const to = activity === 'video' ? '/videos' : '/images';
+  const to = activity === 'video' ? '/clips' : '/images';
 
   const { data: adminStatus, isLoading: adminStatusLoading } = useQuery({
     queryKey: ['system-admin-status'],
@@ -144,7 +144,7 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-auto">
         <PageIntro
-          title={activity === 'video' ? 'Videos' : 'Images'}
+          title={activity === 'video' ? 'Clips' : 'Images'}
           maxWidth="wide"
         >
           {supportMode
@@ -215,7 +215,7 @@ function StudioToolbar({
   hideInternalAvailable,
   hideInternalLocked,
 }: {
-  to: '/images' | '/videos';
+  to: '/images' | '/clips';
   prefs: StudioListPrefs;
   setPrefs: (prefs: StudioListPrefs) => void;
   currentUser?: string;
