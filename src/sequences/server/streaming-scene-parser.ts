@@ -102,7 +102,8 @@ export function assembleScenes(
   resolution: ReturnType<typeof resolveBoundaries>;
   /**
    * Scene slices. `slices.join('') === script.slice(offsets[0] ?? 0)`.
-   * Text before the model's first quote is not a scene (#2077).
+   * Text before a resolved first quote is not a scene. An unresolved
+   * first quote is pinned to 0, so that preamble is included (#2077).
    */
   slices: string[];
   /** Offsets of {@link scenes}. The same list as `resolution.offsets`. */

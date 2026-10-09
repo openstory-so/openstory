@@ -71,6 +71,11 @@ describe('scene-shot-list-chat', () => {
     );
     expect(system).toContain('A scene with NO `duration:` line');
     expect(system).toContain('Do not stretch the scene to its word count');
+    expect(system).toContain(
+      'dialogue at {{dialogueWordsPerSecond}} words a second'
+    );
+    expect(system).toContain('action about a third as long as saying it');
+    expect(system).toContain('sluglines and speaker names take no time');
     expect(system).not.toContain('hits the target running time');
     expect(system).not.toContain('A scene with no internal cut is ONE shot');
     expect(prompt?.[1]?.content).toContain('{{scenes}}');

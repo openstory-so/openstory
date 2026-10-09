@@ -164,6 +164,24 @@ describe('estimateStoryboardPreflightCost', () => {
     expect(quote(withFront)).toBe(quote(labeled));
   });
 
+  it('quotes an unlabelled paste from the whole script, front matter included (#2077)', () => {
+    // The quote runs before the scene split, so a character list still
+    // counts. The shot-list pass drops it later. This is the accepted
+    // exception: the gate holds the word-count ceiling, not the filmed length.
+    const scenes = 'INT. KITCHEN - NIGHT\nSARAH\nTea?\n\nJOHN\nPlease.';
+    const withFront = `THE RAIN SHIFT\n\nCHARACTERS\n${'Sara, a tired nurse who has worked the night shift for ten years. '.repeat(8)}\n\n${scenes}`;
+    const quote = (script: string) =>
+      Number(
+        estimateStoryboardPreflightCost({
+          ...base,
+          script,
+          autoGenerateMotion: true,
+          videoModels: [DEFAULT_VIDEO_MODEL],
+        })
+      );
+    expect(quote(withFront)).toBeGreaterThan(quote(scenes));
+  });
+
   it('quotes a long unlabelled paste by its playing time, not a 30-scene cap (#1593)', () => {
     // ~20 pages of screenplay: 40 sluglines, ~3,600 words ≈ 20 minutes.
     const scene =

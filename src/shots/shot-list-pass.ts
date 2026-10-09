@@ -14,12 +14,14 @@
  * Length is per scene (#1593). A slice with a `Scene N — Xs` label plays
  * for that many seconds (`metadata.durationSeconds`); its shots divide it
  * and never extend it. A slice with no such label is timed by this model
- * (#2077): `durationSeconds` are the shot's real seconds, and the scene's
- * length becomes their sum. The word-count estimate stays only as a ceiling
- * on how many shots the pass may return. The LLM decides coverage — how
- * many shots, 1..N — capped at one shot per editorial second, and
- * `allocateClipDurations` spreads a label over them on 1s…max (not the
- * model's shortest clip). Leftover packs under the model floor snap at
+ * (#2077): `durationSeconds` are the shot's real seconds. Each shot is
+ * rounded and capped at the longest clip, and raised when its lines need
+ * longer (two words a second, still within that clip). The word-count
+ * estimate caps how many shots the pass may return, and caps their sum
+ * unless those lines need more. The LLM decides coverage — how many shots,
+ * 1..N — capped at one shot per editorial second, and
+ * `allocateClipDurations` spreads a label over the labelled shots on
+ * 1s…max (not the model's shortest clip). Leftover packs under the model floor snap at
  * render. Enhance no longer labels shots (#1621): the shot-list pass is the
  * only place shot count and durations are decided. The film target never
  * enters here. Prompts are assembled later by `deriveShots` — this pass
@@ -27,7 +29,11 @@
  */
 
 import type { NewShot } from '@/platform/server/db/schema';
-import { dialogueWordBudget, spokenWordCount } from '@/motion/dialogue-tts';
+import {
+  DIALOGUE_WORDS_PER_SECOND,
+  dialogueWordBudget,
+  spokenWordCount,
+} from '@/motion/dialogue-tts';
 import { allocateClipDurations } from '@/motion/snap-duration';
 import { sliceHasDurationLabel } from '@/sequences/scene-from-slice';
 import type { StyleConfig } from '@/look/style-config';
@@ -312,10 +318,82 @@ function clampToClip(seconds: number, maxClip: number): number {
   return Math.min(maxClip, rounded);
 }
 
+/** Spoken seconds a shot needs, capped at the longest clip. 0 when it is silent. */
+function speechFloorSeconds(
+  dialogue: ShotSpec['dialogue'],
+  maxClip: number
+): number {
+  const words = spokenWordCount(dialogue.map((line) => ({ text: line.line })));
+  if (words <= 0) return 0;
+  const needed = Math.ceil(words / DIALOGUE_WORDS_PER_SECOND);
+  if (!Number.isFinite(maxClip) || maxClip <= 0) return needed;
+  return Math.min(maxClip, needed);
+}
+
 /**
- * Unlabelled scene (#2077): keep the model's seconds. Clamp each shot to
- * the clip grid, cap the count at the word-count ceiling, and do not
- * stretch the scene out to that ceiling.
+ * Pull slack off shots that sit above their minimum until `chosen` sums to
+ * `limit`. Largest fractional shares are kept. Each shot stays at least its
+ * minimum, so a line is never shortened to honour the word-count ceiling.
+ */
+function shrinkSlackToLimit(
+  chosen: readonly number[],
+  minimums: readonly number[],
+  limit: number
+): number[] {
+  const slack = chosen.map(
+    (seconds, index) => seconds - (minimums[index] ?? 0)
+  );
+  const slackSum = slack.reduce((sum, value) => sum + value, 0);
+  const minSum = minimums.reduce((sum, value) => sum + value, 0);
+  const slackBudget = limit - minSum;
+  if (slackSum <= 0 || slackBudget >= slackSum) return [...chosen];
+  const exact = slack.map((value) => (value / slackSum) * slackBudget);
+  const base = exact.map((value) => Math.floor(value));
+  let leftover = slackBudget - base.reduce((sum, value) => sum + value, 0);
+  const order = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || a.index - b.index);
+  for (const item of order) {
+    if (leftover <= 0) break;
+    const current = base[item.index];
+    if (current === undefined) continue;
+    base[item.index] = current + 1;
+    leftover -= 1;
+  }
+  return chosen.map((_, index) => (minimums[index] ?? 0) + (base[index] ?? 0));
+}
+
+/**
+ * Model seconds, then two corrections (#2077). A shot is raised until its
+ * lines fit (two words a second, never past the longest clip). The sum is
+ * pulled down to the word-count ceiling when that still leaves every line
+ * its floor. A silent shot stays at least one second.
+ */
+function fitUnlabelledDurations(
+  shots: readonly ShotSpec[],
+  maxClip: number,
+  ceiling: number
+): number[] {
+  const floors = shots.map((shot) =>
+    speechFloorSeconds(shot.dialogue, maxClip)
+  );
+  const chosen = shots.map((shot, index) =>
+    Math.max(clampToClip(shot.durationSeconds, maxClip), floors[index] ?? 0)
+  );
+  const minimums = floors.map((floor) => Math.max(1, floor));
+  const minSum = minimums.reduce((sum, value) => sum + value, 0);
+  const limit = Math.max(ceiling, minSum);
+  const total = chosen.reduce((sum, seconds) => sum + seconds, 0);
+  if (total <= limit) return chosen;
+  return shrinkSlackToLimit(chosen, minimums, limit);
+}
+
+/**
+ * Unlabelled scene (#2077): keep the model's seconds. Round each shot and
+ * cap it at the longest clip — a shot shorter than the model's minimum is
+ * kept. Cap the count at the word-count ceiling. Do not stretch the scene
+ * out to that ceiling. Raise a shot whose lines do not fit, and pull a sum
+ * that runs past the ceiling back down to it unless those lines need more.
  */
 function timeUnlabelledShots(
   shots: ReadonlyArray<ShotSpec> | null | undefined,
@@ -330,10 +408,16 @@ function timeUnlabelledShots(
     grid
   );
   const maxClip = Math.max(...grid.filter((n) => n > 0));
+  const seconds = fitUnlabelledDurations(
+    kept,
+    maxClip,
+    sceneDurationSeconds(scene)
+  );
   return kept.map((shot, index) => ({
     ...shot,
     shotNumber: index + 1,
-    durationSeconds: clampToClip(shot.durationSeconds, maxClip),
+    durationSeconds:
+      seconds[index] ?? clampToClip(shot.durationSeconds, maxClip),
   }));
 }
 
@@ -341,7 +425,8 @@ function timeUnlabelledShots(
  * One scene with the pass's shots attached and its dialogue rebuilt from
  * them. A `Scene N — Xs` slice is divided across the grid
  * (`allocateSceneShots`). A slice with no such label keeps the model's
- * seconds (#2077).
+ * seconds, raised when its lines need longer and capped at the word-count
+ * ceiling unless those lines need more (#2077).
  */
 export function attachSceneShots(
   scene: SceneSplittingScene,

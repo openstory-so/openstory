@@ -8,9 +8,11 @@
  * Continuity tags are assigned later from bibles ∩ slice.
  *
  * A `Scene N — Xs` label is the scene's running time. Without one, the
- * duration here is a word-count ceiling (three words a second, #1593) for
- * the shot budget and the credit quote. The shot-list model times what
- * plays (#2077); this file does not classify screenplay lines.
+ * duration here is a word-count ceiling (three words a second, #1593):
+ * how many shots the shot-list pass may return. The credit quote calls
+ * the same rule on the whole script, before that pass (#2077). The
+ * shot-list model then replaces this number with the sum of the shots.
+ * This file does not classify screenplay lines.
  */
 
 import { plainSceneTitle } from '@/platform/markdown-plain';
@@ -208,7 +210,9 @@ function wordCount(text: string): number {
  * thumb (a page is a minute, ~170 words) is about three words a second.
  * No ceiling on the ceiling — a pasted feature's two-page scene is two
  * minutes, and its shot budget follows (#1593). Floor keeps a one-liner
- * renderable. The shot-list model replaces this with playing time (#2077).
+ * renderable. The shot-list pass replaces a scene's stored duration with
+ * the sum of its shots (#2077). The credit quote still calls this on the
+ * whole script, because it runs before that pass.
  */
 export function estimateSecondsFromText(text: string): number {
   return Math.max(3, Math.round(wordCount(text) / 3));

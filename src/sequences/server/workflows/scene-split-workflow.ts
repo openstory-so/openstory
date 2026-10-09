@@ -29,11 +29,11 @@
  *     shot's preview fired — the rail fills scene by scene, not all at the end.
  *     Fails the run like the bibles call, and also when a batch omits a scene
  *     (`attachShotLists`): a one-shot fallback would silently leave that
- *     scene on the regex preview, which is empty for prose. Each scene's
- *     shots divide ITS label (#1593): the LLM decides coverage (1..N shots,
- *     within a range the model grid allows) and the label is spread over
- *     them (#1621 — Enhance no longer labels shots itself). No film-wide
- *     target enters the run.
+ *     scene on the regex preview, which is empty for prose. A slice with a
+ *     `Scene N — Xs` label is divided across its shots (#1593, #1621).
+ *     A slice with no label keeps the model's seconds (#2077), raised when
+ *     a shot's lines need longer and capped at the word-count ceiling
+ *     unless those lines need more. No film-wide target enters the run.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id

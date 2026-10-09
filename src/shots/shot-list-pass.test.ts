@@ -328,7 +328,41 @@ describe('attachShotLists', () => {
     );
   });
 
-  it('splits an overfull unlabelled shot without counting the parent duration twice (#2077)', () => {
+  it('raises an unlabelled shot until its lines fit, within the longest clip (#2077)', () => {
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah talks.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 40 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [
+              {
+                ...twoShotSpec(1),
+                durationSeconds: 4,
+                dialogue: [
+                  {
+                    character: 'SARAH',
+                    line: 'word '.repeat(20).trim(),
+                    tone: '',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    // 20 words at 2 words a second. The model's 4s is below that, and 10s
+    // is under both the 15s clip and the 40s ceiling.
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([10]);
+    expect(attached?.metadata.durationSeconds).toBe(10);
+  });
+
+  it('splits an overfull unlabelled shot and gives each piece its lines (#2077)', () => {
     const line = (n: number) => ({
       character: 'SARAH',
       line: `line ${n} ${'word '.repeat(9).trim()}`,
@@ -353,9 +387,79 @@ describe('attachShotLists', () => {
       },
       SEEDANCE
     );
+    // Two groups of 22 words. The parent's 6s is not shared (that would be
+    // 3s + 3s) and not counted twice (12s). Each piece is 11s, which the
+    // 8s word-count ceiling does not pull back down.
     const seconds = attached?.shots?.map((shot) => shot.durationSeconds) ?? [];
-    expect(seconds.length).toBeGreaterThan(1);
-    expect(seconds.reduce((sum, value) => sum + value, 0)).toBe(6);
+    expect(seconds).toEqual([11, 11]);
+    expect(attached?.metadata.durationSeconds).toBe(22);
+  });
+
+  it('drops unlabelled shots past the word-count ceiling and caps their sum (#2077)', () => {
+    const silent = (n: number, seconds: number): ShotSpec => ({
+      ...twoShotSpec(n),
+      dialogue: [],
+      durationSeconds: seconds,
+    });
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah waits.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 3 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [1, 2, 3, 4, 5].map((n) => silent(n, 15)),
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    const seconds = attached?.shots?.map((shot) => shot.durationSeconds) ?? [];
+    expect(seconds).toEqual([1, 1, 1]);
+    expect(attached?.metadata.durationSeconds).toBe(3);
+  });
+
+  it('pulls a long unlabelled sum down to the word-count ceiling (#2077)', () => {
+    const silent = (n: number, seconds: number): ShotSpec => ({
+      ...twoShotSpec(n),
+      dialogue: [],
+      durationSeconds: seconds,
+    });
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah waits.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 8 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [{ sceneNumber: 1, shots: [silent(1, 15), silent(2, 15)] }],
+      },
+      SEEDANCE
+    );
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([
+      4, 4,
+    ]);
+    expect(attached?.metadata.durationSeconds).toBe(8);
+  });
+
+  it('caps one unlabelled shot at the longest clip, under the word-count ceiling (#2077)', () => {
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah waits.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 40 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [{ ...twoShotSpec(1), dialogue: [], durationSeconds: 100 }],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([15]);
   });
 });
 

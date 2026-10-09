@@ -52,8 +52,10 @@ export type StoryboardPreflightInput = {
   /**
    * The Enhance target when Enhance ran (#1593). Without it the script's own
    * length is used: its labels, else a word-count ceiling (three words a
-   * second). The shot-list model times an unlabelled script (#2077); this
-   * quote runs before that call, so it can only hold the ceiling.
+   * second, on the whole script). Accepted for #2077: the shot-list model
+   * times an unlabelled paste later, and this quote runs before that call,
+   * so it cannot yet match the filmed length. A talky scene can run past
+   * the ceiling when its lines need more than three words a second.
    * Values below 5s are treated as auto (same floor as the chip).
    */
   targetDurationSeconds?: number;
@@ -75,9 +77,9 @@ export function estimateStoryboardPreflightCost(
 ): Microdollars {
   const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
   // How long the script plays: the Enhance target when Enhance ran, else its
-  // labels, else a word-count ceiling. The shot-list model replaces that
-  // ceiling for an unlabelled paste (#1593, #2077); the quote cannot, because
-  // it is computed before any model call.
+  // labels, else a word-count ceiling (three words a second on the whole
+  // script, front matter included). Accepted for #2077: the shot-list model
+  // times an unlabelled paste later, and this quote runs before that call.
   const labeledSeconds = assessDurationFit(
     opts.script,
     primaryVideo

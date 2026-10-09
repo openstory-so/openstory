@@ -5,8 +5,9 @@
  * annotations — `{ hintLine, quote }` per scene — against a script we sent
  * with a numbered line gutter. This module resolves each quote to a raw
  * character offset with a monotonic cursor and slices the ORIGINAL script
- * into adjacent substrings, so scene extracts are byte-verbatim by
- * construction: `concat(slices) === script`, gaps/overlaps impossible.
+ * into adjacent substrings from the first kept offset through the end of
+ * the script. Extracts are byte-verbatim. Text before that offset is not a
+ * slice (#2077). A gap or overlap inside the covered range is a bug.
  *
  * Resolution ladder per boundary (each rung past the first counts as a
  * "repair"): exact substring search → normalization-tolerant compare
@@ -29,8 +30,8 @@ export type BoundaryAnnotation = {
 export type ResolvedBoundaries = {
   /**
    * Raw-script start offset of each kept slice. Strictly increasing.
-   * `offsets[0]` is the first resolved quote, so it may be past 0 when the
-   * script opens with front matter (#2077).
+   * When the first quote resolves, `offsets[0]` is that quote, so it may
+   * sit past 0. When it does not resolve, `offsets[0]` is 0 (#2077).
    */
   offsets: number[];
   /**
