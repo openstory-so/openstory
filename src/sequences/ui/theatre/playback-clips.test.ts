@@ -11,6 +11,7 @@ import {
   shotCues,
   shotIdAtSequenceTime,
   shotVideoSubtitlesVtt,
+  subtitleTrackRevision,
   toPlaybackClips,
 } from './playback-clips';
 import type { AspectRatio } from '@/models/aspect-ratios';
@@ -346,5 +347,20 @@ describe('shotVideoSubtitlesVtt', () => {
     ]);
     expect(vtt).toContain('00:00:00.000 --> 00:00:04.000\nAnn: Hello there.');
     expect(vtt).toContain('00:00:04.000 --> 00:00:06.000\nBo: Later.');
+  });
+});
+
+describe('subtitleTrackRevision', () => {
+  it('changes when the cue text changes', () => {
+    const a = subtitleTrackRevision(
+      'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi\n'
+    );
+    const b = subtitleTrackRevision(
+      'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nBye\n'
+    );
+    expect(a).not.toBe(b);
+    expect(a).toBe(
+      subtitleTrackRevision('WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi\n')
+    );
   });
 });
