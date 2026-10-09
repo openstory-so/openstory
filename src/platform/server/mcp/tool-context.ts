@@ -192,7 +192,7 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
   const written = !spec.annotations.readOnlyHint;
   try {
-    const { data, summary } = await spec.run(parsed.data, context());
+    const { data, summary, images } = await spec.run(parsed.data, context());
     const output = spec.outputSchema.safeParse(data);
     if (!output.success && !written) {
       throw new Error(`openstory.${spec.name} output failed its schema`, {
@@ -222,6 +222,16 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
           structuredContent: JSON.parse(json) as Record<string, unknown>,
         }
       : unreportedWrite(spec.name, data, 'its shape was unexpected', json);
+    // Image bytes stay out of structuredContent. The 256 KiB cap still counts them.
+    if (output.success && images?.length) {
+      for (const image of images) {
+        result.content.push({
+          type: 'image',
+          data: image.data,
+          mimeType: image.mimeType,
+        });
+      }
+    }
     if (overResponseCap(JSON.stringify(result))) {
       return written
         ? unreportedWrite(spec.name, data, 'it exceeds 256 KiB')
@@ -245,6 +255,31 @@ async function runTool<I extends z.ZodObject, O extends z.ZodObject>(
   }
 }
 
+export type RegisteredWrite = {
+  name: string;
+  description: string;
+  inputSchema: z.ZodObject;
+  run: (input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>;
+};
+
+const registeredWrites = new Map<string, RegisteredWrite>();
+
+/** `sequences:write` tools, in registration order. Generation tools are absent. */
+export function registeredWriteCatalog(): RegisteredWrite[] {
+  return [...registeredWrites.values()];
+}
+
+/**
+ * Run a registered `sequences:write` tool by its unprefixed name. Generation
+ * tools are omitted: one approval must not spend credits. Returns null when
+ * the name is not an edit.
+ */
+export function runRegisteredWrite(
+  name: string
+): ((input: unknown, ctx: ReadToolContext) => Promise<CallToolResult>) | null {
+  return registeredWrites.get(name)?.run ?? null;
+}
+
 type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   name: string;
   /** The OAuth scope the tool needs (`osk_` keys are unscoped). */
@@ -261,13 +296,29 @@ type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   run: (
     input: z.output<I>,
     ctx: ReadToolContext
-  ) => Promise<{ data: z.input<O>; summary: string }>;
+  ) => Promise<{
+    data: z.input<O>;
+    summary: string;
+    /** Base64 JPEGs appended as MCP image content, in structured-data order. */
+    images?: { data: string; mimeType: 'image/jpeg' }[];
+  }>;
 };
 
 /** One `openstory.*` tool as a `toolDefinition().server()`. */
 export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>
 ) {
+  if (
+    spec.scope === 'sequences:write' &&
+    spec.name !== 'apply_sequence_edits'
+  ) {
+    registeredWrites.set(spec.name, {
+      name: spec.name,
+      description: spec.description,
+      inputSchema: spec.inputSchema,
+      run: (input, ctx) => runTool(spec, input, () => ctx),
+    });
+  }
   return toolDefinition({
     name: `openstory.${spec.name}` as const,
     description: spec.description,

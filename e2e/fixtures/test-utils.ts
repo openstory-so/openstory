@@ -17,7 +17,7 @@ const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
 /** Mirrors `STORAGE_KEY` in src/sequences/ui/use-generation-settings.ts — bump both
  *  together, or the pin lands under a key the app never reads and the recorded
  *  pipeline silently reverts to Turbo defaults. */
-const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
+const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v6';
 
 /**
  * Catalog the recorded full-pipeline fal fixtures were captured against.
@@ -39,6 +39,9 @@ export const RECORDED_PIPELINE_SETTINGS = {
   // The fixtures were recorded on the frame-based workflow; reference-only
   // is the product default now, so opt back in explicitly.
   generateStartFrames: true,
+  // No voice-design fixtures were recorded; the app has no switch for this
+  // (#2004), so the pin is the only way to keep the replay off that call.
+  generateVoices: false,
   musicModel: 'elevenlabs_music',
   audioModels: ['elevenlabs_music'],
   autoGenerateMusic: true,

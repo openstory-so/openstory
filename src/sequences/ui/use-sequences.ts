@@ -9,7 +9,7 @@ import {
   getSequencesFn,
   renameSequenceFn,
   setSequenceTargetDurationFn,
-  setSequenceVideoModelFn,
+  setSequenceModelsFn,
   setSequenceModelFn,
   setSequenceMusicFn,
   unarchiveSequenceFn,
@@ -346,41 +346,52 @@ export function useSetSequenceTargetDuration(sequenceId: string) {
   });
 }
 
+/** The sequence's model defaults: the last pick for each kind (#2004). */
+export type SequenceModels = Partial<
+  Record<'analysisModel' | 'imageModel' | 'videoModel' | 'musicModel', string>
+>;
+
 /**
- * Persist the sequence video-model default. Ungenerated shots inherit it,
- * Sequence settings shows it, and the generate-shots picker seeds from it.
- * Optimistic so the inspector and the Video badge move with the click.
+ * Persist the sequence's model defaults. Work not yet made inherits them,
+ * Sequence settings shows them, and the footer pickers seed from them.
+ * Optimistic so the inspector and the badges move with the click; the plan
+ * and the continue quote are re-asked once the pick has saved.
  */
-export function useSetSequenceVideoModel(sequenceId: string) {
+export function useSetSequenceModels(sequenceId: string) {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
 
   return useMutation({
-    scope: { id: `set-sequence-video-model-${sequenceId}` },
-    mutationFn: (videoModel: string) =>
-      setSequenceVideoModelFn({ data: { sequenceId, videoModel } }),
-    onMutate: async (videoModel) => {
+    scope: { id: `set-sequence-models-${sequenceId}` },
+    mutationFn: (models: SequenceModels) =>
+      setSequenceModelsFn({ data: { sequenceId, ...models } }),
+    onMutate: async (models) => {
       const key = sequenceKeys.detail(sequenceId);
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Sequence>(key);
       queryClient.setQueryData<Sequence>(key, (old) =>
-        old ? { ...old, videoModel } : old
+        old ? { ...old, ...models } : old
       );
       return { previous };
     },
-    onError: (error, _videoModel, ctx) => {
+    onError: (error, _models, ctx) => {
       if (ctx?.previous) {
         queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
       }
-      toast.error('Could not save the video model.');
+      toast.error('Could not save the model.');
       posthog.captureException(error, { sequence_id: sequenceId });
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
     },
     onSettled: () => {
+      // Also re-asks the continue quote, which is keyed under the detail.
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      // A model is an input to what is owed: prompts are built for one.
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
     },
   });

@@ -16,6 +16,15 @@ describe('createServerFnIdGenerator', () => {
     expect(after).toBe(before);
   });
 
+  it('uses the variable name so Cloudflare does not redact it', () => {
+    expect(
+      createServerFnIdGenerator()({
+        filename: 'a.fn.ts',
+        functionName: 'listSequencesFn_createServerFn_handler',
+      })
+    ).toBe('listSequencesFn');
+  });
+
   it('gives different ids to different function names', () => {
     const generate = createServerFnIdGenerator();
     expect(

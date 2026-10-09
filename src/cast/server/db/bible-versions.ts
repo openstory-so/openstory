@@ -45,9 +45,6 @@ export const characterBibleColumns = {
   physicalDescription: sql<
     string | null
   >`${live(cbv.id, cbv.physicalDescription, characters.legacyPhysicalDescription)}`,
-  standardClothing: sql<
-    string | null
-  >`${live(cbv.id, cbv.standardClothing, characters.legacyStandardClothing)}`,
   distinguishingFeatures: sql<
     string | null
   >`${live(cbv.id, cbv.distinguishingFeatures, characters.legacyDistinguishingFeatures)}`,
@@ -69,6 +66,14 @@ export const characterBibleColumns = {
     string | null
   >`${live(cbv.id, cbv.consistencyTag, characters.legacyConsistencyTag)}`,
 };
+
+/**
+ * The clothing a character's bible held before looks owned it (#2015). Read
+ * only for a character with no look yet.
+ */
+export const legacyBibleClothing = sql<
+  string | null
+>`${live(cbv.id, cbv.legacyStandardClothing, characters.legacyStandardClothing)}`;
 
 /** Select fields: a sequence location's bible, resolved. */
 export const locationBibleColumns = {
@@ -100,7 +105,6 @@ export const pickCharacterBible = (c: CharacterBible): CharacterBible => ({
   gender: c.gender,
   ethnicity: c.ethnicity,
   physicalDescription: c.physicalDescription,
-  standardClothing: c.standardClothing,
   distinguishingFeatures: c.distinguishingFeatures,
   personality: c.personality,
   movement: c.movement,

@@ -59,6 +59,7 @@ import {
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { bumpStylePopularity } from '@/look/server/bump-style-popularity';
 import { triggerStoryboard } from './launchers';
+import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
 import { createServerOnlyFn } from '@tanstack/react-start';
 import { getRequest } from '@tanstack/react-start/server';
@@ -149,7 +150,8 @@ export const createSequences = createServerOnlyFn(
       autoGenerateMotion,
       autoGenerateMusic,
       generateStartFrames = false,
-      generateVoices = false,
+      // Unsaid = on wherever voice design is configured (#2004).
+      generateVoices = isElevenLabsConfigured(),
       draftMotion = false,
       musicModel,
       audioModels: audioModelsInput,

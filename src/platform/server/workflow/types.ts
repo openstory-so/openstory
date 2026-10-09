@@ -485,6 +485,13 @@ export type SceneSplitWorkflowResult = {
   title: string;
   shotMapping: ShotMapping;
   characterBible: CharacterBibleEntry[];
+  /**
+   * The look each scene dresses a character in, where it is not the default
+   * (#2015): scene id → (character tag → look id). The look ids are the bible
+   * entries' slugs; analyze-script swaps them for `character_looks.id` once
+   * the cast is persisted and writes them onto the scenes.
+   */
+  sceneLooks: Record<string, Record<string, string>>;
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
   /**
@@ -644,6 +651,15 @@ export interface MotionWorkflowInput
    * credits were reserved.
    */
   referenceOnly: boolean;
+  /**
+   * The trigger's edit decision (#2036): whole seconds of the longest
+   * attached clip when it held credits for a Seedance 2.5 edit
+   * (`seedanceEditSeconds`), null when it did not. The submit sends
+   * `duration: -1` only when this is set, so an edit never goes out on a hold
+   * sized for the shot. Required: a trigger that forgot it would send every
+   * edit at the shot's length.
+   */
+  seedanceEditSeconds: number | null;
   prompt: string;
   model?: keyof typeof IMAGE_TO_VIDEO_MODELS;
   duration?: number;
@@ -777,9 +793,30 @@ type PackedMotionCoveredShot = {
 export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** sequence_characters.id */
   characterDbId: string;
+  /**
+   * The look this sheet draws (#2015) — one run makes one look's sheet. A run
+   * without one is failed on arrival (`assertQueuedWithLooks`).
+   */
+  lookId: string;
+  /**
+   * The `character_look_versions` row the look was read from, snapshotted at
+   * the trigger and stamped on the sheet's version row. The claim is taken
+   * only while the look still points at it.
+   */
+  lookVersionId: string;
+  /** The look's hair / makeup / injury notes; null when it changes none. */
+  lookStyling: string | null;
+  /**
+   * The cast talent at the snapshot; null when not cast. The claim is taken
+   * only while the character is still cast with it.
+   */
+  talentId: string | null;
   /** Character name for logging */
   characterName: string;
-  /** Character metadata from script analysis */
+  /**
+   * The character's bible at the trigger. `standardClothing` is the LOOK's
+   * clothing (#2015), not a field of the bible.
+   */
   characterMetadata: CharacterBibleEntry;
   /** Image model to use (defaults to nano_banana_2) */
   imageModel?: TextToImageModel;
@@ -814,7 +851,7 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   snapshotInputHash: CharacterSheetInputHash;
   /**
    * The sheet claim (#1113): the id this run's version row will carry, taken at the trigger
-   * (`characters.claimSheet`). The run lands only while the claim still names it,
+   * (`characterLooks.claimSheet`). The run lands only while the claim still names it,
    * else it parks as divergent. Absent only on a run queued before #1113,
    * which lands unconditionally.
    */
@@ -944,8 +981,14 @@ export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
  * Recast character workflow input
  * Orchestrates character sheet generation + shot regeneration for recast
  */
-export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
-  /** Character database ID */
+export interface RecastCharacterWorkflowInput
+  extends
+    SequenceWorkflowContext,
+    Pick<
+      CharacterSheetWorkflowInput,
+      'lookId' | 'lookVersionId' | 'lookStyling' | 'talentId'
+    > {
+  /** Character database ID. The sheet redrawn is its default look's (#2015). */
   characterDbId: string;
   /** Character name for logging */
   characterName: string;
@@ -1206,6 +1249,8 @@ export interface MotionWorkflowResult {
 export interface CharacterSheetWorkflowResult {
   sheetImageUrl: string;
   characterDbId?: string;
+  /** The look the sheet is of (#2015). */
+  lookId: string;
   sheetImagePath?: string;
   /**
    * The live `character_sheet_variants` row selected on a convergent write.
@@ -1649,6 +1694,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     imageUrl?: string;
     /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */
     referenceOnly: boolean;
+    /** See `MotionWorkflowInput.seedanceEditSeconds`. Decided for `model`. */
+    seedanceEditSeconds: number | null;
     /** See `MotionWorkflowInput.frameVersionId`. */
     frameVersionId?: string | null;
     /** See `MotionWorkflowInput.motionPromptVersionId`. */

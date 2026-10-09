@@ -18,14 +18,19 @@
  * 2.5 tags are `@Image1`/`@Image2` on fal and Ark. Ark does not want a
  * trailing "Reference images:" legend.
  *
- * `size` is `adaptive` only when a `start_frame` role is actually sent. A
- * demoted still is a reference like any other, so reference mode states the
- * sequence's own ratio, as reference-only and text-only do (nothing is left
- * for `adaptive` to adapt to — see the comment at the `size` assignment).
+ * `size` is `adaptive` when a `start_frame` role is actually sent, and when
+ * Seedance 2.5 is editing a video, which also requires `duration: -1`
+ * (`arkSendsSeedanceEdit`, #2036). Otherwise reference mode states the
+ * sequence's own ratio (nothing is left for `adaptive` to adapt to — see the
+ * comment at the `size` assignment, #1809).
  *
  * Client-safe: no env, no adapters.
  */
 
+import {
+  ARK_AUTO_DURATION,
+  arkSendsSeedanceEdit,
+} from '@/motion/seedance-edit';
 import {
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
@@ -86,6 +91,12 @@ export type BytePlusVideoRequestOptions = {
   referenceImages?: ReferenceImageDescription[];
   /** Ark draft mode (#1756): 480p preview, `draft: true` on the wire. */
   draft?: boolean;
+  /**
+   * `MotionWorkflowInput.seedanceEditSeconds`: the clip seconds the trigger
+   * held credits for as a Seedance 2.5 edit, or null. The job goes out as an
+   * edit only when this covers the longest clip attached here.
+   */
+  heldSeedanceEditSeconds: number | null;
 };
 
 /**
@@ -203,6 +214,13 @@ export function buildBytePlusVideoRequest(
         audioUrls: [],
       };
 
+  const followsClip =
+    videoUrls.length > 0 &&
+    arkSendsSeedanceEdit(options.heldSeedanceEditSeconds, {
+      model: modelKey,
+      prompt: options.prompt,
+      references: options.referenceImages ?? [],
+    });
   return {
     modelId,
     prompt: [
@@ -221,8 +239,10 @@ export function buildBytePlusVideoRequest(
         source: { type: 'url', value: url },
       })),
     ],
-    size,
+    size: followsClip ? `adaptive_${resolution}` : size,
     duration: options.duration,
-    modelOptions,
+    modelOptions: followsClip
+      ? { ...modelOptions, duration: ARK_AUTO_DURATION }
+      : modelOptions,
   };
 }

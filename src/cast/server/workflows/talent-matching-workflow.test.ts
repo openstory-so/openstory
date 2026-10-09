@@ -73,6 +73,7 @@ const entry = (
   ethnicity: '',
   physicalDescription: '',
   standardClothing: '',
+  looks: [],
   distinguishingFeatures: '',
   personality: '',
   movement: '',

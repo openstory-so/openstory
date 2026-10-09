@@ -112,12 +112,18 @@ export async function saveShotPrompt(
           ? null
           : await getFrameImageUrl(scopedDb, frame.id),
       });
-      const narrowed = narrowShotPromptContext(ctx);
+      // The digest narrows its bibles by the text being saved (#2012).
       inputHash =
         data.promptType === 'visual'
-          ? await hashVisualPromptInput(narrowed)
+          ? await hashVisualPromptInput(
+              narrowShotPromptContext(ctx, { channel: 'visual', prompt: text })
+            )
           : await hashMotionPromptInput({
-              ...narrowed,
+              ...narrowShotPromptContext(ctx, {
+                channel: 'motion',
+                prompt: text,
+                referenceOnly: rendersReferenceOnly(shot, sequence),
+              }),
               // Read after the write above: the edit is authored against
               // the lines it saved (#1784).
               dialogue: (

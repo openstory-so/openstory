@@ -103,3 +103,18 @@ describe('installChunkReload', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 });
+
+describe('isStaleChunkError', () => {
+  it("matches each browser's failed-import wording and nothing else", async () => {
+    const { isStaleChunkError } = await import('./chunk-reload');
+    for (const message of [
+      'Failed to fetch dynamically imported module: https://x/a.js',
+      'error loading dynamically imported module: https://x/a.js',
+      'Importing a module script failed.',
+    ]) {
+      expect(isStaleChunkError(new TypeError(message))).toBe(true);
+    }
+    expect(isStaleChunkError(new Error('Sequence not found'))).toBe(false);
+    expect(isStaleChunkError(undefined)).toBe(false);
+  });
+});

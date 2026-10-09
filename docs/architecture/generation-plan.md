@@ -178,7 +178,9 @@ refetch on focus, invalidated by realtime and by any refused continue —
 `refetchAfterRefusedContinue`).
 
 - **The steps show at every step (#1780 §1)** until every unit is done — a
-  finished sequence hides them: one sticky footer, the slider first, then the Motion / Music / Drafts
+  finished sequence hides them, unless the row says voices are off and this
+  deployment can design one (#2067): Continue still owes the voices, so the
+  steps stay and the thumb caps at Dialogue. One sticky footer, the slider first, then the Motion / Music / Drafts
   controls of whichever step the sequence is at (their own buttons — batch
   motion, Generate Music, Render finals — are unchanged). Stops before the
   first with work are locked (done).
@@ -191,20 +193,29 @@ prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
   and a line per blocked noun,
   `blockedLines`) shows when the
   plan's first work is before Motion.
-- **A switch shows only when it changes a step the run takes.** Voices from
-  References (voices ride that step), Start frames from Images, Draft first
-  from Motion, Music at the Music stop. Turning on one that was skipped caps
+- **A switch shows only when it changes a step the run takes.** Start frames
+  from Images, Draft first from Motion, Music at the Music stop. Voices has no
+  switch and no caller boolean (#2067): a sequence owes dialogue wherever
+  voice design is configured, including a row stored off, and a voice is
+  turned off on the character. That stored-off row caps
+  the thumb at Dialogue (`switchStopAt`, saved off, requested on). Turning on a skipped switch caps
   the thumb at its step (Images / Dialogue; `switchStopAt`, shared by the
   footer and the server, so the label, the quote and the run agree) only when
   a later unit is already done or stale. Nothing past that step yet — no clip,
   no track — and the thumb can still run on to Motion. The cap is derived,
-  never written: turning the switch off again frees the thumb to where it was. Voices is locked on once a shot has a recording
-  (`switchLocks`; a `blocked` unit does not count as existing): the recording
-  would still ride the clip. Start frames can always turn off — the stills
+  never written: turning the switch off again frees the thumb to where it was.
+  Start frames can always turn off — the stills
   stay, shots render from references, and their motion prompts go stale. Draft
   first is changeable until every clip exists, then shown read-only. With
   the switches flipped the footer asks the plan as if they were saved
   (`getGenerationPlanFn` overrides) and the continue waits for that plan.
+- **The footer picks the models (#2004).** Under the slider, one picker per
+  kind of model the run will use: text (`voice`, `spec`, `prompt:music`), image
+  (sheets, stills), video (`prompt:motion`, clips), music. A pick saves on
+  change as the sequence's default (`setSequenceModelsFn`) — the last model
+  chosen for that kind — and the plan and the quote are re-asked. Continue
+  waits while a pick is saving, because the run reads the models off the row.
+  Work already made keeps the model it was made with.
 - **Music is `sequences.includeMusic`** — the same setting as the Music
   panel's "Include music in playback & export". Off, the plan owes no music
   prompt or track and a fresh run to Music makes none; on, both do, whatever

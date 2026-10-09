@@ -149,6 +149,7 @@ const characterBible: CharacterBibleEntry = {
   ethnicity: '',
   physicalDescription: '',
   standardClothing: 'duster',
+  looks: [],
   distinguishingFeatures: '',
   personality: '',
   movement: '',

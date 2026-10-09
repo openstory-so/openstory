@@ -224,6 +224,12 @@ export type PlanTarget = {
     description: string;
     selectedModel: string | null;
     elementTags?: string[];
+    /**
+     * The scene's look picks (#2015), so a reference-only clip attaches the
+     * sheet of the look the scene dresses each character in; null when the
+     * scene picks none.
+     */
+    characterLooks: Record<string, string> | null;
     environmentTag?: string;
     location?: string;
     siblingShotIds?: string[];
@@ -1089,7 +1095,9 @@ async function decideShotTarget(args: {
       elements: refs.elements,
     });
     return [
-      ...matched.characters.map((c) => c.id),
+      // The look whose sheet the shot attaches (#2015): a failed sheet holds
+      // the shots of the scenes that wear it, and no others.
+      ...matched.characters.map((c) => c.lookId),
       ...matched.locations.map((l) => l.id),
       ...matched.elements.map((e) => e.id),
     ];
@@ -1145,6 +1153,7 @@ async function decideShotTarget(args: {
           })
         ),
         characterTags: scene.continuity?.characterTags,
+        characterLooks: scene.continuity?.characterLooks ?? null,
         sceneTitle: scene.metadata?.title,
         description: scene.originalScript.extract,
         elementTags: scene.continuity?.elementTags ?? undefined,

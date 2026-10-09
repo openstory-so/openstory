@@ -140,7 +140,7 @@ describe('banner and slider stops', () => {
     expect(sliderThumbIndex('motion', stages)).toBe(3);
     expect(sliderStopLabel('music')).toBe('Motion & Music');
     expect(sliderTickLabel('music')).toBe('Motion\u00a0&\nMusic');
-    expect(sliderStopLabel('references')).toBe('References & Prompts');
+    expect(sliderStopLabel('references')).toBe('Sheets & Voices');
     expect(sliderStopLabel('images')).toBe('Images');
     expect(stopAfterSentence('motion')).toBe('Don’t stop');
   });
@@ -148,9 +148,7 @@ describe('banner and slider stops', () => {
     expect(runScopeLabel('music')).toBe('Whole sequence');
     expect(runScopeLabel('motion')).toBe('Whole sequence');
     expect(runScopeLabel('script')).toBe('Stops after Casting');
-    expect(runScopeLabel('references')).toBe(
-      'Stops after References & Prompts'
-    );
+    expect(runScopeLabel('references')).toBe('Stops after Sheets & Voices');
     expect(runScopeLabel('images')).toBe('Stops after Images');
     expect(runScopeLabel('dialogue')).toBe('Stops after Dialogue');
   });

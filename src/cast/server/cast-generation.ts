@@ -26,6 +26,10 @@ import { releaseReplacedVoice } from '@/cast/server/voice/release-voice';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import {
+  requireCharacterLook,
+  requireLiveLook,
+} from '@/cast/server/character-look';
+import {
   buildRegenerateLocationSheetPayload,
   toLocationMetadata,
 } from '@/cast/server/sheets/location-sheet-trigger';
@@ -73,7 +77,12 @@ export async function regenerateCharacterSheet(
   scopedDb: ScopedDb,
   actor: Actor,
   sequence: Sequence,
-  data: { characterId: string; imageModel?: string }
+  data: {
+    characterId: string;
+    /** The look to draw (#2015). A character id names its default look. */
+    lookId: string;
+    imageModel?: string;
+  }
 ): Promise<{ characterId: string; workflowRunId: string }> {
   const character = await requireCharacter(
     scopedDb,
@@ -81,23 +90,28 @@ export async function regenerateCharacterSheet(
     data.characterId
   );
 
+  // A removed look is not drawn: nobody could pick the sheet.
+  requireLiveLook(await requireCharacterLook(scopedDb, character, data.lookId));
   const payload = await buildRegenerateCharacterSheetPayload({
     scopedDb,
     userId: actor.userId,
     teamId: scopedDb.teamId,
     sequence,
     character,
+    lookId: data.lookId,
     imageModel: data.imageModel,
   });
 
-  // The claim (#1113): last kickoff wins, and any edit to the character's
-  // sheet inputs before this run lands revokes it.
-  const sheetVersionId = await scopedDb.characters.claimSheet(character.id, {
-    markGenerating: true,
-  });
+  // The claim (#1113): last kickoff wins, and any edit to the look's sheet
+  // inputs before this run lands revokes it.
+  const { versionId: sheetVersionId } =
+    await scopedDb.characterLooks.claimSheet(payload.lookId, payload, {
+      markGenerating: true,
+    });
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: character.id,
+      lookId: payload.lookId,
       status: 'generating',
     })
   );
@@ -116,8 +130,8 @@ export async function regenerateCharacterSheet(
       // new run.
     });
   } catch (error) {
-    await scopedDb.characters.failSheetClaim(
-      character.id,
+    await scopedDb.characterLooks.failSheetClaim(
+      payload.lookId,
       sheetVersionId,
       error instanceof Error ? error.message : String(error)
     );
@@ -184,9 +198,8 @@ export async function recastCharacter(
     movement: talentWithSheets.movement ?? '',
   });
 
-  // Update talent assignment AND physical attributes from talent
-  await scopedDb.characters.updateTalent(data.characterId, data.talentId);
-  // The talent's appearance becomes a 'recast' bible version (#1600).
+  // The talent and its appearance become ONE 'recast' bible version (#1600,
+  // #2017).
   await scopedDb.characters.updateBible(
     data.characterId,
     {
@@ -202,7 +215,7 @@ export async function recastCharacter(
         talentWithSheets.isHuman
       ),
     },
-    { actorId: actor.userId, source: 'recast' }
+    { actorId: actor.userId, source: 'recast', talentId: data.talentId }
   );
   // Cast copies the talent's voice (#1553): its own history row, labelled
   // 'library' because that voice came from the talent, not this role's
@@ -232,21 +245,33 @@ export async function recastCharacter(
     throw new NotFoundError('Character not found');
   }
 
+  // The recast workflow redraws the default look's sheet (#2015) and
+  // re-renders the shots that wear it. The other looks in use are redrawn
+  // below, each as its own sheet run.
+  const look = await scopedDb.characterLooks.ensureDefault(data.characterId);
   const affectedShotIds = await scopedDb.characters.getShotIdsForCharacter(
     character.sequenceId,
-    data.characterId
+    data.characterId,
+    { wearing: look.id }
   );
 
   // Always generate a character sheet showing the talent in costume. The
   // claim is taken after the cast writes above, which revoke older ones.
-  const sheetVersionId = await scopedDb.characters.claimSheet(
-    data.characterId,
-    { markGenerating: true }
-  );
+  const { versionId: sheetVersionId } =
+    await scopedDb.characterLooks.claimSheet(
+      look.id,
+      {
+        lookVersionId: look.lookVersionId,
+        bibleVersionId: updatedCharacter.selectedBibleVersionId,
+        talentId: data.talentId,
+      },
+      { markGenerating: true }
+    );
 
   await emitProgress(character.sequenceId, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: data.characterId,
+      lookId: look.id,
       status: 'generating',
     })
   );
@@ -267,6 +292,10 @@ export async function recastCharacter(
 
   const workflowInput: RecastCharacterWorkflowInput = {
     characterDbId: data.characterId,
+    lookId: look.id,
+    lookVersionId: look.lookVersionId,
+    lookStyling: look.styling,
+    talentId: data.talentId,
     // The recast bible version the metadata below spells out (#1600).
     bibleVersionId: updatedCharacter.selectedBibleVersionId,
     characterName: character.name,
@@ -277,6 +306,16 @@ export async function recastCharacter(
       isPerson: updatedCharacter.isPerson,
       voiceDescription: character.voiceDescription ?? '',
       ...castingAttrs,
+      // The look owns clothing (#2015): the entry wears the look being drawn.
+      standardClothing: look.clothing ?? '',
+      looks: [
+        {
+          lookId: look.id,
+          name: look.name,
+          clothing: look.clothing ?? '',
+          styling: look.styling ?? '',
+        },
+      ],
     },
     sequenceId: character.sequenceId,
     teamId: scopedDb.teamId,
@@ -292,7 +331,7 @@ export async function recastCharacter(
     reuseTalentSheet: Boolean(
       defaultSheet?.imageUrl &&
       shouldReuseTalentSheet({
-        characterClothing: character.standardClothing,
+        characterClothing: look.clothing,
         characterFeatures: character.distinguishingFeatures,
         talentClothing: defaultSheet.metadata?.standardClothing,
         talentFeatures: defaultSheet.metadata?.distinguishingFeatures,
@@ -317,10 +356,42 @@ export async function recastCharacter(
     workflowInput
   );
 
+  // A recast changes the face on every sheet, so every other look a live
+  // scene wears is redrawn too (#2015); its shots read stale once the new
+  // sheet lands. A look nobody wears stays stale until asked for.
+  // The recast itself has started by now, so one look's sheet failing to
+  // start must not read as "recast failed": that look's sheet is marked
+  // failed (by `regenerateCharacterSheet`) and named in the result.
+  const failedLookIds: string[] = [];
+  for (const other of updatedCharacter.looks) {
+    if (other.isDefault || other.deletedAt) continue;
+    const worn = await scopedDb.characters.getShotIdsForCharacter(
+      character.sequenceId,
+      data.characterId,
+      { wearing: other.id }
+    );
+    if (worn.length === 0) continue;
+    try {
+      await regenerateCharacterSheet(scopedDb, actor, sequence, {
+        characterId: data.characterId,
+        lookId: other.id,
+      });
+    } catch (error) {
+      logger.error('Recast: a look sheet did not start', {
+        err: error,
+        characterId: data.characterId,
+        lookId: other.id,
+      });
+      failedLookIds.push(other.id);
+    }
+  }
+
   return {
     character: updatedCharacter,
     talentId: data.talentId,
     sheetWorkflowRunId: workflowRunId,
+    /** Other worn looks whose sheet could not be started (#2015). */
+    failedLookIds,
     // The shots actually queued — a shot with no selected image prompt is
     // dropped by the snapshot builder rather than failing the recast.
     affectedShotIds: shotSnapshots.map((s) => s.shotId),

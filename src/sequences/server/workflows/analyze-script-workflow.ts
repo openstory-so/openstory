@@ -7,6 +7,7 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import type {
@@ -22,6 +23,8 @@ import {
   GENERATION_STAGE_META,
   type GenerationStage,
 } from '@/sequences/pipeline';
+import { persistSceneLooks } from '@/sequences/server/scene-persistence';
+import { relabelBibleLooks, relabelLookPicks } from '@/cast/bible-looks';
 import { createCastRecords } from '@/cast/server/workflows/cast-records';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
 import { persistShotSpec } from '@/shots/server/persist-shot-spec';
@@ -227,7 +230,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       timeout: '45 minutes',
     });
 
-    const { scenes, shotMapping, characterBible, locationBible, elementBible } =
+    const { shotMapping, characterBible, locationBible, elementBible } =
       sceneSplitResult;
 
     // Claimed only now: the split is in D1, so a style failure fails a run
@@ -305,15 +308,15 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
 
     // Derive and hash against the same cast attributes persisted below, so
     // live verification agrees with the first prompts from analysis.
-    const castCharacterBible = buildCastCharacterBible(
+    const analysedCastBible = buildCastCharacterBible(
       characterBible,
       talentCharacterMatches
     );
     // Cast, locations and script-detected elements land NOW, sheet-less, so a
     // run stopped at Script shows the whole bible for review before any
     // reference image is billed. The executor later fills their selected sheets.
-    await step.do('create-cast-records', async () => {
-      if (!sequenceId) return { elements: [] };
+    const castRecords = await step.do('create-cast-records', async () => {
+      if (!sequenceId) return { elements: [], lookIds: {} };
       return createCastRecords(scopedDb, {
         sequenceId,
         characterBible,
@@ -323,6 +326,29 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         elementBible,
         existingElements: elementsMinimal,
       });
+    });
+    // Looks (#2015): the bibles call named each outfit by a slug. The cast is
+    // persisted now, so swap the slugs for `character_looks.id` on the bible
+    // the prompts read and on the scenes that pick a non-default look, and
+    // write those picks onto the scenes. Only persisted ids are ever stored.
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: step results cached by a run that started before #2015
+    if (!castRecords.lookIds || !sceneSplitResult.sceneLooks) {
+      throw queuedBeforeLooks();
+    }
+    const lookIds = castRecords.lookIds;
+    const castCharacterBible = relabelBibleLooks(analysedCastBible, lookIds);
+    const sceneLooks = sceneSplitResult.sceneLooks;
+    const scenes = sceneSplitResult.scenes.map((scene) => {
+      const picks = relabelLookPicks(sceneLooks[scene.sceneId] ?? {}, lookIds);
+      return Object.keys(picks).length > 0 && scene.continuity
+        ? {
+            ...scene,
+            continuity: { ...scene.continuity, characterLooks: picks },
+          }
+        : scene;
+    });
+    await step.do('persist-scene-looks', async () => {
+      if (sequenceId) await persistSceneLooks(scopedDb, sequenceId, scenes);
     });
     // Each shot's spec lands as its first version, with the prompts derived
     // from it (#1915). Derivation reads only the spec and the frozen bibles.

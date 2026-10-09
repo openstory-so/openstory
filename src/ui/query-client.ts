@@ -1,5 +1,9 @@
 import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-credits';
-import { isAuthError, isInsufficientCreditsError } from '@/platform/errors';
+import {
+  isAuthError,
+  isInsufficientCreditsError,
+  isUnauthenticatedError,
+} from '@/platform/errors';
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -28,13 +32,7 @@ export function makeQueryClient() {
   const clearRejectedSession = (error: unknown) => {
     // A 403 is a permission failure, not a rejected session. Check structurally
     // because server-fn errors are reconstructed across the RPC boundary.
-    if (
-      typeof error !== 'object' ||
-      error === null ||
-      !('statusCode' in error) ||
-      error.statusCode !== 401
-    )
-      return;
+    if (!isUnauthenticatedError(error)) return;
 
     // Cancelling first prevents an older session read from putting the rejected
     // session back. Publish null immediately so session-gated reads stop; merely

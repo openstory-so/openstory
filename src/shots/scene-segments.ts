@@ -247,6 +247,12 @@ export type LiveShotInputs = {
   audioClipIdsByShot: ReadonlyMap<string, readonly string[]>;
   /** `kind:entityId` → the provenance key a render would be sent now. */
   referenceIdentity: ReadonlyMap<string, string>;
+  /**
+   * Entities a render of the shot would be sent now (`kind:id`), per shot
+   * (#2012). A stamped key outside the set is not compared. A shot missing
+   * from the map has no live references; its other pointers read it stale.
+   */
+  referencedEntitiesByShot: ReadonlyMap<string, ReadonlySet<string>>;
   /** Raw `shots.durationMs` (unset/0 = no user duration, not compared). */
   durationMsByShot: ReadonlyMap<string, number | null>;
   /** Seconds of dialogue audio bound to the shot, for the audio raise. */
@@ -255,7 +261,10 @@ export type LiveShotInputs = {
 /** The half of {@link LiveShotInputs} that takes I/O; the rest is on the shot rows. */
 export type LoadedShotInputs = Pick<
   LiveShotInputs,
-  'audioSourceKeyByShot' | 'dialogueKeyByShot' | 'referenceIdentity'
+  | 'audioSourceKeyByShot'
+  | 'dialogueKeyByShot'
+  | 'referenceIdentity'
+  | 'referencedEntitiesByShot'
 >;
 export type SegmentShotInput = {
   id: string;
@@ -302,6 +311,8 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
  * fresh. An entry with both version ids null is unknown provenance (legacy /
  * unpinned trigger) and is not stale — same contract as a null `inputHash`.
  */
+const NO_REFERENCES: ReadonlySet<string> = new Set();
+
 export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
@@ -334,7 +345,11 @@ export function isSelectedVersionStale(
         !legacyPackedAudioMatches(selected, index, live)) ||
       audioClipsMoved(entry, live) ||
       dialogueMoved(entry, selected.model, currentMotion, live) ||
-      referenceKeysMoved(entry.referenceKeys, live.referenceIdentity) ||
+      referenceKeysMoved(
+        entry.referenceKeys,
+        live.referenceIdentity,
+        live.referencedEntitiesByShot.get(entry.shotId) ?? NO_REFERENCES
+      ) ||
       durationMoved(entry, selected.model, live, selected.manifest.length > 1)
     );
   });

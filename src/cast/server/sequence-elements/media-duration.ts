@@ -32,20 +32,43 @@ const logger = getLogger(['openstory', 'cast', 'media-duration']);
 export async function measureStoredMediaDuration(
   key: string
 ): Promise<number | null> {
-  const size = await storageObjectSize(key);
-  if (!size) return null;
+  try {
+    return await measureOwnMediaDuration(key);
+  } catch (error) {
+    logger.warn('Could not read stored media', { key, error });
+    return null;
+  }
+}
 
+/**
+ * The same measurement for a caller that sizes a hold or a refusal on it
+ * (#2036): null only when the container does not say. A missing object or a
+ * failed storage read throws, because "we could not read our own file" is not
+ * "unknown length" — unknown still submits.
+ */
+export async function measureOwnMediaDuration(
+  key: string
+): Promise<number | null> {
+  const size = await storageObjectSize(key);
+  if (!size) throw new Error(`Stored media is missing or empty: ${key}`);
+
+  let storageError: unknown;
   const input = new Input({
     formats: ALL_FORMATS,
     source: new CustomSource({
       getSize: () => size,
       read: async (start, end) => {
-        const object = await readStorageObject(key, {
-          offset: start,
-          length: end - start,
-        });
-        if (!object) throw new Error(`Storage object disappeared: ${key}`);
-        return object.bytes;
+        try {
+          const object = await readStorageObject(key, {
+            offset: start,
+            length: end - start,
+          });
+          if (!object) throw new Error(`Storage object disappeared: ${key}`);
+          return object.bytes;
+        } catch (error) {
+          storageError = error;
+          throw error;
+        }
       },
     }),
   });
@@ -57,6 +80,7 @@ export async function measureStoredMediaDuration(
       (await input.computeDuration());
     return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
   } catch (error) {
+    if (storageError) throw storageError;
     // An unrecognisable container. Unknown is what the row already said, so
     // this changes nothing — but log it, because it means this file will
     // pass every length gate unchecked.

@@ -25,7 +25,9 @@ vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: vi.fn(),
 }));
 import {
-  characters,
+  characterBibleVersions,
+  sequenceCast,
+  sequenceCastLooks,
   characterSheetVariants,
   characterVoiceVersions,
   sequenceLocations,
@@ -50,7 +52,7 @@ import {
 import { createClient, type Client } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { mcpServer, serveMcpRequest } from './server';
 import {
@@ -66,6 +68,7 @@ import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
 // oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
+import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
@@ -104,6 +107,12 @@ let actorId: string;
 let imageId: string;
 let videoId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
+/** A character as analysis writes it: bible version, cast link, default look. */
+const castCharacter = (character: NewCharacter) =>
+  createScopedDb(teamId, actorId).characters.create(character, {
+    source: 'analysis',
+    createdBy: null,
+  });
 const queries: string[] = [];
 async function call(name: string, args: Record<string, unknown> = {}) {
   const response = await mcpServer.handle(
@@ -766,13 +775,13 @@ describe('complete production reads', () => {
     eventId = generateId();
     musicId = generateId();
     musicPromptId = generateId();
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
       sequenceId,
       characterId: 'char_001',
-      legacyName: 'Ada',
-      legacyPersonality: 'Curious',
-      legacyConsistencyTag: 'ada',
+      name: 'Ada',
+      personality: 'Curious',
+      consistencyTag: 'ada',
       selectedVoiceVersionId: characterId,
     });
     await db.insert(characterVoiceVersions).values({
@@ -1006,11 +1015,11 @@ describe('complete production reads', () => {
     });
   });
   it('pages entities and binds cursors to collection, sequence, and reference target', async () => {
-    await db.insert(characters).values({
+    await castCharacter({
       id: generateId(),
       sequenceId,
       characterId: 'char_002',
-      legacyName: 'Other',
+      name: 'Other',
     });
     const pageSchema = z.object({
       characters: z.array(z.object({ id: z.string() })),
@@ -1044,7 +1053,7 @@ describe('complete production reads', () => {
       })
     ).toMatchObject({ isError: true });
     expect(
-      queries.some((query) => /from "characters".*limit \?/i.test(query))
+      queries.some((query) => /from "sequence_cast".*limit \?/i.test(query))
     ).toBe(true);
   });
   it('uses effective style snapshots and reads original versus composed script with revision-safe windows', async () => {
@@ -1283,9 +1292,9 @@ describe('complete production reads', () => {
       })
     ).toMatchObject({ isError: true });
     await db
-      .update(characters)
-      .set({ deletedAt: new Date() })
-      .where(eq(characters.id, characterId));
+      .update(sequenceCast)
+      .set({ removedAt: new Date() })
+      .where(eq(sequenceCast.characterId, characterId));
     expect(await data('list_characters', { sequenceId })).toMatchObject({
       characters: [],
     });
@@ -1423,9 +1432,9 @@ describe('complete production reads', () => {
       queries.some((query) => /^(insert|update|delete)\b/i.test(query))
     ).toBe(false);
     await db
-      .update(characters)
-      .set({ legacyVoiceOnly: true })
-      .where(eq(characters.id, characterId));
+      .update(characterBibleVersions)
+      .set({ voiceOnly: true })
+      .where(eq(characterBibleVersions.characterId, characterId));
     expect(
       await data('get_reference_staleness', {
         sequenceId,
@@ -2159,12 +2168,12 @@ describe('update_scene (#1459)', () => {
 
 describe('update_scene continuity (#1459)', () => {
   it('rescans @-mentions into continuity, merges sent keys and records only moved fields', async () => {
-    await db.insert(characters).values({
+    await castCharacter({
       id: generateId(),
       sequenceId,
       characterId: 'char_001',
-      legacyName: 'Ada',
-      legacyConsistencyTag: 'ada',
+      name: 'Ada',
+      consistencyTag: 'ada',
     });
     const read = z.object({ script: z.object({ id: z.string() }) });
     const written = z.object({ scriptVersionId: z.string() });
@@ -2215,6 +2224,28 @@ describe('update_scene continuity (#1459)', () => {
 });
 
 describe('structure edits (#1979)', () => {
+  it('apply_sequence_edits runs several writes and stops when a later edit fails', async () => {
+    const result = await data('apply_sequence_edits', {
+      sequenceId,
+      changes: [
+        { tool: 'update_sequence', arguments: { title: 'Batch title' } },
+        { tool: 'update_sequence', arguments: { includeMusic: false } },
+        { tool: 'delete_shot', arguments: { shotId: generateId() } },
+      ],
+    });
+    expect(result).toMatchObject({
+      sequenceId,
+      applied: [
+        { tool: 'update_sequence', data: { title: 'Batch title' } },
+        { tool: 'update_sequence', data: { includeMusic: false } },
+      ],
+      stoppedAt: { index: 2, tool: 'delete_shot' },
+    });
+    expect(await data('get_sequence', { sequenceId })).toMatchObject({
+      title: 'Batch title',
+    });
+  });
+
   it('update_sequence renames with an event and writes only the sent settings', async () => {
     const updated = await data('update_sequence', {
       sequenceId,
@@ -2232,7 +2263,12 @@ describe('structure edits (#1979)', () => {
     const [event] = await db
       .select()
       .from(sequenceEvents)
-      .where(eq(sequenceEvents.kind, 'sequence.renamed'));
+      .where(
+        and(
+          eq(sequenceEvents.kind, 'sequence.renamed'),
+          eq(sequenceEvents.targetId, sequenceId)
+        )
+      );
     expect(event).toMatchObject({ actorId, targetId: sequenceId });
     expect(
       await data('update_sequence', { sequenceId, targetDurationSeconds: null })
@@ -2879,14 +2915,17 @@ describe('cast and music edits (#1979)', () => {
       generateId(),
       generateId(),
     ];
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
       sequenceId,
       characterId: 'char_ada',
-      legacyName: 'Ada',
+      name: 'Ada',
       selectedVoiceVersionId: newer,
-      selectedSheetVersionId: sheetB,
     });
+    await db
+      .update(sequenceCastLooks)
+      .set({ selectedSheetVersionId: sheetB })
+      .where(eq(sequenceCastLooks.lookId, characterId));
     await db.insert(characterVoiceVersions).values([
       {
         id: older,
@@ -2966,6 +3005,179 @@ describe('cast and music edits (#1979)', () => {
     expect(ids(await listVersionsOf('character_sheet', characterId))).toContain(
       sheetB
     );
+  });
+
+  it('adds, edits and removes a look, and dresses a scene in it (#2015)', async () => {
+    const { characterId } = z
+      .object({ characterId: z.string() })
+      .parse(await data('create_character', { sequenceId, name: 'Mia Vale' }));
+    const read = async () =>
+      z
+        .object({
+          character: z.object({
+            standardClothing: z.string().nullable(),
+            looks: z.array(
+              z.object({
+                id: z.string(),
+                name: z.string(),
+                isDefault: z.boolean(),
+                clothing: z.string().nullable(),
+                styling: z.string().nullable(),
+                versionId: z.string(),
+                deletedAt: z.string().nullable(),
+              })
+            ),
+          }),
+        })
+        .parse(await data('get_character', { sequenceId, characterId }))
+        .character;
+
+    // A new character has its default look, under its own id.
+    expect((await read()).looks).toMatchObject([
+      { id: characterId, isDefault: true },
+    ]);
+
+    const { lookId } = z.object({ lookId: z.string() }).parse(
+      await data('create_character_look', {
+        sequenceId,
+        characterId,
+        name: 'Gala gown',
+        clothing: 'red gown',
+        styling: null,
+      })
+    );
+    const first = (await read()).looks.find((look) => look.id === lookId);
+    expect(first).toMatchObject({
+      name: 'Gala gown',
+      isDefault: false,
+      clothing: 'red gown',
+    });
+
+    await data('update_character_look', {
+      sequenceId,
+      characterId,
+      lookId,
+      clothing: 'blue gown',
+      styling: 'hair pinned up',
+    });
+    expect(
+      (await read()).looks.find((look) => look.id === lookId)
+    ).toMatchObject({ clothing: 'blue gown', styling: 'hair pinned up' });
+    const history = z
+      .object({
+        selectedLookVersionId: z.string(),
+        versions: z.array(z.object({ id: z.string(), clothing: z.string() })),
+      })
+      .parse(
+        await data('list_character_look_versions', {
+          sequenceId,
+          characterId,
+          lookId,
+        })
+      );
+    expect(history.versions.map((v) => v.clothing)).toEqual([
+      'blue gown',
+      'red gown',
+    ]);
+    await data('select_character_look_version', {
+      sequenceId,
+      characterId,
+      lookId,
+      versionId: first?.versionId,
+    });
+    expect(
+      (await read()).looks.find((look) => look.id === lookId)?.clothing
+    ).toBe('red gown');
+
+    // A scene picks the look through its continuity; an unknown id is refused.
+    const scriptId = async () =>
+      z
+        .object({ script: z.object({ id: z.string() }) })
+        .parse(await data('get_scene', { sequenceId, sceneId })).script.id;
+    expect(
+      await call('update_scene', {
+        sequenceId,
+        sceneId,
+        expectedScriptVersionId: await scriptId(),
+        continuity: { characterLooks: { mia_vale: generateId() } },
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: await scriptId(),
+      continuity: { characterLooks: { mia_vale: lookId } },
+    });
+
+    // The pick is filed under the character's own tag, whatever key was sent.
+    const [stored] = await db
+      .select({ continuity: sceneScriptVersions.continuity })
+      .from(sceneScriptVersions)
+      .innerJoin(
+        scenes,
+        eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
+      )
+      .where(eq(scenes.id, dbSceneId(sceneId)));
+    expect(Object.values(stored?.continuity?.characterLooks ?? {})).toEqual([
+      lookId,
+    ]);
+    expect(Object.keys(stored?.continuity?.characterLooks ?? {})).not.toEqual([
+      'mia_vale',
+    ]);
+    // A second look with the same name is refused.
+    expect(
+      await call('create_character_look', {
+        sequenceId,
+        characterId,
+        name: 'gala gown',
+        clothing: null,
+        styling: null,
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+
+    // Worn: it cannot be removed, and neither can the default look.
+    expect(
+      await call('remove_character_look', { sequenceId, characterId, lookId })
+    ).toMatchObject(refusal('CONFLICT'));
+    expect(
+      await call('remove_character_look', {
+        sequenceId,
+        characterId,
+        lookId: characterId,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+
+    await data('update_scene', {
+      sequenceId,
+      sceneId,
+      expectedScriptVersionId: await scriptId(),
+      // A patch: null puts this character back in its default look.
+      continuity: { characterLooks: { 'Mia Vale': null } },
+    });
+    await data('remove_character_look', { sequenceId, characterId, lookId });
+    // A removed look is not edited or drawn until it is restored.
+    expect(
+      await call('update_character_look', {
+        sequenceId,
+        characterId,
+        lookId,
+        clothing: 'green gown',
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      await call('regenerate_character_sheet', {
+        sequenceId,
+        characterId,
+        lookId,
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
+    expect(
+      (await read()).looks.find((look) => look.id === lookId)?.deletedAt
+    ).not.toBeNull();
+    await data('restore_character_look', { sequenceId, characterId, lookId });
+    expect(
+      (await read()).looks.find((look) => look.id === lookId)?.deletedAt
+    ).toBeNull();
   });
 
   it('creates, edits, deletes and restores a location and picks its reference', async () => {
@@ -3173,11 +3385,11 @@ describe('cast and music edits (#1979)', () => {
   it('refuses cast and tracks of another sequence', async () => {
     const characterId = generateId();
     const track = generateId();
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
       sequenceId,
       characterId: 'char_ada',
-      legacyName: 'Ada',
+      name: 'Ada',
     });
     await db.insert(sequenceMusicVariants).values({
       id: track,
@@ -3883,15 +4095,14 @@ describe('production-context resources (#1462)', () => {
   });
 
   it('shrinks an over-budget bible to fit, with a real cursor to continue', async () => {
-    await db.insert(characters).values(
-      Array.from({ length: 30 }, (_, i) => ({
-        id: generateId(),
+    for (let i = 0; i < 30; i++) {
+      await castCharacter({
         sequenceId,
         characterId: `char_${i}`,
-        legacyName: `C${i}`,
-        legacyPersonality: 'x'.repeat(8000),
-      }))
-    );
+        name: `C${i}`,
+        personality: 'x'.repeat(8000),
+      });
+    }
     const bible = z
       .object({
         characters: z.array(z.unknown()),
@@ -4141,5 +4352,123 @@ describe('official MCP client transport (#1463)', () => {
       },
     });
     await readOnly.close();
+  });
+});
+
+describe('inline review frames', () => {
+  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
+
+  async function frames(name: string, args: Record<string, unknown>) {
+    const original = globalThis.fetch;
+    vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', 'storage.openstory.so');
+    globalThis.fetch = async (input) => {
+      const href =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      expect(href.startsWith('https://assets.openstory.so/cdn-cgi/')).toBe(
+        true
+      );
+      expect(href).toContain('https://storage.openstory.so/');
+      return new Response(jpeg, { headers: { 'content-type': 'image/jpeg' } });
+    };
+    try {
+      const response = await mcpServer.handle(
+        new Request('https://openstory.test/mcp', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json, text/event-stream',
+            'mcp-protocol-version': '2026-07-28',
+            'mcp-method': 'tools/call',
+            'mcp-name': `openstory.${name}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: {
+              name: `openstory.${name}`,
+              arguments: { sequenceId, ...args },
+              _meta: {
+                'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+                'io.modelcontextprotocol/clientInfo': {
+                  name: 'vitest',
+                  version: '1',
+                },
+                'io.modelcontextprotocol/clientCapabilities': {},
+              },
+            },
+          }),
+        }),
+        {
+          context: {
+            scoped: () => ({
+              scopedDb,
+              origin: 'https://openstory.test',
+              userId: actorId,
+              request: {},
+            }),
+          },
+        }
+      );
+      return z
+        .object({
+          result: z.object({
+            isError: z.boolean().optional(),
+            structuredContent: z.record(z.string(), z.unknown()).optional(),
+            content: z.array(
+              z.object({
+                type: z.string(),
+                text: z.string().optional(),
+                data: z.string().optional(),
+                mimeType: z.string().optional(),
+              })
+            ),
+          }),
+        })
+        .parse(await response.json()).result;
+    } finally {
+      globalThis.fetch = original;
+      vi.stubEnv('R2_PUBLIC_STORAGE_DOMAIN', undefined);
+    }
+  }
+
+  it('returns sampled JPEGs without a storage URL', async () => {
+    const result = await frames('get_shot_frames', { shotId });
+    expect(result.isError).not.toBe(true);
+    const images = result.content.filter((block) => block.type === 'image');
+    expect(images).toHaveLength(4);
+    expect(images[0]).toMatchObject({ mimeType: 'image/jpeg' });
+    expect(result.structuredContent).toMatchObject({
+      shotId,
+      frames: [{ timestampMs: 0 }, {}, {}, { timestampMs: 2950 }],
+      unavailable: null,
+    });
+    expect(JSON.stringify(result.structuredContent)).not.toContain(
+      'openstory.so'
+    );
+  });
+
+  it('pages a contact sheet of three shots', async () => {
+    await addShot(sceneId, 2);
+    await addShot(sceneId, 3);
+    await addShot(sceneId, 4);
+    const result = await frames('get_sequence_contact_sheet', {});
+    expect(result.isError).not.toBe(true);
+    const body = z
+      .object({
+        shots: z.array(z.object({ kind: z.string(), shotId: z.string() })),
+        nextCursor: z.string().nullable(),
+      })
+      .parse(result.structuredContent);
+    expect(body.shots).toHaveLength(3);
+    expect(body.shots[0]).toMatchObject({ shotId, kind: 'spritesheet' });
+    expect(body.nextCursor).toEqual(expect.any(String));
+    expect(
+      result.content.filter((block) => block.type === 'image')
+    ).toHaveLength(1);
   });
 });

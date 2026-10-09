@@ -114,7 +114,8 @@ export type PlanShot = {
   usesStartFrame: boolean;
   /** Entities the shot's still (or reference-only clip) is rendered from. */
   references: {
-    characterIds: readonly string[];
+    /** The look each character wears in the shot's scene (#2015). */
+    lookIds: readonly string[];
     locationIds: readonly string[];
     elementIds: readonly string[];
   };
@@ -135,7 +136,11 @@ export type PlanInput = {
   processing: boolean;
   /** The stop of the run in flight — its kinds read `running`. */
   runStopAt: GenerationStage;
-  /** Characters that need a sheet (voice-only ones never do). */
+  /**
+   * The looks that need a sheet (#2015), by look id: each character's
+   * default, and every other look some scene picks. Voice-only characters
+   * never do.
+   */
   characterSheets: ReadonlyArray<{ id: string; sheet: ArtifactVerdict }>;
   locationSheets: ReadonlyArray<{ id: string; sheet: ArtifactVerdict }>;
   elementRefs: ReadonlyArray<{ id: string; ref: ArtifactVerdict }>;
@@ -151,7 +156,7 @@ const ref = (kind: PlanUnitKind, id: string): PlanUnitRef => ({ kind, id });
 
 /** The sheets and element refs a shot is rendered from. */
 const sheetRefs = (shot: PlanShot): PlanUnitRef[] => [
-  ...shot.references.characterIds.map((id) => ref('sheet:character', id)),
+  ...shot.references.lookIds.map((id) => ref('sheet:character', id)),
   ...shot.references.locationIds.map((id) => ref('sheet:location', id)),
   ...shot.references.elementIds.map((id) => ref('ref:element', id)),
 ];

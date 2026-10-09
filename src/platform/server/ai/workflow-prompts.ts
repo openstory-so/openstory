@@ -828,7 +828,8 @@ Build a complete character bible. For each character:
 - Age (exact or range like "30s")
 - Gender, ethnicity (if relevant)
 - Physical: height, build, hair color/style, eye color, skin tone, age markers
-- Clothing: complete outfit that defines the character
+- standardClothing: the complete outfit the character wears by default — the one they first appear in
+- looks — every distinct outfit the script gives this character, the default first. Most characters have exactly one. Add another ONLY when the script itself changes what they wear (leaves the office and arrives at the gala in a gown; wakes up in pyjamas; comes back bloodied). Never invent a change the script does not make. Each look: name (short label, unique for this character: "Office", "Gala gown"), clothing (the complete outfit; for the first look, the same text as standardClothing), styling (hair, makeup, injuries or dirt that change WITH this outfit; "" when nothing does), lines (one gutter line number inside EACH scene where they wear it; [] for the first look — a scene no other look claims has them in it).
 - Distinguishing features: scars, tattoos, jewelry, accessories
 - personality — who they are, NOT what they look like: temperament, archetype, how they react under pressure, comic register. Drives expressions, reactions, pacing and delivery.
 - movement — how the body moves: gait, posture, energy, habitual gestures, a limp, a tremor. Drives blocking and action.

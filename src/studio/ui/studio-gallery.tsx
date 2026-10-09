@@ -11,6 +11,7 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Button } from '@/ui/shadcn/button';
 import { draftBadgeLabel, draftTaskUsable } from '@/motion/draft-mode';
+import { seedanceUserFacingError } from '@/motion/seedance-edit';
 import {
   Dialog,
   DialogContent,
@@ -148,9 +149,11 @@ function StudioCard({
           <Skeleton className="h-full w-full rounded-none" />
         ) : asset.status === 'failed' ? (
           <div className="flex h-full items-center justify-center p-4 text-center text-sm text-destructive">
-            {isContentRejectionError(asset.error)
-              ? CONTENT_REJECTION_USER_TITLE
-              : 'Generation failed'}
+            <span className="line-clamp-6">
+              {isContentRejectionError(asset.error)
+                ? CONTENT_REJECTION_USER_TITLE
+                : (seedanceUserFacingError(asset.error) ?? 'Generation failed')}
+            </span>
           </div>
         ) : isVideo && primary ? (
           <video

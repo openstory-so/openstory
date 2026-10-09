@@ -10,7 +10,7 @@ async function waitForComposer(page: Page): Promise<void> {
   ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
 }
 
-test.describe('Images and Videos studio', () => {
+test.describe('Images and Clips studio', () => {
   test('signed-in user can open Images from the sidebar', async ({ page }) => {
     await page.goto('/');
     await page.getByRole('link', { name: 'Images', exact: true }).click();
@@ -23,10 +23,10 @@ test.describe('Images and Videos studio', () => {
     ).toBeVisible();
   });
 
-  test('signed-in user can open Videos from the sidebar', async ({ page }) => {
+  test('signed-in user can open Clips from the sidebar', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('link', { name: 'Videos', exact: true }).click();
-    await expect(page).toHaveURL(/\/videos/);
+    await page.getByRole('link', { name: 'Clips', exact: true }).click();
+    await expect(page).toHaveURL(/\/clips/);
     await expect(
       page.getByRole('button', { name: 'Generate video' })
     ).toBeVisible();
@@ -40,7 +40,7 @@ test.describe('Images and Videos studio', () => {
   });
 
   test('video modes follow the model', async ({ page }) => {
-    await page.goto('/videos');
+    await page.goto('/clips');
     await waitForComposer(page);
     const mode = page.getByRole('combobox', { name: 'Video mode' });
     await mode.click();
@@ -54,6 +54,54 @@ test.describe('Images and Videos studio', () => {
       page.getByRole('button', { name: 'Start frame' })
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'End frame' })).toBeVisible();
+  });
+
+  test('reference modal offers freehand drawing on images', async ({
+    page,
+  }) => {
+    await page.goto('/images');
+    await waitForComposer(page);
+    await page.getByRole('button', { name: 'Reference', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Add reference' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Draw' }).click();
+    await expect(dialog.getByLabel('Drawing canvas')).toBeVisible();
+    const add = dialog.getByRole('button', { name: 'Add drawing' });
+    const erase = dialog.getByRole('button', { name: 'Erase' });
+    const undo = dialog.getByRole('button', { name: 'Undo' });
+    await expect(add).toBeDisabled();
+    await expect(undo).toBeDisabled();
+    await expect(erase).toBeDisabled();
+
+    const box = await dialog.getByLabel('Drawing canvas').boundingBox();
+    if (!box) throw new Error('Drawing canvas has no box');
+    const stroke = async () => {
+      await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.3);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.6, {
+        steps: 5,
+      });
+      await page.mouse.up();
+    };
+
+    await stroke();
+    await expect(add).toBeEnabled();
+    await expect(erase).toBeEnabled();
+
+    // Rubbing out or clearing everything leaves nothing to add, and the
+    // eraser cannot be the tool on a blank canvas.
+    await erase.click();
+    await dialog.getByRole('button', { name: 'Clear' }).click();
+    await expect(add).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Pen' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
+
+    await undo.click();
+    // Not clicked: the upload runs the real-person classifier, which has no
+    // recorded fixture.
+    await expect(add).toBeEnabled();
   });
 
   test('signed-in user can open Models from the sidebar', async ({ page }) => {

@@ -38,7 +38,8 @@ export async function loadSequenceSegments(
     sequence.id,
     shots,
     characters,
-    scriptBySceneId
+    scriptBySceneId,
+    sequence
   );
   // Versions are oldest-first here (listBySequence orders by ULID).
   const assembled = assembleSequenceSegments({

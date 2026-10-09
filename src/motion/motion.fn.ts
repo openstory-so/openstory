@@ -8,6 +8,7 @@ import {
   missingVoiceLines,
   unusableShotReferenceLines,
 } from '@/motion/reference-support';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { createServerFn } from '@tanstack/react-start';
 import {
@@ -24,7 +25,10 @@ import {
   safeImageToVideoModel,
 } from '@/models/models';
 import { packedSceneFromScene } from '@/motion/server/build-motion-render';
-import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
+import {
+  canRenderReferenceOnly,
+  seedanceRunsOnArk,
+} from '@/motion/server/motion-generation';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -295,6 +299,43 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       );
     };
 
+    // The set actually sent below. The check, the estimate and the hold all
+    // read this one, so they cannot price or refuse a different shot.
+    const referencesFor = (shot: (typeof eligibleShots)[number]) =>
+      buildMotionReferenceImages({
+        scene: sceneOf(shot),
+        characters,
+        elements,
+        motionPrompt: motionPromptTextFor(shot),
+        referenceOnly: shotIsReferenceOnly(shot),
+        locations: batchLocations,
+      });
+
+    // The prompt each shot's payload carries. With no written version it is
+    // the script extract, so the edit decision below reads the text that is
+    // sent, not the null the reference match reads.
+    const payloadPromptFor = (shot: (typeof eligibleShots)[number]) =>
+      resolveMotionPromptFromVersion(
+        selectedMotionByShot.get(shot.id),
+        {
+          dialogue: batchDialogueOf(shot),
+          characterTags: sceneOf(shot)?.continuity?.characterTags,
+          description: sceneOf(shot)?.originalScript.extract ?? null,
+          generateAudio: data.generateAudio,
+        },
+        resolveShotVideoModel(shot)
+      );
+    // One edit decision per shot (#2036): the refusal, the hold and the
+    // payload all read it.
+    const seedanceOnArk = await seedanceRunsOnArk(credentials);
+    const editSecondsFor = (shot: (typeof eligibleShots)[number]) =>
+      seedanceEditSeconds({
+        model: resolveShotVideoModel(shot),
+        onArk: seedanceOnArk,
+        prompt: payloadPromptFor(shot),
+        references: referencesFor(shot),
+      });
+
     // No fallback (#1559): refuse the batch before reserving if any shot's
     // model cannot use a clip or voice line it attaches. The same element
     // usually sits on several shots, so each problem is named once.
@@ -302,15 +343,12 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
       eligibleShots.flatMap((shot) =>
         unusableShotReferenceLines(
           resolveShotVideoModel(shot),
-          buildMotionReferenceImages({
-            scene: sceneOf(shot),
-            characters,
-            elements,
-            motionPrompt: motionPromptTextFor(shot),
-            referenceOnly: shotIsReferenceOnly(shot),
-            locations: batchLocations,
-          }),
-          !shotIsReferenceOnly(shot)
+          referencesFor(shot),
+          {
+            hasStartFrame: !shotIsReferenceOnly(shot),
+            prompt: payloadPromptFor(shot),
+            onArk: seedanceOnArk,
+          }
         ).concat(
           missingVoiceLines(
             resolveShotVideoModel(shot),
@@ -365,19 +403,11 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         referenceOnly: shotIsReferenceOnly,
         hasReferenceImages: (batchShot) => {
           const shot = eligibleShots.find((s) => s.id === batchShot.id);
-          if (!shot) return false;
-          return (
-            buildMotionReferenceImages({
-              scene: sceneOf(shot),
-              characters,
-              elements,
-              // Must match the set actually sent below, or a reference-only
-              // shot carried only by its location sheet estimates as ref-less.
-              motionPrompt: motionPromptTextFor(shot),
-              referenceOnly: shotIsReferenceOnly(shot),
-              locations: batchLocations,
-            }).length > 0
-          );
+          return shot ? referencesFor(shot).length > 0 : false;
+        },
+        holdSeconds: (batchShot, _model, seconds) => {
+          const shot = eligibleShots.find((s) => s.id === batchShot.id);
+          return Math.max(seconds, (shot && editSecondsFor(shot)) ?? 0);
         },
       }
     );
@@ -465,6 +495,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 ? undefined
                 : (shot.image?.url ?? undefined),
               referenceOnly: shotIsReferenceOnly(shot),
+              seedanceEditSeconds: editSecondsFor(shot),
               // The versions this clip renders from, pinned here so the render
               // manifest can't name rows a concurrent edit repointed to.
               // `null` when the clip renders from references — naming a still
@@ -474,16 +505,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
                 ? null
                 : (shot.image?.id ?? null),
               motionPromptVersionId: selectedMotion?.id ?? null,
-              prompt: resolveMotionPromptFromVersion(
-                selectedMotion,
-                {
-                  dialogue: shotDialogue,
-                  characterTags: scene?.continuity?.characterTags,
-                  description: scene?.originalScript.extract ?? null,
-                  generateAudio: data.generateAudio,
-                },
-                shotModel
-              ),
+              prompt: payloadPromptFor(shot),
               model: shotModel,
               sceneTitle: scene?.metadata?.title,
               sequenceTitle: sequence.title,
@@ -495,14 +517,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
               resolution: sequence.resolution,
               draft: draftMotion,
               generateAudio: data.generateAudio,
-              referenceImages: buildMotionReferenceImages({
-                scene,
-                characters,
-                elements,
-                motionPrompt: motionPromptTextFor(shot),
-                referenceOnly: shotIsReferenceOnly(shot),
-                locations: batchLocations,
-              }),
+              referenceImages: referencesFor(shot),
               voicedLines,
               audioClips,
               motionPrompt: selectedMotion

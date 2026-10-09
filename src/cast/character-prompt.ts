@@ -308,12 +308,15 @@ type CharacterSheetPromptResult = {
  * @param entry - The character bible entry from script analysis
  * @param talentOverrides - Optional talent data for casting
  * @param styleConfig - Optional sequence style to apply instead of default studio look
+ * @param styling - The look's hair / makeup / injury notes (#2015); null when
+ *   the look changes none. `entry.standardClothing` is the look's clothing.
  * @returns Prompt and reference URLs for image generation
  */
 export const buildCharacterSheetPrompt = (
   entry: CharacterBibleEntry,
-  talentOverrides?: TalentOverrides,
-  styleConfig?: StyleConfig
+  talentOverrides: TalentOverrides | undefined,
+  styleConfig: StyleConfig | undefined,
+  styling: string | null
 ): CharacterSheetPromptResult => {
   const talentMeta = talentOverrides?.sheetMetadata;
   const hasTalent = !!(talentMeta || talentOverrides?.description);
@@ -383,7 +386,7 @@ ${physicalDescription}
 
 Costume:
 ${standardClothing}
-
+${styling?.trim() ? `\nHair, Makeup & Condition for this look:\n${styling.trim()}\n` : ''}
 ${makeupStylingSection}`.trim();
 
   const prompt = buildBaseSheetPrompt(

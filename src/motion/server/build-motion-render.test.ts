@@ -7,6 +7,7 @@ const shot = (shotId: string, fullPrompt: string): MotionRenderShot => ({
   shotId,
   sceneId: 'scene',
   referenceOnly: true,
+  seedanceEditSeconds: null,
   frameVersionId: null,
   packedScene: {
     location: 'Dock',

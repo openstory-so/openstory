@@ -3,7 +3,10 @@ import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { InButtonCost } from '@/billing/ui/action-cost';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
-import { useViaAvailability } from '@/models/ui/use-via-availability';
+import {
+  useViaAvailability,
+  viaAvailabilityQueryOptions,
+} from '@/models/ui/use-via-availability';
 import { DRAFT_FINAL_RESOLUTION } from '@/motion/draft-mode';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
@@ -47,7 +50,10 @@ import { useAutoScroll } from '@/ui/use-auto-scroll';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { BILLING_TRANSACTIONS_KEY } from '@/billing/ui/use-billing-balance-realtime';
 import { useBillingGate } from '@/billing/ui/use-billing-gate';
-import { useGenerationSettings } from '@/sequences/ui/use-generation-settings';
+import {
+  NEW_SEQUENCE_VIDEO_MODEL,
+  useGenerationSettings,
+} from '@/sequences/ui/use-generation-settings';
 import {
   allowsUnfundedGeneration,
   DEFAULT_GENERATION_STOP_AT,
@@ -78,7 +84,7 @@ import {
   TITLE_CARD_NOTE,
 } from '@/models/enhance-duration';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   parkCreatingSequence,
@@ -89,6 +95,7 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -100,6 +107,7 @@ import {
 } from '@/models/models';
 import {
   applyGenerationMode,
+  TURBO_DEFAULT_VIDEO,
   type GenerationMode,
 } from '@/models/generation-mode';
 import {
@@ -269,6 +277,9 @@ export const ScriptView: FC<{
   const isEditing = !!sequence?.id;
   const voiceDesignAvailable = useVoiceDesignAvailable();
   const viaAvailability = useViaAvailability();
+  // Observes the cache only: unanswered for a visitor and while it loads.
+  const viasKnown =
+    useQuery({ ...viaAvailabilityQueryOptions, enabled: false }).data != null;
   const { data: composedScriptData } = useComposedScript(sequence?.id);
   const composedScript = composedScriptData?.script;
   // Analyzed sequences derive the document from scene versions (#1030), so the
@@ -357,7 +368,6 @@ export const ScriptView: FC<{
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
     generateStartFrames: boolean;
-    generateVoices: boolean;
     draftMotion: boolean;
     audioModels: AudioModel[];
   }>(() => ({
@@ -381,9 +391,6 @@ export const ScriptView: FC<{
     generateStartFrames: isEditing
       ? sequence.generateStartFrames
       : savedSettings.generateStartFrames,
-    generateVoices: isEditing
-      ? sequence.generateVoices
-      : savedSettings.generateVoices,
     draftMotion: isEditing ? sequence.draftMotion : savedSettings.draftMotion,
     audioModels:
       isEditing && sequence.musicModel
@@ -397,10 +404,13 @@ export const ScriptView: FC<{
     videoModels,
     stopAt,
     generateStartFrames,
-    generateVoices,
     draftMotion,
     audioModels,
   } = genSettings;
+  // Not a choice (#2004): every new sequence records dialogue wherever this
+  // deployment can design a voice. A character is turned off on the character.
+  const generateVoices =
+    voiceDesignAvailable !== false && savedSettings.generateVoices;
   // Draft first (#1756) is offered while a chosen model has a draft mode and
   // this team reaches Ark (a team on its own fal key does not, and a draft
   // submit there refuses). The remembered setting is kept either way; only
@@ -749,7 +759,6 @@ export const ScriptView: FC<{
         videoModels: savedSettings.videoModels,
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
-        generateVoices: savedSettings.generateVoices,
         draftMotion: savedSettings.draftMotion,
         audioModels: savedSettings.audioModels,
       });
@@ -796,9 +805,20 @@ export const ScriptView: FC<{
 
   // Auto-fallback motion models when style changes away from a required
   // category — any selected model whose requiredStyleCategory no longer matches
-  // is swapped for the default; the result is deduped.
+  // is swapped for the default; the result is deduped. A new sequence also
+  // swaps the Seedance 2.5 default for the Turbo one where this team cannot
+  // reach BytePlus (#2004) — only once the server has answered, so the
+  // conservative stand-in is never remembered as their pick.
   useEffect(() => {
     const coerced = videoModels.map((m) => {
+      if (
+        !isEditing &&
+        viasKnown &&
+        m === NEW_SEQUENCE_VIDEO_MODEL &&
+        !isOfferedVideoModel(m, viaAvailability)
+      ) {
+        return TURBO_DEFAULT_VIDEO;
+      }
       const model = IMAGE_TO_VIDEO_MODELS[m];
       return 'requiredStyleCategory' in model &&
         model.requiredStyleCategory !== styleCategory
@@ -812,7 +832,7 @@ export const ScriptView: FC<{
     ) {
       updateGen('videoModels', deduped);
     }
-  }, [styleCategory, videoModels]);
+  }, [styleCategory, videoModels, isEditing, viasKnown, viaAvailability]);
 
   const [targetDuration, setTargetDuration] = useState(30);
   // Only Enhance sets the sequence's target (#1593): a pasted script's length
@@ -911,15 +931,10 @@ export const ScriptView: FC<{
   const executeRegeneration = (
     run: Pick<
       typeof genSettings,
-      'stopAt' | 'generateStartFrames' | 'generateVoices' | 'videoModels'
+      'stopAt' | 'generateStartFrames' | 'videoModels'
     > = genSettings
   ) => {
-    const {
-      stopAt: runUntil,
-      generateStartFrames,
-      generateVoices,
-      videoModels,
-    } = run;
+    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
     if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
       showGate();
       return;
@@ -943,7 +958,10 @@ export const ScriptView: FC<{
       autoGenerateMusic: flags.autoGenerateMusic,
       generateStartFrames,
       generateVoices,
-      draftMotion: draftFirst,
+      // The choice, gated on the route only: a sequence started on a model
+      // without a draft mode still drafts once one is picked. The server
+      // ignores it for a model that has none.
+      draftMotion: draftMotion && viaAvailability.byteplus,
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
       targetDurationSeconds: enhancedTarget ?? undefined,
@@ -978,13 +996,10 @@ export const ScriptView: FC<{
 
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
-    // Generate (the credit gate still runs on confirm). Same when Voices is
-    // on but this deployment cannot design one (#1553): the launcher would
-    // refuse, and the dialog is the only place the flag can be turned off.
+    // Generate (the credit gate still runs on confirm).
     if (
       savedSettings.rememberStopAt &&
-      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt)) &&
-      !(generateVoices && voiceDesignAvailable === false)
+      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
     ) {
       executeRegeneration();
       return;
@@ -1822,7 +1837,6 @@ export const ScriptView: FC<{
         onConfirm={({
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,
-          generateVoices: nextVoices,
           draftMotion: nextDraft,
           remember,
         }) => {
@@ -1830,7 +1844,6 @@ export const ScriptView: FC<{
             {
               ...genSettings,
               stopAt: nextStopAt,
-              generateVoices: nextVoices,
               draftMotion: nextDraft,
             },
             nextStartFrames

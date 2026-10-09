@@ -47,7 +47,10 @@
  * are skipped, not rendered from stale inputs.
  */
 
+import { withLookSheet } from '@/cast/character-looks';
+import { assertQueuedWithLooks } from '@/cast/server/workflows/sheet-snapshots';
 import { generateId } from '@/platform/id';
+import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import {
   DEFAULT_MUSIC_MODEL,
   supportsDraftMode,
@@ -59,6 +62,8 @@ import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
@@ -243,6 +248,11 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         'Update-all plan predates frozen motion sources; re-trigger the update'
       );
     }
+    // Before any claim is taken, so nothing is left to clear.
+    assertQueuedWithLooks(
+      ...(plan.references?.characterSheets ?? []),
+      ...plan.renderRefs.characters
+    );
 
     const counters = {
       visualPrompts: 0,
@@ -396,11 +406,30 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       };
       await Promise.allSettled([
         ...references.characterSheets.map(async (payload) => {
-          const id = payload.characterDbId;
+          // One sheet per look (#2015).
+          const id = payload.lookId;
           let sheetVersionId: string;
           try {
-            sheetVersionId = await step.do(`claim-character-sheet-${id}`, () =>
-              scopedDb.characters.claimSheet(id, { markGenerating: true })
+            // Conditional (#1863): the payload was built at the click, and an
+            // edit since then found no claim to revoke. The claim is taken
+            // only while the look, the bible and the cast it was built from
+            // still hold; otherwise the run parks its sheet.
+            sheetVersionId = await step.do(
+              `claim-character-sheet-${id}`,
+              async () =>
+                (
+                  await scopedDb.characterLooks.claimSheet(
+                    id,
+                    {
+                      lookVersionId: payload.lookVersionId,
+                      // Passed as frozen: a plan from before #1600 has
+                      // none, and `claimSheet` skips what is absent.
+                      bibleVersionId: payload.bibleVersionId,
+                      talentId: payload.talentId,
+                    },
+                    { markGenerating: true }
+                  )
+                ).versionId
             );
           } catch (error) {
             failReference(id, 'reference', error);
@@ -433,10 +462,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             // A child that never started has no onFailure to clear the
             // claim; the guarded clear is a no-op when one did.
             await step.do(`fail-character-sheet-claim-${id}`, () =>
-              scopedDb.characters.failSheetClaim(
+              scopedDb.characterLooks.failSheetClaim(
                 id,
                 sheetVersionId,
-                error instanceof Error ? error.message : String(error)
+                sanitizeFailResponse(error)
               )
             );
           }
@@ -484,7 +513,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               scopedDb.sequenceLocations.failReferenceClaim(
                 id,
                 referenceVersionId,
-                error instanceof Error ? error.message : String(error)
+                sanitizeFailResponse(error)
               )
             );
           }
@@ -556,7 +585,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 scopedDb.characters.markVoiceClaimTerminal(
                   husk,
                   'failed',
-                  error instanceof Error ? error.message : String(error)
+                  sanitizeFailResponse(error)
                 )
               );
             }
@@ -577,16 +606,21 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // Frozen click-time rows, overlaid only with this run's child results.
     // A concurrent sheet selection cannot change a render already requested.
     const renderRefs: ShotImageRefs = {
-      characters: plan.renderRefs.characters.map((row) => {
-        const generated = generatedCharacters.get(row.id);
-        return generated
-          ? {
-              ...row,
-              sheetImageUrl: generated.sheetImageUrl,
-              selectedSheetVersionId: generated.sheetVersionId ?? null,
-            }
-          : row;
-      }),
+      // Each sheet this run made lands on its look (#2015), so a scene
+      // dressed in that look renders from it.
+      characters: plan.renderRefs.characters.map((row) =>
+        [...generatedCharacters].reduce(
+          (character, [lookId, generated]) =>
+            character.looks.some((look) => look.id === lookId) ||
+            character.lookId === lookId
+              ? withLookSheet(character, lookId, {
+                  sheetImageUrl: generated.sheetImageUrl,
+                  selectedSheetVersionId: generated.sheetVersionId ?? null,
+                })
+              : character,
+          row
+        )
+      ),
       locations: plan.renderRefs.locations.map((row) => {
         const generated = generatedLocations.get(row.id);
         return generated
@@ -1036,6 +1070,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             scene: {
               continuity: {
                 characterTags: target.motionRender.characterTags,
+                characterLooks: target.motionRender.characterLooks ?? undefined,
                 elementTags: target.motionRender.elementTags,
                 environmentTag: target.motionRender.environmentTag,
               },
@@ -1074,6 +1109,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               ? (still?.url ?? undefined)
               : undefined,
             referenceOnly: !target.usesStartFrame,
+            // Decided once, here; the preflight below holds what it says
+            // (#2036). The via is a credential, read through its hatch.
+            seedanceEditSeconds: seedanceEditSeconds({
+              model,
+              onArk: await seedanceRunsOnArk(scopedDb.credentials),
+              prompt,
+              references: referenceImages,
+            }),
             // Same rule as `expectedFrameVersionId` above — a clip rendered
             // from references names no still.
             frameVersionId: target.usesStartFrame ? (still?.id ?? null) : null,
@@ -1714,7 +1757,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             await step.do('fail-music-track-claim', async () => {
               await scopedDb.sequenceVariants.failMusicClaim(
                 { sequenceId, variantId: claimedTrack },
-                error instanceof Error ? error.message : String(error)
+                sanitizeFailResponse(error)
               );
             });
           };
@@ -1924,16 +1967,23 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               scopedDb.liveRead,
               addMicros(
                 gateEstimate(
-                  estimateVideoCost(model, input.duration ?? 3, {
-                    pricing: await getEffectiveFalPricing(),
-                    resolution:
-                      input.draft && supportsDraftMode(model)
-                        ? DRAFT_RESOLUTION
-                        : input.resolution,
-                    referenceOnly: input.referenceOnly,
-                    hasReferenceImages:
-                      (input.referenceImages?.length ?? 0) > 0,
-                  }),
+                  estimateVideoCost(
+                    model,
+                    Math.max(
+                      input.duration ?? 3,
+                      input.seedanceEditSeconds ?? 0
+                    ),
+                    {
+                      pricing: await getEffectiveFalPricing(),
+                      resolution:
+                        input.draft && supportsDraftMode(model)
+                          ? DRAFT_RESOLUTION
+                          : input.resolution,
+                      referenceOnly: input.referenceOnly,
+                      hasReferenceImages:
+                        (input.referenceImages?.length ?? 0) > 0,
+                    }
+                  ),
                   { model, operation: 'update-stale-shots:video' }
                 ),
                 estimateTtsCost(ttsChars)
@@ -2043,11 +2093,7 @@ export function dialogueTargetOutcome(
         });
       }
     } else if (!target.regenVideo) {
-      failures.push({
-        shotId: target.shotId,
-        stage: 'dialogue',
-        error: outcome.error,
-      });
+      failures.push(toFailure(target.shotId, 'dialogue', outcome.error));
     }
   }
   return { updated, failures };
@@ -2061,6 +2107,6 @@ function toFailure(
   return {
     shotId,
     stage,
-    error: error instanceof Error ? error.message : String(error),
+    error: sanitizeFailResponse(error),
   };
 }

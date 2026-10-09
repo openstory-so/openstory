@@ -43,6 +43,12 @@ import {
   type StudioCreateInput,
   type StudioCreateResult,
 } from '@/studio/schema';
+import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-duration';
+import {
+  isSeedanceEdit,
+  seedanceEditLengthMessage,
+} from '@/motion/seedance-edit';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
@@ -213,9 +219,49 @@ export async function createStudioAssets(
       throw new ValidationError('Unknown video model');
     }
     if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
+    // An edit's length follows the clip, so the hold prices the model's
+    // longest clip (#2036).
+    const followsClip = isSeedanceEdit({
+      model: input.videoModel,
+      onArk: byteplus,
+      prompt: input.prompt,
+      // Reference clips ride only in reference mode, as in the composer.
+      hasInputVideo:
+        input.mode === 'edit' ||
+        (input.mode === 'reference' && input.referenceVideos.length > 0),
+      explicitEdit: input.mode === 'edit',
+    });
+    // A reference clip outside 4–30s is refused before the hold. The length
+    // is read from the stored file, never taken from the client. A URL that
+    // is not ours stays unknown and still submits; a file of ours that
+    // cannot be read is refused, not treated as unknown. Edit mode's source
+    // is a clip Seedance made, so it is assumed to be inside the window.
+    if (followsClip) {
+      const clipSeconds = await Promise.all(
+        input.referenceVideos.map(async (url) => {
+          const key = r2KeyFromUrl(url);
+          if (!key) return null;
+          return measureOwnMediaDuration(key).catch((error: unknown) => {
+            logger.warn('Could not read a Studio reference video', {
+              key,
+              error,
+            });
+            throw new ValidationError(
+              "Couldn't read that reference video. Try again."
+            );
+          });
+        })
+      );
+      for (const seconds of clipSeconds) {
+        const lengthMessage = seedanceEditLengthMessage(seconds);
+        if (lengthMessage) throw new ValidationError(lengthMessage);
+      }
+    }
     input = {
       ...input,
-      duration: snapStudioVideoDuration(input.duration, input.videoModel),
+      duration: followsClip
+        ? 'auto'
+        : snapStudioVideoDuration(input.duration, input.videoModel),
     };
   }
   const pricing = await getEffectiveFalPricing();

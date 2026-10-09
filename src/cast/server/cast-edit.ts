@@ -13,6 +13,10 @@ import { ConflictError, NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import {
+  requireCharacterLook,
+  requireLiveLook,
+} from '@/cast/server/character-look';
 import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
 import type { LocationBibleUpdate } from '@/cast/server/db/sequence-locations';
 import {
@@ -214,7 +218,11 @@ export async function selectCharacterSheetVersion(
   await emitQuietly(() =>
     getGenerationChannel(sequenceId).emit(
       'generation.character-sheet:progress',
-      { characterId: character.id, status: 'completed' }
+      {
+        characterId: character.id,
+        lookId: version.lookId ?? character.id,
+        status: 'completed',
+      }
     )
   );
   return {
@@ -262,6 +270,128 @@ export async function undiscardCharacterSheetVersion(
   );
   await scopedDb.characterSheetVariants.undiscard(variant.id);
   return { variantId: variant.id };
+}
+
+// ── Looks (#2015) ───────────────────────────────────────────────────────────
+
+/** What a person writes on a look. Blank clothing or styling clears it. */
+export type LookInput = {
+  name: string;
+  clothing: string | null;
+  styling: string | null;
+};
+
+const blankToNull = (value: string | null | undefined) =>
+  value === undefined ? undefined : value?.trim() || null;
+
+/** Add an outfit to a character. It has no sheet until one is asked for. */
+export async function createCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  input: LookInput
+) {
+  const character = await requireCharacter(scopedDb, sequenceId, characterId);
+  const look = await scopedDb.characterLooks.create(
+    character.id,
+    {
+      name: input.name.trim(),
+      clothing: blankToNull(input.clothing) ?? null,
+      styling: blankToNull(input.styling) ?? null,
+    },
+    { source: 'edit', actorId: actor.userId }
+  );
+  return { characterId: character.id, lookId: look.id, name: look.name };
+}
+
+/**
+ * Rename a look or edit its clothing / styling. An edit to clothing or
+ * styling makes the look's sheet, and the shots of the scenes that wear it,
+ * stale; a rename does not.
+ */
+export async function updateCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  lookId: string,
+  patch: Partial<LookInput>
+) {
+  const character = await requireCharacter(scopedDb, sequenceId, characterId);
+  const look = requireLiveLook(
+    await requireCharacterLook(scopedDb, character, lookId)
+  );
+  const updated = await scopedDb.characterLooks.update(
+    look.id,
+    {
+      name: patch.name?.trim(),
+      clothing: blankToNull(patch.clothing),
+      styling: blankToNull(patch.styling),
+    },
+    { source: 'edit', actorId: actor.userId }
+  );
+  return { characterId: character.id, lookId: look.id, name: updated.name };
+}
+
+/** Remove a look (undoable). Refused for the default look and a worn one. */
+export async function removeCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  lookId: string
+) {
+  const character = await requireCharacter(scopedDb, sequenceId, characterId);
+  const look = await requireCharacterLook(scopedDb, character, lookId);
+  const deletedAt = await scopedDb.characterLooks.remove(look.id, {
+    actorId: actor.userId,
+  });
+  return {
+    characterId: character.id,
+    lookId: look.id,
+    name: look.name,
+    deletedAt,
+  };
+}
+
+export async function restoreCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  lookId: string
+) {
+  const character = await requireCharacter(scopedDb, sequenceId, characterId);
+  const look = await requireCharacterLook(scopedDb, character, lookId);
+  await scopedDb.characterLooks.restore(look.id, { actorId: actor.userId });
+  return { characterId: character.id, lookId: look.id, name: look.name };
+}
+
+/** Point a look back at one of its earlier definitions. */
+export async function selectCharacterLookVersion(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string,
+  lookId: string,
+  versionId: string
+) {
+  const character = await requireCharacter(scopedDb, sequenceId, characterId);
+  const look = requireLiveLook(
+    await requireCharacterLook(scopedDb, character, lookId)
+  );
+  const updated = await scopedDb.characterLooks.selectVersion(
+    look.id,
+    versionId,
+    { actorId: actor.userId }
+  );
+  return {
+    characterId: character.id,
+    lookId: look.id,
+    name: updated.name,
+    versionId,
+  };
 }
 
 // ── Locations ───────────────────────────────────────────────────────────────

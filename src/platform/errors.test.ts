@@ -9,6 +9,7 @@ import {
   handleApiError,
   InsufficientCreditsError,
   isInsufficientCreditsError,
+  isUnauthenticatedError,
   openStoryErrorSerializationAdapter,
   ValidationError,
   OpenStoryError,
@@ -108,6 +109,18 @@ describe('handleApiError', () => {
     expect(result.message).toBe('An unknown error occurred');
     expect(result.code).toBe('UNKNOWN_ERROR');
     expect(result.details).toEqual({ originalError: 'string' });
+  });
+});
+
+describe('isUnauthenticatedError', () => {
+  it('is a 401, never a 403', () => {
+    expect(isUnauthenticatedError(new OpenStoryError('no', 'X', 401))).toBe(
+      true
+    );
+    expect(isUnauthenticatedError(new OpenStoryError('no', 'X', 403))).toBe(
+      false
+    );
+    expect(isUnauthenticatedError(new Error('no'))).toBe(false);
   });
 });
 

@@ -2,6 +2,12 @@ import { InButtonCost, costButtonClassName } from '@/billing/ui/action-cost';
 import { GenerationStopSlider } from '@/sequences/ui/generation/generation-stop-slider';
 import { MotionModelSelector } from '@/models/ui/pickers/motion-model-selector';
 import { MusicModelSelector } from '@/models/ui/pickers/music-model-selector';
+import { ImageModelSelector } from '@/models/ui/pickers/image-model-selector';
+import { ModelSelector } from '@/models/ui/pickers/model-selector';
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  isValidAnalysisModelId,
+} from '@/models/models.config';
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
@@ -23,11 +29,14 @@ import {
   type PlanUnitRef,
 } from '@/sequences/generation-plan';
 import { useGenerationPlan } from '@/sequences/ui/use-generation-plan';
+import { useGenerationSettings } from '@/sequences/ui/use-generation-settings';
+import { sheetLookName } from '@/cast/character-looks';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
 import { useHydrated } from '@/ui/use-hydrated';
 import { useCreateScene, useReorderScenes } from './use-scene-structure';
 import {
+  DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   isValidImageToVideoModel,
@@ -55,6 +64,7 @@ import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
 import {
   useGenerationSliceEstimate,
   type ContinueFlags,
+  type SequenceModels,
 } from '@/sequences/ui/use-sequences';
 import type { SceneWithScript } from './use-scenes';
 import type { ShotVariant } from '@/platform/server/db/schema';
@@ -174,8 +184,17 @@ export type SceneListProps = {
    * ungenerated shots and Sequence settings follow it immediately.
    */
   onVideoModelChange?: (model: ImageToVideoModel) => void;
-  /** Sequence stills model — continue-from-DAG cost quotes. */
+  /** Sequence stills model — seeds the continue footer's image picker. */
   initialImageModel?: TextToImageModel;
+  /** Sequence text model — seeds the continue footer's text picker. */
+  analysisModel?: string;
+  /**
+   * Persist a continue-footer pick as the sequence default (#2004): the run
+   * reads the model off the sequence, so the pick is saved before it starts.
+   */
+  onModelsChange?: (models: SequenceModels) => void;
+  /** A pick is still saving; Continue waits so the run reads the new model. */
+  modelsSaving?: boolean;
   /** Style-category gate for models that require a matching style. */
   styleCategory?: string;
   /**
@@ -237,7 +256,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   initialMusicModel,
   initialVideoModel,
   onVideoModelChange,
-  initialImageModel: _initialImageModel,
+  initialImageModel,
+  analysisModel,
+  onModelsChange,
+  modelsSaving = false,
   styleCategory,
   generateStartFrames = false,
   generateVoices = false,
@@ -317,18 +339,25 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     nextStage ?? DEFAULT_GENERATION_STOP_AT
   );
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
-  const [draftVoices, setDraftVoices] = useState(generateVoices);
   useEffect(() => {
     if (nextStage) setContinueStopAt(nextStage);
   }, [nextStage]);
   useEffect(() => {
     setDraftStartFrames(generateStartFrames);
   }, [generateStartFrames]);
-  useEffect(() => {
-    setDraftVoices(generateVoices);
-  }, [generateVoices]);
-  const voicesUnavailable = useVoiceDesignAvailable() === false;
-  const voices = voicesUnavailable ? false : draftVoices;
+  const voiceDesignAvailable = useVoiceDesignAvailable();
+  const { settings: generationSettings, isLoaded: generationSettingsLoaded } =
+    useGenerationSettings();
+  // Voices are on wherever this deployment can design one (#2067). Nobody
+  // passes a boolean. The recorded pipeline pins generation settings off;
+  // until that pin loads, keep the row so a replay does not ask for voices.
+  const voices =
+    voiceDesignAvailable === false
+      ? false
+      : voiceDesignAvailable === true &&
+          !(generationSettingsLoaded && !generationSettings.generateVoices)
+        ? true
+        : generateVoices;
   // Draft first (#1756): one local switch for the batch footer and the
   // continue slider, seeded from the sequence and persisted by either click.
   const [draftBatch, setDraftBatch] = useState(draftMotion);
@@ -421,7 +450,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         videoModel,
         // Always on for the batch; a single shot can turn it off (scene editor).
         generateAudio: true,
-        draftMotion: draftFirst,
+        draftMotion: draftChoice,
       })
     );
   };
@@ -430,6 +459,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   // Draft first applies to the model this footer would send (#1756).
   const offerDraftFirst = supportsDraftMode(videoModel) && draftAvailable;
   const draftFirst = draftBatch && offerDraftFirst;
+  // What is saved on the sequence is the choice, not whether today's model
+  // can honour it: gated on the route only, so it is still on when a
+  // draft-capable model is picked later. The server ignores it for a model
+  // without a draft mode.
+  const draftChoice = draftBatch && draftAvailable;
   const showMotionFooter =
     !hideBatchButton &&
     !isMotionInProgress &&
@@ -448,7 +482,10 @@ const SceneListComponent: React.FC<SceneListProps> = ({
     !hideBatchButton &&
     Boolean(onContinueGeneration) &&
     (shots?.length ?? 0) > 0 &&
-    (savedPlan?.some((u) => u.state !== 'done') ?? false);
+    // A row stored with voices off still owes them (#2067). The steps stay
+    // up so Continue goes back to Dialogue without anyone passing a flag.
+    ((savedPlan?.some((u) => u.state !== 'done') ?? false) ||
+      (voices && !generateVoices));
   const switchesMoved =
     draftStartFrames !== generateStartFrames || voices !== generateVoices;
   // While a switch's plan loads the last one stays on screen; the click
@@ -496,6 +533,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const showButton = showMotionFooter;
   const continueWork = planWork(footerPlan, continueStopAtClamped);
   const continueLabel = planWorkLabel(continueWork);
+  const continueUses = (...kinds: PlanUnitRef['kind'][]) =>
+    continueWork.some((unit) => kinds.includes(unit.kind));
   // The continue button offers work before Motion; clips and music keep
   // their own footers' buttons (#1780).
   const continueStage = firstStageWithWork(continueWork);
@@ -508,9 +547,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
   const nameOf = (ref: PlanUnitRef) =>
     ref.kind === 'sheet:location'
       ? planLocations?.find((l) => l.id === ref.id)?.name
-      : ref.kind === 'sheet:character' || ref.kind === 'voice'
+      : ref.kind === 'voice'
         ? planCharacters?.find((c) => c.id === ref.id)?.name
-        : undefined;
+        : ref.kind === 'sheet:character'
+          ? sheetLookName(planCharacters ?? [], ref.id)
+          : undefined;
   const continueBlocked = blockedLines(
     footerPlan,
     continueStopAtClamped,
@@ -524,7 +565,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         stopAt: continueStopAtClamped,
         generateStartFrames: draftStartFrames,
         generateVoices: voices,
-        draftMotion: draftFirst,
+        draftMotion: draftChoice,
       })
     );
   };
@@ -721,11 +762,9 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         onChange={setContinueStopAt}
         minStage={minStage ?? undefined}
         maxStage={maxStage}
-        voicesLocked={locks.voices}
         generateStartFrames={draftStartFrames}
         onGenerateStartFramesChange={setDraftStartFrames}
         generateVoices={voices}
-        onGenerateVoicesChange={voicesUnavailable ? undefined : setDraftVoices}
         includeMusic={includeMusic}
         onIncludeMusicChange={onIncludeMusicChange}
         draftFirst={draftFirst}
@@ -733,13 +772,69 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         draftFirstLocked={locks.draft}
         disabled={isGenerating}
       />
+      {/* A picker per kind of model the run will use (#2004). */}
+      {offerContinue && onModelsChange && (
+        <>
+          {/* Voice design writes its description and range script with it. */}
+          {continueUses('voice', 'spec', 'prompt:music') && (
+            <ModelSelector
+              selectedModels={[
+                isValidAnalysisModelId(analysisModel)
+                  ? analysisModel
+                  : DEFAULT_ANALYSIS_MODEL,
+              ]}
+              onModelsChange={([model]) => {
+                if (model) onModelsChange({ analysisModel: model });
+              }}
+              singleSelect
+              disabled={isGenerating}
+            />
+          )}
+          {continueUses('sheet:character', 'sheet:location', 'still') && (
+            <ImageModelSelector
+              selectedModel={initialImageModel ?? DEFAULT_IMAGE_MODEL}
+              onModelChange={(model) => onModelsChange({ imageModel: model })}
+              disabled={isGenerating}
+            />
+          )}
+          {continueUses('prompt:motion', 'clip') && (
+            <MotionModelSelector
+              selectedModel={videoModel}
+              onModelChange={(model) => {
+                setVideoModel(model);
+                onVideoModelChange?.(model);
+              }}
+              aspectRatio={aspectRatio}
+              styleCategory={styleCategory}
+              styleName={styleName}
+              disabled={isGenerating}
+              referenceOnly={!draftStartFrames}
+            />
+          )}
+          {continueUses('music') && (
+            <MusicModelSelector
+              selectedModel={musicModel}
+              onModelChange={(model) => {
+                setMusicModel(model);
+                onModelsChange({ musicModel: model });
+              }}
+              disabled={isGenerating}
+            />
+          )}
+        </>
+      )}
       {offerContinue && (
         <>
           <Button
             variant="default"
             className={costButtonClassName}
             onClick={() => void handleContinue()}
-            disabled={isGenerating || planLoading || continueWork.length === 0}
+            disabled={
+              isGenerating ||
+              planLoading ||
+              modelsSaving ||
+              continueWork.length === 0
+            }
           >
             <InButtonCost
               estimate={continueCostEstimate}
@@ -1119,6 +1214,8 @@ const areEqual = (
     prevProps.initialMusicModel !== nextProps.initialMusicModel ||
     prevProps.initialVideoModel !== nextProps.initialVideoModel ||
     prevProps.initialImageModel !== nextProps.initialImageModel ||
+    prevProps.analysisModel !== nextProps.analysisModel ||
+    prevProps.modelsSaving !== nextProps.modelsSaving ||
     prevProps.styleCategory !== nextProps.styleCategory ||
     prevProps.styleName !== nextProps.styleName ||
     prevProps.staleShotIds !== nextProps.staleShotIds ||

@@ -92,6 +92,7 @@ export function sheetMetadataFromAnalysis(
     physicalDescription:
       analysis.physicalDescription.trim() || analysis.description,
     standardClothing: analysis.standardClothing,
+    looks: [],
     distinguishingFeatures: analysis.distinguishingFeatures,
     // A photo carries no performance; cast reads the talent row's (Edit talent).
     personality: '',

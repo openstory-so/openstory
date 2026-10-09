@@ -53,7 +53,7 @@ import {
   sequenceKeys,
   useSequence,
   useSetSequenceMusic,
-  useSetSequenceVideoModel,
+  useSetSequenceModels,
 } from '@/sequences/ui/use-sequences';
 import { sumShotSeconds } from './scene-group';
 import {
@@ -457,14 +457,15 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     sequence?.videoModel,
     DEFAULT_VIDEO_MODEL
   );
-  const { mutate: persistVideoModel } = useSetSequenceVideoModel(sequenceId);
+  const { mutate: persistModels, isPending: modelsSaving } =
+    useSetSequenceModels(sequenceId);
   const { mutate: persistIncludeMusic } = useSetSequenceMusic(sequenceId);
   const persistSequenceVideoModel = useCallback(
     (model: ImageToVideoModel) => {
       if (model === sequenceVideoModel) return;
-      persistVideoModel(model);
+      persistModels({ videoModel: model });
     },
-    [sequenceVideoModel, persistVideoModel]
+    [sequenceVideoModel, persistModels]
   );
   const styleName = style?.name ?? undefined;
   // Phase config from DB — set in stone when the workflow was triggered
@@ -1584,6 +1585,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     initialVideoModel: sequenceVideoModel,
     onVideoModelChange: handleBatchVideoModelChange,
     initialImageModel: resolvedSequenceImageModel,
+    analysisModel: sequence?.analysisModel,
+    onModelsChange: persistModels,
+    modelsSaving,
     styleCategory,
     generateStartFrames,
     generateVoices: sequence?.generateVoices,

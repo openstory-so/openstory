@@ -8,7 +8,8 @@ import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
  */
 
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
-import { isBytePlusConfigured } from '@/models/server/byteplus-config';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   packedPromptFitsLimit,
   packedSceneFromScene,
@@ -147,7 +148,11 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       characters,
       elements,
       locations,
-      byteplusEnabled: isBytePlusConfigured(),
+      // Where this team's Seedance lands, not whether the platform has
+      // Ark: a team on its own fal key is never sent an edit (#2036).
+      byteplusEnabled: await seedanceRunsOnArk(
+        toWorkflowScopedDb(scopedDb).credentials
+      ),
       // The shot's working set is what the next render sends (#1786).
       audioClips: shot.audioClips ?? [],
       packedMembers: packedPreview?.members,

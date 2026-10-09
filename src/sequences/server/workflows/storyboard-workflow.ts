@@ -383,8 +383,8 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     //
     // Skip the write when the analyze-script child already marked the
     // sequence failed — its message ("Your OpenRouter API key is invalid…")
-    // is more specific than the parent's wrapper ("Child workflow
-    // analyze-script… failed: …").
+    // is the one written for the user; the parent only has what came back
+    // through the await.
     const { sequenceId, reservationId } = event.payload;
     if (reservationId) {
       try {

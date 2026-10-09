@@ -73,7 +73,7 @@ describe('captureStudioGenerationCompleted', () => {
         asset_id: 'asset-1',
         model: 'seedance_v2',
         media_url: `${origin}/r2/videos/a.mp4`,
-        watch_url: `${origin}/videos`,
+        watch_url: `${origin}/clips`,
         prompt: 'the fox turns',
         aspect_ratio: '16:9',
         content_type: 'video/mp4',

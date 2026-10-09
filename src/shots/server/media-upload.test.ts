@@ -37,6 +37,7 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import type { VideoManifest } from '@/platform/server/db/schema';
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
   computeUploadedStillInputHash,
@@ -89,6 +90,7 @@ async function seed() {
   await db.delete(frameVariants);
   await db.delete(framePromptVersions);
   await db.delete(frames);
+  await clearVersionRows(db);
   await db.delete(characters);
   await db.delete(shots);
   await db.delete(renderSegments);
@@ -252,22 +254,23 @@ const SCENE_WITH_REFS: Scene = {
 };
 
 async function seedCharacterWithSheet(sheetInputHash: string) {
-  const [row] = await db
-    .insert(characters)
-    .values({
+  const row = await createCharactersMethods(db, teamId).create(
+    {
       sequenceId,
       characterId: 'char_001',
-      legacyName: 'Jack',
-      legacyConsistencyTag: 'char_001: Jack-denim-jacket',
+      name: 'Jack',
+      consistencyTag: 'char_001: Jack-denim-jacket',
       sheetStatus: 'completed',
-    })
-    .returning();
-  if (!row) throw new Error('test setup: character insert returned nothing');
+    },
+    { source: 'analysis', createdBy: null }
+  );
   // The live sheet is read from the version row, not the mirror (#1419) —
-  // keyed to the character's own id, the shape the backfill produced.
+  // keyed to the character's own id, which is its default look's id: the
+  // shape the backfill produced.
   await db.insert(characterSheetVariants).values({
     id: row.id,
     characterId: row.id,
+    lookId: row.id,
     model: 'prior',
     url: '/r2/characters/jack.png',
     status: 'completed',
@@ -275,7 +278,7 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
   });
   // Return the RESOLVED read — the sheet lives on the version row now (#1419),
   // and the staleness hash is computed from it.
-  const resolved = await createCharactersMethods(db).getById(row.id);
+  const resolved = await createCharactersMethods(db, teamId).getById(row.id);
   if (!resolved)
     throw new Error('test setup: character re-read returned nothing');
   return resolved;
@@ -317,6 +320,7 @@ function clipIsStale(
       dialogueKeyByShot: new Map(),
       audioClipIdsByShot: new Map(),
       referenceIdentity: new Map(),
+      referencedEntitiesByShot: new Map(),
       durationMsByShot: new Map(),
       audioSecondsByShot: new Map(),
     }

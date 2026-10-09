@@ -25,7 +25,7 @@ function shot(id: string, overrides: Partial<PlanShot> = {}): PlanShot {
     visualWritten: false,
     motionWritten: false,
     usesStartFrame: true,
-    references: { characterIds: [], locationIds: [], elementIds: [] },
+    references: { lookIds: [], locationIds: [], elementIds: [] },
     speakerIds: [],
     visualPrompt: 'done',
     still: 'done',
@@ -62,8 +62,8 @@ function states(plan: PlanUnit[]) {
   );
 }
 
-const refs = (...characterIds: string[]) => ({
-  characterIds,
+const refs = (...lookIds: string[]) => ({
+  lookIds,
   locationIds: [],
   elementIds: [],
 });

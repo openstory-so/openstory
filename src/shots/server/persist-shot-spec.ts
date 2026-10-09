@@ -61,21 +61,25 @@ export async function persistShotSpec(
   });
   // Derivation consumes no rendered still: the hash says so (#1892).
   // The spec's content is part of the prompt digest (#1923).
-  const narrowed = narrowShotPromptContext({
+  // Each digest narrows its bibles by its own text (#2012).
+  const full = {
     ...context,
     scene: item.scene,
     startingFrameImageUrl: null,
     dialogue: shotDialogue(lines),
     spec: stored,
-  });
+  };
 
   if (!referenceOnly && frameId !== null) {
+    const text = deriveStillPrompt(stored, item.scene, context.styleConfig);
     await scopedDb.framePromptVersions.write({
       frameId,
       source: 'derived',
       specVersionId: version.id,
-      text: deriveStillPrompt(stored, item.scene, context.styleConfig),
-      inputHash: await hashVisualPromptInput(narrowed),
+      text,
+      inputHash: await hashVisualPromptInput(
+        narrowShotPromptContext(full, { channel: 'visual', prompt: text })
+      ),
       analysisModel: context.analysisModel,
     });
   }
@@ -88,7 +92,13 @@ export async function persistShotSpec(
     text: motion.text,
     audio: motion.audio,
     usesStartFrame: !referenceOnly,
-    inputHash: await hashMotionPromptInput(narrowed),
+    inputHash: await hashMotionPromptInput(
+      narrowShotPromptContext(full, {
+        channel: 'motion',
+        prompt: motion.text,
+        referenceOnly,
+      })
+    ),
     analysisModel: context.analysisModel,
   });
   return { stillPrompt: !referenceOnly };

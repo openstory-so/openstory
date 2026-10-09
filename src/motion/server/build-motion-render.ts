@@ -129,6 +129,14 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
       sceneId: shot.sceneId,
       imageUrl: shot.imageUrl,
       referenceOnly: shot.referenceOnly,
+      // A packed clip is an edit when any member was held as one.
+      seedanceEditSeconds: maxEditSeconds(
+        members
+          ? shots.filter((candidate) =>
+              members.some((member) => member.shotId === candidate.shotId)
+            )
+          : [shot]
+      ),
       frameVersionId: shot.frameVersionId,
       motionPromptVersionId: shot.motionPromptVersionId,
       prompt,
@@ -167,6 +175,13 @@ export function buildMotionRender(sources: MotionRenderSources): Array<{
   });
 }
 
+function maxEditSeconds(
+  shots: readonly Pick<MotionRenderShot, 'seedanceEditSeconds'>[]
+): number | null {
+  const held = shots.flatMap((shot) => shot.seedanceEditSeconds ?? []);
+  return held.length > 0 ? Math.max(...held) : null;
+}
+
 /** Finals reuse the provider's frozen draft request; the builder stamps its provenance. */
 export function buildDraftFinalRender(source: {
   userId: string;
@@ -193,6 +208,8 @@ export function buildDraftFinalRender(source: {
     shotId: source.lead.shotId,
     sceneId: source.sceneId,
     referenceOnly: !source.lead.usesStartFrame,
+    // The final sends only the draft's task id; there is no request to shape.
+    seedanceEditSeconds: null,
     packedScene: {},
     prompt: source.authoredPrompt,
     model: source.model,

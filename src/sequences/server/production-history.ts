@@ -389,17 +389,22 @@ const VERSION_KINDS = {
     selected: (row, segment) => row.id === segment.selectedVideoVersionId,
     schema: videoVariantsReadSchema,
   }),
+  // A character's sheets are its looks' (#2015): `entityId` is a look id,
+  // and a character id names its default look.
   character_sheet: versionKind({
-    parent: (access, i) => access.character(i.sequenceId, i.entityId),
-    list: (db, character, options) =>
-      db.characterSheetVariants.listByCharacter(character.id, options),
-    get: async (db, character, id) => {
+    parent: (access, i) => access.look(i.sequenceId, i.entityId),
+    list: (db, look, options) =>
+      db.characterSheetVariants.listByLook(look.id, options),
+    get: async (db, look, id) => {
       const row = await db.characterSheetVariants.getById(id);
-      return row?.characterId === character.id ? row : null;
+      return row && (row.lookId ?? row.characterId) === look.id ? row : null;
     },
-    // A pre-versioning sheet is the row keyed to the character's own id (#1419).
-    selected: (row, character) =>
-      row.id === (character.selectedSheetVersionId ?? character.id),
+    // A pre-versioning sheet is the row keyed to the character's own id
+    // (#1419), which only its default look can be showing.
+    selected: (row, look) =>
+      row.id ===
+      (look.selectedSheetVersionId ??
+        (look.isDefault ? look.characterId : null)),
     schema: characterSheetVariantsReadSchema,
   }),
   location_sheet: versionKind({

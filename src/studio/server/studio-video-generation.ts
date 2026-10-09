@@ -22,6 +22,7 @@ import {
   BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
+import { ARK_AUTO_DURATION } from '@/motion/seedance-edit';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
@@ -721,8 +722,9 @@ export async function submitStudioVideoJob(
             modelOptions: {
               watermark: false,
               // Sent verbatim, over the snapped generic `duration`: the model
-              // picks the length (an edit requires it, #1925).
-              ...(built.auto && { duration: -1 }),
+              // picks the length. An edit requires it (#1925), and
+              // `createStudioAssets` snaps every edit to auto (#2036).
+              ...(built.auto && { duration: ARK_AUTO_DURATION }),
               ...(draft && { draft: true }),
               ...(options.generateAudio !== undefined && {
                 generate_audio: options.generateAudio,

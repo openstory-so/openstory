@@ -7,13 +7,20 @@
  * `@/audio/server/music-edit`); MCP adds only the parent-chain check. None
  * starts a generation or spends credits.
  */
+import { NotFoundError } from '@/platform/errors';
 import { z } from 'zod';
 import {
   characterBibleFieldsSchema,
   locationBibleFieldsSchema,
 } from '@/cast/bible-field';
+import { lookFieldsSchema } from '@/cast/look-field';
 import {
   createCharacter,
+  createCharacterLook,
+  removeCharacterLook,
+  restoreCharacterLook,
+  selectCharacterLookVersion,
+  updateCharacterLook,
   createLocation,
   deleteCharacter,
   deleteElement,
@@ -288,7 +295,7 @@ const selectCharacterVoiceVersionTool = openstoryTool({
 const selectCharacterSheetVersionTool = openstoryTool({
   name: 'select_character_sheet_version',
   description:
-    'Use an earlier reference sheet for a character (list_versions kind character_sheet). Must be completed and not discarded. Stills of shots with the character become stale.',
+    'Use an earlier reference sheet for a character (list_versions kind character_sheet; entityId is a look id, and the character id names its default look). The sheet is selected on the look it belongs to. Must be completed and not discarded. Stills of shots that wear that look become stale.',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: characterInput.extend({ versionId: ulidSchema }),
@@ -309,6 +316,188 @@ const selectCharacterSheetVersionTool = openstoryTool({
       summary: `Selected the sheet for ${name}.`,
     };
   },
+});
+
+// ── Looks (#2015) ───────────────────────────────────────────────────────────
+
+const lookId = ulidSchema.describe(
+  'Look ID (get_character looks[].id). A character ID names its default look.'
+);
+const lookInput = z.strictObject({ sequenceId, characterId, lookId });
+const lookResult = z.object({ characterId: z.string(), lookId: z.string() });
+const lookRun =
+  <I extends { sequenceId: string; characterId: string }>(
+    action: (
+      scopedDb: Parameters<typeof createCharacterLook>[0],
+      actor: { userId: string },
+      sequenceId: string,
+      input: I
+    ) => Promise<{ characterId: string; lookId: string; name: string }>,
+    summary: (name: string) => string
+  ) =>
+  async (
+    input: I,
+    {
+      scopedDb,
+      userId,
+    }: { scopedDb: Parameters<typeof createCharacterLook>[0]; userId: string }
+  ) => {
+    const sequence = await productionAccess(scopedDb).sequence(
+      input.sequenceId
+    );
+    const { name: lookName, ...result } = await action(
+      scopedDb,
+      { userId },
+      sequence.id,
+      input
+    );
+    return {
+      data: { characterId: result.characterId, lookId: result.lookId },
+      summary: summary(lookName),
+    };
+  };
+
+const listCharacterLookVersionsTool = productionRead(
+  'list_character_look_versions',
+  'List every definition a look has had (name, clothing, styling), newest first; selectedLookVersionId marks the live one. Pick one with select_character_look_version.',
+  lookInput,
+  z.object({
+    lookId: z.string(),
+    selectedLookVersionId: z.string(),
+    versions: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        clothing: z.string().nullable(),
+        styling: z.string().nullable(),
+        source: z.string(),
+        createdAt: z.string(),
+      })
+    ),
+  }),
+  async (input, { scopedDb }) => {
+    const look = await productionAccess(scopedDb).look(
+      input.sequenceId,
+      input.lookId
+    );
+    if (look.characterId !== input.characterId) {
+      throw new NotFoundError('Look not found for this character');
+    }
+    const versions = await scopedDb.characterLooks.listVersions(look.id);
+    return {
+      lookId: look.id,
+      selectedLookVersionId: look.lookVersionId,
+      versions: versions.map((version) => ({
+        id: version.id,
+        name: version.name,
+        clothing: version.clothing,
+        styling: version.styling,
+        source: version.source,
+        createdAt: version.createdAt.toISOString(),
+      })),
+    };
+  }
+);
+
+const createCharacterLookTool = openstoryTool({
+  name: 'create_character_look',
+  description:
+    'Add an outfit (a look) to a character: a name, the clothing, and any hair, makeup or injury notes that go with it. It has no sheet until regenerate_character_sheet is called with its lookId. A scene wears it once update_scene sets continuity.characterLooks.',
+  scope: 'sequences:write',
+  annotations: writeAnnotations,
+  inputSchema: characterInput.extend(lookFieldsSchema.shape),
+  outputSchema: lookResult,
+  run: lookRun(
+    (scopedDb, actor, sequence, input) =>
+      createCharacterLook(scopedDb, actor, sequence, input.characterId, input),
+    (look) => `Added the look ${look}.`
+  ),
+});
+
+const updateCharacterLookTool = openstoryTool({
+  name: 'update_character_look',
+  description:
+    'Rename a look or edit its clothing or styling. An unsent field keeps its value; null clears clothing or styling. A change to clothing or styling makes that look’s sheet stale, and the shots of the scenes that wear it; a rename changes nothing else. No generation starts.',
+  scope: 'sequences:write',
+  annotations: idempotent,
+  inputSchema: lookInput.extend(lookFieldsSchema.partial().shape),
+  outputSchema: lookResult,
+  run: lookRun(
+    (scopedDb, actor, sequence, input) =>
+      updateCharacterLook(
+        scopedDb,
+        actor,
+        sequence,
+        input.characterId,
+        input.lookId,
+        input
+      ),
+    (look) => `Updated the look ${look}.`
+  ),
+});
+
+const removeCharacterLookTool = openstoryTool({
+  name: 'remove_character_look',
+  description:
+    'Remove a look from a character. Refused for the default look, and for a look a scene still wears (the error names the scenes; pick another look there first with update_scene). restore_character_look brings it back.',
+  scope: 'sequences:write',
+  annotations: destructive,
+  inputSchema: lookInput,
+  outputSchema: lookResult,
+  run: lookRun(
+    (scopedDb, actor, sequence, input) =>
+      removeCharacterLook(
+        scopedDb,
+        actor,
+        sequence,
+        input.characterId,
+        input.lookId
+      ),
+    (look) => `Removed the look ${look}.`
+  ),
+});
+
+const restoreCharacterLookTool = openstoryTool({
+  name: 'restore_character_look',
+  description:
+    'Undo remove_character_look (get_character lists removed looks with deletedAt set).',
+  scope: 'sequences:write',
+  annotations: idempotent,
+  inputSchema: lookInput,
+  outputSchema: lookResult,
+  run: lookRun(
+    (scopedDb, actor, sequence, input) =>
+      restoreCharacterLook(
+        scopedDb,
+        actor,
+        sequence,
+        input.characterId,
+        input.lookId
+      ),
+    (look) => `Restored the look ${look}.`
+  ),
+});
+
+const selectCharacterLookVersionTool = openstoryTool({
+  name: 'select_character_look_version',
+  description:
+    'Point a look back at an earlier definition (list_character_look_versions). If its clothing or styling differ from the live one, the look’s sheet and the shots of the scenes that wear it become stale.',
+  scope: 'sequences:write',
+  annotations: idempotent,
+  inputSchema: lookInput.extend({ versionId: ulidSchema }),
+  outputSchema: lookResult,
+  run: lookRun(
+    (scopedDb, actor, sequence, input) =>
+      selectCharacterLookVersion(
+        scopedDb,
+        actor,
+        sequence,
+        input.characterId,
+        input.lookId,
+        input.versionId
+      ),
+    (look) => `Selected a version of the look ${look}.`
+  ),
 });
 
 const sheetVersionInput = z.strictObject({
@@ -815,6 +1004,12 @@ export const castMusicTools = [
   selectCharacterSheetVersionTool,
   discardCharacterSheetVersionTool,
   undiscardCharacterSheetVersionTool,
+  listCharacterLookVersionsTool,
+  createCharacterLookTool,
+  updateCharacterLookTool,
+  removeCharacterLookTool,
+  restoreCharacterLookTool,
+  selectCharacterLookVersionTool,
   createLocationTool,
   updateLocationTool,
   deleteLocationTool,

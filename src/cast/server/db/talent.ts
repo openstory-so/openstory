@@ -13,13 +13,9 @@ import type {
   TalentSheet,
   TalentWithSheets,
 } from '@/platform/server/db/schema';
-import {
-  characters,
-  talent,
-  talentMedia,
-  talentSheets,
-} from '@/platform/server/db/schema';
+import { talent, talentMedia, talentSheets } from '@/platform/server/db/schema';
 import type { TalentSheetInputHash } from '@/shots/input-hash';
+import { castOfTalent } from './sequence-cast';
 import {
   demoteCharacterSheetClaims,
   demoteTalentSheetClaim,
@@ -376,7 +372,7 @@ export function createTalentMethods(
           .returning(),
         demoteCharacterSheetClaims(
           db,
-          descriptionMoved ? eq(characters.talentId, talentId) : sql`0`
+          descriptionMoved ? castOfTalent(db, talentId) : sql`0`
         ),
       ]);
       return updated;
@@ -523,7 +519,7 @@ export function createTalentMethods(
           ),
         demoteCharacterSheetClaims(
           db,
-          and(eq(characters.talentId, talentId), holds) ?? sql`0`
+          and(castOfTalent(db, talentId), holds) ?? sql`0`
         ),
         db
           .update(talent)
@@ -599,7 +595,7 @@ export function createTalentMethods(
             .returning(),
           demoteCharacterSheetClaims(
             db,
-            data.divergedAt ? sql`0` : eq(characters.talentId, data.talentId)
+            data.divergedAt ? sql`0` : castOfTalent(db, data.talentId)
           ),
         ]);
         if (!sheet) throw new Error('Failed to create talent sheet');
@@ -636,7 +632,7 @@ export function createTalentMethods(
           // The default and the image are cast inputs (#1113).
           demoteCharacterSheetClaims(
             db,
-            eq(characters.talentId, sheetForAcl.talentId)
+            castOfTalent(db, sheetForAcl.talentId)
           ),
         ]);
 
@@ -654,10 +650,7 @@ export function createTalentMethods(
         const [result] = await db.batch([
           db.delete(talentSheets).where(eq(talentSheets.id, sheetId)),
           // Removing a sheet can move the cast identity (#1113).
-          demoteCharacterSheetClaims(
-            db,
-            eq(characters.talentId, sheet.talentId)
-          ),
+          demoteCharacterSheetClaims(db, castOfTalent(db, sheet.talentId)),
         ]);
 
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime

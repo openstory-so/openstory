@@ -342,14 +342,21 @@ export function useUpdateSequenceCharacter() {
   });
 }
 
+/** One look's sheet staleness (#2015); the default look's when `lookId` is omitted. */
 export function useCharacterSheetStaleness(
   sequenceId: string,
-  characterId: string
+  characterId: string,
+  lookId?: string
 ) {
   return useQuery<SheetStaleness>({
-    queryKey: sequenceCharacterKeys.sheetStaleness(sequenceId, characterId),
+    queryKey: [
+      ...sequenceCharacterKeys.sheetStaleness(sequenceId, characterId),
+      lookId ?? 'default',
+    ],
     queryFn: () =>
-      getCharacterSheetStalenessFn({ data: { sequenceId, characterId } }),
+      getCharacterSheetStalenessFn({
+        data: { sequenceId, characterId, lookId },
+      }),
     enabled: !!sequenceId && !!characterId,
     staleTime: 15_000,
   });
@@ -361,6 +368,8 @@ export function useRegenerateCharacterSheet() {
     mutationFn: (data: {
       sequenceId: string;
       characterId: string;
+      /** A look other than the default (#2015). */
+      lookId?: string;
       imageModel?: string;
     }) => regenerateCharacterSheetFn({ data }),
     onSuccess: () => {

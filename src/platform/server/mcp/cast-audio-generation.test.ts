@@ -23,10 +23,10 @@ import { getDb } from '#db-client';
 import type { Database } from '@/platform/server/db/client';
 // oxlint-disable-next-line boundaries/no-scoped-factory -- exercise real team-scoped repositories, not mocked authorization
 import { createScopedDb } from '@/platform/server/db/scoped';
+import type { NewCharacter } from '@/platform/server/db/schema';
 import { generateId } from '@/platform/id';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
-  characters,
   frames,
   frameVariants,
   locationLibrary,
@@ -67,6 +67,12 @@ let shotId: string;
 let frameId: string;
 let actorId: string;
 let scopedDb: ReturnType<typeof createScopedDb>;
+/** A character as analysis writes it: bible version, cast link, default look. */
+const castCharacter = (character: NewCharacter) =>
+  createScopedDb(teamId, actorId).characters.create(character, {
+    source: 'analysis',
+    createdBy: null,
+  });
 
 async function call(name: string, args: Record<string, unknown>) {
   const response = await server.handle(
@@ -279,11 +285,11 @@ describe('shot dialogue and pending artifacts', () => {
 describe('cast', () => {
   it('cancels no voice when none is generating', async () => {
     const characterId = generateId();
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
       sequenceId,
       characterId: 'char_001',
-      legacyName: 'Ada',
+      name: 'Ada',
     });
     expect(
       await data('cancel_character_voice', { sequenceId, characterId })
@@ -292,12 +298,12 @@ describe('cast', () => {
 
   it('refuses to recast a voice-only character', async () => {
     const characterId = generateId();
-    await db.insert(characters).values({
+    await castCharacter({
       id: characterId,
       sequenceId,
       characterId: 'char_001',
-      legacyName: 'Narrator',
-      legacyVoiceOnly: true,
+      name: 'Narrator',
+      voiceOnly: true,
     });
     expect(
       await call('recast_character', {

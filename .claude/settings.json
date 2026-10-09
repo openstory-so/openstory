@@ -87,8 +87,6 @@
       "Bash(drizzle-kit generate:*)"
     ]
   },
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": ["shadcn"],
   "hooks": {
     "PreToolUse": [
       {

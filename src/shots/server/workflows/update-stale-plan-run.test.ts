@@ -155,7 +155,11 @@ function makeStep(): WorkflowStep {
   return asStub<WorkflowStep>({ do: run });
 }
 
-const claimSheet = vi.fn(async (id: string) => `csv-${id}`);
+// A sheet claim is a look's (#2015); a default look's id is its character's.
+const claimSheet = vi.fn(async (lookId: string) => ({
+  versionId: `csv-${lookId}`,
+  held: true,
+}));
 const failSheetClaim = vi.fn(async () => undefined);
 const claimReference = vi.fn(async (id: string) => `lrv-${id}`);
 const claimMusic = vi.fn(async (): Promise<string | null> => 'music-claim');
@@ -168,9 +172,8 @@ const createPendingVoiceClaim = vi.fn(async (id: string) => ({
 function makeScopedDb(): WorkflowScopedDb {
   // minimal stub for the paths under test
   return asStub<WorkflowScopedDb>({
+    characterLooks: { claimSheet, failSheetClaim },
     characters: {
-      claimSheet,
-      failSheetClaim,
       createPendingVoiceClaim,
       markVoiceClaimTerminal: vi.fn(),
     },
@@ -274,7 +277,12 @@ function target(shotId: string, referenceIds: string[]): PlanTarget {
     staleVideoVersionId: null,
     referenceIds,
     attachSceneHeader: false,
-    motionRender: { packedScene: {}, description: '', selectedModel: null },
+    motionRender: {
+      packedScene: {},
+      description: '',
+      selectedModel: null,
+      characterLooks: null,
+    },
     regenDialogue: false,
     dialogue: { presence: false, lines: [] },
     dialogueContext: [],
@@ -337,7 +345,16 @@ const payloadOf = (step: string) =>
     .childPayload;
 
 const references = {
-  characterSheets: [{ characterDbId: 'maya' }, { characterDbId: 'ravi' }],
+  characterSheets: [
+    { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
+    {
+      characterDbId: 'ravi',
+      lookId: 'ravi',
+      lookVersionId: 'lv-ravi',
+      bibleVersionId: 'bible-ravi',
+      talentId: null,
+    },
+  ],
   locationSheets: [{ locationDbId: 'hall' }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
   voices: [{ characterDbId: 'maya' }],
@@ -366,10 +383,13 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         'spawn-character-voice-maya',
       ].sort()
     );
-    expect(payloadOf('spawn-character-sheet-ravi')).toEqual({
-      characterDbId: 'ravi',
-      sheetVersionId: 'csv-ravi',
-    });
+    expect(payloadOf('spawn-character-sheet-ravi')).toEqual(
+      expect.objectContaining({
+        characterDbId: 'ravi',
+        lookId: 'ravi',
+        sheetVersionId: 'csv-ravi',
+      })
+    );
     expect(payloadOf('spawn-location-sheet-hall')).toEqual({
       locationDbId: 'hall',
       referenceVersionId: 'lrv-hall',
@@ -378,13 +398,69 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       characterDbId: 'maya',
       targetVersionId: 'husk-maya',
     });
-    expect(claimSheet).toHaveBeenCalledWith('ravi', { markGenerating: true });
+    // The claim is taken on the look the payload names, as it was frozen.
+    expect(claimSheet).toHaveBeenCalledWith(
+      'ravi',
+      {
+        lookVersionId: 'lv-ravi',
+        bibleVersionId: 'bible-ravi',
+        talentId: null,
+      },
+      { markGenerating: true }
+    );
     expect(result.failures).toEqual([]);
     // The banner moves under a continue.
     expect(emit).toHaveBeenCalledWith(
       'generation.phase:start',
       expect.objectContaining({ phase: 2 })
     );
+  });
+
+  it('claims and spawns each look on its own, from the snapshot it was built from (#2015)', async () => {
+    await run(
+      plan({
+        // payload stubs
+        references: asStub<never>({
+          ...references,
+          characterSheets: [
+            {
+              characterDbId: 'maya',
+              lookId: 'maya',
+              lookVersionId: 'lookver-default',
+              bibleVersionId: 'bible-1',
+              talentId: 'talent-1',
+            },
+            {
+              characterDbId: 'maya',
+              lookId: 'gala',
+              lookVersionId: 'lookver-gala',
+              bibleVersionId: 'bible-1',
+              talentId: 'talent-1',
+            },
+          ],
+          locationSheets: [],
+          elementSheets: null,
+          voices: [],
+        }),
+      })
+    );
+    expect(spawned().sort()).toEqual([
+      'spawn-character-sheet-gala',
+      'spawn-character-sheet-maya',
+    ]);
+    expect(claimSheet).toHaveBeenCalledWith(
+      'gala',
+      {
+        lookVersionId: 'lookver-gala',
+        bibleVersionId: 'bible-1',
+        talentId: 'talent-1',
+      },
+      { markGenerating: true }
+    );
+    expect(payloadOf('spawn-character-sheet-gala')).toMatchObject({
+      lookId: 'gala',
+      sheetVersionId: 'csv-gala',
+    });
   });
 
   it('a failed sheet holds the stills made from it, and nothing else', async () => {
@@ -433,6 +509,7 @@ const clipTarget = (id: string): PlanTarget => ({
     sceneId: 'scene-1',
     renderSegmentId: 'segment-1',
     packedScene: { location: 'Frozen room' },
+    characterLooks: null,
     description: '',
     selectedModel: 'kling_v3_pro',
   },
@@ -483,6 +560,7 @@ describe('executor packed clips', () => {
           sceneId: 'scene-1',
           renderSegmentId: 'segment-1',
           referenceOnly: true,
+          seedanceEditSeconds: null,
           packedScene: header,
           attachSceneHeader: true,
           duration: 2,
@@ -936,7 +1014,9 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
     plan({
       // minimal child payloads
       references: asStub<never>({
-        characterSheets: [{ characterDbId: 'maya' }],
+        characterSheets: [
+          { characterDbId: 'maya', lookId: 'maya', lookVersionId: 'lv-maya' },
+        ],
         locationSheets: [{ locationDbId: 'hall' }],
         elementSheets: null,
         voices: [],
@@ -945,7 +1025,13 @@ it('overlays first generated sheets onto the pending bible rows before a fresh s
       // pending row identity and media are the exercised fields
       renderRefs: asStub<never>({
         characters: [
-          { id: 'maya', sheetImageUrl: null, selectedSheetVersionId: null },
+          {
+            id: 'maya',
+            lookId: 'maya',
+            looks: [],
+            sheetImageUrl: null,
+            selectedSheetVersionId: null,
+          },
         ],
         locations: [
           {

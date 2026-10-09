@@ -623,6 +623,9 @@ describe('submitStudioVideoJob', () => {
         ],
       })
     );
+    expect(
+      mockGenerateVideo.mock.calls[0]?.[0].modelOptions.duration
+    ).toBeUndefined();
   });
 });
 

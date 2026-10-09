@@ -4,6 +4,8 @@ import { UploadMediaButton } from '@/shots/ui/upload-media-button';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { SheetVersionStrip } from '@/cast/ui/sheets/sheet-version-strip';
+import { wearLook } from '@/cast/character-looks';
+import { CharacterLooksRow } from '@/cast/ui/talent/character-looks-row';
 import { StalenessIndicator } from '@/shots/ui/staleness/staleness-indicator';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
@@ -91,13 +93,26 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const regenerateSheet = useRegenerateCharacterSheet();
   const { data: sequence } = useSequence(sequenceId);
   const [sheetModel, setSheetModel] = useState<TextToImageModel | null>(null);
+  // The look whose sheet the panel shows (#2015); null is the default look.
+  const [pickedLookId, setPickedLookId] = useState<string | null>(null);
+  const owner = characters?.find((c) => c.id === characterId);
+  const liveLooks = (owner?.looks ?? []).filter((look) => !look.deletedAt);
+  const activeLook =
+    liveLooks.find((look) => look.id === pickedLookId) ??
+    liveLooks.find((look) => look.isDefault);
+  const activeLookId = activeLook?.id ?? characterId;
+  // Everything below reads the character wearing that look: its sheet,
+  // status, versions and staleness are the look's.
+  const character = owner && activeLook ? wearLook(owner, activeLook) : owner;
   const { data: sheetStaleness } = useCharacterSheetStaleness(
     sequenceId,
-    characterId
+    characterId,
+    activeLook?.isDefault === false ? activeLookId : undefined
   );
   const { data: versionHistory } = useCharacterSheetVersions(
     sequenceId,
-    characterId
+    characterId,
+    activeLook?.isDefault === false ? activeLookId : undefined
   );
   const selectVersion = useSelectCharacterSheetVersion();
   const { data: shotData } = useShotIdsForCharacter(sequenceId, characterId);
@@ -154,10 +169,14 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   );
 
   // Track regenerating state from realtime events
-  const [isRegenerating, setIsRegenerating] = useState(false);
-  // Set while a content-flag retry is in flight so the spinner says so
-  // instead of reading as a hang; cleared with every non-retry event.
-  const [retryLabel, setRetryLabel] = useState<string | null>(null);
+  // Whether a look is generating is its own `sheetStatus`, read off the
+  // list — never a flag kept here, which would stick when the look on show
+  // changes mid-run (#2015). Only the retry caption is event-only state, and
+  // it is kept with the look it belongs to.
+  const [retry, setRetry] = useState<{ lookId: string; label: string } | null>(
+    null
+  );
+  const retryLabel = retry?.lookId === activeLookId ? retry.label : null;
 
   // Handle realtime events for character sheet progress
   const handleRealtimeEvent = useCallback(
@@ -181,31 +200,41 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           status: data.status,
         };
 
-        // Only handle events for this character
+        // Only handle events for this character — every look of it.
         if (payload.characterId !== characterId) return;
-
-        if (payload.status === 'generating') {
-          setIsRegenerating(true);
-          setRetryLabel(
-            !('phase' in data) || data.phase !== 'retrying'
+        // A default look's id is its character's, which is what an event
+        // from before looks carries.
+        const lookId =
+          'lookId' in data && typeof data.lookId === 'string'
+            ? data.lookId
+            : characterId;
+        const label =
+          payload.status !== 'generating' ||
+          !('phase' in data) ||
+          data.phase !== 'retrying'
+            ? null
+            : 'promptSoftened' in data && data.promptSoftened === true
+              ? 'Retrying with a rewritten prompt…'
+              : 'attempt' in data &&
+                  'maxAttempts' in data &&
+                  typeof data.attempt === 'number' &&
+                  typeof data.maxAttempts === 'number'
+                ? `Retrying (${data.attempt}/${data.maxAttempts})…`
+                : 'Retrying…';
+        setRetry((current) =>
+          label
+            ? { lookId, label }
+            : current?.lookId === lookId
               ? null
-              : 'promptSoftened' in data && data.promptSoftened === true
-                ? 'Retrying with a rewritten prompt…'
-                : 'attempt' in data &&
-                    'maxAttempts' in data &&
-                    typeof data.attempt === 'number' &&
-                    typeof data.maxAttempts === 'number'
-                  ? `Retrying (/)…`
-                  : 'Retrying…'
-          );
-        } else {
-          setIsRegenerating(false);
-          setRetryLabel(null);
-          // The sheet and its version strip are separate queries. A completed
-          // run appends a version after the kickoff mutation has returned.
-          void queryClient.invalidateQueries({
-            queryKey: sequenceCharacterKeys.list(sequenceId),
-          });
+              : current
+        );
+        // The look's status and sheet come from the list.
+        void queryClient.invalidateQueries({
+          queryKey: sequenceCharacterKeys.list(sequenceId),
+        });
+        if (payload.status !== 'generating') {
+          // The version strip is a separate query. A completed run appends a
+          // version after the kickoff mutation has returned.
           void queryClient.invalidateQueries({
             queryKey: characterSheetVariantKeys.history(
               sequenceId,
@@ -244,8 +273,13 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   const characterDivergentVariant = useMemo(() => {
     if (!divergentVariants) return undefined;
-    return divergentVariants.find((v) => v.characterId === characterId);
-  }, [divergentVariants, characterId]);
+    // A row with no look is the default look's, whose id is the character's.
+    return divergentVariants.find(
+      (v) =>
+        v.characterId === characterId &&
+        (v.lookId ?? v.characterId) === activeLookId
+    );
+  }, [divergentVariants, characterId, activeLookId]);
 
   const handleDiscardWithUndo = useCallback(
     (variant: CharacterSheetVariant) => {
@@ -304,11 +338,8 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     [sequenceId, promoteVariant]
   );
 
-  const character = characters?.find((c) => c.id === characterId);
-
   // Determine if currently regenerating (from realtime or mutation pending)
   const isSheetGenerating =
-    isRegenerating ||
     recastCharacter.isPending ||
     regenerateSheet.isPending ||
     character?.sheetStatus === 'generating';
@@ -349,6 +380,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
       {
         sequenceId,
         characterId,
+        lookId: activeLookId,
         ...(sheetModel ? { imageModel: sheetModel } : {}),
       },
       {
@@ -358,7 +390,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           }),
       }
     );
-  }, [regenerateSheet, sequenceId, characterId, sheetModel]);
+  }, [regenerateSheet, sequenceId, characterId, activeLookId, sheetModel]);
 
   const handleTalentSelect = (talent: TalentWithSheets) => {
     setSelectedTalent(talent);
@@ -479,6 +511,13 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 </div>
               ) : (
                 <>
+                  <CharacterLooksRow
+                    sequenceId={sequenceId}
+                    characterId={characterId}
+                    looks={liveLooks}
+                    activeLookId={activeLookId}
+                    onSelect={setPickedLookId}
+                  />
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">Sheet</p>
                     {isSheetStale && (
@@ -617,7 +656,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     disabled={isSheetGenerating}
                     onFile={(file) =>
                       uploadSheet.mutate(
-                        { file, sequenceId, characterId },
+                        { file, sequenceId, characterId, lookId: activeLookId },
                         {
                           onSuccess: () =>
                             toast.success('Character sheet uploaded'),
@@ -664,9 +703,10 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
             <div className="flex flex-col gap-4">
               <CharacterBibleForm
-                key={character.id}
+                // Clothing here is the default look's; reseed when it moves.
+                key={`${character.id}:${owner?.standardClothing ?? ''}`}
                 sequenceId={sequenceId}
-                character={character}
+                character={owner ?? character}
               />
               {character.firstMentionSceneId && (
                 <div className="flex flex-col gap-1 rounded-lg bg-muted/50 p-3">

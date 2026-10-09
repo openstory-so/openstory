@@ -17,6 +17,8 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { asStub } from '@/test/as-stub';
+import { UnusableReferencesError } from '@/motion/reference-support';
+import { NonRetryableError } from 'cloudflare:workflows';
 
 const mockSubmit = vi.fn();
 const mockPoll = vi.fn();
@@ -222,6 +224,7 @@ function makeEvent(
       packedScene: {},
       imageUrl: '/r2/stills/a.png',
       referenceOnly: false,
+      seedanceEditSeconds: null,
       prompt: 'the original prompt',
       model: MODEL,
       motionPromptVersionId: 'spv-orig',
@@ -280,6 +283,112 @@ beforeEach(() => {
   mockPoll.mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
   mockSoften.mockResolvedValue('the softened prompt');
   mockResolveMotionVia.mockResolvedValue('fal');
+});
+
+describe('MotionWorkflow Seedance InternalServiceError (#2036)', () => {
+  it('submits one new job after Ark reports InternalServiceError', async () => {
+    mockSubmit.mockResolvedValue({
+      ...job(),
+      via: 'byteplus',
+      modelKey: 'seedance_v2_5',
+    });
+    mockPoll
+      .mockResolvedValueOnce({
+        status: 'failed',
+        error: 'InternalServiceError: please retry',
+      })
+      .mockResolvedValue({ status: 'completed', url: 'https://fal/a.mp4' });
+    const step = makeStep();
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), step, scopedDb);
+
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+    expect(step.sleep).toHaveBeenCalledWith(
+      'seedance-internal-backoff',
+      '5 seconds'
+    );
+    expect(step.names).toContain('submit-motion-internal');
+    // The second job's polls are not the first job's steps.
+    expect(step.names).toContain('motion-poll-batch-0-0');
+    expect(step.names).toContain('motion-poll-batch-0-0-internal');
+  });
+
+  it('stops at once when the references cannot be used, with no step retry', async () => {
+    mockSubmit.mockRejectedValue(
+      new UnusableReferencesError(
+        'Seedance can only edit a video between 4 and 30 seconds. This one is 2s.'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    const run = makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    await expect(run).rejects.toThrow(/between 4 and 30 seconds/);
+    await expect(run).rejects.toBeInstanceOf(NonRetryableError);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits as an edit only when the trigger held for one', async () => {
+    const { scopedDb } = makeScopedDb();
+
+    await makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb);
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ heldSeedanceEditSeconds: null })
+    );
+
+    await makeWorkflow().runBody(
+      makeEvent({ seedanceEditSeconds: 24 }),
+      makeStep(),
+      scopedDb
+    );
+    expect(mockSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ heldSeedanceEditSeconds: 24 })
+    );
+  });
+
+  it('stops at once on a TaskTypeConstraint, with no second job', async () => {
+    mockResolveMotionVia.mockResolvedValue('byteplus');
+    mockSubmit.mockRejectedValue(
+      new Error(
+        'BytePlus Ark motion submit failed (400 InvalidParameter.TaskTypeConstraint): duration must be -1'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
+    ).rejects.toThrow(/read this as a video edit.*not charged/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops at once on any other InvalidParameter', async () => {
+    mockResolveMotionVia.mockResolvedValue('byteplus');
+    mockSubmit.mockRejectedValue(
+      new Error(
+        'BytePlus Ark motion submit failed (400 InvalidParameter): bad ratio'
+      )
+    );
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
+    ).rejects.toThrow(/couldn't process this video/);
+    expect(mockSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('says nothing was charged when the retry fails', async () => {
+    mockSubmit.mockResolvedValue({ ...job(), via: 'byteplus' });
+    mockPoll.mockResolvedValue({
+      status: 'failed',
+      error: 'InternalServiceError: still down',
+    });
+    const { scopedDb } = makeScopedDb();
+
+    await expect(
+      makeWorkflow().runBody(makeEvent(), makeStep(), scopedDb)
+    ).rejects.toThrow(/temporary error.*not charged/);
+    expect(mockSubmit).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('MotionWorkflow content-flag rescue (#1373)', () => {
@@ -1005,6 +1114,7 @@ describe('fresh MiniMax packed videos (#1720)', () => {
               ])
             ),
             referenceIdentity: new Map(),
+            referencedEntitiesByShot: new Map(),
             durationMsByShot: new Map(
               members.map((member) => [member.shotId, member.duration * 1000])
             ),
@@ -1097,6 +1207,7 @@ describe('recording its own dialogue (#1657)', () => {
           sceneId: 'scene-1',
           imageUrl: '/r2/stills/a.png',
           referenceOnly: false,
+          seedanceEditSeconds: null,
           frameVersionId: 'fv-1',
           packedScene: {},
           prompt: 'Sarah waits beside the window.',

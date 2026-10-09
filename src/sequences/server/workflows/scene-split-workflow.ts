@@ -57,6 +57,7 @@
  * JSON-stringified around the boundary for CF's `Rpc.Serializable<T>` check.
  */
 
+import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
 import {
   callLLMStream,
   llmCostFromUsage,
@@ -97,6 +98,7 @@ import {
   stripCodeFences,
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
+import { bibleFromWire } from '@/cast/bible-looks';
 import type {
   ElementBibleEntry,
   LocationBibleEntry,
@@ -868,6 +870,19 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       streamResult.scenes[
         sceneIndexForLine(script, streamResult.offsets, lineNumber)
       ]?.sceneId ?? '';
+    // The cast as bible entries, each with its looks (#2015), and which look
+    // each scene dresses a character in where it is not the default. The
+    // picks are kept beside the scenes, not on them: the ids are slugs until
+    // the cast is persisted, and only persisted ids are stored on a scene.
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a bibles result cached by a run that started before #2015
+    if (biblesResult.characterBible.some((entry) => !entry.looks)) {
+      throw queuedBeforeLooks();
+    }
+    const { characterBible, sceneLooks } = bibleFromWire(
+      biblesResult.characterBible,
+      sceneIdForLine,
+      script.split('\n').length
+    );
     // sceneId first: downstream prompt interpolation serializes these entries
     // with JSON.stringify, and the aimock fixtures match on that text — keep
     // the key order the old single-call contract produced.
@@ -895,7 +910,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const { scenes: reconciledScenes, stats: tagStats } = reconcileSceneTags(
       streamResult.scenes,
       {
-        characterBible: biblesResult.characterBible,
+        characterBible,
         locationBible,
         elementBible,
       }
@@ -976,7 +991,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
               promptVars: {
                 scenes: formatScenesForShotListPrompt(batch, clipGrid),
                 style: formatDirectorStyleForShotList(input.styleConfig),
-                characters: formatCastForShotList(biblesResult.characterBible),
+                characters: formatCastForShotList(characterBible),
                 // Placement budget for speech (#1651): a shot's clip has to
                 // hold the lines put in it, or the recorded take overruns the
                 // clip and the model's reference-audio window.
@@ -1072,7 +1087,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           scenes: scenesWithShots,
           title: resolvedTitle,
           shotMapping: shotListBatches.flatMap((batch) => batch.shotMapping),
-          characterBible: biblesResult.characterBible,
+          characterBible,
+          sceneLooks,
           locationBible,
           elementBible,
         } satisfies ReconciledSplit);

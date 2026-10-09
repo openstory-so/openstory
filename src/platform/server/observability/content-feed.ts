@@ -53,7 +53,7 @@ export function captureStudioGenerationCompleted(
       model: args.model,
       media_url: mediaUrl,
       ...(args.activity === 'image' && { preview_url: mediaUrl }),
-      watch_url: `${origin}/${args.activity === 'image' ? 'images' : 'videos'}`,
+      watch_url: `${origin}/${args.activity === 'image' ? 'images' : 'clips'}`,
       prompt: truncatePrompt(args.prompt),
       aspect_ratio: args.aspectRatio,
       content_type: args.contentType,

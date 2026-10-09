@@ -6,8 +6,12 @@ import type { FreshPlanSequenceOverrides } from '@/shots/server/update-stale-pla
  * the pure half in `@/sequences/generation-plan`.
  */
 
+import { wearLook } from '@/cast/character-looks';
 import { matchSpeaker, usesVoice } from '@/cast/voice';
-import { readReferenceStaleness } from '@/cast/server/production-staleness';
+import {
+  readLookSheetStaleness,
+  readReferenceStaleness,
+} from '@/cast/server/production-staleness';
 import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import { NotFoundError } from '@/platform/errors';
@@ -209,7 +213,7 @@ async function loadPlanInput(
       id: shot.id,
       usesStartFrame: usesStartFrame(shot, sequence),
       references: {
-        characterIds: matched.characters.map((c) => c.id),
+        lookIds: matched.characters.map((c) => c.lookId),
         locationIds: matched.locations.map((l) => l.id),
         elementIds: matched.elements.map((e) => e.id),
       },
@@ -276,18 +280,33 @@ async function loadPlanInput(
 
   // ponytail: one staleness read per existing sheet (the detail-page verdict,
   // verbatim); a batched sheet-hash read if casts grow past a handful.
+  // One sheet per look some scene uses (#2015): a character's default look
+  // always, any other only once a live scene picks it. A look nobody wears
+  // gets a sheet when someone asks for one, not from the plan.
+  const pickedLookIds = new Set(
+    [...sceneContext.values()].flatMap((ctx) =>
+      Object.values(ctx.scene.continuity?.characterLooks ?? {})
+    )
+  );
   const [characterSheets, locationSheets] = await Promise.all([
     Promise.all(
       characters
         .filter((c) => !c.voiceOnly)
+        .flatMap((c) => [
+          c,
+          ...c.looks
+            // A removed look a scene still picks is still worn, so it still
+            // owes its sheet: the shots that wear it wait on this unit.
+            .filter((look) => !look.isDefault && pickedLookIds.has(look.id))
+            .map((look) => wearLook(c, look)),
+        ])
         .map(async (c) => ({
-          id: c.id,
+          id: c.lookId,
           sheet: await sheetVerdict(
             !!c.sheetImageUrl,
             c.sheetStatus === 'generating' ||
               c.pendingPromoteSheetVersionId != null,
-            () =>
-              readReferenceStaleness(scopedDb, sequence.id, 'character', c.id)
+            () => readLookSheetStaleness(scopedDb, sequence.id, c.id, c.lookId)
           ),
         }))
     ),

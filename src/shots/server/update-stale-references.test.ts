@@ -26,11 +26,20 @@ vi.mock('@/models/server/seed-speech-config', () => ({
   newVoiceProvider: () => 'elevenlabs',
 }));
 
-async function references(overrides: Partial<Character> = {}) {
-  // only these character fields are consumed; payload construction is mocked
+async function references(
+  overrides: Partial<Character> = {},
+  units: { kind: 'sheet:character'; id: string }[] = [
+    { kind: 'sheet:character', id: 'maya' },
+  ]
+) {
+  // only these character fields are consumed; payload construction is mocked.
+  // A `sheet:character` unit names a look (#2015); the default look's id is
+  // the character's, and here she wears it.
   const character = asStub<Character>({
     id: 'maya',
     voiceOnly: false,
+    lookId: 'maya',
+    looks: [],
     selectedSheetVersionId: null,
     standardClothing: 'yellow rain jacket',
     distinguishingFeatures: '',
@@ -51,7 +60,7 @@ async function references(overrides: Partial<Character> = {}) {
     scopedDb,
     sequence,
     userId: 'user',
-    units: [{ kind: 'sheet:character', id: 'maya' }],
+    units,
   });
 }
 
@@ -87,6 +96,49 @@ describe('plan reference talent-sheet reuse', () => {
     expect(estimateSheets).toHaveBeenCalledWith(
       expect.objectContaining({ characterSheets: 1 })
     );
+  });
+  it('builds one sheet per look a unit names, deciding reuse per look (#2015)', async () => {
+    buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
+      characterDbId: 'maya',
+      lookId,
+      reuseTalentSheet: false,
+      referenceImageUrl: 'https://example.com/talent.jpg',
+      talentMetadata: { standardClothing: 'yellow rain jacket' },
+      castTalentDescription: 'A matching actor',
+    }));
+    // minimal looks: only what dressing and the reuse check read
+    const look = (id: string, clothing: string, isDefault: boolean) =>
+      asStub<Character['looks'][number]>({
+        id,
+        name: id,
+        isDefault,
+        clothing,
+        styling: null,
+        sheetImageUrl: null,
+        sheetStatus: 'pending',
+        sheetInputHash: null,
+        selectedSheetVersionId: null,
+      });
+    const result = await references(
+      {
+        looks: [
+          look('maya', 'yellow rain jacket', true),
+          look('gala', 'floor-length red silk gown', false),
+          look('unused', 'pyjamas', false),
+        ],
+      },
+      [
+        { kind: 'sheet:character', id: 'maya' },
+        { kind: 'sheet:character', id: 'gala' },
+      ]
+    );
+    // The default look matches the talent's own clothes and copies its sheet;
+    // the gown does not, so it is drawn. The look no unit names is skipped.
+    expect(result?.characterSheets).toEqual([
+      expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
+      expect.objectContaining({ lookId: 'gala', reuseTalentSheet: false }),
+    ]);
+    expect(result?.cost.sheets).toBe(100);
   });
   it('excludes voice-only cast from sheet work and its cost', async () => {
     const result = await references({ voiceOnly: true });

@@ -175,6 +175,7 @@ export async function prepareShotImageWorkflowInput(args: {
         scopedDb,
         sequence,
         scene,
+        prompt,
       })
     : undefined;
   // The edit is the user's act, so it lands NOW, at the click (#1786), and
@@ -203,6 +204,7 @@ export async function prepareShotImageWorkflowInput(args: {
 
   const matchedCharacters = matchCharactersToShotImage(allCharacters, {
     characterTags: continuity?.characterTags,
+    characterLooks: continuity?.characterLooks,
     visualPrompt: prompt,
   });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);

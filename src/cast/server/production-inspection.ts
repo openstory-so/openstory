@@ -3,8 +3,12 @@ import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
 import {
   characterBibleVersions,
+  characterLookVersions,
+  characterLooks,
   characterVoiceVersions,
   characters,
+  sequenceCast,
+  sequenceCastLooks,
   locationBibleVersions,
   sequenceLocations,
   sequenceElements,
@@ -56,20 +60,54 @@ export const characterVoiceVersionReadSchema = characterVoiceSchema
     releasedAt: readDate.nullable(),
     createdAt: readDate,
   });
+/** A look's sheet in the sequence that uses it (#2017). */
+const castLookSheetShape = createSelectSchema(sequenceCastLooks).pick({
+  sheetStatus: true,
+  sheetError: true,
+  selectedSheetVersionId: true,
+}).shape;
+/**
+ * One outfit of a character (#2015). `versionId` is its live definition;
+ * list its sheets with list_versions kind character_sheet and this id.
+ */
+const characterLookReadSchema = createSelectSchema(characterLooks)
+  .pick({ id: true, isDefault: true })
+  .extend(castLookSheetShape)
+  .extend(
+    createSelectSchema(characterLookVersions).pick({
+      name: true,
+      clothing: true,
+      styling: true,
+    }).shape
+  )
+  .extend({
+    versionId: z.string(),
+    sheetImageUrl: z.string().nullable(),
+    // Set on a removed look; a scene that still picks it keeps wearing it.
+    deletedAt: readDate.nullable(),
+  });
 export const characterReadSchema = createSelectSchema(characters)
-  .pick({
-    id: true,
-    sequenceId: true,
-    characterId: true,
-    talentId: true,
-    useVoice: true,
-    firstMentionSceneId: true,
-    firstMentionText: true,
-    firstMentionLine: true,
-    sheetStatus: true,
-    sheetError: true,
-    selectedSheetVersionId: true,
-    selectedVoiceVersionId: true,
+  .pick({ id: true })
+  // How the sequence casts it (#2017): its cast link, and the talent on the
+  // bible version that link pins.
+  .extend({
+    sequenceId: createSelectSchema(sequenceCast).shape.sequenceId,
+    characterId: createSelectSchema(sequenceCast).shape.scriptCharacterId,
+    talentId: createSelectSchema(characterBibleVersions).shape.talentId,
+  })
+  .extend(
+    createSelectSchema(characters).pick({
+      useVoice: true,
+      firstMentionSceneId: true,
+      firstMentionText: true,
+      firstMentionLine: true,
+      selectedVoiceVersionId: true,
+    }).shape
+  )
+  // The sheet and the clothing are the character's default look's (#2015).
+  .extend(castLookSheetShape)
+  .extend({
+    standardClothing: createSelectSchema(characterLookVersions).shape.clothing,
   })
   // The bible lives on its version row (#1600).
   .extend(
@@ -79,7 +117,6 @@ export const characterReadSchema = createSelectSchema(characters)
       gender: true,
       ethnicity: true,
       physicalDescription: true,
-      standardClothing: true,
       distinguishingFeatures: true,
       personality: true,
       movement: true,
@@ -99,6 +136,9 @@ export const characterReadSchema = createSelectSchema(characters)
     effectiveUseVoice: z.boolean(),
     voicePreviews: voicePreviewsSchema,
     selectedSheet: referenceSchema.nullable(),
+    // Every look, the default first. The sheet fields above are the default
+    // look's.
+    looks: z.array(characterLookReadSchema),
   });
 export const locationReadSchema = createSelectSchema(sequenceLocations)
   .pick({
@@ -204,6 +244,10 @@ function inspectCharacter(
       ...row,
       effectiveUseVoice: usesVoice(row, { generateVoices }),
       selectedSheet: sheet,
+      looks: row.looks.map((look) => ({
+        ...look,
+        versionId: look.lookVersionId,
+      })),
     },
     origin
   );

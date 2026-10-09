@@ -31,15 +31,19 @@ import type {
 } from '@/platform/server/workflow/types';
 import { landSheetRun } from './sheet-divergence';
 import type { SheetRunOutcome } from './sheet-divergence';
-import { characterSheetHashMatchesStored } from './sheet-snapshots';
+import {
+  characterSheetHashMatchesStored,
+  assertQueuedWithLooks,
+} from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 
 /**
- * Land the sheet through the claim the trigger took (#1113): select it only
- * while the claim still names it, else park it as divergent and tell the UI.
+ * Land the sheet on its look (#2015) through the claim the trigger took
+ * (#1113): select it only while the claim still names it, else park it as
+ * divergent and tell the UI.
  * A run queued before #1113 carries no claim: it lands only while no newer run
  * holds one, and otherwise parks instead of revoking that run's claim.
  */
@@ -63,6 +67,8 @@ async function landSheet(
     land: () =>
       scopedDb.characterSheetVariants.promoteIfPending({
         characterId: input.characterDbId,
+        lookId: input.lookId,
+        lookVersionId: input.lookVersionId,
         versionId,
         claimed,
         url: stored.url,
@@ -160,6 +166,7 @@ async function persistReusedTalentSheet(params: {
         'generation.character-sheet:progress',
         {
           characterId: characterDbId,
+          lookId: input.lookId,
           status: 'completed',
         }
       );
@@ -168,6 +175,7 @@ async function persistReusedTalentSheet(params: {
       sheetImageUrl: storageResult.url,
       sheetImagePath: storageResult.path,
       characterDbId,
+      lookId: input.lookId,
       diverged: true,
     };
   }
@@ -177,6 +185,7 @@ async function persistReusedTalentSheet(params: {
       'generation.character-sheet:progress',
       {
         characterId: characterDbId,
+        lookId: input.lookId,
         status: 'completed',
         sheetImageUrl: storageResult.url,
       }
@@ -187,6 +196,7 @@ async function persistReusedTalentSheet(params: {
     sheetImageUrl: storageResult.url,
     sheetImagePath: storageResult.path,
     characterDbId,
+    lookId: input.lookId,
     sheetVersionId: reconcileOutcome.versionId,
   };
 }
@@ -199,6 +209,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   ): Promise<CharacterSheetWorkflowResult> {
     const input = event.payload;
     const workflowRunId = event.instanceId;
+    assertQueuedWithLooks(input);
 
     // Validate the snapshot hash inside the workflow body: a tampered
     // payload must halt the run from inside a step, not silently.
@@ -221,6 +232,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: input.lookId,
             status: 'generating',
           }
         );
@@ -264,7 +276,8 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         const { prompt, referenceUrls } = buildCharacterSheetPrompt(
           input.characterMetadata,
           talentOverrides,
-          input.styleConfig
+          input.styleConfig,
+          input.lookStyling
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
@@ -322,6 +335,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: input.lookId,
             status: 'generating',
             phase: 'retrying',
             ...retry,
@@ -409,6 +423,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: characterDbId,
+            lookId: input.lookId,
             status: 'completed',
           }
         );
@@ -420,6 +435,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         sheetImageUrl,
         sheetImagePath,
         characterDbId: input.characterDbId,
+        lookId: input.lookId,
         diverged: true,
       };
     }
@@ -430,6 +446,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: input.lookId,
             status: 'completed',
             sheetImageUrl,
           }
@@ -441,6 +458,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       sheetImageUrl,
       sheetImagePath,
       characterDbId: input.characterDbId,
+      lookId: input.lookId,
       sheetVersionId,
     };
 
@@ -458,11 +476,20 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   }): Promise<void> {
     const input = event.payload;
 
-    // Mark character sheet as failed — through the claim, so a newer run's
+    // Mark the look's sheet as failed — through the claim, so a newer run's
     // claim and `generating` status survive this one's failure (#1113).
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
+    if (!input.lookId) {
+      // Its claim is found by the claim's own id, never by a guessed look.
+      await scopedDb.characterLooks.failSheetClaimByVersion(
+        input.sheetVersionId,
+        error
+      );
+      return;
+    }
     if (input.characterDbId) {
-      await scopedDb.characters.failSheetClaim(
-        input.characterDbId,
+      await scopedDb.characterLooks.failSheetClaim(
+        input.lookId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         input.sheetVersionId ?? null,
         error
@@ -474,6 +501,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           'generation.character-sheet:progress',
           {
             characterId: input.characterDbId,
+            lookId: input.lookId,
             status: 'failed',
             error,
           }

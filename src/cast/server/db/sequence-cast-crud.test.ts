@@ -19,12 +19,16 @@ import { hashVisualPromptInput } from '@/shots/input-hash';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { newSeedVoiceId } from '@/cast/seed-voice';
 import {
   characterBibleVersions,
+  characterLooks,
   characterSheetVariants,
   characterVoiceVersions,
   characters,
   locationBibleVersions,
+  sequenceCast,
+  sequenceCastLooks,
   sequenceElements,
   sequenceEvents,
   sequenceLocations,
@@ -41,14 +45,19 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createCharacterLooksMethods } from './character-looks';
 import { createCharactersMethods } from './characters';
 import { createSequenceElementsMethods } from './sequence-elements';
 import { createSequenceLocationsMethods } from './sequence-locations';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
 
+/** A hard delete of characters that hold no saved voice. */
+const NO_VOICES = { releasedVoiceIds: [] };
+
 let client: Client;
 let db: Database;
 let sequenceId = '';
+let teamId = '';
 let actorId = '';
 
 async function seed() {
@@ -63,7 +72,7 @@ async function seed() {
   await db.delete(teams);
   await db.delete(user);
 
-  const teamId = generateId();
+  teamId = generateId();
   sequenceId = generateId();
   actorId = generateId();
   await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
@@ -129,7 +138,9 @@ const HASH_SCENE = {
  * must move this, and nothing in the write paths may stamp a hash itself.
  */
 async function liveVisualPromptHash(): Promise<string> {
-  const cast = await createCharactersMethods(db).listWithSheets(sequenceId);
+  const cast = await createCharactersMethods(db, teamId).listWithSheets(
+    sequenceId
+  );
   return await hashVisualPromptInput({
     scene: HASH_SCENE,
     styleConfig: STYLE_CONFIG,
@@ -157,7 +168,7 @@ beforeEach(async () => {
 
 describe('characters bible CRUD + soft-remove', () => {
   it('appends and can restore selected voice configurations', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -216,7 +227,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('stamps a take unusable without appending voice history (#1709)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -267,7 +278,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('creates a generating voice husk and points pending-promote at it (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -295,7 +306,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('returns the existing live husk instead of inserting a second (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -313,7 +324,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not touch the live voice while a husk is inserted or completed (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -353,7 +364,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('completes a live husk in place without appending history (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -389,7 +400,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not complete a husk that already failed (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -417,7 +428,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('clears pending-promote when selecting a different completed voice (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -451,7 +462,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('promotes a completed husk only while pending-promote still names it (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -492,7 +503,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not promote when the pointer moved mid-run (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -532,7 +543,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('does not promote a generating husk or a completed empty husk (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -555,7 +566,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('clears pending-promote on a library updateVoice (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -589,7 +600,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses to select a generating voice husk (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -608,7 +619,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses to select a completed husk with no voiceId (#1715)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -628,7 +639,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('refuses a released voice version, across every character holding the id', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const maya = await methods.create(
       {
         sequenceId,
@@ -687,7 +698,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const cast = await methods.create(
       {
         sequenceId,
@@ -719,7 +730,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('a re-cast fills a voice id the selected version lacks, as a library version (#1788)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -749,7 +760,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('counts voice references through the selected version, soft-deleted included (#1788)', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const shared = 'shared-voice';
     const live = await methods.create(
       { sequenceId, characterId: 'ref_live', name: 'A', voiceId: shared },
@@ -783,7 +794,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('update refuses a voice field, and a bible description edit records one', async () => {
-    const methods = createCharactersMethods(db);
+    const methods = createCharactersMethods(db, teamId);
     const created = await methods.create(
       {
         sequenceId,
@@ -818,7 +829,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('updateBible writes the fields and an atomic character.updated event carrying prevState', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -850,7 +861,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('softDelete hides the row from every default list but keeps it by id; restore is lossless', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -904,7 +915,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('derived staleness: a bible edit moves the visual-prompt hash, a consistencyTag edit does NOT (#867)', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -941,7 +952,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('derived staleness: soft-removing a character moves the visual-prompt hash; restore puts it back', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -965,7 +976,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('bible edit and soft-remove move the DERIVED live prompt hash; restore moves it back', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -996,7 +1007,7 @@ describe('characters bible CRUD + soft-remove', () => {
   });
 
   it('a re-analysis upsert on the same characterId revives a soft-deleted character', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -1166,7 +1177,7 @@ describe('bible history (#1600)', () => {
   const analysis = { source: 'analysis', createdBy: null } as const;
 
   it('a create appends the first version and points at it', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
@@ -1179,16 +1190,20 @@ describe('bible history (#1600)', () => {
     const [first] = await characterVersions(created.id);
     expect(first).toMatchObject({
       name: 'Ada',
-      standardClothing: 'coat',
       voiceOnly: false,
       isPerson: true,
       source: 'analysis',
     });
     expect(created.selectedBibleVersionId).toBe(first?.id);
+    // The clothing is its default look's (#2015), not the bible's.
+    expect(created).toMatchObject({
+      standardClothing: 'coat',
+      looks: [{ id: created.id, isDefault: true, clothing: 'coat' }],
+    });
   });
 
   it('a re-analysis appends only when a field moved, keeping what it left out', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
     const input = {
       sequenceId,
       characterId: 'char_001',
@@ -1213,7 +1228,34 @@ describe('bible history (#1600)', () => {
   });
 
   it('an edit appends a version by its author; a no-op edit appends none', async () => {
-    const m = createCharactersMethods(db);
+    const m = createCharactersMethods(db, teamId);
+    const created = await m.create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const edited = await m.updateBible(
+      created.id,
+      { age: '40s' },
+      { actorId, source: 'edit' }
+    );
+    expect(edited.age).toBe('40s');
+    const versions = await characterVersions(created.id);
+    expect(versions).toHaveLength(2);
+    expect(
+      versions.find((v) => v.id === edited.selectedBibleVersionId)
+    ).toMatchObject({ source: 'edit', createdBy: actorId });
+
+    await m.updateBible(
+      created.id,
+      { age: '40s' },
+      { actorId, source: 'edit' }
+    );
+    expect(await characterVersions(created.id)).toHaveLength(2);
+  });
+
+  it('a clothing edit appends a look version, not a bible version (#2015)', async () => {
+    const m = createCharactersMethods(db, teamId);
+    const looks = createCharacterLooksMethods(db, teamId);
     const created = await m.create(
       { sequenceId, characterId: 'char_001', name: 'Ada' },
       analysis
@@ -1224,48 +1266,35 @@ describe('bible history (#1600)', () => {
       { actorId, source: 'edit' }
     );
     expect(edited.standardClothing).toBe('dress');
-    const versions = await characterVersions(created.id);
+    expect(await characterVersions(created.id)).toHaveLength(1);
+    const versions = await looks.listVersions(created.lookId);
     expect(versions).toHaveLength(2);
-    expect(
-      versions.find((v) => v.id === edited.selectedBibleVersionId)
-    ).toMatchObject({ source: 'edit', createdBy: actorId });
+    expect(versions[0]).toMatchObject({
+      clothing: 'dress',
+      source: 'edit',
+      createdBy: actorId,
+    });
 
     await m.updateBible(
       created.id,
       { standardClothing: 'dress' },
       { actorId, source: 'edit' }
     );
-    expect(await characterVersions(created.id)).toHaveLength(2);
-  });
+    expect(await looks.listVersions(created.lookId)).toHaveLength(2);
 
-  it('a row with no version reads its old columns, and its first edit versions it', async () => {
-    const id = generateId();
-    // The shape a worker older than #1600 writes during the deploy window.
-    await db.insert(characters).values({
-      id,
-      sequenceId,
-      characterId: 'char_old',
-      legacyName: 'Old',
-      legacyStandardClothing: 'coat',
-    });
-    const m = createCharactersMethods(db);
-    expect(await m.getById(id)).toMatchObject({
-      name: 'Old',
-      standardClothing: 'coat',
-      selectedBibleVersionId: null,
-    });
-
-    const edited = await m.updateBible(
-      id,
-      { age: '50s' },
-      { actorId, source: 'edit' }
+    // A re-analysis that moves the clothing appends one too.
+    await m.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        standardClothing: 'gown',
+      },
+      analysis
     );
-    expect(edited).toMatchObject({ name: 'Old', standardClothing: 'coat' });
-    const [version] = await characterVersions(id);
-    expect(version).toMatchObject({
-      name: 'Old',
-      age: '50s',
-      standardClothing: 'coat',
+    expect((await looks.listVersions(created.lookId))[0]).toMatchObject({
+      clothing: 'gown',
+      source: 'analysis',
     });
   });
 
@@ -1307,7 +1336,7 @@ describe('bible history (#1600)', () => {
 
 describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
   it('characters, locations and the sequence delete with their versions', async () => {
-    const chars = createCharactersMethods(db);
+    const chars = createCharactersMethods(db, teamId);
     const locs = createSequenceLocationsMethods(db);
     const opts = { source: 'analysis' as const, createdBy: null };
     const [a, b] = await Promise.all(
@@ -1326,7 +1355,7 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     );
     if (!a || !b || !x || !y) throw new Error('test setup: create failed');
 
-    expect(await chars.delete(a.id)).toBe(true);
+    expect(await chars.delete(a.id, NO_VOICES)).toBe(true);
     expect(await locs.delete(x.id)).toBe(true);
 
     const [sequence] = await db
@@ -1342,12 +1371,419 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
       source: 'backfill',
     });
     await createSequencesMethods(db, sequence.teamId, actorId).delete(
-      sequenceId
+      sequenceId,
+      NO_VOICES
     );
 
     expect(await db.select().from(characterBibleVersions)).toEqual([]);
+    expect(await db.select().from(sequenceCast)).toEqual([]);
+    expect(await db.select().from(characters)).toEqual([]);
     expect(await db.select().from(locationBibleVersions)).toEqual([]);
     expect(await db.select().from(sequenceStyleVersions)).toEqual([]);
     expect(await db.select().from(sequences)).toEqual([]);
+  });
+});
+
+describe('team characters (#2017)', () => {
+  const analysis = { source: 'analysis', createdBy: null } as const;
+  const chars = () => createCharactersMethods(db, teamId);
+  const looks = () => createCharacterLooksMethods(db, teamId);
+  const linksOf = async (characterId: string) =>
+    await db
+      .select()
+      .from(sequenceCast)
+      .where(eq(sequenceCast.characterId, characterId));
+  const versionsOf = async (characterId: string) =>
+    await db
+      .select()
+      .from(characterBibleVersions)
+      .where(eq(characterBibleVersions.characterId, characterId));
+  const newTalent = async () => {
+    const [row] = await db
+      .insert(talent)
+      .values({ teamId, name: 'Talent' })
+      .returning();
+    if (!row) throw new Error('test setup: talent insert returned nothing');
+    return row.id;
+  };
+  /** A second sequence of the same team, on the first one's style. */
+  const secondSequence = async () => {
+    const [first] = await db
+      .select()
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId));
+    if (!first) throw new Error('test setup: no sequence');
+    const id = generateId();
+    await db
+      .insert(sequences)
+      .values({ id, teamId, title: 'S2', styleId: first.styleId });
+    return id;
+  };
+  it('a recast is one bible version, by its author, naming the talent', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const talentId = await newTalent();
+    const recast = await chars().updateBible(
+      created.id,
+      { age: '30s' },
+      { actorId, source: 'recast', talentId }
+    );
+
+    const versions = await versionsOf(created.id);
+    expect(versions).toHaveLength(2);
+    expect(
+      versions.find((v) => v.id === recast.selectedBibleVersionId)
+    ).toMatchObject({
+      source: 'recast',
+      createdBy: actorId,
+      talentId,
+      age: '30s',
+    });
+    expect(recast.talentId).toBe(talentId);
+    expect(await linksOf(created.id)).toMatchObject([
+      { bibleVersionId: recast.selectedBibleVersionId },
+    ]);
+
+    // An edit keeps the cast on the version it appends.
+    const edited = await chars().updateBible(
+      created.id,
+      { age: '40s' },
+      { actorId, source: 'edit' }
+    );
+    expect(edited.talentId).toBe(talentId);
+    // The same talent again appends nothing.
+    await chars().updateBible(
+      created.id,
+      {},
+      { actorId, source: 'recast', talentId }
+    );
+    expect(await versionsOf(created.id)).toHaveLength(3);
+  });
+
+  it('deleting a sequence keeps a library character and one another sequence casts', async () => {
+    const [oneOff, inLibrary, shared] = await Promise.all(
+      ['One', 'Lib', 'Shared'].map((name, i) =>
+        chars().create({ sequenceId, characterId: `char_${i}`, name }, analysis)
+      )
+    );
+    if (!oneOff || !inLibrary || !shared) throw new Error('test setup');
+    await db
+      .update(characters)
+      .set({ inLibrary: true })
+      .where(eq(characters.id, inLibrary.id));
+    const other = await secondSequence();
+    await db.insert(sequenceCast).values({
+      sequenceId: other,
+      characterId: shared.id,
+      scriptCharacterId: 'char_x',
+      bibleVersionId: shared.selectedBibleVersionId,
+    });
+    await createSequencesMethods(db, teamId, actorId).delete(
+      sequenceId,
+      NO_VOICES
+    );
+
+    const left = await db.select({ id: characters.id }).from(characters);
+    expect(left.map((row) => row.id).sort()).toEqual(
+      [inLibrary.id, shared.id].sort()
+    );
+    expect(await versionsOf(oneOff.id)).toEqual([]);
+    expect(await versionsOf(inLibrary.id)).toHaveLength(1);
+    // The library character has no link left; the shared one keeps the
+    // other sequence's.
+    expect(await linksOf(inLibrary.id)).toEqual([]);
+    expect(await linksOf(shared.id)).toMatchObject([{ sequenceId: other }]);
+    expect(
+      await db
+        .select()
+        .from(characterLooks)
+        .where(eq(characterLooks.id, oneOff.id))
+    ).toEqual([]);
+  });
+
+  /** A character with a sheet on its default look and two voice versions. */
+  const withSheetAndVoices = async (scriptId: string) => {
+    const created = await chars().create(
+      { sequenceId, characterId: scriptId, name: scriptId },
+      analysis
+    );
+    await db.insert(characterSheetVariants).values({
+      characterId: created.id,
+      lookId: created.lookId,
+      model: 'm',
+      url: '/r2/sheet.png',
+      status: 'completed',
+    });
+    await chars().updateVoice(
+      created.id,
+      { voiceId: 'voice-a' },
+      'library',
+      null
+    );
+    await chars().updateVoice(
+      created.id,
+      { voiceId: 'voice-b' },
+      'library',
+      null
+    );
+    return created;
+  };
+  const rowsOf = async (characterId: string) => ({
+    sheets: (
+      await db
+        .select()
+        .from(characterSheetVariants)
+        .where(eq(characterSheetVariants.characterId, characterId))
+    ).length,
+    voices: (
+      await db
+        .select()
+        .from(characterVoiceVersions)
+        .where(eq(characterVoiceVersions.characterId, characterId))
+    ).length,
+    looks: (
+      await db
+        .select()
+        .from(characterLooks)
+        .where(eq(characterLooks.characterId, characterId))
+    ).length,
+    versions: (await versionsOf(characterId)).length,
+    links: (await linksOf(characterId)).length,
+  });
+  const NOTHING = { sheets: 0, voices: 0, looks: 0, versions: 0, links: 0 };
+
+  it('deleting a character is refused until every voice it alone holds is released, then removes every row of it', async () => {
+    const created = await withSheetAndVoices('char_001');
+    const kept = await withSheetAndVoices('char_002');
+    const before = await rowsOf(created.id);
+    expect(before).toEqual({
+      sheets: 1,
+      voices: 2,
+      looks: 1,
+      versions: 1,
+      links: 1,
+    });
+
+    // Both characters have 'voice-a' in their history and 'voice-b'
+    // selected. The other character's SELECTED voice-b is a live reference,
+    // so only voice-a would be stranded.
+    expect(await chars().getVoiceIdsToRelease(created.id)).toEqual(['voice-a']);
+    await expect(chars().delete(created.id, NO_VOICES)).rejects.toThrow(
+      /would be stranded/
+    );
+    expect(await rowsOf(created.id)).toEqual(before);
+
+    // The caller ran voice-a through releaseVoiceIfUnreferenced and says so.
+    expect(
+      await chars().delete(created.id, { releasedVoiceIds: ['voice-a'] })
+    ).toBe(true);
+    expect(await rowsOf(created.id)).toEqual(NOTHING);
+    expect(
+      await db.select().from(characters).where(eq(characters.id, created.id))
+    ).toEqual([]);
+    // Nothing of another character went with it.
+    expect(await rowsOf(kept.id)).toEqual(before);
+  });
+
+  it('an unselected voice version that still holds a slot stops the delete', async () => {
+    const created = await withSheetAndVoices('char_001');
+    // What releaseCharacterVoice writes: the live pointer is dropped.
+    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
+    // Neither id is selected any more, and neither is released.
+    expect((await chars().getVoiceIdsToRelease(created.id)).sort()).toEqual([
+      'voice-a',
+      'voice-b',
+    ]);
+    await expect(chars().delete(created.id, NO_VOICES)).rejects.toThrow(
+      /2 saved voice\(s\) would be stranded/
+    );
+
+    // A released id is no longer owed.
+    await chars().markVoiceReleased('voice-a');
+    expect(await chars().getVoiceIdsToRelease(created.id)).toEqual(['voice-b']);
+    await expect(
+      chars().delete(created.id, { releasedVoiceIds: ['voice-a'] })
+    ).rejects.toThrow(/1 saved voice\(s\) would be stranded/);
+    expect(
+      await chars().delete(created.id, { releasedVoiceIds: ['voice-b'] })
+    ).toBe(true);
+  });
+
+  it('a Seed voice and a voice a talent still holds do not stop the delete', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    // A Seed voice holds no provider slot.
+    await chars().updateVoice(
+      created.id,
+      { voiceId: newSeedVoiceId() },
+      'generated',
+      null
+    );
+    // A voice copied from a talent: the talent still points at it.
+    await db.insert(talent).values({ teamId, name: 'T', voiceId: 'voice-t' });
+    await chars().updateVoice(
+      created.id,
+      { voiceId: 'voice-t' },
+      'library',
+      null
+    );
+
+    expect(await chars().getVoiceIdsToRelease(created.id)).toEqual([]);
+    expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
+    expect(await rowsOf(created.id)).toEqual(NOTHING);
+  });
+
+  it("deleting a sequence is refused until its characters' voices are released, then removes sheets and voices too", async () => {
+    const created = await withSheetAndVoices('char_001');
+    const sequencesDb = createSequencesMethods(db, teamId, actorId);
+    const owed = await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId);
+    expect(owed.sort()).toEqual(['voice-a', 'voice-b']);
+    await expect(sequencesDb.delete(sequenceId, NO_VOICES)).rejects.toThrow(
+      /would be stranded/
+    );
+    expect(await db.select().from(sequences)).toHaveLength(1);
+    expect((await rowsOf(created.id)).links).toBe(1);
+
+    await sequencesDb.delete(sequenceId, { releasedVoiceIds: owed });
+    expect(await db.select().from(sequences)).toEqual([]);
+    expect(await db.select().from(characters)).toEqual([]);
+    expect(await rowsOf(created.id)).toEqual(NOTHING);
+    expect(await db.select().from(characterSheetVariants)).toEqual([]);
+    expect(await db.select().from(characterVoiceVersions)).toEqual([]);
+  });
+
+  it('a library character and one another sequence casts keep their voices when a sequence is deleted', async () => {
+    const inLibrary = await withSheetAndVoices('char_001');
+    const shared = await withSheetAndVoices('char_002');
+    await db
+      .update(characters)
+      .set({ inLibrary: true })
+      .where(eq(characters.id, inLibrary.id));
+    const other = await secondSequence();
+    await db.insert(sequenceCast).values({
+      sequenceId: other,
+      characterId: shared.id,
+      scriptCharacterId: 'char_x',
+      bibleVersionId: shared.selectedBibleVersionId,
+    });
+    const sequencesDb = createSequencesMethods(db, teamId, actorId);
+    // Neither is deleted, so no voice is in the way.
+    expect(await sequencesDb.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual(
+      []
+    );
+    await sequencesDb.delete(sequenceId, NO_VOICES);
+
+    const kept = { sheets: 1, voices: 2, looks: 1, versions: 1 };
+    expect(await rowsOf(inLibrary.id)).toEqual({ ...kept, links: 0 });
+    expect(await rowsOf(shared.id)).toEqual({ ...kept, links: 1 });
+    const [voiced] = await db
+      .select({ selected: characters.selectedVoiceVersionId })
+      .from(characters)
+      .where(eq(characters.id, shared.id));
+    expect(voiced?.selected).not.toBeNull();
+  });
+
+  it('another team cannot delete a sequence or what it casts', async () => {
+    const created = await withSheetAndVoices('char_001');
+    const before = await rowsOf(created.id);
+    const otherTeam = generateId();
+    await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
+    const theirs = createSequencesMethods(db, otherTeam, actorId);
+
+    expect(await theirs.getVoiceIdsToReleaseOnDelete(sequenceId)).toEqual([]);
+    await theirs.delete(sequenceId, NO_VOICES);
+    expect(await db.select().from(sequences)).toHaveLength(1);
+    expect(await rowsOf(created.id)).toEqual(before);
+    expect(await chars().getById(created.id)).toMatchObject({
+      name: 'char_001',
+    });
+  });
+
+  it('an id-only read refuses a character that is in two sequences', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const other = await secondSequence();
+    const [link] = await db
+      .insert(sequenceCast)
+      .values({
+        sequenceId: other,
+        characterId: created.id,
+        scriptCharacterId: 'char_001',
+        bibleVersionId: created.selectedBibleVersionId,
+      })
+      .returning();
+    if (!link) throw new Error('test setup: link insert returned nothing');
+    await db.insert(sequenceCastLooks).values({
+      castId: link.id,
+      lookId: created.lookId,
+      lookVersionId: created.looks[0]?.lookVersionId ?? '',
+      sheetStatus: 'pending',
+    });
+
+    const refused = /is cast in more than one sequence/;
+    await expect(chars().getById(created.id)).rejects.toThrow(refused);
+    await expect(chars().getByIds([created.id])).rejects.toThrow(refused);
+    await expect(
+      chars().updateBible(
+        created.id,
+        { age: '30s' },
+        { actorId, source: 'edit' }
+      )
+    ).rejects.toThrow(refused);
+    await expect(chars().softDelete(created.id, { actorId })).rejects.toThrow(
+      refused
+    );
+    await expect(looks().getById(created.lookId)).rejects.toThrow(refused);
+    await expect(looks().listByCharacter(created.id)).rejects.toThrow(refused);
+    await expect(
+      looks().update(
+        created.lookId,
+        { clothing: 'coat' },
+        { source: 'edit', actorId }
+      )
+    ).rejects.toThrow(refused);
+    // Looks are read by character id, so even a read that names the sequence
+    // refuses until they take the sequence too.
+    await expect(chars().list(sequenceId)).rejects.toThrow(refused);
+    // Nothing was written.
+    expect(await versionsOf(created.id)).toHaveLength(1);
+  });
+
+  it('another team cannot read, edit or delete a character or its looks', async () => {
+    const created = await chars().create(
+      { sequenceId, characterId: 'char_001', name: 'Ada' },
+      analysis
+    );
+    const otherTeam = generateId();
+    await db.insert(teams).values({ id: otherTeam, name: 'O', slug: 'o' });
+    const theirs = createCharactersMethods(db, otherTeam);
+    const theirLooks = createCharacterLooksMethods(db, otherTeam);
+
+    expect(await theirs.getById(created.id)).toBeNull();
+    expect(await theirs.list(sequenceId)).toEqual([]);
+    expect(await theirLooks.getById(created.lookId)).toBeNull();
+    expect(await theirLooks.listVersions(created.lookId)).toEqual([]);
+    await expect(
+      theirLooks.update(
+        created.lookId,
+        { clothing: 'coat' },
+        { source: 'edit', actorId }
+      )
+    ).rejects.toThrow(/not found/);
+
+    expect(await theirs.delete(created.id, NO_VOICES)).toBe(false);
+    expect(await linksOf(created.id)).toHaveLength(1);
+    expect(await versionsOf(created.id)).toHaveLength(1);
+    expect(await looks().listByCharacter(created.id)).toHaveLength(1);
+    expect(await chars().getById(created.id)).toMatchObject({ name: 'Ada' });
+
+    expect(await chars().delete(created.id, NO_VOICES)).toBe(true);
+    expect(await linksOf(created.id)).toEqual([]);
   });
 });

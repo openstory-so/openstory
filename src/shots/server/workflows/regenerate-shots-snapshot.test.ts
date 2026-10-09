@@ -65,7 +65,16 @@ function makeCharacter(
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
     selectedSheetVersionId: null,
-    selectedBibleVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
+    // Cast in its sequence (#2017).
+    castId: 'cast-1',
+    teamId: 'team-1',
+    inLibrary: false,
+    selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     talentId: null,
     firstMentionLine: null,
@@ -220,7 +229,6 @@ describe('buildRegenerateShotSnapshot', () => {
         makeCharacter({
           sheetInputHash: 'jack-hash-v1',
           selectedSheetVersionId: 'version-ulid-2',
-          selectedBibleVersionId: null,
           pendingPromoteSheetVersionId: null,
         }),
       ],

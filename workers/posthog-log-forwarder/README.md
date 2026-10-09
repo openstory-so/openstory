@@ -43,21 +43,24 @@ Project API Key.
 
 ### 3. Re-deploy the main Worker
 
-The main `wrangler.jsonc` references the forwarder via
-`streaming_tail_consumers`. CI patches previews to reference the `stg`
-forwarder. Both must be deployed before the main Worker can reference them.
-Deploy the forwarder first when its handlers change: it still answers the
-legacy `tail()` feed so logs keep flowing until the main Worker redeploys.
+The main `wrangler.jsonc` references the forwarder via `tail_consumers`. CI
+patches previews to reference the `stg` forwarder. Both must be deployed
+before the main Worker can reference them.
+
+Nothing deploys the forwarder automatically. A handler change merged without
+the two commands in step 1 does not go live.
+
+Do not switch to `streaming_tail_consumers`: from 2026-10-02 to 10-05
+Cloudflare never called the forwarder that way, from prod or any preview, even
+after both sides were redeployed, and prod logs were lost (#1974). The
+`tailStream()` handler (which would stamp each record with Cloudflare's trace
+id so PostHog links logs to traces) stays in the code, unused.
 
 ## How it works
 
-A streaming tail consumer opens one handler per invocation of the source
-Worker (`tailStream`) and gets each `console.log` line and thrown exception as
-its own event. Every event carries Cloudflare's trace context, so each record
-is stamped with the same `traceId` / `spanId` as the trace Cloudflare exports
-to PostHog, and PostHog links a log to its trace. Records are sent when the
-invocation's outcome arrives (or every 100 lines for long invocations), with
-`cf.outcome` added.
+A tail consumer gets a batch of finished invocations of the source Worker,
+each with its `console.log` lines, thrown exceptions and `outcome`
+(`cf.outcome`).
 
 For each log line:
 
@@ -73,7 +76,7 @@ For each log line:
 Exceptions become ERROR-level records with `exception.name` /
 `exception.message` / `exception.stacktrace` attributes.
 
-The streaming feed sends request URLs unredacted, so `http.url` goes through
+The forwarder reads the unredacted request URL, so `http.url` goes through
 `src/log-url.ts`, which applies Cloudflare's own tail redaction rule (long
 hex or mixed-case ids become `REDACTED`) everywhere except a `/_serverFn/`
 path, where the id names the server function.

@@ -9,8 +9,10 @@
  * `motion/reference-provenance.ts`, the speech key in
  * `shots/shot-dialogue.ts`, the track compare in
  * `audio/music-track-staleness.ts` and the Update-all plan in
- * `shots/server/update-stale-plan.ts`. When one of those changes, this graph
- * is the doc that has to move with it.
+ * `shots/server/update-stale-plan.ts`. When one of those changes, update this
+ * graph in the same PR. The written map is
+ * `docs/architecture/prompt-staleness-dependency-graph.md`; it shows the same
+ * graph and moves with this file.
  */
 
 export const GRAPH_MODES = ['start-frame', 'reference-only'] as const;
@@ -108,7 +110,8 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'INT./EXT. heading',
       'Time of day',
       'Story beat',
-      'Continuity tags: they pick which characters, locations and elements the prompts read',
+      "Continuity tags. They pick a prompt's bibles only while that prompt is unwritten; once it exists, its own text does (#2012)",
+      'The look each character wears in the scene (#2015). A character with no pick wears its default',
     ],
     ignored: [
       'Scene title',
@@ -124,11 +127,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, so a stale shot names the field that moved. A voice-only character (a narrator) has a row but never a sheet.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, so a stale shot names the field that moved. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description',
-      'Standard clothing',
       'Distinguishing features',
       'Personality and movement (motion prompt only)',
       'Consistency tag (sheet only)',
@@ -138,6 +140,20 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'First mention',
       'The talent id itself (its look is copied into the fields above, and those count)',
       'Voice description',
+    ],
+  },
+  {
+    id: 'look',
+    versionedIn: 'character_look_versions',
+    label: 'Look',
+    kind: 'input',
+    band: 'bibles',
+    summary:
+      'An outfit on one character: a name, the clothing, and the hair, makeup or injury notes that change with it (#2015). Every character has a default look, and each scene picks one look per character. Every edit is a version, so a stale shot names the look and what moved: Character "Mia" (Gala gown): clothing. Each look has its own sheet.',
+    counts: ['Clothing', 'Styling (hair, makeup, injuries), once it is set'],
+    ignored: [
+      'Name',
+      'A look no scene wears: it reaches no shot, and gets a sheet only when asked for one',
     ],
   },
   {
@@ -197,7 +213,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Token and description (prompts). The token reaches the model, so a rename re-stales every prompt, still and clip that names it',
       'Image (still)',
       'Audio or video clip: sent as a reference when the video model takes one',
-      'Its media URL, stamped on every clip it was sent to (referenceKeys)',
+      'Its media URL, stamped on a clip it was sent to (referenceKeys). A later compare skips the key when the motion prompt no longer names the element',
     ],
     ignored: ['Consistency tag'],
   },
@@ -409,9 +425,10 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for a character in this sequence. When cast, it is usually the talent sheet reused; a costumed one is generated only when the role's clothing or features diverge from the talent. A run holds a claim: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
+      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. When cast, it is usually the talent sheet reused; a costumed one is generated only when that look's clothing or the role's features diverge from the talent. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
-      'Character bible (age, gender, ethnicity, description, clothing, features, consistency tag)',
+      'Character bible (age, gender, ethnicity, description, features, consistency tag)',
+      "The look's clothing, and its styling once set",
       'Talent sheet hash, when cast',
       "The talent's description and default sheet image and look, when cast",
       'Style config',
@@ -423,7 +440,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Voice-only characters never get one',
     ],
     storedAs:
-      'character_sheet_variants.inputHash of the selected version, plus the bible version it read',
+      "character_sheet_variants.inputHash of the look's selected version, plus the bible version and look version it read",
   },
   {
     id: 'voice',
@@ -540,7 +557,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Scene extract, heading, time of day, story beat',
       'Style config',
-      'Character, location and element bibles, narrowed to this scene — as cast, so a talent match moves nothing afterwards',
+      "Character, location and element bibles this prompt's own text names, or the scene continuity tags while it is unwritten (#2012). Stamped from the text being written. As cast, so a talent match moves nothing afterwards",
       "The shot's framing and start state, on a multi-shot scene",
       'Aspect ratio',
       'Script model it was written with',
@@ -610,7 +627,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Selected visual prompt text',
       'Image model',
       'Aspect ratio',
-      'Selected character sheet versions',
+      'Selected character sheet versions, each of the look the scene picks for that character (#2015). A visual prompt that names nobody still falls back to the scene continuity tags, so an off-camera sheet can stale the still',
       'Selected location sheet versions',
       'Element image URLs',
       'For a tile picked from the 3×3 grid: the same list, as it stood when the grid was made',
@@ -631,7 +648,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Bound dialogue-audio identity (audioSourceKey: voice id + line + tone + TTS model)',
       'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio',
       'Which dialogue sections its audio was cut from (audioClipIds, against the clip ids the shot holds now)',
-      'Every reference it was sent, as the sheet version or media URL that was current then (referenceKeys)',
+      'References the motion prompt names, as the sheet version or media URL that was current then (referenceKeys). A stamped key for someone who still exists but the prompt no longer names is not compared; a deleted one is stale',
       'The length it was rendered at, snapped onto the model grid on both sides',
     ],
     ignored: [
@@ -675,9 +692,30 @@ export const GRAPH_NODES: readonly GraphNode[] = [
 const bibleToPrompt: GraphEdge[] = ['visualPrompt', 'motionPrompt'].flatMap(
   (to) => [
     { from: 'script', to, tracking: 'hash' as const },
-    { from: 'character', to, tracking: 'hash' as const },
-    { from: 'location', to, tracking: 'hash' as const },
-    { from: 'element', to, tracking: 'hash' as const },
+    {
+      from: 'character',
+      to,
+      tracking: 'hash' as const,
+      note: 'only a character this prompt names. An unwritten prompt reads the scene continuity tags (#2012)',
+    },
+    {
+      from: 'look',
+      to,
+      tracking: 'hash' as const,
+      note: 'the clothing of the look this scene picks for a character the prompt names. Another look of the same character moves nothing (#2015)',
+    },
+    {
+      from: 'location',
+      to,
+      tracking: 'hash' as const,
+      note: 'only a location this prompt names, else the scene slugline. An unwritten prompt also reads the scene extract (#2012)',
+    },
+    {
+      from: 'element',
+      to,
+      tracking: 'hash' as const,
+      note: 'an element this prompt names. A motion prompt with a start frame adds the scene-tagged elements too (#2012)',
+    },
     { from: 'style', to, tracking: 'hash' as const },
     { from: 'aspectRatio', to, tracking: 'hash' as const },
     {
@@ -743,6 +781,18 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
   { from: 'talent', to: 'talentSheet', tracking: 'hash' },
   { from: 'imageModel', to: 'talentSheet', tracking: 'hash' },
   { from: 'character', to: 'characterSheet', tracking: 'hash' },
+  {
+    from: 'look',
+    to: 'characterSheet',
+    tracking: 'hash',
+    note: "the look's clothing, and its styling once set. Each look has its own sheet, so an edit reaches only that one (#2015)",
+  },
+  {
+    from: 'script',
+    to: 'look',
+    tracking: 'seeded',
+    note: 'the bibles call writes the outfit a character first appears in as its default look',
+  },
   {
     from: 'talentSheet',
     to: 'characterSheet',
@@ -874,7 +924,13 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'characterSheet',
     to: 'still',
     tracking: 'pointer',
-    note: 'the selected sheet version id',
+    note: "the selected sheet version id, of the look the still's scene picks for the character (#2015)",
+  },
+  {
+    from: 'script',
+    to: 'still',
+    tracking: 'pointer',
+    note: 'the scene picks the look each character wears; switching it attaches a different sheet, on that scene only (#2015)',
   },
   {
     from: 'locationSheet',
@@ -900,14 +956,14 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'characterSheet',
     to: 'clip',
     tracking: 'pointer',
-    note: 'the sheets ride as video references in both modes; the manifest stamps the selected version id it was sent (referenceKeys)',
+    note: 'the sheets ride as video references in both modes, only for characters the motion prompt names (#2012); the manifest stamps the version sent',
   },
   {
     from: 'locationSheet',
     to: 'clip',
     tracking: 'pointer',
     mode: 'reference-only',
-    note: 'only reference-only sends the location sheet to the video model; the manifest stamps the version it was sent',
+    note: 'only reference-only sends the location sheet, and only the room the motion prompt names. The manifest stamps the version it was sent (#2012)',
   },
   {
     from: 'startFrameMode',
@@ -943,7 +999,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'element',
     to: 'clip',
     tracking: 'hash',
-    note: 'its media URL is stamped in referenceKeys, so a re-uploaded image, audio or video clip flags the render',
+    note: 'its media URL is stamped in referenceKeys when the motion prompt names it. A re-upload then flags the render; a key for an element the prompt no longer names is not compared (#2012)',
   },
   {
     from: 'resolution',

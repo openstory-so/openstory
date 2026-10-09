@@ -10,6 +10,7 @@ import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
 import { buildRegenerateLocationSheetPayload } from '@/cast/server/sheets/location-sheet-trigger';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { wearLook } from '@/cast/character-looks';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
 import { newVoiceProvider } from '@/models/server/seed-speech-config';
@@ -84,25 +85,37 @@ export async function buildPlanReferences(args: {
     sequence,
   };
 
+  // A `sheet:character` unit names a LOOK (#2015): one sheet per look some
+  // scene uses. A character an older worker wrote has no look row yet; its
+  // default look answers to the character's own id (`lookId`).
   const characterSheets = await Promise.all(
     characters
-      .filter((c) => sheetIds.has(c.id) && !c.voiceOnly)
-      .map(async (character) => {
-        const payload = await buildRegenerateCharacterSheetPayload({
-          ...context,
-          character,
-        });
-        // A first sheet can copy the matched talent. An existing sheet's
-        // regeneration must apply the edited bible instead.
-        if (!character.selectedSheetVersionId) {
-          payload.reuseTalentSheet = reusesTalentSheet(character, {
-            sheetImageUrl: payload.referenceImageUrl,
-            sheetMetadata: payload.talentMetadata,
-            talentDescription: payload.castTalentDescription,
-          });
-        }
-        return payload;
-      })
+      .filter((c) => !c.voiceOnly)
+      .flatMap((character) =>
+        (character.looks.length > 0
+          ? character.looks.map((look) => wearLook(character, look))
+          : [character]
+        )
+          .filter((dressed) => sheetIds.has(dressed.lookId))
+          .map(async (dressed) => {
+            const payload = await buildRegenerateCharacterSheetPayload({
+              ...context,
+              character,
+              lookId: dressed.lookId,
+            });
+            // A first sheet can copy the matched talent — decided per look,
+            // against the talent's default sheet. An existing sheet's
+            // regeneration must apply the edited look instead.
+            if (!dressed.selectedSheetVersionId) {
+              payload.reuseTalentSheet = reusesTalentSheet(dressed, {
+                sheetImageUrl: payload.referenceImageUrl,
+                sheetMetadata: payload.talentMetadata,
+                talentDescription: payload.castTalentDescription,
+              });
+            }
+            return payload;
+          })
+      )
   );
   const locationSheets = await Promise.all(
     locations

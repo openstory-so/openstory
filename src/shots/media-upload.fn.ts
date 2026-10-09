@@ -199,12 +199,20 @@ export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
 const setCharacterSheetInput = z.object({
   sequenceId: ulidSchema,
   characterId: ulidSchema,
+  // The look the sheet is of (#2015); the default look when omitted.
+  lookId: ulidSchema.optional(),
   publicUrl: mediaUrlSchema,
 });
 export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(setCharacterSheetInput))
-  .handler(({ context, data }) => setCharacterSheetFromUpload(context, data));
+  .handler(({ context, data }) =>
+    setCharacterSheetFromUpload(context, {
+      ...data,
+      // No look named: the default look, whose id is the character's.
+      lookId: data.lookId ?? data.characterId,
+    })
+  );
 
 const locationSheetPresignInput = z.object({
   sequenceId: ulidSchema,

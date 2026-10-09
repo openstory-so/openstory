@@ -46,6 +46,8 @@ import { frameVariants } from './frame-variants';
 import { framePromptVersions } from './frame-prompt-versions';
 import { sequenceEvents } from './sequence-events';
 
+import { characterLooks, characterLookVersions } from './character-looks';
+import { sequenceCast, sequenceCastLooks } from './sequence-cast';
 import { characterSheetVariants } from './character-sheet-variants';
 
 import { locationSheetVariants } from './location-sheet-variants';
@@ -337,6 +339,22 @@ export { characters, characterVoiceVersions };
 // Bible history (#1600)
 export { characterBibleVersions, locationBibleVersions };
 
+// Character looks (#2015)
+export { characterLooks, characterLookVersions };
+export { DEFAULT_LOOK_NAME, LOOK_FIELDS } from './character-looks';
+export type {
+  CharacterLook,
+  CharacterLookMinimal,
+  CharacterLookRow,
+  CharacterLookVersion,
+  LookDefinition,
+  LookVersionSource,
+} from './character-looks';
+
+// Sequence cast (#2017)
+export { sequenceCast, sequenceCastLooks };
+export type { SequenceCastLookRow, SequenceCastRow } from './sequence-cast';
+
 export {
   CHARACTER_BIBLE_FIELDS,
   LOCATION_BIBLE_FIELDS,
@@ -361,6 +379,9 @@ export type {
   CharacterRow,
   CharacterVoice,
   LegacyCharacterBibleColumn,
+  LegacyCharacterSheetColumn,
+  CharacterCast,
+  CharacterWornLook,
   CharacterMinimal,
   CharacterWithTalent,
   VoicePreview,
@@ -558,6 +579,10 @@ export const schema = {
   characterVoiceVersions,
   characterBibleVersions,
   locationBibleVersions,
+  characterLooks,
+  characterLookVersions,
+  sequenceCast,
+  sequenceCastLooks,
 
   // Location Library (team-level templates)
   locationLibrary,

@@ -11,14 +11,13 @@ import { DEFAULT_RESOLUTION, type Resolution } from '@/models/resolutions';
 import type { Database } from '@/platform/server/db/client';
 import { shotHierarchicalOrder } from '@/shots/server/db/shot-view-query';
 import {
-  characterBibleVersions,
-  characters,
   framePromptVersions,
   frames,
   frameVariants,
   locationBibleVersions,
   renderSegments,
   scenes,
+  sequenceCast,
   sequenceLocations,
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
@@ -63,6 +62,15 @@ import {
 } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
 import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
+import {
+  assertVoicesReleased,
+  deleteCharactersStatements,
+  voiceIdsHeldOnlyBy,
+} from '@/cast/server/db/characters';
+import {
+  charactersOnlyIn,
+  deleteCastStatements,
+} from '@/cast/server/db/sequence-cast';
 
 /**
  * {@link ShotReadiness} plus the scalars a production status derives from: which
@@ -88,11 +96,13 @@ import {
   asc,
   desc,
   eq,
+  exists,
   getTableColumns,
   inArray,
   isNull,
   lt,
   not,
+  notExists,
   or,
   sql,
 } from 'drizzle-orm';
@@ -591,6 +601,34 @@ export function createSequencesMethods(
   teamId: string,
   userId: string
 ) {
+  /**
+   * True while writing this style and recipe would change the sequence's
+   * live snapshot (#1863): a different style id, a different recipe, or no
+   * snapshot yet. For `demoteSequenceSheetClaims`, evaluated inside each
+   * demote before the pointer moves.
+   */
+  const styleMovesTo = (
+    sequenceId: string,
+    styleId: string,
+    styleConfig: StoredStyleConfig
+  ) =>
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(sequences)
+        .innerJoin(
+          sequenceStyleVersions,
+          eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
+        )
+        .where(
+          and(
+            eq(sequences.id, sequenceId),
+            eq(sequences.styleId, styleId),
+            eq(sequenceStyleVersions.config, styleConfig)
+          )
+        )
+    );
+
   return {
     ...createSequencesReadMethods(db, teamId),
 
@@ -793,8 +831,12 @@ export function createSequencesMethods(
         }
         // A style switch is a new snapshot (#1600): its version row, the
         // pointer, and — since the style feeds every sheet in the sequence —
-        // the revoked sheet claims (#1113), in one batch.
+        // the revoked sheet claims (#1113), in one batch. The claims go only
+        // when the style moved (#1863): a save that re-sends the same style
+        // with the same recipe leaves runs in flight alone. The demotes run
+        // before the pointer moves, so they compare against the live snapshot.
         const styleVersionId = generateId();
+        const styleMoved = styleMovesTo(id, params.styleId, styleConfig);
         await db.batch([
           insertStyleVersion(db, {
             id: styleVersionId,
@@ -804,11 +846,11 @@ export function createSequencesMethods(
             source: 'switched',
             createdBy: userId,
           }),
+          ...demoteSequenceSheetClaims(db, id, styleMoved),
           db
             .update(sequences)
             .set({ ...values, selectedStyleVersionId: styleVersionId })
             .where(scoped),
-          ...demoteSequenceSheetClaims(db, id),
         ]);
       } else {
         const [updated] = await db
@@ -867,8 +909,20 @@ export function createSequencesMethods(
       // The derived recipe is a snapshot like any other (#1600). The pointer
       // moves only while the sequence still points at this style; a pick that
       // lands between the read and the batch leaves the row as history.
+      //
+      // It revokes sheet claims like a style switch (#1863). A sheet run can
+      // be in flight here: a character or location added by hand before the
+      // first analysis can have its sheet generated against the placeholder
+      // recipe while this run derives the real one. The demotes run before
+      // the pointer moves, and only while it is going to move.
       const styleVersionId = generateId();
-      const [, rows] = await db.batch([
+      const lands = sql`${exists(
+        db
+          .select({ one: sql`1` })
+          .from(sequences)
+          .where(still)
+      )} and ${styleMovesTo(params.id, params.styleId, styleConfig)}`;
+      const [, , , rows] = await db.batch([
         insertStyleVersion(db, {
           id: styleVersionId,
           sequenceId: params.id,
@@ -877,6 +931,7 @@ export function createSequencesMethods(
           source: 'derived',
           createdBy: null,
         }),
+        ...demoteSequenceSheetClaims(db, params.id, lands),
         db
           .update(sequences)
           .set({
@@ -889,24 +944,49 @@ export function createSequencesMethods(
       return rows.length > 0;
     },
 
-    delete: async (sequenceId: string): Promise<void> => {
-      // The #1600 version tables RESTRICT their parents' delete (the #612
-      // rebuild trap), so they go first, in the same batch as the cascade.
+    /**
+     * The saved voices a hard delete of this sequence would strand: release
+     * each, then pass them to `delete`. `get` prefix on purpose: it is a
+     * read, so the workflow surface strips it.
+     */
+    getVoiceIdsToReleaseOnDelete: async (
+      sequenceId: string
+    ): Promise<string[]> =>
+      await voiceIdsHeldOnlyBy(
+        db,
+        await charactersOnlyIn(db, teamId, sequenceId)
+      ),
+
+    /**
+     * Hard-delete one of the team's sequences. Every statement names the
+     * team's sequence, so another team's id deletes nothing. Refused while a
+     * saved voice would be stranded: `releasedVoiceIds` are the ids from
+     * `getVoiceIdsToReleaseOnDelete` the caller has run through
+     * `releaseVoiceIfUnreferenced`.
+     */
+    delete: async (
+      sequenceId: string,
+      opts: { releasedVoiceIds: readonly string[] }
+    ): Promise<void> => {
+      const mine = db
+        .select({ id: sequences.id })
+        .from(sequences)
+        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+      // A character belongs to the team (#2017): the sequence's cast links
+      // go, and with them only the characters nothing else holds. Nothing
+      // cascades from the sequence to a character, or from a character to
+      // its rows, so all of it is deleted here, children first, in one batch.
+      const [own] = await mine;
+      const theirs = own
+        ? await charactersOnlyIn(db, teamId, sequenceId)
+        : sql`0`;
+      await assertVoicesReleased(db, theirs, opts.releasedVoiceIds);
       await db.batch([
         db
           .delete(sequenceStyleVersions)
-          .where(eq(sequenceStyleVersions.sequenceId, sequenceId)),
-        db
-          .delete(characterBibleVersions)
-          .where(
-            inArray(
-              characterBibleVersions.characterId,
-              db
-                .select({ id: characters.id })
-                .from(characters)
-                .where(eq(characters.sequenceId, sequenceId))
-            )
-          ),
+          .where(inArray(sequenceStyleVersions.sequenceId, mine)),
+        ...deleteCastStatements(db, inArray(sequenceCast.sequenceId, mine)),
+        ...deleteCharactersStatements(db, theirs),
         db
           .delete(locationBibleVersions)
           .where(
@@ -915,10 +995,10 @@ export function createSequencesMethods(
               db
                 .select({ id: sequenceLocations.id })
                 .from(sequenceLocations)
-                .where(eq(sequenceLocations.sequenceId, sequenceId))
+                .where(inArray(sequenceLocations.sequenceId, mine))
             )
           ),
-        db.delete(sequences).where(eq(sequences.id, sequenceId)),
+        db.delete(sequences).where(inArray(sequences.id, mine)),
       ]);
       // An automatic style has no FK to its sequence (#1213); drop it here.
       await db

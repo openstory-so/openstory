@@ -2455,7 +2455,11 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
       </TabsContent>
 
       <TabsContent value="cast">
-        <SceneCastTab sequenceId={sequenceId} shotIds={facetShotIds} />
+        <SceneCastTab
+          sequenceId={sequenceId}
+          shotIds={facetShotIds}
+          scene={sceneScope ? scene : undefined}
+        />
       </TabsContent>
 
       <TabsContent value="location">

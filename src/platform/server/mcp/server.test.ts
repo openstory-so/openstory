@@ -138,6 +138,8 @@ describe('tools/list and whoami', () => {
       'openstory.get_scene',
       'openstory.list_shots',
       'openstory.get_shot',
+      'openstory.get_shot_frames',
+      'openstory.get_sequence_contact_sheet',
       'openstory.list_characters',
       'openstory.get_character',
       'openstory.list_locations',
@@ -195,6 +197,7 @@ describe('tools/list and whoami', () => {
       'openstory.reorder_shots',
       'openstory.delete_shot',
       'openstory.restore_shot',
+      'openstory.apply_sequence_edits',
       'openstory.get_shot_spec',
       'openstory.list_shot_dialogue',
       'openstory.update_shot_prompt',
@@ -218,6 +221,12 @@ describe('tools/list and whoami', () => {
       'openstory.select_character_sheet_version',
       'openstory.discard_character_sheet_version',
       'openstory.undiscard_character_sheet_version',
+      'openstory.list_character_look_versions',
+      'openstory.create_character_look',
+      'openstory.update_character_look',
+      'openstory.remove_character_look',
+      'openstory.restore_character_look',
+      'openstory.select_character_look_version',
       'openstory.create_location',
       'openstory.update_location',
       'openstory.delete_location',
@@ -280,6 +289,14 @@ describe('tools/list and whoami', () => {
       'openstory.start_export',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
+    const batch = tools.find(
+      (tool) => tool.name === 'openstory.apply_sequence_edits'
+    );
+    const batchSchema = JSON.stringify(batch?.inputSchema);
+    expect(batch?.description).toContain('update_shot_prompt');
+    expect(batch?.description).toContain('update_music_prompt');
+    expect(batchSchema).toContain('expectedScriptVersionId');
+    expect(batchSchema).not.toContain('generate_shot_video');
     const writes = new Set([
       'openstory.update_scene',
       'openstory.create_sequence',
@@ -296,6 +313,7 @@ describe('tools/list and whoami', () => {
       'openstory.reorder_shots',
       'openstory.delete_shot',
       'openstory.restore_shot',
+      'openstory.apply_sequence_edits',
       'openstory.update_shot_prompt',
       'openstory.restore_shot_prompt_version',
       'openstory.rebuild_shot_prompts',
@@ -315,6 +333,11 @@ describe('tools/list and whoami', () => {
       'openstory.select_character_sheet_version',
       'openstory.discard_character_sheet_version',
       'openstory.undiscard_character_sheet_version',
+      'openstory.create_character_look',
+      'openstory.update_character_look',
+      'openstory.remove_character_look',
+      'openstory.restore_character_look',
+      'openstory.select_character_look_version',
       'openstory.create_location',
       'openstory.update_location',
       'openstory.delete_location',
@@ -377,11 +400,13 @@ describe('tools/list and whoami', () => {
       'openstory.discard_shot_dialogue_reading',
       'openstory.delete_character',
       'openstory.discard_character_sheet_version',
+      'openstory.remove_character_look',
       'openstory.delete_location',
       'openstory.discard_location_sheet_version',
       'openstory.delete_element',
       'openstory.discard_music_track',
       'openstory.delete_studio_asset',
+      'openstory.apply_sequence_edits',
     ]);
     for (const tool of tools.slice(1))
       expect(tool.annotations, tool.name).toMatchObject({
@@ -445,6 +470,19 @@ describe('tools/list and whoami', () => {
       name: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
     });
+  });
+
+  // #2035: the SDK's listen stream never ends, so Cloudflare cancels it.
+  it('refuses subscriptions/listen at once and does not advertise listChanged', async () => {
+    const listen = await rpc('subscriptions/listen', {
+      notifications: { toolsListChanged: true },
+    });
+    expect(listen.status).toBe(404);
+    expect(listen.body.error?.code).toBe(-32601);
+
+    const { body } = await rpc('server/discover');
+    expect(body.error).toBeUndefined();
+    expect(JSON.stringify(body.result)).not.toContain('listChanged');
   });
 
   describe('a 2025-era client (sessions: stateless)', () => {

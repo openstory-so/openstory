@@ -8,11 +8,8 @@ import type {
   NewTalentSheetVariant,
   TalentSheetVariant,
 } from '@/platform/server/db/schema';
-import {
-  characters,
-  talentSheetVariants,
-  talentSheets,
-} from '@/platform/server/db/schema';
+import { talentSheetVariants, talentSheets } from '@/platform/server/db/schema';
+import { castOfTalent } from './sequence-cast';
 import {
   demoteCharacterSheetClaims,
   demoteTalentSheetClaim,
@@ -266,7 +263,7 @@ export function createTalentSheetVariantsMethods(db: Database, teamId: string) {
         demoteTalentSheetClaim(db, existingSheet.talentId),
         demoteCharacterSheetClaims(
           db,
-          eq(characters.talentId, existingSheet.talentId)
+          castOfTalent(db, existingSheet.talentId)
         ),
       ]);
       if (sheetRows.length === 0) {

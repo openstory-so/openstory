@@ -72,10 +72,13 @@ const cancelResult = z.object({ cancelled: z.boolean() });
 const regenerateCharacterSheetTool = openstoryTool({
   name: 'regenerate_character_sheet',
   description:
-    'Generate a new reference sheet for a character from its current bible (spends credits). Talent and shots are unchanged; stills that use the character go stale once the sheet lands. Poll get_character for sheet status.',
+    'Generate a new reference sheet for one look of a character, from its current bible and that look’s clothing and styling (spends credits). lookId picks the look (get_character looks[].id); omit it for the default look. Talent and shots are unchanged; stills of the scenes that wear the look go stale once the sheet lands. Poll get_character for sheet status.',
   scope: 'generate',
   annotations: generateAnnotations,
-  inputSchema: characterInput.extend({ imageModel }),
+  inputSchema: characterInput.extend({
+    lookId: ulidSchema.optional().describe('Look ID; default look if omitted.'),
+    imageModel,
+  }),
   outputSchema: runResult.extend({ characterId: z.string() }),
   run: async (input, { scopedDb, userId }) => {
     const sequence = await productionAccess(scopedDb).sequence(
@@ -89,7 +92,12 @@ const regenerateCharacterSheetTool = openstoryTool({
       scopedDb,
       { userId },
       sequence,
-      { characterId: character.id, imageModel: input.imageModel }
+      {
+        characterId: character.id,
+        // No look named: the default look, whose id is the character's.
+        lookId: input.lookId ?? character.id,
+        imageModel: input.imageModel,
+      }
     );
     return {
       data: result,

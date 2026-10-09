@@ -248,7 +248,7 @@ describe('automatic styles', () => {
 
   it('deleting the sequence removes its bound style', async () => {
     const { sequencesDb, sequence, style } = await createAutoSequence();
-    await sequencesDb.delete(sequence.id);
+    await sequencesDb.delete(sequence.id, { releasedVoiceIds: [] });
     const rows = await db.select().from(styles).where(eq(styles.id, style.id));
     expect(rows).toEqual([]);
   });

@@ -132,6 +132,10 @@ Secrets are pushed to the Worker via `wrangler secret bulk`. The full list is de
 
 ## Prod database cutover (velro-prd → openstory-prd)
 
+**Historical. Done once; do not repeat it or use it as a pattern.** Migrations
+reach production only through the merge's deploy, never by hand (AGENTS.md,
+"D1 table-rebuild trap"). Kept as the record of how the database was moved.
+
 One-time runbook for #897: the production D1 predates the project rename (the
 account still calls it `velro-prd`) and its migration history lives in
 drizzle's `__drizzle_migrations` table, which wrangler doesn't read. D1 has no

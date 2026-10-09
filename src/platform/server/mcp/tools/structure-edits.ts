@@ -269,7 +269,7 @@ const narrative = sceneNarrativeFieldsSchema.shape;
 const createSceneTool = openstoryTool({
   name: 'create_scene',
   description:
-    'Add a scene at the end of a sequence, with its first shot unless withShot is false. Optionally write its script text and continuity tags in the same call. Starts no generation; plan_generation picks the new shots up.',
+    'Add a scene at the end of a sequence, with its first shot unless withShot is false. Optionally write its script text and continuity tags in the same call (every character starts in its default look; update_scene continuity.characterLooks picks another). Starts no generation; plan_generation picks the new shots up.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z.strictObject({
@@ -283,7 +283,13 @@ const createSceneTool = openstoryTool({
       .max(20000)
       .optional()
       .describe('The scene’s script text.'),
-    continuity: z.strictObject(narrative.continuity.unwrap().shape).optional(),
+    // A new scene has everyone in their default look; pick another with
+    // update_scene (#2015).
+    continuity: z
+      .strictObject(
+        narrative.continuity.unwrap().omit({ characterLooks: true }).shape
+      )
+      .optional(),
     withShot: z.boolean().default(true),
   }),
   outputSchema: z.object({

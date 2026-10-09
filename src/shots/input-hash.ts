@@ -15,6 +15,7 @@
  * § "What goes into the hash" for the per-artifact input surface.
  */
 
+import { wornStyling } from '@/cast/bible-looks';
 import { z } from 'zod';
 
 /**
@@ -288,7 +289,18 @@ export type CharacterSheetTalentHashFields = z.infer<
 >;
 
 export type CharacterSheetHashInput = {
+  /**
+   * `standardClothing` is the look's clothing (#2015). The key and its place
+   * in the body are the bible's old ones, so a default look backfilled from
+   * the bible hashes to the digest its sheet was stamped with.
+   */
   characterBible: CharacterBibleHashFields;
+  /**
+   * The look's hair / makeup / injury notes (#2015). Required; `null` is
+   * "none". Joins the body only when set, so no digest stamped before looks
+   * moves.
+   */
+  styling: string | null;
   /** Required; `null` is "no talent sheet". */
   talentSheetHash: string | null;
   /** Required; `null` is "not cast". */
@@ -311,8 +323,13 @@ function characterSheetHashBody(
 ): unknown {
   const cb = input.characterBible;
   const talent = kind === 'current' ? input.talent : null;
+  // Every shape: a legacy digest predates looks, so it was stamped with no
+  // styling, and dropping it there would let a styling edit verify as fresh
+  // against the pre-#1785 shape of an uncast sheet.
+  const styling = trim(input.styling);
   return {
     artifact: 'character:sheet',
+    ...(styling ? { styling } : {}),
     characterBible: {
       ...(kind === 'named' ? { name: trim(cb.name) } : {}),
       age: trim(cb.age),
@@ -359,12 +376,17 @@ const characterBibleHashFieldsSchema = z.object({
   consistencyTag: z.string().nullable(),
 });
 
-/** The character bible fields the sheet hash reads; an edit to one revokes a sheet claim. */
+/**
+ * The fields the sheet hash reads; a bible edit to one revokes every look's
+ * sheet claim. `standardClothing` is the look's (#2015) and moves only
+ * through a look edit, which revokes that look's claim itself.
+ */
 export const CHARACTER_SHEET_BIBLE_FIELDS =
   characterBibleHashFieldsSchema.keyof().options;
 
 const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
+  styling: z.string().nullable(),
   talentSheetHash: z.string().nullable(),
   talent: characterSheetTalentHashFieldsSchema.nullable(),
   styleConfigHash: z.string(),
@@ -865,7 +887,12 @@ function sceneInputContext(scene: Scene, kind: PromptHashKind) {
  * The LLM still receives the full entries; only the hash is the projection.
  */
 function projectCharacterForPrompt(c: CharacterBibleEntry) {
+  // The look the shot's scene dresses the character in (#2015): its clothing
+  // is `standardClothing`, and its styling joins only when set, so no digest
+  // stamped before looks moves. The other looks are not this shot's.
+  const styling = trim(wornStyling(c));
   return {
+    ...(styling ? { styling } : {}),
     age: trim(c.age),
     gender: trim(c.gender),
     ethnicity: trim(c.ethnicity),

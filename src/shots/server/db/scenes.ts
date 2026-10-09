@@ -6,6 +6,7 @@
  * of shots; this stage keeps every sequence as scenes-of-one-shot.
  */
 
+import { NotFoundError } from '@/platform/errors';
 import type { Database } from '@/platform/server/db/client';
 import {
   sceneScriptVersions,
@@ -374,7 +375,9 @@ export function createScenesMethods(db: Database) {
       opts: { actorId: string | null }
     ): Promise<void> => {
       const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
-      if (!existing) return;
+      // Loud: a write addressed to a row that is not there is a wrong id,
+      // and returning quietly hid one (#2015).
+      if (!existing) throw new NotFoundError(`Scene ${sceneId} not found`);
       const statements = await narrativeWrite(
         existing,
         { continuity },

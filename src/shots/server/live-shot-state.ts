@@ -14,6 +14,11 @@ import { liveReferenceIdentity } from '@/motion/reference-provenance';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import type { LoadedShotInputs } from '@/shots/scene-segments';
+import { resolveShotReferences } from '@/shots/scene-matching';
+import {
+  rendersReferenceOnly,
+  type StartFrameSequence,
+} from '@/shots/use-start-frame';
 import type { SceneContext } from './scene-script';
 import { loadShotDialogueLines, shotDialogueResolver } from './shot-dialogue';
 import { dialogueLinesKey } from '@/shots/shot-dialogue';
@@ -30,10 +35,14 @@ export async function loadLiveShotInputs(
   shots: readonly Shot[],
   characters: readonly (VoiceCharacter & {
     id: string;
+    name: string;
+    characterId: string;
+    consistencyTag: string | null;
     selectedSheetVersionId: string | null;
     sheetImageUrl: string | null;
   })[],
-  scriptBySceneId: ReadonlyMap<string, SceneContext>
+  scriptBySceneId: ReadonlyMap<string, SceneContext>,
+  sequence: StartFrameSequence
 ): Promise<LoadedShotInputs> {
   const [linesByShotId, selectedMotionByShot, locations, elements] =
     await Promise.all([
@@ -56,6 +65,7 @@ export async function loadLiveShotInputs(
 
   const audioSourceKeyByShot = new Map<string, string | null>();
   const dialogueKeyByShot = new Map<string, string | null>();
+  const referencedEntitiesByShot = new Map<string, ReadonlySet<string>>();
   for (const shot of shots) {
     dialogueKeyByShot.set(shot.id, dialogueLinesKey(dialogueOf(shot)));
     audioSourceKeyByShot.set(
@@ -63,6 +73,33 @@ export async function loadLiveShotInputs(
       audioSourceKeyFromVoicedLines(
         voicedDialogueLines(dialogueOf(shot), characters)
       )
+    );
+    // The motion render resolves its references from the motion prompt
+    // (`buildMotionReferenceImages`); so does this compare (#2012).
+    const ctx = shot.sceneId ? scriptBySceneId.get(shot.sceneId) : undefined;
+    const resolved = resolveShotReferences(
+      { characters: [...characters], locations, elements },
+      {
+        characterTags: ctx?.scene.continuity?.characterTags,
+        characterLooks: ctx?.scene.continuity?.characterLooks,
+        environmentTag: ctx?.scene.continuity?.environmentTag,
+        sceneLocation: ctx?.scene.location,
+        elementTags: ctx?.scene.continuity?.elementTags,
+        sceneExtract: ctx?.script?.extract,
+      },
+      {
+        channel: 'motion',
+        prompt: selectedMotionByShot.get(shot.id)?.text ?? null,
+        referenceOnly: rendersReferenceOnly(shot, sequence),
+      }
+    );
+    referencedEntitiesByShot.set(
+      shot.id,
+      new Set([
+        ...resolved.characters.map((c) => `character:${c.id}`),
+        ...resolved.locations.map((l) => `location:${l.id}`),
+        ...resolved.elements.map((e) => `element:${e.id}`),
+      ])
     );
   }
 
@@ -74,5 +111,6 @@ export async function loadLiveShotInputs(
       locations,
       elements,
     }),
+    referencedEntitiesByShot,
   };
 }

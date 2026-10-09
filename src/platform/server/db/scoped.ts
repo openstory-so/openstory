@@ -23,6 +23,7 @@ import type { TeamMemberRole } from '@/platform/server/db/schema/teams';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
 import { createBillingMethods } from '@/billing/server/db/billing';
+import { createCharacterLooksMethods } from '@/cast/server/db/character-looks';
 import { createCharacterSheetVariantsMethods } from '@/cast/server/db/character-sheet-variants';
 import {
   createComplianceMethods,
@@ -459,14 +460,15 @@ export function createScopedDb(teamId: string, userId: string) {
     frameVariants: createFrameVariantsMethods(db),
     framePromptVersions: createFramePromptVersionsMethods(db),
     sequenceEvents: createSequenceEventsMethods(db),
-    characterSheetVariants: createCharacterSheetVariantsMethods(db),
+    characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
+    characterLooks: createCharacterLooksMethods(db, teamId),
     locationSheetVariants: createLocationSheetVariantsMethods(db),
     talentSheetVariants: createTalentSheetVariantsMethods(db, teamId),
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
 
-    characters: createCharactersMethods(db),
+    characters: createCharactersMethods(db, teamId),
     sequenceLocations: createSequenceLocationsMethods(db),
     sequenceElements: createSequenceElementsMethods(db),
 

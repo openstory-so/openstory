@@ -17,8 +17,7 @@ import {
 } from '@/sequences/ui/use-draft-generation-estimate';
 import { includesStage } from '@/sequences/pipeline';
 import type { GenerationStage } from '@/sequences/pipeline';
-import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
-import { useEffect, useState, type FC } from 'react';
+import { useEffect, useRef, useState, type FC } from 'react';
 
 type GenerationStopAlertProps = {
   open: boolean;
@@ -26,7 +25,7 @@ type GenerationStopAlertProps = {
   stopAt: GenerationStage;
   /** Start frames on/off rides with the stop-at: off hides the Images stop. */
   generateStartFrames: boolean;
-  /** Design a voice per speaking character (#1553). */
+  /** The run records dialogue wherever voice design is configured (#2067). */
   generateVoices: boolean;
   /** Draft first (#1756); the switch shows only when `offerDraftMotion`. */
   draftMotion: boolean;
@@ -35,7 +34,6 @@ type GenerationStopAlertProps = {
   onConfirm: (next: {
     stopAt: GenerationStage;
     generateStartFrames: boolean;
-    generateVoices: boolean;
     draftMotion: boolean;
     remember: boolean;
   }) => void;
@@ -65,33 +63,18 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
 }) => {
   const [draftStopAt, setDraftStopAt] = useState(stopAt);
   const [draftStartFrames, setDraftStartFrames] = useState(generateStartFrames);
-  const [draftVoices, setDraftVoices] = useState(generateVoices);
   const [draftDraftFirst, setDraftDraftFirst] = useState(draftMotion);
   const [draftRemember, setDraftRemember] = useState(remember);
   const draftFirst = offerDraftMotion && draftDraftFirst;
+  const actionRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setDraftStopAt(stopAt);
     setDraftStartFrames(generateStartFrames);
-    setDraftVoices(generateVoices);
     setDraftDraftFirst(draftMotion);
     setDraftRemember(remember);
-  }, [
-    open,
-    stopAt,
-    generateStartFrames,
-    generateVoices,
-    draftMotion,
-    remember,
-  ]);
-
-  // Deployment fact (platform ElevenLabs key), not a team one. When known to
-  // be absent, the switch is hidden and the flag forced off so a remembered
-  // `true` never reaches the launcher, which refuses it. While still unknown
-  // the draft stands — forcing it off here would persist the drop.
-  const voicesUnavailable = useVoiceDesignAvailable() === false;
-  const voices = voicesUnavailable ? false : draftVoices;
+  }, [open, stopAt, generateStartFrames, draftMotion, remember]);
 
   const estimate = useDraftGenerationEstimate(
     open && estimateBase
@@ -99,7 +82,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           ...estimateBase,
           stopAt: draftStopAt,
           generateStartFrames: draftStartFrames,
-          generateVoices: voices,
+          generateVoices,
           draftMotion: draftFirst,
         }
       : null
@@ -107,7 +90,15 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="data-[size=default]:max-w-lg data-[size=default]:sm:max-w-lg">
+      <AlertDialogContent
+        className="data-[size=default]:max-w-lg data-[size=default]:sm:max-w-lg"
+        // An alert dialog opens on Cancel, so Enter cancelled. This one
+        // confirms a click the user just made: open on Generate.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          actionRef.current?.focus();
+        }}
+      >
         <AlertDialogHeader>
           <AlertDialogTitle>Generate the whole sequence?</AlertDialogTitle>
           {description && (
@@ -119,10 +110,7 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           onChange={setDraftStopAt}
           generateStartFrames={draftStartFrames}
           onGenerateStartFramesChange={setDraftStartFrames}
-          generateVoices={voices}
-          onGenerateVoicesChange={
-            voicesUnavailable ? undefined : setDraftVoices
-          }
+          generateVoices={generateVoices}
           draftFirst={draftFirst}
           onDraftFirstChange={offerDraftMotion ? setDraftDraftFirst : undefined}
         />
@@ -142,11 +130,11 @@ export const GenerationStopAlert: FC<GenerationStopAlertProps> = ({
           </label>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
+            ref={actionRef}
             onClick={() =>
               onConfirm({
                 stopAt: draftStopAt,
                 generateStartFrames: draftStartFrames,
-                generateVoices: voices,
                 draftMotion: draftDraftFirst,
                 remember: draftRemember,
               })

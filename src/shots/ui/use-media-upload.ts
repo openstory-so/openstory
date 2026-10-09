@@ -222,6 +222,8 @@ export function useUploadCharacterSheet() {
       file: File;
       sequenceId: string;
       characterId: string;
+      /** The look the sheet is of (#2015); the default look when omitted. */
+      lookId?: string;
       onProgress?: (percent: number) => void;
     }) => {
       const publicUrl = await presignPut(
@@ -240,6 +242,7 @@ export function useUploadCharacterSheet() {
         data: {
           sequenceId: input.sequenceId,
           characterId: input.characterId,
+          lookId: input.lookId,
           publicUrl,
         },
       });

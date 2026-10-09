@@ -44,7 +44,7 @@ const updateSceneInput = z
       .strictObject(narrative.continuity.unwrap().shape)
       .optional()
       .describe(
-        'Only the keys you send change; an array you send replaces the old one.'
+        'Only the keys you send change; an array you send replaces the old one. characterLooks is a per-character patch: it sets or clears (null) the look of the characters you name and leaves the rest.'
       ),
   })
   .refine((input) => MUTATION_FIELDS.some((key) => input[key] !== undefined), {
@@ -54,7 +54,7 @@ const updateSceneInput = z
 export const updateSceneTool = openstoryTool({
   name: 'update_scene',
   description:
-    'Edit one scene’s script text and narrative fields (title, location, timeOfDay, storyBeat, continuity tags). Omitted fields are unchanged; an empty string clears a narrative field. Pass expectedScriptVersionId from get_scene so a stale edit is refused. Shot duration, starting frames, prompts and models are not scene fields. Writes a new selected script version; starts no generation. Returns the scene id, its selected script version id (the next expectedScriptVersionId), its shot ids and the first page of its shots’ staleness; read the scene back with get_scene.',
+    'Edit one scene’s script text and narrative fields (title, location, timeOfDay, storyBeat, continuity tags, and continuity.characterLooks: the look each character wears in the scene). Omitted fields are unchanged; an empty string clears a narrative field. Pass expectedScriptVersionId from get_scene so a stale edit is refused. Shot duration, starting frames, prompts and models are not scene fields. Writes a new selected script version; starts no generation. Returns the scene id, its selected script version id (the next expectedScriptVersionId), its shot ids and the first page of its shots’ staleness; read the scene back with get_scene.',
   scope: 'sequences:write',
   annotations: {
     readOnlyHint: false,

@@ -27,11 +27,16 @@ import {
 } from '@/billing/server/preflight';
 import { DEFAULT_VIDEO_MODEL, safeImageToVideoModel } from '@/models/models';
 import { DRAFT_FINAL_RESOLUTION, draftTaskUsable } from '@/motion/draft-mode';
+import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-duration';
 import { ConflictError, ValidationError } from '@/platform/errors';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { VideoVariant } from '@/platform/server/db/schema';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
+import { getLogger } from '@/platform/logger';
+
+const logger = getLogger(['openstory', 'motion', 'render-at-quality']);
 
 type RenderableSequence = {
   id: string;
@@ -88,8 +93,20 @@ export async function renderDraftAtQuality(options: {
   const runKey = `motion-final-${version.id}-${siblings.length}`;
 
   const model = safeImageToVideoModel(version.model, DEFAULT_VIDEO_MODEL);
-  const duration =
+  const manifestSeconds =
     version.manifest.reduce((sum, entry) => sum + entry.durationMs, 0) / 1000;
+  // Ark renders the final at the draft's own length, and the draft of a
+  // Seedance 2.5 edit followed its clip, not the manifest (#2036). So the
+  // hold reads the draft's stored file; a file we cannot read refuses here.
+  // Rounded, so an ordinary 5.04s draft still holds 5s.
+  const draftKey = version.url ? r2KeyFromUrl(version.url) : null;
+  const draftSeconds = draftKey
+    ? await measureOwnMediaDuration(draftKey).catch((error: unknown) => {
+        logger.warn('Could not read the draft clip', { draftKey, error });
+        throw new ValidationError("Couldn't read the draft clip. Try again.");
+      })
+    : null;
+  const holdSeconds = Math.max(manifestSeconds, Math.round(draftSeconds ?? 0));
   const promptVersion = lead.motionPromptVersionId
     ? await scopedDb.shotPromptVersions.getByIdForShot(
         lead.motionPromptVersionId,
@@ -100,7 +117,7 @@ export async function renderDraftAtQuality(options: {
   const reservationId = await reserveRunCredits(
     scopedDb,
     gateEstimate(
-      estimateVideoCost(model, duration, {
+      estimateVideoCost(model, holdSeconds, {
         pricing: await getEffectiveFalPricing(),
         resolution: DRAFT_FINAL_RESOLUTION,
         hasReferenceImages: lead.referenceKeys.length > 0,
@@ -125,7 +142,7 @@ export async function renderDraftAtQuality(options: {
       // Provenance only — the final sends the task id, not a prompt.
       authoredPrompt: promptVersion?.text ?? '',
       model,
-      duration,
+      duration: manifestSeconds,
       reservationId,
       draft: {
         taskId: draftTaskId,

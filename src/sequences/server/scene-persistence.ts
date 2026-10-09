@@ -127,3 +127,34 @@ export function buildSceneShotLinks(
   }
   return { links, unmappedShotIds };
 }
+
+/**
+ * Write the look each scene dresses its characters in (#2015) onto the scene
+ * rows. `scenes` are the analysis scenes in script order; an analysis scene's
+ * `sceneId` is NOT its row's id, so each row is found the way the split
+ * found it: by its position, through the idempotent upsert.
+ */
+export async function persistSceneLooks(
+  scopedDb: {
+    scenes: {
+      upsert: (data: NewScene) => Promise<SceneRow>;
+      updateContinuity: (
+        sceneId: DbSceneId,
+        continuity: NonNullable<SceneNarrative['continuity']>,
+        opts: { actorId: string | null }
+      ) => Promise<void>;
+    };
+  },
+  sequenceId: string,
+  scenes: ReadonlyArray<Scene>
+): Promise<void> {
+  for (const [orderIndex, scene] of scenes.entries()) {
+    if (!scene.continuity?.characterLooks) continue;
+    const row = await scopedDb.scenes.upsert(
+      buildSceneInsert(sequenceId, orderIndex)
+    );
+    await scopedDb.scenes.updateContinuity(row.id, scene.continuity, {
+      actorId: null,
+    });
+  }
+}

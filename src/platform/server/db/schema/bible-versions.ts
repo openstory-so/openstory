@@ -17,6 +17,7 @@ import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { characters } from './characters';
 import { sequenceLocations } from './sequence-locations';
+import { talent } from './talent';
 
 /**
  * Why a bible row exists. `backfill` is the #1600 migration's snapshot of a
@@ -41,19 +42,31 @@ export const characterBibleVersions = snakeCase.table(
       .notNull(),
     characterId: text()
       .notNull()
-      .references(() => characters.id, { onDelete: 'restrict' }),
+      // NO ACTION, not cascade or restrict (#2017): a rebuild of `characters`
+      // under D1 runs with foreign key checks deferred, where a cascade would
+      // delete these rows and a restrict would not stop it. Deletes remove
+      // them in app code first (`deleteCharactersStatements`).
+      .references(() => characters.id, { onDelete: 'no action' }),
     name: text({ length: 255 }).notNull(),
     age: text(),
     gender: text(),
     ethnicity: text(),
     physicalDescription: text(),
-    standardClothing: text(),
+    // LEGACY (#2015): clothing belongs to the character's looks
+    // (`character_look_versions.clothing`). Read only as the fallback for a
+    // character with no look, and to say what a sheet made before looks was
+    // drawn in; never written.
+    legacyStandardClothing: text('standard_clothing'),
     distinguishingFeatures: text(),
     personality: text(),
     movement: text(),
     voiceOnly: integer({ mode: 'boolean' }).notNull(),
     isPerson: integer({ mode: 'boolean' }).notNull(),
     consistencyTag: text(),
+    // Who plays the character in this version (#2017): a recast is a new
+    // version. Null when uncast. Not a bible field: it is not authored text
+    // and no bible diff names it.
+    talentId: text().references(() => talent.id, { onDelete: 'set null' }),
     source: text({ enum: BIBLE_VERSION_SOURCES }).notNull(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -114,7 +127,6 @@ export const CHARACTER_BIBLE_FIELDS = [
   'gender',
   'ethnicity',
   'physicalDescription',
-  'standardClothing',
   'distinguishingFeatures',
   'personality',
   'movement',

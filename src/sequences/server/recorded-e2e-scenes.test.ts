@@ -182,6 +182,10 @@ describe('recorded derived still fixtures', () => {
           sheetImageUrl: `https://fixture/${entry.characterId}`,
           sheetInputHash: null,
           selectedSheetVersionId: null,
+          // Wearing its default look (#2015).
+          lookId: 'default-look',
+          lookName: 'Default',
+          looks: [],
           sheetStatus: 'completed',
         }));
       const locations: Parameters<

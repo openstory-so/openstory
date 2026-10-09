@@ -36,7 +36,16 @@ function character(
     sheetStatus: 'completed',
     sheetError: null,
     selectedSheetVersionId: null,
-    selectedBibleVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
+    // Cast in its sequence (#2017).
+    castId: 'cast-1',
+    teamId: 'team-1',
+    inLibrary: false,
+    selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),

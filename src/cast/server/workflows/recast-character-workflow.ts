@@ -23,7 +23,10 @@ import type {
 } from '@/platform/server/workflow/types';
 import { computeRegenerateShotsBatchHash } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { mergeRecastSheetIntoSnapshots } from './recast-snapshot';
-import { computeCharacterSheetHashFromDto } from './sheet-snapshots';
+import {
+  computeCharacterSheetHashFromDto,
+  assertQueuedWithLooks,
+} from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
@@ -145,6 +148,7 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
     _scopedDb: WorkflowScopedDb
   ): Promise<RecastCharacterWorkflowResult> {
     const input = event.payload;
+    assertQueuedWithLooks(input);
 
     // Step 1: Build the character-sheet payload. Captured into a const so the
     // spawn below reuses the cached step result on replay instead of
@@ -161,6 +165,10 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           'snapshotInputHash'
         > = {
           characterDbId: input.characterDbId,
+          lookId: input.lookId,
+          lookVersionId: input.lookVersionId,
+          lookStyling: input.lookStyling,
+          talentId: input.talentId,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,
           sequenceId: input.sequenceId,
@@ -237,12 +245,21 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<RecastCharacterWorkflowInput>>;
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
+    if (!input.lookId) {
+      // No sheet child was spawned to clear the claim the trigger took.
+      await scopedDb.characterLooks.failSheetClaimByVersion(
+        input.sheetVersionId,
+        error
+      );
+    }
 
     await getGenerationChannel(input.sequenceId).emit(
       'generation.recast:failed',

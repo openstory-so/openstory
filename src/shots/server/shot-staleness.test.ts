@@ -4,6 +4,14 @@ import type { Frame, FrameVariant, Shot } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotStalenessRefs } from './shot-staleness';
 import { asStub } from '@/test/as-stub';
+import {
+  characterToBible,
+  locationToBible,
+} from '@/cast/server/bibles-from-scoped';
+import type {
+  CharacterBibleEntry,
+  LocationBibleEntry,
+} from '@/shots/scene-analysis.schema';
 
 const buildRegenerateShotSnapshot = vi.fn();
 const loadNarrowShotPromptContext = vi.fn();
@@ -23,7 +31,8 @@ vi.doMock('@/shots/input-hash', () => ({
     async (stored: string | null) => stored === (await hashVisualPromptInput())
   ),
   motionPromptInputHashMatches: vi.fn(
-    async (stored: string | null) => stored === (await hashMotionPromptInput())
+    async (stored: string | null, input: unknown) =>
+      stored === (await hashMotionPromptInput(input))
   ),
   sha256Hex: realInputHash.sha256Hex,
 }));
@@ -70,6 +79,8 @@ function makeScopedDb(overrides: {
   }>;
   /** Bible history rows (#1600), oldest first. */
   characterBibleVersions?: unknown[];
+  /** Look definition rows (#2015), oldest first. */
+  characterLookVersions?: unknown[];
   /** Style snapshot rows (#1600), oldest first. */
   styleVersions?: unknown[];
   /** Selected shot dialogue rows (#1784). */
@@ -78,6 +89,8 @@ function makeScopedDb(overrides: {
   locationBibleVersions?: unknown[];
   /** When the selected motion prompt was written. */
   motionSelectedAt?: Date;
+  /** Text of the selected motion prompt. */
+  motionText?: string;
 }) {
   return asStub<ScopedDb>({
     characters: {
@@ -85,6 +98,11 @@ function makeScopedDb(overrides: {
       listBibleVersionsBySequence: vi
         .fn()
         .mockResolvedValue(overrides.characterBibleVersions ?? []),
+    },
+    characterLooks: {
+      listVersionsBySequence: vi
+        .fn()
+        .mockResolvedValue(overrides.characterLookVersions ?? []),
     },
     sequenceLocations: {
       list: vi.fn().mockResolvedValue([]),
@@ -138,6 +156,7 @@ function makeScopedDb(overrides: {
         inputHash: overrides.motionSelectedHash ?? null,
         source: overrides.motionSource ?? 'ai-generated',
         createdAt: overrides.motionSelectedAt,
+        text: overrides.motionText,
       }),
       getLatestWithInputHash: vi
         .fn()
@@ -163,6 +182,11 @@ function makeScopedDb(overrides: {
 
 const shot = asStub<Shot>({ id: 'shot-1' });
 const NO_LINES = { dialogue: { presence: false, lines: [] }, onNode: false };
+/** A prompt context naming no one, on a scene with no cast. */
+const NO_CAST = {
+  shot: { characterBible: [], locationBible: [] },
+  sceneRoster: { characterBible: [], locationBible: [] },
+};
 const frame = asStub<Frame>({
   id: 'frame-1',
   imagePrompt: 'a prompt',
@@ -176,7 +200,7 @@ describe('computeShotStaleness', () => {
   it('reports a failed branch as unknown without taking the others down', async () => {
     // Thumbnail hashing blows up; the two prompt branches must still report.
     buildRegenerateShotSnapshot.mockRejectedValue(new Error('boom'));
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-moved');
 
@@ -209,7 +233,7 @@ describe('computeShotStaleness', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-stored',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-moved');
     hashMotionPromptInput.mockResolvedValue('motion-moved');
 
@@ -239,7 +263,7 @@ describe('computeShotStaleness', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-stored',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     // Stored hashes diverge → would be stale without a claim.
     hashVisualPromptInput.mockResolvedValue('visual-live');
     hashMotionPromptInput.mockResolvedValue('motion-live');
@@ -283,7 +307,7 @@ describe('computeShotStaleness', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-live');
     hashMotionPromptInput.mockResolvedValue('motion-live');
     const scopedDb = makeScopedDb({
@@ -331,7 +355,7 @@ describe('computeShotStaleness', () => {
       buildRegenerateShotSnapshot.mockResolvedValue({
         snapshotInputHash: 'image-live',
       });
-      loadNarrowShotPromptContext.mockResolvedValue({});
+      loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
       hashVisualPromptInput.mockResolvedValue('visual-live');
       hashMotionPromptInput.mockResolvedValue('motion-live');
 
@@ -363,7 +387,7 @@ describe('computeShotStaleness', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
 
@@ -410,7 +434,7 @@ describe('computeShotStaleness', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
 
@@ -458,14 +482,18 @@ describe('staleness causes (#1194)', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
 
     const generated = new Date('2026-01-01T00:00:00Z');
     const before = new Date('2025-12-31T00:00:00Z');
     const afterGen = new Date('2026-01-02T00:00:00Z');
-    const scopedDb = makeScopedDb({ motionSelectedHash: 'motion-stored' });
+    const scopedDb = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      // Causes name only what the shot's prompts reference (#2012).
+      visualSelected: { text: 'WOMAN picks up the BOTTLE in the BATHROOM.' },
+    });
     Object.assign(scopedDb, {
       scenes: { getById: vi.fn().mockResolvedValue({ updatedAt: afterGen }) },
       sceneScriptVersions: {
@@ -511,10 +539,33 @@ describe('staleness causes (#1194)', () => {
       scene,
       refs: asStub({
         characters: [
-          { name: 'Woman', updatedAt: afterGen, sheetGeneratedAt: null },
-          { name: 'Man', updatedAt: before, sheetGeneratedAt: before },
+          {
+            name: 'Woman',
+            characterId: 'woman',
+            lookId: 'c-woman',
+            looks: [],
+            consistencyTag: null,
+            updatedAt: afterGen,
+            sheetGeneratedAt: null,
+          },
+          {
+            name: 'Man',
+            characterId: 'man',
+            lookId: 'c-man',
+            looks: [],
+            consistencyTag: null,
+            updatedAt: before,
+            sheetGeneratedAt: before,
+          },
         ],
-        locations: [{ name: 'Bathroom', updatedAt: before }],
+        locations: [
+          {
+            name: 'Bathroom',
+            locationId: 'bathroom',
+            consistencyTag: null,
+            updatedAt: before,
+          },
+        ],
         elements: [{ token: 'BOTTLE', updatedAt: afterGen }],
         style: null,
       }),
@@ -533,7 +584,7 @@ describe('staleness causes (#1194)', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
 
@@ -556,16 +607,27 @@ describe('staleness causes (#1194)', () => {
     };
     const scopedDb = makeScopedDb({
       motionSelectedHash: 'motion-stored',
+      visualSelected: { text: 'WOMAN in a dress; MAN behind her.' },
       characterBibleVersions: [
         { ...bible, characterId: 'c-woman', createdAt: before },
-        // An edit after the still: this is the one live now.
+        { ...bible, name: 'Man', characterId: 'c-man', createdAt: before },
+      ],
+      // Clothing is the look's (#2015). An edit after the still: the second
+      // version is the one live now.
+      characterLookVersions: [
         {
-          ...bible,
-          standardClothing: 'dress',
-          characterId: 'c-woman',
+          lookId: 'c-woman',
+          clothing: 'coat',
+          styling: null,
+          createdAt: before,
+        },
+        {
+          lookId: 'c-woman',
+          clothing: 'dress',
+          styling: null,
           createdAt: afterGen,
         },
-        { ...bible, name: 'Man', characterId: 'c-man', createdAt: before },
+        { lookId: 'c-man', clothing: 'coat', styling: null, createdAt: before },
       ],
     });
     Object.assign(scopedDb, {
@@ -596,7 +658,12 @@ describe('staleness causes (#1194)', () => {
           {
             ...bible,
             standardClothing: 'dress',
+            styling: null,
+            lookId: 'c-woman',
+            lookName: 'Default',
+            looks: [],
             id: 'c-woman',
+            characterId: 'woman',
             updatedAt: afterGen,
             sheetGeneratedAt: afterGen,
           },
@@ -604,7 +671,12 @@ describe('staleness causes (#1194)', () => {
           {
             ...bible,
             name: 'Man',
+            styling: null,
+            lookId: 'c-man',
+            lookName: 'Default',
+            looks: [],
             id: 'c-man',
+            characterId: 'man',
             updatedAt: afterGen,
             sheetGeneratedAt: null,
           },
@@ -618,11 +690,250 @@ describe('staleness causes (#1194)', () => {
     expect(result.causes).toEqual(['Character "Woman": clothing, sheet']);
   });
 
-  it('names the scene fields that moved, not the script, when only they did (#1600)', async () => {
+  it('names the look the scene dresses a character in, and only that look (#2015)', async () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
     loadNarrowShotPromptContext.mockResolvedValue({});
+    hashVisualPromptInput.mockResolvedValue('visual-stored');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const before = new Date('2025-12-31T00:00:00Z');
+    const generated = new Date('2026-01-01T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const look = (id: string, name: string, clothing: string) => ({
+      id,
+      name,
+      isDefault: id === 'c-woman',
+      clothing,
+      styling: null,
+      sheetImageUrl: null,
+      sheetStatus: 'completed',
+      sheetInputHash: null,
+      selectedSheetVersionId: null,
+    });
+    const woman = {
+      id: 'c-woman',
+      characterId: 'woman',
+      name: 'Woman',
+      age: '30s',
+      gender: null,
+      ethnicity: null,
+      physicalDescription: 'tall',
+      distinguishingFeatures: null,
+      personality: null,
+      movement: null,
+      voiceOnly: false,
+      isPerson: true,
+      consistencyTag: 'woman',
+      // Off the read she wears her default look.
+      lookId: 'c-woman',
+      lookName: 'Default',
+      standardClothing: 'office suit',
+      styling: null,
+      looks: [
+        look('c-woman', 'Default', 'office suit'),
+        look('gala', 'Gala gown', 'blue gown'),
+      ],
+      updatedAt: before,
+      sheetGeneratedAt: null,
+    };
+    const run = async (
+      sceneLooks: Record<string, string> | undefined,
+      sceneHistory: unknown[] = []
+    ) => {
+      const scopedDb = makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        visualSelected: { text: 'WOMAN at the top of the stairs.' },
+        characterBibleVersions: [
+          { ...woman, characterId: 'c-woman', createdAt: before },
+        ],
+        characterLookVersions: [
+          {
+            lookId: 'c-woman',
+            clothing: 'office suit',
+            styling: null,
+            createdAt: before,
+          },
+          {
+            lookId: 'gala',
+            clothing: 'red gown',
+            styling: null,
+            createdAt: before,
+          },
+          // The gown was edited after the still; the default look was not.
+          {
+            lookId: 'gala',
+            clothing: 'blue gown',
+            styling: null,
+            createdAt: afterGen,
+          },
+        ],
+      });
+      Object.assign(scopedDb, {
+        scenes: {
+          getById: vi.fn().mockResolvedValue({
+            updatedAt: before,
+            continuity: {
+              characterTags: ['woman'],
+              characterLooks: sceneLooks,
+            },
+          }),
+        },
+        sceneScriptVersions: {
+          getSelected: vi.fn().mockResolvedValue({ createdAt: before }),
+          listBySequence: vi.fn().mockResolvedValue(sceneHistory),
+        },
+        sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+      });
+      const result = await computeShotStaleness({
+        dialogue: NO_LINES,
+        scopedDb,
+        sequence,
+        shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+        frame,
+        selectedImage: asStub<FrameVariant>({
+          id: 'fv-1',
+          inputHash: 'image-old',
+          model: null,
+          url: null,
+          generatedAt: generated,
+        }),
+        scene,
+        refs: asStub({
+          characters: [woman],
+          locations: [],
+          elements: [],
+          style: null,
+        }),
+      });
+      return result.causes;
+    };
+
+    // The gala scene names the look, and what moved in it.
+    expect(await run({ woman: 'gala' })).toEqual([
+      'Character "Woman" (Gala gown): clothing',
+    ]);
+    // A scene in her default look is not touched by the gown's edit.
+    expect(await run(undefined)).toEqual([]);
+    // The scene switched her into the gown after the still: the look is named.
+    const causes = await run({ woman: 'gala' }, [
+      {
+        version: {
+          id: 'v1',
+          sceneId: 'scene-1',
+          content: { extract: '', dialogue: [] },
+          continuity: { characterTags: ['woman'] },
+          createdAt: before,
+        },
+      },
+    ]);
+    expect(causes).toContain('Character "Woman" (Gala gown): clothing, look');
+  });
+
+  it('names only the characters and locations this shot references (#2012)', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
+    hashVisualPromptInput.mockResolvedValue('visual-moved');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const before = new Date('2025-12-31T00:00:00Z');
+    const afterGen = new Date('2026-01-02T00:00:00Z');
+    const scopedDb = makeScopedDb({
+      motionSelectedHash: 'motion-stored',
+      visualSelected: {
+        text: 'WOMAN studies the vase. The LIVING ROOM is empty.',
+      },
+    });
+    Object.assign(scopedDb, {
+      scenes: {
+        getById: vi.fn().mockResolvedValue({
+          updatedAt: before,
+          location: 'Living room',
+          continuity: {
+            characterTags: ['woman', 'man'],
+            environmentTag: 'house',
+            elementTags: [],
+          },
+        }),
+      },
+      sceneScriptVersions: {
+        getSelected: vi.fn().mockResolvedValue({
+          createdAt: before,
+          content: {
+            extract: 'She walks from the bathroom onto the verandah.',
+            dialogue: [],
+          },
+        }),
+        listBySequence: vi.fn().mockResolvedValue([]),
+      },
+      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+    });
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', sceneId: 'scene-1' }),
+      frame,
+      selectedImage: asStub<FrameVariant>({
+        id: 'fv-1',
+        inputHash: 'image-old',
+        model: null,
+        url: null,
+        generatedAt: new Date('2026-01-01T00:00:00Z'),
+      }),
+      scene,
+      refs: asStub({
+        characters: [
+          {
+            id: 'c-woman',
+            characterId: 'woman',
+            lookId: 'c-woman',
+            looks: [],
+            name: 'Woman',
+            consistencyTag: '',
+            updatedAt: afterGen,
+            sheetGeneratedAt: afterGen,
+          },
+        ],
+        locations: [
+          {
+            id: 'l-bath',
+            locationId: 'bath',
+            name: 'Bathroom',
+            consistencyTag: '',
+            updatedAt: afterGen,
+            referenceGeneratedAt: afterGen,
+          },
+          {
+            id: 'l-live',
+            locationId: 'living',
+            name: 'Living room',
+            consistencyTag: '',
+            updatedAt: before,
+            referenceGeneratedAt: before,
+          },
+        ],
+        elements: [],
+        style: null,
+      }),
+    });
+
+    expect(result.visualPrompt).toBe('stale');
+    // The woman is in the shot; the bathroom (edited later) is not.
+    expect(result.causes).toEqual([
+      expect.stringMatching(/^Character "Woman"/),
+    ]);
+  });
+
+  it('names the scene fields that moved, not the script, when only they did (#1600)', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
 
@@ -721,7 +1032,7 @@ describe('per-shot start-frame override', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-stored',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
   });
@@ -777,7 +1088,12 @@ describe('per-shot start-frame override', () => {
   it('stamps the next LLM version over a derived one with the still it will see', async () => {
     loadNarrowShotPromptContext.mockImplementation(
       async (args: { startingFrameImageUrl?: string | null }) => ({
-        frameUrl: args.startingFrameImageUrl ?? null,
+        shot: {
+          frameUrl: args.startingFrameImageUrl ?? null,
+          characterBible: [],
+          locationBible: [],
+        },
+        sceneRoster: { characterBible: [], locationBible: [] },
       })
     );
     hashMotionPromptInput.mockImplementation(
@@ -857,7 +1173,7 @@ describe('per-shot start-frame override', () => {
   });
 
   it('compares a preloaded sequence without per-shot version reads (#1795)', async () => {
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
     buildRegenerateShotSnapshot.mockResolvedValue({
@@ -1007,7 +1323,7 @@ describe('causes left for #1787', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
   });
 
@@ -1042,6 +1358,7 @@ describe('causes left for #1787', () => {
     hashMotionPromptInput.mockResolvedValue('motion-stored');
     const bible = {
       name: 'Diner',
+      locationId: 'diner',
       type: 'interior',
       timeOfDay: 'night',
       description: 'neon',
@@ -1054,6 +1371,7 @@ describe('causes left for #1787', () => {
     };
     const scopedDb = makeScopedDb({
       motionSelectedHash: 'motion-stored',
+      visualSelected: { text: 'Night at the DINER.' },
       locationBibleVersions: [
         { ...bible, locationId: 'l-diner', createdAt: before },
       ],
@@ -1139,7 +1457,7 @@ describe('style causes (#1600)', () => {
     buildRegenerateShotSnapshot.mockResolvedValue({
       snapshotInputHash: 'image-live',
     });
-    loadNarrowShotPromptContext.mockResolvedValue({});
+    loadNarrowShotPromptContext.mockResolvedValue(NO_CAST);
     hashVisualPromptInput.mockResolvedValue('visual-stored');
     hashMotionPromptInput.mockResolvedValue('motion-stored');
 
@@ -1205,5 +1523,232 @@ describe('style causes (#1600)', () => {
     });
 
     expect(result.causes).toEqual(['Style: lighting']);
+  });
+});
+
+describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
+  const before = new Date('2025-12-31T00:00:00Z');
+  const generated = new Date('2026-01-01T00:00:00Z');
+  const afterGen = new Date('2026-01-02T00:00:00Z');
+  const capitalised = (id: string) => id.charAt(0).toUpperCase() + id.slice(1);
+  const bible = {
+    age: '30s',
+    gender: '',
+    ethnicity: '',
+    physicalDescription: 'old',
+    standardClothing: '',
+    distinguishingFeatures: 'old',
+    personality: '',
+    movement: '',
+    voiceOnly: false,
+    isPerson: true,
+  };
+  const room = {
+    type: 'interior',
+    description: 'old',
+    architecturalStyle: '',
+    keyFeatures: '',
+    ambiance: '',
+  };
+  const person = (id: string, edited: Record<string, string> = {}) =>
+    asStub<ShotStalenessRefs['characters'][number]>({
+      ...bible,
+      ...edited,
+      id: `c-${id}`,
+      characterId: id,
+      // In its default look (#2015), whose clothing is `standardClothing`.
+      lookId: `c-${id}`,
+      lookName: 'Default',
+      styling: null,
+      looks: [],
+      name: capitalised(id),
+      consistencyTag: id,
+      voiceDescription: '',
+      updatedAt: Object.keys(edited).length > 0 ? afterGen : before,
+      sheetGeneratedAt: before,
+    });
+  const place = (id: string, edited: Record<string, string> = {}) =>
+    asStub<ShotStalenessRefs['locations'][number]>({
+      ...room,
+      ...edited,
+      id: `l-${id}`,
+      locationId: id,
+      name: capitalised(id),
+      consistencyTag: id,
+      updatedAt: Object.keys(edited).length > 0 ? afterGen : before,
+      referenceGeneratedAt: before,
+    });
+  /** The analysis-time version, then the live one. */
+  const characterVersions = (row: ShotStalenessRefs['characters'][number]) => {
+    // A bible version carries no clothing (#2015): that is the look's.
+    const { standardClothing: _then, ...bibleThen } = bible;
+    const { standardClothing: _now, ...bibleNow } = row;
+    return [
+      { ...bibleNow, ...bibleThen, characterId: row.id, createdAt: before },
+      { ...bibleNow, characterId: row.id, createdAt: row.updatedAt },
+    ];
+  };
+  const locationVersions = (row: ShotStalenessRefs['locations'][number]) => [
+    { ...row, ...room, locationId: row.id, createdAt: before },
+    { ...row, locationId: row.id, createdAt: row.updatedAt },
+  ];
+  /** Hashes who and where the context carries, and as what. */
+  const hashCast = async (input: unknown) => {
+    const ctx = asStub<{
+      characterBible: CharacterBibleEntry[];
+      locationBible: LocationBibleEntry[];
+    }>(input);
+    return [
+      ctx.characterBible
+        .map(
+          (c) =>
+            `${c.characterId}:${c.physicalDescription}/${c.distinguishingFeatures}/${c.standardClothing}`
+        )
+        .join('|'),
+      ctx.locationBible
+        .map((l) => `${l.locationId}:${l.description}`)
+        .join('|'),
+    ].join('#');
+  };
+  const stampedOnRoster =
+    'dazza:old/old/|kylie:old/old/#bathroom:old|verandah:old';
+
+  type Edits = Partial<
+    Record<'kylie' | 'dazza' | 'bathroom' | 'verandah', Record<string, string>>
+  >;
+
+  async function staleness(motionText: string, edits: Edits) {
+    const kylie = person('kylie', edits.kylie);
+    const dazza = person('dazza', edits.dazza);
+    const bathroom = place('bathroom', edits.bathroom);
+    const verandah = place('verandah', edits.verandah);
+    const cast = [dazza, kylie].map(characterToBible);
+    const rooms = [bathroom, verandah].map(locationToBible);
+    const shows = (prompt: string | null, name: string) =>
+      (prompt ?? '').includes(name.toUpperCase());
+    loadNarrowShotPromptContext.mockImplementation(
+      async ({ view }: { view: { prompt: string | null } }) => ({
+        shot: {
+          characterBible: cast.filter((c) => shows(view.prompt, c.name)),
+          locationBible: rooms.filter((l) => shows(view.prompt, l.name)),
+        },
+        sceneRoster: { characterBible: cast, locationBible: rooms },
+      })
+    );
+    hashMotionPromptInput.mockImplementation(hashCast);
+    const scopedDb = makeScopedDb({
+      visualSelected: null,
+      motionSelectedHash: stampedOnRoster,
+      motionSelectedAt: generated,
+      motionText,
+      characterBibleVersions: [
+        ...characterVersions(kylie),
+        ...characterVersions(dazza),
+      ],
+      // Clothing is the default look's (#2015): bare at the stamp, then
+      // whatever the row wears now.
+      characterLookVersions: [kylie, dazza].flatMap((row) => [
+        { lookId: row.lookId, clothing: '', styling: null, createdAt: before },
+        {
+          lookId: row.lookId,
+          clothing: row.standardClothing,
+          styling: null,
+          createdAt: row.updatedAt,
+        },
+      ]),
+      locationBibleVersions: [
+        ...locationVersions(bathroom),
+        ...locationVersions(verandah),
+      ],
+    });
+    Object.assign(scopedDb, {
+      scenes: {
+        getById: vi.fn().mockResolvedValue({
+          updatedAt: before,
+          continuity: { characterTags: ['kylie', 'dazza'] },
+        }),
+      },
+      sceneScriptVersions: {
+        getSelected: vi.fn().mockResolvedValue(null),
+        listBySequence: vi.fn().mockResolvedValue([]),
+      },
+      sequenceEvents: { listByTarget: vi.fn().mockResolvedValue([]) },
+    });
+    return computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb,
+      sequence,
+      // Reference-only: the anchor frame has no visual prompt.
+      shot: asStub<Shot>({
+        id: 'shot-1',
+        sceneId: 'scene-1',
+        useStartFrame: false,
+      }),
+      frame,
+      selectedImage: null,
+      scene,
+      refs: asStub({
+        characters: [kylie, dazza],
+        locations: [bathroom, verandah],
+        elements: [],
+        style: null,
+      }),
+    });
+  }
+
+  beforeEach(() => {
+    hashVisualPromptInput.mockResolvedValue('visual-live');
+  });
+
+  it('keeps a pre-#2012 digest fresh when only someone off the shot moved', async () => {
+    const kylieShot = await staleness('KYLIE sits in the BATHROOM.', {
+      dazza: { physicalDescription: 'new' },
+    });
+    const bucketShot = await staleness('A drip falls. No people.', {
+      kylie: { distinguishingFeatures: 'new' },
+      dazza: { physicalDescription: 'new' },
+    });
+
+    expect(kylieShot.motionPrompt).toBe('fresh');
+    expect(bucketShot.motionPrompt).toBe('fresh');
+  });
+
+  it('keeps a pre-#2012 digest fresh when someone off the shot changed clothes (#2015)', async () => {
+    const off = await staleness('KYLIE sits in the BATHROOM.', {
+      dazza: { standardClothing: 'gown' },
+    });
+    const on = await staleness('KYLIE sits in the BATHROOM.', {
+      kylie: { standardClothing: 'gown' },
+    });
+
+    expect(off.motionPrompt).toBe('fresh');
+    expect(on.motionPrompt).toBe('stale');
+  });
+
+  it('keeps a pre-#2012 digest fresh when only a room off the shot moved', async () => {
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
+      verandah: { description: 'new' },
+    });
+
+    expect(result.motionPrompt).toBe('fresh');
+  });
+
+  it('stales on the person the shot shows, and names only them', async () => {
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
+      kylie: { distinguishingFeatures: 'new' },
+      dazza: { physicalDescription: 'new' },
+    });
+
+    expect(result.visualPrompt).toBe('untracked');
+    expect(result.motionPrompt).toBe('stale');
+    expect(result.causes).toEqual(['Character "Kylie": features']);
+  });
+
+  it('stales on the room the shot shows', async () => {
+    const result = await staleness('KYLIE sits in the BATHROOM.', {
+      bathroom: { description: 'new' },
+    });
+
+    expect(result.motionPrompt).toBe('stale');
   });
 });

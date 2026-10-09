@@ -74,8 +74,8 @@ export const sequenceLocations = snakeCase.table(
     selectedReferenceVersionId: text(),
     // The reference claim (#1113) — see `characters.pendingPromoteSheetVersionId`.
     pendingPromoteReferenceVersionId: text(),
-    // Soft-remove from the sequence (#1108 Phase 2, undoable). Mirrors
-    // `characters.deletedAt` — excluded from default lists / bibles, restore
+    // Soft-remove from the sequence (#1108 Phase 2, undoable). Like a
+    // character's `sequence_cast.removedAt` — excluded from default lists / bibles, restore
     // is lossless, scene continuity tags are not stripped.
     deletedAt: integer({ mode: 'timestamp' }),
     // Timestamps

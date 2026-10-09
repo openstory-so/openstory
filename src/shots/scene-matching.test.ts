@@ -12,6 +12,7 @@ import {
   matchElementsToScene,
   matchElementsToShot,
   matchElementsToShotImage,
+  resolveShotReferences,
   matchLocationsToScene,
 } from './scene-matching';
 
@@ -107,6 +108,10 @@ function makeCharacter(
     sheetStatus: 'completed',
     sheetInputHash: null,
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
     physicalDescription: null,
     voiceOnly: false,
     isPerson: true,
@@ -236,6 +241,7 @@ describe('matchCharactersToShotImage', () => {
   it('attaches a character named in ALL-CAPS in the visual prompt even with empty tags (#1432)', () => {
     const result = matchCharactersToShotImage([scarlett, jack], {
       characterTags: [],
+      characterLooks: undefined,
       visualPrompt: 'SCARLETT stands in the doorway, coat dripping.',
     });
     expect(result.map((c) => c.name)).toEqual(['Scarlett']);
@@ -245,6 +251,7 @@ describe('matchCharactersToShotImage', () => {
     expect(
       matchCharactersToShotImage([scarlett], {
         characterTags: [],
+        characterLooks: undefined,
         visualPrompt: 'scarlett stands in the doorway.',
       })
     ).toEqual([]);
@@ -253,6 +260,7 @@ describe('matchCharactersToShotImage', () => {
   it('uses the shot subject instead of adding the rest of the scene cast', () => {
     const result = matchCharactersToShotImage([scarlett, jack], {
       characterTags: ['Jack', 'Scarlett'],
+      characterLooks: undefined,
       visualPrompt: 'SCARLETT enters. The room is empty.',
     });
     expect(result.map((c) => c.name)).toEqual(['Scarlett']);
@@ -262,6 +270,7 @@ describe('matchCharactersToShotImage', () => {
     expect(
       matchCharactersToShotImage([scarlett, jack], {
         characterTags: ['Jack', 'Scarlett'],
+        characterLooks: undefined,
         visualPrompt: 'SCARLETT and JACK share a two-shot.',
       }).map((c) => c.name)
     ).toEqual(['Scarlett', 'Jack']);
@@ -271,6 +280,7 @@ describe('matchCharactersToShotImage', () => {
     expect(
       matchCharactersToShotImage([scarlett, jack], {
         characterTags: ['Jack'],
+        characterLooks: undefined,
         visualPrompt: 'A man sits at his desk.',
       }).map((c) => c.name)
     ).toEqual(['Jack']);
@@ -280,21 +290,63 @@ describe('matchCharactersToShotImage', () => {
     expect(
       matchCharactersToShotImage([jack], {
         characterTags: ['Jack'],
+        characterLooks: undefined,
         visualPrompt: '   ',
       }).map((c) => c.name)
     ).toEqual(['Jack']);
+  });
+
+  it('does not inherit the scene cast when the prompt names nobody (#2012)', () => {
+    const all = {
+      characters: [scarlett, jack],
+      locations: [
+        { locationId: 'living', name: 'Living room', consistencyTag: 'living' },
+        { locationId: 'bath', name: 'Bathroom', consistencyTag: 'bath' },
+      ],
+      elements: [],
+    };
+    const scene = {
+      characterTags: ['Scarlett', 'Jack'],
+      characterLooks: undefined,
+      environmentTag: '',
+      sceneLocation: '',
+      sceneExtract: 'They start in the bathroom, then the living room.',
+    };
+    const vase = resolveShotReferences(all, scene, {
+      channel: 'visual',
+      prompt: 'Close on the vase in the LIVING ROOM.',
+    });
+    expect(vase.characters).toEqual([]);
+    expect(vase.locations.map((l) => l.locationId)).toEqual(['living']);
+    // The motion prompt is its own channel: it names Jack, so the clip does.
+    const clip = resolveShotReferences(all, scene, {
+      channel: 'motion',
+      prompt: 'JACK turns from the window.',
+      referenceOnly: false,
+    });
+    expect(clip.characters).toEqual([jack]);
+    // No prompt yet: the continuity tags are the only word on the cast.
+    const unwritten = resolveShotReferences(all, scene, {
+      channel: 'visual',
+      prompt: null,
+    });
+    expect(unwritten.characters).toEqual([scarlett, jack]);
+    // The extract names both rooms; the most specific name wins.
+    expect(unwritten.locations.map((l) => l.locationId)).toEqual(['living']);
   });
 
   it('matches characterId and consistencyTag slug in the prompt', () => {
     expect(
       matchCharactersToShotImage([scarlett], {
         characterTags: [],
+        characterLooks: undefined,
         visualPrompt: 'char_001 waits by the window.',
       }).map((c) => c.name)
     ).toEqual(['Scarlett']);
     expect(
       matchCharactersToShotImage([scarlett], {
         characterTags: [],
+        characterLooks: undefined,
         visualPrompt: 'scarlett-red-coat in silhouette.',
       }).map((c) => c.name)
     ).toEqual(['Scarlett']);

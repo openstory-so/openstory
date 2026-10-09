@@ -278,6 +278,7 @@ const NO_LOADED = {
   audioSourceKeyByShot: new Map<string, string | null>(),
   dialogueKeyByShot: new Map<string, string | null>(),
   referenceIdentity: new Map<string, string>(),
+  referencedEntitiesByShot: new Map<string, ReadonlySet<string>>(),
 };
 const motion = new Map([['shot-1', 'mp-1']]);
 const frame = new Map([['shot-1', 'fv-1']]);
@@ -761,16 +762,25 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
     const v = version('v1', 'seg', 'kling_v3_pro', [
       { ...entry, referenceKeys: ['character:c1:csv-1'] },
     ]);
+    const sendsC1 = new Map([['shot-1', new Set(['character:c1'])]]);
     expect(
       stale(v, {
         referenceIdentity: new Map([['character:c1', 'character:c1:csv-1']]),
+        referencedEntitiesByShot: sendsC1,
       })
     ).toBe(false);
     expect(
       stale(v, {
         referenceIdentity: new Map([['character:c1', 'character:c1:csv-2']]),
+        referencedEntitiesByShot: sendsC1,
       })
     ).toBe(true);
+    // A render of the shot would no longer send c1 (#2012): not compared.
+    expect(
+      stale(v, {
+        referenceIdentity: new Map([['character:c1', 'character:c1:csv-2']]),
+      })
+    ).toBe(false);
   });
 
   it('compares duration snapped on both sides, accepting the audio-raised length', () => {

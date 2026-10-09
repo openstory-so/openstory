@@ -42,6 +42,10 @@ describe('character-sheet hash', () => {
     teamId: 't1',
     sequenceId: 's1',
     characterDbId: 'c1',
+    lookId: 'c1',
+    lookVersionId: 'c1',
+    lookStyling: null,
+    talentId: null,
     bibleVersionId: null,
     characterName: 'Jack',
     characterMetadata: {
@@ -52,6 +56,7 @@ describe('character-sheet hash', () => {
       ethnicity: '',
       physicalDescription: '',
       standardClothing: '',
+      looks: [],
       distinguishingFeatures: '',
       personality: '',
       movement: '',

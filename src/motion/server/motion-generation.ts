@@ -251,6 +251,17 @@ export async function resolveMotionVia(
   return 'fal';
 }
 
+/**
+ * Whether Seedance 2.5 submits to Ark for this team right now: the `onArk`
+ * every edit decision takes (#2036). A team on its own fal key lands on fal,
+ * which never sends an edit.
+ */
+export async function seedanceRunsOnArk(
+  scopedDb?: CredentialScopedDb
+): Promise<boolean> {
+  return (await resolveMotionVia('seedance_v2_5', scopedDb)) === 'byteplus';
+}
+
 function createNativeMotionAdapter(apiKey: string) {
   const env = getEnv();
   return createGrokVideo(NATIVE_GROK_VIDEO_MODEL, apiKey, {
@@ -298,13 +309,14 @@ async function submitFalMotionJob(
   // that kind, or not one that long — is a refusal, not a degradation
   // (#1559). Describing it in the prompt instead would bill a clip that
   // ignored what the user attached, silently, once per shot across a batch.
-  // The panel and the trigger say the same thing before Generate, so reaching
-  // here means the model changed underneath the shot.
-  assertReferencesUsable(
-    modelKey,
-    options.referenceImages ?? [],
-    Boolean(options.imageUrl)
-  );
+  // The panel and the trigger say the same thing before Generate; a run that
+  // holds first (smart retry, update-stale, add-model) is refused here. fal
+  // never sends a Seedance edit (#2036).
+  assertReferencesUsable(modelKey, options.referenceImages ?? [], {
+    hasStartFrame: Boolean(options.imageUrl),
+    prompt: options.prompt,
+    onArk: false,
+  });
 
   // References this model can actually carry (#1559): a shot whose only
   // attachment is an audio element has nothing to send a reference endpoint,
@@ -389,6 +401,8 @@ async function submitFalMotionJob(
  */
 export type SubmitMotionOptions = GenerateMotionOptions & {
   arkAssets: ArkAssetMap;
+  /** See `BytePlusVideoRequestOptions.heldSeedanceEditSeconds` (#2036). */
+  heldSeedanceEditSeconds: number | null;
 };
 
 type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
@@ -469,13 +483,13 @@ export async function submitMotionJob(
   // that kind, or not one that long — is a refusal, not a degradation
   // (#1559). Describing it in the prompt instead would bill a clip that
   // ignored what the user attached, silently, once per shot across a batch.
-  // The panel and the trigger say the same thing before Generate, so reaching
-  // here means the model changed underneath the shot.
-  assertReferencesUsable(
-    modelKey,
-    options.referenceImages ?? [],
-    Boolean(options.imageUrl)
-  );
+  // The panel and the trigger say the same thing before Generate; a run that
+  // holds first (smart retry, update-stale, add-model) is refused here.
+  assertReferencesUsable(modelKey, options.referenceImages ?? [], {
+    hasStartFrame: Boolean(options.imageUrl),
+    prompt: options.prompt,
+    onArk: via === 'byteplus',
+  });
 
   // References this model can actually carry (#1559): a shot whose only
   // attachment is an audio element has nothing to send a reference endpoint,

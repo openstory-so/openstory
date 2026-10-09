@@ -337,11 +337,11 @@ export const STYLE_BRIEF_VARIANTS: Record<string, string[]> = {
     "A bearded man in a food-truck apron leans out from behind his counter, flips a sizzling batch on the griddle, then turns to the mic to argue passionately about the city's best late-night snack as customers queue and traffic streams past.",
   ],
   'bedroom-confessional': [
-    'A woman in her late twenties with damp curly hair and an oversized grey sweatshirt sits cross-legged against her headboard, pulling a knitted blanket over her knees as she tells the camera about the panic attack she had that morning, voice cracking, hands twisting the fabric.',
-    'A young man with a buzz cut and faded blue pyjama shirt sits on the bedroom floor beside his bedside lamp, thumbing through a stack of old letters as he reads one aloud to camera, then sets it down and wipes his eyes with his sleeve.',
-    'A woman with long dark braids in a white cotton camisole and sweatpants lies propped on one elbow across a rumpled duvet, whispering to the camera about her first sober month while she peels the label off a water bottle and finally exhales, smiling.',
-    'A man in his thirties with tousled brown hair and a worn maroon hoodie sits at the edge of the bed, cradling a sleeping cat that shifts in his lap, telling the camera why he quit his job as window light dims across his face.',
-    'A woman with short bleached hair in a loose linen shirt kneels on the bedroom floor, folding baby clothes into a box as she confides to camera about her miscarriage, pausing to press a tiny sock to her chest before closing the lid.',
+    'A woman in her late twenties with curly hair and an oversized grey sweatshirt sits cross-legged against her headboard, clutching a mug with both hands as she eagerly shares an unexpected career win with the camera, grinning and gesticulating warmly under soft bedside lamplight.',
+    'A young man with a buzz cut and faded graphic tee sits on his bedroom floor leaning against the bed, laughing as he holds up a ridiculous thrifted find to the lens and recounts how he bought it by mistake.',
+    'A woman with long dark braids in a comfortable loungewear set lies propped on one elbow across a rumpled duvet, animatedly delivering her unfiltered hot take on popular dating advice while smiling directly into the phone camera.',
+    'A man in his thirties with tousled brown hair and a worn maroon hoodie sits at the edge of the bed, petting a curious cat in his lap while casually sharing a funny childhood story with the camera under the warm glow of late afternoon window light.',
+    'A woman with short blonde hair in a cozy knit cardigan sits surrounded by scattered travel guidebooks on the rug, leaning in close to the lens to whisper an exciting surprise announcement before bursting into a wide smile.',
   ],
   'kitchen-tutorial': [
     'A woman with dark curly hair in a mustard apron leans into the counter camera to explain her one-pan lemon chicken, then the overhead angle catches her pressing thighs into a hot cast-iron skillet as butter foams and she spoons pan juices over crisping skin.',
