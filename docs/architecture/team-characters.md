@@ -395,6 +395,24 @@ production export (2026-10-07).
 sequence_cast_looks` and a native `ALTER TABLE sequence_cast DROP COLUMN
 bible_version_id`. No rebuild, so the #612 trap does not apply.
 
+**Rendering** (this PR). `20261009063135_character_rendering` (generated,
+one `ADD COLUMN`) and `20261009063136_backfill_character_rendering`
+(hand-written data SQL: the first casting sequence's style medium, else its
+art style, else "Photoreal live action"; voice-only stays null).
+
+**Proof** (2026-10-09, all six files from migration 154): `wrangler d1
+migrations apply --local` on a throwaway local D1 loaded with that day's
+production export (192,446 rows), and `migrations apply --remote` on a
+throwaway remote D1 (`openstory-scratch-2017`, deleted after) loaded with the
+same export through `scripts/reorder-d1-dump.ts` (its FK edge list
+regenerated from the export's schema). Both: every character table at the
+same count before and after (2,134 characters and links, 2,138 looks, 2,183
+sheets, 2,143 bible versions), the 464 looks whose cast looks selected a
+sheet now point at it, no selection conflicts, every seen bible version has
+a rendering and no voice-only one does, `sequence_cast_looks` and
+`bible_version_id` gone, `foreign_key_check` empty. The PR-preview path
+(`openstory-pr-2087`, forked from the lineage base) ran the same files.
+
 The deploy window: the previous worker writes `sequence_cast_looks` until
 the swap. A sheet it lands on a cast look after file 2 ran is lost to the
 look's pointer (the reconcile cron promotes a landed claim on
