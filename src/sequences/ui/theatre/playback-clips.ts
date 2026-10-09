@@ -69,17 +69,15 @@ export function shotCues(
     const said = spoken.get(index) ?? line.line;
     return line.character ? `${line.character}: ${said}` : said;
   };
+  const windowEnd = offsetSeconds + shotSeconds;
   const timed = (shot.dialogueTiming ?? []).flatMap((line) => {
     const text = textOf(line.index);
-    return text
-      ? [
-          {
-            startSeconds: offsetSeconds + line.startSeconds,
-            endSeconds: offsetSeconds + line.endSeconds,
-            text,
-          },
-        ]
-      : [];
+    if (!text) return [];
+    const startSeconds = offsetSeconds + line.startSeconds;
+    const endSeconds = Math.min(windowEnd, offsetSeconds + line.endSeconds);
+    // A reading that runs past this shot must not paint the next packed shot.
+    if (!(startSeconds < endSeconds) || startSeconds >= windowEnd) return [];
+    return [{ startSeconds, endSeconds, text }];
   });
   const timedIndexes = new Set(
     (shot.dialogueTiming ?? []).map((line) => line.index)

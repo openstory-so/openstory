@@ -21,9 +21,9 @@ export type PlaybackClip = {
   | {
       videoUrl: string;
       /**
-       * The clip's opening frame as an image, shown while the player warms
-       * up. Not the clip itself: a hidden `<video>` would download it beside
-       * the player's own reads.
+       * Optional still for a host to show while it waits for the first frame.
+       * This package does not paint it. Not the clip itself: a hidden
+       * `<video>` would download it beside the player's own reads.
        */
       posterUrl: string | null;
     }

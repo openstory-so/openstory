@@ -33,9 +33,13 @@ vi.doMock('mediabunny', () => ({
         : null;
     }
     async getPrimaryAudioTrack() {
-      return this.url.includes('silent')
-        ? null
-        : { canDecode: async () => true };
+      if (this.url.includes('silent') || this.url.includes('no-audio')) {
+        return null;
+      }
+      return {
+        canDecode: async () => !this.url.includes('undecodable'),
+        getCodec: async () => 'aac',
+      };
     }
     async getDurationFromMetadata() {
       return this.url.includes('.mp4') ? 4 : 2;
@@ -152,7 +156,10 @@ describe('mixed canvas timeline', () => {
     const missing = new ConcatenatedVideoSource([
       still({ imageUrl: '/missing.png', fallbackImageUrl: '/missing-2.png' }),
     ]);
-    expect((await missing.prepare()).totalDurationSeconds).toBe(5);
+    expect(await missing.prepare()).toMatchObject({
+      totalDurationSeconds: 5,
+      missingStillIndexes: [0],
+    });
     await missing.canvases(0).next();
     expect(context.fillText).not.toHaveBeenCalled();
     expect(context.fillRect).toHaveBeenCalled();
@@ -167,5 +174,42 @@ describe('mixed canvas timeline', () => {
     );
     expect(opened[0]?.dispose).toHaveBeenCalledOnce();
     source.dispose();
+  });
+
+  it('reports undecodable embedded audio and ignores a clip with no audio track', async () => {
+    const source = new ConcatenatedVideoSource([
+      { videoUrl: '/undecodable.mp4', posterUrl: null, cues: [] },
+      { videoUrl: '/no-audio.mp4', posterUrl: null, cues: [] },
+    ]);
+    const prepared = await source.prepare();
+    expect(prepared.silentClipIndexes).toEqual([0]);
+    expect(source.getClipAudioTracks()).toEqual([]);
+    source.dispose();
+  });
+
+  it('copies cue text onto the open clips and rejects a bad cue', () => {
+    const source = new ConcatenatedVideoSource([
+      { videoUrl: '/render.mp4', posterUrl: null, cues: [] },
+    ]);
+    source.updateCues([
+      {
+        videoUrl: '/render.mp4',
+        posterUrl: null,
+        cues: [{ startSeconds: 0, endSeconds: 1, text: 'Now' }],
+      },
+    ]);
+    expect(source.clips[0]?.cues).toEqual([
+      { startSeconds: 0, endSeconds: 1, text: 'Now' },
+    ]);
+    expect(() =>
+      source.updateCues([
+        {
+          videoUrl: '/render.mp4',
+          posterUrl: null,
+          cues: [{ startSeconds: 1, endSeconds: 1, text: 'Bad' }],
+        },
+      ])
+    ).toThrow(/0 <= start < end/);
+    expect(source.clips[0]?.cues[0]?.text).toBe('Now');
   });
 });

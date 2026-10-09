@@ -54,13 +54,17 @@ export type DialogueLineTiming = {
 
 /**
  * A shot's line timing, read off its selected section (#1853): the speech's
- * turns for this shot, moved to the section's origin — which is where the
- * cut file, and so the theatre's clip, starts. Never stored: the speech
- * already holds it.
+ * turns for this shot, clamped into `[fromSeconds, toSeconds)` and moved to
+ * the section's origin. That origin is where the cut file starts. A still's
+ * cues sit on that clock. A packed video's cues are then clamped again into
+ * the member's `durationMs` window by `shotCues`. Never stored: the speech
+ * already holds it. A zero-length or duplicate turn is dropped, so one bad
+ * alignment cannot fail `assertPlaybackClips` and refuse the whole stitch.
  */
 export function sectionLineTiming(section: {
   shotId: string;
   fromSeconds: number;
+  toSeconds: number;
   speechTurns: readonly {
     shotId: string;
     index: number;
@@ -68,18 +72,22 @@ export function sectionLineTiming(section: {
     endSeconds: number;
   }[];
 }): DialogueLineTiming[] {
-  return section.speechTurns
-    .filter(
-      (turn) =>
-        turn.shotId === section.shotId &&
-        // A turn wholly before the section's start is not in this clip.
-        turn.endSeconds > section.fromSeconds
-    )
-    .map((turn) => ({
-      index: turn.index,
-      startSeconds: Math.max(0, turn.startSeconds - section.fromSeconds),
-      endSeconds: turn.endSeconds - section.fromSeconds,
-    }));
+  const span = section.toSeconds - section.fromSeconds;
+  if (!(span > 0)) return [];
+  const seen = new Set<number>();
+  const out: DialogueLineTiming[] = [];
+  for (const turn of section.speechTurns) {
+    if (turn.shotId !== section.shotId || seen.has(turn.index)) continue;
+    // A turn wholly before the section's start is not in this clip.
+    if (!(turn.endSeconds > section.fromSeconds)) continue;
+    seen.add(turn.index);
+    const startSeconds = Math.max(0, turn.startSeconds - section.fromSeconds);
+    const endSeconds = Math.min(span, turn.endSeconds - section.fromSeconds);
+    if (startSeconds < endSeconds) {
+      out.push({ index: turn.index, startSeconds, endSeconds });
+    }
+  }
+  return out;
 }
 
 /** The speech a clip was cut from, under its pre-#1913 key too. */

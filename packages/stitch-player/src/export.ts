@@ -331,7 +331,9 @@ export async function exportSequence(
       height,
     };
   } catch (error) {
-    await output?.cancel().catch(() => undefined);
+    await output?.cancel().catch((cleanupError: unknown) => {
+      logger.warn('Export cancel failed', { error: cleanupError });
+    });
     throw error;
   } finally {
     musicInput?.dispose();
@@ -397,7 +399,11 @@ export async function downloadSequence(
       writable ? { ...options, target: writable } : options
     );
   } catch (error) {
-    await writable?.abort().catch(() => undefined);
+    await writable?.abort().catch((cleanupError: unknown) => {
+      (options.logger ?? console).warn('Export file abort failed', {
+        error: cleanupError,
+      });
+    });
     throw error;
   }
   await writable?.close();

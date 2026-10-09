@@ -202,6 +202,10 @@ export class StitchedSequenceMedia
   setSource(source: StitchedSequenceSource): void {
     const identity = stitchedSourceIdentity(source);
     const same = identity === this.#sourceIdentity && this.#engine !== null;
+    // Cue text is not part of the media key. Copy it onto the open source
+    // before swapping what captions read, so a bad cue leaves both alone
+    // and a good one reaches Download (`engine.source.clips`).
+    if (same) this.#engine?.source.updateCues(source.clips);
     const previous = this.#source;
     this.#source = source;
     this.#sourceIdentity = identity;
@@ -228,10 +232,9 @@ export class StitchedSequenceMedia
   }
 
   detach(): void {
+    const logger = this.#listeners.logger ?? console;
     this.exitPictureInPicture().catch((error: unknown) => {
-      this.#listeners.logger?.warn('Leaving Picture-in-Picture failed', {
-        error,
-      });
+      logger.warn('Leaving Picture-in-Picture failed', { error });
     });
     this.#prepareGeneration += 1;
     this.#playGeneration += 1;
@@ -457,12 +460,16 @@ export class StitchedSequenceMedia
       });
       this.#pipVideo = video;
     }
-    video.play().catch((error: unknown) => {
-      this.#listeners.logger?.warn(
+    try {
+      await video.play();
+    } catch (error: unknown) {
+      const wrapped = error instanceof Error ? error : new Error(String(error));
+      (this.#listeners.logger ?? console).warn(
         'Picture-in-Picture video would not play; the window may freeze',
-        { error }
+        { error: wrapped }
       );
-    });
+      throw wrapped;
+    }
     // A paused player draws nothing, and the stream only carries new draws
     // (`requestFrame()` delivers nothing here): redraw the canvas onto itself
     // so the video gets a frame, or the browser refuses to float it.
