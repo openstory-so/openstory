@@ -187,7 +187,7 @@ export async function serveMcpRequest(
   const response = await mcpServer.handle(request, { context });
   if (method === 'tools/list') return withToolViews(response);
   if (method === 'server/discover' || method === 'initialize') {
-    return withoutListChanged(response);
+    return withServerIdentity(response, context.origin);
   }
   return response;
 }
@@ -208,23 +208,43 @@ async function listenNotSupported(request: Request): Promise<Response> {
   });
 }
 
+const SERVER_INFO_META = 'io.modelcontextprotocol/serverInfo';
+const serverInfoSchema = z.looseObject({ name: z.string() });
 const capabilitiesSchema = z.looseObject({
   result: z.looseObject({
     capabilities: z.record(z.string(), z.unknown()),
+    // `initialize` names the server here, `server/discover` under `_meta`.
+    serverInfo: serverInfoSchema.optional(),
+    _meta: z.looseObject({ [SERVER_INFO_META]: serverInfoSchema }).optional(),
   }),
 });
 
+/** The app icon on its dark tile (#2084): the files the site favicon uses. */
+const serverIcons = (origin: string) => [
+  { src: `${origin}/icon-512.png`, mimeType: 'image/png', sizes: ['512x512'] },
+  { src: `${origin}/icon.svg`, mimeType: 'image/svg+xml', sizes: ['any'] },
+];
+
 /**
- * Drops `listChanged` from the advertised capabilities (#2035): the SDK sets
- * it on every server with a tool or resource, and a client that sees it opens
- * `subscriptions/listen`.
+ * What `initialize` and `server/discover` say about the server, fixed up:
+ *
+ * - `icons` are added (#2084). ai-mcp takes a name and a version only.
+ * - `listChanged` is dropped from the capabilities (#2035): the SDK sets it
+ *   on every server with a tool or resource, and a client that sees it opens
+ *   `subscriptions/listen`.
  */
-function withoutListChanged(response: Response): Promise<Response> {
+function withServerIdentity(
+  response: Response,
+  origin: string
+): Promise<Response> {
   return rewriteRpcBody(response, (body) => {
     // An error response has no capabilities; it passes through.
     const parsed = capabilitiesSchema.safeParse(body);
     if (!parsed.success) return null;
-    const { capabilities } = parsed.data.result;
+    const { capabilities, serverInfo, _meta } = parsed.data.result;
+    const icons = serverIcons(origin);
+    if (serverInfo) serverInfo.icons = icons;
+    if (_meta) _meta[SERVER_INFO_META].icons = icons;
     for (const [name, capability] of Object.entries(capabilities)) {
       if (typeof capability !== 'object' || capability === null) continue;
       capabilities[name] = Object.fromEntries(

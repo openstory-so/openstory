@@ -58,12 +58,12 @@ function planSummary(plan: z.output<typeof planOutput>) {
   return `Plan: estimate ${cost}${blocked}. Show it to the user before starting it.`;
 }
 
-const planInput = sequenceInput
+export const planGenerationInput = sequenceInput
   .extend({
     mode: z
       .enum(['stale', 'missing'])
       .describe(
-        'stale: redo out-of-date work (Update all) up to depth; never a first render. missing: make what the sequence still owes up to stopAt (Continue); whole sequence only.'
+        'stale: redo out-of-date work (Update all) up to depth; never a first render. missing: make what the sequence still owes up to stopAt (Continue), with startFrames and draftMotion if sent; whole sequence only.'
       ),
     depth: z
       .enum(UPDATE_STALE_DEPTHS)
@@ -73,6 +73,18 @@ const planInput = sequenceInput
       .enum(GENERATION_STAGES)
       .optional()
       .describe('Required for missing.'),
+    startFrames: z
+      .boolean()
+      .optional()
+      .describe(
+        'missing only. Render a still per shot and animate it; false renders straight to video from the reference sheets. Omit to keep the sequence’s setting.'
+      ),
+    draftMotion: z
+      .boolean()
+      .optional()
+      .describe(
+        'missing only. Render motion as low-resolution drafts first (Seedance 2.5 only). Omit to keep the sequence’s setting.'
+      ),
     sceneIds: z
       .array(ulidSchema)
       .min(1)
@@ -92,9 +104,17 @@ const planInput = sequenceInput
   .refine(
     (i) => (i.mode === 'stale' ? i.depth && !i.stopAt : i.stopAt && !i.depth),
     { message: 'mode "stale" takes depth; mode "missing" takes stopAt.' }
+  )
+  .refine(
+    (i) =>
+      i.mode === 'missing' ||
+      (i.startFrames === undefined && i.draftMotion === undefined),
+    { message: 'startFrames and draftMotion go with mode "missing".' }
   );
 
-function toRequest(input: z.output<typeof planInput>): GenerationRequest {
+function toRequest(
+  input: z.output<typeof planGenerationInput>
+): GenerationRequest {
   const target = input.sceneIds
     ? { kind: 'scenes' as const, sceneIds: input.sceneIds }
     : input.shotIds
@@ -104,7 +124,13 @@ function toRequest(input: z.output<typeof planInput>): GenerationRequest {
     return { mode: 'stale', depth: input.depth, target };
   }
   if (input.mode === 'missing' && input.stopAt) {
-    return { mode: 'missing', stopAt: input.stopAt, target };
+    return {
+      mode: 'missing',
+      stopAt: input.stopAt,
+      generateStartFrames: input.startFrames,
+      draftMotion: input.draftMotion,
+      target,
+    };
   }
   throw new Error('unreachable: planInput refines mode against depth/stopAt');
 }
@@ -115,7 +141,7 @@ export const planGenerationTool = openstoryTool({
     'Plan paid generation without starting it. Returns the work per stage (shot IDs), what is skipped or already in flight, effective models, an estimate (null = a component has no price), blockers and a planToken. Show the user this plan and get approval, then call execute_generation with the planToken.',
   scope: 'generate',
   annotations: writeAnnotations,
-  inputSchema: planInput,
+  inputSchema: planGenerationInput,
   outputSchema: planOutput,
   run: async (input, { scopedDb, userId }) => {
     const plan = await planGeneration(

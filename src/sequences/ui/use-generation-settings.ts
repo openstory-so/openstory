@@ -31,6 +31,7 @@ import {
 } from '@/models/resolutions';
 import {
   isGenerationStage,
+  NEW_SEQUENCE_STOP_AT,
   stopAtFromFlags,
   type GenerationStage,
 } from '@/sequences/pipeline';
@@ -51,7 +52,7 @@ const logger = getLogger(['openstory', 'ui', 'use-generation-settings']);
 // fails as an aimock fixture miss.
 const STORAGE_KEY = 'openstory:generation-settings:v6';
 
-type GenerationSettings = {
+export type GenerationSettings = {
   generationMode: GenerationMode;
   aspectRatio: AspectRatio;
   resolution: Resolution;
@@ -114,7 +115,7 @@ const DEFAULT_SETTINGS: GenerationSettings = withMode({
   videoModels: [NEW_SEQUENCE_VIDEO_MODEL],
   // Stop once the dialogue is recorded (#2004): hear the film before paying
   // for motion.
-  stopAt: 'dialogue',
+  stopAt: NEW_SEQUENCE_STOP_AT,
   rememberStopAt: false,
   // Off by default: a new sequence renders reference-only; start frames are
   // the opt-in for steerable composition.

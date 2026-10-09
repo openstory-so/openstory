@@ -21,8 +21,10 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { DEFAULT_RESOLUTION, resolutionSchema } from '@/models/resolutions';
 import {
   GENERATION_STAGES,
+  NEW_SEQUENCE_STOP_AT,
   generationStageSchema,
   stopAtFromFlags,
+  type GenerationStage,
 } from '@/sequences/pipeline';
 import { MUSIC_REQUIRES_MOTION_ERROR } from '@/sequences/server/sequence.schemas';
 import { z } from 'zod';
@@ -182,16 +184,27 @@ export const apiCreateSequenceSchema = z
         description: `Video (image-to-video) model key(s); first is primary. Defaults to ${DEFAULT_VIDEO_MODEL}.`,
       }),
 
-    motion: z.boolean().default(false).meta({
-      description: 'Generate motion (video) for each shot. Default false.',
-    }),
+    motion: z
+      .boolean()
+      .default(false)
+      .meta({
+        description: `Generate motion (video) for each shot. Default false: the run stops at ${NEW_SEQUENCE_STOP_AT}.`,
+      }),
     music: z
       .boolean()
       .default(false)
       .meta({ description: 'Generate sequence music. Default false.' }),
     stopAt: generationStageSchema.optional().meta({
-      description: `How far the run goes, in order: ${GENERATION_STAGES.join(', ')}. Overrides motion and music when set. Omitted, the run stops at ${stopAtFromFlags({})} unless motion or music is true.`,
+      description: `How far the run goes, in order: ${GENERATION_STAGES.join(', ')}. Overrides motion and music when set. Omitted, the run stops at ${NEW_SEQUENCE_STOP_AT} unless motion or music is true.`,
       examples: ['dialogue'],
+    }),
+    startFrames: z.boolean().default(false).meta({
+      description:
+        'Render a still per shot and animate it. Default false: shots render straight to video from the reference sheets, no stills are made, and every video model must support that.',
+    }),
+    draftMotion: z.boolean().default(true).meta({
+      description:
+        'Render motion as low-resolution drafts first, to be rendered at quality once approved. Only Seedance 2.5 honours it; other video models render finished clips. Default true.',
     }),
     audioModels: z
       .array(z.string())
@@ -256,3 +269,15 @@ export const apiCreateSequenceSchema = z
   });
 
 export type ApiCreateSequenceInput = z.infer<typeof apiCreateSequenceSchema>;
+
+/** How far a create runs: the named stop, else motion/music, else the app's default. */
+export function apiStopAt(
+  input: Pick<ApiCreateSequenceInput, 'stopAt' | 'motion' | 'music'>
+): GenerationStage {
+  if (input.stopAt) return input.stopAt;
+  if (!input.motion) return NEW_SEQUENCE_STOP_AT;
+  return stopAtFromFlags({
+    autoGenerateMotion: true,
+    autoGenerateMusic: input.music,
+  });
+}
