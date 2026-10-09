@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "close-up, eye level, The cyclist is braking beside Scarlett (Image 2) with one gloved hand reaching toward her tilting coffee cup, while Scarlett (Image 2) looks startled and keeps filming, The coffee cup and gloved hand dominate the foreground, with Scarlett (Image 2)’s amused face and phone visible behind them in shallow focus, EXT. DOWNTOWN CROSSWALK — LATE MORNING, late morning, downtown_crosswalk (Image 3), Natural lighting appropriate to late morning, #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8, Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 1 (character): Passing cyclist - An athletic adult cyclist with a lean build",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/80bab3c955e3c2efd30b11d8d0ee7451b7788aab97207faf89225ff66ecb6d97.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

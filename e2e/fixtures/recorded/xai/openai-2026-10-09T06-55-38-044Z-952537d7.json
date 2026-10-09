@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium wide, eye level, Scarlett (Image 1) has just stepped into the crowded crosswalk, filming herself with one hand while keeping her coffee level with the other, Scarlett (Image 1) moves through the crosswalk on the center third, taxis and office towers layered behind her, phone raised and coffee held in the foreground, EXT. DOWNTOWN CROSSWALK — LATE MORNING, late morning, downtown_crosswalk (Image 2), Natural lighting appropriate to late morning, #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8, Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/93e44311d6fcf132b6bf393c9e67b1a3c0b694c1fcb2973c5683b2b7cf06f69b.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}
