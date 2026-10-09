@@ -142,7 +142,12 @@ The body is ergonomic: reference a style, cast member, or location by id or name
 or pass an inline object to create a new one. No `style` (or `"auto"`) is Match
 script, a style derived from the script. `enhance` (`auto` | `always` | `off`)
 controls script expansion; `motion` and `music` toggle video and score, and
-`stopAt` (`script` … `music`) sets how far the run goes, overriding both.
+`stopAt` (`script` … `music`) sets how far the run goes, overriding both. With
+none of the three, the run stops at `dialogue`, as a new sequence in the app does.
+`startFrames` (default `false`) renders a still per shot and animates it; left
+off, shots render straight to video from the reference sheets and no stills are
+made. `draftMotion` (default `false`) renders low-resolution drafts first on
+Seedance 2.5.
 Speaking characters get a designed voice wherever this deployment can design one. There is no `voices` field.
 See `GET /api/v1` or the OpenAPI spec for the full request schema.
 

@@ -86,8 +86,11 @@ vi.doMock('@/billing/cost-estimation', () => ({
   gateEstimate: (micros: number) => micros,
 }));
 // prepareContinue is the lock check, the work list and the estimate.
+const realContinuePlan =
+  await vi.importActual<typeof import('./continue-plan')>('./continue-plan');
 vi.doMock('./continue-plan', () => ({
   CONTINUE_CREDIT_PROVIDERS: ['fal', 'openrouter'],
+  withContinueSwitches: realContinuePlan.withContinueSwitches,
   prepareContinue: vi.fn(
     async (args: { sequence: { id: string }; stopAt: unknown }) => {
       await getSequenceRejectingActiveRun(undefined, args.sequence.id);
@@ -201,6 +204,8 @@ beforeEach(async () => {
     title: 'S',
     styleId,
     status: 'completed',
+    // Every real row has one (#1118); Continue restores it on a refusal.
+    generationStopAt: 'images',
   });
   await db
     .insert(scenes)
@@ -440,6 +445,39 @@ describe('execute_generation', () => {
       code: 'GENERATION_IN_PROGRESS',
     });
     expect(triggerContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it('plans Continue under the switches sent and saves them at launch', async () => {
+    const plan = await planGeneration(scoped(), actor(), sequenceId, {
+      ...missing,
+      generateStartFrames: true,
+      draftMotion: true,
+    });
+    const saved = () =>
+      db
+        .select({
+          generateStartFrames: sequences.generateStartFrames,
+          draftMotion: sequences.draftMotion,
+        })
+        .from(sequences)
+        .where(eq(sequences.id, sequenceId));
+    const before = await saved();
+    await execute(plan.planToken);
+    expect(await saved()).toEqual([
+      { generateStartFrames: true, draftMotion: true },
+    ]);
+    // Planning alone saved nothing.
+    expect(before).not.toEqual([
+      { generateStartFrames: true, draftMotion: true },
+    ]);
+    expect(computePlan).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sequenceOverrides: expect.objectContaining({
+          generateStartFrames: true,
+          draftMotion: true,
+        }),
+      })
+    );
   });
 });
 
