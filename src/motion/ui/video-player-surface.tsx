@@ -30,6 +30,7 @@ const isVideoMedia = (media: Media): media is VideoMedia =>
 type VideoPlayerSurfaceProps = {
   src: string;
   chaptersUrl?: string;
+  subtitlesUrl?: string;
   posterSrc?: string | null;
   autoPlay?: boolean;
   /** Seek here when the value changes (packed-clip shot windows). */
@@ -45,6 +46,7 @@ type VideoPlayerSurfaceProps = {
 const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   src,
   chaptersUrl,
+  subtitlesUrl,
   posterSrc,
   autoPlay = false,
   seekTo,
@@ -151,6 +153,16 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
         preload="metadata"
       >
         {chaptersUrl && <track kind="chapters" src={chaptersUrl} default />}
+        {subtitlesUrl && (
+          <track
+            key={subtitlesUrl}
+            kind="captions"
+            src={subtitlesUrl}
+            srcLang="en"
+            label="Dialogue"
+            default
+          />
+        )}
       </Video>
       {!src && posterSrc && (
         <Poster.Root>

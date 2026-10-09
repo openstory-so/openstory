@@ -1,4 +1,8 @@
-import type { PlaybackClip, PlaybackCue } from '@openstory/stitch-player';
+import {
+  cuesToWebVTT,
+  type PlaybackClip,
+  type PlaybackCue,
+} from '@openstory/stitch-player';
 
 import type { ShotView } from '@/shots/shot-view';
 import {
@@ -94,6 +98,26 @@ export function shotCues(
       text: untimed.join('\n'),
     },
   ];
+}
+
+/**
+ * WebVTT for a shot video, on the file's own timeline. One shot starts at 0.
+ * A packed clip lists every member in order, same windows as the sequence
+ * player. Null when no line would show. The shot player loads this as a
+ * captions track; Video.js paints it.
+ */
+export function shotVideoSubtitlesVtt(
+  shots: readonly (PackedClipShot &
+    Pick<PlaybackShot, 'dialogue' | 'audioClips' | 'dialogueTiming'>)[]
+): string | null {
+  const cues = packedClipWindows(shots).flatMap((window, i) => {
+    const member = shots[i];
+    return member
+      ? shotCues(member, window.startSeconds, window.durationSeconds)
+      : [];
+  });
+  if (cues.length === 0) return null;
+  return cuesToWebVTT([{ videoUrl: 'shot', posterUrl: null, cues }], [0]);
 }
 
 /** One continuous timeline: rendered clips where available, stills elsewhere. Clips play in array order. */
