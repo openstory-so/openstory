@@ -16,22 +16,15 @@ versions, and a claim.
   - Identity: `characterId` (FK, `restrict`), `isDefault` (one per character,
     partial unique index), `sortOrder`, `deletedAt`, and
     `selectedLookVersionId` (the look's current definition).
-  - Keep identity free of anything a sequence decides.
-- **`sequence_cast_looks`** (#2017) — the look as one sequence uses it: the
-  look version it pins (`lookVersionId`), `selectedSheetVersionId`,
-  `pendingPromoteSheetVersionId` (the sheet claim), `sheetStatus`,
-  `sheetError`. Every look read comes through it and carries those fields.
-  The same columns on `character_looks` are `legacy*` and unread. See
-  `team-characters.md`.
+  - The sheet: `selectedSheetVersionId`, `pendingPromoteSheetVersionId` (the
+    sheet claim), `sheetStatus`, `sheetError`. One sheet per look, shared by
+    every sequence that casts the character (#2017, `team-characters.md`).
 - **`character_look_versions`** — the definition: `name`, `clothing`,
   `styling`, `source` (`backfill` | `analysis` | `edit`). Never rewritten.
 - **`character_sheet_variants`** carries `lookId` and `lookVersionId` (the
-  look version the run read), and `castLookId` (#2017): the cast look it was
-  drawn or uploaded for, so a sequence's version strip and divergent banner
-  list only its own sheets and the one it selected (null: unknown origin,
-  listed everywhere; see `team-characters.md` § Version moves). The divergent
-  key is (look, model, input hash). No FK on `lookId` or `castLookId`: adding
-  one to an existing table is a rebuild, and no migration has done it.
+  look version the run read). The divergent key is (look, model, input
+  hash). No FK on `lookId`: adding one to an existing table is a rebuild,
+  and no migration has done it.
 - **A scene's picks** live in `continuity.characterLooks` on the selected
   `scene_script_versions` row: character tag → look id. Changing one appends
   a script version, like any narrative edit.
@@ -79,11 +72,11 @@ a stray reader does not compile.
 
 - **Read: one resolver.** `effectiveStyling(styling, legacyFeatures)`
   (`src/cast/character-looks.ts`). A default look's styling is its own joined
-  with the legacy text of the bible version read beside it (the one the
-  sequence pins, or the current one from no sequence): blank parts skipped,
+  with the legacy text of the character's current bible version: blank
+  parts skipped,
   a newline between, and the features not repeated when the styling already
   holds them. Any other look's styling is its own. The look reads
-  (`selectLooks`, `selectCurrentLooks`) resolve it, so every `styling` a
+  (`selectLooks`) resolve it, so every `styling` a
   caller sees is the effective one: the editor, the prompts, the payloads,
   the current digests. A look also carries `storedStyling`, the version's own
   column, and a character `legacyDistinguishingFeatures`. Those two are for
@@ -93,20 +86,18 @@ a stray reader does not compile.
   styling, so a save of what the field showed writes nothing. When the
   styling itself is edited on a default look, the look version takes the
   submitted text and, in the same batch, a bible version with the legacy
-  text null is appended, made current and pinned (`legacyFeaturesMove`),
-  with every sheet claim of the cast revoked and a `character.updated`
-  event recording the pin move. That is the move, done once. A rename or a
+  text null is appended and made current (`legacyFeaturesMove`), with every
+  sheet claim of the character revoked and, from a sequence, a
+  `character.updated` event recording the move. That is the move, done once. A rename or a
   clothing edit writes the look's own stored styling to the new version and
   leaves the bible alone, so it stales nothing the old code did not.
 - **Carried while it is still on the bible.** `bibleWrite` takes the
-  legacy text of the version it reads from (the one the editing sequence
-  pins) as a required field and writes it to the next one: an age edit, a
-  recast and a re-analysis all keep it. But only while the character's
-  CURRENT version still holds it. Once the move has nulled it anywhere,
-  every new version has null, decided inside the insert: a sequence that
-  still pins an old version with the text must not make a new current
-  version that brings back a mark its writer removed. A one-off copy carries
-  it and each look's stored styling. New characters never have it.
+  legacy text of the version it reads from as a required field and writes
+  it to the next one: an age edit, a recast and a re-analysis all keep it.
+  But only while the character's CURRENT version still holds it. Once the
+  move has nulled it, every new version has null, decided inside the
+  insert, so a write that read an older version cannot bring back a mark
+  its writer removed. New characters never have it.
   `effectiveStyling` treats the text as already held only when the styling
   is the text or ends with the `\n<text>` the resolver writes; a substring
   ("red scarf" and "scar") is not held.
@@ -158,20 +149,10 @@ a stray reader does not compile.
   into the default looks, delete the `pre-2065` shape and the fold seams,
   and drop the column (a native `DROP COLUMN`).
 
-Edges, known and left: once the text has moved (the default look's styling
-was edited in another sequence or on the Characters page), a sequence that
-still pins the old bible version and the old look version reads the old
-joined text until it does one of two things. Moving to the current version
-moves both pins and reads the new styling. Editing the bible there (an age
-edit, a recast, a re-analysis) appends a version without the text and pins
-it beside the old look version, so that sequence reads the old look's own
-styling with the features gone; its default sheet and the shots that wear
-it read stale, and "Not the current version" is how it takes the new
-styling. The text never comes back on the current version either way. A look's
-version history lists each version's own styling, so a default look not yet
-edited shows less there than in the editor. A character an older worker
-wrote before #1600 has no bible version to append to, so its legacy text
-stays joined.
+Edges, known and left: a look's version history lists each version's own
+styling, so a default look not yet edited shows less there than in the
+editor. A character an older worker wrote before #1600 has no bible version
+to append to, so its legacy text stays joined.
 
 ## Dressing
 
@@ -196,24 +177,24 @@ look's clothing.
 trigger (`lookId`, `lookVersionId`, `lookStyling`, the clothing as
 `characterMetadata.standardClothing`); the run never reads the look.
 
-Claim → demote → guarded promote → fail, on the cast look of the sequence
-that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
+Claim → demote → guarded promote → fail, on the look
+(`characterLooks.claimSheet` / `failSheetClaim`,
 `characterSheetVariants.promoteIfPending`):
 
 - A look edit that moves clothing or styling demotes that look's claim in the
   same batch. A rename does not.
 - A bible edit to a field the sheets read, a recast and a style change demote
   **every** look's claim.
-- The claim is **conditional**: it is taken only while the look version and
-  bible version the sequence pins, and that bible version's talent, are
-  still the ones on the payload. A claim
-  that is not taken still returns an id, and the run parks its sheet under it.
+- The claim is **conditional**: it is taken only while the look's current
+  version, the character's current bible version, and that bible version's
+  talent are still the ones on the payload. A claim that is not taken still
+  returns an id, and the run parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
 - A payload frozen before #1600 names no bible version. Absent is "unknown",
   not "none": `claimSheet` skips that part of the condition.
 - The reconcile cron (`reconcileLookSheetClaimsPass`, pass
-  `character_looks.claims`, over the cast looks) settles the two states no
+  `character_looks.claims`) settles the two states no
   run will: a claim whose row already exists as a plain completed sheet is
   promoted (only an older worker leaves that, by landing on the legacy
   columns mid-deploy), and a claim older than an hour is failed.
@@ -258,55 +239,9 @@ against the talent's default sheet.
   redraws it (credits), with the shots that wear it. No legacy hash shape
   keeps them fresh.
 
-- **Sheet reuse by hash (#2017).** When a plan owes a look's sheet,
-  `buildPlanReferences` first asks `characterSheetVariants.findReusable`
-  for a finished sheet of the SAME look (same character, same look id) by
-  the same image model with the same input hash, from any sequence of the
-  team. The hash covers the pinned bible fields, the look's clothing and
-  styling, the cast talent, the style and the image model, and — on a
-  non-default look — the default look's selected sheet version, so a
-  series gets reuse only while it keeps its style and model fixed. A row
-  that is parked (divergent), discarded, failed or still generating is not
-  a candidate. A sheet drawn before #2065 carries the `pre-2065` digest, so
-  a miss on the payload's own hash is followed by one lookup by that digest
-  of the same inputs (the look's stored parts, as a live verify reads
-  them); the plan records which hash matched (`matchedInputHash`) and the
-  run's adopt is conditional on the row still carrying it. Any older shape
-  is simply missed, which costs a draw and never a wrong sheet. A match wins over the talent
-  copy. A default that is reused gives its other looks their face at plan
-  time, so they are hashed and checked too and a whole cast reuses.
-  The plan lists it in `reusedSheets`, not `characterSheets`, so the
-  wave's price, the fresh reservation and the Update-all preview count it
-  at zero (the preview says "1 sheet reused"). The live plan marks the unit
-  too (`PlanUnit.reused`, set by `computeGenerationPlan` asking
-  `buildPlanReferences` about the owed sheets), so the footer line says
-  `2 references (1 reused)` and the continue quote (`estimateContinueCost`)
-  prices it at zero. Every number a user sees agrees with the run.
-  **Adopt by pointer, never by copy.** The run takes the ordinary claim,
-  then `characterSheetVariants.adoptIfPending` points this sequence's cast
-  look at the existing row in one guarded UPDATE — claim still held, row
-  still finished and matching. One row, referenced by two cast looks; the
-  strip lists it in both (`ofCastLook` includes the selected row), neither
-  can discard it from under the other, and the other sequence's shots do
-  not move. The same URL is what saves the BytePlus portrait slot. A
-  refused adopt (claim moved, row discarded or changed) fails the sheet,
-  clears its claim and holds the shots that wear it; it never draws
-  instead. An explicit Regenerate never reuses: the user asked for a draw.
-  **Which row:** `findReusable` prefers a row some cast look currently
-  selects (newest among those), then history rows: a re-roll a sequence
-  rejected must not be adopted over the one it kept. History rows stay
-  candidates because they are the same image from the same inputs.
-  **Two edges, documented not solved (2026-10-07):** once the second
-  sequence selects a different sheet, the shared row drops out of its strip
-  (`ofCastLook` lists only what that sequence drew or selects) and the only
-  way back is reuse on the next plan. And a look drawn in the same wave from
-  a reused default's face reads stale, visibly, if that default's adopt is
-  then refused: its face names a sheet the sequence never selected, and the
-  next Update redraws it.
-
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
-stored URL), so reuse is also what keeps a series inside the ~45-slot pool:
-`byteplus-ark.md` has the numbers.
+stored URL). One sheet per look, shared by every sequence, is what keeps a
+series inside the ~45-slot pool: `byteplus-ark.md` has the numbers.
 
 ## Hashes and staleness
 
@@ -358,9 +293,9 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
 - Voice design sees no outfits (`withoutLooks`); the shot rewrite sees only
   the look worn in that shot's scene (`wornLookOnly`).
 - A character the library or another sequence holds (#2050) is not synced:
-  `characterLooks.linkFromAnalysis` gives this sequence a cast look for each
-  look the model named (by id, or by name among every live look she has) and
-  adds a look only for a name she lacks. No look of hers is rewritten or
+  `characterLooks.linkFromAnalysis` matches each look the model named (by
+  id, or by name among every live look she has) and adds a look only for a
+  name she lacks. No look of hers is rewritten or
   removed by another sequence's analysis. See `team-characters.md`.
 
 ## Editing

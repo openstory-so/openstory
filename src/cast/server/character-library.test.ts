@@ -22,7 +22,6 @@ import type { Database } from '@/platform/server/db/client';
 import {
   characters,
   sequenceCast,
-  sequenceCastLooks,
   sequences,
   styles,
   teams,
@@ -90,13 +89,7 @@ async function voiced() {
     { sequenceId, characterId: 'char_001', name: 'Ada' },
     { source: 'analysis', createdBy: null }
   );
-  await chars().updateVoice(
-    sequenceId,
-    created.id,
-    { voiceId: VOICE },
-    'generated',
-    null
-  );
+  await chars().updateVoice(created.id, { voiceId: VOICE }, 'generated', null);
   return { sequenceId, created };
 }
 
@@ -335,40 +328,5 @@ describe('a character made with no sequence (#2065)', () => {
     expect((await chars().getTeamCharacter(made.id))?.sequences).toHaveLength(
       1
     );
-  });
-});
-
-describe('getHeldElsewhere', () => {
-  it('is false once every other sequence casting the character is archived', async () => {
-    const { sequenceId: a, created } = await voiced();
-    const b = await newSequence('B');
-    const [link] = await db
-      .insert(sequenceCast)
-      .values({
-        sequenceId: b,
-        characterId: created.id,
-        scriptCharacterId: 'char_ada',
-        bibleVersionId: created.selectedBibleVersionId,
-      })
-      .returning();
-    if (!link) throw new Error('test setup: link insert returned nothing');
-    await db.insert(sequenceCastLooks).values({
-      castId: link.id,
-      lookId: created.lookId,
-      lookVersionId: created.looks[0]?.lookVersionId ?? '',
-      sheetStatus: 'pending',
-    });
-    expect(await chars().getHeldElsewhere(a, created.id)).toBe(true);
-    expect(await chars().getHeldElsewhere(b, created.id)).toBe(true);
-
-    // Archive B: A is the only holder, so letting go from A releases.
-    await archive(b);
-    expect(await chars().getHeldElsewhere(a, created.id)).toBe(false);
-    expect(await chars().getHeldElsewhere(b, created.id)).toBe(true);
-
-    // Both archived: nothing holds it from either side.
-    await archive(a);
-    expect(await chars().getHeldElsewhere(b, created.id)).toBe(false);
-    expect(await chars().getCastInAnySequence(created.id)).toBe(false);
   });
 });

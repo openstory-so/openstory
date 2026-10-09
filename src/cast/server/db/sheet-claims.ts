@@ -29,10 +29,11 @@ import type {
 } from 'drizzle-orm/sqlite-core';
 import type { Database } from '@/platform/server/db/client';
 import {
+  characterLooks,
   characterSheetVariants,
+  characters,
   locationSheetVariants,
   sequenceCast,
-  sequenceCastLooks,
   sequenceLocations,
   talent,
 } from '@/platform/server/db/schema';
@@ -42,20 +43,20 @@ import type {
 } from '@/shots/input-hash';
 
 /**
- * Clear the sheet claim of every look (#2015) of the cast links (#2017)
- * matching `where`, a condition on `sequence_cast`: the bible a sequence
- * pins, its cast talent and its style feed all of that cast's sheets.
+ * Clear the sheet claim of every look (#2015) of the characters matching
+ * `where`, a condition on `characters`: the bible, the cast talent and the
+ * style feed all of a character's sheets.
  */
 export const demoteCharacterSheetClaims = (db: Database, where: SQL) =>
   db
-    .update(sequenceCastLooks)
+    .update(characterLooks)
     .set({ pendingPromoteSheetVersionId: null })
     .where(
       and(
-        isNotNull(sequenceCastLooks.pendingPromoteSheetVersionId),
+        isNotNull(characterLooks.pendingPromoteSheetVersionId),
         inArray(
-          sequenceCastLooks.castId,
-          db.select({ id: sequenceCast.id }).from(sequenceCast).where(where)
+          characterLooks.characterId,
+          db.select({ id: characters.id }).from(characters).where(where)
         )
       )
     );
@@ -89,11 +90,15 @@ export const demoteSequenceSheetClaims = (
   styleMoved: SQL
 ) =>
   [
-    // Where a character's sheet claims live now (#2017): the cast looks of
-    // the sequence's cast links.
     demoteCharacterSheetClaims(
       db,
-      sql`${eq(sequenceCast.sequenceId, sequenceId)} and ${styleMoved}`
+      sql`${inArray(
+        characters.id,
+        db
+          .select({ id: sequenceCast.characterId })
+          .from(sequenceCast)
+          .where(eq(sequenceCast.sequenceId, sequenceId))
+      )} and ${styleMoved}`
     ),
     demoteLocationReferenceClaims(
       db,
@@ -212,33 +217,31 @@ const versionRow = <H>(args: LandArgs<H>, now: Date) => ({
 });
 
 /**
- * Land a look's sheet run (#2015): {@link landSheetVersion}, with the
- * sequence's cast look (#2017) as the parent — it holds the pointer and the
- * claim. The caller resolves it (`requireLook`).
+ * Land a look's sheet run (#2015): {@link landSheetVersion}, with the look
+ * as the parent — it holds the pointer and the claim. The caller makes sure
+ * the look row exists (`requireLook`).
  */
 export function landCharacterSheet(
   db: Database,
   args: LandArgs<CharacterSheetInputHash> & {
     characterId: string;
     lookId: string;
-    /** The `sequence_cast_looks` row the run's claim is on. */
-    castLookId: string;
     /** The look version the run read; null when unknown. */
     lookVersionId: string | null;
   }
 ): Promise<SheetLanding> {
-  const { characterId, lookId, castLookId, versionId } = args;
+  const { characterId, lookId, versionId } = args;
   const now = new Date();
   const twin = alias(characterSheetVariants, 'twin');
   return landSheetVersion(
     db,
     {
       entity: `Look ${lookId}`,
-      parent: sequenceCastLooks,
-      isParent: eq(sequenceCastLooks.id, castLookId),
-      selected: sequenceCastLooks.selectedSheetVersionId,
-      claim: sequenceCastLooks.pendingPromoteSheetVersionId,
-      isGenerating: eq(sequenceCastLooks.sheetStatus, 'generating'),
+      parent: characterLooks,
+      isParent: eq(characterLooks.id, lookId),
+      selected: characterLooks.selectedSheetVersionId,
+      claim: characterLooks.pendingPromoteSheetVersionId,
+      isGenerating: eq(characterLooks.sheetStatus, 'generating'),
       promote: {
         selectedSheetVersionId: versionId,
         pendingPromoteSheetVersionId: null,
@@ -253,8 +256,6 @@ export function landCharacterSheet(
         characterId,
         lookId,
         lookVersionId: args.lookVersionId,
-        // The sequence the sheet was drawn for (#2017): its strip lists it.
-        castLookId,
       },
       versionIdColumn: characterSheetVariants.id,
       divergedAt: characterSheetVariants.divergedAt,

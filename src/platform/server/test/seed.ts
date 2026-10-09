@@ -27,7 +27,6 @@ import {
   renderSegments,
   scenes,
   sequenceCast,
-  sequenceCastLooks,
   sequenceLocations,
   sequenceStyleVersions,
   sequences,
@@ -199,17 +198,6 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
     db
       .delete(sequenceStyleVersions)
       .where(inArray(sequenceStyleVersions.sequenceId, ids)),
-    db
-      .delete(sequenceCastLooks)
-      .where(
-        inArray(
-          sequenceCastLooks.castId,
-          db
-            .select({ id: sequenceCast.id })
-            .from(sequenceCast)
-            .where(inArray(sequenceCast.sequenceId, ids))
-        )
-      ),
     db.delete(sequenceCast).where(inArray(sequenceCast.sequenceId, ids)),
     db
       .delete(characterBibleVersions)
@@ -596,7 +584,6 @@ export async function createTestCharacter(
     sequenceId,
     characterId: id,
     scriptCharacterId: characterId,
-    bibleVersionId: id,
     createdAt: now,
   });
   // Its default look (#2015), keyed to the character's own id like the
@@ -607,15 +594,6 @@ export async function createTestCharacter(
     isDefault: true,
     sortOrder: 0,
     selectedLookVersionId: id,
-    legacySheetStatus: sheetStatus,
-    createdAt: now,
-    updatedAt: now,
-  });
-  await db.insert(sequenceCastLooks).values({
-    id,
-    castId: id,
-    lookId: id,
-    lookVersionId: id,
     sheetStatus,
     createdAt: now,
     updatedAt: now,
@@ -1025,15 +1003,14 @@ export async function getTestCharacter(characterId: string): Promise<{
       id: characters.id,
       name: characterBibleVersions.name,
       talentId: characterBibleVersions.talentId,
-      sheetStatus: sequenceCastLooks.sheetStatus,
+      sheetStatus: characterLooks.sheetStatus,
     })
     .from(characters)
-    .innerJoin(sequenceCast, eq(sequenceCast.characterId, characters.id))
     .innerJoin(
       characterBibleVersions,
-      eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+      eq(characterBibleVersions.id, characters.selectedBibleVersionId)
     )
-    .innerJoin(sequenceCastLooks, eq(sequenceCastLooks.lookId, characters.id))
+    .innerJoin(characterLooks, eq(characterLooks.id, characters.id))
     .where(eq(characters.id, characterId));
   return result ?? null;
 }

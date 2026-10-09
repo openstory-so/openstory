@@ -26,11 +26,11 @@ import {
   talentSheetInputHash,
 } from '@/shots/input-hash';
 import {
+  characterLooks,
   characterSheetVariants,
   characters,
   locationLibrary,
   locationSheetVariants,
-  sequenceCastLooks,
   sequenceLocations,
   sequences,
   styles,
@@ -363,14 +363,11 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
       inputHash: characterSheetInputHash('hash-live'),
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
-    await createCharacterLooksMethods(db, team.id).ensureDefault(
-      sequenceId,
-      characterId
-    );
+    await createCharacterLooksMethods(db, team.id).ensureDefault(characterId);
     await db
-      .update(sequenceCastLooks)
+      .update(characterLooks)
       .set({ selectedSheetVersionId: variant.id })
-      .where(eq(sequenceCastLooks.lookId, characterId));
+      .where(eq(characterLooks.id, characterId));
 
     await expect(methods.discard(variant.id)).rejects.toThrow(
       /Cannot discard the selected/
@@ -401,10 +398,7 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     });
     await methods.discard(a.id);
 
-    const active = await methods.listDivergentActiveByCharacter(
-      sequenceId,
-      characterId
-    );
+    const active = await methods.listDivergentActiveByCharacter(characterId);
     expect(active).toHaveLength(1);
     expect(active[0]?.inputHash).toBe('hash-b');
   });
@@ -654,9 +648,7 @@ describe('location-sheet-variants promoteAtomically (library only)', () => {
 describe('sheet-variants list filters and empty-input short-circuits', () => {
   it('character listDivergentActiveByCharacters returns [] for empty input (no SQL roundtrip)', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
-    expect(
-      await methods.listDivergentActiveByCharacters(sequenceId, [])
-    ).toEqual([]);
+    expect(await methods.listDivergentActiveByCharacters([])).toEqual([]);
   });
 
   it('talent listDivergentActiveByTalents returns [] for empty input', async () => {
@@ -741,10 +733,7 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     });
     await methods.discard(v1.id);
 
-    const active = await methods.listDivergentActiveByCharacter(
-      sequenceId,
-      characterId
-    );
+    const active = await methods.listDivergentActiveByCharacter(characterId);
     expect(active).toHaveLength(1);
 
     const allDivergent = await methods.listDivergentByCharacter(characterId);
@@ -821,7 +810,6 @@ describe('character sheet versions (append + select)', () => {
     });
 
     const { version } = await methods.applyConvergent({
-      sequenceId,
       lookId: characterId,
       url: 'https://example.com/new.png',
       storagePath: '/new.png',
@@ -839,7 +827,7 @@ describe('character sheet versions (append + select)', () => {
     expect(live?.sheetImageUrl).toBe('https://example.com/new.png');
     expect(live?.sheetInputHash).toBe('hash-new');
 
-    const history = await methods.listHistoryByLook(sequenceId, characterId);
+    const history = await methods.listHistoryByLook(characterId);
     expect(history).toHaveLength(2);
     expect(history.map((row) => row.url)).toEqual([
       'https://example.com/old.png',
@@ -851,7 +839,6 @@ describe('character sheet versions (append + select)', () => {
   it('select repoints the parent without discarding the previous version', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
     const first = await methods.applyConvergent({
-      sequenceId,
       lookId: characterId,
       url: 'https://example.com/a.png',
       storagePath: '/a.png',
@@ -859,7 +846,6 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
     const second = await methods.applyConvergent({
-      sequenceId,
       lookId: characterId,
       url: 'https://example.com/b.png',
       storagePath: '/b.png',
@@ -880,8 +866,8 @@ describe('character sheet versions (append + select)', () => {
     });
     const [after] = await db
       .select()
-      .from(sequenceCastLooks)
-      .where(eq(sequenceCastLooks.lookId, characterId));
+      .from(characterLooks)
+      .where(eq(characterLooks.id, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     // Reads follow the pointer, not a mirror column (#1419).
     const live = await createCharactersMethods(db, team.id).getById(
@@ -891,7 +877,7 @@ describe('character sheet versions (append + select)', () => {
     expect(live?.sheetImageUrl).toBe('https://example.com/a.png');
     expect(live?.sheetInputHash).toBe('hash-a');
 
-    const history = await methods.listHistoryByLook(sequenceId, characterId);
+    const history = await methods.listHistoryByLook(characterId);
     expect(history).toHaveLength(2);
     expect(history.map((row) => row.id)).toEqual([
       first.version.id,

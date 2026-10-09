@@ -67,10 +67,7 @@ function makeCharacter(
     // Cast in its sequence (#2017).
     castId: 'cast-1',
     teamId: 'team-1',
-    copiedFromCharacterId: null,
     selectedBibleVersionId: 'bible-1',
-    currentBibleVersionId: 'bible-1',
-    currentVoiceVersionId: null,
     pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
     pendingPromoteVoiceVersionId: null,

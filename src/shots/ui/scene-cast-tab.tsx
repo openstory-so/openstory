@@ -27,7 +27,6 @@ import {
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { canonicalBibleTag } from '@/cast/bible-field';
 import { dressForScene } from '@/cast/character-looks';
-import { isBehindCurrentVersion } from '@/cast/version-behind';
 import type { SceneWithScript } from './use-scenes';
 import { useUpdateScene } from './use-scene-structure';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
@@ -183,11 +182,6 @@ const CastCard: React.FC<CastCardProps> = ({
             </h3>
             {character.voiceOnly && (
               <Badge variant="secondary">Voice only</Badge>
-            )}
-            {isBehindCurrentVersion(owner) && (
-              // This sequence pins a version other than the character's
-              // current one (#2017); the panel has Update this sequence.
-              <Badge variant="secondary">Not the current version</Badge>
             )}
             {(character.age || character.gender) && (
               <p className="mt-1 truncate text-xs text-white/70">

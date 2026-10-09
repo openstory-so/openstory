@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "5583dfd6-cad2-444b-9988-189ffff6f119",
-  "prevIds": ["20c1d883-c4eb-452b-a22e-36b3988d55d9"],
+  "id": "8e5c738b-706d-4e68-a62b-7882406c9f12",
+  "prevIds": ["12c3dd5f-2dfd-47c9-a19a-1e318689d8e9"],
   "ddl": [
     {
       "name": "account",
@@ -186,10 +186,6 @@
     },
     {
       "name": "sequence_cast",
-      "entityType": "tables"
-    },
-    {
-      "name": "sequence_cast_looks",
       "entityType": "tables"
     },
     {
@@ -1435,16 +1431,6 @@
       "table": "character_sheet_variants"
     },
     {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cast_look_id",
-      "entityType": "columns",
-      "table": "character_sheet_variants"
-    },
-    {
       "type": "integer",
       "notNull": false,
       "autoincrement": false,
@@ -1641,16 +1627,6 @@
       "default": "false",
       "generated": null,
       "name": "in_library",
-      "entityType": "columns",
-      "table": "characters"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "copied_from_character_id",
       "entityType": "columns",
       "table": "characters"
     },
@@ -1881,6 +1857,16 @@
       "default": null,
       "generated": null,
       "name": "pending_promote_sheet_version_id",
+      "entityType": "columns",
+      "table": "characters"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "deleted_at",
       "entityType": "columns",
       "table": "characters"
     },
@@ -5875,26 +5861,6 @@
       "table": "sequence_cast"
     },
     {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "bible_version_id",
-      "entityType": "columns",
-      "table": "sequence_cast"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "voice_version_id",
-      "entityType": "columns",
-      "table": "sequence_cast"
-    },
-    {
       "type": "integer",
       "notNull": false,
       "autoincrement": false,
@@ -5908,111 +5874,21 @@
       "type": "integer",
       "notNull": true,
       "autoincrement": false,
+      "default": "false",
+      "generated": null,
+      "name": "attached",
+      "entityType": "columns",
+      "table": "sequence_cast"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
       "default": null,
       "generated": null,
       "name": "created_at",
       "entityType": "columns",
       "table": "sequence_cast"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "id",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "cast_id",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "look_id",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "look_version_id",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "selected_sheet_version_id",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "pending_promote_sheet_version_id",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sheet_status",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "text",
-      "notNull": false,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "sheet_error",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "type": "integer",
-      "notNull": true,
-      "autoincrement": false,
-      "default": null,
-      "generated": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "table": "sequence_cast_looks"
     },
     {
       "type": "text",
@@ -10876,28 +10752,6 @@
       "table": "sequence_cast"
     },
     {
-      "columns": ["cast_id"],
-      "tableTo": "sequence_cast",
-      "columnsTo": ["id"],
-      "onUpdate": "NO ACTION",
-      "onDelete": "RESTRICT",
-      "nameExplicit": false,
-      "name": "fk_sequence_cast_looks_cast_id_sequence_cast_id_fk",
-      "entityType": "fks",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "columns": ["look_id"],
-      "tableTo": "character_looks",
-      "columnsTo": ["id"],
-      "onUpdate": "NO ACTION",
-      "onDelete": "RESTRICT",
-      "nameExplicit": false,
-      "name": "fk_sequence_cast_looks_look_id_character_looks_id_fk",
-      "entityType": "fks",
-      "table": "sequence_cast_looks"
-    },
-    {
       "columns": ["sequence_id"],
       "tableTo": "sequences",
       "columnsTo": ["id"],
@@ -11796,13 +11650,6 @@
       "nameExplicit": false,
       "name": "sequence_cast_pk",
       "table": "sequence_cast",
-      "entityType": "pks"
-    },
-    {
-      "columns": ["id"],
-      "nameExplicit": false,
-      "name": "sequence_cast_looks_pk",
-      "table": "sequence_cast_looks",
       "entityType": "pks"
     },
     {
@@ -13540,38 +13387,6 @@
       "name": "idx_sequence_cast_character",
       "entityType": "indexes",
       "table": "sequence_cast"
-    },
-    {
-      "columns": [
-        {
-          "value": "cast_id",
-          "isExpression": false
-        },
-        {
-          "value": "look_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "origin": "manual",
-      "name": "sequence_cast_looks_cast_look_key",
-      "entityType": "indexes",
-      "table": "sequence_cast_looks"
-    },
-    {
-      "columns": [
-        {
-          "value": "look_id",
-          "isExpression": false
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "origin": "manual",
-      "name": "idx_sequence_cast_looks_look",
-      "entityType": "indexes",
-      "table": "sequence_cast_looks"
     },
     {
       "columns": [

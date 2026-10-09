@@ -192,7 +192,6 @@ describe('buildUpdateStalePreview sheet reuse (#2017)', () => {
       {},
       null
     );
-    expect(preview.reusedSheets).toBe(2);
     expect(estimateImageCost).toHaveBeenCalledWith(
       'nano_banana_2',
       '16:9',

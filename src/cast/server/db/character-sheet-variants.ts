@@ -19,28 +19,10 @@ import {
   characterLooks,
   characterSheetVariants,
   characters,
-  sequenceCast,
-  sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { characterBibleColumns } from './bible-versions';
-import {
-  getLookByCastLookId,
-  liveLookSheetVersionId,
-  requireLook,
-} from './character-looks';
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  exists,
-  inArray,
-  isNotNull,
-  isNull,
-  notExists,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { liveLookSheetVersionId, requireLook } from './character-looks';
+import { and, asc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
@@ -59,61 +41,6 @@ const ofLook = (lookId: string) =>
     and(
       isNull(characterSheetVariants.lookId),
       eq(characterSheetVariants.characterId, lookId)
-    )
-  );
-
-/**
- * The sheets one sequence can pick from for a look (#2017): the ones its cast
- * look made, the one it has selected, and rows whose sequence is unknown
- * (`castLookId` null, from before the column: listed everywhere, as before).
- */
-const ofCastLook = (
-  lookId: string,
-  look: { castLookId: string; selectedSheetVersionId: string | null }
-) =>
-  or(
-    // Drawn for this cast look — of this look, or of the look it pointed at
-    // before a one-off copy repointed it.
-    eq(characterSheetVariants.castLookId, look.castLookId),
-    and(ofLook(lookId), isNull(characterSheetVariants.castLookId)),
-    look.selectedSheetVersionId === null
-      ? undefined
-      : eq(characterSheetVariants.id, look.selectedSheetVersionId)
-  );
-
-/**
- * A finished sheet a sequence may point at instead of drawing again (#2017):
- * of this look, drawn by this model from these inputs — the hash covers the
- * bible, the look, the talent, the style, the image model and the default
- * look's face, so a match is the same image from the same inputs. Completed
- * with a file, not discarded, not parked as divergent (a parked row is some
- * sequence's banner, and `select` would clear it). The hash is the caller's:
- * the plan asks in the current shape, then in the `pre-2065` one. A row in
- * any older shape never matches, which costs a draw, never a wrong sheet.
- */
-const reusableFor = (args: {
-  lookId: string;
-  model: string;
-  inputHash: CharacterSheetInputHash;
-}) =>
-  and(
-    ofLook(args.lookId),
-    eq(characterSheetVariants.model, args.model),
-    eq(characterSheetVariants.inputHash, args.inputHash),
-    eq(characterSheetVariants.status, 'completed'),
-    isNotNull(characterSheetVariants.url),
-    isNotNull(characterSheetVariants.storagePath),
-    isNull(characterSheetVariants.discardedAt),
-    isNull(characterSheetVariants.divergedAt)
-  );
-
-/** Sheets parked by a run of `sequenceId`, or of an unknown sequence. */
-const parkedFor = (sequenceId: string) =>
-  or(
-    isNull(characterSheetVariants.castLookId),
-    inArray(
-      characterSheetVariants.castLookId,
-      sql`(SELECT scl.id FROM sequence_cast_looks scl JOIN sequence_cast sc ON sc.id = scl.cast_id WHERE sc.sequence_id = ${sequenceId})`
     )
   );
 
@@ -152,27 +79,21 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * Selectable history of a look IN ONE SEQUENCE (#2017): completed, not
-     * discarded, oldest-first so a left-to-right strip can label v1, v2, …
-     * from position (same as frame / video versions). Includes parked
-     * divergent rows so the user can pick one instead of promoting through
-     * the banner. Only the sheets this sequence made (`castLookId` is its cast
-     * look) or selected, plus rows whose sequence is unknown (`castLookId`
-     * null, from before the column): a sheet another sequence drew for its
-     * own style and model is not this sequence's to pick from.
+     * Selectable history of a look: completed, not discarded, oldest-first
+     * so a left-to-right strip can label v1, v2, … from position (same as
+     * frame / video versions). Includes parked divergent rows so the user
+     * can pick one instead of promoting through the banner.
      */
     listHistoryByLook: async (
-      sequenceId: string,
       lookId: string
     ): Promise<CharacterSheetVariant[]> => {
-      const look = await requireLook(db, teamId, sequenceId, lookId);
       return db
         .select()
         .from(characterSheetVariants)
         .where(
           and(
             ofTeam(),
-            ofCastLook(lookId, look),
+            ofLook(lookId),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
           )
@@ -199,15 +120,11 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * List active (non-discarded) divergent alternates for a character, as
-     * parked by runs of ONE sequence (#2017): a sheet a run of another
-     * sequence parked is that sequence's banner, not this one's. Rows whose
-     * sequence is unknown (`castLookId` null) show in every sequence, as
-     * every row did before. The UI banner / corner-dot reads through this so
-     * the surfaces clear once the user discards or promotes.
+     * List active (non-discarded) divergent alternates for a character. The
+     * UI banner / corner-dot reads through this so the surfaces clear once
+     * the user discards or promotes.
      */
     listDivergentActiveByCharacter: async (
-      sequenceId: string,
       characterId: string
     ): Promise<CharacterSheetVariant[]> => {
       return db
@@ -217,7 +134,6 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
-            parkedFor(sequenceId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
           )
@@ -226,7 +142,6 @@ export function createCharacterSheetVariantsMethods(
     },
 
     listDivergentActiveByCharacters: async (
-      sequenceId: string,
       characterIds: string[]
     ): Promise<CharacterSheetVariant[]> => {
       if (characterIds.length === 0) return [];
@@ -237,7 +152,6 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             inArray(characterSheetVariants.characterId, characterIds),
-            parkedFor(sequenceId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
           )
@@ -289,8 +203,6 @@ export function createCharacterSheetVariantsMethods(
      * backfill gave every such row a version of its own.
      */
     applyConvergent: async (args: {
-      /** The sequence whose pointer moves (#2017). */
-      sequenceId: string;
       /** The look the sheet is of (#2015). */
       lookId: string;
       url: string;
@@ -300,16 +212,9 @@ export function createCharacterSheetVariantsMethods(
       model: string;
       workflowRunId?: string | null;
     }): Promise<{ version: CharacterSheetVariant }> => {
-      const {
-        sequenceId,
-        lookId,
-        url,
-        storagePath,
-        inputHash,
-        model,
-        workflowRunId,
-      } = args;
-      const look = await requireLook(db, teamId, sequenceId, lookId);
+      const { lookId, url, storagePath, inputHash, model, workflowRunId } =
+        args;
+      const look = await requireLook(db, teamId, lookId);
 
       const now = new Date();
       const [version] = await db
@@ -318,8 +223,6 @@ export function createCharacterSheetVariantsMethods(
           id: generateId(),
           characterId: look.characterId,
           lookId,
-          // Uploaded for this sequence (#2017): its strip lists it.
-          castLookId: look.castLookId,
           model,
           url,
           storagePath,
@@ -334,7 +237,7 @@ export function createCharacterSheetVariantsMethods(
       }
 
       await db
-        .update(sequenceCastLooks)
+        .update(characterLooks)
         .set({
           sheetStatus: 'completed',
           sheetError: null,
@@ -343,19 +246,20 @@ export function createCharacterSheetVariantsMethods(
           pendingPromoteSheetVersionId: null,
           updatedAt: now,
         })
-        .where(eq(sequenceCastLooks.id, look.castLookId));
+        .where(eq(characterLooks.id, look.id));
       return { version };
     },
 
     /**
-     * Repoint a look's live sheet, in one sequence, at one of its completed
-     * versions — the look is the version's own (#2015). Only moves the pointer — reads resolve
-     * url / path / hash from the version it names (#1419). A divergent row
-     * is unmarked so the banner clears. Previous pointer is recorded on the
-     * event for undo.
+     * Repoint a look's live sheet at one of its completed versions — the
+     * look is the version's own (#2015). Only moves the pointer — reads
+     * resolve url / path / hash from the version it names (#1419). A
+     * divergent row is unmarked so the banner clears. Previous pointer is
+     * recorded on the event for undo. `sequenceId` is the sequence the pick
+     * was made from, for its event; null from the Characters page.
      */
     select: async (
-      sequenceId: string,
+      sequenceId: string | null,
       characterId: string,
       versionId: string,
       opts: { actorId: string | null }
@@ -363,28 +267,14 @@ export function createCharacterSheetVariantsMethods(
       const [version] = await db
         .select()
         .from(characterSheetVariants)
-        .where(and(ofTeam(), eq(characterSheetVariants.id, versionId)));
-      if (!version) {
-        throw new NotFoundError(
-          `CharacterSheetVariant ${versionId} not found for character ${characterId}`
+        .where(
+          and(
+            ofTeam(),
+            eq(characterSheetVariants.id, versionId),
+            eq(characterSheetVariants.characterId, characterId)
+          )
         );
-      }
-      // The sheet is the look's own, or was drawn for this sequence's cast
-      // look before a one-off copy moved that cast look onto a new look
-      // (#2017): a copy keeps pointing at the original's sheet rows.
-      const copied =
-        version.characterId !== characterId && version.castLookId !== null
-          ? await getLookByCastLookId(
-              db,
-              teamId,
-              sequenceId,
-              version.castLookId
-            )
-          : null;
-      if (
-        version.characterId !== characterId &&
-        copied?.characterId !== characterId
-      ) {
+      if (!version) {
         throw new NotFoundError(
           `CharacterSheetVariant ${versionId} not found for character ${characterId}`
         );
@@ -400,28 +290,16 @@ export function createCharacterSheetVariantsMethods(
         );
       }
 
-      const look =
-        copied ??
-        (await requireLook(
-          db,
-          teamId,
-          sequenceId,
-          version.lookId ?? characterId
-        ));
+      const look = await requireLook(db, teamId, version.lookId ?? characterId);
       const [existing] = await db
         .select({ name: characterBibleColumns.name })
-        .from(sequenceCast)
-        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
+        .from(characters)
         .leftJoin(
           characterBibleVersions,
-          eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
         )
         .where(
-          and(
-            eq(sequenceCast.characterId, characterId),
-            eq(sequenceCast.sequenceId, sequenceId),
-            eq(characters.teamId, teamId)
-          )
+          and(eq(characters.id, characterId), eq(characters.teamId, teamId))
         );
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
@@ -430,7 +308,7 @@ export function createCharacterSheetVariantsMethods(
       const now = new Date();
       await db.batch([
         db
-          .update(sequenceCastLooks)
+          .update(characterLooks)
           .set({
             sheetStatus: 'completed',
             sheetError: null,
@@ -439,26 +317,30 @@ export function createCharacterSheetVariantsMethods(
             pendingPromoteSheetVersionId: null,
             updatedAt: now,
           })
-          .where(eq(sequenceCastLooks.id, look.castLookId)),
+          .where(eq(characterLooks.id, look.id)),
         db
           .update(characterSheetVariants)
           .set({ divergedAt: null, updatedAt: now })
           .where(eq(characterSheetVariants.id, versionId)),
-        buildEventInsert(db, {
-          sequenceId,
-          actorId: opts.actorId,
-          kind: 'sheet.selected',
-          targetType: 'character',
-          targetId: characterId,
-          summary: `Selected sheet version for ${existing.name}`,
-          data: {
-            prevState: {
-              selectedSheetVersionId: look.selectedSheetVersionId,
-            },
-            lookId: look.id,
-            versionId,
-          },
-        }),
+        ...(sequenceId === null
+          ? []
+          : [
+              buildEventInsert(db, {
+                sequenceId,
+                actorId: opts.actorId,
+                kind: 'sheet.selected',
+                targetType: 'character',
+                targetId: characterId,
+                summary: `Selected sheet version for ${existing.name}`,
+                data: {
+                  prevState: {
+                    selectedSheetVersionId: look.selectedSheetVersionId,
+                  },
+                  lookId: look.id,
+                  versionId,
+                },
+              }),
+            ]),
       ]);
       return { ...version, divergedAt: null };
     },
@@ -468,116 +350,12 @@ export function createCharacterSheetVariantsMethods(
      * and select it only while the claim still names it; otherwise park it
      * as divergent. See {@link landCharacterSheet}.
      */
-    promoteIfPending: async ({
-      sequenceId,
-      ...args
-    }: Omit<Parameters<typeof landCharacterSheet>[1], 'castLookId'> & {
-      /** The sequence the run drew the sheet for (#2017). */
-      sequenceId: string;
-    }) => {
-      const look = await requireLook(db, teamId, sequenceId, args.lookId);
-      return await landCharacterSheet(db, {
-        ...args,
-        castLookId: look.castLookId,
-      });
-    },
-
-    /**
-     * The sheet of this look a plan may reuse (#2017): see {@link reusableFor}.
-     * Any sequence of the team may have drawn it. A row some cast look
-     * currently SELECTS comes first (newest among those): a re-roll a
-     * sequence rejected is history there, and another sequence should not
-     * adopt it over the one that sequence kept. History rows are still
-     * candidates after that, since they are the same image from the same
-     * inputs. Read at the plan, never in the run: the run adopts by the id
-     * this hands back, through `adoptIfPending`.
-     */
-    findReusable: async (args: {
-      lookId: string;
-      model: string;
-      inputHash: CharacterSheetInputHash;
-    }): Promise<
-      (CharacterSheetVariant & { url: string; storagePath: string }) | null
-    > => {
-      const [row] = await db
-        .select()
-        .from(characterSheetVariants)
-        .where(and(ofTeam(), reusableFor(args)))
-        .orderBy(
-          desc(
-            exists(
-              db
-                .select({ one: sql`1` })
-                .from(sequenceCastLooks)
-                .where(
-                  eq(
-                    sequenceCastLooks.selectedSheetVersionId,
-                    characterSheetVariants.id
-                  )
-                )
-            )
-          ),
-          desc(characterSheetVariants.createdAt),
-          desc(characterSheetVariants.id)
-        )
-        .limit(1);
-      // The predicate requires both; this is the type's word for it.
-      if (!row?.url || !row.storagePath) return null;
-      return { ...row, url: row.url, storagePath: row.storagePath };
-    },
-
-    /**
-     * A plan run's reuse landing (#2017): point the sequence's cast look at
-     * the finished row the plan matched. No new row and no file copy — the
-     * same URL, so the BytePlus pool sees one asset however many sequences
-     * wear it. One guarded UPDATE, the twin of `promoteIfPending`: only while
-     * the claim still names this run AND the row is still what the plan
-     * matched ({@link reusableFor}, by id). Anything else is `refused`, and
-     * the caller fails the sheet — a reuse never draws instead, because the
-     * plan priced it at zero.
-     */
-    adoptIfPending: async (args: {
-      sequenceId: string;
-      lookId: string;
-      /** The claim id the trigger minted (`characterLooks.claimSheet`). */
-      claimVersionId: string;
-      /** The existing row to point at. */
-      sheetVersionId: string;
-      model: string;
-      inputHash: CharacterSheetInputHash;
-    }): Promise<'adopted' | 'refused'> => {
-      const look = await requireLook(db, teamId, args.sequenceId, args.lookId);
-      const result = await db
-        .update(sequenceCastLooks)
-        .set({
-          selectedSheetVersionId: args.sheetVersionId,
-          pendingPromoteSheetVersionId: null,
-          sheetStatus: 'completed',
-          sheetError: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(sequenceCastLooks.id, look.castLookId),
-            eq(
-              sequenceCastLooks.pendingPromoteSheetVersionId,
-              args.claimVersionId
-            ),
-            exists(
-              db
-                .select({ one: sql`1` })
-                .from(characterSheetVariants)
-                .where(
-                  and(
-                    ofTeam(),
-                    eq(characterSheetVariants.id, args.sheetVersionId),
-                    reusableFor(args)
-                  )
-                )
-            )
-          )
-        );
-      return (result.rowsAffected ?? 0) > 0 ? 'adopted' : 'refused';
+    promoteIfPending: async (
+      args: Parameters<typeof landCharacterSheet>[1]
+    ) => {
+      // A character an older worker wrote gets its look row first.
+      await requireLook(db, teamId, args.lookId);
+      return await landCharacterSheet(db, args);
     },
 
     insert: async (
@@ -642,7 +420,7 @@ export function createCharacterSheetVariantsMethods(
      * first.
      */
     discard: async (variantId: string): Promise<Date> => {
-      // Both "is it live" checks sit in the UPDATE's WHERE, so a select
+      // The "is it live" check sits in the UPDATE's WHERE, so a select
       // landing between a check and the write cannot discard a sheet that
       // was just selected. The variant's own look, by primary key; a row
       // with no look is its character's default look's, whose id is the
@@ -650,10 +428,6 @@ export function createCharacterSheetVariantsMethods(
       const live = db
         .select({ id: characterLooks.id })
         .from(characterLooks)
-        .innerJoin(
-          sequenceCastLooks,
-          eq(sequenceCastLooks.lookId, characterLooks.id)
-        )
         .where(
           and(
             eq(
@@ -661,16 +435,6 @@ export function createCharacterSheetVariantsMethods(
               sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
             ),
             eq(liveLookSheetVersionId, characterSheetVariants.id)
-          )
-        );
-      // A one-off copy's cast look selects a sheet of another look (#2017).
-      const selectedElsewhere = db
-        .select({ id: sequenceCastLooks.id })
-        .from(sequenceCastLooks)
-        .where(
-          eq(
-            sequenceCastLooks.selectedSheetVersionId,
-            characterSheetVariants.id
           )
         );
       const discardedAt = new Date();
@@ -681,8 +445,7 @@ export function createCharacterSheetVariantsMethods(
           and(
             ofTeam(),
             eq(characterSheetVariants.id, variantId),
-            notExists(live),
-            notExists(selectedElsewhere)
+            notExists(live)
           )
         )
         .returning();

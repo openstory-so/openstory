@@ -2,11 +2,12 @@
  * Sequence cast (#2017): the links between a sequence and the team
  * characters it uses.
  *
- * Everything a sequence decides about a character is on `sequence_cast` (the
- * pinned bible version, the script id, the soft-remove) and
- * `sequence_cast_looks` (the pinned look version, the sheet pointer, the
- * sheet claim). The characters, looks and sheet-claim modules read and write
- * those; this file holds what they share.
+ * A link holds only what is the sequence's: the script id, the soft-remove
+ * and whether the writer attached the character. Everything else — the
+ * bible, the voice, the looks and their sheets — is the character's, read
+ * at its current version by every sequence that casts it. The characters
+ * and looks modules read and write the links; this file holds what they
+ * share.
  */
 
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -16,7 +17,6 @@ import {
   characterBibleVersions,
   characters,
   sequenceCast,
-  sequenceCastLooks,
 } from '@/platform/server/db/schema';
 import { ConflictError, NotFoundError } from '@/platform/errors';
 
@@ -37,7 +37,7 @@ export const castElsewhere = (
  * the writer attached it here (the link's `attached`), or another sequence
  * has ever cast it, a removed link or an archived sequence included. Analysis
  * in `sequenceId` links such a character and never edits it. Wider than
- * {@link heldElsewhere} on purpose: a character attached here from a sequence
+ * {@link castElsewhere} on purpose: a character attached here from a sequence
  * that has since been archived is still not this sequence's to rewrite, and
  * nor is one made on the Characters page that only this sequence casts.
  */
@@ -55,28 +55,6 @@ export const analysisMayNotRewrite = async (
     .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
   if (!row) throw new NotFoundError(`Character ${characterId} not found`);
   return Boolean(row.shared);
-};
-
-/**
- * Whether a live sequence other than `exceptSequenceId` casts the character
- * ({@link castElsewhere}). What a sequence may not take the voice with when
- * it lets the character go. The character itself stays in the team either
- * way (#2065).
- */
-export const heldElsewhere = async (
-  db: Database,
-  teamId: string,
-  characterId: string,
-  exceptSequenceId: string | null
-): Promise<boolean> => {
-  const [row] = await db
-    .select({
-      held: sql<number>`${castElsewhere(characterId, exceptSequenceId)}`,
-    })
-    .from(characters)
-    .where(and(eq(characters.id, characterId), eq(characters.teamId, teamId)));
-  if (!row) throw new NotFoundError(`Character ${characterId} not found`);
-  return Boolean(row.held);
 };
 
 /**
@@ -99,9 +77,10 @@ export const assertNameFree = async (
       name: characterBibleVersions.name,
     })
     .from(sequenceCast)
+    .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
     .leftJoin(
       characterBibleVersions,
-      eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+      eq(characterBibleVersions.id, characters.selectedBibleVersionId)
     )
     .where(
       and(
@@ -124,12 +103,12 @@ export const assertNameFree = async (
 };
 
 /**
- * The cast links played by a talent: the ones whose pinned bible version
- * names it. For `demoteCharacterSheetClaims`.
+ * The characters played by a talent: the ones whose current bible version
+ * names it. A condition on `characters`, for `demoteCharacterSheetClaims`.
  */
 export const castOfTalent = (db: Database, talentId: string): SQL =>
   inArray(
-    sequenceCast.bibleVersionId,
+    characters.selectedBibleVersionId,
     db
       .select({ id: characterBibleVersions.id })
       .from(characterBibleVersions)
@@ -137,22 +116,12 @@ export const castOfTalent = (db: Database, talentId: string): SQL =>
   );
 
 /**
- * Delete the cast links `where` matches, and their cast looks. Both RESTRICT
- * their parents' delete (the #612 rebuild trap), so these go before the
- * sequence's, the character's or the look's, in the same batch.
+ * Delete the cast links `where` matches. They RESTRICT their parents' delete
+ * (the #612 rebuild trap), so this goes before the sequence's or the
+ * character's, in the same batch.
  */
 export const deleteCastStatements = (db: Database, where: SQL) =>
-  [
-    db
-      .delete(sequenceCastLooks)
-      .where(
-        inArray(
-          sequenceCastLooks.castId,
-          db.select({ id: sequenceCast.id }).from(sequenceCast).where(where)
-        )
-      ),
-    db.delete(sequenceCast).where(where),
-  ] as const;
+  [db.delete(sequenceCast).where(where)] as const;
 
 /**
  * The team's characters that go when a sequence is hard-deleted: the ones

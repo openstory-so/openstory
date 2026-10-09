@@ -274,29 +274,13 @@ Key consequences of the shape:
   hashes still read the bible's values — but a stale artifact's cause now
   names the fields that moved (`Character "Jack": clothing`) instead of any
   row touched after it.
-- **A sequence reads the versions it pins (#2017).** The bible a shot's
-  hashes read is the version the sequence's cast link pins
-  (`sequence_cast.bibleVersionId`), the voice its clips bind is the voice
-  version it pins (`sequence_cast.voiceVersionId`), and a look's clothing,
-  styling and sheet pointer are its cast look's (`sequence_cast_looks`). An
-  edit from another sequence moves nothing here until this sequence moves
-  to the current version (`characters.moveCastToCurrent`, "Update this
-  episode" / "Move episodes"), which is a pointer write: the digests then
-  read stale by derivation and no digest body changed. See
-  `team-characters.md` § Version moves.
-- **A cause reads the version this sequence PINNED, never the newest one at
-  that time (#2017).** `findStalenessCauses` finds the bible and look version
-  a shot was made from by walking the sequence's pin moves back from the pin
-  it holds now (`pinnedVersionAt`, `src/shots/pin-moves.ts`): every write
-  that moves a pin records `from → to` on its event (`character.updated`
-  `bibleVersion`, `look.updated` / `look.version-selected` `lookVersion`,
-  `character.version-moved` `bible` and `looks[]`; `sequenceEvents.
-listPinMoves`). With two sequences the newest version at a timestamp may be
-  one another sequence wrote and this one never pinned, so that guess is
-  gone for characters and looks. An event from before the ids were recorded
-  stops the walk, and the cause names the character with no fields
-  (`Character "Mia"`): a hint withheld, never a wrong one. Locations are
-  per-sequence and keep the timestamp rule.
+- **A character is the team's, and every sequence reads its current
+  version (#2017).** The bible a shot's hashes read, the voice its clips
+  bind, and a look's clothing, styling and sheet are the character's own,
+  whichever sequence made the shot. An edit from any sequence stales the
+  shots of every sequence by derivation, with no pointer of the sequence's
+  to move. A cause finds the version a shot was made from the way it does
+  for a location: the newest version created at or before the artifact.
 - **Clothing belongs to a look, and a scene picks the look (#2015).** A
   character has one or more looks (`character_looks`, versioned in
   `character_look_versions`), each with its own sheet; a scene's
@@ -373,11 +357,7 @@ listPinMoves`). With two sequences the newest version at a timestamp may be
   an entity that still exists but the motion prompt no longer names is not
   compared (#2012): a re-render would not send it. A prop close-up rendered
   with a scene-mate's sheet does not go stale when that sheet changes. A
-  stamped entity that was deleted always reads stale — except a character
-  replaced by its one-off copy (#2017): the copy answers for the original's
-  id (`characters.copiedFromCharacterId`, `characterReferenceEntityKeys`),
-  so a clip stamped with the original stays fresh while the copy sends the
-  same sheet, and stales when the copy selects another.
+  stamped entity that was deleted always reads stale.
 - **A new still re-stales the motion prompt.** The motion prompt is written
   looking at the still, so its hash reads the still's URL (unless the shot
   renders reference-only).

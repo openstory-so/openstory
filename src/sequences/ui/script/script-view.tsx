@@ -670,7 +670,7 @@ export const ScriptView: FC<{
     const libraryRows = library.map((c) => ({
       id: c.id,
       name: c.name,
-      sheetImageUrl: c.sequences[0]?.sheetImageUrl ?? null,
+      sheetImageUrl: c.sheetImageUrl,
     }));
     // On the create screen a picked team character is the cast — while
     // the script still names her; a name deleted from the text puts her

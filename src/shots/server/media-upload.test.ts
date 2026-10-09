@@ -821,7 +821,7 @@ describe('character sheet upload for a look other than the default (#2015)', () 
       { scopedDb, user: { id: actorId }, teamId, sequence },
       { characterId: mia.id, lookId: gala.id, publicUrl: url }
     );
-    const uploaded = await scopedDb.characterLooks.getById(sequenceId, gala.id);
+    const uploaded = await scopedDb.characterLooks.getById(gala.id);
     expect(uploaded?.sheetImageUrl).toBe(url);
     expect(
       (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
@@ -831,7 +831,6 @@ describe('character sheet upload for a look other than the default (#2015)', () 
     // The default look's sheet lands: the upload was stamped with no face,
     // so it now reads stale, as a look drawn before that face would.
     await scopedDb.characterSheetVariants.applyConvergent({
-      sequenceId,
       lookId: mia.id,
       url: `/r2/characters/teams/${teamId}/sheets/mia.png`,
       storagePath: `teams/${teamId}/sheets/mia.png`,

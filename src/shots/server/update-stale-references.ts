@@ -12,20 +12,8 @@ import {
   buildRegenerateCharacterSheetPayload,
 } from '@/cast/server/sheets/character-sheet-trigger';
 import type { CharacterSheetDraft } from '@/cast/server/workflows/sheet-snapshots';
-import {
-  computeCharacterSheetHashFromDtoBefore2065,
-  finishCharacterSheetPayload,
-} from '@/cast/server/workflows/sheet-snapshots';
-import { characterSheetInputHash } from '@/shots/input-hash';
-import type {
-  CharacterSheetInputHash,
-  LegacyStylingParts,
-} from '@/shots/input-hash';
 import { buildRegenerateLocationSheetPayload } from '@/cast/server/sheets/location-sheet-trigger';
-import {
-  characterToBible,
-  legacyStylingParts,
-} from '@/cast/server/bibles-from-scoped';
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { wearLook } from '@/cast/character-looks';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
@@ -49,31 +37,8 @@ import { VOICE_ESTIMATE_COST } from '@/billing/elevenlabs-pricing';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { multiplyMicros, type Microdollars } from '@/billing/money';
 
-/**
- * A sheet the plan reuses instead of drawing (#2017): a finished sheet of
- * the same look, by the same model, from the same inputs, that some sequence
- * of the team already has. The run points this sequence's cast look at that
- * row through the ordinary claim; nothing is generated and nothing is copied.
- */
-export type ReusedCharacterSheet = {
-  /** The payload a draw would have taken — what the hash was computed from. */
-  payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>;
-  /** The `character_sheet_variants` row to point at. */
-  sheetVersionId: string;
-  /**
-   * The digest that row is stamped with: the payload's own, or the
-   * `pre-2065` shape of the same inputs for a sheet drawn before #2065. The
-   * run's adopt is conditional on the row still carrying it.
-   */
-  matchedInputHash: CharacterSheetInputHash;
-  url: string;
-  storagePath: string;
-};
-
 export type PlanReferences = {
   characterSheets: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>[];
-  /** Sheets found finished elsewhere and priced at zero (#2017). */
-  reusedSheets: ReusedCharacterSheet[];
   /**
    * Looks other than the default whose default sheet this run also makes
    * (#2015): the second references wave. Each is a draft with no face; the
@@ -149,52 +114,7 @@ export async function buildPlanReferences(args: {
   // finished with the sheet the run lands (`lookSheetsAfterDefault`).
   const afterDefault = ({ character, dressed }: (typeof owedLooks)[number]) =>
     dressed.lookId !== character.id && sheetIds.has(character.id);
-  // A finished sheet of the look from the same inputs, in any sequence of
-  // the team, is pointed at instead of drawn (#2017). Decided here, by id;
-  // the run adopts that id through the claim. Wins over the talent copy: it
-  // is the look's own sheet in this style.
-  const characterSheets: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>[] =
-    [];
-  const reusedSheets: ReusedCharacterSheet[] = [];
-  const reuseOrDraw = async (
-    payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>,
-    /** The look's stored parts, for the digest a pre-#2065 sheet carries. */
-    legacy: LegacyStylingParts
-  ) => {
-    const find = (inputHash: CharacterSheetInputHash) =>
-      scopedDb.characterSheetVariants.findReusable({
-        lookId: payload.lookId,
-        model: payload.imageModel ?? DEFAULT_IMAGE_MODEL,
-        inputHash,
-      });
-    let matchedInputHash = payload.snapshotInputHash;
-    let existing = await find(matchedInputHash);
-    if (!existing) {
-      // A sheet drawn before #2065 is stamped in the `pre-2065` shape: the
-      // same inputs, so the same image, and a live verify reads it fresh.
-      // Missing it would redraw every such sheet once (credits, and a
-      // BytePlus portrait slot each). Delete with `LEGACY_HASH_UNTIL`.
-      matchedInputHash = characterSheetInputHash(
-        await computeCharacterSheetHashFromDtoBefore2065(payload, legacy)
-      );
-      existing = await find(matchedInputHash);
-    }
-    if (existing) {
-      reusedSheets.push({
-        payload,
-        sheetVersionId: existing.id,
-        matchedInputHash,
-        url: existing.url,
-        storagePath: existing.storagePath,
-      });
-    } else {
-      characterSheets.push(payload);
-    }
-    return existing;
-  };
-  // Default look → the face its other looks are drawn from, when reused.
-  const reusedDefaults = new Map<string, { url: string; versionId: string }>();
-  await Promise.all(
+  const characterSheets = await Promise.all(
     owedLooks
       .filter((owed) => !afterDefault(owed))
       .map(async ({ character, dressed }) => {
@@ -217,37 +137,17 @@ export async function buildPlanReferences(args: {
             talentDescription: payload.castTalentDescription,
           });
         }
-        const existing = await reuseOrDraw(
-          payload,
-          legacyStylingParts(dressed)
-        );
-        if (existing && dressed.lookId === character.id) {
-          reusedDefaults.set(character.id, {
-            url: existing.url,
-            versionId: existing.id,
-          });
-        }
+        return payload;
       })
   );
-  // A look whose default sheet this run REUSES has its face now: it is
-  // finished here and checked for reuse like the rest, so a series whose
-  // default is reused reuses its other looks too. One whose default this
-  // run draws waits for it.
-  const lookSheetsAfterDefault: CharacterSheetDraft[] = [];
-  await Promise.all(
+  const lookSheetsAfterDefault = await Promise.all(
     owedLooks.filter(afterDefault).map(async ({ character, dressed }) => {
       const { draft } = await buildCharacterSheetDraft({
         ...context,
         character,
         lookId: dressed.lookId,
       });
-      const face = reusedDefaults.get(character.id);
-      if (face) {
-        await reuseOrDraw(
-          await finishCharacterSheetPayload(draft, face),
-          legacyStylingParts(dressed)
-        );
-      } else lookSheetsAfterDefault.push(draft);
+      return draft;
     })
   );
   const locationSheets = await Promise.all(
@@ -328,7 +228,6 @@ export async function buildPlanReferences(args: {
 
   return {
     characterSheets,
-    reusedSheets,
     lookSheetsAfterDefault,
     locationSheets,
     elementSheets,

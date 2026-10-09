@@ -18,10 +18,7 @@ export async function requireCharacterLook(
   const look =
     character.looks.find((l) => l.id === lookId) ??
     (lookId === character.id
-      ? await scopedDb.characterLooks.ensureDefault(
-          character.sequenceId,
-          character.id
-        )
+      ? await scopedDb.characterLooks.ensureDefault(character.id)
       : null);
   if (!look) {
     throw new NotFoundError(

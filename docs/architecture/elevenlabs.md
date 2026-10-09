@@ -113,13 +113,13 @@ succeeds (or ElevenLabs says it already did / the preview aged out) the
 take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
 **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
 character at cast / save-to-library) and freed only through
-`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over every live cast
-link's pinned voice version (#2017: a removed link or an archived sequence
-holds nothing), characters' current voice versions and `talent.voiceId`,
-**provider delete first, row write second** so a failed delete stays
-retryable; `heldBy` is the caller's own references — a character's current
-pointer and the writing sequence's pin, counted exactly by
-`characters.getOwnVoiceHolds` — so another sequence's pin blocks it) on
+`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over characters'
+current voice versions and `talent.voiceId`; a character holds its voice
+until it is deleted, #2017, so removing it from a sequence or archiving a
+sequence releases nothing, **provider delete first, row write second** so a
+failed delete stays retryable; `heldBy` is the caller's own reference — the
+character's current pointer, counted exactly by
+`characters.getOwnVoiceHolds`) on
 character soft-delete, per-character switch-off, choose-take, recast to a
 talent with a different voice, sequence archive (before the status flip, so
 a failed release is retryable), talent delete and regenerate — never a bare

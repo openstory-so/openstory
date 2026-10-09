@@ -49,10 +49,7 @@ export const listCharacterSheetVersionsFn = createServerFn({ method: 'GET' })
     );
     // This sequence's strip: the sheets it made or selected (#2017).
     const rows =
-      await context.scopedDb.characterSheetVariants.listHistoryByLook(
-        context.sequence.id,
-        look.id
-      );
+      await context.scopedDb.characterSheetVariants.listHistoryByLook(look.id);
     return {
       selectedSheetVersionId: look.selectedSheetVersionId,
       versions: rows,
@@ -94,7 +91,6 @@ export const getSequenceCharacterDivergentVariantsFn = createServerFn({
     );
     if (characters.length === 0) return [];
     return context.scopedDb.characterSheetVariants.listDivergentActiveByCharacters(
-      context.sequence.id,
       characters.map((c) => c.id)
     );
   });

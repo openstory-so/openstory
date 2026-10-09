@@ -127,7 +127,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, and a sequence reads the version its cast link PINS (#2017): an edit from another sequence moves nothing here until this one updates to the current version, a pointer write that re-stales by derivation. A stale shot names the field that moved between the version this sequence pinned when the shot was made and the one it pins now, walked back through the pin moves, never guessed from timestamps. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version. The character belongs to the team (#2017): every sequence that casts it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved since the version live when it was made. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
     counts: [
       'Age, gender, ethnicity',
       'Physical description, permanent marks included',
@@ -148,7 +148,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'An outfit on one character: a name, the clothing, and the hair, makeup or injury notes that change with it (#2015). Every character has a default look, and each scene picks one look per character. Every edit is a version, and a sequence reads the version its cast look pins (#2017), so a stale shot names the look and what moved between the pinned versions: Character "Mia" (Gala gown): clothing. Each look has its own sheet, selected per sequence.',
+      'An outfit on one character: a name, the clothing, and the hair, makeup or injury notes that change with it (#2015). Every character has a default look, and each scene picks one look per character. Every edit is a version, read by every sequence that casts the character (#2017), so a stale shot names the look and what moved: Character "Mia" (Gala gown): clothing. Each look has its own sheet, shared by every sequence.',
     counts: [
       'Clothing',
       'Styling (hair, makeup, injuries), once it is set',
@@ -428,7 +428,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A plan that finds a finished sheet of the same look with the same hash in another sequence points at that row instead of drawing (#2017); the hash itself is unchanged. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
+      "Turnaround sheet for one look of a character (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The sheet is the look's, so every sequence that casts the character shares it (#2017). The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
       'Character bible (age, gender, ethnicity, description, consistency tag)',
       "The look's clothing, and its styling once set. The default look's styling holds what the bible called distinguishing features (#2065)",
@@ -463,7 +463,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Character bible edits',
     ],
     storedAs:
-      'sequence_cast.voiceVersionId (the voice version this sequence pins, #2017) → dialogue_speeches.inputHash, shot_dialogue_sections.sourceKey, VideoManifestEntry.audioSourceKey',
+      'characters.selectedVoiceVersionId → dialogue_speeches.inputHash, shot_dialogue_sections.sourceKey, VideoManifestEntry.audioSourceKey',
   },
   {
     id: 'dialogueSpeech',

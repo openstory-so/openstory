@@ -16,16 +16,11 @@ import {
   getTeamCharacterFn,
   getTeamCharacterShotCountsFn,
   listTeamCharactersFn,
-  moveCharacterCastsFn,
-  previewCharacterVersionMoveFn,
   deleteTeamCharacterFn,
   restoreTeamCharacterFn,
 } from '@/cast/team-characters.fn';
 import { attachLibraryCharacterFn } from '@/cast/sequence-characters.fn';
-import {
-  invalidateAfterVersionMove,
-  sequenceCharacterKeys,
-} from '@/cast/ui/use-sequence-characters';
+import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 
 export const teamCharacterKeys = {
   all: ['team-characters'] as const,
@@ -34,43 +29,7 @@ export const teamCharacterKeys = {
   detail: (id: string) => [...teamCharacterKeys.all, 'detail', id] as const,
   shotCounts: (id: string) =>
     [...teamCharacterKeys.all, 'shot-counts', id] as const,
-  versionMove: (id: string) =>
-    [...teamCharacterKeys.all, 'version-move', id] as const,
 };
-
-/**
- * The sequences casting a character, which are behind its current version,
- * and the upper-bound cost of moving each (#2017). Loads every behind
- * sequence's shots, so only while the dialog is open.
- */
-export function useCharacterVersionMovePreview(
-  characterId: string,
-  enabled: boolean
-) {
-  return useQuery({
-    queryKey: teamCharacterKeys.versionMove(characterId),
-    queryFn: () => previewCharacterVersionMoveFn({ data: { characterId } }),
-    staleTime: 30_000,
-    enabled,
-  });
-}
-
-/** Move the chosen sequences to the character's current version. */
-export function useMoveCharacterCasts() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (data: { characterId: string; sequenceIds: string[] }) =>
-      moveCharacterCastsFn({ data }),
-    onSuccess: (_result, { characterId, sequenceIds }) => {
-      void queryClient.invalidateQueries({
-        queryKey: teamCharacterKeys.versionMove(characterId),
-      });
-      for (const sequenceId of sequenceIds) {
-        invalidateAfterVersionMove(queryClient, sequenceId);
-      }
-    },
-  });
-}
 
 /** The team's characters, sorted by use. Signed-in only. */
 export function useTeamCharacters() {
@@ -207,24 +166,6 @@ export function useAttachLibraryCharacter() {
       });
       void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
     },
-  });
-}
-
-/**
- * Whether a live sequence other than `sequenceId` casts the character: the
- * panel offers "Move sequences" only then, or when this one is behind. Never
- * suspends the panel.
- */
-export function useCharacterCastElsewhere(
-  characterId: string,
-  sequenceId: string
-) {
-  return useQuery({
-    queryKey: teamCharacterKeys.detail(characterId),
-    queryFn: () => getTeamCharacterFn({ data: { characterId } }),
-    staleTime: 30_000,
-    select: (character) =>
-      (character?.sequences ?? []).some((s) => s.id !== sequenceId),
   });
 }
 

@@ -28,7 +28,6 @@ import {
 } from '@/sequences/generation-plan';
 import { resolveSceneForShot } from '@/shots/server/scene-script';
 import { loadShotMediaStates } from '@/shots/server/shot-media-staleness';
-import { buildPlanReferences } from '@/shots/server/update-stale-references';
 import {
   computeShotStaleness,
   loadShotStalenessBatch,
@@ -94,40 +93,7 @@ export async function computeGenerationPlan(
     await loadPlanInput(scopedDb, sequence, shots),
     sequenceId
   );
-  return markReusedSheets(scopedDb, sequence, units);
-}
-
-/**
- * Which owed sheets the run will point at rather than draw (#2017), asked
- * of the one planning point that decides it (`buildPlanReferences`), so the
- * footer's line and the continue quote say what the run will do. Nothing to
- * ask when no sheet is owed.
- */
-async function markReusedSheets(
-  scopedDb: ScopedDb,
-  sequence: Sequence,
-  units: PlanUnit[]
-): Promise<PlanUnit[]> {
-  const owedSheets = units.filter(
-    (unit) =>
-      unit.kind === 'sheet:character' &&
-      (unit.state === 'missing' || unit.state === 'stale')
-  );
-  if (owedSheets.length === 0) return units;
-  const references = await buildPlanReferences({
-    scopedDb,
-    sequence,
-    userId: scopedDb.userId,
-    units: owedSheets,
-  });
-  const reused = new Set(
-    references?.reusedSheets.map((sheet) => sheet.payload.lookId) ?? []
-  );
-  return units.map((unit) =>
-    unit.kind === 'sheet:character' && reused.has(unit.id)
-      ? { ...unit, reused: true }
-      : unit
-  );
+  return units;
 }
 
 async function loadPlanInput(

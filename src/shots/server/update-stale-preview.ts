@@ -34,8 +34,6 @@ export type UpdateStalePreview = {
   videoShotIds: string[];
   musicPrompt: boolean;
   musicTrack: boolean;
-  /** Character sheets found finished elsewhere and pointed at, not drawn (#2017). */
-  reusedSheets: number;
   /**
    * Estimated cost of each level's OWN additions (micros). Null = no pricing
    * signal for a component — never invent a number.
@@ -81,8 +79,7 @@ export function buildUpdateStalePreview(
     )
   );
   // Sheets and element references ride on the images level (#1819): a
-  // stale sheet is an image, and the stills made from it wait for it. A
-  // reused sheet (#2017) is not in `characterSheets` and costs nothing.
+  // stale sheet is an image, and the stills made from it wait for it.
   const references = plan.references;
   const sheetCount = references
     ? references.characterSheets.length +
@@ -149,7 +146,6 @@ export function buildUpdateStalePreview(
     videoShotIds: videos.map((t) => t.shotId),
     musicPrompt: music?.regenPrompt ?? false,
     musicTrack: music?.regenTrack ?? false,
-    reusedSheets: references?.reusedSheets.length ?? 0,
     costByLevel: {
       prompts: promptsCost,
       images: addMaybe(imagesCost, sheetsCost),

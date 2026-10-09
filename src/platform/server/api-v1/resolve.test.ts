@@ -356,6 +356,7 @@ describe('resolveTalentIds: team characters (#2050, #2065)', () => {
         voiceOnly: false,
         lastUsedAt: null,
         castAnywhere: false,
+        sheetImageUrl: null,
         sequences: [],
       })),
   });

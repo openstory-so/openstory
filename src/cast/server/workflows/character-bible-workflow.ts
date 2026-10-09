@@ -262,7 +262,6 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         async () =>
           (
             await scopedDb.characterLooks.claimSheet(
-              sheetSequenceId,
               unclaimedFields.lookId,
               unclaimedFields,
               { markGenerating: false }

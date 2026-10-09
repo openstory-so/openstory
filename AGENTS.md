@@ -245,34 +245,27 @@ changing the area, and update it in the same PR.**
   `resolveShotReferences` take the scene's `characterLooks` (required) and
   return the cast dressed. A default look's id is its character's id. Look
   sheets land only through `characterLooks.claimSheet`, which is conditional
-  on the snapshot. Never read the `legacy*` sheet or clothing columns. A
-  plan reuses a finished sheet of the same look by input hash
-  (`findReusable` at the plan, `adoptIfPending` in the run): one row pointed
-  at by two cast looks, never a copy, never a quiet draw when the match is
-  gone. The default look owns what the bible called distinguishing features
+  on the snapshot. Never read the `legacy*` sheet or clothing columns. The
+  default look owns what the bible called distinguishing features
   (#2065): a look's `styling` is already resolved (`effectiveStyling`), so
   never read `legacyDistinguishingFeatures` or a look's `storedStyling` to
   show or prompt with, and copy a look version forward from `storedStyling`.
-- **Team characters (#2017)** — `docs/architecture/team-characters.md`. One
-  character can be cast in several sequences. A character or look method
-  whose answer depends on the sequence takes it as a required first
-  argument; never resolve "the character's cast link". A write made from no
-  sequence (the Characters page, #2065) passes `null` there, never an
-  optional argument, and moves only the current pointer. Analysis never
-  rewrites a character the writer attached or another sequence has cast:
-  ask `analysisMayNotRewrite`, the one place that rule lives. The voice is
-  the character's own. There is no library flag (#2065): every team character
-  is listed and attachable, and stays when its last sequence lets it go.
-  Whoever lets a character go (a sequence removing it, an archive, a
-  delete) releases its voice only when no other live sequence casts it:
-  `characters.getHeldElsewhere`, never a hand-written check. A delete is
-  soft (`characters.deleted_at`) and refused while any sequence, archived
-  ones included, casts it (`getCastInAnySequenceOrArchive`).
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
   character belongs to the team; a sequence uses it through a `sequence_cast`
-  link that pins its bible version, and `sequence_cast_looks` pins each look
-  and holds its sheet pointer and claim. Reads return the character as its
-  sequence casts it; writes key on `castId` / `castLookId`. Nothing cascades
+  link that holds only the script id, the soft remove and the `attached`
+  flag. There are no per-sequence versions, sheets or voices: every sequence
+  reads the character's current bible, voice, looks and look sheets, and an
+  edit from any sequence stales the others by derivation. A method takes a
+  `sequenceId` only for the link's own fields or the event it writes; a write
+  made from no sequence (the Characters page, #2065) passes `null` there and
+  writes no event. Analysis never rewrites a character the writer attached
+  or another sequence has cast: ask `analysisMayNotRewrite`, the one place
+  that rule lives. There is no library flag (#2065): every team character is
+  listed and attachable, and stays when its last sequence lets it go. A voice
+  is held until the character is deleted; removing a character from a
+  sequence or archiving a sequence releases nothing. A delete is soft
+  (`characters.deleted_at`) and refused while any sequence, archived ones
+  included, casts it (`getCastInAnySequenceOrArchive`). Nothing cascades
   from `characters`: a hard delete goes through `deleteCharactersStatements`
   and is refused while it would strand a saved voice.
 - **Generation plan, stop-at and continue (#1408, #1816)** —

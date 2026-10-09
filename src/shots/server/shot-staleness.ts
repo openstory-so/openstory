@@ -29,11 +29,6 @@ import {
   wearsDefaultLook,
 } from '@/cast/character-looks';
 import {
-  pinMovesFromEvents,
-  pinnedVersionAt,
-  type PinMove,
-} from '@/shots/pin-moves';
-import {
   characterToBible,
   legacyStylingParts,
   locationToBible,
@@ -245,13 +240,6 @@ type InputHistory = {
   characters: ReadonlyMap<string, readonly CharacterBibleVersion[]>;
   /** Look definitions by look id (#2015). */
   looks: ReadonlyMap<string, readonly CharacterLookVersion[]>;
-  /**
-   * The moves of this sequence's cast pins (#2017), by character id and by
-   * look id: how a cause finds the version a shot read, as an exact pointer
-   * walk and never by timestamp.
-   */
-  bibleMoves: ReadonlyMap<string, readonly PinMove[]>;
-  lookMoves: ReadonlyMap<string, readonly PinMove[]>;
   locations: ReadonlyMap<string, readonly LocationBibleVersion[]>;
   scenes: ReadonlyMap<string, readonly SceneScriptVersion[]>;
   style: readonly SequenceStyleVersion[];
@@ -269,7 +257,6 @@ type InputHistoryDb = {
   sceneScriptVersions: Pick<ScopedDb['sceneScriptVersions'], 'listBySequence'>;
   sequences: Pick<ScopedDb['sequences'], 'listStyleVersions'>;
   shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSelectedBySequence'>;
-  sequenceEvents: Pick<ScopedDb['sequenceEvents'], 'listPinMoves'>;
 };
 
 function groupBy<T>(rows: readonly T[], key: (row: T) => string) {
@@ -286,7 +273,7 @@ async function loadInputHistory(
   scopedDb: InputHistoryDb,
   sequenceId: string
 ): Promise<InputHistory> {
-  const [characters, looks, locations, scenes, style, dialogue, pinEvents] =
+  const [characters, looks, locations, scenes, style, dialogue] =
     await Promise.all([
       scopedDb.characters.listBibleVersionsBySequence(sequenceId),
       scopedDb.characterLooks.listVersionsBySequence(sequenceId),
@@ -294,14 +281,10 @@ async function loadInputHistory(
       scopedDb.sceneScriptVersions.listBySequence(sequenceId),
       scopedDb.sequences.listStyleVersions(sequenceId),
       scopedDb.shotDialogue.getSelectedBySequence(sequenceId),
-      scopedDb.sequenceEvents.listPinMoves(sequenceId),
     ]);
-  const moves = pinMovesFromEvents(pinEvents);
   return {
     characters: groupBy(characters, (v) => v.characterId),
     looks: groupBy(looks, (v) => v.lookId),
-    bibleMoves: moves.bible,
-    lookMoves: moves.look,
     locations: groupBy(locations, (v) => v.locationId),
     scenes: groupBy(
       scenes.map((row) => row.version),
@@ -1049,8 +1032,7 @@ const LOCATION_LABELS: Record<keyof LocationBible, string> = {
  * The bible fields that moved since `at` (#1600): the version live then —
  * the newest created at or before it — against the live bible. Null when no
  * version reaches back that far (an artifact older than the row's history),
- * so the caller falls back to the timestamp guess. Locations only: a
- * character's version is the one its sequence PINNED ({@link pinnedMoved}).
+ * so the caller falls back to the timestamp guess.
  */
 function bibleMoved<V extends { createdAt: Date }>(
   history: readonly V[] | undefined,
@@ -1059,35 +1041,6 @@ function bibleMoved<V extends { createdAt: Date }>(
 ): string[] | null {
   const then = versionAt(history, at);
   return then ? diff(then) : null;
-}
-
-/**
- * What moved since `at` in a versioned input a sequence PINS (#2017): the
- * version the pin named then — walked back from the pin now through the
- * moves since, an exact pointer compare — against the pinned one now. Null
- * when a move since then did not record where it came from, or the version
- * is not in the history: the caller names the input with no fields.
- */
-function pinnedMoved<V extends { id: string }>(
-  history: readonly V[] | undefined,
-  moves: readonly PinMove[] | undefined,
-  current: string,
-  at: number,
-  diff: (then: V) => string[]
-): string[] | null {
-  const then = pinnedThen(history, moves, current, at);
-  return then ? diff(then) : null;
-}
-
-/** The version a pin named at `at`; see {@link pinnedMoved}. */
-function pinnedThen<V extends { id: string }>(
-  history: readonly V[] | undefined,
-  moves: readonly PinMove[] | undefined,
-  current: string,
-  at: number
-): V | undefined {
-  const id = pinnedVersionAt(current, moves, at);
-  return id === null ? undefined : history?.find((v) => v.id === id);
 }
 
 /** The version live at `at`: the newest created at or before it. */
@@ -1350,14 +1303,7 @@ async function findStalenessCauses(args: {
   // Each character is dressed for this shot's scene (#2015): `c` carries the
   // clothing and sheet of the look the scene picks, and the cause names it.
   for (const c of characters) {
-    // The version this sequence pinned when the artifact was made (#2017),
-    // not the newest one then: another sequence's edit is not this one's.
-    const bibleThen = pinnedThen(
-      inputHistory.characters.get(c.id),
-      inputHistory.bibleMoves.get(c.id),
-      c.selectedBibleVersionId,
-      at
-    );
+    const bibleThen = versionAt(inputHistory.characters.get(c.id), at);
     const bible = bibleThen
       ? characterBibleChanged(bibleThen, c).map((k) => CHARACTER_LABELS[k])
       : null;
@@ -1368,17 +1314,10 @@ async function findStalenessCauses(args: {
       : null;
     // A look added after the artifact has no version that old; the scene
     // switching to it is the cause.
-    const wornPin = c.looks.find((l) => l.id === c.lookId)?.lookVersionId;
     const look =
-      (wornPin === undefined
-        ? null
-        : pinnedMoved(
-            inputHistory.looks.get(c.lookId),
-            inputHistory.lookMoves.get(c.lookId),
-            wornPin,
-            at,
-            (then) => lookMoved(then, featuresThen, c)
-          )) ?? [];
+      bibleMoved(inputHistory.looks.get(c.lookId), at, (then) =>
+        lookMoved(then, featuresThen, c)
+      ) ?? [];
     // The scene dressed this character in another look back then.
     const wornThen =
       sceneThen &&

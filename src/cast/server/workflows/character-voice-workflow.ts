@@ -154,7 +154,6 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // a slot this run never claimed as a version.
       if (!targetVersionId) {
         await scopedDb.characters.updateVoice(
-          sequenceId,
           characterDbId,
           {
             voiceId,
@@ -212,7 +211,6 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // The sequence the run was for pins the new voice (#2017); the others
       // keep theirs.
       const promoted = await scopedDb.characters.promoteVoiceClaimIfPending(
-        sequenceId,
         characterDbId,
         targetVersionId
       );

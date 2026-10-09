@@ -101,9 +101,9 @@ export const AddFromLibraryDialog: React.FC<{
                     className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
-                      {character.sequences[0]?.sheetImageUrl && (
+                      {character.sheetImageUrl && (
                         <AppImage
-                          src={character.sequences[0].sheetImageUrl}
+                          src={character.sheetImageUrl}
                           alt=""
                           width={40}
                           height={40}

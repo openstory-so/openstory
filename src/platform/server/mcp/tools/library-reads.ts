@@ -139,21 +139,16 @@ const libraryCharactersSchema = z.object({
       name: z.string(),
       physicalDescription: z.string().nullable(),
       voiceOnly: z.boolean(),
+      sheetImageUrl: z.string().nullable(),
       lastUsedAt: z.string().nullable(),
-      sequences: z.array(
-        z.object({
-          id: z.string(),
-          title: z.string(),
-          sheetImageUrl: z.string().nullable(),
-        })
-      ),
+      sequences: z.array(z.object({ id: z.string(), title: z.string() })),
     })
   ),
   nextCursor: z.string().nullable(),
 });
 const listLibraryCharacters = productionRead(
   'list_library_characters',
-  "List the team's characters, every one of them (not talent, which is list_talent). Any of them can be added to a sequence. Ascending ID pagination. Each lists the live sequences that cast it, the most recently changed first, with the default look sheet that sequence selected, and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
+  "List the team's characters, every one of them (not talent, which is list_talent). Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
   pageInput,
   libraryCharactersSchema,
   async (input, { scopedDb, origin }) =>

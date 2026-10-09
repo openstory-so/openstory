@@ -16,14 +16,12 @@ function castLine(sequences: TeamCharacter['sequences']): string {
 
 /**
  * One of the team's characters (#2017), laid out as a talent card is. The
- * picture is its default look's sheet in the latest sequence that has one.
+ * picture is its default look's sheet.
  */
 export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
   character,
 }) => {
-  const sheetUrl = character.sequences.find(
-    (sequence) => sequence.sheetImageUrl
-  )?.sheetImageUrl;
+  const sheetUrl = character.sheetImageUrl;
 
   return (
     <Card className="group relative overflow-hidden hover:shadow-lg transition-shadow">

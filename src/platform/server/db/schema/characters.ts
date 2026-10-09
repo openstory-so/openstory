@@ -39,10 +39,9 @@ export type VoicePreview = {
  * Characters table
  *
  * A character belongs to the team (#2017). A sequence uses one through a
- * `sequence_cast` link, which pins the bible version it reads; the script id,
- * the soft-remove and the cast talent are that link's (the talent is on the
- * pinned bible version). The character keeps identity, its current bible
- * version and its voice.
+ * `sequence_cast` link that holds the script id and the soft-remove; the
+ * character itself, at its current bible, voice and looks, is what every
+ * sequence reads. The talent is on the current bible version.
  */
 export const characters = snakeCase.table(
   'characters',
@@ -60,16 +59,10 @@ export const characters = snakeCase.table(
     legacyInLibrary: integer('in_library', { mode: 'boolean' })
       .default(false)
       .notNull(),
-    // The character this one is a one-off copy of (#2017, PR 3): null when
-    // it is not a copy. The copying sequence's clips were stamped with the
-    // original's id (`referenceKeys`), so the live reference identity answers
-    // for that id too and no clip reads stale. No FK: the original may go
-    // later, and the copy's stamps still name it.
-    copiedFromCharacterId: text(),
-    // The character's CURRENT `character_bible_versions` row (#1600, #2017):
-    // the one a new sequence adopts. A sequence reads the version its cast
-    // link pins, not this. No FK (same cycle-avoidance as the sheet pointer).
-    // Null only on a row written by a worker older than #1600.
+    // The character's current `character_bible_versions` row (#1600), read
+    // by every sequence that casts it. No FK (same cycle-avoidance as the
+    // sheet pointer). Null only on a row written by a worker older than
+    // #1600.
     selectedBibleVersionId: text(),
     // LEGACY bible columns (#1600). The bible lives in
     // `character_bible_versions`; these are read only as the fallback for a
@@ -185,23 +178,14 @@ export type CharacterCast = {
   sequenceId: string;
   /** The script id in this sequence, e.g. "char_001". */
   characterId: string;
-  /** The talent on the pinned bible version. */
+  /** The talent on the current bible version. */
   talentId: string | null;
   /** Removed from this sequence (`sequence_cast.removedAt`). */
   deletedAt: Date | null;
-  /** The bible version this sequence pins. */
+  /** The character's current bible version. */
   selectedBibleVersionId: string;
-  /** The voice version this sequence pins; null when it has no voice here. */
+  /** The character's current voice version; null when it has no voice. */
   selectedVoiceVersionId: string | null;
-  /**
-   * The character's CURRENT bible version (`characters.selectedBibleVersionId`),
-   * the one a new sequence adopts. Differs from the pin once another sequence
-   * edited the character: "Newer version" (#2017). Null only on a row an
-   * older worker wrote before #1600.
-   */
-  currentBibleVersionId: string | null;
-  /** The character's current voice version; see `currentBibleVersionId`. */
-  currentVoiceVersionId: string | null;
 };
 
 /**

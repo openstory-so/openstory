@@ -18,11 +18,6 @@ import {
   updateTeamCharacterLook,
   restoreTeamCharacter,
 } from '@/cast/server/cast-edit';
-import {
-  moveCastsToCurrent,
-  previewVersionMove,
-} from '@/cast/server/version-moves';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { personLockOf } from '@/cast/server/person-lock';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -34,43 +29,6 @@ const teamBibleFieldsSchema = characterBibleFieldsSchema.omit({
   voiceDescription: true,
 });
 const nameSchema = z.string().trim().min(1).max(255);
-
-/**
- * Which sequences cast the character, which are behind its current version,
- * and what moving each would change and cost at most (#2017).
- */
-export const previewCharacterVersionMoveFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(characterIdSchema))
-  .handler(
-    async ({ context, data }) =>
-      await previewVersionMove(
-        context.scopedDb,
-        data.characterId,
-        await getEffectiveFalPricing()
-      )
-  );
-
-/**
- * Move the chosen sequences to the character's current version ("Move
- * many"). A pointer write per sequence; nothing re-renders here.
- */
-export const moveCharacterCastsFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
-  .validator(
-    zodValidator(
-      characterIdSchema.extend({ sequenceIds: z.array(ulidSchema).min(1) })
-    )
-  )
-  .handler(
-    async ({ context, data }) =>
-      await moveCastsToCurrent(
-        context.scopedDb,
-        { userId: context.user.id },
-        data.characterId,
-        data.sequenceIds
-      )
-  );
 
 export const listTeamCharactersFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])

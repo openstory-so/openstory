@@ -68,7 +68,6 @@ async function landSheet(
   return landSheetRun({
     land: () =>
       scopedDb.characterSheetVariants.promoteIfPending({
-        sequenceId,
         characterId: input.characterDbId,
         lookId: input.lookId,
         lookVersionId: input.lookVersionId,
@@ -502,7 +501,6 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     }
     if (input.characterDbId) {
       await scopedDb.characterLooks.failSheetClaim(
-        input.sequenceId,
         input.lookId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         input.sheetVersionId ?? null,

@@ -36,11 +36,8 @@ import {
   useRecastCharacter,
   useSaveCharacterAsTalent,
   useSequenceCharacters,
-  useCopyCharacterForSequence,
   useSoftDeleteSequenceCharacter,
-  useUpdateCastToCurrent,
 } from '@/cast/ui/use-sequence-characters';
-import { useCharacterCastElsewhere } from '@/cast/ui/use-team-characters';
 import type {
   CharacterSheetVariant,
   TalentWithSheets,
@@ -68,21 +65,11 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Loader2, Mic, RefreshCw, Trash2, User } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { isBehindCurrentVersion } from '@/cast/version-behind';
 import { CharacterBibleForm } from './character-bible-form';
 import { CharacterVoiceSection } from './character-voice-section';
-import { MoveSequencesDialog } from './move-sequences-dialog';
 import { RecastConfirmDialog } from './recast-confirm-dialog';
 import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
-
-/** "A, B and 48 others": a recast across fifty sequences names three. */
-const leftBehindLabel = (rows: readonly { title: string }[]): string => {
-  const titles = rows.map((row) => row.title);
-  if (titles.length <= 3) return titles.join(', ');
-  const rest = titles.length - 2;
-  return `${titles.slice(0, 2).join(', ')} and ${rest} others`;
-};
 
 type CharacterDetailViewProps = {
   sequenceId: string;
@@ -149,37 +136,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   const softDelete = useSoftDeleteSequenceCharacter();
   const uploadSheet = useUploadCharacterSheet();
   const [isRemoveConfirmOpen, setIsRemoveConfirmOpen] = useState(false);
-  // Version moves (#2017): this sequence pins an older version than the
-  // character's current one.
-  const updateToCurrent = useUpdateCastToCurrent();
-  const [isMoveOpen, setIsMoveOpen] = useState(false);
-  const behind = owner ? isBehindCurrentVersion(owner) : false;
-  // "Move sequences" is offered when there is somewhere to move: another
-  // live sequence casts the character, or this one is behind.
-  const { data: castElsewhere = false } = useCharacterCastElsewhere(
-    characterId,
-    sequenceId
-  );
-  // "Make a one-off copy": a new character for this sequence alone, free.
-  // Offered while another sequence casts the character too.
-  const copyForSequence = useCopyCharacterForSequence();
-  const [isCopyOpen, setIsCopyOpen] = useState(false);
-  const handleCopy = () =>
-    copyForSequence.mutate(
-      { sequenceId, characterId },
-      {
-        onSuccess: (copy) => {
-          setIsCopyOpen(false);
-          toast(`${copy.name} is now this sequence's own copy.`);
-          void navigate({
-            to: '/sequences/$id/cast/$characterId',
-            params: { id: sequenceId, characterId: copy.id },
-          });
-        },
-        onError: (error) =>
-          toast.error('Copy not made', { description: errorMessage(error) }),
-      }
-    );
 
   // Soft-remove (#1108 Phase 2): navigate back to the cast list, leave a
   // 60s undo toast. The undo closure survives this component's unmount —
@@ -468,7 +424,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     setIsConfirmOpen(true);
   };
 
-  const handleRecastConfirm = (applyToSequenceIds: string[]) => {
+  const handleRecastConfirm = () => {
     if (!selectedTalent || !character) return;
 
     recastCharacter.mutate(
@@ -476,7 +432,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         sequenceId,
         characterId: character.id,
         talentId: selectedTalent.id,
-        applyToSequenceIds,
       },
       {
         onSuccess: (result) => {
@@ -487,24 +442,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           if (result.looksLeftStale.length > 0) {
             toast(
               `Update redraws ${result.looksLeftStale.map((look) => look.name).join(', ')} once the new sheet lands.`,
-              { duration: 60_000 }
-            );
-          }
-          // The sequences moved to the recast redraw from their own Update;
-          // the rest keep the old version (#2017).
-          const moved = result.movedSequences.filter((row) => row.moved).length;
-          if (moved > 0 || result.sequencesLeftBehind.length > 0) {
-            toast(
-              [
-                moved > 0
-                  ? `${moved} other ${moved === 1 ? 'sequence' : 'sequences'} moved to the new ${character.name}; each redraws from its own Update.`
-                  : null,
-                result.sequencesLeftBehind.length > 0
-                  ? `${leftBehindLabel(result.sequencesLeftBehind)} ${result.sequencesLeftBehind.length === 1 ? 'keeps' : 'keep'} the previous version.`
-                  : null,
-              ]
-                .filter(Boolean)
-                .join(' '),
               { duration: 60_000 }
             );
           }
@@ -577,36 +514,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
       <ScrollArea className="flex-1 min-h-0">
         <div className="flex flex-col gap-6 p-4">
-          {behind && (
-            <StalenessIndicator
-              entityType="character"
-              density="status-line"
-              message={`${character.name} is not on the current version here. This sequence keeps the version it pinned until you update it.`}
-              actionLabel="Update this sequence"
-              isRegenerating={updateToCurrent.isPending}
-              onRegenerate={() =>
-                updateToCurrent.mutate(
-                  { sequenceId, characterId },
-                  {
-                    onError: (error) =>
-                      toast.error('Sequence not updated', {
-                        description: errorMessage(error),
-                      }),
-                  }
-                )
-              }
-            >
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-6 shrink-0 px-2 text-xs"
-                onClick={() => setIsMoveOpen(true)}
-              >
-                Move other sequences…
-              </Button>
-            </StalenessIndicator>
-          )}
           <SheetStalenessBanners
             entityType="character"
             divergentVariantId={characterDivergentVariant?.id}
@@ -796,16 +703,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     {character.talent ? 'Recast' : 'Cast'}
                   </Button>
                 )}
-                {(behind || castElsewhere) && (
-                  <Button variant="outline" onClick={() => setIsMoveOpen(true)}>
-                    Move sequences
-                  </Button>
-                )}
-                {castElsewhere && (
-                  <Button variant="outline" onClick={() => setIsCopyOpen(true)}>
-                    Make a one-off copy
-                  </Button>
-                )}
                 {!character.voiceOnly && (
                   <UploadMediaButton
                     label="Upload Sheet"
@@ -863,8 +760,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
             <div className="flex flex-col gap-4">
               <CharacterBibleForm
-                // Uncontrolled inputs: reseed when the pinned bible version
-                // moves (Update this sequence, #2017).
+                // Uncontrolled inputs: reseed when the bible version moves.
                 key={`${character.id}:${character.selectedBibleVersionId}`}
                 sequenceId={sequenceId}
                 character={owner ?? character}
@@ -930,48 +826,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         onSelect={handleTalentSelect}
       />
 
-      <MoveSequencesDialog
-        open={isMoveOpen}
-        onOpenChange={setIsMoveOpen}
-        characterId={characterId}
-        characterName={character.name}
-        sequenceId={sequenceId}
-      />
-
-      <AlertDialog open={isCopyOpen} onOpenChange={setIsCopyOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Make a one-off copy of {character.name}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This sequence gets its own copy at the version it has now. Edits
-              here stop reaching other sequences, and theirs stop reaching here.
-              Sheets and shots stay as they are; nothing re-renders. Not while a
-              sheet is generating here.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={copyForSequence.isPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={copyForSequence.isPending}
-              onClick={handleCopy}
-            >
-              {copyForSequence.isPending ? 'Copying…' : 'Make a copy'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {selectedTalent && (
         <RecastConfirmDialog
           open={isConfirmOpen}
           onOpenChange={setIsConfirmOpen}
           onConfirm={handleRecastConfirm}
-          characterId={character.id}
-          sequenceId={sequenceId}
           characterName={character.name}
           talentName={selectedTalent.name}
           replacingExisting={Boolean(character.talent)}

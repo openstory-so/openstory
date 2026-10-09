@@ -105,29 +105,25 @@ export async function releaseReplacedVoice(
 }
 
 /**
- * Free the slot if nothing else uses it, then drop the character's pointer
- * and `sequenceId`'s pin (#2017; `null` when no sequence made the write).
- * "Nothing else" is exact: the references the write below drops — the
- * character's current pointer and this sequence's live pin, when they name
- * the voice — are counted first (`getOwnVoiceHolds`), so another sequence
- * still pinning the voice keeps it.
+ * Free the slot if nothing else uses it, then drop the character's pointer.
+ * "Nothing else" is exact: the reference the write below drops — the
+ * character's current pointer, when it names the voice — is counted first
+ * (`getOwnVoiceHolds`), so another character or a talent still naming the
+ * voice keeps it.
  */
 export async function releaseCharacterVoice(
   scopedDb: ScopedDb,
   character: { id: string; voiceId: string | null },
-  sequenceId: string | null,
   /** Who dropped the voice — stamped on the 'removed' history row. */
   createdBy: string | null
 ): Promise<void> {
   if (!character.voiceId) return;
   const heldBy = await scopedDb.characters.getOwnVoiceHolds(
     character.voiceId,
-    character.id,
-    sequenceId
+    character.id
   );
   await releaseVoiceIfUnreferenced(scopedDb, character.voiceId, { heldBy });
   await scopedDb.characters.updateVoice(
-    sequenceId,
     character.id,
     { voiceId: null },
     // 'removed' says the character dropped the id; only `releasedAt` says the

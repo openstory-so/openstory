@@ -32,7 +32,6 @@ export const characterLooks = snakeCase.table(
       .primaryKey()
       .notNull(),
 
-    // ── Identity. Nothing here may depend on a sequence (#2017). ──────────
     characterId: text()
       .notNull()
       .references(() => characters.id, { onDelete: 'restrict' }),
@@ -46,21 +45,22 @@ export const characterLooks = snakeCase.table(
     // Soft remove, undoable. A scene that still picks a removed look keeps
     // wearing it, the same way continuity tags outlive a removed character.
     deletedAt: integer({ mode: 'timestamp' }),
-    // The look's CURRENT `character_look_versions` row: the one a new
-    // sequence adopts (#2017). A sequence reads the version its cast look
-    // pins. No FK, like `characters.selectedBibleVersionId`.
+    // The look's current `character_look_versions` row, read by every
+    // sequence that uses the look. No FK, like
+    // `characters.selectedBibleVersionId`.
     selectedLookVersionId: text().notNull(),
-
-    // LEGACY per-sequence state (#2017). A look's sheet pointer, claim and
-    // status belong to the sequence that uses it and live on
-    // `sequence_cast_looks`. `sheet_status` is written only because NOT NULL
-    // forces a value on insert; nothing reads any of them.
-    legacySelectedSheetVersionId: text('selected_sheet_version_id'),
-    legacyPendingPromoteSheetVersionId: text(
-      'pending_promote_sheet_version_id'
-    ),
-    legacySheetStatus: text('sheet_status').$type<SheetStatus>().notNull(),
-    legacySheetError: text('sheet_error'),
+    // The live `character_sheet_variants` row. No FK. Null until a sheet
+    // lands — and on a default look whose sheet is the pre-#1419 row keyed
+    // to the character's own id. One sheet per look, shared by every
+    // sequence that uses it.
+    selectedSheetVersionId: text(),
+    // The sheet claim (#1113, #1130): the id the in-flight run's version row
+    // will carry. Cleared by every write that changes a sheet input or picks
+    // a sheet. Null when no run holds the pointer.
+    pendingPromoteSheetVersionId: text(),
+    // Lifecycle before any sheet row exists (#1419).
+    sheetStatus: text().$type<SheetStatus>().notNull(),
+    sheetError: text(),
 
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
@@ -135,45 +135,21 @@ export type LookDefinition = Pick<
   (typeof LOOK_FIELDS)[number]
 >;
 
-/** The legacy per-sequence columns (#2017) — never read outside the cast backfill. */
-type LegacyLookCastColumn =
-  | 'legacySelectedSheetVersionId'
-  | 'legacyPendingPromoteSheetVersionId'
-  | 'legacySheetStatus'
-  | 'legacySheetError';
-
 /**
- * A look as every scoped read returns it, through the sequence that uses it
- * (#2017): identity, the definition that sequence pins, its sheet state
- * there, and the live sheet resolved from its pointer.
+ * A look as every scoped read returns it: identity, its current definition,
+ * its sheet state, and the live sheet resolved from its pointer.
  */
-export type CharacterLook = Omit<
-  CharacterLookRow,
-  'selectedLookVersionId' | LegacyLookCastColumn
-> &
+export type CharacterLook = Omit<CharacterLookRow, 'selectedLookVersionId'> &
   LookDefinition & {
     /**
-     * LEGACY (#2065): the pinned look version's own `styling` column.
-     * `styling` is the effective one (`effectiveStyling`), which on a
-     * default look also holds the bible's legacy features text. Read only
-     * by the digests stamped before #2065 and by a write that copies the
-     * version forward.
+     * LEGACY (#2065): the look version's own `styling` column. `styling` is
+     * the effective one (`effectiveStyling`), which on a default look also
+     * holds the bible's legacy features text. Read only by the digests
+     * stamped before #2065 and by a write that copies the version forward.
      */
     storedStyling: string | null;
-    /** The `sequence_cast_looks` row this read came through. */
-    castLookId: string;
-    /** The look version the sequence pins. */
+    /** The look's current version (`character_looks.selectedLookVersionId`). */
     lookVersionId: string;
-    /**
-     * The look's CURRENT version (`character_looks.selectedLookVersionId`),
-     * the one a new sequence adopts. Differs from the pin once another
-     * sequence edited the look: "Newer version" (#2017).
-     */
-    currentLookVersionId: string;
-    selectedSheetVersionId: string | null;
-    pendingPromoteSheetVersionId: string | null;
-    sheetStatus: SheetStatus;
-    sheetError: string | null;
     sheetImageUrl: string | null;
     sheetImagePath: string | null;
     sheetGeneratedAt: Date | null;

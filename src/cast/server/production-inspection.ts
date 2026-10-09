@@ -8,7 +8,6 @@ import {
   characterVoiceVersions,
   characters,
   sequenceCast,
-  sequenceCastLooks,
   locationBibleVersions,
   sequenceLocations,
   sequenceElements,
@@ -60,8 +59,8 @@ export const characterVoiceVersionReadSchema = characterVoiceSchema
     releasedAt: readDate.nullable(),
     createdAt: readDate,
   });
-/** A look's sheet in the sequence that uses it (#2017). */
-const castLookSheetShape = createSelectSchema(sequenceCastLooks).pick({
+/** A look's sheet state. */
+const lookSheetShape = createSelectSchema(characterLooks).pick({
   sheetStatus: true,
   sheetError: true,
   selectedSheetVersionId: true,
@@ -72,7 +71,7 @@ const castLookSheetShape = createSelectSchema(sequenceCastLooks).pick({
  */
 const characterLookReadSchema = createSelectSchema(characterLooks)
   .pick({ id: true, isDefault: true })
-  .extend(castLookSheetShape)
+  .extend(lookSheetShape)
   .extend(
     createSelectSchema(characterLookVersions).pick({
       name: true,
@@ -105,7 +104,7 @@ export const characterReadSchema = createSelectSchema(characters)
     }).shape
   )
   // The sheet and the clothing are the character's default look's (#2015).
-  .extend(castLookSheetShape)
+  .extend(lookSheetShape)
   .extend({
     standardClothing: createSelectSchema(
       characterLookVersions

@@ -16,7 +16,6 @@ import {
   characterLookVersions,
   characterLooks,
   sequenceCast,
-  sequenceCastLooks,
   characterSheetVariants,
   characters,
   sceneScriptVersions,
@@ -186,7 +185,6 @@ async function snapshotOf(lookId: string) {
 /** Claim a look's sheet the way a trigger does; the default look by default. */
 async function claim(lookId = characterId) {
   const { versionId } = await looks().claimSheet(
-    sequenceId,
     lookId,
     await snapshotOf(lookId),
     { markGenerating: true }
@@ -210,7 +208,6 @@ const landCharacter = (
   lookId = characterId
 ) =>
   charVersions().promoteIfPending({
-    sequenceId,
     characterId,
     lookId,
     lookVersionId: null,
@@ -308,12 +305,7 @@ describe('character sheet claims', () => {
     expect(row.sheetStatus).toBe('generating');
     expect((await version('pre-1113'))?.divergedAt).not.toBeNull();
 
-    await looks().failSheetClaim(
-      sequenceId,
-      characterId,
-      null,
-      'pre-1113 boom'
-    );
+    await looks().failSheetClaim(characterId, null, 'pre-1113 boom');
     row = await character();
     expect(row.pendingPromoteSheetVersionId).toBe(newer);
     expect(row.sheetStatus).toBe('generating');
@@ -325,12 +317,12 @@ describe('character sheet claims', () => {
     const older = await claim();
     const newer = await claim();
 
-    await looks().failSheetClaim(sequenceId, characterId, older, 'boom');
+    await looks().failSheetClaim(characterId, older, 'boom');
     let row = await character();
     expect(row.pendingPromoteSheetVersionId).toBe(newer);
     expect(row.sheetStatus).toBe('generating');
 
-    await looks().failSheetClaim(sequenceId, characterId, newer, 'boom');
+    await looks().failSheetClaim(characterId, newer, 'boom');
     row = await character();
     expect(row.pendingPromoteSheetVersionId).toBeNull();
     expect(row.sheetStatus).toBe('failed');
@@ -504,14 +496,9 @@ describe('look sheet claims (#2015)', () => {
       { clothing: 'blue gown' },
       { source: 'edit', actorId: userId }
     );
-    const { versionId, held } = await looks().claimSheet(
-      sequenceId,
-      gala.id,
-      snapshot,
-      {
-        markGenerating: true,
-      }
-    );
+    const { versionId, held } = await looks().claimSheet(gala.id, snapshot, {
+      markGenerating: true,
+    });
     expect(held).toBe(false);
     expect((await lookOf(gala.id)).pendingPromoteSheetVersionId).toBeNull();
     expect((await lookOf(gala.id)).sheetStatus).toBe('pending');
@@ -532,7 +519,7 @@ describe('look sheet claims (#2015)', () => {
     );
     expect(
       (
-        await looks().claimSheet(sequenceId, characterId, snapshot, {
+        await looks().claimSheet(characterId, snapshot, {
           markGenerating: true,
         })
       ).held
@@ -542,7 +529,7 @@ describe('look sheet claims (#2015)', () => {
     await castWith(null);
     expect(
       (
-        await looks().claimSheet(sequenceId, characterId, recast, {
+        await looks().claimSheet(characterId, recast, {
           markGenerating: true,
         })
       ).held
@@ -565,7 +552,7 @@ describe('look sheet claims (#2015)', () => {
     const gala = await addLook();
     const galaRun = await claim(gala.id);
     const defaultRun = await claim();
-    await looks().failSheetClaim(sequenceId, gala.id, galaRun, 'boom');
+    await looks().failSheetClaim(gala.id, galaRun, 'boom');
     expect((await lookOf(gala.id)).sheetStatus).toBe('failed');
     const row = await character();
     expect(row.pendingPromoteSheetVersionId).toBe(defaultRun);
@@ -579,13 +566,9 @@ describe('look sheet claims (#2015)', () => {
     const gala = await addLook();
     await looks().remove(sequenceId, gala.id, { actorId: userId });
     expect((await lookOf(gala.id)).deletedAt).not.toBeNull();
-    expect(await looks().listByCharacter(sequenceId, characterId)).toHaveLength(
-      1
-    );
+    expect(await looks().listByCharacter(characterId)).toHaveLength(1);
     await looks().restore(sequenceId, gala.id, { actorId: userId });
-    expect(await looks().listByCharacter(sequenceId, characterId)).toHaveLength(
-      2
-    );
+    expect(await looks().listByCharacter(characterId)).toHaveLength(2);
   });
 
   it('re-selects an earlier look version, revoking the claim', async () => {
@@ -653,9 +636,7 @@ describe('look sheet claims (#2015)', () => {
     expect(await landCharacter(run, undefined, null, true, galaId)).toBe(
       'parked'
     );
-    expect(await looks().listByCharacter(sequenceId, characterId)).toHaveLength(
-      3
-    );
+    expect(await looks().listByCharacter(characterId)).toHaveLength(3);
 
     // Only the name's case moves this time: one version, for the rename.
     const versions = (await looks().listVersions(galaId)).length;
@@ -694,7 +675,6 @@ describe('look sheet claims (#2015)', () => {
       { source: 'edit', actorId: userId }
     );
     await charVersions().applyConvergent({
-      sequenceId,
       lookId: pyjamasId,
       url: '/r2/pyjamas.png',
       storagePath: '/pyjamas.png',
@@ -797,23 +777,10 @@ describe('look sheet claims (#2015)', () => {
       title: 'Episode 2',
       styleId: first.styleId,
     });
-    const character = await chars().getById(sequenceId, characterId);
-    if (!character) throw new Error('setup');
-    const [link] = await db
-      .insert(sequenceCast)
-      .values({
-        sequenceId: other,
-        characterId,
-        scriptCharacterId: 'char_001',
-        bibleVersionId: character.selectedBibleVersionId,
-      })
-      .returning();
-    if (!link) throw new Error('setup');
-    await db.insert(sequenceCastLooks).values({
-      castId: link.id,
-      lookId: gala.id,
-      lookVersionId: gala.lookVersionId,
-      sheetStatus: 'pending',
+    await db.insert(sequenceCast).values({
+      sequenceId: other,
+      characterId,
+      scriptCharacterId: 'char_001',
     });
     const [scene] = await db
       .insert(scenes)
@@ -855,7 +822,6 @@ describe('look sheet claims (#2015)', () => {
 
   it('fills in the default look of a character an older worker wrote', async () => {
     // What a pre-#2015 worker leaves: no look, state on the legacy columns.
-    await db.delete(sequenceCastLooks);
     await db.delete(characterLookVersions);
     await db.delete(characterLooks);
     await db
@@ -873,7 +839,7 @@ describe('look sheet claims (#2015)', () => {
     expect(before.standardClothing).toBe('old coat');
     expect(before.sheetStatus).toBe('failed');
 
-    const look = await looks().ensureDefault(sequenceId, characterId);
+    const look = await looks().ensureDefault(characterId);
     expect(look).toMatchObject({
       id: characterId,
       isDefault: true,
@@ -1168,17 +1134,12 @@ describe('re-analysis upserts (#1113)', () => {
 
   it('a pointer-only claim leaves the status alone', async () => {
     await db
-      .update(sequenceCastLooks)
+      .update(characterLooks)
       .set({ sheetStatus: 'completed' })
-      .where(eq(sequenceCastLooks.lookId, characterId));
-    await looks().claimSheet(
-      sequenceId,
-      characterId,
-      await snapshotOf(characterId),
-      {
-        markGenerating: false,
-      }
-    );
+      .where(eq(characterLooks.id, characterId));
+    await looks().claimSheet(characterId, await snapshotOf(characterId), {
+      markGenerating: false,
+    });
     expect((await character()).sheetStatus).toBe('completed');
   });
 });

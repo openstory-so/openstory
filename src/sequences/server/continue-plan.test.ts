@@ -3,9 +3,8 @@
  * units a click would run. The #1816 scenario table, from the server's side.
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { PlanUnit } from '@/sequences/generation-plan';
-import { asStub } from '@/test/as-stub';
 import { continueFromPlan } from './continue-plan';
 
 const u = (
@@ -18,7 +17,6 @@ const u = (
   state,
   requires: [],
   cascaded: false,
-  reused: false,
 });
 
 const OFF = { generateStartFrames: false, generateVoices: false };
@@ -196,43 +194,5 @@ describe('continueFromPlan (#1817)', () => {
     expect(
       decide([], 'references', { saved: OFF, requested: ON, next }).stopAt
     ).toBe('references');
-  });
-});
-
-describe('estimateContinueCost', () => {
-  it('prices a sheet pointed at instead of drawn at zero (#2017)', async () => {
-    vi.resetModules();
-    const estimatePlanCost = vi.fn(() => 0);
-    vi.doMock('@/billing/cost-estimation', () => ({
-      estimatePlanCost,
-      estimateImageCost: vi.fn(() => 1),
-    }));
-    vi.doMock('@/billing/server/fal-pricing-live', () => ({
-      getEffectiveFalPricing: vi.fn(async () => ({})),
-    }));
-    const { estimateContinueCost } = await import('./continue-plan');
-    await estimateContinueCost({
-      // the quote reads the models and ratio
-      sequence: asStub<Parameters<typeof estimateContinueCost>[0]['sequence']>({
-        imageModel: 'nano_banana_2',
-        videoModel: 'kling_v3_pro',
-        musicModel: null,
-        aspectRatio: '16:9',
-        resolution: '1080p',
-      }),
-      shots: [],
-      work: [
-        { ...u('sheet:character', 'maya', 'missing'), reused: true },
-        u('sheet:character', 'ravi', 'missing'),
-        u('still', 's1', 'missing'),
-      ],
-      generateStartFrames: true,
-      draftMotion: false,
-    });
-    expect(estimatePlanCost).toHaveBeenCalledWith(
-      expect.objectContaining({
-        counts: expect.objectContaining({ 'sheet:character': 1, still: 1 }),
-      })
-    );
   });
 });

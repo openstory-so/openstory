@@ -336,9 +336,9 @@ export async function updateCharacter(
 }
 
 /**
- * Soft-remove a character (undoable). Scene continuity tags are kept, so a
- * restore is lossless. The voice slot is account-wide, so it goes with the
- * row (#1553); the description and previews stay.
+ * Soft-remove a character from the sequence (undoable). Scene continuity
+ * tags are kept, so a restore is lossless. The character, its voice
+ * included, is the team's and stays as it is (#2017).
  */
 export async function deleteCharacter(
   scopedDb: ScopedDb,
@@ -352,11 +352,6 @@ export async function deleteCharacter(
     characterId,
     { actorId: actor.userId }
   );
-  // The voice is the character's own (#2017): it goes only when nothing
-  // else holds the character.
-  if (!(await scopedDb.characters.getHeldElsewhere(sequenceId, characterId))) {
-    await releaseCharacterVoice(scopedDb, existing, sequenceId, actor.userId);
-  }
   return { characterId, name: existing.name, deletedAt };
 }
 
@@ -395,8 +390,6 @@ export async function deleteTeamCharacter(
   await releaseCharacterVoice(
     scopedDb,
     await scopedDb.characters.getVoice(characterId),
-    // No sequence casts the character, so no pin moves.
-    null,
     actor.userId
   );
   if (!(await scopedDb.characters.softDeleteForTeam(characterId))) {
@@ -428,14 +421,13 @@ export async function setCharacterVoiceEnabled(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   await scopedDb.characters.updateVoice(
-    sequenceId,
     character.id,
     { useVoice: enabled },
     enabled ? 'user-edit' : 'disabled',
     actor.userId
   );
   if (!enabled) {
-    await releaseCharacterVoice(scopedDb, character, sequenceId, actor.userId);
+    await releaseCharacterVoice(scopedDb, character, actor.userId);
   }
   return { characterId: character.id, name: character.name, useVoice: enabled };
 }
@@ -453,7 +445,6 @@ export async function selectCharacterVoiceVersion(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const updated = await scopedDb.characters.selectVoiceVersion(
-    sequenceId,
     character.id,
     versionId
   );

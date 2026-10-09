@@ -47,7 +47,6 @@ import {
   selectCharacterSheetVersion,
   updateCharacter,
   updateCharacterLook,
-  updateTeamCharacter,
   updateTeamCharacterLook,
 } from '@/cast/server/cast-edit';
 import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
@@ -359,184 +358,6 @@ describe('cast', () => {
   });
 });
 
-describe('recast across a range and the move preview (#2017)', () => {
-  const sequence = async (title: string) => {
-    const id = generateId();
-    const [seq] = await db
-      .select({ styleId: sequences.styleId })
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
-    if (!seq) throw new Error('seed sequence missing');
-    await db.insert(sequences).values({
-      id,
-      teamId,
-      styleId: seq.styleId,
-      title,
-      status: 'completed',
-    });
-    return id;
-  };
-  const castInThree = async () => {
-    const created = await castCharacter({
-      id: generateId(),
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Ada',
-      age: '30s',
-    });
-    const b = await sequence('B');
-    const c = await sequence('C');
-    await scopedDb.characters.attach(b, created.id, { actorId });
-    await scopedDb.characters.attach(c, created.id, { actorId });
-    const [talentRow] = await db
-      .insert(talent)
-      .values({ teamId, name: 'Jude', description: 'tall' })
-      .returning();
-    if (!talentRow) throw new Error('talent insert returned nothing');
-    return { created, b, c, talentId: talentRow.id };
-  };
-
-  it('moves the named sequences to the recast version and names the ones left behind', async () => {
-    const { created, b, c, talentId } = await castInThree();
-    const result = z
-      .object({
-        movedSequences: z.array(
-          z.object({ sequenceId: z.string(), moved: z.boolean() })
-        ),
-        sequencesLeftBehind: z.array(
-          z.object({ sequenceId: z.string(), title: z.string() })
-        ),
-      })
-      .parse(
-        await data('recast_character', {
-          sequenceId,
-          characterId: created.id,
-          talentId,
-          applyToSequenceIds: [b],
-        })
-      );
-    expect(result.movedSequences).toEqual([{ sequenceId: b, moved: true }]);
-    expect(result.sequencesLeftBehind).toEqual([{ sequenceId: c, title: 'C' }]);
-    // B pins the recast version; C still pins the one before it.
-    const inB = await scopedDb.characters.getById(b, created.id);
-    const inC = await scopedDb.characters.getById(c, created.id);
-    expect(inB?.talentId).toBe(talentId);
-    expect(inB?.selectedBibleVersionId).toBe(inB?.currentBibleVersionId);
-    expect(inC?.talentId).toBeNull();
-    expect(inC?.selectedBibleVersionId).not.toBe(inC?.currentBibleVersionId);
-    expect(triggerWorkflow).toHaveBeenCalledTimes(1);
-
-    // The preview: C is behind, naming the talent and the bible fields that
-    // moved; B is current.
-    const { previewVersionMove } = await import('@/cast/server/version-moves');
-    const rows = await previewVersionMove(scopedDb, created.id, {});
-    const rowC = rows.find((row) => row.sequenceId === c);
-    const rowB = rows.find((row) => row.sequenceId === b);
-    expect(rowB).toMatchObject({ behind: false, moved: [], shotCount: 0 });
-    expect(rowC?.behind).toBe(true);
-    expect(rowC?.moved).toContain('talent');
-    expect(rowC?.shotCount).toBe(0);
-    // The default look's sheet inputs moved (the talent): one sheet to redraw.
-    expect(rowC?.sheetCount).toBe(1);
-  });
-
-  it("refuses the whole recast before writing when a named sequence is another team's or does not cast the character", async () => {
-    const { created, b, talentId } = await castInThree();
-    const foreign = generateId();
-    expect(
-      await call('recast_character', {
-        sequenceId,
-        characterId: created.id,
-        talentId,
-        applyToSequenceIds: [b, foreign],
-      })
-    ).toMatchObject(refused('NOT_FOUND'));
-    expect(triggerWorkflow).not.toHaveBeenCalled();
-    const inA = await scopedDb.characters.getById(sequenceId, created.id);
-    expect(inA?.talentId).toBeNull();
-  });
-});
-
-describe('moves and copies on the real scoped db (#2017)', () => {
-  const sequence = async (title: string, team = teamId) => {
-    const id = generateId();
-    const [seq] = await db
-      .select({ styleId: sequences.styleId })
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
-    if (!seq) throw new Error('seed sequence missing');
-    await db.insert(sequences).values({
-      id,
-      teamId: team,
-      styleId: seq.styleId,
-      title,
-      status: 'completed',
-    });
-    return id;
-  };
-
-  it("[B, foreign, C]: another team's sequence refuses the whole move; B and C stay behind", async () => {
-    const { moveCastsToCurrent } = await import('@/cast/server/version-moves');
-    const created = await castCharacter({
-      id: generateId(),
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Ada',
-      age: '30s',
-    });
-    const b = await sequence('B');
-    const c = await sequence('C');
-    await scopedDb.characters.attach(b, created.id, { actorId });
-    await scopedDb.characters.attach(c, created.id, { actorId });
-    const otherTeam = generateId();
-    await db
-      .insert(teams)
-      .values({ id: otherTeam, name: 'O', slug: otherTeam });
-    const foreign = await sequence('F', otherTeam);
-    // A new bible version from A: B and C are behind.
-    await scopedDb.characters.updateBible(
-      sequenceId,
-      created.id,
-      { age: '40s' },
-      { actorId, source: 'edit' }
-    );
-    await expect(
-      moveCastsToCurrent(scopedDb, { userId: actorId }, created.id, [
-        b,
-        foreign,
-        c,
-      ])
-    ).rejects.toThrow('Sequence not found');
-    for (const id of [b, c]) {
-      const inSeq = await scopedDb.characters.getById(id, created.id);
-      expect(inSeq?.age).toBe('30s');
-    }
-    // The same ids without the foreign one move in one batch.
-    expect(
-      await moveCastsToCurrent(scopedDb, { userId: actorId }, created.id, [
-        b,
-        c,
-      ])
-    ).toEqual([
-      { sequenceId: b, moved: true },
-      { sequenceId: c, moved: true },
-    ]);
-    expect((await scopedDb.characters.getById(c, created.id))?.age).toBe('40s');
-  });
-
-  it('a one-off copy is refused for a character nothing else holds', async () => {
-    const created = await castCharacter({
-      id: generateId(),
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Ada',
-    });
-    await expect(
-      scopedDb.characters.copyForSequence(sequenceId, created.id, { actorId })
-    ).rejects.toThrow('only in this sequence');
-  });
-});
-
 describe('a character that must be a person is stored as one, on every path (#2065)', () => {
   const actor = () => ({ userId: actorId });
   const sequence = async (title: string) => {
@@ -571,13 +392,12 @@ describe('a character that must be a person is stored as one, on every path (#20
   };
   /**
    * An uploaded photo the ledger saw a real person in, selected as the
-   * default look's sheet in `inSequence`. The sheet only: the upload path's
+   * default look's sheet. The sheet only: the upload path's
    * own bible write is the caller's to make or leave out.
    */
-  const uploadRealPhoto = async (inSequence: string, characterId: string) => {
+  const uploadRealPhoto = async (characterId: string) => {
     const url = `/r2/characters/${teamId}/uploads/${generateId()}.png`;
     const { version } = await scopedDb.characterSheetVariants.applyConvergent({
-      sequenceId: inSequence,
       lookId: characterId,
       url,
       storagePath: url.slice('/r2/'.length),
@@ -606,33 +426,6 @@ describe('a character that must be a person is stored as one, on every path (#20
   const isPersonNow = async (characterId: string) =>
     (await scopedDb.characters.getCurrent(characterId))?.isPerson;
 
-  it('C1: an edit from a sequence that pins an older not-a-person version writes a person', async () => {
-    const { id, b } = await castInTwo(false);
-    await uploadRealPhoto(b, id);
-    await markPerson(b, id);
-    expect(await isPersonIn(sequenceId, id)).toBe(false);
-
-    // A edits the age: the new current version is built from A's pin.
-    const edited = await updateCharacter(scopedDb, actor(), sequenceId, id, {
-      age: '40s',
-    });
-    expect(edited).toMatchObject({ age: '40s', isPerson: true });
-    expect(await isPersonNow(id)).toBe(true);
-    // Still refused outright.
-    await expect(
-      updateCharacter(scopedDb, actor(), sequenceId, id, { isPerson: false })
-    ).rejects.toMatchObject({ code: 'CONFLICT' });
-
-    // A row stored wrong repairs itself on its next save, from no sequence
-    // too.
-    await db
-      .update(characterBibleVersions)
-      .set({ isPerson: false })
-      .where(eq(characterBibleVersions.characterId, id));
-    await updateTeamCharacter(scopedDb, actor(), id, { movement: 'Glides' });
-    expect(await isPersonNow(id)).toBe(true);
-  });
-
   it('C2: the features move of a default look’s styling edit does not carry a stale not-a-person forward', async () => {
     const { id, b } = await castInTwo(false);
     // Before #2065: the features still sit on her bible version.
@@ -640,7 +433,7 @@ describe('a character that must be a person is stored as one, on every path (#20
       .update(characterBibleVersions)
       .set({ legacyDistinguishingFeatures: 'scar' })
       .where(eq(characterBibleVersions.characterId, id));
-    await uploadRealPhoto(b, id);
+    await uploadRealPhoto(id);
     await markPerson(b, id);
 
     // A, still pinning the not-a-person version, edits the styling: the
@@ -656,8 +449,8 @@ describe('a character that must be a person is stored as one, on every path (#20
   });
 
   it('C2: the same from the Characters page, for a row stored wrong', async () => {
-    const { id, b } = await castInTwo(true);
-    await uploadRealPhoto(b, id);
+    const { id } = await castInTwo(true);
+    await uploadRealPhoto(id);
     await db
       .update(characterBibleVersions)
       .set({ isPerson: false, legacyDistinguishingFeatures: 'scar' })
@@ -671,62 +464,6 @@ describe('a character that must be a person is stored as one, on every path (#20
     });
   });
 
-  it('C3: Update this sequence never lands a real-person sheet on a not-a-person version', async () => {
-    const { moveSequenceToCurrent, moveCastsToCurrent } =
-      await import('@/cast/server/version-moves');
-    const { id, b } = await castInTwo(true);
-    // Nothing locks her yet: A makes her not a person. B is now behind.
-    await updateCharacter(scopedDb, actor(), sequenceId, id, {
-      isPerson: false,
-    });
-    expect(await isPersonNow(id)).toBe(false);
-    // B's sheet becomes a real person's photo. B already pins a person, so
-    // the upload writes no bible version.
-    await uploadRealPhoto(b, id);
-
-    expect(await moveSequenceToCurrent(scopedDb, actor(), b, id)).toEqual({
-      moved: true,
-    });
-    const inB = await scopedDb.characters.getById(b, id);
-    expect(inB?.isPerson).toBe(true);
-    expect(inB?.selectedBibleVersionId).toBe(inB?.currentBibleVersionId);
-
-    // "Move sequences" is the same gate.
-    const c = await sequence('C');
-    await scopedDb.characters.attach(c, id, { actorId });
-    await db
-      .update(characterBibleVersions)
-      .set({ isPerson: false })
-      .where(eq(characterBibleVersions.characterId, id));
-    await moveCastsToCurrent(scopedDb, actor(), id, [c]);
-    expect(await isPersonIn(c, id)).toBe(true);
-  });
-
-  it('C3: a recast with a talent that is not a person, applied to a sequence wearing a real photo, stays a person', async () => {
-    const { id, b } = await castInTwo(false);
-    await uploadRealPhoto(b, id);
-    await markPerson(b, id);
-    const [creature] = await db
-      .insert(talent)
-      .values({ teamId, name: 'Rex', description: 'a dragon', isHuman: false })
-      .returning();
-    if (!creature) throw new Error('talent insert returned nothing');
-
-    // A (pinning the not-a-person version) recasts, and applies it to B.
-    await data('recast_character', {
-      sequenceId,
-      characterId: id,
-      talentId: creature.id,
-      applyToSequenceIds: [b],
-    });
-    const inB = await scopedDb.characters.getById(b, id);
-    expect(inB).toMatchObject({ talentId: creature.id, isPerson: true });
-    // One recast version, pinned by both: A is not left behind by a repair.
-    const inA = await scopedDb.characters.getById(sequenceId, id);
-    expect(inA?.selectedBibleVersionId).toBe(inB?.selectedBibleVersionId);
-    expect(inA?.selectedBibleVersionId).toBe(inA?.currentBibleVersionId);
-  });
-
   it('C4: selecting an uploaded photo of a real person again makes the character a person', async () => {
     const created = await castCharacter({
       id: generateId(),
@@ -736,11 +473,10 @@ describe('a character that must be a person is stored as one, on every path (#20
       isPerson: false,
     });
     const { id } = created;
-    const photo = await uploadRealPhoto(sequenceId, id);
+    const photo = await uploadRealPhoto(id);
     await markPerson(sequenceId, id);
     // Regenerated: a drawn sheet is selected, and the lock lifts.
     await scopedDb.characterSheetVariants.applyConvergent({
-      sequenceId,
       lookId: id,
       url: '/r2/drawn.png',
       storagePath: 'drawn.png',

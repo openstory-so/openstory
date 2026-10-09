@@ -70,14 +70,6 @@ export type PlanUnit = PlanUnitRef & {
    * Update all takes such a unit only alongside that upstream.
    */
   cascaded: boolean;
-  /**
-   * Owed, but free (#2017): a `sheet:character` unit whose finished sheet
-   * exists elsewhere in the team with the same input hash, which the run
-   * points at instead of drawing. Still work — the pointer moves — so the
-   * line names it apart and the quote prices it at zero. False on every
-   * other kind.
-   */
-  reused: boolean;
 };
 
 /**
@@ -304,7 +296,6 @@ export function planUnits(input: PlanInput, sequenceId: string): PlanUnit[] {
       ...ref(unit.kind, unit.id),
       requires: upstream.map((up) => ref(up.kind, up.id)),
       cascaded: false,
-      reused: false,
     };
     let result: PlanUnit;
     if (unit.verdict === 'unknown') {
@@ -441,8 +432,7 @@ export function planWorkLine(work: readonly PlanUnit[]): string {
       ? planWorkSummary(work)
       : `${planWorkSummary(fresh)} · redo ${planWorkSummary(redo)}`;
   // A sheet found finished elsewhere is pointed at, not drawn (#2017).
-  const reused = work.filter((u) => u.reused).length;
-  return reused === 0 ? line : `${line} (${reused} reused)`;
+  return line;
 }
 
 /**

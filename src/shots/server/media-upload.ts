@@ -633,7 +633,6 @@ export async function setCharacterSheetFromUpload(
   // inputs didn't change.
   const { version: variant } =
     await scopedDb.characterSheetVariants.applyConvergent({
-      sequenceId: sequence.id,
       lookId: look.id,
       url: data.publicUrl,
       storagePath,

@@ -47,7 +47,7 @@ import { framePromptVersions } from './frame-prompt-versions';
 import { sequenceEvents } from './sequence-events';
 
 import { characterLooks, characterLookVersions } from './character-looks';
-import { sequenceCast, sequenceCastLooks } from './sequence-cast';
+import { sequenceCast } from './sequence-cast';
 import { characterSheetVariants } from './character-sheet-variants';
 
 import { locationSheetVariants } from './location-sheet-variants';
@@ -352,8 +352,8 @@ export type {
 } from './character-looks';
 
 // Sequence cast (#2017)
-export { sequenceCast, sequenceCastLooks };
-export type { SequenceCastLookRow, SequenceCastRow } from './sequence-cast';
+export { sequenceCast };
+export type { SequenceCastRow } from './sequence-cast';
 
 export {
   CHARACTER_BIBLE_FIELDS,
@@ -582,7 +582,6 @@ export const schema = {
   characterLooks,
   characterLookVersions,
   sequenceCast,
-  sequenceCastLooks,
 
   // Location Library (team-level templates)
   locationLibrary,

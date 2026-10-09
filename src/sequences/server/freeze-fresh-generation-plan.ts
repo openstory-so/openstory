@@ -51,10 +51,10 @@ export async function freezeFreshGenerationPlan(
   if (plan.music) plan.music.promptSource = input.musicPromptSource;
   const shots = await scopedDb.shots.listBySequence(input.sequenceId);
   const counts = planCounts(work);
-  // Free sheets: a copied talent sheet, and one reused by hash (#2017).
+  // A copied talent sheet is free.
   counts['sheet:character'] -=
-    (plan.references?.characterSheets.filter((sheet) => sheet.reuseTalentSheet)
-      .length ?? 0) + (plan.references?.reusedSheets.length ?? 0);
+    plan.references?.characterSheets.filter((sheet) => sheet.reuseTalentSheet)
+      .length ?? 0;
   const remainingCost = estimatePlanCost({
     counts,
     imageModel: input.imageModel,

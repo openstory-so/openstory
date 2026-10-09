@@ -26,8 +26,8 @@ vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
 }));
 import {
   characterBibleVersions,
+  characterLooks,
   sequenceCast,
-  sequenceCastLooks,
   characterSheetVariants,
   characterVoiceVersions,
   sequenceLocations,
@@ -1885,10 +1885,9 @@ describe('Studio, Gallery and library reads', () => {
       name: 'Ada',
       physicalDescription: null,
       voiceOnly: false,
+      sheetImageUrl: null,
       lastUsedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-      sequences: [
-        { id: sequenceId, title: 'Test sequence', sheetImageUrl: null },
-      ],
+      sequences: [{ id: sequenceId, title: 'Test sequence' }],
     });
 
     const first = page.parse(
@@ -3158,7 +3157,6 @@ describe('cast and music edits (#1979)', () => {
     for (const { look, statement, real } of sheets) {
       const url = `/r2/characters/${teamId}/uploads/${look}.png`;
       await scopedDb.characterSheetVariants.applyConvergent({
-        sequenceId,
         lookId: look,
         url,
         storagePath: `characters/${teamId}/uploads/${look}.png`,
@@ -3253,7 +3251,8 @@ describe('cast and music edits (#1979)', () => {
       updateCharacter(scopedDb, actor, sequenceA, photo.id, notPerson)
     ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
     const [inA] = await scopedDb.characters.listWithTalent(sequenceA);
-    expect(inA?.looks.some((look) => look.sheetImageUrl)).toBe(false);
+    // The sheet is the look's, so the new sequence sees it too.
+    expect(inA?.looks.some((look) => look.sheetImageUrl)).toBe(true);
     expect(await personLocksOf(scopedDb, inA ? [inA] : [])).toEqual([
       { reason: 'upload' },
     ]);
@@ -3290,9 +3289,9 @@ describe('cast and music edits (#1979)', () => {
       selectedVoiceVersionId: newer,
     });
     await db
-      .update(sequenceCastLooks)
+      .update(characterLooks)
       .set({ selectedSheetVersionId: sheetB })
-      .where(eq(sequenceCastLooks.lookId, characterId));
+      .where(eq(characterLooks.id, characterId));
     await db.insert(characterVoiceVersions).values([
       {
         id: older,

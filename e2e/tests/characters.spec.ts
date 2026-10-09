@@ -39,7 +39,7 @@ test.describe('Characters page', () => {
       `E2E Characters ${suffix}`
     );
     // The sheet is the pre-#1419 shape (a row keyed to the character's id,
-    // no pointer): what a one-off copy has to carry across.
+    // no pointer).
     character = await createTestCharacter(
       sequence.id,
       'char_001',
@@ -114,97 +114,6 @@ test.describe('Characters page', () => {
           })
           .getByText('Cast in 2 sequences')
       ).toBeVisible();
-    } finally {
-      await cleanupSequenceById(other.id, other.styleId);
-    }
-  });
-
-  test('an edit from one sequence leaves the other on its pinned version until Update this sequence (#2017)', async ({
-    page,
-    testUser,
-  }) => {
-    // Two sequences' worth of page loads on a dev server.
-    test.slow();
-    const other = await createTestSequence(
-      testUser.teamId,
-      testUser.id,
-      `E2E Second ${crypto.randomUUID().slice(0, 8)}`
-    );
-    try {
-      await castIntoSecondSequence(page, other);
-
-      // Edit the character from the second sequence: the first keeps the
-      // version it pinned and says so, until it is updated.
-      await page.goto(`/sequences/${other.id}/cast/${character.id}`);
-      const age = page.getByRole('textbox', { name: 'Age' });
-      await expect(age).toBeEditable({ timeout: HYDRATION_TIMEOUT });
-      const before = await age.inputValue();
-      await age.fill('40s');
-      await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(page.getByText('Character saved')).toBeVisible();
-
-      await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
-      await expect(
-        page.getByText(`${character.name} is not on the current version here`, {
-          exact: false,
-        })
-      ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
-      await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
-        before,
-        { timeout: HYDRATION_TIMEOUT }
-      );
-      // Move sequences: this one is ticked (behind); moving it is a pointer
-      // write, so the age follows and the notice goes.
-      await page
-        .getByRole('button', { name: 'Move other sequences…' })
-        .click({ timeout: HYDRATION_TIMEOUT });
-      const moveDialog = page.getByRole('alertdialog');
-      await expect(
-        moveDialog.getByRole('checkbox', { name: new RegExp(sequence.title) })
-      ).toBeChecked();
-      await moveDialog.getByRole('button', { name: 'Move 1 sequence' }).click();
-      await expect(page.getByText('Moved 1 sequence')).toBeVisible();
-      await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
-        '40s'
-      );
-      await expect(
-        page.getByRole('button', { name: /^Update this sequence/ })
-      ).toHaveCount(0);
-
-      // Behind again after a second edit; Update this sequence is the same
-      // pointer write for one sequence.
-      await page.goto(`/sequences/${other.id}/cast/${character.id}`);
-      await expect(age).toBeEditable({ timeout: HYDRATION_TIMEOUT });
-      await age.fill('50s');
-      await page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(page.getByText('Character saved')).toBeVisible();
-      await page.goto(`/sequences/${sequence.id}/cast/${character.id}`);
-      await page
-        .getByRole('button', { name: /^Update this sequence/ })
-        .click({ timeout: HYDRATION_TIMEOUT });
-      await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue(
-        '50s'
-      );
-      await expect(
-        page.getByRole('button', { name: /^Update this sequence/ })
-      ).toHaveCount(0);
-
-      // Make a one-off copy: the copy's page shows the original's sheet at
-      // once (the pre-#1419 row carried across), nothing generated.
-      await page.getByRole('button', { name: 'Make a one-off copy' }).click();
-      await page
-        .getByRole('alertdialog')
-        .getByRole('button', { name: 'Make a copy' })
-        .click();
-      await expect(
-        page.getByText("is now this sequence's own copy")
-      ).toBeVisible();
-      await expect(page).not.toHaveURL(new RegExp(character.id));
-      await expect(
-        page.getByRole('img', { name: character.name }).first()
-      ).toHaveAttribute('src', new RegExp('label=sheet'), {
-        timeout: HYDRATION_TIMEOUT,
-      });
     } finally {
       await cleanupSequenceById(other.id, other.styleId);
     }

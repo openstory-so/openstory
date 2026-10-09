@@ -160,36 +160,3 @@ describe('previewLevels', () => {
     ]);
   });
 });
-
-describe('previewLevels sheet reuse (#2017)', () => {
-  const base = {
-    visualPromptShotIds: [],
-    motionPromptShotIds: [],
-    imageShotIds: [],
-    videoShotIds: [],
-    dialogueShotIds: [],
-    musicPrompt: false,
-    musicTrack: false,
-    costByLevel: {
-      prompts: null,
-      images: null,
-      dialogue: null,
-      video: null,
-      music: null,
-    },
-  };
-  it('names the sheets pointed at instead of drawn on the images level', () => {
-    expect(
-      previewLevels(
-        { ...base, imageShotIds: ['a'], reusedSheets: 1 },
-        new Map([['a', 2]]),
-        false
-      )
-    ).toEqual([
-      { depth: 'images', label: 'Images for shot 2 · 1 sheet reused' },
-    ]);
-    expect(
-      previewLevels({ ...base, reusedSheets: 2 }, undefined, false)
-    ).toEqual([{ depth: 'images', label: '2 sheets reused' }]);
-  });
-});

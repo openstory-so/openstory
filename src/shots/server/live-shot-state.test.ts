@@ -43,7 +43,6 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
         name: 'Ana',
         characterId: 'ana',
         consistencyTag: null,
-        copiedFromCharacterId: null,
         voiceId: 'voice-ana',
         selectedSheetVersionId: null,
         sheetImageUrl: null,
