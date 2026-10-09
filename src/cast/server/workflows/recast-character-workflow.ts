@@ -174,7 +174,8 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           talentId: input.talentId,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,
-          sequenceId: input.sequenceId,
+          // A recast runs through a sequence (its shots are re-rendered).
+          sequenceId: input.sequenceId ?? null,
           teamId: input.teamId,
           userId: input.userId,
           imageModel: input.imageModel,

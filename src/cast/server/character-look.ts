@@ -12,7 +12,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
  */
 export async function requireCharacterLook(
   scopedDb: Pick<ScopedDb, 'characterLooks'>,
-  character: Pick<CharacterWithSheet, 'id' | 'sequenceId' | 'looks'>,
+  character: Pick<CharacterWithSheet, 'id' | 'looks'>,
   lookId: string
 ): Promise<CharacterLook> {
   const look =

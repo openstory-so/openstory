@@ -46,24 +46,22 @@ export type SheetDivergenceScopedDb = {
   };
 };
 
-/** A sequence sheet run parked its result: tell the sequence's UI. */
+/** A sheet run parked its result: tell the UI that started it. */
 export async function reportParkedSheet(args: {
-  sequenceId: string;
+  /** The sequence's channel, or the character's own (`castChannelId`, #2017). */
+  channelId: string;
   entityType: 'character' | 'location';
   entityId: string;
   versionId: string;
   snapshotInputHash: CharacterSheetInputHash | LocationSheetInputHash;
 }): Promise<void> {
-  await getGenerationChannel(args.sequenceId).emit(
-    'generation.stale:detected',
-    {
-      entityType: args.entityType,
-      entityId: args.entityId,
-      artifact: 'sheet',
-      snapshotInputHash: args.snapshotInputHash,
-      divergedVariantId: args.versionId,
-    }
-  );
+  await getGenerationChannel(args.channelId).emit('generation.stale:detected', {
+    entityType: args.entityType,
+    entityId: args.entityId,
+    artifact: 'sheet',
+    snapshotInputHash: args.snapshotInputHash,
+    divergedVariantId: args.versionId,
+  });
 }
 
 export type SheetRunOutcome =

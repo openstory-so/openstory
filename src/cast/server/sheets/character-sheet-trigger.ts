@@ -12,7 +12,6 @@ import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
-import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import type {
@@ -59,12 +58,12 @@ type SheetPayloadParams = {
   scopedDb: ScopedDb;
   userId: string;
   teamId: string;
-  sequence: {
-    id: string;
-    styleId: string | null;
-    styleConfig: Parameters<typeof resolveSequenceStyleConfig>[0]['snapshot'];
-    imageModel: string | null;
-  };
+  /**
+   * The sequence the sheet is drawn from, for its image model and the run's
+   * channel; null from the Characters page (#2017), where the model is the
+   * live version's or the default.
+   */
+  sequence: { id: string; imageModel: string | null } | null;
   character: CharacterWithSheet;
   /** The look to draw. The character's default look is `character.lookId`. */
   lookId: string;
@@ -116,7 +115,7 @@ export async function buildCharacterSheetDraft(
   const draft: CharacterSheetDraft = {
     userId,
     teamId,
-    sequenceId: sequence.id,
+    sequenceId: sequence?.id ?? null,
     characterDbId: character.id,
     lookId: look.id,
     lookVersionId: look.lookVersionId,
@@ -129,7 +128,7 @@ export async function buildCharacterSheetDraft(
     imageModel: resolveSheetImageModel({
       explicit: params.imageModel,
       liveVersionModel: liveVersion?.model,
-      sequenceImageModel: sequence.imageModel,
+      sequenceImageModel: sequence?.imageModel ?? null,
     }),
     ...cast,
     talentDescription: cast.castTalentDescription ?? undefined,

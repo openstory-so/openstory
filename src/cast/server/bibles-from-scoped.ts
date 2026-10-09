@@ -9,6 +9,8 @@ import type {
   LegacyStylingParts,
 } from '@/shots/input-hash';
 import type {
+  CastCharacterWithSheet,
+  CharacterLink,
   CharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
@@ -38,11 +40,17 @@ function looksToBible(c: CharacterWithSheet): CharacterLookEntry[] {
   ];
 }
 
-/** Nullable columns read as `''` — a bible entry's fields are all required. */
-export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
+/**
+ * Nullable columns read as `''` — a bible entry's fields are all required.
+ * A character read from no sequence has no script id (#2017): its entry
+ * carries its own id, which nothing in that sequence-less run tags by.
+ */
+export function characterToBible(
+  c: CharacterWithSheet & Partial<Pick<CharacterLink, 'characterId'>>
+): CharacterBibleEntry {
   return {
     looks: looksToBible(c),
-    characterId: c.characterId,
+    characterId: c.characterId ?? c.id,
     name: c.name,
     age: c.age ?? '',
     gender: c.gender ?? '',
@@ -80,7 +88,7 @@ export function legacyStylingParts(
 
 /** {@link legacyStylingParts} of each character, by its script id. */
 export function legacyStylingByCharacter(
-  rows: readonly CharacterWithSheet[]
+  rows: readonly CastCharacterWithSheet[]
 ): LegacyStylingByCharacter {
   return Object.fromEntries(
     rows.map((row) => [row.characterId, legacyStylingParts(row)])

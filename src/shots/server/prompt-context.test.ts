@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import { buildCastCharacterBible } from '@/cast/character-prompt';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
   StyleConfig,
@@ -484,7 +484,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
 
   // Simulate the row the character-bible workflow persists, then read it back
   // the way `getShotStalenessFn` does at verify time.
-  const makeCharacter = (b: CharacterBibleEntry): CharacterWithSheet => ({
+  const makeCharacter = (b: CharacterBibleEntry): CastCharacterWithSheet => ({
     id: `row_${b.characterId}`,
     sequenceId: 'seq_1',
     talentId: 'talent_1',

@@ -18,13 +18,12 @@ import {
   updateTeamCharacterLook,
   restoreTeamCharacter,
 } from '@/cast/server/cast-edit';
-import { personLockOf } from '@/cast/server/person-lock';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
 const characterIdSchema = z.object({ characterId: ulidSchema });
 const lookIdSchema = characterIdSchema.extend({ lookId: ulidSchema });
-// The voice is designed in a sequence, so no voice field is taken here.
+// A new character has no voice yet; an edit may describe one (#2017).
 const teamBibleFieldsSchema = characterBibleFieldsSchema.omit({
   voiceDescription: true,
 });
@@ -110,28 +109,12 @@ export const createTeamCharacterFn = createServerFn({ method: 'POST' })
       )
   );
 
-/**
- * The character at its current version, with its looks: what the Characters
- * page edits while no sequence casts it. Null when gone or another team's.
- */
-export const getCurrentTeamCharacterFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(characterIdSchema))
-  .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getCurrent(
-      data.characterId
-    );
-    if (!character) return null;
-    const personLock = await personLockOf(context.scopedDb, character);
-    return { ...character, personLock };
-  });
-
 /** Edit a character's bible from no sequence: only its current version moves. */
 export const updateTeamCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
     zodValidator(
-      teamBibleFieldsSchema.extend({
+      characterBibleFieldsSchema.extend({
         characterId: ulidSchema,
         name: nameSchema.optional(),
         voiceOnly: z.boolean(),

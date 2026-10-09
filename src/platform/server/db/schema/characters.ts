@@ -169,15 +169,24 @@ export type LegacyCharacterSheetColumn =
   | 'legacyPendingPromoteSheetVersionId';
 
 /**
- * A character as one sequence casts it (#2017): the fields of its
- * `sequence_cast` link, under the names the character's own columns had.
+ * The `sequence_cast` link a cast read came through (#2017). Only a read
+ * made through a sequence has one: a character read from no sequence (the
+ * Characters page) is a plain {@link Character}, and what it can do there
+ * takes no link.
  */
-export type CharacterCast = {
+export type CharacterLink = {
   /** The `sequence_cast` row this read came through. */
   castId: string;
   sequenceId: string;
   /** The script id in this sequence, e.g. "char_001". */
   characterId: string;
+};
+
+/**
+ * A character as one sequence casts it (#2017): the fields of its
+ * `sequence_cast` link, under the names the character's own columns had.
+ */
+export type CharacterCast = CharacterLink & {
   /** The talent on the current bible version. */
   talentId: string | null;
   /** Removed from this sequence (`sequence_cast.removedAt`). */
@@ -221,13 +230,13 @@ export type Character = Omit<
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
   | 'legacyInLibrary'
-  // The row's own `deletedAt` (deleted from the team); a cast read carries
-  // its link's, from `CharacterCast`.
+  // The row's own `deletedAt` (deleted from the team) on a read from no
+  // sequence; a cast read carries its link's, from `CharacterCast`.
   | 'deletedAt'
   | 'selectedBibleVersionId'
   | 'selectedVoiceVersionId'
 > &
-  CharacterCast &
+  Omit<CharacterCast, keyof CharacterLink> &
   CharacterBible &
   CharacterWornLook &
   CharacterVoice & {
@@ -272,6 +281,10 @@ export type CharacterWithSheet = Character & {
   sheetInputHash: string | null;
 };
 
+/** A character read through a sequence's link (#2017). */
+export type CastCharacter = Character & CharacterLink;
+export type CastCharacterWithSheet = CharacterWithSheet & CharacterLink;
+
 /**
  * A new character: the row's own columns plus the bible its first version
  * row carries. `voiceOnly` / `isPerson` default to false / true, as the
@@ -301,7 +314,7 @@ export type NewCharacter = Omit<
   Partial<Pick<CharacterVoice, 'voiceId' | 'voiceDescription'>>;
 
 export type CharacterMinimal = Pick<
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   | 'id'
   | 'characterId'
   | 'name'
@@ -332,3 +345,4 @@ export type CharacterWithTalent = CharacterWithSheet & {
     isHuman: boolean | null;
   } | null;
 };
+export type CastCharacterWithTalent = CharacterWithTalent & CharacterLink;

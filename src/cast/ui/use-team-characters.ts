@@ -11,7 +11,6 @@ import {
 } from '@tanstack/react-query';
 import {
   createTeamCharacterFn,
-  getCurrentTeamCharacterFn,
   updateTeamCharacterFn,
   getTeamCharacterFn,
   getTeamCharacterShotCountsFn,
@@ -80,6 +79,7 @@ type TeamBibleInput = {
   personality?: string;
   movement?: string;
   rendering?: string;
+  voiceDescription?: string;
 };
 
 /** Make a character with no sequence (#2065). The caller shows the failure. */
@@ -91,18 +91,6 @@ export function useCreateTeamCharacter() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: teamCharacterKeys.all });
     },
-  });
-}
-
-/**
- * The character at its current version, with its looks: what its page
- * edits while no sequence casts it (#2065).
- */
-export function useCurrentTeamCharacter(characterId: string) {
-  return useSuspenseQuery({
-    queryKey: teamCharacterKeys.current(characterId),
-    queryFn: () => getCurrentTeamCharacterFn({ data: { characterId } }),
-    staleTime: 30_000,
   });
 }
 

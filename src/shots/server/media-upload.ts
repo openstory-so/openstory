@@ -50,6 +50,8 @@ import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { getGenerationChannel } from '@/platform/realtime';
+import { castChannelId } from '@/cast/cast-channel';
+import { requireCharacter } from '@/cast/server/cast-edit';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
   computeUploadedStillInputHash,
@@ -83,6 +85,11 @@ type SequenceUploadContext = {
   user: Pick<User, 'id'>;
   teamId: string;
   sequence: Sequence;
+};
+
+/** A character upload: through a sequence, or from the Characters page (#2017). */
+type CastUploadContext = Omit<SequenceUploadContext, 'sequence'> & {
+  sequence: Sequence | null;
 };
 
 /**
@@ -557,7 +564,7 @@ async function resolveSheetHashContext(
  * re-stale because they hash the new selected version id.
  */
 export async function setCharacterSheetFromUpload(
-  context: SequenceUploadContext,
+  context: CastUploadContext,
   data: {
     characterId: string;
     /** The look the sheet is of (#2015). A character id names its default. */
@@ -566,17 +573,14 @@ export async function setCharacterSheetFromUpload(
   }
 ) {
   const { scopedDb, sequence, user } = context;
+  const sequenceId = sequence?.id ?? null;
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.CHARACTERS,
     context.teamId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
-  const owner = await scopedDb.characters.getById(
-    sequence.id,
-    data.characterId
-  );
-  if (!owner) throw new NotFoundError('Character not found');
+  const owner = await requireCharacter(scopedDb, sequenceId, data.characterId);
   // The sheet is one look's (#2015): the hash below reads that look's
   // clothing and styling, as a generated sheet's would.
   const look = requireLiveLook(
@@ -593,9 +597,12 @@ export async function setCharacterSheetFromUpload(
     await likenessFromLedger(scopedDb, data.publicUrl)
   );
 
-  // Same upstream resolution the character-sheet workflow uses.
+  // Same upstream resolution the character-sheet workflow uses: from no
+  // sequence, the default model (#2017).
   const cast = await resolveCastTalent(scopedDb, character.talentId);
-  const { imageModel } = await resolveSheetHashContext(scopedDb, sequence);
+  const imageModel = resolveSheetImageModel({
+    sequenceImageModel: sequence?.imageModel ?? null,
+  });
   const inputHash = await computeCharacterSheetInputHash({
     characterBible: {
       name: character.name,
@@ -620,7 +627,7 @@ export async function setCharacterSheetFromUpload(
   // row, only when it moved.
   if (isPerson !== character.isPerson) {
     await scopedDb.characters.updateBible(
-      sequence.id,
+      sequenceId,
       character.id,
       { isPerson },
       { actorId: user.id, source: 'edit' }
@@ -638,23 +645,25 @@ export async function setCharacterSheetFromUpload(
       inputHash,
       model: USER_UPLOAD_MODEL,
     });
-  const updated = await scopedDb.characters.getById(sequence.id, character.id);
-  if (!updated) throw new NotFoundError('Character not found');
-  await scopedDb.sequenceEvents.record({
-    sequenceId: sequence.id,
-    actorId: user.id,
-    kind: 'sheet.uploaded',
-    targetType: 'character',
-    targetId: character.id,
-    summary: `Uploaded sheet for ${character.name}`,
-    data: {
-      characterId: character.id,
-      lookId: look.id,
-      variantId: variant.id,
-    },
-  });
+  const updated = await requireCharacter(scopedDb, sequenceId, character.id);
+  // A write from no sequence writes no event (#2017).
+  if (sequence) {
+    await scopedDb.sequenceEvents.record({
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'sheet.uploaded',
+      targetType: 'character',
+      targetId: character.id,
+      summary: `Uploaded sheet for ${character.name}`,
+      data: {
+        characterId: character.id,
+        lookId: look.id,
+        variantId: variant.id,
+      },
+    });
+  }
   try {
-    await getGenerationChannel(sequence.id).emit(
+    await getGenerationChannel(castChannelId(sequenceId, character.id)).emit(
       'generation.character-sheet:progress',
       {
         characterId: character.id,

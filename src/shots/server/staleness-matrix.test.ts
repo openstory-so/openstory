@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   CharacterLook,
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   Frame,
   FrameVariant,
   SequenceElement,
@@ -87,7 +87,7 @@ const STYLE: StyleConfig = {
   references: [],
 };
 
-type CharacterRow = CharacterWithSheet;
+type CharacterRow = CastCharacterWithSheet;
 /**
  * A character as a scoped read returns it (#2015): wearing its default look,
  * whose id is the character's. `withLooks` lists that look the way the read

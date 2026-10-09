@@ -10,6 +10,7 @@ import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { personLocksOf } from '@/cast/server/person-lock';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
+import { castChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import { requireCharacter } from '@/cast/server/cast-edit';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
@@ -44,11 +45,11 @@ const logger = getLogger(['openstory', 'cast', 'cast-generation']);
 type Actor = { userId: string };
 
 async function emitProgress(
-  sequenceId: string,
+  channelId: string,
   emit: (channel: ReturnType<typeof getGenerationChannel>) => Promise<unknown>
 ): Promise<void> {
   try {
-    await emit(getGenerationChannel(sequenceId));
+    await emit(getGenerationChannel(channelId));
   } catch (error) {
     logger.error('realtime emit failed', { err: error });
   }
@@ -77,7 +78,8 @@ export function assertTalentAccessible(
 export async function regenerateCharacterSheet(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequence: Sequence,
+  /** Null from the Characters page (#2017): no sequence model, no event. */
+  sequence: Sequence | null,
   data: {
     characterId: string;
     /** The look to draw (#2015). A character id names its default look. */
@@ -87,7 +89,7 @@ export async function regenerateCharacterSheet(
 ): Promise<{ characterId: string; workflowRunId: string }> {
   const character = await requireCharacter(
     scopedDb,
-    sequence.id,
+    sequence?.id ?? null,
     data.characterId
   );
 
@@ -114,12 +116,14 @@ export async function regenerateCharacterSheet(
     await scopedDb.characterLooks.claimSheet(payload.lookId, payload, {
       markGenerating: true,
     });
-  await emitProgress(character.sequenceId, (channel) =>
-    channel.emit('generation.character-sheet:progress', {
-      characterId: character.id,
-      lookId: payload.lookId,
-      status: 'generating',
-    })
+  await emitProgress(
+    castChannelId(payload.sequenceId, character.id),
+    (channel) =>
+      channel.emit('generation.character-sheet:progress', {
+        characterId: character.id,
+        lookId: payload.lookId,
+        status: 'generating',
+      })
   );
 
   let workflowRunId: string;
@@ -157,7 +161,12 @@ export async function recastCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   data: {
-    sequenceId: string;
+    /**
+     * The sequence whose shots are re-rendered; null from the Characters
+     * page (#2017), where the recast writes the bible and voice and redraws
+     * the default look's sheet, and every sequence reads stale from there.
+     */
+    sequenceId: string | null;
     characterId: string;
     talentId: string;
   }
@@ -172,10 +181,10 @@ export async function recastCharacter(
       `${character.name} is voice-only (#1585): there is no face to cast`
     );
   }
-  // Fetch the sequence's style for character sheet generation
-  const sequence = await scopedDb.sequences.getForUser({
-    sequenceId: character.sequenceId,
-  });
+  const sequence =
+    data.sequenceId === null
+      ? null
+      : await scopedDb.sequences.getForUser({ sequenceId: data.sequenceId });
 
   const talentWithSheets = await scopedDb.talent.getWithRelations(
     data.talentId
@@ -259,10 +268,36 @@ export async function recastCharacter(
   // re-renders the shots that wear it. The other looks in use are redrawn
   // below, each as its own sheet run.
   const look = await scopedDb.characterLooks.ensureDefault(data.characterId);
+  if (sequence === null) {
+    // No shots to re-render: a plain sheet run of the default look, which
+    // reads the new talent as any regenerate does.
+    const { workflowRunId } = await regenerateCharacterSheet(
+      scopedDb,
+      actor,
+      null,
+      {
+        characterId: data.characterId,
+        lookId: look.id,
+      }
+    );
+    return {
+      character: updatedCharacter,
+      talentId: data.talentId,
+      sheetWorkflowRunId: workflowRunId,
+      looksLeftStale: [],
+      affectedShotIds: [],
+    };
+  }
   const affectedShotIds = await scopedDb.characters.getShotIdsForCharacter(
-    character.sequenceId,
+    sequence.id,
     data.characterId,
     { wearing: look.id }
+  );
+  // The shots' snapshot reads the character as this sequence casts it.
+  const castCharacter = await requireCharacter(
+    scopedDb,
+    sequence.id,
+    data.characterId
   );
 
   // Always generate a character sheet showing the talent in costume. The
@@ -278,7 +313,7 @@ export async function recastCharacter(
       { markGenerating: true }
     );
 
-  await emitProgress(character.sequenceId, (channel) =>
+  await emitProgress(sequence.id, (channel) =>
     channel.emit('generation.character-sheet:progress', {
       characterId: data.characterId,
       lookId: look.id,
@@ -293,11 +328,11 @@ export async function recastCharacter(
   const { shotSnapshots, snapshotInputHash } =
     await buildRecastRegenerateSnapshots({
       scopedDb,
-      sequenceId: character.sequenceId,
+      sequenceId: sequence.id,
       shotIds: affectedShotIds,
       imageModel,
       aspectRatio: sequence.aspectRatio,
-      subject: { kind: 'character', character: updatedCharacter },
+      subject: { kind: 'character', character: castCharacter },
     });
 
   const workflowInput: RecastCharacterWorkflowInput = {
@@ -310,7 +345,7 @@ export async function recastCharacter(
     bibleVersionId: updatedCharacter.selectedBibleVersionId,
     characterName: character.name,
     characterMetadata: {
-      characterId: character.characterId,
+      characterId: characterToBible(character).characterId,
       name: character.name,
       voiceOnly: character.voiceOnly,
       isPerson: updatedCharacter.isPerson,
@@ -328,7 +363,7 @@ export async function recastCharacter(
         },
       ],
     },
-    sequenceId: character.sequenceId,
+    sequenceId: sequence.id,
     teamId: scopedDb.teamId,
     userId: actor.userId,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -376,7 +411,7 @@ export async function recastCharacter(
   for (const other of updatedCharacter.looks) {
     if (other.isDefault || other.deletedAt) continue;
     const worn = await scopedDb.characters.getShotIdsForCharacter(
-      data.sequenceId,
+      sequence.id,
       data.characterId,
       { wearing: other.id }
     );
@@ -410,27 +445,30 @@ export async function recastCharacter(
 export async function generateCharacterVoice(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequence: Sequence,
+  /** Null from the Characters page (#2017): the default analysis model. */
+  sequence: Sequence | null,
   data: { characterId: string; takes: number }
 ) {
   if (!isElevenLabsConfigured()) {
     throw new ValidationError('Voice design is not configured');
   }
+  const sequenceId = sequence?.id ?? null;
   const character = await requireCharacter(
     scopedDb,
-    sequence.id,
+    sequenceId,
     data.characterId
   );
   const enqueued = await enqueueCharacterVoiceDesign({
     scopedDb,
     character,
+    sequenceId,
     userId: actor.userId,
-    analysisModel: sequence.analysisModel,
+    analysisModel: sequence?.analysisModel ?? null,
     takes: data.takes,
     trigger: (payload) => triggerWorkflow('/character-voice', payload),
   });
   if (!enqueued.alreadyInFlight) {
-    await emitProgress(character.sequenceId, (channel) =>
+    await emitProgress(castChannelId(sequenceId, character.id), (channel) =>
       channel.emit('generation.character-voice:progress', {
         characterId: character.id,
         status: 'generating',
@@ -453,7 +491,7 @@ export async function generateCharacterVoice(
  */
 export async function cancelCharacterVoice(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string
 ): Promise<{ cancelled: boolean }> {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
@@ -465,7 +503,7 @@ export async function cancelCharacterVoice(
     'Cancelled'
   );
   if (!failed) return { cancelled: false };
-  await emitProgress(character.sequenceId, (channel) =>
+  await emitProgress(castChannelId(sequenceId, character.id), (channel) =>
     channel.emit('generation.character-voice:progress', {
       characterId: character.id,
       status: 'failed',

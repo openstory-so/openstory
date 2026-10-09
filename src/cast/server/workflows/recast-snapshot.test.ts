@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
   Shot,
@@ -30,9 +30,9 @@ const NEW_SHEET_URL = 'https://example.com/jack-recast.png';
 const NEW_SHEET_HASH = 'jack-hash-v2';
 
 function makeCharacter(
-  overrides: Partial<CharacterWithSheet> = {}
-): CharacterWithSheet {
-  const character: CharacterWithSheet = {
+  overrides: Partial<CastCharacterWithSheet> = {}
+): CastCharacterWithSheet {
+  const character: CastCharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -321,7 +321,7 @@ describe('mergeRecastSheetIntoSnapshots', () => {
       sheetInputHash: null,
       consistencyTag: 'narrator',
     });
-    const build = (jack: CharacterWithSheet) =>
+    const build = (jack: CastCharacterWithSheet) =>
       buildRegenerateShotSnapshot({
         ...BUILD_DEFAULTS,
         characters: [jack, narrator],

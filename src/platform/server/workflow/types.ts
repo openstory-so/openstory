@@ -814,7 +814,16 @@ type PackedMotionCoveredShot = {
 /**
  * Character sheet generation workflow input
  */
-export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
+export interface CharacterSheetWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  /**
+   * The sequence the sheet was asked from, for its events and the run's
+   * storage path; null from the Characters page (#2017), where the run
+   * reports on the character's own channel (`castChannelId`).
+   */
+  sequenceId: string | null;
   /** sequence_characters.id */
   characterDbId: string;
   /**
@@ -1190,8 +1199,12 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
  * the bible workflow and triggered directly by "Generate voice" on the
  * character card.
  */
-export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
-  sequenceId: string;
+export interface CharacterVoiceWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  /** As on {@link CharacterSheetWorkflowInput}: null from the Characters page. */
+  sequenceId: string | null;
   characterDbId: string;
   characterBible: CharacterBibleEntry;
   /** The stored description; empty = draft one from the bible first. */

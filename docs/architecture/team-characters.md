@@ -134,12 +134,41 @@ What follows from one character in two sequences:
   - Not paged: the page and the MCP tool load the whole list (about 1.1 MB
     at 2,500 characters). Known limit. The grid virtualizes its rows.
 - **`/characters/$id`** shows the sequences that cast the character and
-  embeds the sequence detail view (`CharacterDetailView`) for the one in
-  `?sequence=`, or the latest. A character no sequence casts is edited there
-  at its current version (`UncastCharacterEditor`): the bible form and the
-  looks row, each given `sequenceId: null`, through the team fns
-  (`updateTeamCharacterFn`, `createTeamCharacterLookFn`, …,
-  `authWithTeamMiddleware`).
+  embeds the detail view (`CharacterDetailView`) for the one in
+  `?sequence=`, or the latest. A character no sequence casts gets the same
+  view with `sequenceId: null` (#2017): its bible, looks, look sheets and
+  voice are its own and are all there; only a sequence's own things are not
+  (shot count, Remove, "first appears"). See **From no sequence** below.
+- **From no sequence** (#2017). The detail view reads one character
+  (`getCharacterFn` → `characters.getWithTalent(sequenceId | null, id)`),
+  and every sheet and voice fn it calls takes `sequenceId: ulid | null`
+  through `castAccessMiddleware`, which loads `context.sequence` or leaves
+  it null. Behind them `requireCharacter(scopedDb, null, id)` reads the
+  character at its current version (`characters.getCurrent`), the same
+  shape as a cast read without the link (`CharacterWithSheet` has no
+  `castId` / `sequenceId` / script `characterId`; a read through a
+  sequence is a `CastCharacterWithSheet`). What changes with no sequence:
+  - The sheet's image model is the live version's, else the default
+    (`resolveSheetImageModel` with no sequence model); the sheet reads no
+    style anyway (`rendering`). A digest stamped before `rendering` reads
+    stale there, since there is no style to verify it with.
+  - The run stores under `<team>/team/<character>/` and reports on the
+    character's own channel, `castChannelId(null, id)` =
+    `character:<id>`; the page listens on the same id. Through a sequence
+    the channel is the sequence's, as before. `CharacterSheetWorkflowInput`
+    and `CharacterVoiceWorkflowInput` carry `sequenceId: string | null`.
+  - No sequence event is written (the sheet upload, the bible edit).
+  - A recast from no sequence writes the recast bible version and the
+    talent's voice as a recast through a sequence does, then runs a plain
+    sheet run of the default look (`regenerateCharacterSheet`); no shots are
+    re-rendered and `looksLeftStale` is empty. Every sequence that casts
+    the character reads stale from the new version.
+  - The voice section's default is on: with no sequence there is no
+    `generateVoices` to fall back to, so `useVoice` null reads as on. A
+    designed voice is named after the character (`<name> · <id tail>`),
+    not the sequence.
+  - The bible form takes the voice description from no sequence too
+    (`updateTeamCharacterFn` takes every bible field).
 - **New character** (#2065) is on the Characters tab. `createTeamCharacterFn`
   → `createTeamCharacter` → `characters.createForTeam`: one batch writes
   the character, its first bible version (`source: 'edit'`, by the user),

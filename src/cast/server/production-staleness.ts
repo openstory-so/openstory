@@ -3,6 +3,7 @@ import { wearLook } from '@/cast/character-looks';
 import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
 import { legacyStylingParts } from '@/cast/server/bibles-from-scoped';
 import { requireCharacterLook } from '@/cast/server/character-look';
+import { requireCharacter } from '@/cast/server/cast-edit';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { productionAccess } from '@/sequences/server/production-access';
 import { buildCharacterSheetDraft } from './sheets/character-sheet-trigger';
@@ -64,18 +65,19 @@ export async function readReferenceStaleness(
  */
 export async function readLookSheetStaleness(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  /** Null from the Characters page (#2017): no sequence model or style. */
+  sequenceId: string | null,
   characterId: string,
   lookId: string
 ): Promise<{ status: SheetStaleness; applicable: boolean }> {
   const access = productionAccess(scopedDb);
   const context = {
     scopedDb,
-    sequence: await access.sequence(sequenceId),
+    sequence: sequenceId === null ? null : await access.sequence(sequenceId),
     userId: scopedDb.userId,
     teamId: scopedDb.teamId,
   };
-  const owner = await access.character(sequenceId, characterId);
+  const owner = await requireCharacter(scopedDb, sequenceId, characterId);
   if (owner.voiceOnly) return { status: 'untracked', applicable: false };
   const character = wearLook(
     owner,
@@ -104,10 +106,13 @@ export async function readLookSheetStaleness(
       stored,
       payload,
       legacyStylingParts(character),
-      // The style, for a digest stamped before `rendering` (#2017).
-      await computeStyleConfigHash(
-        await resolveSequenceStyle(scopedDb, context.sequence)
-      )
+      // The style, for a digest stamped before `rendering` (#2017); none
+      // from no sequence, so such a digest reads stale there.
+      context.sequence === null
+        ? null
+        : await computeStyleConfigHash(
+            await resolveSequenceStyle(scopedDb, context.sequence)
+          )
     ))
       ? 'fresh'
       : 'stale',

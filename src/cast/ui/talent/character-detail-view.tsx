@@ -20,7 +20,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useUploadCharacterSheet } from '@/shots/ui/use-media-upload';
 import {
   characterSheetVariantKeys,
-  useCharacterDivergentVariants,
+  useCharacterOwnDivergentVariants,
   useCharacterSheetVersions,
   useDiscardCharacterSheetVariant,
   usePromoteCharacterSheetVariant,
@@ -30,14 +30,15 @@ import {
 import {
   restoreSequenceCharacter,
   sequenceCharacterKeys,
+  useCharacter,
   useCharacterSheetStaleness,
   useRegenerateCharacterSheet,
   useShotIdsForCharacter,
   useRecastCharacter,
   useSaveCharacterAsTalent,
-  useSequenceCharacters,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
+import { castChannelId } from '@/cast/cast-channel';
 import type {
   CharacterSheetVariant,
   TalentWithSheets,
@@ -72,7 +73,12 @@ import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
 
 type CharacterDetailViewProps = {
-  sequenceId: string;
+  /**
+   * The sequence the character is shown through, or null from the
+   * Characters page for one no sequence casts (#2017): the same sheets,
+   * voice, looks and bible, with nothing of a sequence's (shots, remove).
+   */
+  sequenceId: string | null;
   characterId: string;
   /**
    * `sequence`: its own header, with the way back to the sequence's cast.
@@ -88,18 +94,18 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const {
-    data: characters,
+    data: owner,
     isLoading,
     error,
-  } = useSequenceCharacters(sequenceId);
+  } = useCharacter(sequenceId, characterId);
   const saveAsTalent = useSaveCharacterAsTalent();
   const recastCharacter = useRecastCharacter();
   const regenerateSheet = useRegenerateCharacterSheet();
-  const { data: sequence } = useSequence(sequenceId);
+  const { data: sequence } = useSequence(sequenceId ?? undefined);
+  const channelId = castChannelId(sequenceId, characterId);
   const [sheetModel, setSheetModel] = useState<TextToImageModel | null>(null);
   // The look whose sheet the panel shows (#2015); null is the default look.
   const [pickedLookId, setPickedLookId] = useState<string | null>(null);
-  const owner = characters?.find((c) => c.id === characterId);
   const liveLooks = (owner?.looks ?? []).filter((look) => !look.deletedAt);
   const activeLook =
     liveLooks.find((look) => look.id === pickedLookId) ??
@@ -142,6 +148,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
   // restoreSequenceCharacter works on the app-level query client.
   const handleRemove = useCallback(
     (name: string) => {
+      if (sequenceId === null) return;
       softDelete.mutate(
         { sequenceId, characterId },
         {
@@ -244,10 +251,15 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
               ? null
               : current
         );
-        // The look's status and sheet come from the list.
+        // The look's status and sheet come from the character read.
         void queryClient.invalidateQueries({
-          queryKey: sequenceCharacterKeys.list(sequenceId),
+          queryKey: sequenceCharacterKeys.detail(sequenceId, characterId),
         });
+        if (sequenceId !== null) {
+          void queryClient.invalidateQueries({
+            queryKey: sequenceCharacterKeys.list(sequenceId),
+          });
+        }
         if (payload.status !== 'generating') {
           // The version strip is a separate query. A completed run appends a
           // version after the kickoff mutation has returned.
@@ -263,21 +275,25 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     [characterId, queryClient, sequenceId]
   );
 
-  // Subscribe to realtime events
+  // Subscribe to realtime events: the sequence's channel, or the
+  // character's own from no sequence (#2017).
   useRealtime({
-    channels: sequenceId ? [sequenceId] : [],
+    channels: [channelId],
     events: ['generation.character-sheet:progress'] as const,
     onData: handleRealtimeEvent,
-    enabled: !!sequenceId,
+    enabled: true,
   });
 
-  const { data: divergentVariants } = useCharacterDivergentVariants(sequenceId);
+  const { data: divergentVariants } = useCharacterOwnDivergentVariants(
+    sequenceId,
+    characterId
+  );
   const invalidateDivergentKeys = useCallback(
-    () => [characterSheetVariantKeys.divergentBySequence(sequenceId)],
-    [sequenceId]
+    () => [characterSheetVariantKeys.divergentByCharacter(characterId)],
+    [characterId]
   );
   useSheetStaleDetected({
-    channelId: sequenceId,
+    channelId,
     entityTypes: ['character'],
     invalidateKeys: invalidateDivergentKeys,
   });
@@ -291,11 +307,9 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     if (!divergentVariants) return undefined;
     // A row with no look is the default look's, whose id is the character's.
     return divergentVariants.find(
-      (v) =>
-        v.characterId === characterId &&
-        (v.lookId ?? v.characterId) === activeLookId
+      (v) => (v.lookId ?? v.characterId) === activeLookId
     );
-  }, [divergentVariants, characterId, activeLookId]);
+  }, [divergentVariants, activeLookId]);
 
   const handleDiscardWithUndo = useCallback(
     (variant: CharacterSheetVariant) => {
@@ -485,13 +499,22 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
         <User className="h-16 w-16 text-muted-foreground/30" />
         <div className="text-center">
           <p className="text-sm font-medium">Character not found</p>
-          <Link
-            to="/sequences/$id/cast"
-            params={{ id: sequenceId }}
-            className="mt-2 text-sm text-primary hover:underline"
-          >
-            Back to cast
-          </Link>
+          {sequenceId === null ? (
+            <Link
+              to="/characters"
+              className="mt-2 text-sm text-primary hover:underline"
+            >
+              Back to Characters
+            </Link>
+          ) : (
+            <Link
+              to="/sequences/$id/cast"
+              params={{ id: sequenceId }}
+              className="mt-2 text-sm text-primary hover:underline"
+            >
+              Back to cast
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -499,7 +522,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      {header === 'sequence' && (
+      {header === 'sequence' && sequenceId !== null && (
         <div className="flex shrink-0 items-center gap-3 border-b px-4 py-3">
           <Link
             to="/sequences/$id/cast"
@@ -726,21 +749,29 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     }
                   />
                 )}
-                <Button
-                  variant="outline"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setIsRemoveConfirmOpen(true)}
-                  disabled={softDelete.isPending}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {softDelete.isPending ? 'Removing…' : 'Remove'}
-                </Button>
+                {sequenceId !== null && (
+                  <Button
+                    variant="outline"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setIsRemoveConfirmOpen(true)}
+                    disabled={softDelete.isPending}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {softDelete.isPending ? 'Removing…' : 'Remove'}
+                  </Button>
+                )}
               </div>
 
               <CharacterVoiceSection
                 sequenceId={sequenceId}
                 character={character}
-                generateVoices={sequence?.generateVoices ?? false}
+                // From no sequence there is no sequence default: the
+                // character's own switch, on until turned off.
+                generateVoices={
+                  sequenceId === null
+                    ? true
+                    : (sequence?.generateVoices ?? false)
+                }
               />
 
               {character.talent ? (
@@ -763,7 +794,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                 // Uncontrolled inputs: reseed when the bible version moves.
                 key={`${character.id}:${character.selectedBibleVersionId}`}
                 sequenceId={sequenceId}
-                character={owner ?? character}
+                character={character}
               />
               {character.firstMentionSceneId && (
                 <div className="flex flex-col gap-1 rounded-lg bg-muted/50 p-3">
@@ -795,7 +826,7 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
       </ScrollArea>
 
       <AlertDialog
-        open={isRemoveConfirmOpen}
+        open={isRemoveConfirmOpen && sequenceId !== null}
         onOpenChange={setIsRemoveConfirmOpen}
       >
         <AlertDialogContent>

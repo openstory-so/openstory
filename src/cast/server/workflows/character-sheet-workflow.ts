@@ -40,6 +40,7 @@ import {
 } from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
+import { castChannelId } from '@/cast/cast-channel';
 
 const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 
@@ -56,12 +57,6 @@ async function landSheet(
   stored: { url: string; path: string; model: string },
   workflowRunId: string
 ): Promise<SheetRunOutcome> {
-  const sequenceId = input.sequenceId;
-  if (!sequenceId) {
-    throw new Error(
-      `Character sheet run for ${input.characterDbId} has no sequenceId`
-    );
-  }
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
   const claimed = Boolean(input.sheetVersionId);
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
@@ -84,7 +79,7 @@ async function landSheet(
       }),
     logger,
     logTag: '[CharacterSheetWorkflow:cf]',
-    sequenceId,
+    channelId: castChannelId(input.sequenceId, input.characterDbId),
     entityType: 'character',
     entityId: input.characterDbId,
     versionId,
@@ -108,20 +103,23 @@ async function persistReusedTalentSheet(params: {
       'reuseTalentSheet requires referenceImageUrl'
     );
   }
-  if (!input.characterDbId || !input.teamId || !input.sequenceId) {
+  if (!input.characterDbId || !input.teamId) {
     throw new WorkflowValidationError(
-      'reuseTalentSheet requires characterDbId, teamId, and sequenceId'
+      'reuseTalentSheet requires characterDbId and teamId'
     );
   }
   const characterDbId = input.characterDbId;
   const sequenceId = input.sequenceId;
+  const channel = getGenerationChannel(
+    castChannelId(sequenceId, characterDbId)
+  );
 
   const storageResult = await step.do('copy-talent-sheet', async () => {
     logger.info(
       `[CharacterSheetWorkflow:cf] Reusing talent sheet for ${input.characterName}`
     );
     const uniqueId = generateId();
-    const storagePath = `${input.teamId}/${sequenceId}/${characterDbId}/${uniqueId}.png`;
+    const storagePath = `${input.teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}/${uniqueId}.png`;
     const result = await copyStoredImage({
       sourceUrl,
       destBucket: STORAGE_BUCKETS.CHARACTERS,
@@ -145,7 +143,7 @@ async function persistReusedTalentSheet(params: {
       providerRequestId: null,
       workflowRunId,
       prompt: 'Reuse uploaded/library talent sheet without regeneration',
-      sequenceId,
+      sequenceId: sequenceId ?? undefined,
       referenceImageCount: 1,
     });
   });
@@ -165,14 +163,11 @@ async function persistReusedTalentSheet(params: {
 
   if (reconcileOutcome.kind === 'divergent') {
     await step.do('settle-divergent-status', async () => {
-      await getGenerationChannel(sequenceId).emit(
-        'generation.character-sheet:progress',
-        {
-          characterId: characterDbId,
-          lookId: input.lookId,
-          status: 'completed',
-        }
-      );
+      await channel.emit('generation.character-sheet:progress', {
+        characterId: characterDbId,
+        lookId: input.lookId,
+        status: 'completed',
+      });
     });
     return {
       sheetImageUrl: storageResult.url,
@@ -184,15 +179,12 @@ async function persistReusedTalentSheet(params: {
   }
 
   await step.do('emit-complete-event', async () => {
-    await getGenerationChannel(sequenceId).emit(
-      'generation.character-sheet:progress',
-      {
-        characterId: characterDbId,
-        lookId: input.lookId,
-        status: 'completed',
-        sheetImageUrl: storageResult.url,
-      }
-    );
+    await channel.emit('generation.character-sheet:progress', {
+      characterId: characterDbId,
+      lookId: input.lookId,
+      status: 'completed',
+      sheetImageUrl: storageResult.url,
+    });
   });
 
   return {
@@ -203,6 +195,9 @@ async function persistReusedTalentSheet(params: {
     sheetVersionId: reconcileOutcome.versionId,
   };
 }
+
+/** Where a run's sheet is stored: under its sequence, or the team's own. */
+const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'team';
 
 export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<CharacterSheetWorkflowInput> {
   protected override async runImpl(
@@ -238,15 +233,14 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // Emit realtime event that generation has started
     await step.do('emit-start-event', async () => {
-      if (input.sequenceId && input.characterDbId) {
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.character-sheet:progress',
-          {
-            characterId: input.characterDbId,
-            lookId: input.lookId,
-            status: 'generating',
-          }
-        );
+      if (input.characterDbId) {
+        await getGenerationChannel(
+          castChannelId(input.sequenceId, input.characterDbId)
+        ).emit('generation.character-sheet:progress', {
+          characterId: input.characterDbId,
+          lookId: input.lookId,
+          status: 'generating',
+        });
       }
     });
 
@@ -308,16 +302,15 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     );
 
     // Destination is resolved BEFORE generating, because the image is stored
-    // inside the generating step (#1645). `characterDbId` and `teamId` are
-    // required on the payload; `sequenceId` is optional on the shared context
-    // but the trigger always sets it, and the run cannot write its row or
-    // emit progress without it.
+    // inside the generating step (#1645). A run from the Characters page has
+    // no sequence (#2017): it stores under the team and reports on the
+    // character's own channel.
     const characterDbId = input.characterDbId;
     const teamId = input.teamId;
     const sequenceId = input.sequenceId;
-    if (!sequenceId) {
-      throw new WorkflowValidationError('sequenceId is required');
-    }
+    const channel = getGenerationChannel(
+      castChannelId(sequenceId, characterDbId)
+    );
 
     // Step 2: Generate the sheet — same-model reseeds on a content flag
     // (#881/#939), then one softened prompt (#1293). The sheet anchors a
@@ -329,7 +322,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       scopedDb,
       workflowRunId,
       userId: input.userId,
-      sequenceId: input.sequenceId,
+      sequenceId: input.sequenceId ?? undefined,
       reservationId: input.reservationId,
       kind: 'character-sheet',
       logTag: '[CharacterSheetWorkflow:cf]',
@@ -341,19 +334,16 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         storeGeneratedPng(
           result.imageUrls[0],
           STORAGE_BUCKETS.CHARACTERS,
-          `${teamId}/${sequenceId}/${characterDbId}/${generateId()}.png`
+          `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}/${generateId()}.png`
         ),
       onRetry: async (retry) => {
-        await getGenerationChannel(sequenceId).emit(
-          'generation.character-sheet:progress',
-          {
-            characterId: input.characterDbId,
-            lookId: input.lookId,
-            status: 'generating',
-            phase: 'retrying',
-            ...retry,
-          }
-        );
+        await channel.emit('generation.character-sheet:progress', {
+          characterId: input.characterDbId,
+          lookId: input.lookId,
+          status: 'generating',
+          phase: 'retrying',
+          ...retry,
+        });
       },
     });
     const storageResult = generation.stored;
@@ -401,7 +391,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         providerRequestId: falUsage.requestId ?? null,
         workflowRunId,
         prompt: generationParams.prompt,
-        sequenceId,
+        sequenceId: sequenceId ?? undefined,
         referenceImageCount: generationParams.referenceImageUrls?.length ?? 0,
       });
     });
@@ -432,14 +422,11 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       // any) is untouched; a first-time sheet stays empty until the user picks
       // the parked one or regenerates.
       await step.do('settle-divergent-status', async () => {
-        await getGenerationChannel(sequenceId).emit(
-          'generation.character-sheet:progress',
-          {
-            characterId: characterDbId,
-            lookId: input.lookId,
-            status: 'completed',
-          }
-        );
+        await channel.emit('generation.character-sheet:progress', {
+          characterId: characterDbId,
+          lookId: input.lookId,
+          status: 'completed',
+        });
       });
       logger.info(
         `[CharacterSheetWorkflow:cf] Diverged for ${input.characterName}; saved as variant`
@@ -454,16 +441,13 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     }
     // Emit realtime event that generation is complete
     await step.do('emit-complete-event', async () => {
-      if (input.sequenceId && input.characterDbId) {
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.character-sheet:progress',
-          {
-            characterId: input.characterDbId,
-            lookId: input.lookId,
-            status: 'completed',
-            sheetImageUrl,
-          }
-        );
+      if (input.characterDbId) {
+        await channel.emit('generation.character-sheet:progress', {
+          characterId: input.characterDbId,
+          lookId: input.lookId,
+          status: 'completed',
+          sheetImageUrl,
+        });
       }
     });
 
@@ -491,10 +475,8 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
     // Mark the look's sheet as failed — through the claim, so a newer run's
     // claim and `generating` status survive this one's failure (#1113).
-    // A run with no sequence was refused at the top, and names no cast look
-    // either (#2017).
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
-    if (!input.lookId || !input.sequenceId) {
+    if (!input.lookId) {
       // Its claim is found by the claim's own id, never by a guessed look.
       await scopedDb.characterLooks.failSheetClaimByVersion(
         input.sheetVersionId,
@@ -511,17 +493,14 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       );
 
       // Emit failure event for realtime UI update
-      if (input.sequenceId) {
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.character-sheet:progress',
-          {
-            characterId: input.characterDbId,
-            lookId: input.lookId,
-            status: 'failed',
-            error,
-          }
-        );
-      }
+      await getGenerationChannel(
+        castChannelId(input.sequenceId, input.characterDbId)
+      ).emit('generation.character-sheet:progress', {
+        characterId: input.characterDbId,
+        lookId: input.lookId,
+        status: 'failed',
+        error,
+      });
 
       if (isContentRejectionError(error)) {
         // Mirror image/motion `onFailure` so "how many sheets failed a content

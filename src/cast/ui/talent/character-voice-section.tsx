@@ -32,6 +32,7 @@ import {
   useSetCharacterVoiceEnabled,
 } from '@/cast/ui/use-sequence-characters';
 import { VoiceLibraryDialog } from '@/cast/ui/talent/voice-library-dialog';
+import { castChannelId } from '@/cast/cast-channel';
 import { errorMessage } from '@/platform/errors';
 import type {
   CharacterVoiceVersionSource,
@@ -60,7 +61,8 @@ const TAKE_CHOICES = Array.from(
  * The description itself is a bible field.
  */
 export const CharacterVoiceSection: React.FC<{
-  sequenceId: string;
+  /** Null from the Characters page (#2017): the same voice, no sequence. */
+  sequenceId: string | null;
   character: CharacterWithSheet;
   generateVoices: boolean;
 }> = ({ sequenceId, character, generateVoices }) => {
@@ -96,15 +98,15 @@ export const CharacterVoiceSection: React.FC<{
     if (!hadLiveHusk.current) return;
     hadLiveHusk.current = false;
     void queryClient.invalidateQueries({
-      queryKey: sequenceCharacterKeys.list(sequenceId),
+      queryKey: sequenceCharacterKeys.all,
     });
     void queryClient.invalidateQueries({
       queryKey: elevenLabsVoiceKeys.saved(character.id),
     });
-  }, [pendingHusk, character.id, queryClient, sequenceId]);
+  }, [pendingHusk, character.id, queryClient]);
 
   useRealtime({
-    channels: [sequenceId],
+    channels: [castChannelId(sequenceId, character.id)],
     events: ['generation.character-voice:progress'] as const,
     enabled: true,
     onData: useCallback(
@@ -136,7 +138,7 @@ export const CharacterVoiceSection: React.FC<{
         }
         if (data.status !== 'generating') {
           void queryClient.invalidateQueries({
-            queryKey: sequenceCharacterKeys.list(sequenceId),
+            queryKey: sequenceCharacterKeys.all,
           });
           void queryClient.invalidateQueries({
             queryKey: elevenLabsVoiceKeys.saved(character.id),
@@ -437,7 +439,7 @@ const VOICE_SOURCE_LABELS: Record<CharacterVoiceVersionSource, string> = {
  * Hidden until there is something to go back to.
  */
 const VoiceHistory: React.FC<{
-  sequenceId: string;
+  sequenceId: string | null;
   character: CharacterWithSheet;
 }> = ({ sequenceId, character }) => {
   const { data: versions, isError } = useCharacterVoiceVersions(

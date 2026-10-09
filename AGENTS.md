@@ -261,7 +261,9 @@ changing the area, and update it in the same PR.**
   and `PHOTOREAL_RENDERING` keeps the prompt the talent fixtures match on. A method takes a
   `sequenceId` only for the link's own fields or the event it writes; a write
   made from no sequence (the Characters page, #2065) passes `null` there and
-  writes no event. Analysis never rewrites a character the writer attached
+  writes no event. A sheet or voice run started from no sequence
+  (`castAccessMiddleware`, `sequence: null`) stores under the team and
+  reports on the character's own channel (`castChannelId`). Analysis never rewrites a character the writer attached
   or another sequence has cast: ask `analysisMayNotRewrite`, the one place
   that rule lives. There is no library flag (#2065): every team character is
   listed and attachable, and stays when its last sequence lets it go. A voice

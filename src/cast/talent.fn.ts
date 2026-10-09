@@ -32,6 +32,7 @@ import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { requireCharacter } from '@/cast/server/cast-edit';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
@@ -480,21 +481,23 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
 export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
-    zodValidator(z.object({ sequenceId: ulidSchema, characterId: ulidSchema }))
+    zodValidator(
+      // Null from the Characters page (#2017).
+      z.object({ sequenceId: ulidSchema.nullable(), characterId: ulidSchema })
+    )
   )
   .handler(async ({ context, data }) => {
-    // Verify the sequence belongs to this team
-    await context.scopedDb.sequences.getForUser({
-      sequenceId: data.sequenceId,
-    });
-
-    const character = await context.scopedDb.characters.getById(
+    if (data.sequenceId !== null) {
+      // Verify the sequence belongs to this team
+      await context.scopedDb.sequences.getForUser({
+        sequenceId: data.sequenceId,
+      });
+    }
+    const character = await requireCharacter(
+      context.scopedDb,
       data.sequenceId,
       data.characterId
     );
-    if (!character) {
-      throw new Error('Character not found');
-    }
 
     const newTalent = await context.scopedDb.talent.create({
       name: character.name,

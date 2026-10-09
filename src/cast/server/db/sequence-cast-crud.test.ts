@@ -1567,6 +1567,58 @@ describe('team characters (#2017)', () => {
       .values({ id, teamId, title: 'S2', styleId: first.styleId });
     return id;
   };
+  it('is read with its talent through a sequence (with the link) or from none (without)', async () => {
+    const created = await chars().create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Ada',
+        rendering: 'Photoreal live action',
+      },
+      analysis
+    );
+    const talentId = await newTalent();
+    // A recast from no sequence (the Characters page) names the talent too.
+    const recast = await chars().updateBible(
+      null,
+      created.id,
+      { age: '30s' },
+      { actorId, source: 'recast', talentId }
+    );
+    expect(recast.talentId).toBe(talentId);
+    expect(recast).not.toHaveProperty('castId');
+
+    const cast = await chars().getWithTalent(sequenceId, created.id);
+    expect(cast).toMatchObject({
+      id: created.id,
+      sequenceId,
+      characterId: 'char_001',
+      castId: created.castId,
+      age: '30s',
+      talent: { id: talentId, name: 'Talent' },
+      looks: [{ id: created.id, isDefault: true }],
+    });
+
+    const own = await chars().getWithTalent(null, created.id);
+    expect(own).toMatchObject({
+      id: created.id,
+      age: '30s',
+      selectedBibleVersionId: recast.selectedBibleVersionId,
+      talent: { id: talentId, name: 'Talent' },
+      sheetImageUrl: null,
+      looks: [{ id: created.id, isDefault: true }],
+    });
+    expect(own).not.toHaveProperty('castId');
+    expect(own).not.toHaveProperty('sequenceId');
+    // Deleted from the team: gone from no sequence, still there to restore
+    // through the link.
+    await db
+      .update(characters)
+      .set({ deletedAt: new Date() })
+      .where(eq(characters.id, created.id));
+    expect(await chars().getWithTalent(null, created.id)).toBeNull();
+    expect(await chars().getWithTalent(sequenceId, created.id)).not.toBeNull();
+  });
   it('a recast is one bible version, by its author, naming the talent', async () => {
     const created = await chars().create(
       {
@@ -2280,11 +2332,11 @@ describe('team characters (#2017)', () => {
       .where(eq(characters.id, made.id));
     expect(row).toMatchObject({
       teamId,
-      selectedBibleVersionId: made.bibleVersionId,
+      selectedBibleVersionId: made.selectedBibleVersionId,
       selectedVoiceVersionId: null,
     });
     expect(await versionsOf(made.id)).toMatchObject([
-      { id: made.bibleVersionId, source: 'edit', createdBy: actorId },
+      { id: made.selectedBibleVersionId, source: 'edit', createdBy: actorId },
     ]);
     expect(
       await db
@@ -2326,7 +2378,7 @@ describe('team characters (#2017)', () => {
       age: '36',
       standardClothing: 'riding habit',
     });
-    expect(edited.bibleVersionId).not.toBe(made.bibleVersionId);
+    expect(edited.selectedBibleVersionId).not.toBe(made.selectedBibleVersionId);
     expect(await versionsOf(made.id)).toHaveLength(2);
     // A no-op edit appends nothing.
     await chars().updateBible(
@@ -2396,7 +2448,7 @@ describe('team characters (#2017)', () => {
     const cast = await chars().attach(sequenceId, made.id, { actorId });
     expect(cast).toMatchObject({
       name: 'Ada Lovelace',
-      selectedBibleVersionId: edited.bibleVersionId,
+      selectedBibleVersionId: edited.selectedBibleVersionId,
       standardClothing: 'riding habit',
       lookName: 'Day wear',
     });
@@ -2862,11 +2914,13 @@ describe('team characters (#2017)', () => {
       const current = await chars().getCurrent(ada.id);
       expect(current).toMatchObject({ legacyDistinguishingFeatures: null });
       expect(current?.looks[0]).toMatchObject({ styling: 'hair down' });
-      expect(current?.bibleVersionId).not.toBe(before.selectedBibleVersionId);
+      expect(current?.selectedBibleVersionId).not.toBe(
+        before.selectedBibleVersionId
+      );
       // The sequence reads the same character.
       expect(await read(ada.id)).toMatchObject({
         styling: 'hair down',
-        selectedBibleVersionId: current?.bibleVersionId,
+        selectedBibleVersionId: current?.selectedBibleVersionId,
       });
     });
   });

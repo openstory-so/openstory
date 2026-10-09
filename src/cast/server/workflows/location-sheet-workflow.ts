@@ -231,7 +231,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
             }),
           logger,
           logTag: '[LocationSheetWorkflow:cf]',
-          sequenceId,
+          channelId: sequenceId,
           entityType: 'location',
           entityId: locationDbId,
           versionId,

@@ -18,8 +18,13 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
+import { castChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type {
+  CastCharacterWithSheet,
+  CharacterWithSheet,
+} from '@/platform/server/db/schema';
 import {
   requireCharacterLook,
   requireLiveLook,
@@ -120,13 +125,30 @@ function defaultLookOf<
   return look;
 }
 
-/** The character, when it belongs to this sequence (live or soft-deleted). */
+/**
+ * The character, when it belongs to this sequence (live or soft-deleted),
+ * or, from no sequence (null), one of the team's at its current version
+ * (#2017). Only a read through a sequence carries the link.
+ */
 export async function requireCharacter(
   scopedDb: Pick<ScopedDb, 'characters'>,
   sequenceId: string,
   characterId: string
-) {
-  const character = await scopedDb.characters.getById(sequenceId, characterId);
+): Promise<CastCharacterWithSheet>;
+export async function requireCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  sequenceId: string | null,
+  characterId: string
+): Promise<CharacterWithSheet>;
+export async function requireCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  sequenceId: string | null,
+  characterId: string
+): Promise<CharacterWithSheet> {
+  const character =
+    sequenceId === null
+      ? await scopedDb.characters.getCurrent(characterId)
+      : await scopedDb.characters.getById(sequenceId, characterId);
   if (!character) throw new NotFoundError('Character not found');
   return character;
 }
@@ -256,7 +278,7 @@ export async function updateTeamCharacter(
   {
     distinguishingFeatures,
     ...update
-  }: Omit<CharacterBibleUpdate, 'voiceDescription'> & LegacyFeaturesInput
+  }: CharacterBibleUpdate & LegacyFeaturesInput
 ) {
   const before = await requireCurrentCharacter(scopedDb, characterId);
   const character = await scopedDb.characters.updateBible(
@@ -425,7 +447,7 @@ export async function restoreTeamCharacter(
 export async function setCharacterVoiceEnabled(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   enabled: boolean
 ) {
@@ -449,7 +471,7 @@ export async function setCharacterVoiceEnabled(
  */
 export async function selectCharacterVoiceVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   versionId: string
 ) {
@@ -469,7 +491,7 @@ export async function selectCharacterVoiceVersion(
 export async function selectCharacterSheetVersion(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   versionId: string
 ) {
@@ -485,7 +507,7 @@ export async function selectCharacterSheetVersion(
   // the upload itself did (#2065).
   await keepLockedCharacterAPerson(scopedDb, actor, sequenceId, character);
   await emitQuietly(() =>
-    getGenerationChannel(sequenceId).emit(
+    getGenerationChannel(castChannelId(sequenceId, character.id)).emit(
       'generation.character-sheet:progress',
       {
         characterId: character.id,
@@ -504,7 +526,7 @@ export async function selectCharacterSheetVersion(
 /** A sheet version of a character of this sequence. */
 async function requireCharacterSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await scopedDb.characterSheetVariants.getById(versionId);
@@ -515,7 +537,7 @@ async function requireCharacterSheetVersion(
 
 export async function discardCharacterSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await requireCharacterSheetVersion(
@@ -529,7 +551,7 @@ export async function discardCharacterSheetVersion(
 
 export async function undiscardCharacterSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await requireCharacterSheetVersion(

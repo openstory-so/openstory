@@ -150,9 +150,6 @@ const selectLooks = async (
       .orderBy(...order)
   ).map(resolveStyling);
 
-/** A look as the team has it: the same read as everywhere else. */
-export type TeamLook = CharacterLook;
-
 /** Default first, then the order they were added. */
 const lookOrder = [
   desc(characterLooks.isDefault),
@@ -251,22 +248,6 @@ export const requireLook = async (
   if (!look) throw new NotFoundError(`Look ${id} not found`);
   return look;
 };
-
-/**
- * A character's looks, default first, removed ones included (`deletedAt`),
- * as a cast read's `looks` are.
- */
-export const currentLooksOf = async (
-  db: Database,
-  teamId: string,
-  characterId: string
-): Promise<CharacterLook[]> =>
-  await selectLooks(
-    db,
-    teamId,
-    eq(characterLooks.characterId, characterId),
-    lookOrder
-  );
 
 /**
  * A character's cast link in one sequence (#2017): the name its events carry

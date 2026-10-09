@@ -165,10 +165,15 @@ test.describe('Characters page', () => {
     });
 
     await openCharacterPage(page);
-    await expect(page.getByText('Not cast in a sequence.')).toBeVisible();
+    // The same page with no sequence (#2017): its sheet and voice are its
+    // own, and nothing of a sequence's (Remove) is offered.
     await expect(
-      page.getByText('Sheets and voice need a sequence.')
-    ).toBeVisible();
+      page.getByRole('button', { name: 'Generate Sheet' })
+    ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
+    await expect(page.getByRole('switch', { name: 'Voice' })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Remove', exact: true })
+    ).toHaveCount(0);
 
     // Still listed: nothing has to hold a character.
     await page.goto('/characters');
@@ -205,11 +210,11 @@ test.describe('Characters page', () => {
     });
     await expect(page).toHaveURL(/\/characters\/[0-9A-Z]{26}$/);
     await expect(
-      page.getByText('Sheets and voice need a sequence.')
-    ).toBeVisible();
+      page.getByRole('button', { name: 'Generate Sheet' })
+    ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
 
     // The bible, with no sequence to pin it.
-    await page.getByLabel('Age').fill('36');
+    await page.getByRole('textbox', { name: 'Age' }).fill('36');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Character saved')).toBeVisible();
 
@@ -228,7 +233,7 @@ test.describe('Characters page', () => {
     await expect(looks.getByText('Gala')).toHaveCount(0);
 
     await page.reload();
-    await expect(page.getByLabel('Age')).toHaveValue('36', {
+    await expect(page.getByRole('textbox', { name: 'Age' })).toHaveValue('36', {
       timeout: HYDRATION_TIMEOUT,
     });
 

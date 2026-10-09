@@ -15,7 +15,7 @@ import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
@@ -107,7 +107,7 @@ export async function computeUploadedStillInputHash(args: {
   frameId: string;
   scene: Scene | null;
   promptText: string | null;
-  characters: CharacterWithSheet[];
+  characters: CastCharacterWithSheet[];
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   aspectRatio: AspectRatio;

@@ -64,16 +64,12 @@ type BibleFormCharacter = Pick<
  * the looks' (#2065), edited in the looks row.
  *
  * `sequenceId` null is the Characters page, for a character no sequence
- * casts (#2065): the same fields without the voice, which needs a sequence.
+ * casts (#2065, #2017): the same fields, written with no sequence event.
  */
-export const CharacterBibleForm: React.FC<
-  | {
-      sequenceId: string;
-      character: BibleFormCharacter &
-        Pick<CharacterWithSheet, 'voiceDescription'>;
-    }
-  | { sequenceId: null; character: BibleFormCharacter }
-> = (props) => {
+export const CharacterBibleForm: React.FC<{
+  sequenceId: string | null;
+  character: BibleFormCharacter & Pick<CharacterWithSheet, 'voiceDescription'>;
+}> = (props) => {
   const { character } = props;
   const updateSequenceCharacter = useUpdateSequenceCharacter();
   const updateTeamCharacter = useUpdateTeamCharacter();
@@ -106,9 +102,8 @@ export const CharacterBibleForm: React.FC<
         }),
     };
     if (props.sequenceId === null) {
-      const { voiceDescription: _noVoiceField, ...bible } = result.data;
       updateTeamCharacter.mutate(
-        { characterId: character.id, ...bible },
+        { characterId: character.id, ...result.data },
         callbacks
       );
       return;
@@ -246,18 +241,16 @@ export const CharacterBibleForm: React.FC<
           textarea
         />
       )}
-      {props.sequenceId === null ? null : (
-        <BibleField
-          key={`${character.id}-voice-${props.character.voiceDescription ?? ''}`}
-          idPrefix="character"
-          label="Voice"
-          name="voiceDescription"
-          defaultValue={props.character.voiceDescription}
-          textarea
-          placeholder="Native English. Female, mid-50s. Excellent quality. Persona: dry detective. Emotion: unhurried, precise."
-          hint="Language, age, quality, persona, emotion, timbre — what can be heard, not how they look."
-        />
-      )}
+      <BibleField
+        key={`${character.id}-voice-${character.voiceDescription ?? ''}`}
+        idPrefix="character"
+        label="Voice"
+        name="voiceDescription"
+        defaultValue={character.voiceDescription}
+        textarea
+        placeholder="Native English. Female, mid-50s. Excellent quality. Persona: dry detective. Emotion: unhurried, precise."
+        hint="Language, age, quality, persona, emotion, timbre — what can be heard, not how they look."
+      />
       <div className="flex justify-end">
         <Button type="submit" disabled={isPending}>
           {isPending ? 'Saving…' : 'Save'}
