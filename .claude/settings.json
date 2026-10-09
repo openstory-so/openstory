@@ -73,11 +73,12 @@
       "WebFetch(domain:fal.ai)",
       "mcp__claude_ai_Fal__SearchFal",
       "Bash(npx @tanstack/cli *)",
-      "Bash(npx --yes @tanstack/cli doc *)"
+      "Bash(npx --yes @tanstack/cli doc *)",
+      "Bash(bun dev)",
+      "Bash(bun dev:*)"
     ],
     "deny": ["Bash(bun tsc:*)"],
     "ask": [
-      "Bash(bun dev)",
       "Bash(bun db:migrate:*)",
       "Bash(bun db:migrate)",
       "Bash(bun db:push:*)",
