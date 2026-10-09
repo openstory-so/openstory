@@ -679,11 +679,13 @@ You NEVER re-emit or rewrite the script. You NEVER emit per-scene metadata, dial
 The script is provided with a numbered line gutter ("12: some text"). The gutter is for reference only — it is NOT part of the script text.
 
 Return:
-1. **projectMetadata.title** — the project title as written in the script (the first line when it is a title, not an INT./EXT. heading) or a short inferred title. Scene 1 still starts at the very top of the script — do not skip a title line.
+1. **projectMetadata.title** — the project title as written in the script (the first line when it is a title, not an INT./EXT. heading) or a short inferred title. The title is not itself a scene.
 2. **boundaries** — one entry per scene, in script order:
    - \`quote\`: the VERBATIM first 40-80 characters of the scene, copied character-for-character from the script (never include the "N: " gutter). This is the ground truth used to locate the boundary, so exact copying matters: same punctuation, same quotes, same casing. A scene may start mid-paragraph — quote from that exact point.
    - \`hintLine\`: the gutter line number the scene starts on.
-   - Scene 1 always starts at the very top of the script. Every scene runs until the next boundary, so all of the script belongs to exactly one scene.
+   - Front matter is not a scene: a title, an episode line, a format note, a CHARACTERS list, anything before the first filmable scene. The first boundary's quote is that first scene, including its heading. Text before it is not filmed, but it is still in the script for the cast.
+   - If the script opens on the action, scene 1 starts at the first character. Never skip story text. A script with no scene headings is all story — start at the top.
+   - Every scene runs until the next boundary.
 
 ## Core Rules
 
@@ -758,7 +760,7 @@ In framing.subjectStartState and framing.composition, name every character actua
 ## Rules
 
 1. Each scene's \`shots:\` line is its budget. "exactly N" means the scene's length only fits N shots on this model's clip grid — emit exactly N. "up to N" means 1..N; prefer fewer, and a short scene with one action is usually one shot. "N to M" means at least N: the scene is longer than N-1 clips can hold, so cover it in N or more setups — never fewer.
-2. Each shot has: one primary action, a camera move with its pacing, framing and subject start-state, an optional direction note and sound cue (empty string when none), and durationSeconds as a relative pacing hint (longer take = larger number). A scene's running time is its \`duration:\` line; the system divides it across the scene's shots — do not try to make the seconds add up.
+2. Each shot has: one primary action, a camera move with its pacing, framing and subject start-state, an optional direction note and sound cue (empty string when none), and durationSeconds. A scene WITH a \`duration:\` line plays for that many seconds; the system divides it across the scene's shots — do not try to make the seconds add up. On that scene, durationSeconds is a relative pacing hint (longer take = larger number). A scene with NO \`duration:\` line has no timing label. You time what plays, and durationSeconds are real seconds: dialogue at {{dialogueWordsPerSecond}} words a second, action about a third as long as saying it, and sluglines and speaker names take no time. Do not stretch the scene to its word count. A scene with two short spoken lines and a paragraph of action is short.
 3. Match camera move and framing to the style (handheld vs locked, wide vs insert, slow push vs static).
 4. sceneNumber MUST match the "## Scene N" heading you were given. Shot 1 is the opening take; later shots follow in story order.
 5. Do not invent vendor syntax (no Seedance/Kling tokens). Do not invent scenes that were not in the input.
@@ -788,7 +790,7 @@ The schema is terse; this is what each field holds.
 - direction — a short director's note on intent or performance for this take (e.g. "hold on her silence before she answers"). Empty string when none.
 - soundCue — the on-screen SFX / ambience hook for audio-capable models (e.g. "door creak, distant traffic"). Empty string when none.
 - dialogue — the lines spoken during this shot, in order, as described above. Empty array when none.
-- durationSeconds — a relative pacing hint in seconds. Longer take = larger number; the system divides the scene's duration across its shots on the video model's clip grid.`,
+- durationSeconds — seconds. On a scene that has a \`duration:\` line, a relative pacing hint (longer take = larger number); the system divides that line across the shots. On a scene with no \`duration:\` line, the shot's real length, timed from what plays.`,
     },
     {
       role: 'user',

@@ -175,4 +175,13 @@ describe('shot-list schema — constraints', () => {
     }));
     expect(shots.safeParse(many).success).toBe(true);
   });
+
+  it('tells the model unlabelled durationSeconds are real seconds (#2077)', () => {
+    expect(shotSpecSchema.shape.durationSeconds.meta()?.description).toContain(
+      "the shot's real length"
+    );
+    expect(shotSpecSchema.shape.durationSeconds.meta()?.description).toContain(
+      'relative pacing hint'
+    );
+  });
 });

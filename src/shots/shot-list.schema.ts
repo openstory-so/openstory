@@ -157,7 +157,8 @@ export const shotSpecSchema = z.object({
     description: 'Lines spoken in this shot, in order',
   }),
   durationSeconds: z.number().meta({
-    description: 'Relative pacing hint in seconds',
+    description:
+      "Seconds. On a scene with a duration: line, a relative pacing hint (longer take = larger number); the system divides that line. On a scene with no duration: line, the shot's real length.",
   }),
 });
 
@@ -261,8 +262,10 @@ export const sceneWithShotsSchema = z.object({
   }),
   // `.min(1)` compiles to JSON-Schema minItems — NOT an `anyOf` union — so
   // the bound is enforced at parse time without touching the zero-union
-  // budget (asserted in the union-budget test). Clip lengths are assigned
-  // after parse per scene (`allocateSceneShots`); the field is a pacing hint.
+  // budget (asserted in the union-budget test). On a labelled scene, clip
+  // lengths are assigned after parse (`allocateSceneShots`) and this field
+  // is a pacing hint. On an unlabelled scene the number is real seconds
+  // (`timeUnlabelledShots`).
   shots: z.array(shotSpecSchema).min(1).meta({
     description:
       'Ordered list of shots. A short scene with no internal cut is a single shot.',
@@ -314,8 +317,8 @@ export type SceneWithShotsResult = z.infer<typeof sceneWithShotsResultSchema>;
  * matches the already-assembled scene; the pass cannot create or merge scenes.
  */
 // The per-scene shot budget is prompt + post-parse (each scene's `shots:`
-// line, then `allocateSceneShots`): Anthropic rejects maxItems, so it is not
-// on the schema.
+// line, then `allocateSceneShots` or `timeUnlabelledShots`): Anthropic
+// rejects maxItems, so it is not on the schema.
 export const shotListPassSceneSchema = z.object({
   sceneNumber: z.number().meta({
     description: 'Matches the "## Scene N" heading',
