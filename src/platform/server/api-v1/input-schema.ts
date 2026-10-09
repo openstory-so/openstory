@@ -202,9 +202,9 @@ export const apiCreateSequenceSchema = z
       description:
         'Render a still per shot and animate it. Default false: shots render straight to video from the reference sheets, no stills are made, and every video model must support that.',
     }),
-    draftMotion: z.boolean().default(false).meta({
+    draftMotion: z.boolean().default(true).meta({
       description:
-        'Render motion as low-resolution drafts first. Only Seedance 2.5 honours it. Default false.',
+        'Render motion as low-resolution drafts first, to be rendered at quality once approved. Only Seedance 2.5 honours it; other video models render finished clips. Default true.',
     }),
     audioModels: z
       .array(z.string())

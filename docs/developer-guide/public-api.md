@@ -146,8 +146,9 @@ controls script expansion; `motion` and `music` toggle video and score, and
 none of the three, the run stops at `dialogue`, as a new sequence in the app does.
 `startFrames` (default `false`) renders a still per shot and animates it; left
 off, shots render straight to video from the reference sheets and no stills are
-made. `draftMotion` (default `false`) renders low-resolution drafts first on
-Seedance 2.5.
+made. `draftMotion` (default `true`) renders low-resolution drafts first on
+Seedance 2.5, to be rendered at quality once you like them; other video models
+render finished clips.
 Speaking characters get a designed voice wherever this deployment can design one. There is no `voices` field.
 See `GET /api/v1` or the OpenAPI spec for the full request schema.
 

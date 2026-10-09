@@ -61,8 +61,9 @@ describe('UI settings on the API and MCP', () => {
     );
   });
 
-  it('create defaults match the app: no start frames', () => {
+  it('create defaults match the app: no start frames, drafts first', () => {
     const parsed = apiCreateSequenceSchema.parse({ script: 'x'.repeat(10) });
     expect(parsed.startFrames).toBe(false);
+    expect(parsed.draftMotion).toBe(true);
   });
 });

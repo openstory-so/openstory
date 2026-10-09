@@ -27,7 +27,7 @@ drift from its published contract: change the schema and both move together.
 `apiCreateSequenceSchema`; a create from either is the sequence the composer
 would make from the same choices.
 
-- **Same defaults as the app.** `startFrames` is off, and with no `stopAt` and
+- **Same defaults as the app.** `startFrames` is off, `draftMotion` is on, and with no `stopAt` and
   no `motion` the run stops at `NEW_SEQUENCE_STOP_AT` (dialogue), the
   composer's own default (`apiStopAt`). It used to stop at images with start
   frames forced on. Stopping at images with start frames off makes sheets and

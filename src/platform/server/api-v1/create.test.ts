@@ -97,7 +97,7 @@ const baseInput = {
   motion: false,
   music: false,
   startFrames: false,
-  draftMotion: false,
+  draftMotion: true,
 };
 
 function pngResponse(): Response {
@@ -214,19 +214,19 @@ describe('runOneShotCreate', () => {
       expect.objectContaining({
         stopAt: 'dialogue',
         generateStartFrames: false,
-        draftMotion: false,
+        draftMotion: true,
       }),
       expect.anything()
     );
     await runOneShotCreate(
-      { ...baseInput, startFrames: true, draftMotion: true, motion: true },
+      { ...baseInput, startFrames: true, draftMotion: false, motion: true },
       ctx
     );
     expect(mocks.createSequences).toHaveBeenLastCalledWith(
       expect.objectContaining({
         stopAt: 'motion',
         generateStartFrames: true,
-        draftMotion: true,
+        draftMotion: false,
       }),
       expect.anything()
     );
