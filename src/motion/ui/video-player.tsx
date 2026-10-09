@@ -28,6 +28,8 @@ const VideoPlayerSurface = lazy(() => import('./video-player-surface'));
 type VideoPlayerProps = {
   src: string;
   chaptersUrl?: string;
+  /** WebVTT captions for this file. Same-origin or `data:` — the browser paints them. */
+  subtitlesUrl?: string;
   posterSrc?: string | null;
   aspectRatio: AspectRatio;
   className?: string;
@@ -86,6 +88,7 @@ const PlayerPlaceholder: React.FC<{
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
   chaptersUrl,
+  subtitlesUrl,
   posterSrc,
   aspectRatio,
   className,
@@ -171,6 +174,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <VideoPlayerSurface
             src={src}
             chaptersUrl={chaptersUrl}
+            subtitlesUrl={subtitlesUrl}
             posterSrc={null}
             autoPlay={autoPlay}
             seekTo={seekTo}

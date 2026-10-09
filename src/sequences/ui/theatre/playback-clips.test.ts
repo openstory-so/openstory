@@ -10,6 +10,7 @@ import {
   groupPlaybackShots,
   shotCues,
   shotIdAtSequenceTime,
+  shotVideoSubtitlesVtt,
   toPlaybackClips,
 } from './playback-clips';
 import type { AspectRatio } from '@/models/aspect-ratios';
@@ -308,5 +309,42 @@ describe('shotCues (#1853)', () => {
     expect(still?.cues).toEqual([
       expect.objectContaining({ startSeconds: 0, endSeconds: 6 }),
     ]);
+  });
+});
+
+describe('shotVideoSubtitlesVtt', () => {
+  const dialogue = {
+    presence: true,
+    lines: [{ character: 'Ann', line: 'Hello there.', tone: 'warm' }],
+  };
+
+  it('is null when the shot has no lines', () => {
+    expect(shotVideoSubtitlesVtt([shot('/a.mp4')])).toBeNull();
+  });
+
+  it('puts an untimed line across the shot on the file timeline', () => {
+    const vtt = shotVideoSubtitlesVtt([
+      { ...shot('/a.mp4'), dialogue, durationMs: 4000 },
+    ]);
+    expect(vtt).toBe(
+      'WEBVTT\n\n00:00:00.000 --> 00:00:04.000\nAnn: Hello there.\n'
+    );
+  });
+
+  it('places each packed member in its own window', () => {
+    const vtt = shotVideoSubtitlesVtt([
+      { ...shot('/packed.mp4'), id: 'a', durationMs: 4000, dialogue },
+      {
+        ...shot('/packed.mp4'),
+        id: 'b',
+        durationMs: 2000,
+        dialogue: {
+          presence: true,
+          lines: [{ character: 'Bo', line: 'Later.', tone: 'flat' }],
+        },
+      },
+    ]);
+    expect(vtt).toContain('00:00:00.000 --> 00:00:04.000\nAnn: Hello there.');
+    expect(vtt).toContain('00:00:04.000 --> 00:00:06.000\nBo: Later.');
   });
 });
