@@ -1,8 +1,14 @@
+<p align="center">
+  <img src="../../.github/openstory-logo.svg" alt="OpenStory" width="275" />
+</p>
+
 # @openstory/stitch-player
 
 Play a list of video clips and stills as **one film**, in the browser, with music, dialogue and subtitles, and never encode anything until someone asks for a file.
 
-This is the player behind [OpenStory](https://openstory.so)'s theatre. A cut there changes every few minutes while someone works on it: a shot gets regenerated, a line gets re-recorded, a still stands in for a clip that isn't rendered yet. Re-encoding an MP4 for each change would be slow and pointless. So the player stitches at play time instead: each clip is decoded with [mediabunny](https://mediabunny.dev) (WebCodecs) as the playhead reaches it and drawn onto one canvas, the music is mixed under it through Web Audio, each clip's own sound plays with it, and subtitles are drawn over the picture. A still with a recorded line plays the same as a finished clip. When you do want a file, the same code encodes one, in the browser.
+This is the player behind [OpenStory](https://openstory.so)'s theatre. A cut there changes every few minutes while someone works on it: a shot gets regenerated, a line gets re-recorded, a still stands in for a clip that isn't rendered yet. Re-encoding an MP4 for each change would be slow and pointless. So the player stitches at play time instead: each clip is decoded with [mediabunny](https://mediabunny.dev) (WebCodecs) as the playhead reaches it and drawn onto one canvas, the music is mixed under it through Web Audio, each clip's own sound plays with it, and subtitles are drawn over the picture. The controls, captions button and keyboard shortcuts are [Video.js 10](https://videojs.org). A still with a recorded line plays the same as a finished clip. When you do want a file, the same code encodes one, in the browser.
+
+https://github.com/user-attachments/assets/f5dce65f-b042-4e25-bbfe-7914d209b0f3
 
 ## An animatic in forty lines
 
@@ -57,14 +63,14 @@ export const Animatic = () => (
 );
 ```
 
-What you get: Video.js's controls, a captions button that toggles the subtitles (or press `c`), the music attenuated by 6 dB (`musicGainDb` is a gain on the music track only; dialogue is unchanged), and a **Download** button that encodes the whole thing to an MP4 in the browser, with a `.vtt` sidecar. The file streams to disk where `showSaveFilePicker` exists; the audio mix is held in memory either way. Swap a still for a rendered clip later and nothing else changes.
+What you get: [Video.js 10](https://videojs.org)'s controls, a captions button that toggles the subtitles (or press `c`), the music attenuated by 6 dB (`musicGainDb` is a gain on the music track only; dialogue is unchanged), and a **Download** button that encodes the whole thing to an MP4 in the browser, with a `.vtt` sidecar. The file streams to disk where `showSaveFilePicker` exists; the audio mix is held in memory either way. Swap a still for a rendered clip later and nothing else changes.
 
 ## What's in the box
 
 | Import                             | What                                                                                                                | Also install                                              |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `@openstory/stitch-player`         | The engine: `SequencePlayerEngine`, `ConcatenatedVideoSource`, clip types, pure helpers.                            | nothing                                                   |
-| `@openstory/stitch-player/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.com) custom media, so the Video.js skin drives the engine. | nothing at runtime (`@videojs/media` is a type-only peer) |
+| `@openstory/stitch-player/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.org) custom media, so the Video.js skin drives the engine. | nothing at runtime (`@videojs/media` is a type-only peer) |
 | `@openstory/stitch-player/react`   | `StitchedPlayer`: the canvas under Video.js's `NeutralVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react`                                 |
 | `@openstory/stitch-player/export`  | `exportSequence` and `downloadSequence`: the same stitch, encoded to MP4 in the browser.                            | nothing                                                   |
 
@@ -76,7 +82,7 @@ npm install @openstory/stitch-player
 npm install react @videojs/react
 ```
 
-Built against Video.js 10 (`^10.0.0`).
+Built against [Video.js 10](https://videojs.org) (`^10.0.0`).
 
 ## Clips
 
@@ -168,7 +174,7 @@ button.onclick = () =>
 
 The export runs the same stitching code, so the file matches the preview: same frames, same letterboxing, same mix. Video is H.264 and audio is AAC, in an MP4. A codec the browser cannot encode is an error; nothing is quietly swapped. Undecodable embedded audio and a still with no loaded picture also throw, even though playback continues (silent, or on a dark frame). Pass a player's `engine.source` as `source` to skip a second `prepare()` of video clips it has already opened (the Download button does this), with the player paused. Music is opened again. Clip bytes may be reread if they were evicted from the 16 MiB range cache.
 
-## Video.js only
+## Video.js 10 only
 
 ```ts
 import { StitchedSequenceMedia } from '@openstory/stitch-player/videojs';
