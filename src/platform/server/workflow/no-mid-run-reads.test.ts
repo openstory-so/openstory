@@ -267,6 +267,20 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The uniqueness half of the same guard — catches a concurrent upload of the same token under a different id.',
     },
   ],
+  'character-sheet-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
+    },
+  ],
+  'location-sheet-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
+    },
+  ],
   'element-vision-workflow.ts': [
     {
       read: 'resolveLlmKey',

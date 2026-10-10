@@ -26,7 +26,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { landSheetRun } from './sheet-divergence';
-import { drawSheetPortrait } from '@/cast/server/sheets/sheet-portrait';
+import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
 import type { SheetRunOutcome } from './sheet-divergence';
 import { locationSheetHashMatchesStored } from './sheet-snapshots';
 import { getLogger } from '@/platform/logger';
@@ -206,21 +206,6 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       });
     });
 
-    // The tile's image, drawn from the sheet just stored — see the character
-    // twin.
-    const portraitUrl = await step.do('draw-portrait', () =>
-      drawSheetPortrait({
-        scopedDb,
-        kind: 'location',
-        sheetUrl: storageResult.url,
-        storageDir: `${teamId}/${sequenceId}/${locationDbId}`,
-        subjectId: locationDbId,
-        chargeKey: workflowRunId,
-        userId: input.userId,
-        sequenceId,
-      })
-    );
-
     // Step 4: Land through the claim (#1113) — see the character twin.
     // A run queued before #1113 carries no claim: it lands only while no newer
     // run holds one, and otherwise parks instead of revoking that run's claim.
@@ -239,7 +224,6 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
               claimed,
               url: storageResult.url,
               storagePath: storageResult.path,
-              portraitUrl,
               inputHash: input.snapshotInputHash,
               // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
               bibleVersionId: input.bibleVersionId ?? null,
@@ -261,6 +245,25 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     if (reconcileOutcome.kind === 'convergent') {
       sheetVersionId = reconcileOutcome.versionId;
     }
+
+    // The sheet is saved: start its portrait run — see the character twin.
+    await step.do('trigger-portrait', async () => {
+      await triggerSheetPortrait(
+        {
+          userId: input.userId,
+          teamId,
+          sequenceId,
+          subject: { kind: 'location', locationId: locationDbId },
+          versionId: reconcileOutcome.versionId,
+          sheetUrl: storageResult.url,
+          storageDir: `${teamId}/${sequenceId}/${locationDbId}`,
+        },
+        await scopedDb.liveRead.compliance.listEnforcementFor(
+          input.userId,
+          teamId
+        )
+      );
+    });
 
     if (reconcileOutcome.kind === 'divergent') {
       // `stale:detected` is out and the land batch settled the status

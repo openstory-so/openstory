@@ -58,10 +58,13 @@ const draw = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps implementations: a rejection must not leak forward.
+  mockRecordProvenance.mockResolvedValue('trace-1');
+  mockDeduct.mockResolvedValue(undefined);
   mockCreateReservation.mockResolvedValue({
     ok: true,
     reservationId: 'hold-1',
-    remaining: 33_600,
+    remaining: 1_000_000_000,
     replay: false,
   });
   mockGenerate.mockResolvedValue({
@@ -125,17 +128,32 @@ describe('drawSheetPortrait', () => {
     expect(mockZeroReservation).toHaveBeenCalledWith('hold-1');
   });
 
-  it('still charges a paid call whose image could not be recorded, and keeps no image', async () => {
+  it('keeps no image and charges nothing when it could not be recorded', async () => {
     mockRecordProvenance.mockRejectedValue(new Error('d1 down'));
 
     expect(await draw()).toBeNull();
     expect(mockDeleteFile).toHaveBeenCalledTimes(1);
-    expect(mockDeduct).toHaveBeenCalledTimes(1);
+    expect(mockDeduct).not.toHaveBeenCalled();
+    expect(mockZeroReservation).toHaveBeenCalledWith('hold-1');
+  });
+
+  it('makes no paid call on a replayed hold that no longer holds the money', async () => {
+    mockCreateReservation.mockResolvedValue({
+      ok: true,
+      reservationId: 'hold-1',
+      remaining: 0,
+      replay: true,
+    });
+
+    expect(await draw()).toBeNull();
+    expect(mockGenerate).not.toHaveBeenCalled();
   });
 
   it('throws when the charge for a paid call cannot be taken', async () => {
     mockDeduct.mockRejectedValue(new Error('ledger down'));
 
     await expect(draw()).rejects.toThrow('ledger down');
+    // The hold stays for the retry.
+    expect(mockZeroReservation).not.toHaveBeenCalled();
   });
 });

@@ -207,22 +207,13 @@ export function createCharacterSheetVariantsMethods(
       lookId: string;
       url: string;
       storagePath: string;
-      /** The portrait drawn from the sheet; null when that failed. */
-      portraitUrl: string | null;
       /** Verify-mirrored current-inputs hash on the version row. */
       inputHash: CharacterSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
     }): Promise<{ version: CharacterSheetVariant }> => {
-      const {
-        lookId,
-        url,
-        storagePath,
-        portraitUrl,
-        inputHash,
-        model,
-        workflowRunId,
-      } = args;
+      const { lookId, url, storagePath, inputHash, model, workflowRunId } =
+        args;
       const look = await requireLook(db, teamId, lookId);
 
       const now = new Date();
@@ -235,7 +226,6 @@ export function createCharacterSheetVariantsMethods(
           model,
           url,
           storagePath,
-          portraitUrl,
           status: 'completed',
           workflowRunId: workflowRunId ?? null,
           generatedAt: now,
@@ -474,7 +464,7 @@ export function createCharacterSheetVariantsMethods(
     },
 
     /**
-     * The portrait of an uploaded sheet, drawn after the upload was saved.
+     * A sheet's portrait, drawn by its own run after the sheet was saved.
      * Written once: a row that already has one is left as it is.
      */
     setPortrait: async (

@@ -41,7 +41,7 @@ import {
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 import { castChannelId } from '@/cast/cast-channel';
-import { drawSheetPortrait } from '@/cast/server/sheets/sheet-portrait';
+import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
 
 const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 
@@ -55,12 +55,7 @@ const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 async function landSheet(
   scopedDb: WorkflowScopedDb,
   input: CharacterSheetWorkflowInput,
-  stored: {
-    url: string;
-    path: string;
-    model: string;
-    portraitUrl: string | null;
-  },
+  stored: { url: string; path: string; model: string },
   workflowRunId: string
 ): Promise<SheetRunOutcome> {
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
@@ -77,7 +72,6 @@ async function landSheet(
         claimed,
         url: stored.url,
         storagePath: stored.path,
-        portraitUrl: stored.portraitUrl,
         inputHash: input.snapshotInputHash,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
         bibleVersionId: input.bibleVersionId ?? null,
@@ -164,8 +158,7 @@ async function persistReusedTalentSheet(params: {
         path: storageResult.path,
         model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
         // A reused talent sheet costs nothing, and is the four-across
-        // layout the tile's crop was made for: no portrait is drawn.
-        portraitUrl: null,
+        // layout the tile's crop was made for: no portrait run is started.
       },
       workflowRunId
     )
@@ -406,21 +399,6 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       });
     });
 
-    // The tile's portrait, drawn from the sheet just stored. It lands on the
-    // same version row, so it can never show a sheet other than its own.
-    const portraitUrl = await step.do('draw-portrait', () =>
-      drawSheetPortrait({
-        scopedDb,
-        kind: 'character',
-        sheetUrl: storageResult.url,
-        storageDir: `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
-        subjectId: characterDbId,
-        chargeKey: workflowRunId,
-        userId: input.userId,
-        sequenceId,
-      })
-    );
-
     // Step 4: Land through the claim (#1113). Selected only while the
     // trigger's claim still names this run; otherwise parked as a divergent
     // variant (and `stale:detected` emitted) so a run whose inputs moved, or
@@ -433,7 +411,6 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           url: storageResult.url,
           path: storageResult.path,
           model: generationParams.model,
-          portraitUrl,
         },
         workflowRunId
       )
@@ -441,6 +418,31 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
     if (reconcileOutcome.kind === 'convergent') {
       sheetVersionId = reconcileOutcome.versionId;
     }
+
+    // The sheet is saved: start its portrait run and move on. The tile shows
+    // the sheet now and the portrait when that run lands. A parked sheet
+    // gets one too, so picking it later shows the right face.
+    await step.do('trigger-portrait', async () => {
+      await triggerSheetPortrait(
+        {
+          userId: input.userId,
+          teamId,
+          sequenceId: sequenceId ?? undefined,
+          subject: {
+            kind: 'character',
+            characterId: characterDbId,
+            lookId: input.lookId,
+          },
+          versionId: reconcileOutcome.versionId,
+          sheetUrl: storageResult.url,
+          storageDir: `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
+        },
+        await scopedDb.liveRead.compliance.listEnforcementFor(
+          input.userId,
+          teamId
+        )
+      );
+    });
 
     if (reconcileOutcome.kind === 'divergent') {
       // `stale:detected` is out. The land batch already settled the status

@@ -51,8 +51,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { getGenerationChannel } from '@/platform/realtime';
 import { castChannelId } from '@/cast/cast-channel';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { SheetPortraitWorkflowInput } from '@/platform/server/workflow/types';
+import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
 import { requireCharacter } from '@/cast/server/cast-edit';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
@@ -560,24 +559,6 @@ async function resolveSheetHashContext(
 }
 
 /**
- * An uploaded sheet is saved and shown at once; its portrait is drawn by its
- * own durable run, and the tile crops the sheet until it lands. One run per
- * sheet version. A trigger that fails leaves the crop and is logged: the
- * upload itself has already succeeded.
- */
-async function triggerSheetPortrait(
-  input: SheetPortraitWorkflowInput
-): Promise<void> {
-  try {
-    await triggerWorkflow('/sheet-portrait', input, {
-      deduplicationId: `sheet-portrait-${input.versionId}`,
-    });
-  } catch (error) {
-    logger.error('sheet portrait run not started', { err: error });
-  }
-}
-
-/**
  * Finalize an uploaded character sheet: append a completed version, select it,
  * stamp parent + version with the CURRENT bible + talent sheet + style + model
  * hash, and log a `sheet.uploaded` event. No generation is triggered. Stills
@@ -662,8 +643,6 @@ export async function setCharacterSheetFromUpload(
       lookId: look.id,
       url: data.publicUrl,
       storagePath,
-      // Drawn after the upload is saved; the tile crops the sheet until then.
-      portraitUrl: null,
       inputHash,
       model: USER_UPLOAD_MODEL,
     });
@@ -760,7 +739,6 @@ export async function setLocationSheetFromUpload(
       locationDbId: location.id,
       url: data.publicUrl,
       storagePath,
-      portraitUrl: null,
       inputHash,
       model: USER_UPLOAD_MODEL,
     });

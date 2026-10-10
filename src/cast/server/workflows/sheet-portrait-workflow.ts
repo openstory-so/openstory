@@ -1,7 +1,7 @@
 /**
- * The `sheetPortraitWorkflow` durable workflow: the portrait of a sheet that
- * was saved with none, which today is an uploaded sheet. A generated sheet
- * draws its own in its sheet run. See `sheet-portrait.ts`.
+ * The `sheetPortraitWorkflow` durable workflow: the portrait of a sheet
+ * version that was just saved, generated or uploaded. The sheet is on screen
+ * first; this lands after. See `sheet-portrait.ts`.
  */
 
 import { castChannelId } from '@/cast/cast-channel';

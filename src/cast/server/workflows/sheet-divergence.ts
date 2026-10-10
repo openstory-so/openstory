@@ -66,7 +66,7 @@ export async function reportParkedSheet(args: {
 
 export type SheetRunOutcome =
   | { kind: 'convergent'; versionId: string }
-  | { kind: 'divergent' };
+  | { kind: 'divergent'; versionId: string };
 
 /**
  * Land a sequence sheet run through the claim its trigger took (#1113):
@@ -93,7 +93,7 @@ export async function landSheetRun(
     storagePath,
   });
   await reportParkedSheet(report);
-  return { kind: 'divergent' };
+  return { kind: 'divergent', versionId: report.versionId };
 }
 
 export type SaveDivergentLibraryLocationSheetArgs = {

@@ -252,23 +252,24 @@ its address is `portrait_url` on the sheet version row
 (`character_sheet_variants`, and `location_sheet_variants` for a sequence
 location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
 
-- **Generated sheet:** the `draw-portrait` step of `CharacterSheetWorkflow`
-  and `LocationSheetWorkflow`, after the sheet is stored and before it
-  lands. The portrait lands in the same write as the sheet.
-- **Uploaded sheet:** saved with no portrait, so the upload answers at
-  once. The upload triggers `SheetPortraitWorkflow` (`/sheet-portrait`,
-  one run per sheet version), which draws it, writes it once with
-  `setPortrait` and re-sends the sheet's completed event so the tile
-  re-reads. The tile crops the sheet until then.
+- **Every sheet is saved and shown first.** A generated sheet
+  (`CharacterSheetWorkflow`, `LocationSheetWorkflow`: the `trigger-portrait`
+  step, after the sheet lands, promoted or parked) and an uploaded one both
+  call `triggerSheetPortrait`, which starts `SheetPortraitWorkflow`
+  (`/sheet-portrait`, one run per sheet version). That run draws the
+  portrait, writes it once with `setPortrait` and re-sends the sheet's
+  completed event so the tile re-reads. The tile crops the sheet until then.
+  A trigger that fails never fails the sheet.
 - **No portrait:** a sheet copied from talent (that path stays free), a
   library location, an element, a sheet from before portraits, and a draw
   that failed. A failed draw never fails the sheet. Tiles then crop the
   sheet as before (`talentSquareImageClassName`).
 - It is charged as its own line ("Sheet portrait"). A hold for the estimate
   is taken before the paid call (its own, not the sheet run's reservation):
-  no hold, no call, and the tile crops. A failed call releases it. Once the
-  provider is paid the charge is taken even if the image could not be kept.
-  A team's own key does not lift the hold.
+  no hold, no call, and the tile crops. A replayed hold that no longer
+  holds the money is no hold. The team pays only for a portrait it gets: a
+  failed call, or an image that could not be stored or recorded, releases
+  the hold and costs nothing. A team's own key does not lift the hold.
 - Each portrait has a provenance row under its sheet's kind; one that could
   not be recorded is deleted.
 - A voice-only character has no sheet and gets no portrait, an upload

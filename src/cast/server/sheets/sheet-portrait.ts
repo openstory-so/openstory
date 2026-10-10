@@ -62,12 +62,16 @@ const PORTRAIT: Record<
  *   let two runs spend one balance. No hold, no call. A team's own key does
  *   not lift it: which key serves this model is known only once the call
  *   returns.
- * - A call that fails releases the hold and costs nothing.
- * - Once the provider has been paid the charge is taken whatever happens to
- *   the image after. A charge that cannot be taken throws, so a workflow
- *   step retries it; it is keyed on `chargeKey`, so a replay charges once.
+ *   A hold found already spent or released (a replay of a run that got
+ *   this far before) is no hold either.
+ * - The team pays only for a portrait it gets. A call that fails, or an
+ *   image that could not be stored or recorded, releases the hold and costs
+ *   nothing; neither is something a user can cause.
  * - An image is kept only with its audit row (#1180): one that could not be
  *   recorded is deleted, and the tile crops.
+ * - A charge that cannot be taken throws, so a workflow step retries it
+ *   with the hold still in place; it is keyed on `chargeKey`, so a replay
+ *   charges once.
  */
 export async function drawSheetPortrait(args: {
   scopedDb: WorkflowScopedDb;
@@ -96,7 +100,8 @@ export async function drawSheetPortrait(args: {
     idempotencyKey: `${args.chargeKey}:portrait-hold`,
     sequenceId: args.sequenceId ?? undefined,
   });
-  if (!hold.ok) {
+  // `ok` on a replay only says the row exists: it must still hold the money.
+  if (!hold.ok || hold.remaining < estimate) {
     logger.info(
       `No credits for the ${kind} sheet portrait; tiles crop the sheet`
     );
@@ -124,9 +129,8 @@ export async function drawSheetPortrait(args: {
     return null;
   }
 
-  // The provider is paid from here on.
-  let portraitUrl: string | null = null;
   const path = `${args.storageDir}/${generateId()}-portrait.png`;
+  let portraitUrl: string;
   try {
     const stored = await storeGeneratedPng(result.imageUrls[0], bucket, path);
     try {
@@ -150,10 +154,12 @@ export async function drawSheetPortrait(args: {
     }
     portraitUrl = stored.url;
   } catch (error) {
-    logger.error(`Portrait drawn for ${kind} sheet but not kept`, {
+    await scopedDb.billing.zeroReservation(hold.reservationId);
+    logger.error(`Portrait drawn for ${kind} sheet but not kept; not charged`, {
       err: error,
       sheetUrl,
     });
+    return null;
   }
 
   await deductWorkflowCredits({

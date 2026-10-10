@@ -193,8 +193,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
       locationDbId: string;
       url: string;
       storagePath: string;
-      /** The portrait drawn from the sheet; null when that failed. */
-      portraitUrl: string | null;
       inputHash: LocationSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
@@ -203,7 +201,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
         locationDbId,
         url,
         storagePath,
-        portraitUrl,
         inputHash,
         model,
         workflowRunId,
@@ -226,7 +223,6 @@ export function createLocationSheetVariantsMethods(db: Database) {
           model,
           url,
           storagePath,
-          portraitUrl,
           status: 'completed',
           workflowRunId: workflowRunId ?? null,
           generatedAt: now,
@@ -444,7 +440,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * The portrait of an uploaded sheet, drawn after the upload was saved.
+     * A sheet's portrait, drawn by its own run after the sheet was saved.
      * Written once: a row that already has one is left as it is.
      */
     setPortrait: async (
