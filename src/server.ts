@@ -92,6 +92,7 @@ function ensureSeededOnce(db: D1Database, e2eTest?: string): Promise<void> {
 // `workflows[]`.
 export { ImageWorkflow } from '@/stills/server/workflows/image-workflow';
 export { ElementVisionWorkflow } from '@/cast/server/workflows/element-vision-workflow';
+export { SheetPortraitWorkflow } from '@/cast/server/workflows/sheet-portrait-workflow';
 export { ElementSheetWorkflow } from '@/cast/server/workflows/element-sheet-workflow';
 export { MusicWorkflow } from '@/audio/server/workflows/music-workflow';
 export { MotionWorkflow } from '@/motion/server/workflows/motion-workflow';

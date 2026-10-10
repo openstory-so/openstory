@@ -417,29 +417,54 @@ export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    let sequence = await context.scopedDb.sequences.getById(data.sequenceId);
-    let { teamId, scopedDb } = context;
-
-    if (!sequence && isSystemAdmin(context.user.email)) {
-      sequence = await getSequenceByIdUnscoped(data.sequenceId);
-      if (sequence) {
-        teamId = sequence.teamId;
-        scopedDb = createScopedDb(sequence.teamId, context.user.id);
-      }
-    }
-
-    if (!sequence) {
-      throw new NotFoundError('Sequence not found');
-    }
-
-    return next({
-      context: {
-        sequence,
-        teamId,
-        scopedDb,
-      },
-    });
+    return next({ context: await loadSequence(context, data.sequenceId) });
   });
+
+/**
+ * Cast access (#2017): the sequence a character is worked on through, or
+ * none (`sequenceId: null`) when the work is done from the Characters page.
+ * `context.sequence` is then null, and the team is the caller's own.
+ */
+export const castAccessMiddleware = createMiddleware({ type: 'function' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema.nullable() })))
+  .server(async ({ next, context, data }) => {
+    const loaded: {
+      sequence: Sequence | null;
+      teamId: string;
+      scopedDb: ScopedDb;
+    } =
+      data.sequenceId === null
+        ? { sequence: null, teamId: context.teamId, scopedDb: context.scopedDb }
+        : await loadSequence(context, data.sequenceId);
+    return next({ context: loaded });
+  });
+
+/** The sequence, scoped to its team; a system admin reaches any team's. */
+async function loadSequence(
+  context: {
+    scopedDb: ScopedDb;
+    teamId: string;
+    user: { id: string; email: string };
+  },
+  sequenceId: string
+) {
+  let sequence = await context.scopedDb.sequences.getById(sequenceId);
+  let { teamId, scopedDb } = context;
+
+  if (!sequence && isSystemAdmin(context.user.email)) {
+    sequence = await getSequenceByIdUnscoped(sequenceId);
+    if (sequence) {
+      teamId = sequence.teamId;
+      scopedDb = createScopedDb(sequence.teamId, context.user.id);
+    }
+  }
+
+  if (!sequence) {
+    throw new NotFoundError('Sequence not found');
+  }
+  return { sequence, teamId, scopedDb };
+}
 
 /**
  * Team member access middleware

@@ -11,8 +11,16 @@ const computeGenerationPlan = vi.fn(async () => [
     state: 'missing',
     requires: [],
     cascaded: false,
+    reused: false,
   },
-  { kind: 'clip', id: 'shot', state: 'missing', requires: [], cascaded: false },
+  {
+    kind: 'clip',
+    id: 'shot',
+    state: 'missing',
+    requires: [],
+    cascaded: false,
+    reused: false,
+  },
 ]);
 const computePlan = vi.fn(async () => ({
   targets: [],
@@ -46,6 +54,7 @@ const input: StoryboardWorkflowInput & { sequenceId: string } = {
   title: 'Test',
   script: 'Hello',
   elementIds: [],
+  cast: [],
   sequenceUrl: '/sequence',
   teamId: 'team',
   sequenceId: 'sequence',

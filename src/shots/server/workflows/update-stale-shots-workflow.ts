@@ -48,7 +48,10 @@
  */
 
 import { withLookSheet } from '@/cast/character-looks';
-import { assertQueuedWithLooks } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  assertQueuedWithLooks,
+  finishCharacterSheetPayload,
+} from '@/cast/server/workflows/sheet-snapshots';
 import { generateId } from '@/platform/id';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import {
@@ -248,9 +251,19 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         'Update-all plan predates frozen motion sources; re-trigger the update'
       );
     }
+    if (
+      plan.references &&
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- plans frozen before looks were drawn from the default look
+      !plan.references.lookSheetsAfterDefault
+    ) {
+      throw new WorkflowValidationError(
+        'Update-all plan predates looks drawn from the default look; re-trigger the update'
+      );
+    }
     // Before any claim is taken, so nothing is left to clear.
     assertQueuedWithLooks(
       ...(plan.references?.characterSheets ?? []),
+      ...(plan.references?.lookSheetsAfterDefault ?? []),
       ...plan.renderRefs.characters
     );
 
@@ -404,72 +417,100 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         failedReferenceIds.add(id);
         failures.push(toFailure(id, stage, error));
       };
+      // Conditional (#1863): the payload was built at the click, and an edit
+      // since then found no claim to revoke. The claim is taken only while
+      // the look, the bible and the cast it was built from still hold;
+      // otherwise the run parks its sheet. Null when the claim step failed.
+      const claimCharacterSheet = async (
+        payload: Pick<
+          CharacterSheetWorkflowInput,
+          'lookId' | 'lookVersionId' | 'bibleVersionId' | 'talentId'
+        >
+      ): Promise<string | null> => {
+        // One sheet per look (#2015).
+        const id = payload.lookId;
+        try {
+          return await step.do(
+            `claim-character-sheet-${id}`,
+            async () =>
+              (
+                await scopedDb.characterLooks.claimSheet(
+                  id,
+                  {
+                    lookVersionId: payload.lookVersionId,
+                    // Passed as frozen: a plan from before #1600 has
+                    // none, and `claimSheet` skips what is absent.
+                    bibleVersionId: payload.bibleVersionId,
+                    talentId: payload.talentId,
+                  },
+                  { markGenerating: true }
+                )
+              ).versionId
+          );
+        } catch (error) {
+          failReference(id, 'reference', error);
+          return null;
+        }
+      };
+      const spawnCharacterSheet = async (
+        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>,
+        sheetVersionId: string
+      ) => {
+        const id = payload.lookId;
+        try {
+          const generated = await spawnAndAwaitChild<
+            CharacterSheetWorkflowInput,
+            CharacterSheetWorkflowResult
+          >(step, {
+            binding: this.env.CHARACTER_SHEET_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `character-sheet:${id}`,
+            childPayload: {
+              ...payload,
+              sheetVersionId,
+              reservationId: input.reservationId,
+            },
+            spawnStepName: `spawn-character-sheet-${id}`,
+            awaitStepName: `await-character-sheet-${id}`,
+            timeout: '30 minutes',
+          });
+          generatedCharacters.set(id, {
+            ...generated,
+            sheetVersionId: generated.sheetVersionId ?? sheetVersionId,
+          });
+        } catch (error) {
+          failReference(id, 'reference', error);
+          // A child that never started has no onFailure to clear the
+          // claim; the guarded clear is a no-op when one did.
+          await step.do(`fail-character-sheet-claim-${id}`, () =>
+            scopedDb.characterLooks.failSheetClaim(
+              id,
+              sheetVersionId,
+              sanitizeFailResponse(error)
+            )
+          );
+        }
+      };
+      const drawCharacterSheet = async (
+        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>
+      ) => {
+        const sheetVersionId = await claimCharacterSheet(payload);
+        if (sheetVersionId) await spawnCharacterSheet(payload, sheetVersionId);
+      };
+      // The second wave's claims are taken now, with the first wave's: the
+      // click is when the run kicks these looks off. A regenerate between
+      // the waves then takes a newer claim, and this run's older sheet
+      // parks (last kickoff wins).
+      const afterDefaultClaims = new Map<string, string>();
+      await Promise.allSettled(
+        references.lookSheetsAfterDefault.map(async (draft) => {
+          const claimed = await claimCharacterSheet(draft);
+          if (claimed) afterDefaultClaims.set(draft.lookId, claimed);
+        })
+      );
       await Promise.allSettled([
-        ...references.characterSheets.map(async (payload) => {
-          // One sheet per look (#2015).
-          const id = payload.lookId;
-          let sheetVersionId: string;
-          try {
-            // Conditional (#1863): the payload was built at the click, and an
-            // edit since then found no claim to revoke. The claim is taken
-            // only while the look, the bible and the cast it was built from
-            // still hold; otherwise the run parks its sheet.
-            sheetVersionId = await step.do(
-              `claim-character-sheet-${id}`,
-              async () =>
-                (
-                  await scopedDb.characterLooks.claimSheet(
-                    id,
-                    {
-                      lookVersionId: payload.lookVersionId,
-                      // Passed as frozen: a plan from before #1600 has
-                      // none, and `claimSheet` skips what is absent.
-                      bibleVersionId: payload.bibleVersionId,
-                      talentId: payload.talentId,
-                    },
-                    { markGenerating: true }
-                  )
-                ).versionId
-            );
-          } catch (error) {
-            failReference(id, 'reference', error);
-            return;
-          }
-          try {
-            const generated = await spawnAndAwaitChild<
-              CharacterSheetWorkflowInput,
-              CharacterSheetWorkflowResult
-            >(step, {
-              binding: this.env.CHARACTER_SHEET_WORKFLOW,
-              parentBindingName: PARENT_BINDING_NAME,
-              parentInstanceId,
-              childId: `character-sheet:${id}`,
-              childPayload: {
-                ...payload,
-                sheetVersionId,
-                reservationId: input.reservationId,
-              },
-              spawnStepName: `spawn-character-sheet-${id}`,
-              awaitStepName: `await-character-sheet-${id}`,
-              timeout: '30 minutes',
-            });
-            generatedCharacters.set(id, {
-              ...generated,
-              sheetVersionId: generated.sheetVersionId ?? sheetVersionId,
-            });
-          } catch (error) {
-            failReference(id, 'reference', error);
-            // A child that never started has no onFailure to clear the
-            // claim; the guarded clear is a no-op when one did.
-            await step.do(`fail-character-sheet-claim-${id}`, () =>
-              scopedDb.characterLooks.failSheetClaim(
-                id,
-                sheetVersionId,
-                sanitizeFailResponse(error)
-              )
-            );
-          }
-        }),
+        ...references.characterSheets.map(drawCharacterSheet),
         ...references.locationSheets.map(async (payload) => {
           const id = payload.locationDbId;
           let referenceVersionId: string;
@@ -592,6 +633,45 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           }
         }),
       ]);
+      // The second wave (#2015): a look other than the default is drawn from
+      // the default look's sheet, so a look whose default sheet this run
+      // made waits for it. Its face is that landed sheet, from the run's own
+      // result, never a re-read. A default that failed or parked fails the
+      // look, which holds the stills that wear it.
+      await Promise.allSettled(
+        references.lookSheetsAfterDefault.map(async (draft) => {
+          const sheetVersionId = afterDefaultClaims.get(draft.lookId);
+          // The claim step failed and was reported.
+          if (!sheetVersionId) return;
+          const landed = generatedCharacters.get(draft.characterDbId);
+          const versionId = landed?.sheetVersionId;
+          if (!landed || landed.diverged || !versionId) {
+            const error = new Error(
+              `${draft.characterName}'s default look sheet did not land in this run, so this look has no face to be drawn from`
+            );
+            failReference(draft.lookId, 'reference', error);
+            // Its claim was taken at kickoff; no child holds it, so clear it
+            // here (a no-op once a newer run took it).
+            await step.do(`fail-character-sheet-claim-${draft.lookId}`, () =>
+              scopedDb.characterLooks.failSheetClaim(
+                draft.lookId,
+                sheetVersionId,
+                sanitizeFailResponse(error)
+              )
+            );
+            return;
+          }
+          const payload = await step.do(
+            `finish-look-sheet-${draft.lookId}`,
+            () =>
+              finishCharacterSheetPayload(draft, {
+                url: landed.sheetImageUrl,
+                versionId,
+              })
+          );
+          await spawnCharacterSheet(payload, sheetVersionId);
+        })
+      );
     }
 
     if (freshPhases && references) await completePhase('references');

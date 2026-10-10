@@ -26,8 +26,8 @@ vi.mock('@/cast/server/talent/analyze-talent-media', () => ({
 }));
 import {
   characterBibleVersions,
+  characterLooks,
   sequenceCast,
-  sequenceCastLooks,
   characterSheetVariants,
   characterVoiceVersions,
   sequenceLocations,
@@ -93,6 +93,14 @@ import {
   sceneDetailSchema,
 } from '@/shots/inspection.schema';
 import { serializeShot } from '@/shots/server/inspection';
+import { updateCharacter, updateTeamCharacter } from '@/cast/server/cast-edit';
+import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
+import {
+  LIKENESS_CLEARED_V1,
+  PORTRAIT_RIGHTS_V1,
+} from '@/platform/compliance/attestations';
+import { sha256Hex } from '@/platform/compliance/hash';
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 
 vi.mock('#db-client', () => ({ getDb: vi.fn() }));
 let client: Client;
@@ -776,6 +784,7 @@ describe('complete production reads', () => {
     musicId = generateId();
     musicPromptId = generateId();
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_001',
@@ -1016,6 +1025,7 @@ describe('complete production reads', () => {
   });
   it('pages entities and binds cursors to collection, sequence, and reference target', async () => {
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: generateId(),
       sequenceId,
       characterId: 'char_002',
@@ -1707,6 +1717,7 @@ describe('Studio, Gallery and library reads', () => {
       ['get_library_location', { id: libraryLocationId }],
       ['list_styles', {}],
       ['get_style', { id: galleryStyleId }],
+      ['list_library_characters', {}],
       ['list_gallery_samples', {}],
       ['list_generated_assets', {}],
       ['get_generated_asset', { id: assetId }],
@@ -1853,6 +1864,77 @@ describe('Studio, Gallery and library reads', () => {
         expect(item).not.toHaveProperty('description');
         expect(item).not.toHaveProperty('input');
       }
+  });
+  it('lists every character of the team, with the sequences casting them, and pages them', async () => {
+    const [ada, bea, cy] = [
+      await castCharacter({
+        rendering: 'Photoreal live action',
+        sequenceId,
+        characterId: 'lib_ada',
+        name: 'Ada',
+      }),
+      await castCharacter({
+        rendering: 'Photoreal live action',
+        sequenceId,
+        characterId: 'lib_bea',
+        name: 'Bea',
+      }),
+      await castCharacter({
+        rendering: 'Photoreal live action',
+        sequenceId,
+        characterId: 'lib_cy',
+        name: 'Cy',
+      }),
+    ];
+    const page = z.object({
+      items: z.array(z.record(z.string(), z.unknown())),
+      nextCursor: z.string().nullable(),
+    });
+
+    const all = page.parse(await data('list_library_characters', {}));
+    // Ascending id, every one of them (#2065).
+    expect(all.items.map((item) => item.id)).toEqual(
+      [ada.id, bea.id, cy.id].sort()
+    );
+    expect(all.nextCursor).toBeNull();
+    expect(all.items.find((item) => item.id === ada.id)).toEqual({
+      id: ada.id,
+      name: 'Ada',
+      physicalDescription: null,
+      voiceOnly: false,
+      sheetImageUrl: null,
+      lastUsedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+      sequences: [{ id: sequenceId, title: 'Test sequence' }],
+    });
+
+    const first = page.parse(
+      await data('list_library_characters', { limit: 1 })
+    );
+    expect(first.items).toHaveLength(1);
+    expect(first.nextCursor).not.toBeNull();
+    const second = page.parse(
+      await data('list_library_characters', {
+        limit: 1,
+        cursor: first.nextCursor,
+      })
+    );
+    expect(second.items[0]?.id).not.toBe(first.items[0]?.id);
+    expect(second.nextCursor).not.toBeNull();
+    // A cursor from another collection does not continue this one.
+    expect(
+      (await call('list_talent', { cursor: first.nextCursor })).isError
+    ).toBe(true);
+
+    // Another team sees none of them, and cannot use this team's cursor.
+    scopedDb = createScopedDb(foreignTeamId, generateId());
+    expect(page.parse(await data('list_library_characters', {})).items).toEqual(
+      []
+    );
+    expect(
+      (await call('list_library_characters', { cursor: first.nextCursor }))
+        .isError
+    ).toBe(true);
+    scopedDb = createScopedDb(teamId, generateId());
   });
   it('binds asset cursors to all filters and windows long input without truncation', async () => {
     const asset = await scopedDb.generatedAssets.getById(assetId);
@@ -2169,6 +2251,7 @@ describe('update_scene (#1459)', () => {
 describe('update_scene continuity (#1459)', () => {
   it('rescans @-mentions into continuity, merges sent keys and records only moved fields', async () => {
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: generateId(),
       sequenceId,
       characterId: 'char_001',
@@ -2824,6 +2907,158 @@ describe('cast and music edits (#1979)', () => {
     return id;
   }
 
+  it('add_character_to_sequence casts a team character into another sequence, once (#2050)', async () => {
+    const ada = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Ada',
+      standardClothing: 'coat',
+    });
+    const otherSequence = generateId();
+    await db.insert(sequences).values({
+      id: otherSequence,
+      teamId,
+      title: 'Other',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    expect(
+      await data('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toEqual({ characterId: ada.id, token: 'char_ada', name: 'Ada' });
+    // Idempotent, and readable as the other sequence casts her.
+    expect(
+      await data('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toMatchObject({ token: 'char_ada' });
+    expect(
+      await data('get_character', {
+        sequenceId: otherSequence,
+        characterId: ada.id,
+      })
+    ).toMatchObject({ character: { name: 'Ada', standardClothing: 'coat' } });
+    // A character whose name a live cast member here already has.
+    const twin = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId: otherSequence,
+      characterId: 'char_twin',
+      name: 'Bo',
+    });
+    const bo = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId,
+      characterId: 'char_bo',
+      name: 'bo',
+    });
+    expect(twin.name).toBe('Bo');
+    expect(
+      await call('add_character_to_sequence', {
+        sequenceId: otherSequence,
+        characterId: bo.id,
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+  });
+
+  it('the deprecated character fields still work: clothing goes to the default look, features into its styling (#2065)', async () => {
+    const { characterId } = z.object({ characterId: z.string() }).parse(
+      await data('create_character', {
+        sequenceId,
+        name: 'Ines Kato',
+        standardClothing: 'coat',
+        distinguishingFeatures: 'scar on left cheek',
+      })
+    );
+    const read = async () =>
+      z
+        .object({
+          character: z.object({
+            standardClothing: z.string().nullable(),
+            distinguishingFeatures: z.string().nullable(),
+            looks: z.array(
+              z.object({
+                isDefault: z.boolean(),
+                clothing: z.string().nullable(),
+                styling: z.string().nullable(),
+              })
+            ),
+          }),
+        })
+        .parse(await data('get_character', { sequenceId, characterId }))
+        .character;
+    // Nothing is left on the bible: the look owns the text.
+    expect(await read()).toEqual({
+      standardClothing: 'coat',
+      distinguishingFeatures: null,
+      looks: [
+        { isDefault: true, clothing: 'coat', styling: 'scar on left cheek' },
+      ],
+    });
+    // Appended once; sending what is already there changes nothing, and a
+    // blank is ignored.
+    for (const distinguishingFeatures of [
+      'silver watch',
+      'silver watch',
+      'scar on left cheek',
+      '',
+    ]) {
+      await data('update_character', {
+        sequenceId,
+        characterId,
+        voiceOnly: false,
+        distinguishingFeatures,
+      });
+    }
+    expect((await read()).looks).toEqual([
+      {
+        isDefault: true,
+        clothing: 'coat',
+        styling: 'scar on left cheek\nsilver watch',
+      },
+    ]);
+    // Held means a whole line: "scar" is new, though a line contains it.
+    await data('update_character', {
+      sequenceId,
+      characterId,
+      voiceOnly: false,
+      distinguishingFeatures: 'scar',
+    });
+    expect((await read()).looks[0]?.styling).toBe(
+      'scar on left cheek\nsilver watch\nscar'
+    );
+    // A character from before #2065 still holds the text on its bible
+    // version: the old field reports it, and the look's styling includes it.
+    await db
+      .update(characterBibleVersions)
+      .set({ legacyDistinguishingFeatures: 'birthmark' })
+      .where(eq(characterBibleVersions.characterId, characterId));
+    expect(await read()).toMatchObject({
+      distinguishingFeatures: 'birthmark',
+      looks: [{ styling: 'scar on left cheek\nsilver watch\nscar\nbirthmark' }],
+    });
+    // This file's tests share one database: leave no event behind.
+    await db
+      .delete(sequenceEvents)
+      .where(eq(sequenceEvents.targetId, characterId));
+    // Appending never takes the styling past the look's own limit: the
+    // third 2,000 characters would, so that call is refused and writes
+    // nothing.
+    const feature = (letter: string) => ({
+      sequenceId,
+      characterId,
+      voiceOnly: false,
+      distinguishingFeatures: letter.repeat(2000),
+    });
+    await data('update_character', feature('a'));
+    await data('update_character', feature('b'));
+    const full = (await read()).looks;
+    expect((await call('update_character', feature('c'))).isError).toBe(true);
+    expect((await read()).looks).toEqual(full);
+  });
+
   it('creates, edits, deletes and restores a character, readable at each step', async () => {
     const created = z
       .object({ characterId: z.string(), token: z.string() })
@@ -2860,6 +3095,8 @@ describe('cast and music edits (#1979)', () => {
         characterId: 'char_maya_ross',
         voiceOnly: true,
         isPerson: false,
+        // Voice-only: never rendered.
+        rendering: null,
         personality: null,
         movement: 'Glides',
       },
@@ -2907,6 +3144,164 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject({ token: 'char_maya_ross_2' });
   });
 
+  it('keeps a character a person while a real talent or an uploaded photo says so (#2065)', async () => {
+    const actor = { userId: actorId };
+    const talentId = generateId();
+    await db.insert(talent).values({
+      id: talentId,
+      teamId,
+      name: 'Ada Vale',
+      isHuman: true,
+      imagePath: 'private',
+      imageUrl: '/r2/ada.jpg',
+    });
+    const cast = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId,
+      characterId: 'char_cast',
+      name: 'Cast',
+      talentId,
+    });
+    const photo = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId,
+      characterId: 'char_photo',
+      name: 'Photo',
+    });
+    const drawing = await castCharacter({
+      rendering: 'Photoreal live action',
+      sequenceId,
+      characterId: 'char_drawing',
+      name: 'Drawing',
+    });
+    // An uploaded sheet on each default look: one the ledger signed as a
+    // real person, one it cleared.
+    const sheets = [
+      { look: photo.id, statement: PORTRAIT_RIGHTS_V1, real: true },
+      { look: drawing.id, statement: LIKENESS_CLEARED_V1, real: false },
+    ];
+    for (const { look, statement, real } of sheets) {
+      const url = `/r2/characters/${teamId}/uploads/${look}.png`;
+      await scopedDb.characterSheetVariants.applyConvergent({
+        lookId: look,
+        url,
+        storagePath: `characters/${teamId}/uploads/${look}.png`,
+        inputHash: null,
+        model: USER_UPLOAD_MODEL,
+      });
+      await scopedDb.compliance.attestations.record({
+        subjectType: 'uploaded_image',
+        subjectId: await sha256Hex(url),
+        statementVersion: statement.version,
+        statementSha256: 'x'.repeat(64),
+        depictsRealPerson: real,
+      });
+    }
+    const notPerson = { isPerson: false };
+    const castWith = 'Cast with Ada Vale, a real person.';
+    const uploadedPhoto = 'Its sheet is an uploaded photo of a real person.';
+
+    // The shared edit refuses both, and says why.
+    await expect(
+      updateCharacter(scopedDb, actor, sequenceId, cast.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: castWith });
+    await expect(
+      updateCharacter(scopedDb, actor, sequenceId, photo.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
+    // From no sequence there is no sheet: the talent still holds it.
+    await expect(
+      updateTeamCharacter(scopedDb, actor, cast.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: castWith });
+    // The MCP tool is the same edit.
+    for (const characterId of [cast.id, photo.id]) {
+      expect(
+        await call('update_character', {
+          sequenceId,
+          characterId,
+          voiceOnly: false,
+          isPerson: false,
+          rendering: 'Photoreal live action',
+        })
+      ).toMatchObject(refusal('CONFLICT'));
+    }
+
+    // A person is always allowed, as is an edit that leaves the field out.
+    for (const characterId of [cast.id, photo.id]) {
+      await data('update_character', {
+        sequenceId,
+        characterId,
+        voiceOnly: false,
+        isPerson: true,
+        rendering: 'Photoreal live action',
+        movement: 'Strides',
+      });
+      await updateCharacter(scopedDb, actor, sequenceId, characterId, {
+        movement: 'Glides',
+      });
+    }
+    // A character nothing holds can still be made not a person.
+    await data('update_character', {
+      sequenceId,
+      characterId: drawing.id,
+      voiceOnly: false,
+      isPerson: false,
+      rendering: 'Photoreal live action',
+    });
+
+    // The read the form shows is the same answer.
+    const list = await scopedDb.characters.listWithTalent(sequenceId);
+    const locks = await personLocksOf(scopedDb, list);
+    const lockOf = (id: string) =>
+      locks[list.findIndex((character) => character.id === id)];
+    expect(lockOf(cast.id)).toEqual({
+      reason: 'talent',
+      talentName: 'Ada Vale',
+    });
+    expect(lockOf(photo.id)).toEqual({ reason: 'upload' });
+    expect(lockOf(drawing.id)).toBeNull();
+    expect(list.find((c) => c.id === cast.id)?.isPerson).toBe(true);
+    expect(list.find((c) => c.id === photo.id)?.isPerson).toBe(true);
+    expect(list.find((c) => c.id === drawing.id)?.isPerson).toBe(false);
+    // From no sequence every sequence's sheets count, an archived
+    // sequence's too: the edit is refused and the read says why.
+    const teamLock = async (character: { id: string }) =>
+      await personLockOf(scopedDb, { id: character.id, talentId: null });
+    // A bible version is shared: another sequence that casts her, with no
+    // upload of its own, cannot make her not a person either.
+    const sequenceA = generateId();
+    await db.insert(sequences).values({
+      id: sequenceA,
+      teamId,
+      title: 'A',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    await scopedDb.characters.attach(sequenceA, photo.id, { actorId });
+    await expect(
+      updateCharacter(scopedDb, actor, sequenceA, photo.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
+    const [inA] = await scopedDb.characters.listWithTalent(sequenceA);
+    // The sheet is the look's, so the new sequence sees it too.
+    expect(inA?.looks.some((look) => look.sheetImageUrl)).toBe(true);
+    expect(await personLocksOf(scopedDb, inA ? [inA] : [])).toEqual([
+      { reason: 'upload' },
+    ]);
+    await db
+      .update(sequences)
+      .set({ status: 'archived' })
+      .where(eq(sequences.id, sequenceId));
+    await expect(
+      updateTeamCharacter(scopedDb, actor, photo.id, notPerson)
+    ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
+    expect(await teamLock(photo)).toEqual({ reason: 'upload' });
+    expect(await teamLock(drawing)).toBeNull();
+    await updateTeamCharacter(scopedDb, actor, photo.id, { isPerson: true });
+    await updateTeamCharacter(scopedDb, actor, drawing.id, notPerson);
+    expect(await personLockOf(scopedDb, { id: cast.id, talentId })).toEqual({
+      reason: 'talent',
+      talentName: 'Ada Vale',
+    });
+  });
+
   it('reads and selects character voices and sheet versions', async () => {
     const characterId = generateId();
     const [older, newer, sheetA, sheetB] = [
@@ -2916,6 +3311,7 @@ describe('cast and music edits (#1979)', () => {
       generateId(),
     ];
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_ada',
@@ -2923,9 +3319,9 @@ describe('cast and music edits (#1979)', () => {
       selectedVoiceVersionId: newer,
     });
     await db
-      .update(sequenceCastLooks)
+      .update(characterLooks)
       .set({ selectedSheetVersionId: sheetB })
-      .where(eq(sequenceCastLooks.lookId, characterId));
+      .where(eq(characterLooks.id, characterId));
     await db.insert(characterVoiceVersions).values([
       {
         id: older,
@@ -3386,6 +3782,7 @@ describe('cast and music edits (#1979)', () => {
     const characterId = generateId();
     const track = generateId();
     await castCharacter({
+      rendering: 'Photoreal live action',
       id: characterId,
       sequenceId,
       characterId: 'char_ada',
@@ -4097,6 +4494,7 @@ describe('production-context resources (#1462)', () => {
   it('shrinks an over-budget bible to fit, with a real cursor to continue', async () => {
     for (let i = 0; i < 30; i++) {
       await castCharacter({
+        rendering: 'Photoreal live action',
         sequenceId,
         characterId: `char_${i}`,
         name: `C${i}`,

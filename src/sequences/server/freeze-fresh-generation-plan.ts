@@ -51,6 +51,7 @@ export async function freezeFreshGenerationPlan(
   if (plan.music) plan.music.promptSource = input.musicPromptSource;
   const shots = await scopedDb.shots.listBySequence(input.sequenceId);
   const counts = planCounts(work);
+  // A copied talent sheet is free.
   counts['sheet:character'] -=
     plan.references?.characterSheets.filter((sheet) => sheet.reuseTalentSheet)
       .length ?? 0;

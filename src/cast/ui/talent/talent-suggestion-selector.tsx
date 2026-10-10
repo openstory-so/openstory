@@ -34,6 +34,9 @@ type TalentSuggestionSelectorProps = {
   disabled?: boolean;
 };
 
+export const TALENT_CASTING_HINT =
+  "Pick talent here only when you want a specific person cast in a role. Any characters you don't pre-cast are auto-extracted from your script and given AI-generated portraits.";
+
 type TalentPickerCardProps = {
   talent: TalentWithSheets;
   isSelected: boolean;
@@ -130,18 +133,16 @@ const TalentAvatar: React.FC<TalentAvatarProps> = ({ talent, onRemove }) => {
   );
 };
 
-export const TalentSuggestionSelector: React.FC<
-  TalentSuggestionSelectorProps
-> = ({ selectedTalentIds, onSelectionChange, disabled = false }) => {
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+/**
+ * The talent grid with its search and Add Talent: the body of the picker,
+ * shared by the talent dialog and the Talent tab of the cast picker.
+ */
+export const TalentPickerPanel: React.FC<
+  Pick<TalentSuggestionSelectorProps, 'selectedTalentIds' | 'onSelectionChange'>
+> = ({ selectedTalentIds, onSelectionChange }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const { data: talentList, isLoading } = useTalent();
 
-  // Get selected talent objects
-  const selectedTalent =
-    talentList?.filter((t) => selectedTalentIds.includes(t.id)) ?? [];
-
-  // Filter talent by search query
   const filteredTalent = talentList?.filter((t) => {
     if (!searchQuery) return true;
     return t.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -155,10 +156,6 @@ export const TalentSuggestionSelector: React.FC<
     }
   };
 
-  const removeTalent = (talentId: string) => {
-    onSelectionChange(selectedTalentIds.filter((id) => id !== talentId));
-  };
-
   // Auto-select freshly added talent so the user doesn't have to find and
   // re-pick it in the grid after the dialog closes.
   const handleTalentCreated = (talent: { id: string }) => {
@@ -167,9 +164,104 @@ export const TalentSuggestionSelector: React.FC<
   };
 
   return (
+    <div className="flex flex-col gap-4">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="text"
+          placeholder="Search talent…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      <ScrollArea className="h-[400px]">
+        {isLoading ? (
+          <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-2 p-3">
+                <Skeleton className="aspect-square w-full rounded-lg" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            ))}
+          </div>
+        ) : !filteredTalent || filteredTalent.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center py-12 text-center">
+            <User className="h-12 w-12 text-muted-foreground/30" />
+            <p className="mt-4 text-sm text-muted-foreground">
+              {searchQuery
+                ? 'No talent matching your search'
+                : 'Your talent library is empty'}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
+            {filteredTalent.map((talent) => (
+              <TalentPickerCard
+                key={talent.id}
+                talent={talent}
+                isSelected={selectedTalentIds.includes(talent.id)}
+                onClick={() => toggleTalent(talent.id)}
+              />
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+
+      <div className="flex justify-start">
+        <AddTalentDialog
+          onCreated={handleTalentCreated}
+          trigger={
+            <Button variant="outline" size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Talent
+            </Button>
+          }
+        />
+      </div>
+    </div>
+  );
+};
+
+/** The picked talent as overlapping avatars, each removable. */
+export const TalentAvatars: React.FC<
+  Pick<TalentSuggestionSelectorProps, 'selectedTalentIds' | 'onSelectionChange'>
+> = ({ selectedTalentIds, onSelectionChange }) => {
+  const { data: talentList } = useTalent();
+  const selectedTalent =
+    talentList?.filter((t) => selectedTalentIds.includes(t.id)) ?? [];
+  if (selectedTalent.length === 0) return null;
+  return (
+    <div className="flex items-center -space-x-2">
+      {selectedTalent.slice(0, 4).map((talent) => (
+        <TalentAvatar
+          key={talent.id}
+          talent={talent}
+          onRemove={() =>
+            onSelectionChange(
+              selectedTalentIds.filter((id) => id !== talent.id)
+            )
+          }
+        />
+      ))}
+      {selectedTalent.length > 4 && (
+        <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/50 bg-muted text-xs font-medium text-muted-foreground">
+          +{selectedTalent.length - 4}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const TalentSuggestionSelector: React.FC<
+  TalentSuggestionSelectorProps
+> = ({ selectedTalentIds, onSelectionChange, disabled = false }) => {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  return (
     <>
       <div className="flex items-center gap-2">
-        {/* Talent button */}
         <Button
           type="button"
           variant="ghost"
@@ -181,27 +273,12 @@ export const TalentSuggestionSelector: React.FC<
           <Users className="h-4 w-4" />
           <span>Talent</span>
         </Button>
-
-        {/* Selected talent avatars */}
-        {selectedTalent.length > 0 && (
-          <div className="flex items-center -space-x-2">
-            {selectedTalent.slice(0, 4).map((talent) => (
-              <TalentAvatar
-                key={talent.id}
-                talent={talent}
-                onRemove={() => removeTalent(talent.id)}
-              />
-            ))}
-            {selectedTalent.length > 4 && (
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-dashed border-muted-foreground/50 bg-muted text-xs font-medium text-muted-foreground">
-                +{selectedTalent.length - 4}
-              </div>
-            )}
-          </div>
-        )}
+        <TalentAvatars
+          selectedTalentIds={selectedTalentIds}
+          onSelectionChange={onSelectionChange}
+        />
       </div>
 
-      {/* Multi-select dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl">
           <form
@@ -214,99 +291,18 @@ export const TalentSuggestionSelector: React.FC<
           >
             <DialogHeader>
               <DialogTitle>Select Talent for Casting</DialogTitle>
-              <DialogDescription>
-                Pick talent here only when you want a specific person cast in a
-                role. Any characters you don't pre-cast are auto-extracted from
-                your script and given AI-generated portraits.
-              </DialogDescription>
+              <DialogDescription>{TALENT_CASTING_HINT}</DialogDescription>
             </DialogHeader>
-
-            {/* Search input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search talent…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            {/* Talent grid */}
-            <ScrollArea className="h-[400px]">
-              {isLoading ? (
-                <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex flex-col items-center gap-2 p-3"
-                    >
-                      <Skeleton className="aspect-square w-full rounded-lg" />
-                      <Skeleton className="h-4 w-3/4" />
-                    </div>
-                  ))}
-                </div>
-              ) : !filteredTalent || filteredTalent.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center py-12 text-center">
-                  <User className="h-12 w-12 text-muted-foreground/30" />
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    {searchQuery
-                      ? 'No talent matching your search'
-                      : 'Your talent library is empty'}
-                  </p>
-                  {!searchQuery && (
-                    <AddTalentDialog
-                      onCreated={handleTalentCreated}
-                      trigger={
-                        <Button variant="outline" size="sm" className="mt-3">
-                          <Plus className="mr-2 h-4 w-4" />
-                          Add Talent
-                        </Button>
-                      }
-                    />
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
-                  {filteredTalent.map((talent) => (
-                    <TalentPickerCard
-                      key={talent.id}
-                      talent={talent}
-                      isSelected={selectedTalentIds.includes(talent.id)}
-                      onClick={() => toggleTalent(talent.id)}
-                    />
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-
-            {/* Footer */}
-            <div className="flex justify-between">
-              <AddTalentDialog
-                onCreated={handleTalentCreated}
-                trigger={
-                  <Button variant="outline" size="sm">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Talent
-                  </Button>
-                }
-              />
-              <div className="flex flex-col items-center gap-1">
-                <Button type="submit">
-                  {selectedTalentIds.length > 0
-                    ? `Cast ${selectedTalentIds.length} role${selectedTalentIds.length === 1 ? '' : 's'}`
-                    : 'Continue'}
-                </Button>
-                <span
-                  className={cn(
-                    'text-[10px] text-muted-foreground',
-                    selectedTalentIds.length > 0 && 'invisible'
-                  )}
-                >
-                  without casting
-                </span>
-              </div>
+            <TalentPickerPanel
+              selectedTalentIds={selectedTalentIds}
+              onSelectionChange={onSelectionChange}
+            />
+            <div className="flex justify-end">
+              <Button type="submit">
+                {selectedTalentIds.length > 0
+                  ? `Cast ${selectedTalentIds.length} role${selectedTalentIds.length === 1 ? '' : 's'}`
+                  : 'Continue'}
+              </Button>
             </div>
           </form>
         </DialogContent>

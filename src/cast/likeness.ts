@@ -33,3 +33,23 @@ export function isPersonFromUploadLedger(
 ): boolean {
   return likeness === 'real' ? true : isPerson;
 }
+
+/**
+ * Why a character must stay a person (#2065): it is cast with a talent that
+ * is a real person, or a sheet it wears is an upload the ledger saw a real
+ * person in. Null leaves `isPerson` to the bible. Computed server-side
+ * (`personLocksOf`); never taken off the client.
+ */
+export type PersonLock =
+  | { reason: 'talent'; talentName: string }
+  | { reason: 'upload' };
+
+/** The one line the form shows and the refused edit answers with. */
+export function personLockMessage(lock: PersonLock): string {
+  switch (lock.reason) {
+    case 'talent':
+      return `Cast with ${lock.talentName}, a real person.`;
+    case 'upload':
+      return 'Its sheet is an uploaded photo of a real person.';
+  }
+}

@@ -11,6 +11,7 @@ import { isValidTextToImageModel } from '@/models/models';
 import { markPreviewUnusable, previewListWithChosenTake } from '@/cast/voice';
 import { characterBibleFieldsSchema } from './bible-field';
 import {
+  attachLibraryCharacter,
   createCharacter,
   deleteCharacter,
   requireCharacter,
@@ -39,6 +40,12 @@ import { readLookSheetStaleness } from '@/cast/server/production-staleness';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
+import type {
+  CastCharacterWithTalent,
+  CharacterWithTalent,
+} from '@/platform/server/db/schema';
+import type { PersonLock } from './likeness';
+import { personLocksOf } from '@/cast/server/person-lock';
 import {
   cancelCharacterVoice,
   generateCharacterVoice,
@@ -47,14 +54,58 @@ import {
 } from '@/cast/server/cast-generation';
 import {
   authWithTeamMiddleware,
+  castAccessMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
+
+/** A cast member as the cast panel reads it. */
+export type SequenceCharacter = CastCharacterWithTalent & {
+  /** Why it must stay a person; null leaves `isPerson` editable. */
+  personLock: PersonLock | null;
+};
+
+/**
+ * One character as its detail page reads it (#2017): through a sequence,
+ * or from none, when it is the same character without the link.
+ */
+export type CharacterDetail = CharacterWithTalent & {
+  personLock: PersonLock | null;
+};
+
+/** `sequenceId` null is the Characters page: the character at its current version. */
+const castCharacterInput = z.object({
+  sequenceId: ulidSchema.nullable(),
+  characterId: ulidSchema,
+});
+
+export const getCharacterFn = createServerFn({ method: 'GET' })
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castCharacterInput))
+  .handler(async ({ context, data }): Promise<CharacterDetail | null> => {
+    const character = await context.scopedDb.characters.getWithTalent(
+      context.sequence?.id ?? null,
+      data.characterId
+    );
+    if (!character) return null;
+    const [personLock = null] = await personLocksOf(context.scopedDb, [
+      character,
+    ]);
+    return { ...character, personLock };
+  });
 
 /** Get all characters for a sequence with their assigned talent */
 export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
-    return context.scopedDb.characters.listWithTalent(context.sequence.id);
+    const characters = await context.scopedDb.characters.listWithTalent(
+      context.sequence.id
+    );
+    // Why `isPerson` cannot be turned off, for the bible form (#2065).
+    const locks = await personLocksOf(context.scopedDb, characters);
+    return characters.map((character, index): SequenceCharacter => ({
+      ...character,
+      personLock: locks[index] ?? null,
+    }));
   });
 
 // ============================================================================
@@ -87,6 +138,26 @@ export const createSequenceCharacterFn = createServerFn({ method: 'POST' })
       fields
     );
   });
+
+/**
+ * Cast a team character into the sequence (#2050). Idempotent for a
+ * character the sequence already casts; refused while a live cast member has
+ * the same name.
+ */
+export const attachLibraryCharacterFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, characterId: ulidSchema }))
+  )
+  .handler(
+    async ({ context, data }) =>
+      await attachLibraryCharacter(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.characterId
+      )
+  );
 
 /**
  * Edit a character's bible fields. Only provided fields change; prompts and
@@ -146,10 +217,10 @@ export const softDeleteSequenceCharacterFn = createServerFn({ method: 'POST' })
  * A second Generate while a live husk exists no-ops (`alreadyInFlight`).
  */
 export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
     zodValidator(
-      characterIdInput.extend({
+      castCharacterInput.extend({
         takes: z.number().int().min(1).max(SEED_VOICE_MAX_TAKES),
       })
     )
@@ -171,8 +242,8 @@ export const generateCharacterVoiceFn = createServerFn({ method: 'POST' })
  * no longer live, releases the voice and promotes nothing.
  */
 export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput))
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castCharacterInput))
   .handler(({ context, data }) =>
     cancelCharacterVoice(context.scopedDb, data.sequenceId, data.characterId)
   );
@@ -182,8 +253,8 @@ export const cancelCharacterVoiceFn = createServerFn({ method: 'POST' })
  * default. Off releases the saved voice.
  */
 export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput.extend({ enabled: z.boolean() })))
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castCharacterInput.extend({ enabled: z.boolean() })))
   .handler(async ({ context, data }) => {
     return await setCharacterVoiceEnabled(
       context.scopedDb,
@@ -207,9 +278,9 @@ export const setCharacterVoiceEnabledFn = createServerFn({ method: 'POST' })
  * reason (already created, slot limit, description rejected).
  */
 export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
-    zodValidator(characterIdInput.extend({ generatedVoiceId: z.string() }))
+    zodValidator(castCharacterInput.extend({ generatedVoiceId: z.string() }))
   )
   .handler(async ({ context, data }) => {
     const character = await requireCharacter(
@@ -262,7 +333,7 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
     let voiceId: string;
     try {
       voiceId = await saveDesignedVoice(apiKey, {
-        voiceName: `${character.name} · ${character.sequenceId.slice(-6)}`,
+        voiceName: `${character.name} · ${character.id.slice(-6)}`,
         voiceDescription: character.voiceDescription ?? '',
         generatedVoiceId: take.generatedVoiceId,
       });
@@ -324,10 +395,10 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
  * parked so the user can switch back.
  */
 export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
     zodValidator(
-      characterIdInput.extend({
+      castCharacterInput.extend({
         source: z.enum(['premade', 'library']),
         voiceId: z.string().min(1).max(128),
         publicOwnerId: z.string().min(1).max(128).optional(),
@@ -402,8 +473,8 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
  * names an id that no longer exists at ElevenLabs and can never come back.
  */
 export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput))
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castCharacterInput))
   .handler(async ({ context, data }) => {
     const character = await requireCharacter(
       context.scopedDb,
@@ -422,8 +493,8 @@ export const listCharacterVoiceVersionsFn = createServerFn({ method: 'GET' })
  * released, can never be selected again.
  */
 export const selectCharacterVoiceVersionFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(characterIdInput.extend({ versionId: ulidSchema })))
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castCharacterInput.extend({ versionId: ulidSchema })))
   .handler(async ({ context, data }) => {
     return await selectCharacterVoiceVersion(
       context.scopedDb,
@@ -464,10 +535,10 @@ export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
  * the new version is selected.
  */
 export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
     zodValidator(
-      characterIdInput.extend({
+      castCharacterInput.extend({
         // A look other than the character's default (#2015).
         lookId: ulidSchema.optional(),
         imageModel: z
@@ -491,9 +562,9 @@ export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
 
 /** Live sheet staleness for the character detail banner. */
 export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
-    zodValidator(characterIdInput.extend({ lookId: ulidSchema.optional() }))
+    zodValidator(castCharacterInput.extend({ lookId: ulidSchema.optional() }))
   )
   .handler(
     async ({ context, data }): Promise<SheetStaleness> =>
@@ -507,12 +578,17 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
       ).status
   );
 
-/** Recast a character with different talent, triggering sheet regeneration */
+/** Recast a character with different talent, triggering sheet regeneration. */
 export const recastCharacterFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
     zodValidator(
-      z.object({ characterId: z.string().min(1), talentId: ulidSchema })
+      z.object({
+        // Null from the Characters page (#2017): no shots re-rendered.
+        sequenceId: ulidSchema.nullable(),
+        characterId: z.string().min(1),
+        talentId: ulidSchema,
+      })
     )
   )
   .handler(({ context, data }) =>

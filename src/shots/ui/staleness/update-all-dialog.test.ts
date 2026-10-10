@@ -117,6 +117,7 @@ describe('previewLevels', () => {
     dialogueShotIds: [],
     musicPrompt: true,
     musicTrack: false,
+    reusedSheets: 0,
     costByLevel: {
       prompts: null,
       images: null,

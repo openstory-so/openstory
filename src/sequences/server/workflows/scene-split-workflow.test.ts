@@ -210,6 +210,7 @@ const INPUT: SceneSplitWorkflowInput = {
   promptName: 'scene-splitting',
   aspectRatio: '16:9',
   elements: [],
+  cast: [],
 };
 
 const updateSplitContent = vi.fn<
@@ -538,6 +539,73 @@ describe('SceneSplitWorkflow stream step config', () => {
       );
     }
   );
+
+  test('hands the attached cast to the bibles prompt as a <CAST> block, and nothing with no cast (#2050)', async () => {
+    const { getChatPrompt } =
+      await import('@/platform/server/ai/prompts-index');
+    vi.mocked(getChatPrompt).mockClear();
+    await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
+    expect(getChatPrompt).toHaveBeenCalledWith(
+      'phase/scene-bibles-chat',
+      expect.objectContaining({ cast: '' })
+    );
+
+    vi.mocked(getChatPrompt).mockClear();
+    await makeWorkflow().split(
+      makeEvent({
+        ...INPUT,
+        cast: [
+          {
+            id: 'row-ada',
+            shared: true,
+            entry: {
+              characterId: 'char_ada',
+              name: 'Ada',
+              age: '30s',
+              gender: 'woman',
+              ethnicity: '',
+              physicalDescription: 'tall',
+              standardClothing: 'coat',
+              looks: [
+                {
+                  lookId: 'l1',
+                  name: 'Default',
+                  clothing: 'coat',
+                  styling: '',
+                },
+              ],
+              personality: '',
+              movement: '',
+              voiceDescription: '',
+              voiceOnly: false,
+              isPerson: true,
+              rendering: 'Photoreal live action',
+              consistencyTag: 'ada',
+            },
+          },
+        ],
+      }),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(getChatPrompt).toHaveBeenCalledWith(
+      'phase/scene-bibles-chat',
+      expect.objectContaining({
+        cast: expect.stringContaining(
+          '- char_ada: Ada — 30s, woman, tall. Looks: "Default" (coat)'
+        ),
+      })
+    );
+  });
+
+  test('a payload queued before the cast snapshot fails at the top (#2050)', async () => {
+    const legacy = makeEvent({ ...INPUT });
+    const payload = asStub<Partial<SceneSplitWorkflowInput>>(legacy.payload);
+    delete payload.cast;
+    await expect(
+      makeWorkflow().split(legacy, makeStep(), makeScopedDb())
+    ).rejects.toThrow('Queued before character references shipped');
+  });
 
   test('times the stream step for a first pass plus one repair retry (#1218)', async () => {
     await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());

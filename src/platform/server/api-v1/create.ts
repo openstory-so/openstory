@@ -341,10 +341,14 @@ export async function runOneShotCreate(
   }> = [];
 
   try {
-    const [suggestedTalentIds, suggestedLocationIds] = await Promise.all([
+    const [
+      { talentIds: suggestedTalentIds, castCharacterIds },
+      suggestedLocationIds,
+    ] = await Promise.all([
       resolveTalentIds(
         {
           talent: ctx.scopedDb.talent,
+          characters: ctx.scopedDb.characters,
           createTalent: async (item) => {
             const { talent, deferredSheet } = await createLibraryTalent(
               {
@@ -422,6 +426,7 @@ export async function runOneShotCreate(
       suggestedLocationIds: suggestedLocationIds.length
         ? suggestedLocationIds
         : undefined,
+      castCharacterIds: castCharacterIds.length ? castCharacterIds : undefined,
       elementUploads: elementUploads.length ? elementUploads : undefined,
     });
 

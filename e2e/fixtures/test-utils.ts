@@ -167,12 +167,19 @@ export async function openComposerReference(
   page: Page,
   name: 'Talent' | 'Locations'
 ): Promise<void> {
-  const inner = page.getByRole('button', { name, exact: true });
+  // On a new sequence talent is a tab of the Cast picker (#2017).
+  const inner = page.getByRole('button', {
+    name: name === 'Talent' ? 'Cast' : name,
+    exact: true,
+  });
   if (!(await inner.isVisible())) {
     await page.getByRole('button', { name: 'References' }).click();
   }
   await expect(inner).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   await inner.click();
+  if (name === 'Talent') {
+    await page.getByRole('dialog').getByRole('tab', { name: 'Talent' }).click();
+  }
 }
 
 /**

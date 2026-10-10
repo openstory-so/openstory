@@ -95,12 +95,22 @@ Generation preconditions (`SHOT_UNITS`, plus `music` ← `prompt:music`), not th
   (reference-only) + `dialogue` when the shot has one.
 - `dialogue` ← a `voice` on every speaker.
 - `music` ← `prompt:music`.
+- A `sheet:character` whose id is not the character's (a look other than the
+  default) ← `sheet:character:<characterId>`, the default look's sheet it is
+  drawn from. `characterId` is required on every plan sheet; it equals `id`
+  on the default look.
 
 Cascade, in kind order: an upstream `missing` / `stale` turns a `done` unit
 `stale` with `cascaded: true` (a sheet in the plan puts its stills in the
 plan); an upstream `running` / `blocked` turns a unit with work `blocked`. A
-`done` unit keeps its artifact. `requires` is the graph resolved to the
-plan's own units.
+`done` unit keeps its artifact. A look follows its default sheet by the same
+rules: a default this run makes puts the look in the same run (a `done` look
+cascades `stale`, because its face is about to move), and a default running
+elsewhere blocks it. The run draws such a look after the default lands, from
+the sheet it landed (the second references wave, see
+`docs/developer-guide/workflow.md`), so one run makes every look a script
+uses, with the stills and clips that wear them. `requires` is the graph
+resolved to the plan's own units.
 
 ## What a continue does
 
@@ -189,8 +199,10 @@ refetch on focus, invalidated by realtime and by any refused continue —
 - **The continue button** (`Generate`, or `Regenerate` when every unit it owes
   exists and is only stale — `planWorkLabel`; under it `2 references, 12
 prompts, 12 images`, `planWorkLine` — a Generate that also redoes stale
-  work names it apart, `8 videos, 1 music track · redo 15 prompts, 8 images` —
-  and a line per blocked noun,
+  work names it apart, `8 videos, 1 music track · redo 15 prompts, 8 images`,
+  and a sheet the run points at instead of drawing is counted apart,
+  `2 references (1 reused)` (`PlanUnit.reused`, #2017; the quote prices it
+  at zero) — and a line per blocked noun,
   `blockedLines`) shows when the
   plan's first work is before Motion.
 - **A switch shows only when it changes a step the run takes.** Start frames
@@ -334,7 +346,9 @@ retaining actual artifact claims. Frozen stop-at, switches and model choices
 remain authoritative. The reservation grows from this materialized plan before
 rendering. Missing first character sheets reuse a compatible matched talent
 sheet, with zero generation cost; explicit regeneration still renders the edit.
-Voice-only cast never owes a sheet.
+A look's sheet is the character's, shared by every sequence that casts it
+(#2017), so a sequence that casts a character with a finished sheet owes
+none. Voice-only cast never owes a sheet.
 
 Analysis persists each shot's spec as its first `shot_spec_versions` row
 (#1915), and the visual and motion directions derived from it as ordinary

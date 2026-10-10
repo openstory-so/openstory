@@ -114,9 +114,12 @@ take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews co
 **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
 character at cast / save-to-library) and freed only through
 `releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over characters'
-selected voice versions and `talent.voiceId`, soft-deleted characters included,
-**provider delete first, row write second** so a failed delete stays
-retryable; `heldBy: 1` when the caller's own row still holds the id) on
+current voice versions and `talent.voiceId`; a character holds its voice
+until it is deleted, #2017, so removing it from a sequence or archiving a
+sequence releases nothing, **provider delete first, row write second** so a
+failed delete stays retryable; `heldBy` is the caller's own reference — the
+character's current pointer, counted exactly by
+`characters.getOwnVoiceHolds`) on
 character soft-delete, per-character switch-off, choose-take, recast to a
 talent with a different voice, sequence archive (before the status flip, so
 a failed release is retryable), talent delete and regenerate — never a bare

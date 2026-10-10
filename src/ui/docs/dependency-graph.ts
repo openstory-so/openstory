@@ -127,11 +127,11 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version, so a stale shot names the field that moved. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
+      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version. The character belongs to the team (#2017): every sequence that casts it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved since the version live when it was made. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
     counts: [
       'Age, gender, ethnicity',
-      'Physical description',
-      'Distinguishing features',
+      'Physical description, permanent marks included',
+      'Rendered as (sheet only, #2017): photoreal, 3D animated, cel, the one thing a sheet takes from a style',
       'Personality and movement (motion prompt only)',
       'Consistency tag (sheet only)',
     ],
@@ -149,8 +149,12 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'An outfit on one character: a name, the clothing, and the hair, makeup or injury notes that change with it (#2015). Every character has a default look, and each scene picks one look per character. Every edit is a version, so a stale shot names the look and what moved: Character "Mia" (Gala gown): clothing. Each look has its own sheet.',
-    counts: ['Clothing', 'Styling (hair, makeup, injuries), once it is set'],
+      'An outfit on one character: a name, the clothing, and the hair, makeup or injury notes that change with it (#2015). Every character has a default look, and each scene picks one look per character. Every edit is a version, read by every sequence that casts the character (#2017), so a stale shot names the look and what moved: Character "Mia" (Gala gown): clothing. Each look has its own sheet, shared by every sequence.',
+    counts: [
+      'Clothing',
+      'Styling (hair, makeup, injuries), once it is set',
+      'On the default look, the features text a bible version from before #2065 still holds: read as part of its styling until that styling is edited, which moves it into the look',
+    ],
     ignored: [
       'Name',
       'A look no scene wears: it reaches no shot, and gets a sheet only when asked for one',
@@ -425,16 +429,17 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for one look of a character in this sequence (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. When cast, it is usually the talent sheet reused; a costumed one is generated only when that look's clothing or the role's features diverge from the talent. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
+      "Turnaround sheet for one look of a character (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The sheet is the look's, so every sequence that casts the character shares it (#2017). The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
-      'Character bible (age, gender, ethnicity, description, features, consistency tag)',
-      "The look's clothing, and its styling once set",
+      'Character bible (age, gender, ethnicity, description, consistency tag)',
+      "The look's clothing, and its styling once set. The default look's styling holds what the bible called distinguishing features (#2065)",
+      "The default look's sheet version, on every other look",
       'Talent sheet hash, when cast',
       "The talent's description and default sheet image and look, when cast",
-      'Style config',
       'Image model it was rendered with',
     ],
     ignored: [
+      "The sequence's style (#2017): a sheet is the character's, drawn on a neutral studio backdrop as the bible's rendering says; the palette, grade and mood apply at the shot",
       'Character name',
       'Personality and movement',
       'Voice-only characters never get one',
@@ -785,7 +790,7 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     from: 'look',
     to: 'characterSheet',
     tracking: 'hash',
-    note: "the look's clothing, and its styling once set. Each look has its own sheet, so an edit reaches only that one (#2015)",
+    note: "the look's clothing, and its styling once set. The default look's styling includes the features text a bible version from before #2065 still holds; a sheet stamped then verifies against the two stored parts until the legacy shapes are removed. A look other than the default also hashes the default look's sheet version, and is drawn from that sheet (#2015)",
   },
   {
     from: 'script',

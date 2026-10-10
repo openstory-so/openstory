@@ -29,7 +29,7 @@ export function addTalentDialog(page: Page): Locator {
 }
 
 export async function openAddTalentFromLibrary(page: Page): Promise<Locator> {
-  await page.goto('/talent');
+  await page.goto('/characters?tab=talent');
   await waitForLibraryPageLoad(page, 'Add Talent');
   await page.getByRole('button', { name: 'Add Talent' }).first().click();
   const dialog = addTalentDialog(page);
@@ -55,7 +55,7 @@ export async function openAddTalentFromSequence(page: Page): Promise<{
   // DialogTitle is not always the accessible name; match on the heading copy.
   const picker = page
     .getByRole('dialog')
-    .filter({ hasText: 'Select Talent for Casting' });
+    .filter({ has: page.getByRole('tab', { name: 'Talent' }) });
   await expect(picker).toBeVisible({ timeout: 10_000 });
   await picker.getByRole('button', { name: 'Add Talent' }).last().click();
   const dialog = addTalentDialog(page);

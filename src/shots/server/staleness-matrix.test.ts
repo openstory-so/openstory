@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   CharacterLook,
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   Frame,
   FrameVariant,
   SequenceElement,
@@ -44,18 +44,28 @@ import {
   readReferenceStaleness,
 } from '@/cast/server/production-staleness';
 import { buildRegenerateCharacterSheetPayload } from '@/cast/server/sheets/character-sheet-trigger';
+import { legacyStylingParts } from '@/cast/server/bibles-from-scoped';
 import {
   buildRegenerateLocationSheetPayload,
   toLocationMetadata,
 } from '@/cast/server/sheets/location-sheet-trigger';
 import { buildLocationInsert } from '@/cast/server/workflows/cast-records';
-import { computeLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  computeCharacterSheetHashFromDtoBefore2065,
+  computeLocationSheetHashFromDto,
+  computeStyleConfigHash,
+} from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import {
+  computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
   computeSequenceMusicInputHash,
+  computeVisualPromptInputHashV4,
 } from '@/shots/input-hash';
+import type { LegacyStylingByCharacter } from '@/shots/input-hash';
+import { effectiveStyling } from '@/cast/character-looks';
+import { loadNarrowShotPromptContext } from './prompt-context';
 import { computeShotStaleness } from './shot-staleness';
 import { asStub } from '@/test/as-stub';
 
@@ -77,7 +87,7 @@ const STYLE: StyleConfig = {
   references: [],
 };
 
-type CharacterRow = CharacterWithSheet;
+type CharacterRow = CastCharacterWithSheet;
 /**
  * A character as a scoped read returns it (#2015): wearing its default look,
  * whose id is the character's. `withLooks` lists that look the way the read
@@ -93,6 +103,7 @@ const defaultLookOf = (c: CharacterRow): CharacterLook =>
     name: 'Default',
     clothing: c.standardClothing,
     styling: c.styling,
+    storedStyling: c.styling,
     sheetStatus: c.sheetStatus,
     sheetImageUrl: c.sheetImageUrl,
     sheetInputHash: c.sheetInputHash,
@@ -113,12 +124,13 @@ const character = (fields: Partial<CharacterRow>): CharacterRow =>
     gender: null,
     ethnicity: null,
     standardClothing: null,
-    distinguishingFeatures: null,
+    legacyDistinguishingFeatures: null,
     personality: null,
     movement: null,
     voiceDescription: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     talentId: null,
     sheetStatus: 'completed',
     selectedBibleVersionId: null,
@@ -319,7 +331,7 @@ function shotDb(
     scenes: { getById: none },
     sequences: { listStyleVersions: empty },
     shotDialogue: { getSelectedBySequence: empty },
-    sequenceEvents: { listByTarget: empty },
+    sequenceEvents: { listByTarget: empty, listPinMoves: empty },
   });
 }
 
@@ -363,6 +375,71 @@ async function stampShot(world: World = BASE): Promise<Stamps> {
     throw new Error('test setup: a base hash did not compute');
   }
   return { still: thumbnail, visualPrompt, motionPrompt };
+}
+
+/** The prompt context the verify builds for `world`'s shot, per channel. */
+async function promptContext(world: World, channel: 'visual' | 'motion') {
+  const referenceOnly = rendersReferenceOnly(world.shot, world.sequence);
+  const { shot } = await loadNarrowShotPromptContext({
+    scopedDb: asStub<ScopedDb>({}),
+    sequence: { ...world.sequence, referenceOnly },
+    scene: world.scene,
+    analysisModelOverride: ANALYSIS_MODEL,
+    startingFrameImageUrl: null,
+    refs: {
+      characters: world.characters,
+      locations: world.locations,
+      elements: world.elements,
+      style: null,
+    },
+    view:
+      channel === 'visual'
+        ? { channel, prompt: world.visualPrompt }
+        : { channel, prompt: world.motionPrompt, referenceOnly },
+  });
+  return shot;
+}
+
+type LegacyPromptKind = Parameters<typeof computeVisualPromptInputHashV4>[2];
+
+/** The visual prompt's digest in a shape the hasher stamped before now. */
+async function legacyVisualStamp(world: World, kind: LegacyPromptKind) {
+  const ctx = await promptContext(world, 'visual');
+  return computeVisualPromptInputHashV4(
+    { ...ctx, spec: null },
+    ctx.legacyStyling,
+    kind
+  );
+}
+
+/**
+ * Stamp `world`'s shot as the hasher did before #2065: the prompts in the
+ * `pre-2065` shape. The still never read the bible.
+ *
+ * `parts` is what the old hasher read for each character, by script id,
+ * WRITTEN BY HAND in the test: the features column and the worn look's own
+ * styling column. Never the context's `legacyStyling`, which is the mapping
+ * verify itself uses; a stamp built from it would agree with a wrong mapping.
+ */
+async function stampShotBefore2065(
+  world: World,
+  parts: LegacyStylingByCharacter
+): Promise<Stamps> {
+  const visual = await promptContext(world, 'visual');
+  const motion = await promptContext(world, 'motion');
+  return {
+    still: (await stampShot(world)).still,
+    visualPrompt: await computeVisualPromptInputHashV4(
+      { ...visual, spec: null },
+      parts,
+      'pre-2065'
+    ),
+    motionPrompt: await computeMotionPromptInputHashV4(
+      { ...motion, dialogue: world.dialogue, spec: null },
+      parts,
+      'pre-2065'
+    ),
+  };
 }
 
 /** The clip rendered from `BASE`, sent Alice's sheet and the lantern. */
@@ -801,9 +878,11 @@ describe('staleness matrix — a shot and its clip', () => {
   it('a pre-#1785 stamp of a voice-only Alice stays fresh on deploy', async () => {
     // The pre-#1785 digest of a voice-only Alice is the digest of a voiced
     // one: that shape never read the flag. Visual only: an old motion stamp
-    // also carried the still URL, which `stampShot`'s current digest drops
-    // (#1923), so it cannot stand in for one.
-    const stamps = await stampShot();
+    // also carried the still URL, which is not this row's subject.
+    const stamps = {
+      ...(await stampShot()),
+      visualPrompt: await legacyVisualStamp(BASE, 'v5-voiced'),
+    };
     const verdicts = await shotVerdicts(aliceVoiceOnly, stamps, [
       { characterId: 'c-alice', voiceOnly: true, createdAt: BEFORE },
     ]);
@@ -845,6 +924,7 @@ const GALA = asStub<CharacterLook>({
   name: 'Gala gown',
   clothing: 'red gown',
   styling: null,
+  storedStyling: null,
   sheetStatus: 'completed',
   sheetImageUrl: '/r2/alice-gala.png',
   sheetInputHash: 'alice-gala-sheet-hash',
@@ -925,6 +1005,173 @@ describe('staleness matrix — looks (#2015)', () => {
       )
     );
     expect(await verdictsOf(defaultEdited, stamps)).toEqual(FRESH);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The default look owns the features (#2065). What the bible called
+// distinguishing features is the default look's styling now. Nothing is
+// migrated: until that styling is edited the text stays on the bible
+// version, the look read joins it, and every artifact stamped before the
+// change verifies against the stored parts.
+// ---------------------------------------------------------------------------
+
+const FEATURES = 'scar above right eye';
+/**
+ * Alice as a read returns her while the features are still on her bible
+ * version: `own` is her default look's stored styling, and the styling she
+ * wears is that joined with the features.
+ */
+const aliceWithFeatures = (
+  own: string | null,
+  others: CharacterLook[] = []
+): CharacterRow => {
+  const row = {
+    ...ALICE,
+    legacyDistinguishingFeatures: FEATURES,
+    styling: effectiveStyling(own, FEATURES),
+  };
+  return {
+    ...row,
+    looks: [{ ...defaultLookOf(row), storedStyling: own }, ...others],
+  };
+};
+/** Alice after her default look's styling was edited: the text has moved. */
+const aliceMoved = (styling: string): CharacterRow => {
+  const row = { ...ALICE, legacyDistinguishingFeatures: null, styling };
+  return { ...row, looks: [defaultLookOf(row)] };
+};
+/**
+ * What the pre-#2065 hasher read for the BASE cast, by script id: Alice's
+ * features and the given own styling of the look she wears; Bob has neither.
+ */
+const partsBefore2065 = (
+  aliceOwnStyling: string | null
+): LegacyStylingByCharacter => ({
+  alice: { distinguishingFeatures: FEATURES, styling: aliceOwnStyling },
+  bob: { distinguishingFeatures: null, styling: null },
+});
+const withAlice = (w: World, alice: CharacterRow): World => ({
+  ...w,
+  characters: w.characters.map((c) => (c.id === alice.id ? alice : c)),
+});
+const BRUISED_GALA = asStub<CharacterLook>({
+  ...GALA,
+  styling: 'split lip',
+  storedStyling: 'split lip',
+});
+
+describe('staleness matrix — the default look owns the features (#2065)', () => {
+  const promptsOf = async (world: World, stamps: Stamps) => {
+    const v = await shotVerdicts(world, stamps);
+    return {
+      still: v.thumbnail,
+      visualPrompt: v.visualPrompt,
+      motionPrompt: v.motionPrompt,
+    };
+  };
+  const FRESH = {
+    still: 'fresh',
+    visualPrompt: 'fresh',
+    motionPrompt: 'fresh',
+  };
+  const PROMPTS_STALE = {
+    still: 'fresh',
+    visualPrompt: 'stale',
+    motionPrompt: 'stale',
+  };
+
+  it.each([
+    { name: 'styling of its own', own: 'hair pinned up' },
+    { name: 'no styling of its own', own: null },
+  ])(
+    '4a: stamped before #2065 in the default look with $name → all fresh',
+    async ({ own }) => {
+      const world = withAlice(BASE, aliceWithFeatures(own));
+      const stamps = await stampShotBefore2065(world, partsBefore2065(own));
+      expect(await promptsOf(world, stamps)).toEqual(FRESH);
+      // The stamp read these parts: one made from the other look's styling,
+      // or without the features, is a different digest.
+      for (const wrong of [
+        partsBefore2065('split lip'),
+        {
+          ...partsBefore2065(own),
+          alice: { distinguishingFeatures: null, styling: own },
+        },
+      ]) {
+        expect(
+          await promptsOf(world, await stampShotBefore2065(world, wrong))
+        ).toEqual(PROMPTS_STALE);
+      }
+    }
+  );
+
+  it('4a: stamped before #2065 in another look → all fresh', async () => {
+    const world = inGala(
+      withAlice(BASE, aliceWithFeatures('hair pinned up', [BRUISED_GALA]))
+    );
+    // In the gala look the old hasher read the gala look's own styling,
+    // and the features beside it.
+    expect(
+      await promptsOf(
+        world,
+        await stampShotBefore2065(world, partsBefore2065('split lip'))
+      )
+    ).toEqual(FRESH);
+    // The default look's styling is not what a gala stamp read.
+    expect(
+      await promptsOf(
+        world,
+        await stampShotBefore2065(world, partsBefore2065('hair pinned up'))
+      )
+    ).toEqual(PROMPTS_STALE);
+  });
+
+  it('4b: the default look’s styling edited → prompts stale; a new stamp is fresh', async () => {
+    const before = withAlice(BASE, aliceWithFeatures('hair pinned up'));
+    const stamps = await stampShotBefore2065(
+      before,
+      partsBefore2065('hair pinned up')
+    );
+    // The save wrote the submitted text to the look and nulled the bible's.
+    const after = withAlice(BASE, aliceMoved('hair down, no scar'));
+    expect(await promptsOf(after, stamps)).toEqual(PROMPTS_STALE);
+    expect(await promptsOf(after, await stampShot(after))).toEqual(FRESH);
+  });
+
+  it('4b: a stamp made after #2065, before any edit, is fresh', async () => {
+    const world = withAlice(BASE, aliceWithFeatures('hair pinned up'));
+    expect(await promptsOf(world, await stampShot(world))).toEqual(FRESH);
+  });
+
+  // 4c (a save that changes nothing) has no row here: the save writes no row
+  // and moves no derived hash, which only a real write can show. Pinned in
+  // sequence-cast-crud.test.ts, "4c: a save of what the field showed writes
+  // nothing".
+
+  it('4d: an edit to the age stales the prompts, as before, and nothing more', async () => {
+    const before = withAlice(BASE, aliceWithFeatures('hair pinned up'));
+    const stamps = await stampShotBefore2065(
+      before,
+      partsBefore2065('hair pinned up')
+    );
+    const aged = withAlice(BASE, {
+      ...aliceWithFeatures('hair pinned up'),
+      age: '31',
+    });
+    expect(await promptsOf(aged, stamps)).toEqual(PROMPTS_STALE);
+  });
+
+  it('a look that is not the default no longer reads the features: moving them leaves a new stamp fresh', async () => {
+    const before = inGala(
+      withAlice(BASE, aliceWithFeatures('hair pinned up', [BRUISED_GALA]))
+    );
+    const stamps = await stampShot(before);
+    const moved = aliceMoved('hair down');
+    const after = inGala(
+      withAlice(BASE, { ...moved, looks: [...moved.looks, BRUISED_GALA] })
+    );
+    expect(await promptsOf(after, stamps)).toEqual(FRESH);
   });
 });
 
@@ -1140,7 +1387,8 @@ const SHEET_MATRIX: SheetRow[] = [
         },
       },
     }),
-    character: 'stale',
+    // A character sheet reads no style since `rendering` (#2017).
+    character: 'fresh',
     location: 'stale',
   },
   {
@@ -1211,6 +1459,110 @@ describe('staleness matrix — reference sheets', () => {
     expect(await verdict(stamped, 'location')).toBe('fresh');
   });
 
+  describe('the default look owns the features (#2065)', () => {
+    const cast = (row: CharacterRow): CharacterRow => ({
+      ...row,
+      talentId: 't-1',
+    });
+    const db = (row: CharacterRow) =>
+      asStub<ScopedDb>({
+        ...castDb(CAST_BASE),
+        characters: { getById: () => Promise.resolve(row) },
+      });
+    /** `row` with `lookId`'s sheet stamped as given. */
+    const stamped = (
+      row: CharacterRow,
+      lookId: string,
+      sheetInputHash: string | null
+    ): CharacterRow => ({
+      ...row,
+      ...(row.lookId === lookId ? { sheetInputHash } : {}),
+      looks: row.looks.map((look) =>
+        look.id === lookId ? { ...look, sheetInputHash } : look
+      ),
+    });
+    const payloadOf = (row: CharacterRow, lookId: string) =>
+      buildRegenerateCharacterSheetPayload({
+        scopedDb: db(row),
+        userId: 'user-1',
+        teamId: 'team-1',
+        sequence: CAST_BASE.sequence,
+        character: row,
+        lookId,
+      });
+    /** The digest the hasher stamped before #2065, from the stored parts. */
+    const stampBefore2065 = async (
+      row: CharacterRow,
+      lookId: string,
+      own: string | null
+    ) =>
+      stamped(
+        row,
+        lookId,
+        await computeCharacterSheetHashFromDtoBefore2065(
+          await payloadOf(row, lookId),
+          { distinguishingFeatures: FEATURES, styling: own },
+          await computeStyleConfigHash(STYLE)
+        )
+      );
+    const verdictOf = async (row: CharacterRow, lookId: string) =>
+      (await readLookSheetStaleness(db(row), 'seq', 'c-alice', lookId)).status;
+
+    it.each([
+      { name: 'styling of its own', own: 'hair pinned up' },
+      { name: 'no styling of its own', own: null },
+    ])(
+      '4a: the default look’s sheet, with $name, stamped before #2065 → fresh',
+      async ({ own }) => {
+        const row = await stampBefore2065(
+          cast(aliceWithFeatures(own)),
+          'c-alice',
+          own
+        );
+        expect(await verdictOf(row, 'c-alice')).toBe('fresh');
+        // Sheet reuse: the plan's second lookup computes this stamp from the
+        // row's stored parts, so another sequence adopts the old sheet.
+        const payload = await payloadOf(row, 'c-alice');
+        expect(payload.snapshotInputHash).not.toBe(row.sheetInputHash);
+        expect(
+          await computeCharacterSheetHashFromDtoBefore2065(
+            payload,
+            legacyStylingParts(row),
+            await computeStyleConfigHash(STYLE)
+          )
+        ).toBe(row.sheetInputHash);
+        // 4d: an edit to the age stales it, as before.
+        expect(await verdictOf({ ...row, age: '31' }, 'c-alice')).toBe('stale');
+      }
+    );
+
+    it('4a: another look’s sheet stamped before #2065 → fresh', async () => {
+      const row = await stampBefore2065(
+        cast(aliceWithFeatures('hair pinned up', [BRUISED_GALA])),
+        GALA.id,
+        'split lip'
+      );
+      expect(await verdictOf(row, GALA.id)).toBe('fresh');
+    });
+
+    it('4b: the default look’s styling edited → its old sheet is stale, a new one fresh', async () => {
+      const before = await stampBefore2065(
+        cast(aliceWithFeatures('hair pinned up')),
+        'c-alice',
+        'hair pinned up'
+      );
+      const oldStamp = before.sheetInputHash;
+      const after = cast(aliceMoved('hair down, no scar'));
+      expect(
+        await verdictOf(stamped(after, 'c-alice', oldStamp), 'c-alice')
+      ).toBe('stale');
+      const { snapshotInputHash } = await payloadOf(after, 'c-alice');
+      expect(
+        await verdictOf(stamped(after, 'c-alice', snapshotInputHash), 'c-alice')
+      ).toBe('fresh');
+    });
+  });
+
   it("verifies each look's sheet against its own clothing (#2015)", async () => {
     const stamped = await stampSheets();
     // Alice with a second look, its sheet stamped from that look.
@@ -1235,6 +1587,23 @@ describe('staleness matrix — reference sheets', () => {
 
     expect(await galaVerdict(gala)).toBe('fresh');
     expect(await galaVerdict({ ...gala, clothing: 'blue gown' })).toBe('stale');
+    // The gown is drawn from the default look's sheet. A new face stales it.
+    const movedFace = asStub<ScopedDb>({
+      ...castDb(stamped),
+      characters: {
+        getById: () =>
+          Promise.resolve(
+            withLooks(
+              { ...stamped.alice, selectedSheetVersionId: 'csv-alice-2' },
+              [gala]
+            )
+          ),
+      },
+    });
+    expect(
+      (await readLookSheetStaleness(movedFace, 'seq', 'c-alice', GALA.id))
+        .status
+    ).toBe('stale');
     // The gown's edit leaves the default look's sheet alone.
     expect(
       (

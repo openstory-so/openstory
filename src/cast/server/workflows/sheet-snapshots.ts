@@ -10,8 +10,10 @@
  * § "Per-workflow input surface".
  */
 
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
   characterSheetInputHashMatches,
+  computeCharacterSheetInputHashLegacy,
   computeCharacterSheetInputHash,
   computeLibraryLocationReferenceInputHash,
   computeShotImageInputHash,
@@ -22,6 +24,7 @@ import {
   type CharacterBibleHashFields,
   type CharacterSheetInputHash,
   type CharacterSheetTalentHashFields,
+  type LegacyStylingParts,
   type LibraryLocationReferenceInputHash,
   type LocationSheetBibleHashFields,
   type LocationSheetInputHash,
@@ -87,6 +90,63 @@ export const queuedBeforeLooks = () =>
     'Queued before character looks shipped. Run it again.'
   );
 
+/**
+ * An analysis payload queued before the trigger snapshotted the cast (#2050):
+ * the one check, at the top of the run, so no step defaults it.
+ */
+export const queuedBeforeCast = () =>
+  new WorkflowValidationError(
+    'Queued before character references shipped. Run it again.'
+  );
+
+/**
+ * A sheet payload queued before every look carried `face` (#2015): the one
+ * check, at the top of the run, so no field below defaults it.
+ */
+export function assertQueuedWithFace(input: object): void {
+  if (!('face' in input)) {
+    throw new WorkflowValidationError(
+      'Queued before looks were drawn from the default look. Run it again.'
+    );
+  }
+}
+
+/**
+ * A sheet payload queued before the bible carried `rendering` (#2017): the
+ * sheet would read the sequence's style, which is no longer on the payload.
+ */
+export function assertQueuedWithRendering(input: {
+  characterMetadata: object;
+}): void {
+  if (!('rendering' in input.characterMetadata)) {
+    throw new WorkflowValidationError(
+      'Queued before character rendering shipped. Run it again.'
+    );
+  }
+}
+
+/**
+ * A character sheet payload before its face: everything the trigger
+ * snapshots except the default look's sheet and the hash that covers it.
+ * A look whose default sheet the same run makes waits in this shape.
+ */
+export type CharacterSheetDraft = Omit<
+  SheetPayload<CharacterSheetWorkflowInput>,
+  'face'
+>;
+
+/** Give a draft its face and stamp the hash, which covers the face. */
+export async function finishCharacterSheetPayload(
+  draft: CharacterSheetDraft,
+  face: CharacterSheetWorkflowInput['face']
+): Promise<Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>> {
+  const fields = { ...draft, face };
+  return {
+    ...fields,
+    snapshotInputHash: await computeCharacterSheetHashFromDto(fields),
+  };
+}
+
 /** The payload fields a cast talent supplies to a character sheet. */
 export type CastTalentFields = Pick<
   CharacterSheetWorkflowInput,
@@ -119,7 +179,7 @@ function characterBibleFields(
     ethnicity: metadata.ethnicity,
     physicalDescription: metadata.physicalDescription,
     standardClothing: metadata.standardClothing,
-    distinguishingFeatures: metadata.distinguishingFeatures,
+    rendering: metadata.rendering,
     consistencyTag: metadata.consistencyTag,
   };
 }
@@ -162,6 +222,7 @@ function characterSheetHashInput(
   return {
     characterBible: characterBibleFields(input.characterMetadata),
     styling: input.lookStyling,
+    faceSheetVersionId: input.face === null ? null : input.face.versionId,
     talentSheetHash: input.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(input),
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
@@ -173,20 +234,89 @@ export async function computeCharacterSheetHashFromDto(
 ): Promise<CharacterSheetInputHash> {
   return computeCharacterSheetInputHash({
     ...characterSheetHashInput(input),
-    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
+    styleConfigHash: null,
   });
 }
 
-/** Dual-hash verify against a stored sheet digest. */
+/**
+ * Verify a stored sheet digest against the DTO, in the current shape or a
+ * legacy one. `legacy` is the look's stored parts (#2065): off the rows for
+ * a live verify (`legacyStylingParts`), off the payload for a run's own
+ * snapshot ({@link queuedLegacyStyling}). `styleConfigHash` is the sequence
+ * style's digest (`computeStyleConfigHash`), read only by the shapes stamped
+ * before `rendering` (#2017); a run's own snapshot check passes `null` and
+ * verifies the current shape alone.
+ */
 export async function characterSheetHashMatchesStored(
   stored: string | null,
-  input: SheetPayload<CharacterSheetWorkflowInput>
+  input: SheetPayload<CharacterSheetWorkflowInput>,
+  legacy: LegacyStylingParts,
+  styleConfigHash: string | null
 ): Promise<boolean> {
-  return characterSheetInputHashMatches(stored, {
-    ...characterSheetHashInput(input),
-    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-  });
+  return characterSheetInputHashMatches(
+    stored,
+    { ...characterSheetHashInput(input), styleConfigHash },
+    legacy
+  );
 }
+
+/**
+ * The check for a sheet the user uploaded. It is stamped with the upload
+ * marker in place of an image model, so it verifies alike from every
+ * sequence that casts the character. The second arm is an upload stamped
+ * with its own sequence's image model, as they were until #2087; it holds
+ * only from a sequence on that model.
+ */
+export async function uploadedCharacterSheetHashMatchesStored(
+  stored: string | null,
+  input: SheetPayload<CharacterSheetWorkflowInput>,
+  legacy: LegacyStylingParts,
+  styleConfigHash: string | null
+): Promise<boolean> {
+  const body = { ...characterSheetHashInput(input), styleConfigHash };
+  return (
+    (await characterSheetInputHashMatches(
+      stored,
+      { ...body, imageModel: USER_UPLOAD_MODEL },
+      legacy
+    )) || (await characterSheetInputHashMatches(stored, body, legacy))
+  );
+}
+
+/**
+ * The digest a sheet payload was stamped with before #2065, with the
+ * sequence style it read then. Verify/tests only — delete after
+ * `LEGACY_HASH_UNTIL`.
+ */
+export async function computeCharacterSheetHashFromDtoBefore2065(
+  input: SheetPayload<CharacterSheetWorkflowInput>,
+  legacy: LegacyStylingParts,
+  styleConfigHash: string
+): Promise<string> {
+  return computeCharacterSheetInputHashLegacy(
+    { ...characterSheetHashInput(input), styleConfigHash },
+    legacy,
+    'pre-2065'
+  );
+}
+
+/**
+ * The legacy parts of a sheet payload's OWN snapshot hash. A run queued
+ * before #2065 carried the bible's features beside the look's styling; the
+ * payload seam (`foldLegacyFeaturesInPayload`) folds them into `lookStyling`
+ * and keeps the two as they were queued here. A payload of the current shape
+ * has none, and was stamped in the current shape.
+ */
+export const queuedLegacyStyling = (
+  input: Pick<
+    CharacterSheetWorkflowInput,
+    'lookStyling' | 'queuedLegacyStyling'
+  >
+): LegacyStylingParts =>
+  input.queuedLegacyStyling ?? {
+    distinguishingFeatures: null,
+    styling: input.lookStyling,
+  };
 
 /** Every bible field the location-sheet prompt reads (#1785). */
 export function locationSheetBibleFields(

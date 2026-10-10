@@ -6,13 +6,25 @@
  *
  * Every function takes the sequence id the caller authorised and refuses a
  * row of another sequence (live or soft-deleted rows both pass, so restore
- * can reach them).
+ * can reach them). The `…TeamCharacter…` ones are the Characters page's
+ * (#2065): no sequence, scoped to the team.
  */
+import { renderingOfStyle } from '@/cast/rendering';
+import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
 import type { z } from 'zod';
-import { ConflictError, NotFoundError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
+import { castChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type {
+  CastCharacterWithSheet,
+  CharacterWithSheet,
+} from '@/platform/server/db/schema';
 import {
   requireCharacterLook,
   requireLiveLook,
@@ -26,6 +38,13 @@ import {
   type characterBibleFieldsSchema,
   type locationBibleFieldsSchema,
 } from '@/cast/bible-field';
+import { effectiveStyling } from '@/cast/character-looks';
+import {
+  keepLockedCharacterAPerson,
+  lockedPersonEdit,
+  requirePersonEditStillAllowed,
+} from '@/cast/server/person-lock';
+import { LOOK_TEXT_MAX } from '@/cast/look-field';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
 import {
   releaseCharacterVoice,
@@ -37,6 +56,8 @@ const logger = getLogger(['openstory', 'cast', 'cast-edit']);
 type Actor = { userId: string };
 type CharacterBibleFields = z.output<typeof characterBibleFieldsSchema>;
 type LocationBibleFields = z.output<typeof locationBibleFieldsSchema>;
+/** The deprecated input the API and MCP may still send (#2065). */
+type LegacyFeaturesInput = Pick<CharacterBibleFields, 'distinguishingFeatures'>;
 
 /** Realtime emits only bust caches; a failed one must not fail the write. */
 async function emitQuietly(emit: () => Promise<unknown>) {
@@ -49,16 +70,86 @@ async function emitQuietly(emit: () => Promise<unknown>) {
 
 // ── Characters ──────────────────────────────────────────────────────────────
 
-/** The character, when it belongs to this sequence (live or soft-deleted). */
+/**
+ * `distinguishingFeatures` on a character input (#2065, kept for the API and
+ * MCP): the default look's styling owns that text, so it is appended there
+ * unless the styling already holds it. Blank is ignored: there is no field
+ * left to clear. `sequenceId` null writes the look's current version.
+ * Refused when the joined text would pass the look's own limit: this write
+ * does not go through `lookFieldsSchema`, and repeated calls would otherwise
+ * grow the styling without bound.
+ */
+async function foldFeaturesIntoDefaultLook(
+  scopedDb: Pick<ScopedDb, 'characterLooks'>,
+  actor: Actor,
+  sequenceId: string | null,
+  defaultLook: { id: string; styling: string | null },
+  features: string | null | undefined
+): Promise<void> {
+  const text = features?.trim();
+  // Already there: one of the styling's lines, wherever an earlier call put
+  // it. Whole lines, so "scar" is not held by "red scarf".
+  if (!text || `\n${defaultLook.styling ?? ''}\n`.includes(`\n${text}\n`)) {
+    return;
+  }
+  const styling = effectiveStyling(defaultLook.styling, text);
+  if (styling !== null && styling.length > LOOK_TEXT_MAX) {
+    throw new ValidationError(
+      `Hair, makeup, injuries would pass ${LOOK_TEXT_MAX} characters. Edit the default look instead.`
+    );
+  }
+  const opts = { source: 'edit' as const, actorId: actor.userId };
+  if (sequenceId === null) {
+    await scopedDb.characterLooks.update(
+      null,
+      defaultLook.id,
+      { styling },
+      opts
+    );
+  } else {
+    await scopedDb.characterLooks.update(
+      sequenceId,
+      defaultLook.id,
+      { styling },
+      opts
+    );
+  }
+}
+
+/** The default look of a character read; every character has one. */
+function defaultLookOf<
+  L extends { id: string; isDefault: boolean },
+>(character: { id: string; looks: readonly L[] }): L {
+  const look = character.looks.find((candidate) => candidate.isDefault);
+  if (!look) throw new Error(`Character ${character.id} has no default look`);
+  return look;
+}
+
+/**
+ * The character, when it belongs to this sequence (live or soft-deleted),
+ * or, from no sequence (null), one of the team's at its current version
+ * (#2017). Only a read through a sequence carries the link.
+ */
 export async function requireCharacter(
   scopedDb: Pick<ScopedDb, 'characters'>,
   sequenceId: string,
   characterId: string
-) {
-  const character = await scopedDb.characters.getById(characterId);
-  if (!character || character.sequenceId !== sequenceId) {
-    throw new NotFoundError('Character not found');
-  }
+): Promise<CastCharacterWithSheet>;
+export async function requireCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  sequenceId: string | null,
+  characterId: string
+): Promise<CharacterWithSheet>;
+export async function requireCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  sequenceId: string | null,
+  characterId: string
+): Promise<CharacterWithSheet> {
+  const character =
+    sequenceId === null
+      ? await scopedDb.characters.getCurrent(characterId)
+      : await scopedDb.characters.getById(sequenceId, characterId);
+  if (!character) throw new NotFoundError('Character not found');
   return character;
 }
 
@@ -72,7 +163,11 @@ export async function createCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   sequenceId: string,
-  { name, ...bible }: CharacterBibleFields & { name: string }
+  {
+    name,
+    distinguishingFeatures,
+    ...bible
+  }: CharacterBibleFields & { name: string }
 ) {
   const base = identityToken('char', name);
   const taken = new Set<string>();
@@ -81,17 +176,31 @@ export async function createCharacter(
     taken.add(characterId);
     characterId = nextIdentityToken(base, taken);
   }
+  // Rendered as the sequence's style says, unless the caller said (#2017).
+  const sequence = await scopedDb.sequences.getById(sequenceId);
+  if (!sequence) throw new NotFoundError('Sequence not found');
+  const rendering =
+    bible.rendering ??
+    renderingOfStyle(await resolveSequenceStyle(scopedDb, sequence));
   const character = await scopedDb.characters.create(
     {
       sequenceId,
       characterId,
       name,
       ...bible,
+      rendering,
       consistencyTag:
         bible.consistencyTag ?? `${characterId}: ${slugifyTag(name)}`,
       sheetStatus: 'pending',
     },
     { source: 'edit', createdBy: actor.userId }
+  );
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    sequenceId,
+    defaultLookOf(character),
+    distinguishingFeatures
   );
   await scopedDb.sequenceEvents.record({
     sequenceId,
@@ -106,27 +215,162 @@ export async function createCharacter(
 }
 
 /**
+ * Make a character with no sequence (#2065, the Characters page). It has a
+ * bible and a default look and nothing else: a sequence casts it later with
+ * `@` or Add Character, and draws its sheet and designs its voice
+ * then, so no voice field is taken here. No event is recorded: events are
+ * per sequence.
+ */
+export async function createTeamCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  {
+    name,
+    standardClothing,
+    distinguishingFeatures,
+    ...bible
+  }: Omit<CharacterBibleFields, 'voiceDescription'> & { name: string }
+) {
+  const character = await scopedDb.characters.createForTeam(
+    {
+      name,
+      ...bible,
+      rendering: bible.rendering ?? null,
+      standardClothing: standardClothing ?? null,
+      // {@link createCharacter} prefixes the tag with the sequence's script
+      // id. With no sequence there is none, so the prefix is the id a
+      // hand-added character would get from the same name.
+      consistencyTag:
+        bible.consistencyTag ??
+        `${identityToken('char', name)}: ${slugifyTag(name)}`,
+    },
+    { createdBy: actor.userId }
+  );
+  if (!distinguishingFeatures?.trim()) return character;
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    null,
+    defaultLookOf(character),
+    distinguishingFeatures
+  );
+  return await requireCurrentCharacter(scopedDb, character.id);
+}
+
+async function requireCurrentCharacter(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  characterId: string
+) {
+  const character = await scopedDb.characters.getCurrent(characterId);
+  if (!character) throw new NotFoundError('Character not found');
+  return character;
+}
+
+/**
+ * Edit the bible of a character from no sequence (#2065): a new version and
+ * the character's current pointer. A sequence that casts it keeps the
+ * version it pinned and reads "not the current version".
+ */
+export async function updateTeamCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  {
+    distinguishingFeatures,
+    ...update
+  }: CharacterBibleUpdate & LegacyFeaturesInput
+) {
+  const before = await requireCurrentCharacter(scopedDb, characterId);
+  const character = await scopedDb.characters.updateBible(
+    null,
+    characterId,
+    await lockedPersonEdit(scopedDb, update, before),
+    { actorId: actor.userId, source: 'edit' }
+  );
+  await requirePersonEditStillAllowed(scopedDb, update, character, () =>
+    scopedDb.characters.updateBible(
+      null,
+      characterId,
+      { isPerson: true },
+      { actorId: actor.userId, source: 'edit' }
+    )
+  );
+  if (!distinguishingFeatures?.trim()) return character;
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    null,
+    defaultLookOf(character),
+    distinguishingFeatures
+  );
+  return await requireCurrentCharacter(scopedDb, characterId);
+}
+
+/**
+ * Cast a team character into a sequence (#2050): the `@` picker and the
+ * cast panel's Add Character. One link pinning her current version, a cast
+ * look per look; nothing is copied and no generation starts. Refused while a
+ * live cast member has her name (`characters.attach`).
+ */
+export async function attachLibraryCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string,
+  characterId: string
+) {
+  return await scopedDb.characters.attach(sequenceId, characterId, {
+    actorId: actor.userId,
+  });
+}
+
+/**
  * Edit a character's bible fields. Only the sent fields change; the sheet and
- * prompts that project them re-stale by hash derivation.
+ * prompts that project them re-stale by hash derivation. `isPerson: false`
+ * is refused while the character must be a person, and any other edit of
+ * such a character writes a person (#2065, `person-lock.ts`).
  */
 export async function updateCharacter(
   scopedDb: ScopedDb,
   actor: Actor,
   sequenceId: string,
   characterId: string,
-  update: CharacterBibleUpdate
+  {
+    distinguishingFeatures,
+    ...update
+  }: CharacterBibleUpdate & LegacyFeaturesInput
 ) {
-  await requireCharacter(scopedDb, sequenceId, characterId);
-  return await scopedDb.characters.updateBible(characterId, update, {
-    actorId: actor.userId,
-    source: 'edit',
-  });
+  const before = await requireCharacter(scopedDb, sequenceId, characterId);
+  const character = await scopedDb.characters.updateBible(
+    sequenceId,
+    characterId,
+    await lockedPersonEdit(scopedDb, update, before),
+    {
+      actorId: actor.userId,
+      source: 'edit',
+    }
+  );
+  await requirePersonEditStillAllowed(scopedDb, update, character, () =>
+    scopedDb.characters.updateBible(
+      sequenceId,
+      characterId,
+      { isPerson: true },
+      { actorId: actor.userId, source: 'edit' }
+    )
+  );
+  await foldFeaturesIntoDefaultLook(
+    scopedDb,
+    actor,
+    sequenceId,
+    defaultLookOf(before),
+    distinguishingFeatures
+  );
+  return character;
 }
 
 /**
- * Soft-remove a character (undoable). Scene continuity tags are kept, so a
- * restore is lossless. The voice slot is account-wide, so it goes with the
- * row (#1553); the description and previews stay.
+ * Soft-remove a character from the sequence (undoable). Scene continuity
+ * tags are kept, so a restore is lossless. The character, its voice
+ * included, is the team's and stays as it is (#2017).
  */
 export async function deleteCharacter(
   scopedDb: ScopedDb,
@@ -135,10 +379,11 @@ export async function deleteCharacter(
   characterId: string
 ) {
   const existing = await requireCharacter(scopedDb, sequenceId, characterId);
-  const deletedAt = await scopedDb.characters.softDelete(characterId, {
-    actorId: actor.userId,
-  });
-  await releaseCharacterVoice(scopedDb, existing, actor.userId);
+  const deletedAt = await scopedDb.characters.softDelete(
+    sequenceId,
+    characterId,
+    { actorId: actor.userId }
+  );
   return { characterId, name: existing.name, deletedAt };
 }
 
@@ -149,9 +394,53 @@ export async function restoreCharacter(
   characterId: string
 ) {
   await requireCharacter(scopedDb, sequenceId, characterId);
-  return await scopedDb.characters.restore(characterId, {
+  return await scopedDb.characters.restore(sequenceId, characterId, {
     actorId: actor.userId,
   });
+}
+
+const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
+
+/**
+ * Delete one of the team's characters (#2065). Soft: it leaves the
+ * Characters page and the `@` picker, and `restoreTeamCharacter` brings it
+ * back. Refused while a sequence, archived ones included, still casts it;
+ * the db write carries the same condition, so a sequence that casts it
+ * between the check and the write still stops it. The delete is written
+ * BEFORE the voice it points at is released (`releaseCharacterVoice`,
+ * provider before row): a refused delete has then destroyed nothing, and
+ * no sequence can cast it while the provider call runs. A failed release
+ * puts the character back. Restoring does not bring the voice back.
+ */
+export async function deleteTeamCharacter(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string
+) {
+  if (await scopedDb.characters.getCastInAnySequenceOrArchive(characterId)) {
+    throw new ConflictError(STILL_CAST_MESSAGE);
+  }
+  const voice = await scopedDb.characters.getVoice(characterId);
+  if (!(await scopedDb.characters.softDeleteForTeam(characterId))) {
+    throw new ConflictError(STILL_CAST_MESSAGE);
+  }
+  try {
+    await releaseCharacterVoice(scopedDb, voice, actor.userId);
+  } catch (error) {
+    await scopedDb.characters.restoreForTeam(characterId);
+    throw error;
+  }
+  return { characterId };
+}
+
+export async function restoreTeamCharacter(
+  scopedDb: ScopedDb,
+  characterId: string
+) {
+  if (!(await scopedDb.characters.restoreForTeam(characterId))) {
+    throw new NotFoundError('Character not found');
+  }
+  return { characterId };
 }
 
 /**
@@ -161,7 +450,7 @@ export async function restoreCharacter(
 export async function setCharacterVoiceEnabled(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   enabled: boolean
 ) {
@@ -185,7 +474,7 @@ export async function setCharacterVoiceEnabled(
  */
 export async function selectCharacterVoiceVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   versionId: string
 ) {
@@ -205,18 +494,23 @@ export async function selectCharacterVoiceVersion(
 export async function selectCharacterSheetVersion(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   versionId: string
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const version = await scopedDb.characterSheetVariants.select(
+    sequenceId,
     character.id,
     versionId,
     { actorId: actor.userId }
   );
+  // The sheet now worn may be an uploaded photo of a real person: the lock
+  // reads it, and a character stored as not a person is written one, as
+  // the upload itself did (#2065).
+  await keepLockedCharacterAPerson(scopedDb, actor, sequenceId, character);
   await emitQuietly(() =>
-    getGenerationChannel(sequenceId).emit(
+    getGenerationChannel(castChannelId(sequenceId, character.id)).emit(
       'generation.character-sheet:progress',
       {
         characterId: character.id,
@@ -235,7 +529,7 @@ export async function selectCharacterSheetVersion(
 /** A sheet version of a character of this sequence. */
 async function requireCharacterSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await scopedDb.characterSheetVariants.getById(versionId);
@@ -246,7 +540,7 @@ async function requireCharacterSheetVersion(
 
 export async function discardCharacterSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await requireCharacterSheetVersion(
@@ -260,7 +554,7 @@ export async function discardCharacterSheetVersion(
 
 export async function undiscardCharacterSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await requireCharacterSheetVersion(
@@ -294,6 +588,7 @@ export async function createCharacterLook(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const look = await scopedDb.characterLooks.create(
+    sequenceId,
     character.id,
     {
       name: input.name.trim(),
@@ -322,7 +617,14 @@ export async function updateCharacterLook(
   const look = requireLiveLook(
     await requireCharacterLook(scopedDb, character, lookId)
   );
+  // A default look's styling edit may copy the pinned bible version forward
+  // and make it current (the #2065 features move): never a stale "not a
+  // person" on a locked character.
+  if (look.isDefault) {
+    await keepLockedCharacterAPerson(scopedDb, actor, sequenceId, character);
+  }
   const updated = await scopedDb.characterLooks.update(
+    sequenceId,
     look.id,
     {
       name: patch.name?.trim(),
@@ -344,7 +646,7 @@ export async function removeCharacterLook(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const look = await requireCharacterLook(scopedDb, character, lookId);
-  const deletedAt = await scopedDb.characterLooks.remove(look.id, {
+  const deletedAt = await scopedDb.characterLooks.remove(sequenceId, look.id, {
     actorId: actor.userId,
   });
   return {
@@ -364,7 +666,9 @@ export async function restoreCharacterLook(
 ) {
   const character = await requireCharacter(scopedDb, sequenceId, characterId);
   const look = await requireCharacterLook(scopedDb, character, lookId);
-  await scopedDb.characterLooks.restore(look.id, { actorId: actor.userId });
+  await scopedDb.characterLooks.restore(sequenceId, look.id, {
+    actorId: actor.userId,
+  });
   return { characterId: character.id, lookId: look.id, name: look.name };
 }
 
@@ -382,6 +686,7 @@ export async function selectCharacterLookVersion(
     await requireCharacterLook(scopedDb, character, lookId)
   );
   const updated = await scopedDb.characterLooks.selectVersion(
+    sequenceId,
     look.id,
     versionId,
     { actorId: actor.userId }
@@ -392,6 +697,105 @@ export async function selectCharacterLookVersion(
     name: updated.name,
     versionId,
   };
+}
+
+// ── Looks from no sequence (#2065) ──────────────────────────────────────────
+
+/** A look of one of the team's characters, at its current version. */
+async function requireTeamLook(
+  scopedDb: Pick<ScopedDb, 'characters'>,
+  characterId: string,
+  lookId: string
+) {
+  const character = await scopedDb.characters.getCurrent(characterId);
+  if (!character) throw new NotFoundError('Character not found');
+  const look = character.looks.find((candidate) => candidate.id === lookId);
+  if (!look) throw new NotFoundError('Look not found');
+  return look;
+}
+
+/** Add an outfit from the Characters page. No sequence uses it yet. */
+export async function createTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  input: LookInput
+) {
+  const look = await scopedDb.characterLooks.create(
+    null,
+    characterId,
+    {
+      name: input.name.trim(),
+      clothing: blankToNull(input.clothing) ?? null,
+      styling: blankToNull(input.styling) ?? null,
+    },
+    { source: 'edit', actorId: actor.userId }
+  );
+  return { characterId, lookId: look.id, name: look.name };
+}
+
+/** Rename a look or edit its clothing / styling from the Characters page. */
+export async function updateTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  lookId: string,
+  patch: Partial<LookInput>
+) {
+  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  if (look.deletedAt) {
+    throw new ValidationError(
+      `${look.name} was removed. Restore the look first.`
+    );
+  }
+  // As in {@link updateCharacterLook}: the features move copies the current
+  // bible version forward.
+  if (look.isDefault) {
+    await keepLockedCharacterAPerson(
+      scopedDb,
+      actor,
+      null,
+      await requireCurrentCharacter(scopedDb, characterId)
+    );
+  }
+  const updated = await scopedDb.characterLooks.update(
+    null,
+    look.id,
+    {
+      name: patch.name?.trim(),
+      clothing: blankToNull(patch.clothing),
+      styling: blankToNull(patch.styling),
+    },
+    { source: 'edit', actorId: actor.userId }
+  );
+  return { characterId, lookId: look.id, name: updated.name };
+}
+
+/** Remove a look (undoable). Refused for the default look and a worn one. */
+export async function removeTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  lookId: string
+) {
+  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  const deletedAt = await scopedDb.characterLooks.remove(null, look.id, {
+    actorId: actor.userId,
+  });
+  return { characterId, lookId: look.id, name: look.name, deletedAt };
+}
+
+export async function restoreTeamCharacterLook(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  characterId: string,
+  lookId: string
+) {
+  const look = await requireTeamLook(scopedDb, characterId, lookId);
+  await scopedDb.characterLooks.restore(null, look.id, {
+    actorId: actor.userId,
+  });
+  return { characterId, lookId: look.id, name: look.name };
 }
 
 // ── Locations ───────────────────────────────────────────────────────────────

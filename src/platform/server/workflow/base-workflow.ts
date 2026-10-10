@@ -17,6 +17,7 @@
 
 import { configureFalProxyFromEnv } from '@/models/server/fal-config';
 import { ensureE2eModelPricing } from '@/billing/server/seed-model-pricing';
+import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import {
   toWorkflowScopedDb,
@@ -127,9 +128,16 @@ export abstract class OpenStoryWorkflowEntrypoint<
   ): Promise<void> | void;
 
   override async run(
-    event: Readonly<WorkflowEvent<T>>,
+    queued: Readonly<WorkflowEvent<T>>,
     step: WorkflowStep
   ): Promise<unknown> {
+    // The payload seam (#2065): a run queued before the default look took
+    // the bible's distinguishing features still carries them on its bible
+    // entries. Folded once, here, so no workflow reads the old field.
+    const event: Readonly<WorkflowEvent<T>> = {
+      ...queued,
+      payload: foldLegacyFeaturesInPayload(queued.payload),
+    };
     if (!event.payload.teamId || !event.payload.userId) {
       throw new Error(
         `[${this.constructor.name}] payload missing teamId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`

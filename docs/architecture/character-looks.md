@@ -16,19 +16,15 @@ versions, and a claim.
   - Identity: `characterId` (FK, `restrict`), `isDefault` (one per character,
     partial unique index), `sortOrder`, `deletedAt`, and
     `selectedLookVersionId` (the look's current definition).
-  - Keep identity free of anything a sequence decides.
-- **`sequence_cast_looks`** (#2017) — the look as one sequence uses it: the
-  look version it pins (`lookVersionId`), `selectedSheetVersionId`,
-  `pendingPromoteSheetVersionId` (the sheet claim), `sheetStatus`,
-  `sheetError`. Every look read comes through it and carries those fields.
-  The same columns on `character_looks` are `legacy*` and unread. See
-  `team-characters.md`.
+  - The sheet: `selectedSheetVersionId`, `pendingPromoteSheetVersionId` (the
+    sheet claim), `sheetStatus`, `sheetError`. One sheet per look, shared by
+    every sequence that casts the character (#2017, `team-characters.md`).
 - **`character_look_versions`** — the definition: `name`, `clothing`,
   `styling`, `source` (`backfill` | `analysis` | `edit`). Never rewritten.
 - **`character_sheet_variants`** carries `lookId` and `lookVersionId` (the
-  look version the run read). The divergent key is (look, model, input hash).
-  No FK on `lookId`: adding one to an existing table is a rebuild, and no
-  migration has done it.
+  look version the run read). The divergent key is (look, model, input
+  hash). No FK on `lookId`: adding one to an existing table is a rebuild,
+  and no migration has done it.
 - **A scene's picks** live in `continuity.characterLooks` on the selected
   `scene_script_versions` row: character tag → look id. Changing one appends
   a script version, like any narrative edit.
@@ -63,6 +59,101 @@ old field names (`standardClothing`, `sheetStatus`, `sheetImageUrl`,
 `looks`. Editing clothing through the character form or `update_character`
 writes a look version on the default look.
 
+## The default look owns the features (#2065)
+
+The character form has no clothing field and no distinguishing-features
+field. Clothing was already the default look's. What the bible called
+distinguishing features is the default look's `styling` ("Hair, makeup,
+injuries"). No other look inherits it.
+
+**Lazy move, no data migration.** `character_bible_versions.distinguishing_features`
+is `legacyDistinguishingFeatures` in Drizzle (the SQL name is unchanged), so
+a stray reader does not compile.
+
+- **Read: one resolver.** `effectiveStyling(styling, legacyFeatures)`
+  (`src/cast/character-looks.ts`). A default look's styling is its own joined
+  with the legacy text of the character's current bible version: blank
+  parts skipped,
+  a newline between, and the features not repeated when the styling already
+  holds them. Any other look's styling is its own. The look reads
+  (`selectLooks`) resolve it, so every `styling` a
+  caller sees is the effective one: the editor, the prompts, the payloads,
+  the current digests. A look also carries `storedStyling`, the version's own
+  column, and a character `legacyDistinguishingFeatures`. Those two are for
+  the legacy digests (`legacyStylingParts`), a write that copies a version
+  forward, and the deprecated API field. Nothing else reads them.
+- **Write: `lookDefinitionWrite`.** It diffs the patch against the effective
+  styling, so a save of what the field showed writes nothing. When the
+  styling itself is edited on a default look, the look version takes the
+  submitted text and, in the same batch, a bible version with the legacy
+  text null is appended and made current (`legacyFeaturesMove`), with every
+  sheet claim of the character revoked and, from a sequence, a
+  `character.updated` event recording the move. That is the move, done once. A rename or a
+  clothing edit writes the look's own stored styling to the new version and
+  leaves the bible alone, so it stales nothing the old code did not.
+- **Carried while it is still on the bible.** `bibleWrite` takes the
+  legacy text of the version it reads from as a required field and writes
+  it to the next one: an age edit, a recast and a re-analysis all keep it.
+  But only while the character's CURRENT version still holds it. Once the
+  move has nulled it, every new version has null, decided inside the
+  insert, so a write that read an older version cannot bring back a mark
+  its writer removed. New characters never have it.
+  `effectiveStyling` treats the text as already held only when the styling
+  is the text or ends with the `\n<text>` the resolver writes; a substring
+  ("red scarf" and "scar") is not held.
+- **Digests.** The current sheet and prompt digests hash the effective
+  styling and have no features key. Verify also accepts `pre-2065`, the same
+  body with the features under their own key and the look's own styling,
+  built from the stored parts, through the existing legacy-kind lists and
+  `LEGACY_HASH_UNTIL`. The verify functions take the stored parts as a
+  required argument. `pre-2065` reads the spec and the voice-only flag as
+  the current shape does, so it is accepted whatever else moved.
+- **What goes stale.** Nothing on deploy. The first edit of the default
+  look's styling stales its sheet and the shots that wear it, like any
+  styling edit. It also stales the sheets and prompts of the character's
+  other looks that were stamped before #2065: they were stamped with the
+  features, which are gone from the bible. Those drawn from the default
+  sheet were going to be redrawn with it anyway.
+- **Payloads and recordings.** A bible entry has no `distinguishingFeatures`.
+  One written before #2065 is folded at a seam (`foldLegacyFeatures`,
+  `src/cast/bible-looks.ts`): every workflow payload once, in the workflow
+  base (`foldLegacyFeaturesInPayload`), and the bibles response in its wire
+  schema, so a recorded fixture still parses. The entry's default look takes the text. Under slug ids it
+  is the `default` slug wherever it sits, and an entry with no default look
+  (only the worn look frozen) drops the text for that run. Under persisted
+  ids an entry does not say which look is the default (it carries the script
+  id, not the row id the default look shares), so the first look takes it:
+  the worn one, on a prompt payload dressed for a scene that picks another
+  look, as that queued prompt would have read it. A sheet payload keeps its
+  look's styling beside the entry: the features join `lookStyling` on the
+  default look (`face` null), and the pair as queued rides along as
+  `queuedLegacyStyling` for the run's check of its own snapshot hash. A step
+  result cached before the deploy is not folded: a run that resumes across
+  it reads the entry without the text.
+- **Sheet prompt.** One styling section. Its heading is the one the old
+  section had ("Distinguishing Features:", or "Makeup & Styling…" when cast;
+  "Hair, Makeup & Condition for this look:" on a look drawn from the default
+  sheet), because the recorded e2e image fixtures match on the whole prompt.
+- **Analysis.** The bibles call is not asked for the field. A permanent mark
+  (a scar, a birthmark, a tattoo) goes in `physicalDescription`; hair,
+  makeup, jewelry, accessories, injuries and dirt go in the look's styling.
+  The user message is unchanged: the recorded bibles fixture matches on it.
+- **API and MCP.** Inputs still take `standardClothing` (the default look's
+  clothing) and `distinguishingFeatures` (appended to the default look's
+  styling unless already there; blank is ignored), in `cast-edit.ts`.
+  Outputs still carry both, derived and marked deprecated:
+  `distinguishingFeatures` is the legacy text not yet moved, else null.
+- **A talent's sheet metadata** keeps its own `distinguishingFeatures`
+  (`TalentSheetMetadata`). It describes the talent, not a character.
+- **Later.** After `LEGACY_HASH_UNTIL`: backfill the remaining legacy text
+  into the default looks, delete the `pre-2065` shape and the fold seams,
+  and drop the column (a native `DROP COLUMN`).
+
+Edges, known and left: a look's version history lists each version's own
+styling, so a default look not yet edited shows less there than in the
+editor. A character an older worker wrote before #1600 has no bible version
+to append to, so its legacy text stays joined.
+
 ## Dressing
 
 `src/cast/character-looks.ts` (pure): `wearLook(character, look)` swaps a
@@ -86,24 +177,24 @@ look's clothing.
 trigger (`lookId`, `lookVersionId`, `lookStyling`, the clothing as
 `characterMetadata.standardClothing`); the run never reads the look.
 
-Claim → demote → guarded promote → fail, on the cast look of the sequence
-that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
+Claim → demote → guarded promote → fail, on the look
+(`characterLooks.claimSheet` / `failSheetClaim`,
 `characterSheetVariants.promoteIfPending`):
 
 - A look edit that moves clothing or styling demotes that look's claim in the
   same batch. A rename does not.
 - A bible edit to a field the sheets read, a recast and a style change demote
   **every** look's claim.
-- The claim is **conditional**: it is taken only while the look version and
-  bible version the sequence pins, and that bible version's talent, are
-  still the ones on the payload. A claim
-  that is not taken still returns an id, and the run parks its sheet under it.
+- The claim is **conditional**: it is taken only while the look's current
+  version, the character's current bible version, and that bible version's
+  talent are still the ones on the payload. A claim that is not taken still
+  returns an id, and the run parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
 - A payload frozen before #1600 names no bible version. Absent is "unknown",
   not "none": `claimSheet` skips that part of the condition.
 - The reconcile cron (`reconcileLookSheetClaimsPass`, pass
-  `character_looks.claims`, over the cast looks) settles the two states no
+  `character_looks.claims`) settles the two states no
   run will: a claim whose row already exists as a plain completed sheet is
   promoted (only an older worker leaves that, by landing on the legacy
   columns mid-deploy), and a claim older than an hour is failed.
@@ -111,19 +202,102 @@ that uses the look (`characterLooks.claimSheet` / `failSheetClaim`,
 The References stage makes one sheet per look some scene uses: a
 `sheet:character` plan unit is a look id — each character's default look
 always, any other once a live scene picks it. A look nobody wears gets a
-sheet only when someone asks. Talent reuse (`reusesTalentSheet`) is decided
-per look, against the talent's default sheet. A recast redraws the default
-look and every other look a live scene wears.
+sheet only when someone asks. A look other than the
+default is drawn from the default look's sheet: the run draws the person
+from that image and changes the costume, and the talent image is not also
+sent. Talent reuse (`reusesTalentSheet`) applies only to the default look,
+against the talent's default sheet.
+
+- **The face** is the default look's selected sheet, whatever its last
+  attempt did (`populatedDefaultSheet`). A failed or running re-roll leaves
+  that sheet selected and on screen, and it is still the face. The plan,
+  the trigger, the upload and the panel all ask this one question.
+- **The payload** carries `face: { url, versionId } | null`, required; null
+  exactly when the look is the default. The trigger refuses a non-default
+  look with no face (`buildRegenerateCharacterSheetPayload`), so no path
+  draws a look from the talent instead. A payload from before the field is
+  failed at the top of `CharacterSheetWorkflow` (`assertQueuedWithFace`).
+- **One run makes every look.** In the plan the default sheet is the look's
+  upstream, with the ordinary rules: a default this run makes puts the look
+  in the same run (a look that was done goes stale by cascade, since its
+  face is about to move). `buildPlanReferences` drafts such a look without
+  a face (`lookSheetsAfterDefault`), and `UpdateStaleShotsWorkflow` draws it
+  in a second references wave from the sheet the run just landed. A default
+  that fails or parks fails the look, which holds the shots that wear it.
+- **Upload** of a non-default look is allowed at any time (decided
+  2026-10-07): the user supplies the image, so nothing is drawn from a face.
+  It is stamped with the face that exists at upload, null when none, so it
+  reads stale once a default sheet lands (or a new one replaces it). Only
+  Generate waits for the default sheet.
+- **Recast** redraws the default look only, and re-renders the shots that
+  wear it. Other looks a scene wears go stale once the new sheet lands,
+  with their shots, and the next Update or Continue redraws them. The
+  recast result names them (`looksLeftStale`) and the panel says so.
+- **Existing look sheets go stale (decided 2026-10-07).** Every
+  non-default look sheet made before this change was stamped without a
+  face, so it reads stale once its default sheet exists, and the plan
+  redraws it (credits), with the shots that wear it. No legacy hash shape
+  keeps them fresh.
 
 Each person look's sheet is its own BytePlus portrait asset (the pool keys by
-stored URL). See `byteplus-ark.md` for slot pressure.
+stored URL). One sheet per look, shared by every sequence, is what keeps a
+series inside the ~45-slot pool: `byteplus-ark.md` has the numbers.
+
+### The tile's portrait
+
+A sheet is several panels, laid out differently by every model, so tiles do
+not crop it. `drawSheetPortrait` (`src/cast/server/sheets/sheet-portrait.ts`)
+makes one square 1K image from the stored sheet with Nano Banana 2 Lite, and
+its address is `portrait_url` on the sheet version row
+(`character_sheet_variants`, and `location_sheet_variants` for a sequence
+location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
+
+- **Every sheet is saved and shown first.** A generated sheet
+  (`CharacterSheetWorkflow`, `LocationSheetWorkflow`: the `trigger-portrait`
+  step, after the sheet lands, promoted or parked) and an uploaded one both
+  call `triggerSheetPortrait`, which starts `SheetPortraitWorkflow`
+  (`/sheet-portrait`, one run per sheet version). That run draws the
+  portrait, writes it once with `setPortrait` and re-sends the sheet's
+  completed event so the tile re-reads. The tile crops the sheet until then.
+  A trigger that fails never fails the sheet.
+- **No portrait:** a sheet copied from talent (that path stays free), a
+  library location, an element, a sheet from before portraits, and a draw
+  that failed. A failed draw never fails the sheet. Tiles then crop the
+  sheet as before (`talentSquareImageClassName`).
+- It is charged as its own line ("Sheet portrait"). A hold for the estimate
+  is taken before the paid call (its own, not the sheet run's reservation):
+  no hold, no call, and the tile crops. A replayed hold that no longer
+  holds the money is no hold. The team pays only for a portrait it gets: a
+  failed call, or an image that could not be stored or recorded, releases
+  the hold and costs nothing. A team's own key does not lift the hold.
+- Each portrait has a provenance row under its sheet's kind; one that could
+  not be recorded is deleted.
+- A voice-only character has no sheet and gets no portrait, an upload
+  included.
+- It is only ever shown. Stills, clips and other looks are drawn from the
+  sheet, never from the portrait, and no hash reads it.
 
 ## Hashes and staleness
 
+- **Sheet hash reads no style (#2017)**: the bible's `rendering` ("Photoreal
+  live action", "3D animated, Pixar-like") is what a sheet takes from a
+  style, and it is the character's, so every sequence hashes the shared
+  sheet alike. The sequence's palette, grade and mood apply at the shot. A
+  digest stamped before this (`pre-2065` and older) is verified with the
+  digest of the style of the sequence that is asking, until
+  `LEGACY_HASH_UNTIL`. So such a sheet reads stale from a sequence with
+  another style than the one it was drawn under, and from the Characters
+  page (no sequence in view, current shape only); it is redrawn once and
+  stamped in the current shape. Accepted: few sheets predate `rendering`.
 - **Sheet hash**: the clothing keeps the bible's old key
-  (`characterBible.standardClothing`), fed from the look; `styling` joins only
-  when set, in every digest shape. A backfilled default look therefore hashes
-  to the digest its sheet was stamped with.
+  (`characterBible.standardClothing`), fed from the look; `styling` (the
+  effective one, #2065) joins only when set, in every digest shape. A backfilled default look therefore hashes
+  to the digest its sheet was stamped with. On every other look,
+  `faceSheetVersionId` (the default look's selected sheet version, or that
+  look's id when the pointer is still null — the #1419 row) joins the
+  same way, in every digest shape including the legacy ones, and only when
+  set. A look sheet drawn before that face existed goes stale once the
+  default sheet is completed, and is redrawn from it.
 - **Prompt hashes** read the worn look's clothing, and its styling only when
   set.
 - **Still and clip** read the sheet of the look the scene picks.
@@ -151,6 +325,9 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   clamps, and a clamped line would dress the wrong scene.
 - The default outfit is asked for twice (`standardClothing` and the first
   look); a blank first look keeps `standardClothing`.
+- No `distinguishingFeatures` (#2065): a permanent mark is physical
+  description, the rest is the first look's styling. A response recorded
+  with the field folds it into the first look.
 - A repeated look name in one response gets a number (`Gala`, `Gala 2`).
 - After a re-analysis, a look the script no longer names is soft-removed
   only when nothing is lost: every version of it came from analysis, it has
@@ -159,6 +336,11 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   names again comes back as the same row.
 - Voice design sees no outfits (`withoutLooks`); the shot rewrite sees only
   the look worn in that shot's scene (`wornLookOnly`).
+- A character the library or another sequence holds (#2050) is not synced:
+  `characterLooks.linkFromAnalysis` matches each look the model named (by
+  id, or by name among every live look she has) and adds a look only for a
+  name she lacks. No look of hers is rewritten or
+  removed by another sequence's analysis. See `team-characters.md`.
 
 ## Editing
 
@@ -175,9 +357,14 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
 - Two live looks of one character never share a name.
 - A removed look can be read and restored, but not edited, drawn or uploaded
   to (`requireLiveLook`).
-- UI: the character panel has a row of looks; picking one shows that look's
-  sheet, versions, staleness and divergence. A scene's cast card has a look
-  picker. MCP: see `mcp-capability-map.md`.
+- UI: the character panel has a row of looks. The default chip is badged
+  "Default look", and the sheet heading says "Default look" while that look
+  is open. The line under the chips names it ("This is the default look,
+  Clean white shirt…"). On any other look the heading is that look's name,
+  and the line says it is drawn from the default look. Generate stays
+  disabled until the default look has a sheet — the same sentence the
+  refusal returns. Upload is always enabled. A scene's look picker labels the default "(default look)".
+  MCP: see `mcp-capability-map.md`.
 
 ## Traps
 
@@ -189,3 +376,7 @@ before `persist-scene-looks` writes the picks. Only persisted ids are stored.
   objects.
 - Never read `characters.legacy*` sheet columns or
   `character_bible_versions.legacyStandardClothing` outside the fallbacks.
+- Never read `legacyDistinguishingFeatures` or a look's `storedStyling` to
+  show or prompt with: `styling` already holds the text (#2065). Never write
+  a look version from `styling` when copying one forward: that is the move.
+  Copy `storedStyling`.

@@ -29,6 +29,7 @@ import type { GenerationStage } from '@/sequences/pipeline';
 import type { musicDesignResultSchema } from '@/sequences/response-schemas';
 import type {
   CharacterSheetInputHash,
+  LegacyStylingParts,
   LibraryLocationReferenceInputHash,
   LocationSheetInputHash,
   ShotImageInputHash,
@@ -47,6 +48,7 @@ import type {
   MotionDialogue,
   MotionPrompt,
   Scene,
+  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
@@ -106,6 +108,21 @@ export interface UserWorkflowContext {
 export interface SequenceWorkflowContext extends UserWorkflowContext {
   sequenceId?: string;
 }
+
+/**
+ * One cast character as the trigger found it (#2050): the bible entry as
+ * the sequence casts her (`charactersToBible`, look ids are `character_looks`
+ * ids), frozen for the whole run. `shared` says the library or another
+ * sequence holds her too: analysis then links to her and adds looks, and
+ * never rewrites her bible or looks. A character only this sequence holds is
+ * still this sequence's to rewrite on re-analysis.
+ */
+export type AttachedCastSnapshot = {
+  /** `characters.id`. */
+  id: string;
+  shared: boolean;
+  entry: CharacterBibleEntry;
+};
 /**
  * Image generation workflow input
  */
@@ -280,6 +297,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * late and are read live; which elements exist must not.
    */
   elementIds: string[];
+  /** The sequence's live cast at the trigger (#2050); see {@link AttachedCastSnapshot}. */
+  cast: AttachedCastSnapshot[];
   /**
    * Provenance for the music prompt this run may write, snapshotted from the
    * sequence row by `triggerStoryboard`. Threaded down analyze-script →
@@ -385,6 +404,7 @@ export type StoryboardTriggerInput = Omit<
   | 'imageModel'
   | 'videoModel'
   | 'elementIds'
+  | 'cast'
   | 'musicPromptSource'
   | 'suggestedTalent'
   | 'suggestedLocations'
@@ -415,6 +435,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   imageModel: TextToImageModel;
   /** @see StoryboardWorkflowInput.elementIds — passed straight through. */
   elementIds: string[];
+  /** @see StoryboardWorkflowInput.cast — passed straight through. */
+  cast: AttachedCastSnapshot[];
   /** @see StoryboardWorkflowInput.musicPromptSource — passed straight through. */
   musicPromptSource: 'ai-generated' | 'regenerated';
   /** Multiple image models for variant generation (first is primary) */
@@ -465,6 +487,8 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   userCountry?: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
+  /** @see StoryboardWorkflowInput.cast — the `<CAST>` block the bibles call reads. */
+  cast: AttachedCastSnapshot[];
   /**
    * Clip grid for the shot-list pass (#1593): caps how many shots a scene's
    * label can hold and spreads the label over them. Absent → no cap, an even
@@ -790,7 +814,16 @@ type PackedMotionCoveredShot = {
 /**
  * Character sheet generation workflow input
  */
-export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
+export interface CharacterSheetWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  /**
+   * The sequence the sheet was asked from, for its events and the run's
+   * storage path; null from the Characters page (#2017), where the run
+   * reports on the character's own channel (`castChannelId`).
+   */
+  sequenceId: string | null;
   /** sequence_characters.id */
   characterDbId: string;
   /**
@@ -804,8 +837,29 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * only while the look still points at it.
    */
   lookVersionId: string;
-  /** The look's hair / makeup / injury notes; null when it changes none. */
+  /**
+   * The look's hair / makeup / injury notes as `effectiveStyling` resolves
+   * them (#2065); null when it has none.
+   */
   lookStyling: string | null;
+  /**
+   * Set only by the payload seam (`foldLegacyFeaturesInPayload`), on a run
+   * queued before #2065: the look's styling and the bible's features as
+   * they were queued, which is what its `snapshotInputHash` was stamped
+   * from. Optional because no trigger writes it. Delete with
+   * `LEGACY_HASH_UNTIL`.
+   */
+  queuedLegacyStyling?: LegacyStylingParts;
+  /**
+   * The default look's selected sheet, which a look other than the default
+   * is drawn from, and only from. Null exactly when this look IS the
+   * default: a non-default look with no face is refused at the trigger.
+   * Snapshotted at the trigger, or (a look whose default sheet the same run
+   * makes) from that run's landed sheet. `versionId` is the selected
+   * version, or the look's id when the pointer is still null (the #1419
+   * row); it joins the sheet hash.
+   */
+  face: { url: string; versionId: string } | null;
   /**
    * The cast talent at the snapshot; null when not cast. The claim is taken
    * only while the character is still cast with it.
@@ -823,7 +877,7 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
   /** Reference image URL (e.g., from talent sheet) for recasting */
   referenceImageUrl?: string;
   /** Talent metadata from talent sheet (for appearance overrides when recasting) */
-  talentMetadata?: CharacterBibleEntry;
+  talentMetadata?: TalentSheetMetadata;
   /** Talent description to include in prompt */
   talentDescription?: string;
   /**
@@ -832,8 +886,6 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * `shouldReuseTalentSheet`.
    */
   reuseTalentSheet?: boolean;
-  /** Sequence style config to apply to the character sheet */
-  styleConfig?: StyleConfig;
   /**
    * Snapshot of the upstream talent sheet's `input_hash` at trigger time.
    * `null` when the character has no talent assignment, or when the talent
@@ -999,7 +1051,7 @@ export interface RecastCharacterWorkflowInput
   /** Reference image URL from talent sheet */
   referenceImageUrl?: string;
   /** Talent metadata for appearance overrides */
-  talentMetadata?: CharacterBibleEntry;
+  talentMetadata?: TalentSheetMetadata;
   /** Talent description */
   talentDescription?: string;
   /**
@@ -1019,8 +1071,6 @@ export interface RecastCharacterWorkflowInput
   sheetVersionId: string;
   /** See `CharacterSheetWorkflowInput.bibleVersionId`. */
   bibleVersionId: string | null;
-  /** Sequence style config to apply to the character sheet */
-  styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
   resolution?: Resolution;
@@ -1049,7 +1099,7 @@ export type TalentCharacterMatch = {
   /** Talent's default sheet image URL for reference */
   sheetImageUrl: string;
   /** Talent sheet metadata for appearance blending */
-  sheetMetadata?: CharacterBibleEntry;
+  sheetMetadata?: TalentSheetMetadata;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
   // Talent performance (#1561) from the trigger-time snapshot; `''` = library
@@ -1149,8 +1199,12 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
  * the bible workflow and triggered directly by "Generate voice" on the
  * character card.
  */
-export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
-  sequenceId: string;
+export interface CharacterVoiceWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  /** As on {@link CharacterSheetWorkflowInput}: null from the Characters page. */
+  sequenceId: string | null;
   characterDbId: string;
   characterBible: CharacterBibleEntry;
   /** The stored description; empty = draft one from the bible first. */
@@ -1343,7 +1397,7 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
    */
   uploadedSheetUrl?: string;
   /** Appearance metadata extracted from the uploaded sheet, when available. */
-  uploadedSheetMetadata?: CharacterBibleEntry;
+  uploadedSheetMetadata?: TalentSheetMetadata;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: TalentSheetInputHash;
   /**
@@ -1935,6 +1989,29 @@ export interface ElementVisionWorkflowInput extends SequenceWorkflowContext {
    * script-wide cascade is skipped.
    */
   token: string;
+}
+
+/**
+ * Sheet portrait workflow input: the square portrait of a sheet version that
+ * was saved without one (an upload). Everything the run needs is here; it
+ * reads nothing.
+ */
+export interface SheetPortraitWorkflowInput extends SequenceWorkflowContext {
+  /** Whose sheet it is, for the prompt, the row and the event. */
+  subject:
+    | { kind: 'character'; characterId: string; lookId: string }
+    | { kind: 'location'; locationId: string };
+  /** The sheet version row the portrait is written on. */
+  versionId: string;
+  sheetUrl: string;
+  /** The folder the sheet is stored under; the portrait goes beside it. */
+  storageDir: string;
+}
+
+export interface SheetPortraitWorkflowResult {
+  versionId: string;
+  /** Null when the draw failed: the tile keeps cropping the sheet. */
+  portraitUrl: string | null;
 }
 
 export interface ElementVisionWorkflowResult {

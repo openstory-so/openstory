@@ -202,6 +202,7 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
               <Link
                 to="/sequences/$id/locations/$locationId"
                 params={{ id: sequenceId, locationId: shotLocation.id }}
+                search
                 className="flex items-center gap-1 text-xs text-primary hover:underline"
               >
                 View Details
@@ -223,7 +224,11 @@ export const SceneLocationTab: React.FC<SceneLocationTabProps> = ({
           <div className="relative aspect-video overflow-hidden rounded-lg bg-muted">
             {shotLocation.referenceImageUrl ? (
               <AppImage
-                src={shotLocation.referenceImageUrl}
+                // The one image drawn from the sheet, when it has one.
+                src={
+                  shotLocation.referencePortraitUrl ??
+                  shotLocation.referenceImageUrl
+                }
                 alt={shotLocation.name}
                 width={160}
                 height={160}

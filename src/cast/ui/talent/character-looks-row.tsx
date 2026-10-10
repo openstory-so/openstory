@@ -84,9 +84,12 @@ const LookFields: React.FC<{ idPrefix: string; look?: LookRowItem }> = ({
  * A character's looks (#2015): one outfit each, with its own sheet. Picking
  * one shows its sheet in the panel; a scene wears a look from its cast chip.
  * The sheet, versions and staleness below the row are the picked look's.
+ *
+ * `sequenceId` null is the Characters page, for a character no sequence
+ * casts (#2065): the same editor, writing the looks' current versions.
  */
 export const CharacterLooksRow: React.FC<{
-  sequenceId: string;
+  sequenceId: string | null;
   characterId: string;
   /** Live looks, the default first. */
   looks: readonly LookRowItem[];
@@ -205,6 +208,7 @@ export const CharacterLooksRow: React.FC<{
                 />
               ) : null}
               <span>{look.name}</span>
+              {look.isDefault ? <Badge>Default look</Badge> : null}
               {look.sheetStatus === 'generating' ? (
                 <Badge variant="secondary">Generating…</Badge>
               ) : null}

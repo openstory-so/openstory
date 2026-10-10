@@ -3,9 +3,9 @@
  * Character CRUD, sheet generation, talent assignment, and shot-character matching.
  *
  * A character belongs to the team; a sequence uses it through a cast link
- * (#2017). Every read here comes through that link and returns the character
- * as that sequence casts it — the script id, the removal, the pinned bible
- * and its talent under the names the character's own columns had.
+ * (#2017). Every sequence read here comes through that link and returns the
+ * character at its current version with the link's own fields — the script
+ * id and the removal — under the names the character's own columns had.
  */
 
 import {
@@ -19,9 +19,12 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   sql,
 } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
+import type { BatchItem } from 'drizzle-orm/batch';
+import { z } from 'zod';
 import type { Database } from '@/platform/server/db/client';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -37,6 +40,9 @@ import type {
   LegacyCharacterSheetColumn,
   LookVersionSource,
   CharacterWithTalent,
+  CastCharacter,
+  CastCharacterWithSheet,
+  CastCharacterWithTalent,
   Shot,
   NewCharacter,
   SheetStatus,
@@ -54,10 +60,12 @@ import {
   characterVoiceVersions,
   characters,
   sequenceCast,
-  sequenceCastLooks,
+  sequences,
   shots,
   talent,
 } from '@/platform/server/db/schema';
+import { identityToken, nextIdentityToken } from '@/cast/bible-field';
+import { renderingFor } from '@/cast/rendering';
 import { voiceProviderOf } from '@/cast/seed-voice';
 import { markPreviewUnusable } from '@/cast/voice';
 import {
@@ -77,18 +85,25 @@ import {
   characterBibleChanged,
   characterBibleColumns,
   legacyBibleClothing,
+  legacyBibleFeatures,
   pickCharacterBible,
   mergeDefined,
 } from './bible-versions';
 import {
   createCharacterLooksMethods,
   deleteLooksOfCharacters,
+  liveLookSheetVersionId,
   lookDefinitionWrite,
   requireLook,
 } from './character-looks';
-import { deleteCastStatements, oneLinkEach, onlyLink } from './sequence-cast';
+import {
+  assertNameFree,
+  castElsewhere,
+  analysisMayNotRewrite,
+  deleteCastStatements,
+} from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
-import { pickedLook, wearLook } from '@/cast/character-looks';
+import { effectiveStyling, pickedLook, wearLook } from '@/cast/character-looks';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
@@ -98,11 +113,11 @@ const NEW_CHARACTER_BIBLE: Omit<CharacterBible, 'name'> = {
   gender: null,
   ethnicity: null,
   physicalDescription: null,
-  distinguishingFeatures: null,
   personality: null,
   movement: null,
   voiceOnly: false,
   isPerson: true,
+  rendering: null,
   consistencyTag: null,
 };
 
@@ -113,11 +128,11 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
   gender: data.gender,
   ethnicity: data.ethnicity,
   physicalDescription: data.physicalDescription,
-  distinguishingFeatures: data.distinguishingFeatures,
   personality: data.personality,
   movement: data.movement,
   voiceOnly: data.voiceOnly,
   isPerson: data.isPerson,
+  rendering: data.rendering,
   consistencyTag: data.consistencyTag,
 });
 
@@ -125,8 +140,17 @@ const bibleOf = (data: NewCharacter): Partial<CharacterBible> => ({
 const lookSource = (source: BibleVersionSource): LookVersionSource =>
   source === 'recast' ? 'edit' : source;
 
-const mergeBible = (base: CharacterBible, patch: Partial<CharacterBible>) =>
-  mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
+/**
+ * The bible a write stores: the patch over the base, with the rendering
+ * null exactly when voice-only and required otherwise (`renderingFor`).
+ */
+const mergeBible = (
+  base: CharacterBible,
+  patch: Partial<CharacterBible>
+): CharacterBible => {
+  const merged = mergeDefined(base, patch, CHARACTER_BIBLE_FIELDS);
+  return { ...merged, rendering: renderingFor(merged) };
+};
 
 const touchesSheet = (fields: readonly (keyof CharacterBible)[]) =>
   fields.some((key) =>
@@ -148,11 +172,11 @@ export type CharacterBibleUpdate = Partial<
     | 'ethnicity'
     | 'physicalDescription'
     | 'standardClothing'
-    | 'distinguishingFeatures'
     | 'personality'
     | 'movement'
     | 'voiceOnly'
     | 'isPerson'
+    | 'rendering'
     | 'voiceDescription'
     | 'consistencyTag'
   >
@@ -168,6 +192,19 @@ export type CharacterBibleUpdate = Partial<
 type CharacterVoiceUpdate = Partial<
   CharacterVoice & Pick<CharacterRow, 'useVoice'>
 >;
+/**
+ * A character's own voice: the switch, the pointers and the selected
+ * version's values. The same answer for a character in no sequence, one, or
+ * several (#2017).
+ */
+export type CharacterVoiceState = CharacterVoice &
+  Pick<
+    CharacterRow,
+    | 'id'
+    | 'useVoice'
+    | 'selectedVoiceVersionId'
+    | 'pendingPromoteVoiceVersionId'
+  >;
 const VOICE_FIELDS = [
   'voiceId',
   'voiceDescription',
@@ -213,26 +250,42 @@ const {
   legacyVoiceOnly: _voiceOnly,
   legacyIsPerson: _isPerson,
   legacyConsistencyTag: _consistencyTag,
+  legacyInLibrary: _inLibrary,
+  // A cast read's `deletedAt` is its link's `removedAt`.
+  deletedAt: _teamDeletedAt,
   legacySheetStatus: _sheetStatus,
   legacySheetError: _sheetError,
   legacySelectedSheetVersionId: _selectedSheetVersionId,
   legacyPendingPromoteSheetVersionId: _pendingPromoteSheetVersionId,
-  // The character's current version; a read carries the one its cast pins.
-  selectedBibleVersionId: _currentBibleVersionId,
+  // Re-added below as `CharacterCast` fields, the bible one non-null.
+  selectedBibleVersionId: _selectedBibleVersionId,
+  selectedVoiceVersionId: _selectedVoiceVersionId,
   ...characterRowColumns
 } = getTableColumns(characters);
 
 /**
- * The character as its sequence casts it (#2017). Needs the cast link and
- * the bible version it pins joined.
+ * The character as its sequence casts it (#2017): the link's own fields and
+ * the character's current bible and voice versions joined.
  */
 const castColumns = {
   castId: sequenceCast.id,
   sequenceId: sequenceCast.sequenceId,
   characterId: sequenceCast.scriptCharacterId,
-  selectedBibleVersionId: sequenceCast.bibleVersionId,
+  selectedBibleVersionId: characters.selectedBibleVersionId,
+  selectedVoiceVersionId: characters.selectedVoiceVersionId,
   talentId: characterBibleVersions.talentId,
   deletedAt: sequenceCast.removedAt,
+};
+
+/**
+ * The same fields read from no sequence (#2017): no link, and `deletedAt`
+ * is the character's own.
+ */
+const ownColumns = {
+  selectedBibleVersionId: characters.selectedBibleVersionId,
+  selectedVoiceVersionId: characters.selectedVoiceVersionId,
+  talentId: characterBibleVersions.talentId,
+  deletedAt: characters.deletedAt,
 };
 
 /**
@@ -248,21 +301,60 @@ const legacyLookColumns = {
     characters.legacyPendingPromoteSheetVersionId,
   legacySheetImageUrl: characterSheetVariants.url,
   legacySheetImagePath: characterSheetVariants.storagePath,
+  legacySheetPortraitUrl: characterSheetVariants.portraitUrl,
   legacySheetGeneratedAt: characterSheetVariants.generatedAt,
   legacySheetInputHash: characterSheetVariants.inputHash,
 };
 
-const characterColumns = {
+/** What a read resolves from the character and its joined versions. */
+const ownCharacterColumns = {
   ...characterRowColumns,
-  ...castColumns,
-  // Null when the link pins a version that is not there; see resolveLooks.
-  pinnedBibleVersionId: characterBibleVersions.id,
+  ...ownColumns,
+  // Null when the character points at a version that is not there; see
+  // resolveLooks.
+  currentBibleVersionId: characterBibleVersions.id,
   ...characterBibleColumns,
+  legacyDistinguishingFeatures: legacyBibleFeatures,
   ...legacyLookColumns,
   // The voice IS the selected version row (#1788); all null without one.
   voiceId: characterVoiceVersions.voiceId,
   voiceDescription: characterVoiceVersions.description,
   voicePreviews: characterVoiceVersions.previews,
+};
+
+const characterColumns = { ...ownCharacterColumns, ...castColumns };
+
+/** What `json_group_array` returns for one character's sequences. */
+const teamCastSchema = z.array(
+  z.object({
+    id: z.string(),
+    title: z.string(),
+    updatedAt: z.number(),
+  })
+);
+
+/**
+ * One of the team's characters as the team sees it (#2017): its current
+ * bible, its default look's sheet and the sequences that cast it.
+ */
+export type TeamCharacter = {
+  id: string;
+  name: string;
+  physicalDescription: string | null;
+  voiceOnly: boolean;
+  /** The default look's selected sheet. */
+  sheetImageUrl: string | null;
+  /** The square portrait drawn from that sheet; null when it has none. */
+  sheetPortraitUrl: string | null;
+  /** When a sequence casting it last changed; null when none casts it. */
+  lastUsedAt: Date | null;
+  /**
+   * Whether any sequence, archived ones included, has a cast link to it
+   * that is not removed: what a delete is refused on (#2065).
+   */
+  castAnywhere: boolean;
+  /** The live sequences that cast it, the most recently changed first. */
+  sequences: { id: string; title: string }[];
 };
 
 const RELEASED_VOICE_MESSAGE =
@@ -363,8 +455,8 @@ export async function assertVoicesReleased(
  * and every row keyed to them, for the caller's own `db.batch`. Nothing
  * cascades from `characters` (#2017, the #612 rebuild trap), so the bible
  * versions, looks, look versions, sheet variants and voice versions go
- * first, here. The cast links and cast looks go before these
- * (`deleteCastStatements`): they hold the looks and the characters.
+ * first, here. The cast links go before these (`deleteCastStatements`): they
+ * hold the characters.
  */
 export const deleteCharactersStatements = (db: Database, where: SQL) => {
   const theirs = db.select({ id: characters.id }).from(characters).where(where);
@@ -398,7 +490,24 @@ export function createCharactersMethods(db: Database, teamId: string) {
       .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
       .leftJoin(
         characterBibleVersions,
-        eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+        eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+      )
+      .leftJoin(
+        characterSheetVariants,
+        eq(characterSheetVariants.id, legacyLiveSheetVersionId)
+      )
+      .leftJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+      );
+  /** The team's characters read from no sequence (#2017): one row each. */
+  const selectOwnRows = () =>
+    db
+      .select(ownCharacterColumns)
+      .from(characters)
+      .leftJoin(
+        characterBibleVersions,
+        eq(characterBibleVersions.id, characters.selectedBibleVersionId)
       )
       .leftJoin(
         characterSheetVariants,
@@ -409,6 +518,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
       );
   type Row = Awaited<ReturnType<typeof selectRows>>[number];
+  type OwnRow = Awaited<ReturnType<typeof selectOwnRows>>[number];
 
   /**
    * Rows as every read returns them (#2015): each with its looks, wearing its
@@ -416,20 +526,24 @@ export function createCharactersMethods(db: Database, teamId: string) {
    * had. A character with no look wears its legacy columns.
    */
   const resolveLooks = async (
-    rows: readonly Row[]
+    rows: readonly OwnRow[]
   ): Promise<CharacterWithSheet[]> => {
     if (rows.length === 0) return [];
     const all = await looks.listByCharacters(rows.map((row) => row.id));
     return rows.map((row) => {
-      // The pin has no FK. A link that names a missing version has no bible
-      // to read, and must not come back as a character with a blank one.
-      if (row.pinnedBibleVersionId === null) {
+      // The pointer has no FK. A character that names a missing version has
+      // no bible to read, and must not come back with a blank one.
+      if (
+        row.currentBibleVersionId === null ||
+        row.selectedBibleVersionId === null
+      ) {
         throw new Error(
-          `Character ${row.id} pins bible version ${row.selectedBibleVersionId}, which does not exist`
+          `Character ${row.id} points at bible version ${row.selectedBibleVersionId}, which does not exist`
         );
       }
+      const selectedBibleVersionId: string = row.selectedBibleVersionId;
       const {
-        pinnedBibleVersionId: _pinned,
+        currentBibleVersionId: _current,
         legacyStandardClothing,
         legacySheetStatus,
         legacySheetError,
@@ -437,6 +551,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         legacyPendingPromoteSheetVersionId,
         legacySheetImageUrl,
         legacySheetImagePath,
+        legacySheetPortraitUrl,
         legacySheetGeneratedAt,
         legacySheetInputHash,
         ...character
@@ -445,8 +560,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const worn = own.find((look) => look.isDefault);
       if (worn) {
         return {
-          ...wearLook({ ...character, looks: own }, worn),
+          ...wearLook(
+            { ...character, selectedBibleVersionId, looks: own },
+            worn
+          ),
           sheetImagePath: worn.sheetImagePath,
+          sheetPortraitUrl: worn.sheetPortraitUrl,
           sheetGeneratedAt: worn.sheetGeneratedAt,
           sheetError: worn.sheetError,
           pendingPromoteSheetVersionId: worn.pendingPromoteSheetVersionId,
@@ -454,58 +573,155 @@ export function createCharactersMethods(db: Database, teamId: string) {
       }
       return {
         ...character,
+        selectedBibleVersionId,
         looks: own,
         lookId: row.id,
         lookName: DEFAULT_LOOK_NAME,
         standardClothing: legacyStandardClothing,
-        styling: null,
+        // No look row, so the default look's own styling is none (#2065).
+        styling: effectiveStyling(null, row.legacyDistinguishingFeatures),
         sheetStatus: legacySheetStatus,
         sheetError: legacySheetError,
         selectedSheetVersionId: legacySelectedSheetVersionId,
         pendingPromoteSheetVersionId: legacyPendingPromoteSheetVersionId,
         sheetImageUrl: legacySheetImageUrl,
         sheetImagePath: legacySheetImagePath,
+        sheetPortraitUrl: legacySheetPortraitUrl,
         sheetGeneratedAt: legacySheetGeneratedAt,
         sheetInputHash: legacySheetInputHash,
       };
     });
   };
 
-  /** The team's resolved characters matching `where`. */
+  /** Cast rows resolved, each with the link it was read through. */
+  const resolveCastLooks = async (
+    rows: readonly Row[]
+  ): Promise<CastCharacterWithSheet[]> =>
+    (await resolveLooks(rows)).map((character, index) => {
+      const row = rows[index];
+      if (!row) throw new Error('resolveLooks returned a row it was not given');
+      const { castId, sequenceId, characterId } = row;
+      return { ...character, castId, sequenceId, characterId };
+    });
+
+  /** The team's resolved characters as one sequence casts them. */
   const selectCharacters = async (
+    sequenceId: string,
     where: SQL | undefined
-  ): Promise<CharacterWithSheet[]> =>
-    await resolveLooks(await selectRows().where(and(inTeam, where)));
+  ): Promise<CastCharacterWithSheet[]> =>
+    await resolveCastLooks(
+      await selectRows().where(
+        and(inTeam, eq(sequenceCast.sequenceId, sequenceId), where)
+      )
+    );
 
   /**
-   * The character an id-only method means: through its one cast link. Throws
-   * when it has more than one (`onlyLink`).
+   * The character as one sequence casts it. A sequence links a character at
+   * most once (unique index), so the sequence and the id name one row.
    */
-  const castOf = async (id: string): Promise<CharacterWithSheet | undefined> =>
-    onlyLink(await selectCharacters(eq(characters.id, id)), `Character ${id}`);
+  const castOf = async (
+    sequenceId: string,
+    id: string
+  ): Promise<CastCharacterWithSheet | undefined> =>
+    (await selectCharacters(sequenceId, eq(characters.id, id)))[0];
+
+  /** Every script id a sequence's links use, removed ones included. */
+  const scriptIdsOf = async (sequenceId: string): Promise<Set<string>> =>
+    new Set(
+      (
+        await db
+          .select({ scriptCharacterId: sequenceCast.scriptCharacterId })
+          .from(sequenceCast)
+          .where(eq(sequenceCast.sequenceId, sequenceId))
+      ).map((row) => row.scriptCharacterId)
+    );
 
   /** A write's row, re-read so it carries the resolved bible, looks and voice. */
   const reread = async (
-    row: Pick<CharacterRow, 'id'> | undefined
-  ): Promise<CharacterWithSheet> => {
-    if (!row) throw new Error('SequenceCharacter not found');
-    const character = await castOf(row.id);
-    if (!character) throw new Error(`SequenceCharacter ${row.id} not found`);
+    sequenceId: string,
+    id: string
+  ): Promise<CastCharacterWithSheet> => {
+    const character = await castOf(sequenceId, id);
+    if (!character) throw new Error(`SequenceCharacter ${id} not found`);
     return character;
+  };
+
+  /** The character's own voice: its switch and the selected version's values. */
+  const voiceOf = async (id: string): Promise<CharacterVoiceState> => {
+    const [row] = await db
+      .select({
+        id: characters.id,
+        useVoice: characters.useVoice,
+        selectedVoiceVersionId: characters.selectedVoiceVersionId,
+        pendingPromoteVoiceVersionId: characters.pendingPromoteVoiceVersionId,
+        voiceId: characterVoiceVersions.voiceId,
+        voiceDescription: characterVoiceVersions.description,
+        voicePreviews: characterVoiceVersions.previews,
+      })
+      .from(characters)
+      .leftJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+      )
+      .where(and(eq(characters.id, id), inTeam));
+    if (!row) throw new Error(`Character ${id} not found`);
+    return row;
+  };
+
+  /**
+   * The character at its current version; see {@link CurrentCharacter}. Null
+   * for a deleted one: it is not read or edited until it is restored.
+   */
+  const currentOf = async (id: string): Promise<CharacterWithSheet | null> =>
+    (
+      await resolveLooks(
+        await selectOwnRows().where(
+          and(eq(characters.id, id), inTeam, isNull(characters.deletedAt))
+        )
+      )
+    )[0] ?? null;
+
+  /** The talent a character wears, for {@link getWithTalent}. */
+  const talentOf = async (
+    talentId: string | null
+  ): Promise<CastCharacterWithTalent['talent']> => {
+    if (!talentId) return null;
+    const [row] = await db
+      .select({
+        id: talent.id,
+        name: talent.name,
+        imageUrl: talent.imageUrl,
+        isHuman: talent.isHuman,
+      })
+      .from(talent)
+      .where(eq(talent.id, talentId));
+    return row ?? null;
   };
 
   /**
    * The one writer of a bible (#1600): the statements that append a version
-   * row, make it the character's current one and pin the sequence's cast
-   * link to it (#2017), for the caller's own `db.batch`. The version carries
-   * the cast talent, so every caller says who plays the character: a new
-   * `talentId` is a recast, `existing.talentId` keeps the cast.
-   * A change to a field the sheets read, or of the talent, revokes the
-   * in-flight sheet claim of every look of that cast (#1113, #2015) in the
-   * same batch. Empty when nothing moved.
+   * row and make it the character's current one, for the caller's own
+   * `db.batch`. The version carries the cast talent, so every caller says
+   * who plays the character: a new `talentId` is a recast,
+   * `existing.talentId` keeps the cast. A change to a field the sheets read,
+   * or of the talent, revokes the in-flight sheet claim of every look of
+   * the character (#1113, #2015) in the same batch. Empty when nothing
+   * moved.
+   *
+   * The legacy features text (#2065) is carried to the new version as it
+   * is: an edit to the age must not move it, or drop it. Only the default
+   * look's styling edit nulls it (`lookDefinitionWrite`). Carried only
+   * while the character's CURRENT version still holds it: once the text has
+   * moved to the look, a new current version that brought it back would
+   * show a mark its writer had removed. Decided inside the insert, so a move
+   * that lands between the read and this batch still wins.
    */
   const bibleWrite = (
-    existing: Character,
+    existing: CharacterBible & {
+      legacyDistinguishingFeatures: string | null;
+      id: string;
+      talentId: string | null;
+    },
     patch: Partial<CharacterBible>,
     opts: {
       source: BibleVersionSource;
@@ -519,17 +735,23 @@ export function createCharactersMethods(db: Database, teamId: string) {
     const { talentId } = opts;
     const talentMoved = talentId !== existing.talentId;
     if (moved.length === 0 && !talentMoved) {
-      return { moved, talentMoved, statements: [] };
+      return { moved, talentMoved, versionId: null, statements: [] };
     }
     const versionId = generateId();
     return {
       moved,
       talentMoved,
+      /** The version appended; the event names the move from → to. */
+      versionId,
       statements: [
         db.insert(characterBibleVersions).values({
           id: versionId,
           characterId: existing.id,
           ...after,
+          legacyDistinguishingFeatures:
+            existing.legacyDistinguishingFeatures === null
+              ? null
+              : sql`CASE WHEN EXISTS (SELECT 1 FROM ${characters} c JOIN ${characterBibleVersions} cur ON cur.id = c.selected_bible_version_id WHERE c.id = ${existing.id} AND cur.distinguishing_features IS NULL) THEN NULL ELSE ${existing.legacyDistinguishingFeatures} END`,
           talentId,
           source: opts.source,
           createdBy: opts.createdBy,
@@ -538,29 +760,17 @@ export function createCharactersMethods(db: Database, teamId: string) {
           .update(characters)
           .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
           .where(eq(characters.id, existing.id)),
-        db
-          .update(sequenceCast)
-          .set({ bibleVersionId: versionId })
-          .where(eq(sequenceCast.id, existing.castId)),
         ...(touchesSheet(moved) || talentMoved
-          ? [
-              demoteCharacterSheetClaims(
-                db,
-                eq(sequenceCast.id, existing.castId)
-              ),
-            ]
+          ? [demoteCharacterSheetClaims(db, eq(characters.id, existing.id))]
           : []),
       ],
     };
   };
 
-  // Private update helper. Voice
+  // The character's own columns; no cast link is read or written. Voice
   // fields are NOT writable here — a new value goes through `updateVoice`,
   // which appends the history row and moves the pointer (#1657).
-  const update = async (
-    id: string,
-    data: CharacterUpdate
-  ): Promise<Character> => {
+  const update = async (id: string, data: CharacterUpdate): Promise<void> => {
     // Belt for the non-literal call site TypeScript's excess-property check
     // cannot see (a spread, a widened variable): drizzle drops a key that is
     // not a column, so a voice write here would vanish without a trace.
@@ -576,10 +786,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       .returning({ id: characters.id });
 
     if (!character) {
-      throw new Error(`SequenceCharacter ${id} not found`);
+      throw new NotFoundError(`Character ${id} not found`);
     }
-
-    return await reread(character);
   };
 
   /**
@@ -596,11 +804,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
     source: CharacterVoiceVersionSource,
     /** Who did this — required so no writer forgets; null when nobody did. */
     createdBy: string | null
-  ): Promise<Character> => {
-    const existing = await castOf(id);
-    if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
+  ): Promise<CharacterVoiceState> => {
+    const existing = await voiceOf(id);
     const versionId = generateId();
-    const [, updatedRows] = await db.batch([
+    await db.batch([
       db.insert(characterVoiceVersions).values({
         id: versionId,
         characterId: id,
@@ -626,10 +833,31 @@ export function createCharactersMethods(db: Database, teamId: string) {
           pendingPromoteVoiceVersionId: null,
           updatedAt: new Date(),
         })
-        .where(eq(characters.id, id))
-        .returning({ id: characters.id }),
+        .where(eq(characters.id, id)),
     ]);
-    return await reread(updatedRows[0]);
+    return await voiceOf(id);
+  };
+
+  /**
+   * Every row holding a provider voice id: a character whose current voice
+   * version names it, and a talent's own column. The one list behind
+   * `getVoiceReferenceCount` and `getOwnVoiceHolds`, so the release rule and
+   * a caller's "my own references" cannot drift apart.
+   */
+  const voiceReferences = async (voiceId: string) => {
+    const current = await db
+      .select({ characterId: characters.id })
+      .from(characters)
+      .innerJoin(
+        characterVoiceVersions,
+        eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
+      )
+      .where(eq(characterVoiceVersions.voiceId, voiceId));
+    const [tal] = await db
+      .select({ n: count() })
+      .from(talent)
+      .where(eq(talent.voiceId, voiceId));
+    return { current, talents: tal?.n ?? 0 };
   };
 
   /** The live shots whose scene tags this character, optionally in one look. */
@@ -638,8 +866,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
     characterId: string,
     wearing?: string
   ): Promise<Shot[]> => {
-    const character = await castOf(characterId);
-    if (!character || character.sequenceId !== sequenceId) return [];
+    const character = await castOf(sequenceId, characterId);
+    if (!character) return [];
     const [allShots, sceneContext] = await Promise.all([
       db
         .select()
@@ -660,20 +888,421 @@ export function createCharactersMethods(db: Database, teamId: string) {
     });
   };
 
+  /**
+   * The team's characters with the sequences that cast them, in ONE grouped
+   * read over the cast links: nothing about a sequence is stored on the
+   * character. A removed link and an archived sequence do not count.
+   *
+   * Order: the most recently changed sequence casting it, then how many
+   * sequences cast it. A character nothing casts is listed last (#2065).
+   */
+  const selectTeam = async (
+    where: SQL | undefined
+  ): Promise<TeamCharacter[]> => {
+    const lastUsedAt = sql`max(${sequences.updatedAt})`;
+    const castCount = sql`count(${sequences.id})`;
+    const rows = await db
+      .select({
+        id: characters.id,
+        name: characterBibleColumns.name,
+        physicalDescription: characterBibleColumns.physicalDescription,
+        voiceOnly: characterBibleColumns.voiceOnly,
+        sheetImageUrl: characterSheetVariants.url,
+        sheetPortraitUrl: characterSheetVariants.portraitUrl,
+        lastUsedAt: lastUsedAt.mapWith(sequences.updatedAt),
+        castAnywhere: sql<number>`count(${sequenceCast.id}) > 0`.mapWith(
+          Boolean
+        ),
+        cast: sql<string>`json_group_array(json_object('id', ${sequences.id}, 'title', ${sequences.title}, 'updatedAt', ${sequences.updatedAt})) FILTER (WHERE ${sequences.id} IS NOT NULL)`,
+      })
+      .from(characters)
+      .leftJoin(
+        characterBibleVersions,
+        eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+      )
+      .leftJoin(
+        sequenceCast,
+        and(
+          eq(sequenceCast.characterId, characters.id),
+          isNull(sequenceCast.removedAt)
+        )
+      )
+      .leftJoin(
+        sequences,
+        and(
+          eq(sequences.id, sequenceCast.sequenceId),
+          ne(sequences.status, 'archived')
+        )
+      )
+      .leftJoin(
+        characterLooks,
+        and(
+          eq(characterLooks.characterId, characters.id),
+          eq(characterLooks.isDefault, true)
+        )
+      )
+      .leftJoin(
+        characterSheetVariants,
+        eq(characterSheetVariants.id, liveLookSheetVersionId)
+      )
+      .where(and(inTeam, isNull(characters.deletedAt), where))
+      .groupBy(characters.id)
+      .orderBy(
+        sql`${lastUsedAt} DESC NULLS LAST`,
+        sql`${castCount} DESC`,
+        asc(characterBibleColumns.name),
+        asc(characters.id)
+      );
+    return rows.map(({ cast, ...row }) => ({
+      ...row,
+      sequences: teamCastSchema
+        .parse(JSON.parse(cast))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map(({ updatedAt: _updatedAt, ...sequence }) => sequence),
+    }));
+  };
+
+  type BibleWriteOpts = { actorId: string | null } & (
+    | { /** A person's form or API edit. */ source: 'edit' }
+    | {
+        /** A talent cast; `talentId` null uncasts. */
+        source: 'recast';
+        talentId: string | null;
+      }
+  );
+
+  // `updateBible`'s doc is on the method below; these are its two shapes.
+  async function updateBible(
+    sequenceId: string,
+    id: string,
+    data: CharacterBibleUpdate,
+    opts: BibleWriteOpts
+  ): Promise<CastCharacter>;
+  async function updateBible(
+    sequenceId: null,
+    id: string,
+    data: CharacterBibleUpdate,
+    opts: BibleWriteOpts
+  ): Promise<CharacterWithSheet>;
+  async function updateBible(
+    sequenceId: string | null,
+    id: string,
+    data: CharacterBibleUpdate,
+    opts: BibleWriteOpts
+  ): Promise<Character>;
+  async function updateBible(
+    sequenceId: string | null,
+    id: string,
+    data: CharacterBibleUpdate,
+    opts: BibleWriteOpts
+  ): Promise<Character> {
+    if (sequenceId === null) {
+      const current = await currentOf(id);
+      if (!current) throw new NotFoundError(`Character ${id} not found`);
+      const { voiceDescription, standardClothing, ...bibleData } = data;
+      const statements: BatchItem<'sqlite'>[] = bibleWrite(current, bibleData, {
+        source: opts.source,
+        createdBy: opts.actorId,
+        talentId: opts.source === 'recast' ? opts.talentId : current.talentId,
+      }).statements;
+      if (standardClothing !== undefined) {
+        const defaultLook = current.looks.find((look) => look.isDefault);
+        if (!defaultLook)
+          throw new Error(`Character ${id} has no default look`);
+        statements.push(
+          ...(
+            await lookDefinitionWrite(
+              db,
+              defaultLook,
+              { clothing: standardClothing },
+              { source: 'edit', createdBy: opts.actorId, sequenceId: null }
+            )
+          ).statements
+        );
+      }
+      const [first, ...rest] = statements;
+      if (first) await db.batch([first, ...rest]);
+      if (voiceDescription !== undefined) {
+        const voice = await voiceOf(id);
+        if (voiceDescription !== voice.voiceDescription) {
+          await updateVoice(
+            id,
+            { voiceDescription },
+            'user-edit',
+            opts.actorId
+          );
+        }
+      }
+      const updated = await currentOf(id);
+      if (!updated) throw new NotFoundError(`Character ${id} not found`);
+      return updated;
+    }
+    const existing = await castOf(sequenceId, id);
+    if (!existing) {
+      throw new Error(`SequenceCharacter ${id} not found`);
+    }
+    const prev: Record<string, string | boolean | null> = {};
+    for (const [key, value] of typedEntries(data)) {
+      if (value === undefined) continue;
+      prev[key] = existing[key] ?? null;
+    }
+    // A character an older worker wrote keeps its clothing on the legacy
+    // bible column, which the version appended below no longer carries
+    // (#2015): give it its default look first.
+    const defaultLook = await requireLook(db, teamId, existing.lookId);
+    const { voiceDescription, standardClothing, ...bibleData } = data;
+    // Appends a version and moves the pointer (#1600); an edit to a field
+    // the sheet reads also revokes an in-flight sheet run's claim (#1113).
+    const { statements, versionId } = bibleWrite(existing, bibleData, {
+      source: opts.source,
+      createdBy: opts.actorId,
+      talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
+    });
+    // Clothing is the default look's (#2015): the same edit, written as a
+    // look version.
+    const look =
+      standardClothing === undefined
+        ? { statements: [] }
+        : await lookDefinitionWrite(
+            db,
+            defaultLook,
+            { clothing: standardClothing },
+            {
+              source: lookSource(opts.source),
+              createdBy: opts.actorId,
+              sequenceId,
+            }
+          );
+    await db.batch([
+      buildEventInsert(db, {
+        sequenceId: existing.sequenceId,
+        actorId: opts.actorId,
+        kind: 'character.updated',
+        targetType: 'character',
+        targetId: id,
+        summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
+        data: {
+          prevState: prev,
+          // The version move, null when no version was appended.
+          bibleVersion:
+            versionId === null
+              ? null
+              : { from: existing.selectedBibleVersionId, to: versionId },
+        },
+      }),
+      ...statements,
+      ...look.statements,
+      ...(opts.source === 'recast'
+        ? [demoteCharacterSheetClaims(db, eq(characters.id, id))]
+        : []),
+    ]);
+    // `voiceDescription` is the selected voice version's, so an edit to it
+    // is a voice write and belongs in the voice history (#1657). Only when it
+    // actually moved: the form posts every field, and a row per unrelated
+    // bible edit would bury the real takes.
+    if (
+      voiceDescription !== undefined &&
+      voiceDescription !== existing.voiceDescription
+    ) {
+      await updateVoice(id, { voiceDescription }, 'user-edit', opts.actorId);
+    }
+    return await reread(sequenceId, id);
+  }
+
   return {
-    getById: async (id: string): Promise<CharacterWithSheet | null> => {
-      return (await castOf(id)) ?? null;
+    /**
+     * The team's characters (#2017), sorted by use; see {@link selectTeam}.
+     */
+    // ponytail: the whole list in one read; page it when a team passes a few thousand characters.
+    listTeam: async (): Promise<TeamCharacter[]> => await selectTeam(undefined),
+
+    /** One of the team's characters, with the sequences that cast it. */
+    getTeamCharacter: async (id: string): Promise<TeamCharacter | null> =>
+      (await selectTeam(eq(characters.id, id)))[0] ?? null,
+
+    /**
+     * One of the team's characters at its current version, with its looks
+     * ({@link CurrentCharacter}); null when it is gone or another team's.
+     */
+    getCurrent: async (id: string): Promise<CharacterWithSheet | null> =>
+      await currentOf(id),
+
+    /**
+     * One character with its talent, as a sequence casts it or, from no
+     * sequence (null), at its current version (#2017). Null when gone.
+     */
+    getWithTalent: async (
+      sequenceId: string | null,
+      id: string
+    ): Promise<CharacterWithTalent | null> => {
+      const character =
+        sequenceId === null
+          ? await currentOf(id)
+          : await castOf(sequenceId, id);
+      if (!character) return null;
+      return { ...character, talent: await talentOf(character.talentId) };
     },
+
+    /**
+     * Make a character with no sequence (#2065, the Characters page): one
+     * batch inserts the character, its first bible version, its default look
+     * (under the character's own id, as {@link create} does) and that look's
+     * first version. No cast link: a sequence casts it later through
+     * {@link attach}.
+     */
+    createForTeam: async (
+      data: Pick<CharacterBible, 'name'> &
+        Partial<Omit<CharacterBible, 'name'>> &
+        Pick<CharacterWithSheet, 'standardClothing'>,
+      opts: { createdBy: string }
+    ): Promise<CharacterWithSheet> => {
+      const { standardClothing, ...fields } = data;
+      const bible = mergeBible(
+        { ...NEW_CHARACTER_BIBLE, name: data.name },
+        fields
+      );
+      const id = generateId();
+      const versionId = generateId();
+      const lookVersionId = generateId();
+      await db.batch([
+        db.insert(characters).values({
+          id,
+          teamId,
+          selectedBibleVersionId: versionId,
+          legacyName: bible.name,
+        }),
+        db.insert(characterBibleVersions).values({
+          id: versionId,
+          characterId: id,
+          ...bible,
+          talentId: null,
+          source: 'edit',
+          createdBy: opts.createdBy,
+        }),
+        db.insert(characterLooks).values({
+          id,
+          characterId: id,
+          isDefault: true,
+          sortOrder: 0,
+          selectedLookVersionId: lookVersionId,
+          sheetStatus: 'pending',
+        }),
+        db.insert(characterLookVersions).values({
+          id: lookVersionId,
+          lookId: id,
+          name: DEFAULT_LOOK_NAME,
+          clothing: standardClothing,
+          styling: null,
+          source: 'edit',
+          createdBy: opts.createdBy,
+        }),
+      ]);
+      const character = await currentOf(id);
+      if (!character) throw new Error(`Character ${id} not found`);
+      return character;
+    },
+
+    /**
+     * Cast one of the team's characters into `sequenceId` (#2050, #2065):
+     * one link. Nothing is copied: the sequence reads her bible, voice,
+     * looks and sheets as they are.
+     *
+     * Refused while a live cast member of the sequence already has her name:
+     * the script names a character in capitals, and two of one name could
+     * not be told apart.
+     * Attaching a character the sequence already casts is idempotent: a
+     * removed link comes back as an attach, a live one is returned as it is.
+     */
+    attach: async (
+      sequenceId: string,
+      id: string,
+      opts: { actorId: string | null }
+    ): Promise<CastCharacter> => {
+      const [character] = await db
+        .select({
+          bibleVersionId: characterBibleVersions.id,
+          name: characterBibleColumns.name,
+        })
+        .from(characters)
+        .leftJoin(
+          characterBibleVersions,
+          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+        )
+        .where(
+          and(eq(characters.id, id), inTeam, isNull(characters.deletedAt))
+        );
+      if (!character) throw new NotFoundError('Character not found');
+      if (character.bibleVersionId === null || character.name === null) {
+        throw new Error(
+          `Character ${id} points at a bible version that does not exist`
+        );
+      }
+      const { name } = character;
+      // The sequence must be this team's too: the db method refuses, not
+      // only its callers.
+      const [sequence] = await db
+        .select({ id: sequences.id })
+        .from(sequences)
+        .where(and(eq(sequences.id, sequenceId), eq(sequences.teamId, teamId)));
+      if (!sequence) throw new NotFoundError('Sequence not found');
+      const existing = await castOf(sequenceId, id);
+      if (existing) {
+        if (!existing.deletedAt) return existing;
+        await assertNameFree(db, sequenceId, name, id);
+        await db
+          .update(sequenceCast)
+          // The writer picked her again: an attach, whatever it was (#2065).
+          .set({ removedAt: null, attached: true })
+          .where(eq(sequenceCast.id, existing.castId));
+        return await reread(sequenceId, id);
+      }
+      await assertNameFree(db, sequenceId, name, null);
+      // The script id follows a hand-added character's (`char_ada`), uniqued
+      // against every link of the sequence, removed ones included.
+      const scriptCharacterId = nextIdentityToken(
+        identityToken('char', name),
+        await scriptIdsOf(sequenceId)
+      );
+      await db.batch([
+        db.insert(sequenceCast).values({
+          sequenceId,
+          characterId: id,
+          scriptCharacterId,
+          // The writer picked her: never analysis's to rewrite (#2065).
+          attached: true,
+        }),
+        buildEventInsert(db, {
+          sequenceId,
+          actorId: opts.actorId,
+          kind: 'character.attached',
+          targetType: 'character',
+          targetId: id,
+          summary: `Added ${name}`,
+          data: { name, characterId: scriptCharacterId },
+        }),
+      ]);
+      return await reread(sequenceId, id);
+    },
+
+    /** The character as `sequenceId` casts it, live or removed. */
+    getById: async (
+      sequenceId: string,
+      id: string
+    ): Promise<CastCharacterWithSheet | null> => {
+      return (await castOf(sequenceId, id)) ?? null;
+    },
+
+    /** The character's own voice; see {@link CharacterVoiceState}. */
+    getVoice: async (id: string): Promise<CharacterVoiceState> =>
+      await voiceOf(id),
 
     getByCharacterId: async (
       sequenceId: string,
       characterId: string
-    ): Promise<CharacterWithSheet | null> => {
+    ): Promise<CastCharacterWithSheet | null> => {
       const result = await selectCharacters(
-        and(
-          eq(sequenceCast.sequenceId, sequenceId),
-          eq(sequenceCast.scriptCharacterId, characterId)
-        )
+        sequenceId,
+        eq(sequenceCast.scriptCharacterId, characterId)
       );
       return result[0] ?? null;
     },
@@ -685,8 +1314,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
     list: async (
       sequenceId: string,
       page?: PageOptions
-    ): Promise<CharacterWithSheet[]> => {
-      return await resolveLooks(
+    ): Promise<CastCharacterWithSheet[]> => {
+      return await resolveCastLooks(
         await pageOf(
           selectRows().$dynamic(),
           and(
@@ -701,8 +1330,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
     },
 
     /** Soft-deleted characters of the sequence, most recently deleted first. */
-    listDeleted: async (sequenceId: string): Promise<CharacterWithSheet[]> =>
-      await resolveLooks(
+    listDeleted: async (
+      sequenceId: string
+    ): Promise<CastCharacterWithSheet[]> =>
+      await resolveCastLooks(
         await selectRows()
           .where(
             and(
@@ -735,7 +1366,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     listWithTalent: async (
       sequenceId: string
-    ): Promise<CharacterWithTalent[]> => {
+    ): Promise<CastCharacterWithTalent[]> => {
       const results = await db
         .select({
           character: characterColumns,
@@ -743,13 +1374,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
             id: talent.id,
             name: talent.name,
             imageUrl: talent.imageUrl,
+            isHuman: talent.isHuman,
           },
         })
         .from(sequenceCast)
         .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
         .leftJoin(
           characterBibleVersions,
-          eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
         )
         .leftJoin(talent, eq(characterBibleVersions.talentId, talent.id))
         .leftJoin(
@@ -768,31 +1400,32 @@ export function createCharactersMethods(db: Database, teamId: string) {
           )
         );
 
-      const resolved = await resolveLooks(results.map((row) => row.character));
+      const resolved = await resolveCastLooks(
+        results.map((row) => row.character)
+      );
       return resolved.map((character, index) => {
         const cast = results[index]?.talent;
         return { ...character, talent: cast?.id ? cast : null };
       });
     },
 
-    getByIds: async (ids: string[]): Promise<CharacterWithSheet[]> => {
+    /** These characters as `sequenceId` casts them. */
+    getByIds: async (
+      sequenceId: string,
+      ids: string[]
+    ): Promise<CastCharacterWithSheet[]> => {
       if (ids.length === 0) return [];
-      return oneLinkEach(
-        await selectCharacters(inArray(characters.id, ids)),
-        'Character'
-      );
+      return await selectCharacters(sequenceId, inArray(characters.id, ids));
     },
 
     listWithSheets: async (
       sequenceId: string
-    ): Promise<CharacterWithSheet[]> => {
+    ): Promise<CastCharacterWithSheet[]> => {
       // A character counts once any of its looks has a finished sheet: a
       // scene may pick a look other than the default (#2015).
       const live = await selectCharacters(
-        and(
-          eq(sequenceCast.sequenceId, sequenceId),
-          isNull(sequenceCast.removedAt)
-        )
+        sequenceId,
+        isNull(sequenceCast.removedAt)
       );
       // A look whose sheet is not finished offers none: a scene that wears
       // it attaches no sheet, exactly as a single-look character whose sheet
@@ -829,12 +1462,41 @@ export function createCharactersMethods(db: Database, teamId: string) {
     create: async (
       data: NewCharacter,
       opts: { source: BibleVersionSource; createdBy: string | null }
-    ): Promise<Character> => {
-      const inSequence = and(
-        eq(sequenceCast.sequenceId, data.sequenceId),
+    ): Promise<CastCharacter> => {
+      const [found] = await selectCharacters(
+        data.sequenceId,
         eq(sequenceCast.scriptCharacterId, data.characterId)
       );
-      const [existing] = await selectCharacters(inSequence);
+      // A character the writer attached here, or another sequence has ever
+      // cast, is never written through analysis (#2050, #2065), whatever the
+      // payload said: a live
+      // link is returned as it is (the looks module links, see
+      // `syncFromAnalysis`), and a removed link stays removed — the entry
+      // becomes a new character under the next free script id. Decided here,
+      // on every call, so a snapshot that went stale mid-run cannot reach her.
+      const held = found
+        ? await analysisMayNotRewrite(db, teamId, found.id, data.sequenceId)
+        : false;
+      if (found && held && !found.deletedAt) {
+        // The references stage still marks her default look generating.
+        if (data.sheetStatus !== undefined) {
+          const defaultLook = await requireLook(db, teamId, found.lookId);
+          await db
+            .update(characterLooks)
+            .set({ sheetStatus: data.sheetStatus, updatedAt: new Date() })
+            .where(eq(characterLooks.id, defaultLook.id));
+          return await reread(data.sequenceId, found.id);
+        }
+        return found;
+      }
+      const existing = found && !held ? found : undefined;
+      const scriptCharacterId =
+        found && held
+          ? nextIdentityToken(
+              data.characterId,
+              await scriptIdsOf(data.sequenceId)
+            )
+          : data.characterId;
       const {
         name: _n,
         age: _a,
@@ -843,7 +1505,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         physicalDescription: _pd,
         standardClothing: clothing,
         sheetStatus,
-        distinguishingFeatures: _df,
         personality: _p,
         movement: _m,
         voiceOnly: _vo,
@@ -852,7 +1513,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         voiceId: incomingVoiceId,
         voiceDescription: incomingVoiceDescription,
         sequenceId,
-        characterId: scriptCharacterId,
+        characterId: _scriptCharacterId,
         talentId,
         ...row
       } = data;
@@ -866,6 +1527,30 @@ export function createCharactersMethods(db: Database, teamId: string) {
         // default filled in first.
         const defaultLook = await requireLook(db, teamId, existing.lookId);
         const now = new Date();
+        const clothingWrite = await lookDefinitionWrite(
+          db,
+          defaultLook,
+          { clothing },
+          { ...look, sequenceId }
+        );
+        // A field left out keeps its value, as the column upsert did.
+        // A talent left out keeps the cast; null uncasts.
+        // A re-analysis may turn not-a-person into a person, never the
+        // reverse (#2065): the script's guess does not undo what the row
+        // says, and over-registering is the safe direction. Decided here,
+        // against the row this write already read. The form is how a
+        // person turns it off again.
+        const bible = bibleWrite(
+          existing,
+          {
+            ...bibleOf(data),
+            ...(existing.isPerson ? { isPerson: true } : {}),
+          },
+          {
+            ...opts,
+            talentId: talentId === undefined ? existing.talentId : talentId,
+          }
+        );
         await db.batch([
           // A re-analysis re-extracting a removed character revives it — the
           // script says the character exists again (#1108). Sheet OUTPUT is
@@ -874,16 +1559,30 @@ export function createCharactersMethods(db: Database, teamId: string) {
             .update(sequenceCast)
             .set({ removedAt: null })
             .where(eq(sequenceCast.id, existing.castId)),
+          // Cast again, so back in the team too, as `restore` does (#2065).
           db
             .update(characters)
-            .set({ updatedAt: now })
+            .set({ updatedAt: now, deletedAt: null })
             .where(eq(characters.id, id)),
-          // A field left out keeps its value, as the column upsert did.
-          // A talent left out keeps the cast; null uncasts.
-          ...bibleWrite(existing, bibleOf(data), {
-            ...opts,
-            talentId: talentId === undefined ? existing.talentId : talentId,
-          }).statements,
+          ...bible.statements,
+          ...(bible.versionId === null
+            ? []
+            : [
+                buildEventInsert(db, {
+                  sequenceId,
+                  actorId: opts.createdBy,
+                  kind: 'character.updated',
+                  targetType: 'character',
+                  targetId: id,
+                  summary: `Re-analysed character ${existing.name}`,
+                  data: {
+                    bibleVersion: {
+                      from: existing.selectedBibleVersionId,
+                      to: bible.versionId,
+                    },
+                  },
+                }),
+              ]),
           // `sheetStatus` is the default look's: both callers pass an
           // explicit lifecycle value ('generating' for re-analysis,
           // 'pending' for a manual add).
@@ -891,12 +1590,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
             ? []
             : [
                 db
-                  .update(sequenceCastLooks)
+                  .update(characterLooks)
                   .set({ sheetStatus, updatedAt: now })
-                  .where(eq(sequenceCastLooks.id, defaultLook.castLookId)),
+                  .where(eq(characterLooks.id, defaultLook.id)),
               ]),
-          ...lookDefinitionWrite(db, defaultLook, { clothing }, look)
-            .statements,
+          ...clothingWrite.statements,
         ]);
       } else {
         const bible = mergeBible(
@@ -905,7 +1603,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         );
         const versionId = generateId();
         const lookVersionId = generateId();
-        const castId = generateId();
         await db.batch([
           db.insert(characters).values({
             ...row,
@@ -923,11 +1620,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
             createdBy: opts.createdBy,
           }),
           db.insert(sequenceCast).values({
-            id: castId,
             sequenceId,
             characterId: id,
             scriptCharacterId,
-            bibleVersionId: versionId,
           }),
           // The default look reuses the character's id, as the backfill's
           // do, so a character has one whoever wrote it.
@@ -937,8 +1632,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
             isDefault: true,
             sortOrder: 0,
             selectedLookVersionId: lookVersionId,
-            // NOT NULL until the column is dropped (#2017).
-            legacySheetStatus: sheetStatus ?? 'pending',
+            sheetStatus: sheetStatus ?? 'pending',
           }),
           db.insert(characterLookVersions).values({
             id: lookVersionId,
@@ -948,15 +1642,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
             styling: null,
             ...look,
           }),
-          db.insert(sequenceCastLooks).values({
-            castId,
-            lookId: id,
-            lookVersionId,
-            sheetStatus: sheetStatus ?? 'pending',
-          }),
         ]);
       }
-      const character = await reread({ id });
+      const character = await reread(sequenceId, id);
       // The voice the cast arrived with fills only what the character does
       // not already have (#1553): re-writing a voice would orphan an
       // ElevenLabs slot. What lands is a history row (#1657) — the ORIGINAL
@@ -971,7 +1659,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           : {}),
       };
       if (Object.keys(voicePatch).length > 0) {
-        return await updateVoice(
+        await updateVoice(
           character.id,
           voicePatch,
           // A voice id only ever arrives as the cast talent's copy.
@@ -979,6 +1667,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           // Seeded by the cast-records step, not by a person.
           null
         );
+        return await reread(sequenceId, id);
       }
       return character;
     },
@@ -994,9 +1683,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       id: string,
       generatedVoiceId: string,
       reason: VoicePreviewUnusable
-    ): Promise<Character> => {
-      const existing = await castOf(id);
-      if (!existing) throw new Error(`SequenceCharacter ${id} not found`);
+    ): Promise<CharacterVoiceState> => {
+      const existing = await voiceOf(id);
       const next = markPreviewUnusable(
         existing.voicePreviews ?? [],
         generatedVoiceId,
@@ -1005,7 +1693,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       // No previews without a selected version: `next` is null then.
       const versionId = existing.selectedVoiceVersionId;
       if (!next || !versionId) return existing;
-      const [, updatedRows] = await db.batch([
+      await db.batch([
         db
           .update(characterVoiceVersions)
           .set({ previews: next })
@@ -1013,10 +1701,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
         db
           .update(characters)
           .set({ updatedAt: new Date() })
-          .where(eq(characters.id, id))
-          .returning({ id: characters.id }),
+          .where(eq(characters.id, id)),
       ]);
-      return await reread(updatedRows[0]);
+      return await voiceOf(id);
     },
 
     /**
@@ -1050,8 +1737,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /**
      * Every voice a sequence's cast has had, and which one each live
-     * character speaks in now — who a recorded turn was, and since when their
-     * voice is the current one (#1802).
+     * character speaks in now — who a recorded turn was, and since when
+     * their voice is the current one (#1802).
      */
     listVoiceHistoryBySequence: async (sequenceId: string) => {
       const rows = await db
@@ -1080,10 +1767,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
       return row ?? null;
     },
 
+    /** Re-select an earlier voice version: the character's pointer moves to it. */
     selectVoiceVersion: async (
       characterId: string,
       versionId: string
-    ): Promise<Character> => {
+    ): Promise<CharacterVoiceState> => {
       const [version] = await db
         .select()
         .from(characterVoiceVersions)
@@ -1108,6 +1796,18 @@ export function createCharactersMethods(db: Database, teamId: string) {
       }
       // The released check rides in the write too: a release landing between
       // the read above and here must not leave a dead id selected.
+      const selectable = exists(
+        db
+          .select({ id: characterVoiceVersions.id })
+          .from(characterVoiceVersions)
+          .where(
+            and(
+              eq(characterVoiceVersions.id, version.id),
+              isNull(characterVoiceVersions.releasedAt),
+              eq(characterVoiceVersions.status, 'completed')
+            )
+          )
+      );
       const [updated] = await db
         .update(characters)
         .set({
@@ -1116,51 +1816,40 @@ export function createCharactersMethods(db: Database, teamId: string) {
           pendingPromoteVoiceVersionId: null,
           updatedAt: new Date(),
         })
-        .where(
-          and(
-            eq(characters.id, characterId),
-            exists(
-              db
-                .select({ id: characterVoiceVersions.id })
-                .from(characterVoiceVersions)
-                .where(
-                  and(
-                    eq(characterVoiceVersions.id, version.id),
-                    isNull(characterVoiceVersions.releasedAt),
-                    eq(characterVoiceVersions.status, 'completed')
-                  )
-                )
-            )
-          )
-        )
+        .where(and(eq(characters.id, characterId), inTeam, selectable))
         .returning({ id: characters.id });
       if (!updated) throw new Error(RELEASED_VOICE_MESSAGE);
-      return await reread(updated);
+      return await voiceOf(characterId);
     },
 
     /**
      * Rows (any team — the id is the ElevenLabs account's) still pointing at
-     * a voice — a character through its selected version (#1788), a talent
-     * through its own column — soft-deleted characters included:
-     * soft-delete stamps `deletedAt` and THEN releases (provider first, row
-     * second), so a deleted row still holding an id is a release that
-     * failed, and the voice it names is still on the account. `get` prefix
-     * on purpose: it is a read, so the workflow surface strips it.
+     * a voice ({@link voiceReferences}): a character's current version
+     * (#1788), a talent's own column. A character's current pointer counts
+     * whether or not a sequence casts it: a soft-remove stamps the link and
+     * THEN releases (provider first, row second), so a current pointer still
+     * holding an id is a release that failed, and the voice it names is
+     * still on the account. `get` prefix on purpose: it is a read, so the
+     * workflow surface strips it.
      */
     getVoiceReferenceCount: async (voiceId: string): Promise<number> => {
-      const [chars] = await db
-        .select({ n: count() })
-        .from(characters)
-        .innerJoin(
-          characterVoiceVersions,
-          eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
-        )
-        .where(eq(characterVoiceVersions.voiceId, voiceId));
-      const [tal] = await db
-        .select({ n: count() })
-        .from(talent)
-        .where(eq(talent.voiceId, voiceId));
-      return (chars?.n ?? 0) + (tal?.n ?? 0);
+      const refs = await voiceReferences(voiceId);
+      return refs.current.length + refs.talents;
+    },
+
+    /**
+     * How many of {@link getVoiceReferenceCount}'s references are this
+     * character's own (its current pointer), so a release made before the
+     * row write (`releaseCharacterVoice`) can say exactly which references
+     * it is about to drop. `get` prefix on purpose: a read.
+     */
+    getOwnVoiceHolds: async (
+      voiceId: string,
+      characterId: string
+    ): Promise<number> => {
+      const refs = await voiceReferences(voiceId);
+      return refs.current.filter((row) => row.characterId === characterId)
+        .length;
     },
 
     /**
@@ -1174,7 +1863,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
     /**
      * Hard-delete one of the team's characters with everything keyed to it.
      * Every statement names the team's character, so another team's id
-     * deletes nothing. Refused while a saved voice would be stranded:
+     * deletes nothing. Nothing is deleted, and `false` comes back, while a
+     * sequence (archived ones included) has a cast link to it that is not
+     * removed: the condition is in every statement of the batch, so a link
+     * made after the caller's own check still stops it (#2065). Refused
+     * while a saved voice would be stranded:
      * `releasedVoiceIds` are the ids from {@link getVoiceIdsToRelease} the
      * caller has run through `releaseVoiceIfUnreferenced`
      * ({@link assertVoicesReleased}).
@@ -1183,10 +1876,14 @@ export function createCharactersMethods(db: Database, teamId: string) {
       id: string,
       opts: { releasedVoiceIds: readonly string[] }
     ): Promise<boolean> => {
-      const mine = sql`${eq(characters.id, id)} and ${inTeam}`;
-      await assertVoicesReleased(db, mine, opts.releasedVoiceIds);
-      // Two cast statements, then six for the character; the last is its own.
-      const [, , , , , , , result] = await db.batch([
+      await assertVoicesReleased(
+        db,
+        sql`${eq(characters.id, id)} and ${inTeam}`,
+        opts.releasedVoiceIds
+      );
+      const mine = sql`${eq(characters.id, id)} and ${inTeam} and NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.removed_at IS NULL)`;
+      // The cast links, then the character's rows; the last is its own.
+      const results = await db.batch([
         ...deleteCastStatements(
           db,
           inArray(
@@ -1196,8 +1893,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
         ),
         ...deleteCharactersStatements(db, mine),
       ]);
+      const result = results[results.length - 1];
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return (result.rowsAffected ?? 0) > 0;
+      return (result?.rowsAffected ?? 0) > 0;
     },
 
     /**
@@ -1210,9 +1908,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
       createdBy: string | null,
       opts?: { workflowRunId?: string | null }
     ) => {
-      const existing = await castOf(characterId);
-      if (!existing)
-        throw new Error(`SequenceCharacter ${characterId} not found`);
+      const existing = await voiceOf(characterId);
       const versionId = generateId();
       try {
         const [versionRows, characterRows] = await db.batch([
@@ -1340,7 +2036,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /**
      * Select the husk as the live voice only if auto-promote still names it.
-     * Returns null when the user picked something else mid-run (#1070 analog).
+     * Returns null when the user picked something else mid-run (#1070
+     * analog).
      */
     promoteVoiceClaimIfPending: async (
       characterId: string,
@@ -1373,7 +2070,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           )
         )
         .returning({ id: characters.id });
-      return updated ? await reread(updated) : null;
+      return updated ? await voiceOf(characterId) : null;
     },
 
     stampVoiceClaimWorkflowRunId: async (
@@ -1390,12 +2087,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     getNeedingSheets: async (
       sequenceId: string
-    ): Promise<CharacterWithSheet[]> => {
+    ): Promise<CastCharacterWithSheet[]> => {
       const live = await selectCharacters(
-        and(
-          eq(sequenceCast.sequenceId, sequenceId),
-          isNull(sequenceCast.removedAt)
-        )
+        sequenceId,
+        isNull(sequenceCast.removedAt)
       );
       return live.filter(
         (character) =>
@@ -1415,89 +2110,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * and the appearance copied from it. The cast talent feeds every look's
      * sheet, so a recast revokes the sheet claims even when the talent did
      * not move (#1113, #2015).
+     *
+     * `sequenceId` null is an edit made from no sequence (#2065, the
+     * Characters page): the same write with no event, returning the
+     * character with no sequence in view.
      */
-    updateBible: async (
-      id: string,
-      data: CharacterBibleUpdate,
-      opts: { actorId: string | null } & (
-        | { /** A person's form or API edit. */ source: 'edit' }
-        | {
-            /** A talent cast; `talentId` null uncasts. */
-            source: 'recast';
-            talentId: string | null;
-          }
-      )
-    ): Promise<Character> => {
-      const existing = await castOf(id);
-      if (!existing) {
-        throw new Error(`SequenceCharacter ${id} not found`);
-      }
-      const prev: Record<string, string | boolean | null> = {};
-      for (const [key, value] of typedEntries(data)) {
-        if (value === undefined) continue;
-        prev[key] = existing[key] ?? null;
-      }
-      // A character an older worker wrote keeps its clothing on the legacy
-      // bible column, which the version appended below no longer carries
-      // (#2015): give it its default look first.
-      const defaultLook = await requireLook(db, teamId, existing.lookId);
-      const { voiceDescription, standardClothing, ...bibleData } = data;
-      // Appends a version and moves the pointer (#1600); an edit to a field
-      // the sheet reads also revokes an in-flight sheet run's claim (#1113).
-      const { statements } = bibleWrite(existing, bibleData, {
-        source: opts.source,
-        createdBy: opts.actorId,
-        talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
-      });
-      // Clothing is the default look's (#2015): the same edit, written as a
-      // look version.
-      const look =
-        standardClothing === undefined
-          ? { statements: [] }
-          : lookDefinitionWrite(
-              db,
-              defaultLook,
-              { clothing: standardClothing },
-              { source: lookSource(opts.source), createdBy: opts.actorId }
-            );
-      await db.batch([
-        buildEventInsert(db, {
-          sequenceId: existing.sequenceId,
-          actorId: opts.actorId,
-          kind: 'character.updated',
-          targetType: 'character',
-          targetId: id,
-          summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
-          data: { prevState: prev },
-        }),
-        ...statements,
-        ...look.statements,
-        ...(opts.source === 'recast'
-          ? [
-              demoteCharacterSheetClaims(
-                db,
-                eq(sequenceCast.id, existing.castId)
-              ),
-            ]
-          : []),
-      ]);
-      // `voiceDescription` is the selected voice version's, so an edit to it
-      // is a voice write and belongs in the voice history (#1657). Only when it
-      // actually moved: the form posts every field, and a row per unrelated
-      // bible edit would bury the real takes.
-      if (
-        voiceDescription !== undefined &&
-        voiceDescription !== existing.voiceDescription
-      ) {
-        return await updateVoice(
-          id,
-          { voiceDescription },
-          'user-edit',
-          opts.actorId
-        );
-      }
-      return await reread(existing);
-    },
+    updateBible,
 
     /**
      * Soft-remove from the sequence (undoable): stamp the cast link + a
@@ -1508,10 +2126,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * timestamp) when already deleted.
      */
     softDelete: async (
+      sequenceId: string,
       id: string,
       opts: { actorId: string | null }
     ): Promise<Date> => {
-      const existing = await castOf(id);
+      const existing = await castOf(sequenceId, id);
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
@@ -1541,20 +2160,23 @@ export function createCharactersMethods(db: Database, teamId: string) {
 
     /** Undo a soft delete (clears the link's `removedAt`), with a matching event. */
     restore: async (
+      sequenceId: string,
       id: string,
       opts: { actorId: string | null }
-    ): Promise<Character> => {
-      const existing = await castOf(id);
+    ): Promise<CastCharacter> => {
+      const existing = await castOf(sequenceId, id);
       if (!existing) {
         throw new Error(`SequenceCharacter ${id} not found`);
       }
+      // A character added since the remove may have taken the name (#2050).
+      await assertNameFree(db, sequenceId, existing.name, id);
       const now = new Date();
-      const [restoredRows] = await db.batch([
+      await db.batch([
+        // Bringing it back into a sequence brings it back to the team too.
         db
           .update(characters)
-          .set({ updatedAt: now })
-          .where(eq(characters.id, id))
-          .returning({ id: characters.id }),
+          .set({ updatedAt: now, deletedAt: null })
+          .where(eq(characters.id, id)),
         db
           .update(sequenceCast)
           .set({ removedAt: null })
@@ -1569,7 +2191,97 @@ export function createCharactersMethods(db: Database, teamId: string) {
           data: { name: existing.name },
         }),
       ]);
-      return await reread(restoredRows[0]);
+      return await reread(sequenceId, id);
+    },
+
+    /**
+     * Whether analysis in `sequenceId` must link the character and never
+     * rewrite it ({@link analysisMayNotRewrite}): the writer attached it
+     * here, or another sequence has ever cast it.
+     */
+    getAnalysisMayNotRewrite: async (
+      sequenceId: string,
+      id: string
+    ): Promise<boolean> =>
+      await analysisMayNotRewrite(db, teamId, id, sequenceId),
+
+    /**
+     * Whether any live sequence casts the character ({@link castElsewhere}).
+     * A character is deleted only when none does (#2065).
+     */
+    getCastInAnySequence: async (id: string): Promise<boolean> => {
+      const [row] = await db
+        .select({ cast: sql<number>`${castElsewhere(id, null)}` })
+        .from(characters)
+        .where(and(eq(characters.id, id), inTeam));
+      if (!row) throw new NotFoundError(`Character ${id} not found`);
+      return Boolean(row.cast);
+    },
+
+    /**
+     * Delete one of the team's characters (#2065): soft, so it leaves the
+     * Characters page and the `@` picker and every row of it stays. One
+     * guarded UPDATE: nothing is written, and `false` comes back, while a
+     * sequence (archived ones included) has a cast link to it that is not
+     * removed, so a link made after the caller's own check still stops it.
+     */
+    softDeleteForTeam: async (id: string): Promise<boolean> => {
+      const rows = await db
+        .update(characters)
+        .set({ deletedAt: new Date() })
+        .where(
+          and(
+            eq(characters.id, id),
+            inTeam,
+            isNull(characters.deletedAt),
+            sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.removed_at IS NULL)`
+          )
+        )
+        .returning({ id: characters.id });
+      return rows.length > 0;
+    },
+
+    /** Undo {@link softDeleteForTeam}. False when it was not deleted. */
+    restoreForTeam: async (id: string): Promise<boolean> => {
+      const rows = await db
+        .update(characters)
+        .set({ deletedAt: null })
+        .where(
+          and(eq(characters.id, id), inTeam, isNotNull(characters.deletedAt))
+        )
+        .returning({ id: characters.id });
+      return rows.length > 0;
+    },
+
+    /**
+     * Whether any sequence, archived ones included, has a cast link to the
+     * character that is not removed. A delete would leave that sequence
+     * casting a character the team no longer lists, so it is refused while
+     * one exists (#2065).
+     */
+    getCastInAnySequenceOrArchive: async (id: string): Promise<boolean> => {
+      const [row] = await db
+        .select({
+          cast: sql<number>`EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${id} AND o.removed_at IS NULL)`,
+        })
+        .from(characters)
+        .where(and(eq(characters.id, id), inTeam));
+      if (!row) throw new NotFoundError(`Character ${id} not found`);
+      return Boolean(row.cast);
+    },
+
+    /** One bible version of one of the team's characters, by id. */
+    getBibleVersion: async (versionId: string) => {
+      const [row] = await db
+        .select(getTableColumns(characterBibleVersions))
+        .from(characterBibleVersions)
+        .innerJoin(
+          characters,
+          eq(characters.id, characterBibleVersions.characterId)
+        )
+        .where(and(eq(characterBibleVersions.id, versionId), inTeam));
+      if (!row) throw new NotFoundError(`Bible version ${versionId} not found`);
+      return row;
     },
 
     getShotsForCharacter: async (

@@ -67,7 +67,7 @@ describe('reportParkedSheet', () => {
     const { reportParkedSheet } = await import('./sheet-divergence');
 
     await reportParkedSheet({
-      sequenceId: 'seq-1',
+      channelId: 'seq-1',
       entityType: 'character',
       entityId: 'char-1',
       versionId: 'ver-1',
@@ -88,7 +88,7 @@ describe('reportParkedSheet', () => {
     const { reportParkedSheet } = await import('./sheet-divergence');
 
     await reportParkedSheet({
-      sequenceId: 'seq-9',
+      channelId: 'seq-9',
       entityType: 'location',
       entityId: 'loc-1',
       versionId: 'ver-2',

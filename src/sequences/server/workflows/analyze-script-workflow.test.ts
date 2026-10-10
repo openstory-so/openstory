@@ -81,12 +81,12 @@ const RAW_ADA: CharacterBibleEntry = {
   physicalDescription: 'as written in the script',
   standardClothing: 'lab coat',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: '',
 };
 const TALENT_MATCH = {
@@ -234,6 +234,7 @@ function makeEvent(
     imageModel: DEFAULT_IMAGE_MODEL,
     videoModel: DEFAULT_VIDEO_MODEL,
     elementIds: [],
+    cast: [],
     musicPromptSource: 'ai-generated',
     referenceOnly: false,
     // An automatic style whose recipe this run is meant to derive (#1213).

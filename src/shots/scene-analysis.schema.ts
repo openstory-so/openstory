@@ -37,7 +37,8 @@ const characterLookEntrySchema = z.object({
   lookId: z.string(),
   name: z.string(),
   clothing: z.string(),
-  // Hair, makeup, injuries that change with the outfit; '' when none do.
+  // Hair, makeup, injuries, accessories; '' when none. On the default look
+  // this holds what the bible called distinguishing features (#2065).
   styling: z.string(),
 });
 export type CharacterLookEntry = z.infer<typeof characterLookEntrySchema>;
@@ -61,7 +62,9 @@ export const characterBibleEntrySchema = z.object({
     (value) => value ?? [],
     z.array(characterLookEntrySchema)
   ),
-  distinguishingFeatures: z.string(),
+  // No `distinguishingFeatures` (#2065): a permanent mark is part of
+  // `physicalDescription`, the rest is the default look's `styling`. An
+  // entry written before that is folded at the seam (`foldLegacyFeatures`).
   // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
   personality: z.string(),
   movement: z.string(),
@@ -75,6 +78,9 @@ export const characterBibleEntrySchema = z.object({
   // Narrator, radio voice, a caller on the phone: a voice with no face, so no
   // sheet, no talent match, no place in an image prompt (#1585).
   voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
+  // What the character is rendered as (#2017), filled from the sequence's
+  // style by `bibleFromWire`, never asked of the model. '' when voice-only.
+  rendering: z.string(),
   // Person vs robot/animal/object. Legal `real` is never a bible fact —
   // it is stamped on the character row from a signed talent or upload (#1682).
   isPerson: z
@@ -566,6 +572,18 @@ export type Scene = Omit<z.infer<typeof sceneSchema>, 'originalScript'> & {
   shots?: import('./shot-list.schema').ShotSpec[];
 };
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
+
+/**
+ * What a talent sheet's `metadata` holds: a bible entry describing the
+ * TALENT, with the talent's own distinguishing features. Not a character's
+ * (#2065 moved those to the default look); this one stays.
+ */
+export const talentSheetMetadataSchema = characterBibleEntrySchema
+  .omit({ rendering: true })
+  .extend({
+    distinguishingFeatures: z.string(),
+  });
+export type TalentSheetMetadata = z.infer<typeof talentSheetMetadataSchema>;
 // Bible entry types as consumed downstream: firstMention carries the
 // server-derived sceneId (see FirstMentionWithScene). The raw z.infer of the
 // entry schemas is the LLM wire shape only.

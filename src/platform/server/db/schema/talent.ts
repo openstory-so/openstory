@@ -3,7 +3,7 @@
  * Team-level talent (actors/actresses) library with multiple sheets and reference media
  */
 
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
@@ -99,7 +99,7 @@ export const talentSheets = snakeCase.table(
     name: text({ length: 255 }).notNull(), // e.g., "casual outfit", "formal wear"
     imageUrl: text(),
     imagePath: text(), // R2 storage path
-    metadata: text({ mode: 'json' }).$type<CharacterBibleEntry>(), // Full character details
+    metadata: text({ mode: 'json' }).$type<TalentSheetMetadata>(), // Full character details
     isDefault: integer({ mode: 'boolean' }).default(false),
     source: text()
       .$type<TalentSheetSource>()

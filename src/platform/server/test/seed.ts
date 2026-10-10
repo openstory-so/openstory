@@ -27,7 +27,6 @@ import {
   renderSegments,
   scenes,
   sequenceCast,
-  sequenceCastLooks,
   sequenceLocations,
   sequenceStyleVersions,
   sequences,
@@ -179,12 +178,19 @@ export async function createOtpVerification(
 async function deleteSequenceVersionRows(where: SQL | undefined) {
   const db = getDb();
   const ids = db.select({ id: sequences.id }).from(sequences).where(where);
-  // The sequences' characters (#2017), read before their cast links go. One
-  // bound parameter however many there are.
+  // The sequences' characters (#2017), read before their cast links go — only
+  // the ones no other sequence still casts (a team character attached to
+  // a second sequence stays, as `charactersOnlyIn` keeps it: its remaining
+  // link would refuse the delete). One bound parameter however many there are.
   const cast = await db
     .select({ id: sequenceCast.characterId })
     .from(sequenceCast)
-    .where(inArray(sequenceCast.sequenceId, ids));
+    .where(
+      and(
+        inArray(sequenceCast.sequenceId, ids),
+        sql`NOT EXISTS (SELECT 1 FROM sequence_cast o WHERE o.character_id = ${sequenceCast.characterId} AND o.sequence_id NOT IN ${ids})`
+      )
+    );
   const theirs = sql`(SELECT value FROM json_each(${JSON.stringify(
     cast.map((row) => row.id)
   )}))`;
@@ -192,17 +198,6 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
     db
       .delete(sequenceStyleVersions)
       .where(inArray(sequenceStyleVersions.sequenceId, ids)),
-    db
-      .delete(sequenceCastLooks)
-      .where(
-        inArray(
-          sequenceCastLooks.castId,
-          db
-            .select({ id: sequenceCast.id })
-            .from(sequenceCast)
-            .where(inArray(sequenceCast.sequenceId, ids))
-        )
-      ),
     db.delete(sequenceCast).where(inArray(sequenceCast.sequenceId, ids)),
     db
       .delete(characterBibleVersions)
@@ -589,7 +584,6 @@ export async function createTestCharacter(
     sequenceId,
     characterId: id,
     scriptCharacterId: characterId,
-    bibleVersionId: id,
     createdAt: now,
   });
   // Its default look (#2015), keyed to the character's own id like the
@@ -600,15 +594,6 @@ export async function createTestCharacter(
     isDefault: true,
     sortOrder: 0,
     selectedLookVersionId: id,
-    legacySheetStatus: sheetStatus,
-    createdAt: now,
-    updatedAt: now,
-  });
-  await db.insert(sequenceCastLooks).values({
-    id,
-    castId: id,
-    lookId: id,
-    lookVersionId: id,
     sheetStatus,
     createdAt: now,
     updatedAt: now,
@@ -628,6 +613,9 @@ export async function createTestCharacter(
     name,
     age: '30s',
     voiceOnly: false,
+    // A seen character says what it is rendered as (#2017); the rendering
+    // backfill wrote this for every old row.
+    rendering: 'Photoreal live action',
     isPerson: true,
     talentId,
     source: 'backfill',
@@ -1018,15 +1006,14 @@ export async function getTestCharacter(characterId: string): Promise<{
       id: characters.id,
       name: characterBibleVersions.name,
       talentId: characterBibleVersions.talentId,
-      sheetStatus: sequenceCastLooks.sheetStatus,
+      sheetStatus: characterLooks.sheetStatus,
     })
     .from(characters)
-    .innerJoin(sequenceCast, eq(sequenceCast.characterId, characters.id))
     .innerJoin(
       characterBibleVersions,
-      eq(characterBibleVersions.id, sequenceCast.bibleVersionId)
+      eq(characterBibleVersions.id, characters.selectedBibleVersionId)
     )
-    .innerJoin(sequenceCastLooks, eq(sequenceCastLooks.lookId, characters.id))
+    .innerJoin(characterLooks, eq(characterLooks.id, characters.id))
     .where(eq(characters.id, characterId));
   return result ?? null;
 }

@@ -17,7 +17,7 @@ import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import {
   analyzeTalentMediaForTeam,
   sheetMetadataFromAnalysis,
@@ -115,7 +115,7 @@ export async function createLibraryTalent(
   const attachedUrls = attached.map((image) => image.url);
 
   let uploadedSheetUrl: string | undefined;
-  let uploadedSheetMetadata: CharacterBibleEntry | undefined;
+  let uploadedSheetMetadata: TalentSheetMetadata | undefined;
 
   if (attachedUrls.length > 0) {
     const classifiedUrls = input.characterSheetImageUrls;

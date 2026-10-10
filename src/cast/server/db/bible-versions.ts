@@ -45,9 +45,6 @@ export const characterBibleColumns = {
   physicalDescription: sql<
     string | null
   >`${live(cbv.id, cbv.physicalDescription, characters.legacyPhysicalDescription)}`,
-  distinguishingFeatures: sql<
-    string | null
-  >`${live(cbv.id, cbv.distinguishingFeatures, characters.legacyDistinguishingFeatures)}`,
   personality: sql<
     string | null
   >`${live(cbv.id, cbv.personality, characters.legacyPersonality)}`,
@@ -62,6 +59,10 @@ export const characterBibleColumns = {
     sql`${live(cbv.id, cbv.isPerson, characters.legacyIsPerson)}`.mapWith(
       Boolean
     ),
+  // No legacy column: a row with no version (older than #1600) reads null.
+  rendering: sql<
+    string | null
+  >`CASE WHEN ${cbv.id} IS NULL THEN NULL ELSE ${cbv.rendering} END`,
   consistencyTag: sql<
     string | null
   >`${live(cbv.id, cbv.consistencyTag, characters.legacyConsistencyTag)}`,
@@ -74,6 +75,16 @@ export const characterBibleColumns = {
 export const legacyBibleClothing = sql<
   string | null
 >`${live(cbv.id, cbv.legacyStandardClothing, characters.legacyStandardClothing)}`;
+
+/**
+ * The features text a character's bible still holds (#2065). The default
+ * look's styling owns it now: read it only to resolve that styling
+ * (`effectiveStyling`), to verify a digest stamped before #2065, and to carry
+ * it to the next bible version.
+ */
+export const legacyBibleFeatures = sql<
+  string | null
+>`${live(cbv.id, cbv.legacyDistinguishingFeatures, characters.legacyDistinguishingFeatures)}`;
 
 /** Select fields: a sequence location's bible, resolved. */
 export const locationBibleColumns = {
@@ -105,11 +116,11 @@ export const pickCharacterBible = (c: CharacterBible): CharacterBible => ({
   gender: c.gender,
   ethnicity: c.ethnicity,
   physicalDescription: c.physicalDescription,
-  distinguishingFeatures: c.distinguishingFeatures,
   personality: c.personality,
   movement: c.movement,
   voiceOnly: c.voiceOnly,
   isPerson: c.isPerson,
+  rendering: c.rendering,
   consistencyTag: c.consistencyTag,
 });
 

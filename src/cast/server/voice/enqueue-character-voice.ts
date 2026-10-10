@@ -19,6 +19,8 @@ const VOICE_DESIGN_NEVER_STARTED = 'Voice design never started';
 export async function enqueueCharacterVoiceDesign(args: {
   scopedDb: ScopedDb;
   character: CharacterWithSheet;
+  /** The sequence the design was asked from; null from the Characters page. */
+  sequenceId: string | null;
   userId: string;
   analysisModel: string | null;
   /** Seed takes to record (#1765). */
@@ -30,7 +32,15 @@ export async function enqueueCharacterVoiceDesign(args: {
   alreadyInFlight: boolean;
   targetVersionId: string;
 }> {
-  const { scopedDb, character, userId, analysisModel, takes, trigger } = args;
+  const {
+    scopedDb,
+    character,
+    sequenceId,
+    userId,
+    analysisModel,
+    takes,
+    trigger,
+  } = args;
   const claim = await takeLiveVoiceClaimOrInsert(
     scopedDb,
     character.id,
@@ -48,7 +58,7 @@ export async function enqueueCharacterVoiceDesign(args: {
   const payload: CharacterVoiceWorkflowInput = {
     userId,
     teamId: scopedDb.teamId,
-    sequenceId: character.sequenceId,
+    sequenceId,
     characterDbId: character.id,
     characterBible: characterToBible(character),
     voiceDescription: character.voiceDescription ?? '',

@@ -66,6 +66,8 @@ describe('recorded script-bibles fixture', () => {
     const { messages } = await getChatPrompt('phase/scene-bibles-chat', {
       script: recorded.slice(scriptStart, scriptEnd),
       elements: recorded.slice(elementsStart, elementsEnd),
+      // The fixture was recorded with nobody cast (#2050).
+      cast: '',
     });
     const user = messages.find((message) => message.role === 'user');
     expect(user && typeof user.content === 'string' ? user.content : '').toBe(

@@ -7,7 +7,10 @@ import { getGenerationChannel } from '@/platform/realtime';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
-import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
+import {
+  queuedBeforeCast,
+  queuedBeforeLooks,
+} from '@/cast/server/workflows/sheet-snapshots';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import type {
@@ -69,6 +72,11 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     if (!script) {
       throw new WorkflowValidationError('No script found');
     }
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2050
+    if (!input.cast) throw queuedBeforeCast();
+    const sharedCast = new Set(
+      input.cast.filter((c) => c.shared).map((c) => c.entry.characterId)
+    );
 
     // Record start time of analysis (used for analysis-duration metric below).
     const startTime = await step.do('start-time', () =>
@@ -217,6 +225,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         userCountry: input.userCountry,
         modelId: analysisModelId,
         elements: elementsMinimal,
+        cast: input.cast,
         videoModel: primaryVideoModel,
         // Shot-list covers scenes in this recipe. Auto-style derives in
         // parallel, so a first auto run still has the placeholder here.
@@ -264,7 +273,10 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           analysisModelId,
           suggestedTalentIds,
           suggestedTalent: input.suggestedTalent,
-          characterBible,
+          // A shared character's talent is on her pinned bible (#2050).
+          characterBible: characterBible.filter(
+            (c) => !sharedCast.has(c.characterId)
+          ),
         },
         spawnStepName: 'spawn-talent-matching',
         awaitStepName: 'await-talent-matching',
@@ -319,6 +331,7 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
       if (!sequenceId) return { elements: [], lookIds: {} };
       return createCastRecords(scopedDb, {
         sequenceId,
+        cast: input.cast,
         characterBible,
         talentMatches: talentCharacterMatches,
         locationBible,

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "This is a character reference sheet. Make one square head-and-shoulders portrait of this exact character: same face, hair, skin, wardrobe, same rendering style and lighting. Face centred, looking at camera, plain background taken from the sheet. One image only: no panels, no borders, no text, no labels.",
+        "model": "google/nano-banana-lite/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/9552699633553ae1aee9e8ef6a56a108c674a1264dea89e4a137fe7b6d34b2a3.png",
+              "content_type": "image/png",
+              "file_name": "4jGXzqB311qyohh2x54qL_gtfpdo3d.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 1024
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042371
+      }
+    }
+  ]
+}

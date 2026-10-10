@@ -23,9 +23,14 @@ import {
   specCurrencyFromScene,
 } from '@/shots/shot-spec-currency';
 import { resolveShotReferences } from '@/shots/scene-matching';
-import { pickedLook, wearsDefaultLook } from '@/cast/character-looks';
+import {
+  effectiveStyling,
+  pickedLook,
+  wearsDefaultLook,
+} from '@/cast/character-looks';
 import {
   characterToBible,
+  legacyStylingParts,
   locationToBible,
 } from '@/cast/server/bibles-from-scoped';
 import {
@@ -607,8 +612,12 @@ export async function computeShotStaleness(args: {
       refs?.locations ?? scopedDb.sequenceLocations.list(sequence.id),
       reads ? reads.inputHistory() : loadInputHistory(scopedDb, sequence.id),
     ]);
+    // What a legacy digest hashed for each rebuilt entry (#2065): the
+    // look's own styling and the bible's features, both as they stood then.
+    const legacyStyling = { ...loaded.sceneRoster.legacyStyling };
     return {
       ...loaded.sceneRoster,
+      legacyStyling,
       characterBible: loaded.sceneRoster.characterBible.map((entry) => {
         const row = shownCharacters.has(entry.characterId)
           ? undefined
@@ -622,19 +631,25 @@ export async function computeShotStaleness(args: {
         const lookThen =
           defaultLookId &&
           versionAt(history.looks.get(defaultLookId), at.getTime());
-        return row && then
-          ? characterToBible({
-              ...row,
-              ...then,
-              characterId: row.characterId,
-              ...(lookThen
-                ? {
-                    standardClothing: lookThen.clothing,
-                    styling: lookThen.styling,
-                  }
-                : {}),
-            })
-          : entry;
+        if (!row || !then) return entry;
+        const features = then.legacyDistinguishingFeatures;
+        legacyStyling[entry.characterId] = {
+          distinguishingFeatures: features,
+          styling: lookThen
+            ? lookThen.styling
+            : legacyStylingParts(row).styling,
+        };
+        return characterToBible({
+          ...row,
+          ...then,
+          characterId: row.characterId,
+          ...(lookThen
+            ? {
+                standardClothing: lookThen.clothing,
+                styling: effectiveStyling(lookThen.styling, features),
+              }
+            : {}),
+        });
       }),
       locationBible: loaded.sceneRoster.locationBible.map((entry) => {
         const row = shownLocations.has(entry.locationId)
@@ -702,6 +717,7 @@ export async function computeShotStaleness(args: {
             voiceOnlyMoved: await voiceOnlyMoved(
               reference?.createdAt ?? new Date(0)
             ),
+            legacyStyling: input.legacyStyling,
             acceptLegacy,
           });
         visualPrompt =
@@ -791,6 +807,7 @@ export async function computeShotStaleness(args: {
             voiceOnlyMoved: await voiceOnlyMoved(
               reference?.createdAt ?? new Date(0)
             ),
+            legacyStyling: input.legacyStyling,
             acceptLegacy,
           });
         motionPrompt =
@@ -967,7 +984,7 @@ const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
   gender: 'gender',
   ethnicity: 'ethnicity',
   physicalDescription: 'description',
-  distinguishingFeatures: 'features',
+  rendering: 'rendering',
   personality: 'personality',
   movement: 'movement',
   voiceOnly: 'voice only',
@@ -981,15 +998,23 @@ const CHARACTER_LABELS: Record<keyof CharacterBible, string> = {
  */
 const LOOK_LABELS = { clothing: 'clothing', styling: 'styling' } as const;
 
-/** What moved in a look since the version live then. */
+/**
+ * What moved in a look since the version live then. Styling is compared as
+ * the look read resolves it (`effectiveStyling`, #2065): `thenFeatures` is
+ * the legacy features text of the bible version pinned then, for the default
+ * look, and null for any other. So text that only changed where it is stored
+ * is not a cause.
+ */
 const lookMoved = (
   then: CharacterLookVersion,
+  thenFeatures: string | null,
   now: { standardClothing: string | null; styling: string | null }
 ): string[] => [
   ...((then.clothing ?? null) === (now.standardClothing ?? null)
     ? []
     : [LOOK_LABELS.clothing]),
-  ...((then.styling ?? null) === (now.styling ?? null)
+  ...((effectiveStyling(then.styling, thenFeatures) ?? null) ===
+  (now.styling ?? null)
     ? []
     : [LOOK_LABELS.styling]),
 ];
@@ -1279,14 +1304,20 @@ async function findStalenessCauses(args: {
   // Each character is dressed for this shot's scene (#2015): `c` carries the
   // clothing and sheet of the look the scene picks, and the cause names it.
   for (const c of characters) {
-    const bible = bibleMoved(inputHistory.characters.get(c.id), at, (then) =>
-      characterBibleChanged(then, c).map((k) => CHARACTER_LABELS[k])
-    );
+    const bibleThen = versionAt(inputHistory.characters.get(c.id), at);
+    const bible = bibleThen
+      ? characterBibleChanged(bibleThen, c).map((k) => CHARACTER_LABELS[k])
+      : null;
+    // The default look's styling then also held the bible's legacy
+    // features (#2065); no other look's did.
+    const featuresThen = wearsDefaultLook(c)
+      ? (bibleThen?.legacyDistinguishingFeatures ?? null)
+      : null;
     // A look added after the artifact has no version that old; the scene
     // switching to it is the cause.
     const look =
       bibleMoved(inputHistory.looks.get(c.lookId), at, (then) =>
-        lookMoved(then, c)
+        lookMoved(then, featuresThen, c)
       ) ?? [];
     // The scene dressed this character in another look back then.
     const wornThen =

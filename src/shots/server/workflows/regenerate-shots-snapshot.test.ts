@@ -18,7 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   Shot,
   SequenceElement,
   SequenceLocationWithReference,
@@ -34,9 +34,9 @@ const NOW = new Date('2026-04-29T00:00:00Z');
 const DEFAULT_PROMPT = 'A scene with Jack at the docks';
 
 function makeCharacter(
-  overrides: Partial<CharacterWithSheet> = {}
-): CharacterWithSheet {
-  const character: CharacterWithSheet = {
+  overrides: Partial<CastCharacterWithSheet> = {}
+): CastCharacterWithSheet {
+  const character: CastCharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -46,11 +46,12 @@ function makeCharacter(
     ethnicity: null,
     physicalDescription: null,
     standardClothing: null,
-    distinguishingFeatures: null,
+    legacyDistinguishingFeatures: null,
     personality: null,
     movement: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: null,
     voiceDescription: null,
     voicePreviews: null,
@@ -60,6 +61,7 @@ function makeCharacter(
     consistencyTag: 'jack-the-pi',
     sheetImageUrl: 'https://example.com/jack.png',
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetStatus: 'completed',
     sheetGeneratedAt: NOW,
     sheetError: null,
@@ -73,7 +75,6 @@ function makeCharacter(
     // Cast in its sequence (#2017).
     castId: 'cast-1',
     teamId: 'team-1',
-    inLibrary: false,
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     talentId: null,

@@ -439,6 +439,25 @@ export function createLocationSheetVariantsMethods(db: Database) {
       return discardedAt;
     },
 
+    /**
+     * A sheet's portrait, drawn by its own run after the sheet was saved.
+     * Written once: a row that already has one is left as it is.
+     */
+    setPortrait: async (
+      variantId: string,
+      portraitUrl: string
+    ): Promise<void> => {
+      await db
+        .update(locationSheetVariants)
+        .set({ portraitUrl, updatedAt: new Date() })
+        .where(
+          and(
+            eq(locationSheetVariants.id, variantId),
+            isNull(locationSheetVariants.portraitUrl)
+          )
+        );
+    },
+
     undiscard: async (variantId: string): Promise<void> => {
       const result = await db
         .update(locationSheetVariants)

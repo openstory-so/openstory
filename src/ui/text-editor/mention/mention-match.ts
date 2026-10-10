@@ -45,6 +45,9 @@ export function splitMentions(
   // so a longer slug wins over a shorter one that's a prefix of it.
   const forms: Array<{ form: string; item: MentionItem }> = [];
   for (const item of items) {
+    // A pick-only row (a team character not cast here, #2050) is for the
+    // dropdown: her name in the text is prose until she is attached.
+    if (item.pickOnly) continue;
     // Skip empty forms: a malformed row with an empty `tag` would otherwise add
     // an empty alternation member, making the regex match at every position.
     if (item.tag) forms.push({ form: item.tag, item });

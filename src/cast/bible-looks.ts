@@ -10,11 +10,13 @@
  */
 
 import { canonicalBibleTag, slugifyTag } from '@/cast/bible-field';
+import { isValidId } from '@/platform/id';
 import type { CharacterBibleWireEntry } from '@/sequences/response-schemas';
 import type {
   CharacterBibleEntry,
   CharacterLookEntry,
 } from '@/shots/scene-analysis.schema';
+import { effectiveStyling } from './character-looks';
 import type { SceneLookPicks } from './character-looks';
 
 /** The name a default look carries until someone renames it. */
@@ -24,7 +26,9 @@ const DEFAULT_LOOK_NAME = 'Default';
  * An entry with its looks made whole. One with none — recorded or stored
  * before looks — gets a default look from `standardClothing`. Slugs are
  * prefixed with the character's id, so two characters' `default` never
- * collide once a scene's picks are read by look id alone.
+ * collide once a scene's picks are read by look id alone. A persisted id (a
+ * `character_looks` ULID, as an attached character's looks carry, #2050) is
+ * left as it is.
  */
 export function withBibleLooks(
   entry: CharacterBibleEntry
@@ -35,9 +39,11 @@ export function withBibleLooks(
     given.length > 0
       ? given.map((look) => ({
           ...look,
-          lookId: look.lookId.startsWith(`${entry.characterId}:`)
-            ? look.lookId
-            : `${entry.characterId}:${look.lookId}`,
+          lookId:
+            look.lookId.startsWith(`${entry.characterId}:`) ||
+            isValidId(look.lookId)
+              ? look.lookId
+              : `${entry.characterId}:${look.lookId}`,
         }))
       : [
           {
@@ -48,6 +54,124 @@ export function withBibleLooks(
           },
         ];
   return { ...entry, looks, standardClothing: looks[0]?.clothing ?? '' };
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * The seam for a character bible entry written before #2065, which still
+ * carries `distinguishingFeatures`: the text is folded into the styling of
+ * the entry's DEFAULT look (`effectiveStyling`) and the key is dropped, so
+ * nothing downstream reads it. Any other value is returned as it is.
+ *
+ * Which look is the default:
+ *
+ * - Looks under slug ids (the bibles call, before the cast is persisted):
+ *   the default's slug is `default` (`bibleFromWire`), wherever it sits. An
+ *   entry dressed for a scene lists the worn look first, so the default may
+ *   not be first, or not there at all (`wornLookOnly`). Then no look takes
+ *   the text and it is dropped for that run, which is what a live verify
+ *   computes for a look that is not the default.
+ * - Looks under persisted ids (a payload frozen from a cast read): the
+ *   entry does not say which is the default. The default look's id is its
+ *   character's row id, but an entry carries only the script id, and a look
+ *   entry has no flag. So the FIRST look takes the text. That is the default
+ *   look unless the entry was dressed for a scene that picks another look
+ *   (`update-stale-plan`, `regenerate-shot-prompt`): there the worn look
+ *   takes it, as the prompt queued before #2065 would have read it.
+ *
+ * An entry with no looks is left alone: the caller decides what that means
+ * (a recorded bibles response gets a look, a payload from before #2015 is
+ * failed).
+ */
+export function foldLegacyFeatures(entry: unknown): unknown {
+  if (!isRecord(entry) || typeof entry.distinguishingFeatures !== 'string') {
+    return entry;
+  }
+  const { distinguishingFeatures, ...rest } = entry;
+  const looks: unknown[] = Array.isArray(rest.looks) ? rest.looks : [];
+  if (!isRecord(looks[0])) return entry;
+  const idOf = (look: unknown) =>
+    isRecord(look) && typeof look.lookId === 'string' ? look.lookId : '';
+  // Slug ids (`<characterId>:<slug>`, which no persisted id looks like) name
+  // their default; persisted ids do not, so the first it is.
+  const target = looks.every((look) => idOf(look).includes(':'))
+    ? looks.findIndex((look) => idOf(look).endsWith(':default'))
+    : 0;
+  return {
+    ...rest,
+    looks: looks.map((look, index) =>
+      index === target && isRecord(look)
+        ? {
+            ...look,
+            styling:
+              effectiveStyling(
+                typeof look.styling === 'string' ? look.styling : '',
+                distinguishingFeatures
+              ) ?? '',
+          }
+        : look
+    ),
+  };
+}
+
+/** Payload keys that hold a TALENT's metadata: its features are its own. */
+const TALENT_METADATA_KEYS = new Set([
+  'talentMetadata',
+  'sheetMetadata',
+  'uploadedSheetMetadata',
+  // A talent sheet row's own column, wherever a payload carries one.
+  'metadata',
+]);
+
+/**
+ * A workflow payload queued or frozen before #2065, made the current shape
+ * (the payload seam, run once by the workflow base):
+ *
+ * - every character bible entry anywhere in it goes through
+ *   {@link foldLegacyFeatures};
+ * - a sheet payload keeps its look's styling beside the entry
+ *   (`characterMetadata` + `lookStyling`), so the features join `lookStyling`
+ *   there — on the default look only (`face` null), since no other look
+ *   inherits them. The pair as queued is kept as `queuedLegacyStyling`, for
+ *   the run's check of its own snapshot hash.
+ *
+ * A talent's metadata is not a character's and is left alone. A payload of
+ * the current shape comes back unchanged.
+ */
+export function foldLegacyFeaturesInPayload<T>(payload: T): T {
+  const walk = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(walk);
+    if (!isRecord(value)) return value;
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      // `characterMetadata` is folded below, with the styling beside it.
+      out[key] =
+        TALENT_METADATA_KEYS.has(key) || key === 'characterMetadata'
+          ? child
+          : walk(child);
+    }
+    const metadata = out.characterMetadata;
+    if (
+      isRecord(metadata) &&
+      typeof metadata.distinguishingFeatures === 'string'
+    ) {
+      const { distinguishingFeatures, ...rest } = metadata;
+      out.characterMetadata = rest;
+      const own = typeof out.lookStyling === 'string' ? out.lookStyling : null;
+      // The two as they were queued: the run's own snapshot hash was
+      // stamped from them (`queuedLegacyStyling`).
+      out.queuedLegacyStyling = { distinguishingFeatures, styling: own };
+      if (out.face === null || out.face === undefined) {
+        out.lookStyling = effectiveStyling(own, distinguishingFeatures);
+      }
+      return out;
+    }
+    return typeof out.characterId === 'string' ? foldLegacyFeatures(out) : out;
+  };
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the walk rebuilds the same shape, minus a key the type no longer has
+  return walk(payload) as T;
 }
 
 /** The styling of the look an entry is wearing; `''` when none. */
@@ -89,17 +213,40 @@ export function bibleFromWire(
   wire: readonly CharacterBibleWireEntry[],
   sceneIdForLine: (lineNumber: number) => string,
   /** Lines in the script: a `lines` entry outside 1..lineCount is dropped. */
-  lineCount: number
+  lineCount: number,
+  /**
+   * The attached cast's tags by script id (#2050). An entry that echoes a
+   * cast id keeps that character's tag, so a re-analysis moves nothing of
+   * hers. Two NEW characters may share a plain name, but a pick is filed
+   * under the character's tag, so two of one tag would overwrite each
+   * other's picks: a new entry's repeat of a tag in use gets a number
+   * (`sarah`, `sarah_2`), as a repeated look name does.
+   */
+  castTagsById: ReadonlyMap<string, string>,
+  /** What every seen character is rendered as (#2017): the sequence style's. */
+  rendering: string
 ): {
   characterBible: CharacterBibleEntry[];
   sceneLooks: Record<string, Record<string, string>>;
 } {
   const sceneLooks: Record<string, Record<string, string>> = {};
-  const characterBible = wire.map((entry) => {
-    const given = entry.looks;
+  const tags = new Set(castTagsById.values());
+  const characterBible = wire.map((given) => {
+    const own = castTagsById.get(given.characterId);
+    let tag = own ?? canonicalBibleTag(given);
+    if (own === undefined) {
+      for (let n = 2; tags.has(tag); n++)
+        tag = `${canonicalBibleTag(given)}_${n}`;
+      tags.add(tag);
+    }
+    const entry = {
+      ...given,
+      consistencyTag: tag,
+      rendering: given.voiceOnly ? '' : rendering,
+    };
     const slugs = new Set<string>();
     const names = new Set<string>();
-    const looks = given.map((look, index) => {
+    const resolved = given.looks.map((look, index) => {
       // Two looks of one character never share a name: the name is how a
       // re-analysis finds the look again, so a repeat gets a number.
       const baseName = look.name.trim() || DEFAULT_LOOK_NAME;
@@ -137,7 +284,7 @@ export function bibleFromWire(
         styling: look.styling,
       };
     });
-    return withBibleLooks({ ...entry, looks });
+    return withBibleLooks({ ...entry, looks: resolved });
   });
   return { characterBible, sceneLooks };
 }

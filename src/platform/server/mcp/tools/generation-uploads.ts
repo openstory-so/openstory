@@ -640,7 +640,7 @@ const setMusicFromUploadTool = openstoryTool({
 const setCharacterSheetFromUploadTool = openstoryTool({
   name: 'set_character_sheet_from_upload',
   description:
-    'Make an uploaded image (upload_media use character_sheet) the selected reference sheet of one look of a character (lookId; the default look if omitted). Stills of shots that wear the look become stale. Starts no generation.',
+    'Make an uploaded image (upload_media use character_sheet) the selected reference sheet of one look of a character (lookId; the default look if omitted). Allowed for any look at any time. A look other than the default is stamped with the default look’s sheet as it is now (none if it has none), so it reads stale once a new default sheet lands. Stills of shots that wear the look become stale. Starts no generation.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z.strictObject({

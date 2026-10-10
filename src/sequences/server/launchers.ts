@@ -36,6 +36,7 @@
  * separately.
  */
 
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { getRequestCountry } from '@/platform/server/request-country';
 import {
@@ -192,6 +193,20 @@ async function resolveStoryboardPayload(
       : Promise.resolve([]),
   ]);
 
+  // The live cast, frozen for the run (#2050): analysis reads only these,
+  // and must not rewrite one another sequence has ever cast.
+  const castRows = await scopedDb.characters.list(sequenceId);
+  const cast = await Promise.all(
+    castRows.map(async (row) => ({
+      id: row.id,
+      shared: await scopedDb.characters.getAnalysisMayNotRewrite(
+        sequenceId,
+        row.id
+      ),
+      entry: characterToBible(row),
+    }))
+  );
+
   // Capture during the request: durable workflows have no request context.
   const userCountry = getRequestCountry();
 
@@ -199,6 +214,7 @@ async function resolveStoryboardPayload(
     ...input,
     userCountry,
     sequenceId,
+    cast,
     suggestedTalent: suggestedTalentRows.map((t) => ({
       talentId: t.id,
       name: t.name,

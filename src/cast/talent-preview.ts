@@ -56,14 +56,20 @@ export function talentSquarePreview(
 }
 
 /**
- * 4-panel sheets are 4:1 landscape. `object-cover` in a square shows exactly
- * one panel. `object-position: X%` maps that point of the image onto the
- * same point of the box, so the image shifts by `X% × (1 − 4) = −3X%` of
- * the box. Panel 2 starts one box-width in (`−100%`), so X = 1/3 — not
- * 37.5% (the panel centre), which would window ~28–53%.
+ * A sheet is four panels side by side; panel 2 is the close-up. The image
+ * is laid out four boxes wide and slid one box left, so the box (which must
+ * clip: `overflow-hidden`) shows panel 2 and nothing of its neighbours,
+ * whatever the sheet's shape:
+ *
+ * - 4:1 (talent sheets): the whole of panel 2.
+ * - 16:9 (character sheets): each panel is taller than wide, so the panel
+ *   fills the width and `object-top` keeps its top 44%, the head and
+ *   shoulders.
+ *
+ * `origin` is panel 2's centre, so a hover zoom stays on it.
  */
 const TALENT_SHEET_SQUARE_IMAGE_CLASS =
-  'h-full w-full object-cover object-[33.333%_top]';
+  'block h-full w-[400%] max-w-none -translate-x-1/4 origin-[37.5%_center] object-cover object-top';
 
 /** Dedicated headshot — object-top so a tall copied portrait is not centre-cropped. */
 const TALENT_HEADSHOT_SQUARE_IMAGE_CLASS =

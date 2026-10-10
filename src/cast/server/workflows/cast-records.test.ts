@@ -58,7 +58,11 @@ describe('findMissingElementEntries', () => {
 // Each analysed look lands on a `character_looks` row (#2015); the stub
 // answers with the id the look was given.
 const syncFromAnalysis = vi.fn(
-  async (characterId: string, looks: { lookId: string }[]) =>
+  async (
+    _sequenceId: string,
+    characterId: string,
+    looks: { lookId: string }[]
+  ) =>
     Object.fromEntries(
       looks.map((look, i) => [
         look.lookId,
@@ -84,6 +88,7 @@ describe('createCastRecords', () => {
 
     const result = await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
+      cast: [],
       characterBible: [
         {
           characterId: 'char_1',
@@ -94,12 +99,12 @@ describe('createCastRecords', () => {
           physicalDescription: 'tall',
           standardClothing: 'coat',
           looks: [],
-          distinguishingFeatures: '',
           personality: '',
           movement: '',
           voiceDescription: '',
           voiceOnly: false,
           isPerson: true,
+          rendering: 'Photoreal live action',
           consistencyTag: 'sarah',
         },
       ],
@@ -174,6 +179,7 @@ describe('createCastRecords', () => {
 
     const result = await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
+      cast: [],
       characterBible: [],
       talentMatches: [],
       locationBible: [],
@@ -184,6 +190,84 @@ describe('createCastRecords', () => {
 
     expect(elementCreate).not.toHaveBeenCalled();
     expect(result.elements).toEqual([existing]);
+  });
+});
+
+describe('createCastRecords (attached cast, #2050)', () => {
+  // A persisted look id, as the snapshot carries them.
+  const LOOK_ROW = '01HF5Z8XKQYC5N8Z3KQXR6TBQM';
+  const sarah = {
+    characterId: 'char_sarah',
+    name: 'Sarah',
+    age: '30s',
+    gender: 'female',
+    ethnicity: '',
+    physicalDescription: 'tall',
+    standardClothing: 'coat',
+    looks: [
+      { lookId: LOOK_ROW, name: 'Default', clothing: 'coat', styling: '' },
+      {
+        lookId: 'char_sarah:gala',
+        name: 'Gala',
+        clothing: 'gown',
+        styling: '',
+      },
+    ],
+    distinguishingFeatures: '',
+    personality: '',
+    movement: '',
+    voiceDescription: '',
+    voiceOnly: false,
+    isPerson: true,
+    rendering: 'Photoreal live action',
+    consistencyTag: 'sarah',
+  };
+
+  const run = async (shared: boolean) => {
+    const characterCreate = vi.fn(async (row: { id: string }) => row);
+    const linkFromAnalysis = vi.fn(
+      async (_s: string, _c: string, looks: { lookId: string }[]) =>
+        Object.fromEntries(looks.map((l) => [l.lookId, `linked-${l.lookId}`]))
+    );
+    // minimal stub
+    const scopedDb = asStub<WorkflowScopedDb>({
+      characters: { create: characterCreate },
+      characterLooks: { syncFromAnalysis, linkFromAnalysis },
+      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      sequenceElements: { create: vi.fn() },
+      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
+    });
+    const result = await createCastRecords(scopedDb, {
+      sequenceId: 'seq_1',
+      cast: [{ id: 'row-sarah', shared, entry: sarah }],
+      characterBible: [sarah],
+      talentMatches: [],
+      locationBible: [],
+      locationMatches: [],
+      elementBible: [],
+      existingElements: [],
+    });
+    return { result, characterCreate, linkFromAnalysis };
+  };
+
+  test('a shared character is linked, never written: no create, looks linked by id and name', async () => {
+    const { result, characterCreate, linkFromAnalysis } = await run(true);
+    expect(characterCreate).not.toHaveBeenCalled();
+    expect(linkFromAnalysis).toHaveBeenCalledWith(
+      'seq_1',
+      'row-sarah',
+      sarah.looks
+    );
+    expect(result.lookIds).toEqual({
+      [LOOK_ROW]: `linked-${LOOK_ROW}`,
+      'char_sarah:gala': 'linked-char_sarah:gala',
+    });
+  });
+
+  test('a character only this sequence holds takes the re-analysis as before', async () => {
+    const { characterCreate, linkFromAnalysis } = await run(false);
+    expect(characterCreate).toHaveBeenCalledTimes(1);
+    expect(linkFromAnalysis).not.toHaveBeenCalled();
   });
 });
 
@@ -203,6 +287,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'sarah',
   };
   const match = {
@@ -226,6 +311,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
+      cast: [],
       characterBible: [sarah],
       talentMatches: [{ ...match, personality, movement }],
       locationBible: [],
@@ -263,6 +349,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
+      cast: [],
       characterBible: [sarah],
       talentMatches: [
         { ...match, personality: '', movement: '', hasSignedRelease: true },
@@ -274,6 +361,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     });
     expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
       isPerson: true,
+      rendering: 'Photoreal live action',
     });
   });
 });
@@ -291,6 +379,7 @@ describe('createCastRecords (voice only, #1585)', () => {
     });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
+      cast: [],
       characterBible: [
         {
           characterId: 'narrator',
@@ -301,12 +390,12 @@ describe('createCastRecords (voice only, #1585)', () => {
           physicalDescription: '',
           standardClothing: '',
           looks: [],
-          distinguishingFeatures: '',
           personality: 'dry, unhurried, faintly amused',
           movement: '',
           voiceDescription: '',
           voiceOnly: true,
           isPerson: true,
+          rendering: '',
           consistencyTag: 'narrator',
         },
       ],
@@ -321,6 +410,7 @@ describe('createCastRecords (voice only, #1585)', () => {
       voiceDescription: null,
       voiceOnly: true,
       isPerson: true,
+      rendering: null,
       sheetStatus: 'pending',
       talentId: null,
     });
@@ -338,6 +428,7 @@ describe('createCastRecords (voice only, #1585)', () => {
     });
     await createCastRecords(scopedDb, {
       sequenceId: 'seq_1',
+      cast: [],
       characterBible: [
         {
           characterId: 'narrator',
@@ -348,13 +439,13 @@ describe('createCastRecords (voice only, #1585)', () => {
           physicalDescription: '',
           standardClothing: '',
           looks: [],
-          distinguishingFeatures: '',
           personality: 'dry, unhurried, faintly amused',
           movement: '',
           voiceDescription:
             'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
           voiceOnly: true,
           isPerson: true,
+          rendering: 'Photoreal live action',
           consistencyTag: 'narrator',
         },
       ],

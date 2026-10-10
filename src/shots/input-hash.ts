@@ -257,11 +257,30 @@ export type CharacterBibleHashFields = {
   ethnicity: string | null;
   physicalDescription: string | null;
   standardClothing: string | null;
-  distinguishingFeatures: string | null;
+  rendering: string | null;
   consistencyTag: string | null;
   /** Not hashed — BytePlus registration only (#1682). */
   isPerson?: boolean;
 };
+
+/**
+ * What a digest stamped before #2065 hashed where the current one hashes the
+ * effective styling: the look's OWN stored styling, and the features text
+ * its character's bible version still holds. Verify only, read from the
+ * stored rows (`legacyStylingParts`) — never from a payload, and never
+ * stamped. Delete with {@link LEGACY_HASH_UNTIL}.
+ */
+export type LegacyStylingParts = {
+  /** `character_bible_versions.legacyDistinguishingFeatures`. */
+  distinguishingFeatures: string | null;
+  /** The look version's own `styling` column. */
+  styling: string | null;
+};
+
+/** {@link LegacyStylingParts} of each entry of a prompt's cast, by `characterId`. */
+export type LegacyStylingByCharacter = Readonly<
+  Record<string, LegacyStylingParts>
+>;
 
 /**
  * What the character-sheet prompt reads from a cast talent (#1785), resolved
@@ -296,40 +315,71 @@ export type CharacterSheetHashInput = {
    */
   characterBible: CharacterBibleHashFields;
   /**
-   * The look's hair / makeup / injury notes (#2015). Required; `null` is
-   * "none". Joins the body only when set, so no digest stamped before looks
-   * moves.
+   * The look's hair / makeup / injury notes (#2015), as `effectiveStyling`
+   * resolves them (#2065). Required; `null` is "none". Joins the body only
+   * when set, so no digest stamped before looks moves.
    */
   styling: string | null;
+  /**
+   * The default look's sheet version, when this look is drawn from it
+   * (#2015): the selected version, or that look's id when the pointer is
+   * still null (the #1419 row). Null on the default look, and on a look whose
+   * default has no sheet yet. Joins every digest shape
+   * once set, so a look sheet drawn from a description does not stay fresh
+   * after the default sheet exists.
+   */
+  faceSheetVersionId: string | null;
   /** Required; `null` is "no talent sheet". */
   talentSheetHash: string | null;
   /** Required; `null` is "not cast". */
   talent: CharacterSheetTalentHashFields | null;
-  styleConfigHash: string;
+  /**
+   * The sequence style's digest. Read only by the legacy shapes (a sheet
+   * read the style before `rendering`, #2017): null skips them, for a
+   * check with no sequence in view.
+   */
+  styleConfigHash: string | null;
   imageModel: string;
 };
 
 /**
- * Sheet digest shapes. `current` hashes the cast talent (#1785) and drops the
- * name; `pre-1785` is the nameless digest without the talent channel;
- * `named` is the pre-#1108 digest. Verify accepts the legacy two until
+ * Sheet digest shapes. `current` hashes the bible's `rendering` and no
+ * style (#2017); `pre-2065` has the sequence style's digest instead, the
+ * bible's features under their own key and the look's own styling;
+ * `pre-1785` is that digest without the talent channel; `named` is the
+ * pre-#1108 digest. Verify accepts the legacy three until
  * {@link LEGACY_HASH_UNTIL}.
  */
-type SheetHashKind = 'current' | 'pre-1785' | 'named';
+type SheetHashKind = 'current' | 'pre-2065' | 'pre-1785' | 'named';
+const LEGACY_SHEET_HASH_KINDS = ['pre-2065', 'pre-1785', 'named'] as const;
+type LocationSheetHashKind = Exclude<SheetHashKind, 'pre-2065'>;
 
+/** `legacy` is required for every kind but `current`, which never reads it. */
 function characterSheetHashBody(
   input: CharacterSheetHashInput,
-  kind: SheetHashKind
+  kind: SheetHashKind,
+  legacy: LegacyStylingParts | null
 ): unknown {
   const cb = input.characterBible;
-  const talent = kind === 'current' ? input.talent : null;
+  const talent =
+    kind === 'current' || kind === 'pre-2065' ? input.talent : null;
+  if (kind !== 'current' && legacy === null) {
+    throw new Error(`input-hash: the ${kind} sheet digest needs legacy parts`);
+  }
+  if (kind !== 'current' && input.styleConfigHash === null) {
+    throw new Error(`input-hash: the ${kind} sheet digest needs the style`);
+  }
   // Every shape: a legacy digest predates looks, so it was stamped with no
   // styling, and dropping it there would let a styling edit verify as fresh
   // against the pre-#1785 shape of an uncast sheet.
-  const styling = trim(input.styling);
+  const styling = trim(legacy === null ? input.styling : legacy.styling);
+  // Every shape, same as styling: a legacy digest that omitted the face
+  // must not verify a look once the default sheet's version is known.
+  const faceSheetVersionId = trim(input.faceSheetVersionId);
   return {
     artifact: 'character:sheet',
     ...(styling ? { styling } : {}),
+    ...(faceSheetVersionId ? { faceSheetVersionId } : {}),
     characterBible: {
       ...(kind === 'named' ? { name: trim(cb.name) } : {}),
       age: trim(cb.age),
@@ -337,7 +387,12 @@ function characterSheetHashBody(
       ethnicity: trim(cb.ethnicity),
       physicalDescription: trim(cb.physicalDescription),
       standardClothing: trim(cb.standardClothing),
-      distinguishingFeatures: trim(cb.distinguishingFeatures),
+      ...(legacy === null
+        ? {}
+        : { distinguishingFeatures: trim(legacy.distinguishingFeatures) }),
+      // What the character is rendered as (#2017): in the sheet instead of
+      // the sequence style, so every sequence hashes the shared sheet alike.
+      ...(kind === 'current' ? { rendering: trim(cb.rendering) } : {}),
       consistencyTag: trim(cb.consistencyTag),
     },
     talentSheetHash: input.talentSheetHash ?? null,
@@ -360,7 +415,7 @@ function characterSheetHashBody(
           },
         }
       : {}),
-    styleConfigHash: input.styleConfigHash,
+    ...(kind === 'current' ? {} : { styleConfigHash: input.styleConfigHash }),
     imageModel: input.imageModel,
   };
 }
@@ -372,7 +427,7 @@ const characterBibleHashFieldsSchema = z.object({
   ethnicity: z.string().nullable(),
   physicalDescription: z.string().nullable(),
   standardClothing: z.string().nullable(),
-  distinguishingFeatures: z.string().nullable(),
+  rendering: z.string().nullable(),
   consistencyTag: z.string().nullable(),
 });
 
@@ -387,9 +442,10 @@ export const CHARACTER_SHEET_BIBLE_FIELDS =
 const characterSheetHashInputSchema = z.object({
   characterBible: characterBibleHashFieldsSchema,
   styling: z.string().nullable(),
+  faceSheetVersionId: z.string().nullable(),
   talentSheetHash: z.string().nullable(),
   talent: characterSheetTalentHashFieldsSchema.nullable(),
-  styleConfigHash: z.string(),
+  styleConfigHash: z.string().nullable(),
   imageModel: z.string(),
 });
 
@@ -397,31 +453,46 @@ export function computeCharacterSheetInputHash(
   raw: CharacterSheetHashInput
 ): Promise<CharacterSheetInputHash> {
   const input = characterSheetHashInputSchema.parse(raw);
-  return sha256Hex(characterSheetHashBody(input, 'current')).then(
+  return sha256Hex(characterSheetHashBody(input, 'current', null)).then(
     characterSheetInputHash
   );
 }
 
-/** Named-bible digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+/**
+ * A legacy sheet digest (`named` by default). Verify/tests only — delete
+ * after {@link LEGACY_HASH_UNTIL}.
+ */
 export function computeCharacterSheetInputHashLegacy(
-  raw: CharacterSheetHashInput
+  raw: CharacterSheetHashInput,
+  legacy: LegacyStylingParts,
+  kind: Exclude<SheetHashKind, 'current'> = 'named'
 ): Promise<string> {
   const input = characterSheetHashInputSchema.parse(raw);
-  return sha256Hex(characterSheetHashBody(input, 'named'));
+  return sha256Hex(characterSheetHashBody(input, kind, legacy));
 }
 
-/** Verify: the current digest, or a pre-#1785 / pre-#1108 one. */
+/**
+ * Verify: the current digest, or a legacy one. `legacy` is the look's stored
+ * parts, required so no verify site can forget the shapes every sheet made
+ * before #2065 was stamped in. With no style digest only the current shape
+ * is checked: a sheet stamped before `rendering` then reads stale, which is
+ * right for a check made with no sequence in view.
+ */
 export async function characterSheetInputHashMatches(
   stored: string | null,
-  raw: CharacterSheetHashInput
+  raw: CharacterSheetHashInput,
+  legacy: LegacyStylingParts
 ): Promise<boolean> {
   if (!stored) return false;
   const input = characterSheetHashInputSchema.parse(raw);
-  const digests = await Promise.all(
-    (['current', 'pre-1785', 'named'] as const).map((kind) =>
-      sha256Hex(characterSheetHashBody(input, kind))
-    )
-  );
+  const digests = await Promise.all([
+    sha256Hex(characterSheetHashBody(input, 'current', null)),
+    ...(input.styleConfigHash === null
+      ? []
+      : LEGACY_SHEET_HASH_KINDS.map((kind) =>
+          sha256Hex(characterSheetHashBody(input, kind, legacy))
+        )),
+  ]);
   return digests.includes(stored);
 }
 
@@ -460,7 +531,7 @@ export type LocationSheetHashInput = {
 
 function locationSheetHashBody(
   input: LocationSheetHashInput,
-  kind: SheetHashKind
+  kind: LocationSheetHashKind
 ): unknown {
   const lb = input.locationBible;
   return {
@@ -766,6 +837,8 @@ type PromptSceneContextHashInput = {
   startingFrameImageUrl?: string | null;
   referenceOnly?: boolean;
   spec?: StoredShotSpec | null;
+  /** Verify only: read by every kind but `current` (#2065). */
+  legacyStyling?: LegacyStylingByCharacter;
 };
 
 function toVisualBodyInput(
@@ -837,7 +910,9 @@ const PROMPT_INPUT_HASH_VERSION_V4 = 4;
 
 /**
  * Delete every legacy verify fallback after this date: v4 / named / titled,
- * and the pre-#1785, pre-#1784 and pre-#1783 shapes.
+ * and the pre-#2065, pre-#1785, pre-#1784 and pre-#1783 shapes. The
+ * `distinguishing_features` column the pre-#2065 shape reads is backfilled
+ * into the default looks and dropped in the same change.
  * Tracking: https://github.com/openstory-so/openstory/issues/1371
  */
 // Milestone 24 (#1783–#1787, #1827) added fallbacks under this date; they
@@ -846,20 +921,33 @@ export const LEGACY_HASH_UNTIL = '2026-12-31';
 
 /**
  * Older prompt shapes. Verify accepts these until {@link LEGACY_HASH_UNTIL}.
- * `v5-voiced` is the current shape before #1785 took voice-only characters
- * out of the visual body and #1787 marked them in the motion body; the older
- * legacy shapes predate that too.
+ * `pre-2065` is the current shape before the default look took the bible's
+ * features (#2065): the same body, with each character's features under
+ * their own key and the worn look's own styling. `v5-voiced` is that shape
+ * before #1785 took voice-only characters out of the visual body and #1787
+ * marked them in the motion body; the older legacy shapes predate that too.
  */
-type PromptHashKind = 'current' | 'v5-voiced' | 'v5-titled' | 'v5-named' | 'v4';
+type PromptHashKind =
+  | 'current'
+  | 'pre-2065'
+  | 'v5-voiced'
+  | 'v5-titled'
+  | 'v5-named'
+  | 'v4';
 
 function promptHashFlags(kind: PromptHashKind) {
+  // `pre-2065` differs from `current` only in how a character is projected.
+  const latest = kind === 'current' || kind === 'pre-2065';
   return {
     hashVersion:
       kind === 'v4' ? PROMPT_INPUT_HASH_VERSION_V4 : PROMPT_INPUT_HASH_VERSION,
     named: kind === 'v4' || kind === 'v5-named',
-    includeTitle: kind !== 'current' && kind !== 'v5-voiced',
+    includeTitle: !latest && kind !== 'v5-voiced',
     includeSceneNumber: kind === 'v4',
-    keepVoiceOnly: kind !== 'current',
+    keepVoiceOnly: !latest,
+    /** Reads the spec, and not the still (#1923). */
+    latest,
+    legacyStyling: kind !== 'current',
   };
 }
 
@@ -886,11 +974,17 @@ function sceneInputContext(scene: Scene, kind: PromptHashKind) {
  * every prompt stale. Scene `metadata.title` is the same class of label.
  * The LLM still receives the full entries; only the hash is the projection.
  */
-function projectCharacterForPrompt(c: CharacterBibleEntry) {
+function projectCharacterForPrompt(
+  c: CharacterBibleEntry,
+  legacy: LegacyStylingParts | null
+) {
   // The look the shot's scene dresses the character in (#2015): its clothing
   // is `standardClothing`, and its styling joins only when set, so no digest
   // stamped before looks moves. The other looks are not this shot's.
-  const styling = trim(wornStyling(c));
+  // A digest from before #2065 hashed the look's own styling and the bible's
+  // features under their own key; the current one hashes the effective
+  // styling, which holds both.
+  const styling = trim(legacy === null ? wornStyling(c) : legacy.styling);
   return {
     ...(styling ? { styling } : {}),
     age: trim(c.age),
@@ -898,12 +992,10 @@ function projectCharacterForPrompt(c: CharacterBibleEntry) {
     ethnicity: trim(c.ethnicity),
     physicalDescription: trim(c.physicalDescription),
     standardClothing: trim(c.standardClothing),
-    distinguishingFeatures: trim(c.distinguishingFeatures),
+    ...(legacy === null
+      ? {}
+      : { distinguishingFeatures: trim(legacy.distinguishingFeatures) }),
   };
-}
-
-function projectCharacterForPromptV4(c: CharacterBibleEntry) {
-  return { name: trim(c.name), ...projectCharacterForPrompt(c) };
 }
 
 /**
@@ -970,13 +1062,30 @@ function promptBibleProjection(
   {
     named,
     performance,
+    legacyStyling,
     markVoiceOnly = false,
-  }: { named: boolean; performance: boolean; markVoiceOnly?: boolean }
+  }: {
+    named: boolean;
+    performance: boolean;
+    legacyStyling: boolean;
+    markVoiceOnly?: boolean;
+  }
 ) {
   const bibles = sortedBibles(input);
-  const character = named
-    ? projectCharacterForPromptV4
-    : projectCharacterForPrompt;
+  const legacyOf = (c: CharacterBibleEntry): LegacyStylingParts | null => {
+    if (!legacyStyling) return null;
+    const parts = input.legacyStyling?.[c.characterId];
+    if (!parts) {
+      throw new Error(
+        `input-hash: no legacy styling parts for character ${c.characterId}`
+      );
+    }
+    return parts;
+  };
+  const character = (c: CharacterBibleEntry) => ({
+    ...(named ? { name: trim(c.name) } : {}),
+    ...projectCharacterForPrompt(c, legacyOf(c)),
+  });
   const location = named
     ? projectLocationForPromptV4
     : projectLocationForPrompt;
@@ -1008,7 +1117,11 @@ function visualPromptHashBody(
           ...input,
           characterBible: input.characterBible.filter((c) => !c.voiceOnly),
         },
-    { named: flags.named, performance: false }
+    {
+      named: flags.named,
+      performance: false,
+      legacyStyling: flags.legacyStyling,
+    }
   );
   return {
     artifact: 'shot:visual-prompt',
@@ -1020,7 +1133,7 @@ function visualPromptHashBody(
     analysisModel: trim(input.analysisModel),
     // Content, and only on the current stamp. A legacy digest has no spec,
     // so a part-1 stamp stays fresh until the selected spec changes (#1923).
-    ...(kind === 'current' && input.spec
+    ...(flags.latest && input.spec
       ? { spec: canonicalStoredShotSpec(input.spec) }
       : {}),
   };
@@ -1037,6 +1150,7 @@ function motionPromptHashBody(
   const bibles = promptBibleProjection(input, {
     named: flags.named,
     performance: true,
+    legacyStyling: flags.legacyStyling,
     markVoiceOnly: !flags.keepVoiceOnly,
   });
   return {
@@ -1050,10 +1164,10 @@ function motionPromptHashBody(
     // The current stamp is the derived prompt: it does not read the still.
     // Legacy kinds keep the URL so an old LLM stamp still matches until the
     // still it was written against changes (#1923).
-    ...(kind === 'current'
+    ...(flags.latest
       ? {}
       : { startingFrameImageUrl: trim(input.startingFrameImageUrl) }),
-    ...(kind === 'current' && input.spec
+    ...(flags.latest && input.spec
       ? { spec: canonicalStoredShotSpec(input.spec) }
       : {}),
     ...(input.referenceOnly ? { referenceOnly: true } : {}),
@@ -1069,12 +1183,19 @@ export async function hashVisualPromptInput(
   );
 }
 
-/** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+/**
+ * A legacy visual digest (v4 by default). Verify/tests only — delete after
+ * {@link LEGACY_HASH_UNTIL}.
+ */
 export async function computeVisualPromptInputHashV4(
-  raw: VisualPromptHashInput | MotionPromptHashInput
+  raw: VisualPromptHashInput | MotionPromptHashInput,
+  legacyStyling: LegacyStylingByCharacter,
+  kind: Exclude<PromptHashKind, 'current'> = 'v4'
 ): Promise<string> {
   const input = assembleVisualPromptHashInput(raw);
-  return sha256Hex(visualPromptHashBody(toVisualBodyInput(input), 'v4'));
+  return sha256Hex(
+    visualPromptHashBody({ ...toVisualBodyInput(input), legacyStyling }, kind)
+  );
 }
 
 /**
@@ -1106,39 +1227,49 @@ export function voiceOnlyMovedSince(
 }
 
 /**
- * Every shape before the current one ignores the voice-only flag, so a
+ * Every shape before `pre-2065` ignores the voice-only flag, so such a
  * legacy digest is trusted only while no flag moved since the stamp —
- * otherwise it would equal the stamp and hide the change (#1787).
+ * otherwise it would equal the stamp and hide the change (#1787). Those
+ * shapes have no spec either, so `acceptLegacy` false drops them too.
+ * `pre-2065` reads both, like the current shape, and is always accepted.
  */
-function acceptedKinds<K extends PromptHashKind>(
-  legacy: readonly K[],
-  voiceOnlyMoved: boolean
-): readonly ('current' | K)[] {
-  return voiceOnlyMoved ? ['current'] : ['current', ...legacy];
+function acceptedKinds(opts: {
+  voiceOnlyMoved: boolean;
+  acceptLegacy: boolean;
+}): readonly PromptHashKind[] {
+  return opts.voiceOnlyMoved || !opts.acceptLegacy
+    ? ['current', 'pre-2065']
+    : ['current', 'pre-2065', 'v5-voiced', 'v5-titled', 'v5-named', 'v4'];
 }
 
 /**
- * True if `stored` matches the current digest or a legacy v4 / v5-named
- * digest of the same inputs. Remove after {@link LEGACY_HASH_UNTIL}.
- * `voiceOnlyMoved`: {@link voiceOnlyMovedSince} the stamp.
+ * True if `stored` matches the current digest or a legacy digest of the same
+ * inputs. Remove the legacy kinds after {@link LEGACY_HASH_UNTIL}.
+ * `voiceOnlyMoved`: {@link voiceOnlyMovedSince} the stamp. `legacyStyling`:
+ * the stored parts of each character in `raw.characterBible` (#2065),
+ * required so no verify site can forget the shape every prompt written
+ * before #2065 was stamped in.
  */
 export async function visualPromptInputHashMatches(
   stored: string | null,
   raw: VisualPromptHashInput | MotionPromptHashInput,
   {
     voiceOnlyMoved,
+    legacyStyling,
     acceptLegacy = true,
-  }: { voiceOnlyMoved: boolean; acceptLegacy?: boolean }
+  }: {
+    voiceOnlyMoved: boolean;
+    legacyStyling: LegacyStylingByCharacter;
+    acceptLegacy?: boolean;
+  }
 ): Promise<boolean> {
   if (!stored) return false;
-  const input = toVisualBodyInput(assembleVisualPromptHashInput(raw));
+  const input = {
+    ...toVisualBodyInput(assembleVisualPromptHashInput(raw)),
+    legacyStyling,
+  };
   // A prompt built from an older spec must not hide behind a pre-spec digest.
-  const kinds = acceptLegacy
-    ? acceptedKinds(
-        ['v5-voiced', 'v5-titled', 'v5-named', 'v4'] as const,
-        voiceOnlyMoved
-      )
-    : (['current'] as const);
+  const kinds = acceptedKinds({ voiceOnlyMoved, acceptLegacy });
   const digests = await Promise.all(
     kinds.map((kind) => sha256Hex(visualPromptHashBody(input, kind)))
   );
@@ -1154,12 +1285,19 @@ export async function hashMotionPromptInput(
   );
 }
 
-/** v4 digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
+/**
+ * A legacy motion digest (v4 by default). Verify/tests only — delete after
+ * {@link LEGACY_HASH_UNTIL}.
+ */
 export async function computeMotionPromptInputHashV4(
-  raw: MotionPromptHashInput
+  raw: MotionPromptHashInput,
+  legacyStyling: LegacyStylingByCharacter,
+  kind: Exclude<PromptHashKind, 'current'> = 'v4'
 ): Promise<string> {
   const input = assembleMotionPromptHashInput(raw);
-  return sha256Hex(motionPromptHashBody(toMotionBodyInput(input), 'v4'));
+  return sha256Hex(
+    motionPromptHashBody({ ...toMotionBodyInput(input), legacyStyling }, kind)
+  );
 }
 
 /**
@@ -1179,24 +1317,24 @@ export async function motionPromptInputHashMatches(
   {
     legacyScriptDialogue,
     voiceOnlyMoved,
+    legacyStyling,
     acceptLegacy = true,
   }: {
     legacyScriptDialogue: boolean;
     voiceOnlyMoved: boolean;
+    /** As for the visual verify (#2065). */
+    legacyStyling: LegacyStylingByCharacter;
     acceptLegacy?: boolean;
   }
 ): Promise<boolean> {
   if (!stored) return false;
   const assembled = assembleMotionPromptHashInput(raw);
-  const inputs = legacyScriptDialogue
-    ? [toMotionBodyInput(assembled), toMotionBodyInput(assembled, true)]
-    : [toMotionBodyInput(assembled)];
-  const kinds = acceptLegacy
-    ? acceptedKinds(
-        ['v5-voiced', 'v5-titled', 'v5-named', 'v4'] as const,
-        voiceOnlyMoved
-      )
-    : (['current'] as const);
+  const inputs = (
+    legacyScriptDialogue
+      ? [toMotionBodyInput(assembled), toMotionBodyInput(assembled, true)]
+      : [toMotionBodyInput(assembled)]
+  ).map((input) => ({ ...input, legacyStyling }));
+  const kinds = acceptedKinds({ voiceOnlyMoved, acceptLegacy });
   const digests = await Promise.all(
     inputs.flatMap((input) =>
       kinds.map((kind) => sha256Hex(motionPromptHashBody(input, kind)))

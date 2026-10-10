@@ -83,6 +83,7 @@ export function buildUpdateStalePreview(
   const references = plan.references;
   const sheetCount = references
     ? references.characterSheets.length +
+      references.lookSheetsAfterDefault.length +
       references.locationSheets.length +
       (references.elementSheets?.entries.length ?? 0)
     : 0;

@@ -267,6 +267,20 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The uniqueness half of the same guard — catches a concurrent upload of the same token under a different id.',
     },
   ],
+  'character-sheet-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
+    },
+  ],
+  'location-sheet-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
+    },
+  ],
   'element-vision-workflow.ts': [
     {
       read: 'resolveLlmKey',
@@ -329,7 +343,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The platform ElevenLabs key, resolved inside the design and save steps that spend it (#1553).',
     },
     {
-      read: 'characters.getById',
+      read: 'characters.getVoice',
       bucket: 'EXISTENCE-GUARD',
       why: 'pendingPromoteVoiceVersionId at persist: the user may have picked another voice mid-run, so promote must read the live pointer (#1715).',
     },

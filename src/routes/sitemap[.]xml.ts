@@ -11,7 +11,7 @@ const SITEMAP_PAGES = [
   '/sequences',
   '/images',
   '/clips',
-  '/talent',
+  '/characters',
   '/locations',
   '/docs/faq',
   '/docs/dependency-graph',

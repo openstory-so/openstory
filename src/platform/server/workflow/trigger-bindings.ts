@@ -22,6 +22,7 @@ const logger = getLogger(['openstory', 'workflow', 'trigger-bindings']);
 const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   image: 'IMAGE_WORKFLOW',
   'element-vision': 'ELEMENT_VISION_WORKFLOW',
+  'sheet-portrait': 'SHEET_PORTRAIT_WORKFLOW',
   'element-sheet': 'ELEMENT_SHEET_WORKFLOW',
   music: 'MUSIC_WORKFLOW',
   motion: 'MOTION_WORKFLOW',

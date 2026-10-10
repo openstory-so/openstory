@@ -11,7 +11,13 @@ const u = (
   kind: PlanUnit['kind'],
   id: string,
   state: PlanUnit['state']
-): PlanUnit => ({ kind, id, state, requires: [], cascaded: false });
+): PlanUnit => ({
+  kind,
+  id,
+  state,
+  requires: [],
+  cascaded: false,
+});
 
 const OFF = { generateStartFrames: false, generateVoices: false };
 const ON = { generateStartFrames: true, generateVoices: true };
