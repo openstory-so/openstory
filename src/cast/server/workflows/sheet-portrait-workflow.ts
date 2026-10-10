@@ -33,6 +33,10 @@ export class SheetPortraitWorkflow extends OpenStoryWorkflowEntrypoint<SheetPort
         kind: subject.kind,
         sheetUrl,
         storageDir: input.storageDir,
+        subjectId:
+          subject.kind === 'character'
+            ? subject.characterId
+            : subject.locationId,
         chargeKey: event.instanceId,
         userId: input.userId,
         sequenceId,

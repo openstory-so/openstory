@@ -414,6 +414,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         kind: 'character',
         sheetUrl: storageResult.url,
         storageDir: `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
+        subjectId: characterDbId,
         chargeKey: workflowRunId,
         userId: input.userId,
         sequenceId,

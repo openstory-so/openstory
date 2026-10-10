@@ -214,6 +214,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         kind: 'location',
         sheetUrl: storageResult.url,
         storageDir: `${teamId}/${sequenceId}/${locationDbId}`,
+        subjectId: locationDbId,
         chargeKey: workflowRunId,
         userId: input.userId,
         sequenceId,

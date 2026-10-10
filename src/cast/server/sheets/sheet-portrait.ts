@@ -19,6 +19,9 @@ import {
   deductWorkflowCredits,
   extractImageCost,
 } from '@/billing/server/workflow-deduction';
+import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
+import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
+import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { generateImageWithProvider } from '@/stills/server/image-generation';
 import { storeGeneratedPng } from '@/stills/server/image-storage';
 
@@ -46,11 +49,17 @@ const PORTRAIT: Record<
 };
 
 /**
- * Draw and store the portrait of one sheet. Null when the draw failed: the
- * sheet is the artifact that matters and still lands, and tiles crop it as
- * they did before portraits. Inside a workflow, call it in one `step.do`:
- * the image is stored before the step returns (#1645), and the charge is
- * keyed on `chargeKey` so a replay cannot charge twice.
+ * Draw and store the portrait of one sheet. Null when the team cannot pay
+ * for it or the draw failed: the sheet is the artifact that matters and
+ * still lands, and tiles crop it as they did before portraits. Inside a
+ * workflow, call it in one `step.do`: the image is stored before the step
+ * returns (#1645), and the charge is keyed on `chargeKey` so a replay cannot
+ * charge twice.
+ *
+ * The balance is checked before the paid call, against funds no run holds:
+ * a sheet run's reservation covers the sheet, not this. A team's own key
+ * does not lift the check, because which key serves this model is only
+ * known once the call returns.
  */
 export async function drawSheetPortrait(args: {
   scopedDb: WorkflowScopedDb;
@@ -58,7 +67,9 @@ export async function drawSheetPortrait(args: {
   sheetUrl: string;
   /** The folder the sheet itself is stored under. */
   storageDir: string;
-  /** Stable per sheet: the run's instance id, or the upload's storage path. */
+  /** The character or sequence location the sheet is of, for the audit row. */
+  subjectId: string;
+  /** The run drawing it: keys the charge and names the run on the audit row. */
   chargeKey: string;
   userId: string;
   sequenceId: string | null;
@@ -66,6 +77,19 @@ export async function drawSheetPortrait(args: {
   const { scopedDb, kind, sheetUrl } = args;
   const { prompt, bucket } = PORTRAIT[kind];
   try {
+    const estimate = gateEstimate(
+      estimateImageCost(PORTRAIT_MODEL, '1:1', 1, {
+        pricing: await getEffectiveFalPricing(),
+        edit: true,
+      }),
+      { model: PORTRAIT_MODEL, operation: 'sheet-portrait' }
+    );
+    if (!(await scopedDb.liveRead.billing.hasEnoughCredits(estimate))) {
+      logger.info(
+        `No credits for the ${kind} sheet portrait; tiles crop the sheet`
+      );
+      return null;
+    }
     const result = await generateImageWithProvider(
       {
         model: PORTRAIT_MODEL,
@@ -81,6 +105,21 @@ export async function drawSheetPortrait(args: {
       bucket,
       `${args.storageDir}/${generateId()}-portrait.png`
     );
+    // Before the charge: an image with no audit row is not kept (#1180).
+    await recordProvenance(scopedDb.provenance, {
+      teamId: scopedDb.teamId,
+      userId: args.userId,
+      assetKind: kind === 'character' ? 'character_sheet' : 'location_sheet',
+      assetId: args.subjectId,
+      storageKey: stored.path,
+      provider: result.via,
+      model: PORTRAIT_MODEL,
+      providerRequestId: result.metadata.requestId ?? null,
+      workflowRunId: args.chargeKey,
+      prompt,
+      sequenceId: args.sequenceId ?? undefined,
+      referenceImageCount: 1,
+    });
     await deductWorkflowCredits({
       scopedDb,
       costMicros: extractImageCost(result.metadata),
