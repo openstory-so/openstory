@@ -2175,8 +2175,10 @@ describe('team characters (#2017)', () => {
     const rainId = ids['char_ada:rain'];
     if (!rainId) throw new Error('expected the new look');
 
-    // The link came back; the second sequence now has all three looks.
-    expect((await chars().getById(other, created.id))?.deletedAt).toBeNull();
+    // The removed link stays removed; she still has all three looks.
+    expect(
+      (await chars().getById(other, created.id))?.deletedAt
+    ).not.toBeNull();
     const otherLooks = await looks().listByCharacter(created.id);
     expect(otherLooks.map((l) => [l.id, l.name, l.clothing])).toEqual([
       [created.lookId, 'Default', 'coat'],

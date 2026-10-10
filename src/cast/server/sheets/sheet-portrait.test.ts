@@ -33,7 +33,8 @@ vi.doMock('@/platform/server/compliance/provenance', () => ({
   recordProvenance: mockRecordProvenance,
 }));
 
-const { drawSheetPortrait } = await import('./sheet-portrait');
+const { chargeSheetPortrait, drawSheetPortrait } =
+  await import('./sheet-portrait');
 
 const scopedDb = asStub<WorkflowScopedDb>({
   teamId: 'team-1',
@@ -56,6 +57,21 @@ const draw = () =>
     userId: 'user-1',
     sequenceId: 'seq-1',
   });
+
+/** The run's two steps: draw, then charge what was drawn. */
+const drawAndCharge = async () => {
+  const drawn = await draw();
+  if (!drawn) throw new Error('test setup: nothing was drawn');
+  await chargeSheetPortrait({
+    scopedDb,
+    drawn,
+    kind: 'character',
+    chargeKey: 'run-1',
+    userId: 'user-1',
+    sequenceId: 'seq-1',
+  });
+  return drawn;
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -89,7 +105,7 @@ describe('drawSheetPortrait', () => {
   });
 
   it('draws from the sheet, records it, then charges once per run', async () => {
-    expect(await draw()).toBe(
+    expect((await drawAndCharge()).portraitUrl).toBe(
       '/r2/characters/team-1/seq-1/char-1/p-portrait.png'
     );
     // The image call is handed the credentials surface, not the whole db.
@@ -157,8 +173,16 @@ describe('drawSheetPortrait', () => {
   it('throws when the charge for a paid call cannot be taken', async () => {
     mockDeduct.mockRejectedValue(new Error('ledger down'));
 
-    await expect(draw()).rejects.toThrow('ledger down');
+    await expect(drawAndCharge()).rejects.toThrow('ledger down');
     // The hold stays for the retry.
+    expect(mockZeroReservation).not.toHaveBeenCalled();
+  });
+
+  it('draws without charging: a retried charge cannot draw again', async () => {
+    const drawn = await draw();
+
+    expect(drawn?.reservationId).toBe('hold-1');
+    expect(mockDeduct).not.toHaveBeenCalled();
     expect(mockZeroReservation).not.toHaveBeenCalled();
   });
 });

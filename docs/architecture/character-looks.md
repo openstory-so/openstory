@@ -283,9 +283,12 @@ location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
   live action", "3D animated, Pixar-like") is what a sheet takes from a
   style, and it is the character's, so every sequence hashes the shared
   sheet alike. The sequence's palette, grade and mood apply at the shot. A
-  digest stamped before this (`pre-rendering`) is verified with the
-  sequence style's digest until `LEGACY_HASH_UNTIL`; a verify with no
-  sequence in view checks the current shape only.
+  digest stamped before this (`pre-2065` and older) is verified with the
+  digest of the style of the sequence that is asking, until
+  `LEGACY_HASH_UNTIL`. So such a sheet reads stale from a sequence with
+  another style than the one it was drawn under, and from the Characters
+  page (no sequence in view, current shape only); it is redrawn once and
+  stamped in the current shape. Accepted: few sheets predate `rendering`.
 - **Sheet hash**: the clothing keeps the bible's old key
   (`characterBible.standardClothing`), fed from the look; `styling` (the
   effective one, #2065) joins only when set, in every digest shape. A backfilled default look therefore hashes

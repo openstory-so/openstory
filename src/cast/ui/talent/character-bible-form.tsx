@@ -160,15 +160,14 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
-      {!character.voiceOnly && (
-        <BibleField
-          idPrefix="character"
-          label="Rendered as"
-          name="rendering"
-          defaultValue={character.rendering}
-          required
-        />
-      )}
+      {/* Always shown: unticking Voice only needs it in the same save. */}
+      <BibleField
+        idPrefix="character"
+        label="Rendered as"
+        name="rendering"
+        defaultValue={character.rendering}
+        required={!character.voiceOnly}
+      />
       <div className="flex flex-col gap-1">
         <Label
           htmlFor="character-isPerson"

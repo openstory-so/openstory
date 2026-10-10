@@ -406,10 +406,11 @@ const STILL_CAST_MESSAGE = 'Remove it from its sequences first.';
  * Characters page and the `@` picker, and `restoreTeamCharacter` brings it
  * back. Refused while a sequence, archived ones included, still casts it;
  * the db write carries the same condition, so a sequence that casts it
- * between the check and the write still stops it. A voice it still points
- * at is released first, provider before row (`releaseCharacterVoice`), so a
- * failed release leaves the character. Restoring does not bring the voice
- * back.
+ * between the check and the write still stops it. The delete is written
+ * BEFORE the voice it points at is released (`releaseCharacterVoice`,
+ * provider before row): a refused delete has then destroyed nothing, and
+ * no sequence can cast it while the provider call runs. A failed release
+ * puts the character back. Restoring does not bring the voice back.
  */
 export async function deleteTeamCharacter(
   scopedDb: ScopedDb,
@@ -419,13 +420,15 @@ export async function deleteTeamCharacter(
   if (await scopedDb.characters.getCastInAnySequenceOrArchive(characterId)) {
     throw new ConflictError(STILL_CAST_MESSAGE);
   }
-  await releaseCharacterVoice(
-    scopedDb,
-    await scopedDb.characters.getVoice(characterId),
-    actor.userId
-  );
+  const voice = await scopedDb.characters.getVoice(characterId);
   if (!(await scopedDb.characters.softDeleteForTeam(characterId))) {
     throw new ConflictError(STILL_CAST_MESSAGE);
+  }
+  try {
+    await releaseCharacterVoice(scopedDb, voice, actor.userId);
+  } catch (error) {
+    await scopedDb.characters.restoreForTeam(characterId);
+    throw error;
   }
   return { characterId };
 }

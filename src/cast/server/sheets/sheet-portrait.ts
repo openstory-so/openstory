@@ -11,6 +11,7 @@
 import { deleteFile } from '#storage';
 import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
+import type { Microdollars } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
   STORAGE_BUCKETS,
@@ -69,10 +70,16 @@ const PORTRAIT: Record<
  *   nothing; neither is something a user can cause.
  * - An image is kept only with its audit row (#1180): one that could not be
  *   recorded is deleted, and the tile crops.
- * - A charge that cannot be taken throws, so a workflow step retries it
- *   with the hold still in place; it is keyed on `chargeKey`, so a replay
- *   charges once.
+ * - The charge is its own step (`chargeSheetPortrait`): a charge that fails
+ *   retries on its own and never draws again.
  */
+export type DrawnPortrait = {
+  readonly portraitUrl: string;
+  readonly costMicros: Microdollars;
+  readonly usedOwnKey: boolean;
+  readonly reservationId: string;
+};
+
 export async function drawSheetPortrait(args: {
   scopedDb: WorkflowScopedDb;
   kind: PortraitKind;
@@ -85,7 +92,7 @@ export async function drawSheetPortrait(args: {
   chargeKey: string;
   userId: string;
   sequenceId: string | null;
-}): Promise<string | null> {
+}): Promise<DrawnPortrait | null> {
   const { scopedDb, kind, sheetUrl } = args;
   const { prompt, bucket } = PORTRAIT[kind];
 
@@ -163,22 +170,44 @@ export async function drawSheetPortrait(args: {
     return null;
   }
 
-  await deductWorkflowCredits({
-    scopedDb,
+  return {
+    portraitUrl,
     costMicros: extractImageCost(result.metadata),
     usedOwnKey: result.metadata.usedOwnKey,
+    reservationId: hold.reservationId,
+  };
+}
+
+/**
+ * Charge for a portrait that was drawn and kept, then give back what the
+ * hold did not use. Throws when the charge cannot be taken, so its step
+ * retries with the hold still in place; keyed on `chargeKey`, so a replay
+ * charges once.
+ */
+export async function chargeSheetPortrait(args: {
+  scopedDb: WorkflowScopedDb;
+  drawn: DrawnPortrait;
+  kind: PortraitKind;
+  chargeKey: string;
+  userId: string;
+  sequenceId: string | null;
+}): Promise<void> {
+  const { scopedDb, drawn } = args;
+  await deductWorkflowCredits({
+    scopedDb,
+    costMicros: drawn.costMicros,
+    usedOwnKey: drawn.usedOwnKey,
     description: `Sheet portrait (${PORTRAIT_MODEL})`,
     idempotencyKey: `${args.chargeKey}:portrait`,
-    reservationId: hold.reservationId,
+    reservationId: drawn.reservationId,
     metadata: {
       model: PORTRAIT_MODEL,
-      kind,
+      kind: args.kind,
       sequenceId: args.sequenceId,
       userId: args.userId,
     },
     workflowName: 'SheetPortrait',
   });
   // What the charge did not take goes back to the balance.
-  await scopedDb.billing.zeroReservation(hold.reservationId);
-  return portraitUrl;
+  await scopedDb.billing.zeroReservation(drawn.reservationId);
 }

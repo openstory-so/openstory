@@ -1,4 +1,5 @@
 import { computeStyleConfigHash } from '@/cast/server/workflows/sheet-snapshots';
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import { wearLook } from '@/cast/character-looks';
 import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
 import { legacyStylingParts } from '@/cast/server/bibles-from-scoped';
@@ -11,6 +12,7 @@ import { buildRegenerateLocationSheetPayload } from './sheets/location-sheet-tri
 import type { SheetStaleness } from './sheets/sheet-staleness';
 import {
   characterSheetHashMatchesStored,
+  uploadedCharacterSheetHashMatchesStored,
   finishCharacterSheetPayload,
   locationSheetHashMatchesStored,
 } from './workflows/sheet-snapshots';
@@ -90,11 +92,12 @@ export async function readLookSheetStaleness(
   // What a regenerate would stamp now. A look whose default has no sheet
   // yet hashes with no face: it cannot be drawn, and its old sheet was not
   // drawn from one either.
-  const { draft, isDefault, liveFace } = await buildCharacterSheetDraft({
-    ...context,
-    character: owner,
-    lookId: character.lookId,
-  });
+  const { draft, isDefault, liveFace, liveVersionModel } =
+    await buildCharacterSheetDraft({
+      ...context,
+      character: owner,
+      lookId: character.lookId,
+    });
   const payload = await finishCharacterSheetPayload(
     draft,
     isDefault ? null : liveFace
@@ -102,7 +105,11 @@ export async function readLookSheetStaleness(
   if (!payload.snapshotInputHash)
     return { status: 'untracked', applicable: true };
   return {
-    status: (await characterSheetHashMatchesStored(
+    status: (await (
+      liveVersionModel === USER_UPLOAD_MODEL
+        ? uploadedCharacterSheetHashMatchesStored
+        : characterSheetHashMatchesStored
+    )(
       stored,
       payload,
       legacyStylingParts(character),

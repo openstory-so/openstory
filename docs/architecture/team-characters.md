@@ -25,7 +25,8 @@ character with no sequence (#2065).
   version's. It also carries `rendering` (`src/cast/rendering.ts`): what the
   character is rendered as, required unless voice-only (`renderingFor`, in
   every bible writer; a CHECK would need a rebuild). Analysis fills it from
-  the sequence style's medium, else photoreal (`renderingOfStyle`); a
+  the sequence style's medium, else its art style, else photoreal when
+  there is no style (`renderingOfStyle`; no system template sets a medium); a
   hand-added character in a sequence takes the same when the form leaves it
   out; the Characters page requires it. The backfill
   (`20261009063136_backfill_character_rendering`) took the first casting

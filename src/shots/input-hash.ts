@@ -344,28 +344,15 @@ export type CharacterSheetHashInput = {
 
 /**
  * Sheet digest shapes. `current` hashes the bible's `rendering` and no
- * style (#2017); `pre-rendering` is that body with the sequence style's
- * digest instead; `pre-2065` is the same with the bible's features under
- * their own key and the look's own styling; `pre-1785` is that digest
- * without the talent channel; `named` is the pre-#1108 digest. Verify
- * accepts the legacy four until {@link LEGACY_HASH_UNTIL}.
+ * style (#2017); `pre-2065` has the sequence style's digest instead, the
+ * bible's features under their own key and the look's own styling;
+ * `pre-1785` is that digest without the talent channel; `named` is the
+ * pre-#1108 digest. Verify accepts the legacy three until
+ * {@link LEGACY_HASH_UNTIL}.
  */
-type SheetHashKind =
-  | 'current'
-  | 'pre-rendering'
-  | 'pre-2065'
-  | 'pre-1785'
-  | 'named';
-const LEGACY_SHEET_HASH_KINDS = [
-  'pre-rendering',
-  'pre-2065',
-  'pre-1785',
-  'named',
-] as const;
-type LocationSheetHashKind = Exclude<
-  SheetHashKind,
-  'pre-2065' | 'pre-rendering'
->;
+type SheetHashKind = 'current' | 'pre-2065' | 'pre-1785' | 'named';
+const LEGACY_SHEET_HASH_KINDS = ['pre-2065', 'pre-1785', 'named'] as const;
+type LocationSheetHashKind = Exclude<SheetHashKind, 'pre-2065'>;
 
 /** `legacy` is required for every kind but `current`, which never reads it. */
 function characterSheetHashBody(
@@ -375,12 +362,8 @@ function characterSheetHashBody(
 ): unknown {
   const cb = input.characterBible;
   const talent =
-    kind === 'current' || kind === 'pre-rendering' || kind === 'pre-2065'
-      ? input.talent
-      : null;
-  // `pre-rendering` is the current body with the style: effective styling,
-  // so no legacy parts.
-  if (kind !== 'current' && kind !== 'pre-rendering' && legacy === null) {
+    kind === 'current' || kind === 'pre-2065' ? input.talent : null;
+  if (kind !== 'current' && legacy === null) {
     throw new Error(`input-hash: the ${kind} sheet digest needs legacy parts`);
   }
   if (kind !== 'current' && input.styleConfigHash === null) {
@@ -476,7 +459,7 @@ export function computeCharacterSheetInputHash(
 }
 
 /**
- * A legacy sheet digest (`pre-2065` by default). Verify/tests only — delete
+ * A legacy sheet digest (`named` by default). Verify/tests only — delete
  * after {@link LEGACY_HASH_UNTIL}.
  */
 export function computeCharacterSheetInputHashLegacy(

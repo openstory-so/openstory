@@ -19,6 +19,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import type { SheetPayload } from './sheet-snapshots';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import type { TextToImageModel } from '@/models/models';
 import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import {
   computeCharacterSheetHashFromDtoBefore2065,
@@ -31,7 +32,10 @@ import {
   computeLibraryTalentSheetHashFromDto,
   computeLocationSheetHashFromDto,
   computeStyleConfigHash,
+  uploadedCharacterSheetHashMatchesStored,
 } from './sheet-snapshots';
+import { asStub } from '@/test/as-stub';
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 
 describe('computeStyleConfigHash', () => {
   it('collapses null and undefined to the same sentinel', async () => {
@@ -192,6 +196,44 @@ describe('character-sheet hash', () => {
     expect(finished.snapshotInputHash).toBe(
       await computeCharacterSheetHashFromDto({ ...baseInput, face })
     );
+  });
+  describe('an uploaded character sheet', () => {
+    const legacy = { distinguishingFeatures: null, styling: null };
+    const viewedWith = (imageModel: TextToImageModel) => ({
+      ...baseInput,
+      imageModel,
+    });
+
+    it('verifies from a sequence on any image model', async () => {
+      const stamped = await computeCharacterSheetHashFromDto(
+        viewedWith(asStub<TextToImageModel>(USER_UPLOAD_MODEL))
+      );
+      for (const model of ['nano_banana_2', 'krea_2_turbo'] as const) {
+        expect(
+          await uploadedCharacterSheetHashMatchesStored(
+            stamped,
+            viewedWith(model),
+            legacy,
+            null
+          )
+        ).toBe(true);
+      }
+    });
+
+    it('stamped with its own sequence model still verifies from that sequence only', async () => {
+      const stamped = await computeCharacterSheetHashFromDto(
+        viewedWith('nano_banana_2')
+      );
+      const from = (model: TextToImageModel) =>
+        uploadedCharacterSheetHashMatchesStored(
+          stamped,
+          viewedWith(model),
+          legacy,
+          null
+        );
+      expect(await from('nano_banana_2')).toBe(true);
+      expect(await from('krea_2_turbo')).toBe(false);
+    });
   });
 });
 

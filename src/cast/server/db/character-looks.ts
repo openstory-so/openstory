@@ -857,9 +857,9 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * Link a shared character's analysed looks (#2050) and say which look each
      * analysis id landed on. Nothing of hers is rewritten or removed: a look
      * named by id or by NAME (case-blind, among every live look she has) is
-     * hers already; a name she does not have becomes a new look. The cast
-     * link is revived if it was removed, as `create` revives an analysed
-     * character.
+     * hers already; a name she does not have becomes a new look. Her cast
+     * link is not touched: one removed while the run was queued stays
+     * removed, as `characters.create` leaves it.
      */
     linkFromAnalysis: async (
       sequenceId: string,
@@ -871,7 +871,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         styling: string;
       }[]
     ): Promise<Record<string, string>> => {
-      const owner = await ownerOf(db, teamId, sequenceId, characterId);
+      // The team and link check; nothing of the link is written.
+      await ownerOf(db, teamId, sequenceId, characterId);
       const own = await db
         .select({
           id: characterLooks.id,
@@ -891,12 +892,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
         );
       const key = (name: string) => name.trim().toLowerCase();
       const ids: Record<string, string> = {};
-      const statements: BatchItem<'sqlite'>[] = [
-        db
-          .update(sequenceCast)
-          .set({ removedAt: null })
-          .where(eq(sequenceCast.id, owner.castId)),
-      ];
+      const statements: BatchItem<'sqlite'>[] = [];
       let nextSort = Math.max(0, ...own.map((look) => look.sortOrder)) + 1;
       for (const look of analysed) {
         const existing =

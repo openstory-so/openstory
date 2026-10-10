@@ -254,8 +254,23 @@ describe('deleteTeamCharacter', () => {
 
   it('a sequence that casts it after the check still stops the delete', async () => {
     const { created } = await voiced();
-    // Still cast: the guarded write refuses on its own.
-    expect(await chars().softDeleteForTeam(created.id)).toBe(false);
+    // The check passes as if the link were made just after it; the guarded
+    // write refuses on its own, before the voice is touched.
+    const db = scoped();
+    const raced = {
+      ...db,
+      characters: {
+        ...db.characters,
+        getCastInAnySequenceOrArchive: async () => false,
+      },
+    };
+
+    await expect(
+      deleteTeamCharacter(raced, { userId }, created.id)
+    ).rejects.toThrow('Remove it from its sequences first.');
+
+    expect(mockDelete).not.toHaveBeenCalled();
+    expect((await chars().getVoice(created.id)).voiceId).toBe(VOICE);
     expect(await chars().getTeamCharacter(created.id)).not.toBeNull();
   });
 

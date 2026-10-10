@@ -124,7 +124,8 @@ export const AddCharacterDialog: React.FC<{
           <DialogHeader>
             <DialogTitle>Add character</DialogTitle>
             <DialogDescription>
-              Adds the character at its current version, with every look.
+              Adds the character with every look. Later edits reach this
+              sequence.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3">

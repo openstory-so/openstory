@@ -108,7 +108,7 @@ function TeamCharacterContent({ id }: { id: string }) {
               <Suspense fallback="…">
                 <ShotCount characterId={id} sequenceId={null} />
               </Suspense>
-              . Looks, sheets and edits below are this sequence's.
+              . Edits change this character in every sequence.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {sequences.map((sequence) => (

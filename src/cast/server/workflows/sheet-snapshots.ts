@@ -10,6 +10,7 @@
  * § "Per-workflow input surface".
  */
 
+import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
 import {
   characterSheetInputHashMatches,
   computeCharacterSheetInputHashLegacy,
@@ -256,6 +257,29 @@ export async function characterSheetHashMatchesStored(
     stored,
     { ...characterSheetHashInput(input), styleConfigHash },
     legacy
+  );
+}
+
+/**
+ * The check for a sheet the user uploaded. It is stamped with the upload
+ * marker in place of an image model, so it verifies alike from every
+ * sequence that casts the character. The second arm is an upload stamped
+ * with its own sequence's image model, as they were until #2087; it holds
+ * only from a sequence on that model.
+ */
+export async function uploadedCharacterSheetHashMatchesStored(
+  stored: string | null,
+  input: SheetPayload<CharacterSheetWorkflowInput>,
+  legacy: LegacyStylingParts,
+  styleConfigHash: string | null
+): Promise<boolean> {
+  const body = { ...characterSheetHashInput(input), styleConfigHash };
+  return (
+    (await characterSheetInputHashMatches(
+      stored,
+      { ...body, imageModel: USER_UPLOAD_MODEL },
+      legacy
+    )) || (await characterSheetInputHashMatches(stored, body, legacy))
   );
 }
 

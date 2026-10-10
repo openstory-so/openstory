@@ -36,8 +36,7 @@ export const NewCharacterDialog: React.FC = () => {
         <DialogHeader>
           <DialogTitle>New character</DialogTitle>
           <DialogDescription>
-            Looks and the rest of the bible are on its page. Sheets and voice
-            come when a sequence uses it.
+            Looks, sheets, voice and the rest of the bible are on its page.
           </DialogDescription>
         </DialogHeader>
         <NewCharacterForm

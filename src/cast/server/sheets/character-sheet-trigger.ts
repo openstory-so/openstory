@@ -135,7 +135,14 @@ export async function buildCharacterSheetDraft(
     // Always generate: reuse would skip the bible edit the user just saved.
     reuseTalentSheet: false,
   };
-  return { draft, isDefault: look.isDefault, liveFace, refusal };
+  return {
+    draft,
+    isDefault: look.isDefault,
+    liveFace,
+    refusal,
+    /** The selected sheet version's `model`; null when there is no sheet. */
+    liveVersionModel: liveVersion?.model ?? null,
+  };
 }
 
 /**

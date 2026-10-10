@@ -84,6 +84,13 @@ export function useCharacter(sequenceId: string | null, characterId: string) {
     queryFn: () => getCharacterFn({ data: { sequenceId, characterId } }),
     staleTime: 30_000,
     refetchOnWindowFocus: true,
+    // A sheet is the character's, so a run started from another sequence (or
+    // the Characters page) reports on a channel this view does not hear
+    // (#2017). Poll while a look reads generating so it cannot stick.
+    refetchInterval: (query) =>
+      query.state.data?.looks.some((look) => look.sheetStatus === 'generating')
+        ? 3000
+        : false,
   });
 }
 

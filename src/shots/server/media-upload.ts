@@ -598,12 +598,11 @@ export async function setCharacterSheetFromUpload(
     await likenessFromLedger(scopedDb, data.publicUrl)
   );
 
-  // Same upstream resolution the character-sheet workflow uses: from no
-  // sequence, the default model (#2017).
+  // No image model drew an upload, and the sheet is shared by sequences
+  // with different ones (#2017): it is stamped with the upload marker, which
+  // the verify reads off the live version (`uploadedCharacterSheetHashMatchesStored`).
   const cast = await resolveCastTalent(scopedDb, character.talentId);
-  const imageModel = resolveSheetImageModel({
-    sequenceImageModel: sequence?.imageModel ?? null,
-  });
+  const imageModel = USER_UPLOAD_MODEL;
   const inputHash = await computeCharacterSheetInputHash({
     characterBible: {
       name: character.name,

@@ -5,7 +5,10 @@
  */
 
 import { castChannelId } from '@/cast/cast-channel';
-import { drawSheetPortrait } from '@/cast/server/sheets/sheet-portrait';
+import {
+  chargeSheetPortrait,
+  drawSheetPortrait,
+} from '@/cast/server/sheets/sheet-portrait';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { getGenerationChannel } from '@/platform/realtime';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -27,7 +30,7 @@ export class SheetPortraitWorkflow extends OpenStoryWorkflowEntrypoint<SheetPort
 
     // Drawn and stored in one step (#1645). Null when the draw failed: the
     // sheet is already saved, and its tile keeps cropping it.
-    const portraitUrl = await step.do('draw-portrait', () =>
+    const drawn = await step.do('draw-portrait', () =>
       drawSheetPortrait({
         scopedDb,
         kind: subject.kind,
@@ -42,7 +45,20 @@ export class SheetPortraitWorkflow extends OpenStoryWorkflowEntrypoint<SheetPort
         sequenceId,
       })
     );
-    if (!portraitUrl) return { versionId, portraitUrl: null };
+    if (!drawn) return { versionId, portraitUrl: null };
+    const { portraitUrl } = drawn;
+
+    // Its own step: a charge that fails retries without drawing again.
+    await step.do('charge-portrait', () =>
+      chargeSheetPortrait({
+        scopedDb,
+        drawn,
+        kind: subject.kind,
+        chargeKey: event.instanceId,
+        userId: input.userId,
+        sequenceId,
+      })
+    );
 
     // Onto the version row the trigger named, and only while it has none:
     // an attribute of that sheet, never a selection, so no claim.
