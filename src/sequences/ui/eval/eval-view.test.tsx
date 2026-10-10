@@ -22,6 +22,7 @@ vi.doMock('@/audio/ui/use-sequence-variants', () => ({
 }));
 vi.doMock('@/look/ui/use-styles', () => ({ useStyles: () => ({ data: [] }) }));
 vi.doMock('@tanstack/react-query', () => ({
+  queryOptions: (options: unknown) => options,
   useQuery: () => ({
     data: { isAdmin, internalDomains: ['internal.example'] },
     isLoading: adminStatusLoading,

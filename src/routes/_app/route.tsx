@@ -5,6 +5,7 @@ import { redirect } from '@tanstack/react-router';
 import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
 import { viaAvailabilityQueryOptions } from '@/models/ui/use-via-availability';
 import { billingBalanceQueryOptions } from '@/billing/ui/use-billing-balance';
+import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 
 export const Route = createFileRoute('/_app')({
   component: ProtectedLayout,
@@ -31,7 +32,8 @@ export const Route = createFileRoute('/_app')({
     // them. Never fatal: a failure here must not take down the app shell over
     // an advisory capability hint.
     // The balance seed lets the credit pill paint its balance on first
-    // render instead of after a client fetch.
+    // render instead of after a client fetch; the admin seed does the same
+    // for support mode and the admin menu.
     if (session) {
       await Promise.all([
         queryClient
@@ -39,6 +41,9 @@ export const Route = createFileRoute('/_app')({
           .catch(() => undefined),
         queryClient
           .ensureQueryData(billingBalanceQueryOptions)
+          .catch(() => undefined),
+        queryClient
+          .ensureQueryData(systemAdminStatusQueryOptions)
           .catch(() => undefined),
       ]);
     }

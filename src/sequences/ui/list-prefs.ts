@@ -2,15 +2,17 @@
  * Sequences list toolbar prefs (#1314).
  *
  * Live state lives in the /sequences search params (shareable, back/forward).
- * localStorage is the memory for a bare `/sequences` visit (sidebar, breadcrumb).
+ * A cookie is the memory for a bare `/sequences` visit (sidebar, breadcrumb),
+ * so the route can restore it on the server before the first paint.
  *
  * No `.default()` on the search schema: a default rewrites bare /sequences with
  * a 307, which sours the sitemap entry (#814).
  */
 import { aspectRatioSchema, type AspectRatio } from '@/models/aspect-ratios';
+import { readCookie, writeCookie } from '@/ui/cookie';
 import { z } from 'zod';
 
-export const SEQUENCES_LIST_PREFS_KEY = 'openstory:sequences-list:v1';
+export const SEQUENCES_LIST_PREFS_COOKIE = 'openstory_sequences_list_v1';
 
 export const sequencesListSearchSchema = z.object({
   user: z.string().email().optional(),
@@ -94,20 +96,6 @@ export function resolveSequencesListPrefs(
   return prefsFromSearch(search);
 }
 
-export function isDefaultSequencesListPrefs(
-  prefs: SequencesListPrefs
-): boolean {
-  return (
-    prefs.search === '' &&
-    prefs.analysisModel == null &&
-    prefs.imageModel == null &&
-    prefs.aspectRatio == null &&
-    prefs.styleId == null &&
-    !prefs.supportMode &&
-    !prefs.hideInternal
-  );
-}
-
 export function prefsToSearch(
   prefs: SequencesListPrefs,
   currentUser?: string
@@ -134,12 +122,10 @@ export function prefsToSearch(
 }
 
 export function loadSequencesListPrefs(): SequencesListPrefs | null {
-  if (typeof window === 'undefined') return null;
+  const raw = readCookie(SEQUENCES_LIST_PREFS_COOKIE);
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(SEQUENCES_LIST_PREFS_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    const result = storedPrefsSchema.safeParse(parsed);
+    const result = storedPrefsSchema.safeParse(JSON.parse(raw));
     return result.success ? result.data : null;
   } catch {
     return null;
@@ -147,10 +133,24 @@ export function loadSequencesListPrefs(): SequencesListPrefs | null {
 }
 
 export function saveSequencesListPrefs(prefs: SequencesListPrefs): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(SEQUENCES_LIST_PREFS_KEY, JSON.stringify(prefs));
-  } catch {
-    // private mode / quota
+  writeCookie(SEQUENCES_LIST_PREFS_COOKIE, JSON.stringify(prefs));
+}
+
+/**
+ * Route `beforeLoad`: a URL that names prefs is remembered; a bare visit gets
+ * the search to redirect to. The redirect target names prefs, so it never
+ * redirects twice. A hover preload remembers nothing.
+ */
+export function rememberSequencesListPrefs(
+  search: SequencesListSearch,
+  preload: boolean
+): SequencesListSearch | null {
+  if (searchSpecifiesPrefs(search)) {
+    if (!preload) saveSequencesListPrefs(prefsFromSearch(search));
+    return null;
   }
+  const next = prefsToSearch(
+    resolveSequencesListPrefs(search, loadSequencesListPrefs())
+  );
+  return searchSpecifiesPrefs(next) ? next : null;
 }

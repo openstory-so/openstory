@@ -25,8 +25,7 @@ test.describe('Sequences', () => {
   }) => {
     await page.goto('/sequences');
     await page.evaluate(() => {
-      localStorage.setItem(
-        'openstory:sequences-list:v1',
+      document.cookie = `openstory_sequences_list_v1=${encodeURIComponent(
         JSON.stringify({
           search: 'night diner',
           analysisModel: null,
@@ -36,7 +35,7 @@ test.describe('Sequences', () => {
           supportMode: false,
           hideInternal: false,
         })
-      );
+      )}; path=/`;
     });
     await page.goto('/sequences');
 
@@ -56,8 +55,7 @@ test.describe('Sequences', () => {
   }) => {
     await page.goto('/sequences');
     await page.evaluate(() => {
-      localStorage.setItem(
-        'openstory:sequences-list:v1',
+      document.cookie = `openstory_sequences_list_v1=${encodeURIComponent(
         JSON.stringify({
           search: '',
           analysisModel: null,
@@ -67,7 +65,7 @@ test.describe('Sequences', () => {
           supportMode: true,
           hideInternal: false,
         })
-      );
+      )}; path=/`;
     });
     await page.goto('/sequences');
 
