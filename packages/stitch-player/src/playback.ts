@@ -6,7 +6,7 @@
  * - `ConcatenatedVideoSource` for the video iterator (handles cross-clip
  *   continuity + global timestamps).
  * - A music `Input` + `AudioBufferSink` mixed through a music-only `GainNode`
- *   that applies the variant's measured loudness gain.
+ *   that applies `musicGainDb`.
  * - Clip sound (dialogue / VO) streamed like the music (#1845): an
  *   `AudioBufferSink` per clip, a second ahead of the playhead, queued as
  *   `AudioBufferSourceNode`s on the master gain (not attenuated by the music
@@ -16,12 +16,17 @@
  *   `AudioContext` is suspended — the clock and every queued node stop
  *   together — and `onBuffering` fires, instead of dropping frames or
  *   playing the clip silent.
- * - Codec gating up front via `prepare()`; throws so the React component can
- *   render a fallback CTA.
+ * - Codec gating up front via `prepare()`. A video track or a still's
+ *   dialogue that cannot be decoded throws, so the host can show its own
+ *   fallback. Embedded clip audio and music that cannot be decoded are
+ *   reported and playback continues.
+ *
+ * Issue numbers (#…) refer to github.com/openstory-so/openstory.
  *
  * The engine is intentionally not React-aware: it manipulates an externally-
  * provided `HTMLCanvasElement` and surfaces lifecycle via callbacks. The
- * matching React component lives in `src/sequences/ui/theatre/sequence-player.tsx`.
+ * Video.js adapter is `stitched-media.ts`; the React surface is
+ * `stitched-player-surface.tsx`.
  */
 
 import {
@@ -32,40 +37,38 @@ import {
   type WrappedAudioBuffer,
   type WrappedCanvas,
 } from 'mediabunny';
-import { createRangedSource } from './ranged-source';
+import { createRangedSource } from './ranged-source.js';
 
 import {
   ConcatenatedVideoSource,
   type ClipAudioTrack,
-  type PlaybackClip,
-} from './concatenated-video-source';
+} from './concatenated-video-source.js';
+import type { PlaybackClip } from './playback-clip.js';
 import {
   forAwaitUntilDisposed,
   isInputDisposedError,
-} from './disposed-iterator';
-import { computeMusicGain } from './music-gain';
-import { type PlayAttemptResult, settlePlayWait } from './play-attempt';
-
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'sequence-player', 'playback']);
+} from './disposed-iterator.js';
+import { computeMusicGain } from './music-gain.js';
+import { type PlayAttemptResult, settlePlayWait } from './play-attempt.js';
+import type { StitchLogger } from './logger.js';
 
 export type SequencePlayerOptions = {
   canvas: HTMLCanvasElement;
-  clips: PlaybackClip[];
+  clips: readonly PlaybackClip[];
   musicUrl: string | null;
   /**
-   * Gain in dB to apply to the music track to hit the broadcast loudness
-   * target. `null` falls back to 0 dB (no normalization). See
-   * `sequence_music_variants.loudness_gain_db`.
+   * Gain in dB applied to the music track only (e.g. a measured loudness
+   * normalization); 0 for none. Dialogue is not affected.
    */
-  musicLoudnessGainDb: number | null;
+  musicGainDb: number;
   /**
    * Whether the music track is audible. `false` mutes only the music-only gain
    * node, leaving clip/dialogue audio untouched. Toggle live via
-   * `setMusicEnabled` without re-preparing the engine (#834). Defaults to true.
+   * `setMusicEnabled` without re-preparing the engine (#834).
    */
-  musicEnabled?: boolean;
+  musicEnabled: boolean;
+  /** Where non-fatal problems are reported. Defaults to `console`. */
+  logger?: StitchLogger;
   /** Clip-open progress during `prepare()` — drives the loading label (#1253). */
   onLoadProgress?: (loadedClips: number, totalClips: number) => void;
   onTimeUpdate?: (time: number) => void;
@@ -77,10 +80,20 @@ export type SequencePlayerOptions = {
 
 export type SequencePlayerMeta = {
   durationSeconds: number;
-  clipOffsetsSeconds: number[];
+  /** The measured start of each clip, one per clip in order; `[0]` is 0. */
+  clipOffsetsSeconds: readonly number[];
   displayWidth: number;
   displayHeight: number;
   hasAudio: boolean;
+  /** Clips whose embedded sound this browser cannot decode; they play silent. */
+  silentClipIndexes: readonly number[];
+  /**
+   * True when `musicUrl` was set and the file had no decodable audio track.
+   * Playback continues without the score. An export refuses that file.
+   */
+  musicUndecodable: boolean;
+  /** Stills with no picture (none given, or none loaded); they hold on a dark frame. */
+  missingStillIndexes: readonly number[];
   /**
    * True when the clips resolve to more than one distinct native resolution.
    * Playback is normalized to a common target regardless, but the UI should
@@ -109,13 +122,14 @@ const PREFETCH_LEAD_SECONDS = 3;
 
 export class SequencePlayerEngine {
   private readonly opts: SequencePlayerOptions;
+  private readonly logger: StitchLogger;
   private readonly canvasContext: CanvasRenderingContext2D;
   private readonly videoSource: ConcatenatedVideoSource;
 
   private audioContext: AudioContext | null = null;
   /** Master gain — volume + mute. Dialogue routes here directly. */
   private masterGain: GainNode | null = null;
-  /** Music-only gain — applies the music variant's loudness normalization on top of master gain. */
+  /** Music-only gain — applies `musicGainDb` on top of master gain. */
   private musicGain: GainNode | null = null;
   private musicInput: Input | null = null;
   private musicTrack: InputAudioTrack | null = null;
@@ -165,7 +179,7 @@ export class SequencePlayerEngine {
   private disposed = false;
   private volume = 1;
   private muted = false;
-  private musicEnabled = true;
+  private musicEnabled: boolean;
 
   constructor(opts: SequencePlayerOptions) {
     const ctx = opts.canvas.getContext('2d');
@@ -173,23 +187,27 @@ export class SequencePlayerEngine {
       throw new Error('SequencePlayerEngine: 2d canvas context unavailable');
     }
     this.opts = opts;
+    this.logger = opts.logger ?? console;
     this.canvasContext = ctx;
-    this.musicEnabled = opts.musicEnabled ?? true;
-    this.videoSource = new ConcatenatedVideoSource(opts.clips);
+    this.musicEnabled = opts.musicEnabled;
+    this.videoSource = new ConcatenatedVideoSource(opts.clips, this.logger);
   }
 
   /**
    * Open every clip's video + the music track, probe decodability, and size
    * the canvas. Must be called once before `play()` / `seek()`.
    *
-   * Throws on undecodable codec — the React component should catch and render
-   * an "Export to download" fallback CTA.
+   * Throws when a video track or a still's dialogue cannot be decoded, so
+   * the host can show its own fallback. Undecodable embedded clip audio
+   * plays silent (`silentClipIndexes`). Undecodable music is omitted
+   * (`musicUndecodable`) and warned; it does not take the picture down.
    */
   async prepare(): Promise<SequencePlayerMeta> {
     const videoMeta = await this.videoSource.prepare(this.opts.onLoadProgress);
 
     let musicSampleRate: number | undefined;
     let hasAudio = false;
+    let musicUndecodable = false;
     if (this.opts.musicUrl) {
       this.musicInput = new Input({
         formats: ALL_FORMATS,
@@ -202,6 +220,10 @@ export class SequencePlayerEngine {
 
         hasAudio = true;
       } else {
+        musicUndecodable = true;
+        this.logger.warn(
+          'Music track cannot be decoded by this browser; playback continues without it'
+        );
         this.musicTrack = null;
         this.musicInput.dispose();
         this.musicInput = null;
@@ -237,6 +259,9 @@ export class SequencePlayerEngine {
       hasMixedResolutions: videoMeta.hasMixedResolutions,
       hasMixedAspectRatios: videoMeta.hasMixedAspectRatios,
       resolutionsLabel: videoMeta.resolutionsLabel,
+      silentClipIndexes: videoMeta.silentClipIndexes,
+      missingStillIndexes: videoMeta.missingStillIndexes,
+      musicUndecodable,
     };
 
     await this.primeFirstFrame();
@@ -263,9 +288,12 @@ export class SequencePlayerEngine {
     this.prefetchedClips.add(next);
     void this.videoSource.prefetch(next).catch((err: unknown) => {
       if (this.disposed) return;
-      logger.warn(`SequencePlayerEngine: prefetch failed for clip ${next}`, {
-        err,
-      });
+      this.logger.warn(
+        `SequencePlayerEngine: prefetch failed for clip ${next}`,
+        {
+          err,
+        }
+      );
     });
   }
 
@@ -274,6 +302,11 @@ export class SequencePlayerEngine {
       throw new Error('SequencePlayerEngine: prepare() must be called first');
     }
     return this.meta;
+  }
+
+  /** The opened clips — an export reads from here so nothing is fetched twice. */
+  get source(): ConcatenatedVideoSource {
+    return this.videoSource;
   }
 
   getPlaybackTime(): number {
@@ -453,7 +486,7 @@ export class SequencePlayerEngine {
     this.masterGain.gain.value = masterLinear;
     this.musicGain.gain.value = computeMusicGain(
       this.musicEnabled,
-      this.opts.musicLoudnessGainDb
+      this.opts.musicGainDb
     );
   }
 
@@ -502,7 +535,7 @@ export class SequencePlayerEngine {
             return;
           }
           // A broken clip track stays silent; the lane moves on.
-          logger.warn(
+          this.logger.warn(
             `SequencePlayerEngine: failed to decode embedded audio for clip ${clipIndex}`,
             { err }
           );

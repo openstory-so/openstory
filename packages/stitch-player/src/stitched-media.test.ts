@@ -6,8 +6,10 @@ import {
   isMediaVolumeCapable,
 } from '@videojs/media';
 
-import type { SequencePlayerMeta, SequencePlayerOptions } from './playback';
-import { asStub } from '@/test/as-stub';
+import type { SequencePlayerMeta, SequencePlayerOptions } from './playback.js';
+
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the single test-double cast
+const asStub = <T>(stub: unknown): T => stub as T;
 
 const { mocks, lastOpts } = vi.hoisted(() => {
   const lastOpts: { current: SequencePlayerOptions | null } = { current: null };
@@ -21,11 +23,12 @@ const { mocks, lastOpts } = vi.hoisted(() => {
     setMuted: vi.fn(),
     setMusicEnabled: vi.fn(),
     getPlaybackTime: vi.fn(),
+    updateCues: vi.fn(),
   };
   return { mocks, lastOpts };
 });
 
-vi.mock('./playback', () => {
+vi.mock('./playback.js', () => {
   class SequencePlayerEngine {
     constructor(opts: SequencePlayerOptions) {
       lastOpts.current = opts;
@@ -39,11 +42,12 @@ vi.mock('./playback', () => {
     setMuted = mocks.setMuted;
     setMusicEnabled = mocks.setMusicEnabled;
     getPlaybackTime = mocks.getPlaybackTime;
+    source = { updateCues: mocks.updateCues };
   }
   return { SequencePlayerEngine };
 });
 
-const { StitchedSequenceMedia } = await import('./stitched-media');
+const { StitchedSequenceMedia } = await import('./stitched-media.js');
 
 const meta: SequencePlayerMeta = {
   durationSeconds: 12,
@@ -54,13 +58,17 @@ const meta: SequencePlayerMeta = {
   hasMixedResolutions: false,
   hasMixedAspectRatios: false,
   resolutionsLabel: '1920×1080',
+  silentClipIndexes: [],
+  missingStillIndexes: [],
+  musicUndecodable: false,
 };
 
 const source = {
-  clips: [{ orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null }],
+  clips: [{ videoUrl: '/a.mp4', posterUrl: null, cues: [] }],
   musicUrl: '/music.mp3' as string | null,
-  musicLoudnessGainDb: null as number | null,
+  musicGainDb: 0,
   musicEnabled: true,
+  subtitles: true,
 };
 
 // engine is mocked; attach only stores the handle
@@ -110,6 +118,7 @@ beforeEach(() => {
   mocks.setMuted.mockReset();
   mocks.setMusicEnabled.mockReset();
   mocks.getPlaybackTime.mockReset().mockReturnValue(0);
+  mocks.updateCues.mockReset();
 });
 
 describe('StitchedSequenceMedia capabilities', () => {
@@ -256,7 +265,7 @@ describe('StitchedSequenceMedia source identity', () => {
     const media = await preparedMedia();
     media.setSource({
       ...source,
-      clips: [{ orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null }],
+      clips: [{ videoUrl: '/a.mp4', posterUrl: null, cues: [] }],
     });
     expect(mocks.dispose).not.toHaveBeenCalled();
     expect(mocks.prepare).toHaveBeenCalledOnce();
@@ -279,8 +288,8 @@ describe('StitchedSequenceMedia source identity', () => {
     media.setSource({
       ...source,
       clips: [
-        { orderIndex: 0, videoUrl: '/a.mp4', posterUrl: null },
-        { orderIndex: 1, videoUrl: '/b.mp4', posterUrl: null },
+        { videoUrl: '/a.mp4', posterUrl: null, cues: [] },
+        { videoUrl: '/b.mp4', posterUrl: null, cues: [] },
       ],
     });
     expect(mocks.dispose).toHaveBeenCalledOnce();
@@ -292,5 +301,144 @@ describe('StitchedSequenceMedia source identity', () => {
     media.destroy();
     expect(mocks.dispose).toHaveBeenCalledOnce();
     expect(media.engine).toBeNull();
+  });
+});
+
+describe('StitchedSequenceMedia subtitles', () => {
+  const cued = {
+    ...source,
+    clips: [
+      {
+        videoUrl: '/a.mp4',
+        posterUrl: null,
+        cues: [{ startSeconds: 1, endSeconds: 3, text: 'Hello' }],
+      },
+    ],
+  };
+
+  it('exposes a showing subtitle track only when a clip has cues', async () => {
+    const media = await preparedMedia();
+    expect(media.textTracks.length).toBe(0);
+    const added = vi.fn();
+    media.textTracks.addEventListener('addtrack', added);
+    media.setSource(cued);
+    expect(added).toHaveBeenCalledOnce();
+    expect(media.textTracks[0]?.kind).toBe('subtitles');
+    expect(media.textTracks[0]?.mode).toBe('showing');
+    // Cues are not media: no rebuild.
+    expect(mocks.prepare).toHaveBeenCalledOnce();
+    media.setSource(source);
+    expect(media.textTracks.length).toBe(0);
+  });
+
+  it('starts disabled when asked, and a mode write notifies the list', async () => {
+    const media = await preparedMedia();
+    media.setSource({ ...cued, subtitles: false });
+    const changed = vi.fn();
+    media.textTracks.addEventListener('change', changed);
+    const track = media.textTracks[0];
+    expect(track?.mode).toBe('disabled');
+    if (track) track.mode = 'showing';
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
+  it('copies new cue text onto the open source without rebuilding', async () => {
+    const media = await preparedMedia();
+    const next = {
+      ...cued,
+      clips: [
+        {
+          videoUrl: '/a.mp4',
+          posterUrl: null,
+          cues: [{ startSeconds: 0, endSeconds: 1, text: 'Now' }],
+        },
+      ],
+    };
+    media.setSource(next);
+    expect(mocks.dispose).not.toHaveBeenCalled();
+    expect(mocks.updateCues).toHaveBeenCalledWith(next.clips);
+    lastOpts.current?.onTimeUpdate?.(0.5);
+    expect(media.activeCueText).toBe('Now');
+  });
+
+  it('leaves captions disabled when a cue-only update repeats subtitles', async () => {
+    const media = await preparedMedia();
+    media.setSource(cued);
+    const track = media.textTracks[0];
+    if (!track) throw new Error('expected a subtitle track');
+    track.mode = 'disabled';
+    media.setSource({
+      ...cued,
+      clips: [
+        {
+          videoUrl: '/a.mp4',
+          posterUrl: null,
+          cues: [{ startSeconds: 1, endSeconds: 2, text: 'Later' }],
+        },
+      ],
+    });
+    expect(mocks.dispose).not.toHaveBeenCalled();
+    expect(media.textTracks[0]?.mode).toBe('disabled');
+    lastOpts.current?.onTimeUpdate?.(1.5);
+    expect(media.activeCueText).toBeNull();
+  });
+
+  it('activeCueText follows the playhead and the track mode', async () => {
+    const media = await preparedMedia();
+    media.setSource(cued);
+    lastOpts.current?.onTimeUpdate?.(0.5);
+    expect(media.activeCueText).toBeNull();
+    lastOpts.current?.onTimeUpdate?.(2);
+    expect(media.activeCueText).toBe('Hello');
+    const track = media.textTracks[0];
+    if (track) track.mode = 'disabled';
+    expect(media.activeCueText).toBeNull();
+  });
+});
+
+describe('StitchedSequenceMedia picture-in-picture', () => {
+  const pipCanvas = {
+    captureStream: () => ({}),
+    getContext: () => ({ drawImage() {} }),
+  };
+
+  async function pipMedia(): Promise<
+    InstanceType<typeof StitchedSequenceMedia>
+  > {
+    const play = vi.fn(() => Promise.reject(new Error('play failed')));
+    vi.stubGlobal('document', {
+      pictureInPictureEnabled: true,
+      createElement: () => ({
+        play,
+        addEventListener() {},
+        readyState: 0,
+      }),
+    });
+    vi.stubGlobal('HTMLVideoElement', {
+      prototype: { requestPictureInPicture() {} },
+    });
+    const media = new StitchedSequenceMedia();
+    media.setListeners({
+      onPictureInPictureError: vi.fn(),
+      logger: { warn: vi.fn() },
+    });
+    media.setSource(source);
+    media.attach(asStub<HTMLCanvasElement>(pipCanvas));
+    await mocks.prepare.mock.results[0]?.value;
+    return media;
+  }
+
+  it('reports a play failure and does not float the window', async () => {
+    const onPictureInPictureError = vi.fn();
+    const media = await pipMedia();
+    media.setListeners({
+      onPictureInPictureError,
+      logger: { warn: vi.fn() },
+    });
+    await expect(media.requestPictureInPicture?.()).rejects.toThrow(
+      'play failed'
+    );
+    expect(onPictureInPictureError).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
   });
 });

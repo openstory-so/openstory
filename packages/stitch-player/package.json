@@ -1,0 +1,72 @@
+{
+  "name": "@openstory/stitch-player",
+  "version": "0.1.0",
+  "description": "Plays a list of video clips and timed stills as one sequence in the browser — no server encode. Mediabunny on a canvas, with music, per-clip dialogue and subtitles. Optional Video.js 10 adapter and React surface.",
+  "keywords": [
+    "concatenate",
+    "mediabunny",
+    "player",
+    "stitch",
+    "subtitles",
+    "video",
+    "videojs",
+    "webcodecs"
+  ],
+  "homepage": "https://github.com/openstory-so/openstory/tree/main/packages/stitch-player#readme",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openstory-so/openstory.git",
+    "directory": "packages/stitch-player"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./videojs": {
+      "types": "./dist/videojs.d.ts",
+      "default": "./dist/videojs.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "default": "./dist/export.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepack": "bun run build"
+  },
+  "dependencies": {
+    "mediabunny": "^1.60.0"
+  },
+  "peerDependencies": {
+    "@videojs/media": "^10.0.0",
+    "@videojs/react": "^10.0.0",
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@videojs/media": {
+      "optional": true
+    },
+    "@videojs/react": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  }
+}

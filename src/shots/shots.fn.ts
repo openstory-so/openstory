@@ -45,6 +45,7 @@ import {
   loadShotPromptDialogue,
   shotDialogueResolver,
 } from '@/shots/server/shot-dialogue';
+import { sectionLineTiming } from '@/shots/shot-dialogue';
 import { projectVideoVariants } from '@/motion/server/video-variant-projection';
 import {
   bulkShotSchema,
@@ -100,7 +101,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
       missingAnchors.length > 0
         ? await scopedDb.frames.listAnchorsBySequence(sequence.id)
         : existingAnchors;
-    const [gridSheets, motionByShot, linesByShotId, sceneContext] =
+    const [gridSheets, motionByShot, linesByShotId, sceneContext, sections] =
       await Promise.all([
         scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
         scopedDb.shotPromptVersions.getSelectedMotionByShots(
@@ -108,7 +109,12 @@ export const getShotsFn = createServerFn({ method: 'GET' })
         ),
         loadShotDialogueLines(scopedDb, sequence.id),
         loadSceneContextBySequence(scopedDb, sequence.id),
+        scopedDb.shotDialogue.getSelectedSectionsBySequence(sequence.id),
       ]);
+    // When each line is heard (#1853), off the selected reading — never stored.
+    const timingByShot = new Map(
+      sections.map((section) => [section.shotId, sectionLineTiming(section)])
+    );
     // What each shot says now (#1657) — the panel shows the words a render
     // would speak.
     const dialogueOf = shotDialogueResolver({
@@ -192,6 +198,7 @@ export const getShotsFn = createServerFn({ method: 'GET' })
         gridSheet,
         motionPrompt,
         dialogue,
+        dialogueTiming: timingByShot.get(shot.id) ?? null,
         pendingUpscaleUrl: pendingUpscaleUrlFromVersion(
           frame.pendingPromoteVersionId
             ? (pendingById.get(frame.pendingPromoteVersionId) ?? null)
@@ -244,6 +251,7 @@ export const getShotFn = createServerFn({ method: 'GET' })
       primaryVideo,
       pendingPromote,
       primaryImage,
+      sections,
     ] = await Promise.all([
       context.scopedDb.frameVariants.getLatestGridSheet(context.frame.id),
       context.scopedDb.shotPromptVersions.getSelectedMotion(context.shot.id),
@@ -258,7 +266,13 @@ export const getShotFn = createServerFn({ method: 'GET' })
           )
         : Promise.resolve(null),
       context.scopedDb.frameVariants.getPrimary(context.frame.id),
+      // The same read the list uses, so one shot is timed the same way on
+      // both paths.
+      context.scopedDb.shotDialogue.getSelectedSectionsBySequence(
+        context.sequence.id
+      ),
     ]);
+    const selectedSection = sections.find((s) => s.shotId === context.shot.id);
     // The first-shot rule needs the scene-mates, so the sequence's shots are
     // read even for one shot.
     const dialogue = (
@@ -278,6 +292,9 @@ export const getShotFn = createServerFn({ method: 'GET' })
       primaryVideo,
       gridSheet: sheet ? { url: sheet.url, status: sheet.status } : null,
       dialogue,
+      dialogueTiming: selectedSection
+        ? sectionLineTiming(selectedSection)
+        : null,
       motionPrompt: selectedMotion
         ? motionPromptFromVersion(selectedMotion, dialogue)
         : null,

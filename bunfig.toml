@@ -1,3 +1,10 @@
+[install]
+# `workspaces` (packages/stitch-player) flips bun's default linker to
+# `isolated`, which only links declared dependencies at the root and broke
+# the app's direct imports of transitive tiptap packages. Keep the hoisted
+# layout the app has always run on.
+linker = "hoisted"
+
 [build]
 # Equivalent to pnpm's ignoredBuiltDependencies
 skip = ["msw"]

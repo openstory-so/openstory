@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   forAwaitUntilDisposed,
   isInputDisposedError,
-} from './disposed-iterator';
+} from './disposed-iterator.js';
 
 /** Async iterable that rejects on the first `next()` — the dispose race. */
 function throwingIterable<T>(err: Error): AsyncIterable<T> {

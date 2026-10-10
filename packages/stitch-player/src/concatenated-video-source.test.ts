@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlaybackClip } from './concatenated-video-source';
+import type { PlaybackClip } from './playback-clip.js';
 
 const opened: { url: string; dispose: ReturnType<typeof vi.fn> }[] = [];
 const context = {
@@ -29,14 +29,17 @@ vi.doMock('mediabunny', () => ({
             canDecode: async () => true,
             getDisplayWidth: async () => 1280,
             getDisplayHeight: async () => 720,
-            getCodec: async () => 'vp9',
           }
         : null;
     }
     async getPrimaryAudioTrack() {
-      return this.url.includes('silent')
-        ? null
-        : { canDecode: async () => true };
+      if (this.url.includes('silent') || this.url.includes('no-audio')) {
+        return null;
+      }
+      return {
+        canDecode: async () => !this.url.includes('undecodable'),
+        getCodec: async () => 'aac',
+      };
     }
     async getDurationFromMetadata() {
       return this.url.includes('.mp4') ? 4 : 2;
@@ -50,18 +53,19 @@ vi.doMock('mediabunny', () => ({
   EncodedPacket: class {},
   EncodedPacketSink: class {},
 }));
-vi.doMock('./ranged-source', () => ({
+vi.doMock('./ranged-source.js', () => ({
   createRangedSource: (url: string) => ({ url }),
 }));
-const { ConcatenatedVideoSource } = await import('./concatenated-video-source');
+const { ConcatenatedVideoSource } =
+  await import('./concatenated-video-source.js');
 const still = (
   overrides: Partial<Extract<PlaybackClip, { imageUrl: string | null }>> = {}
 ): PlaybackClip => ({
-  orderIndex: 0,
   imageUrl: '/preview.png',
   fallbackImageUrl: '/thumbnail.png',
   durationSeconds: 5,
   audioUrls: [],
+  cues: [],
   width: 1600,
   height: 900,
   ...overrides,
@@ -92,7 +96,6 @@ describe('mixed canvas timeline', () => {
     const source = new ConcatenatedVideoSource([still()]);
     expect(await source.prepare()).toMatchObject({
       totalDurationSeconds: 5,
-      canTransmux: false,
     });
     const frames = [];
     for await (const frame of source.canvases(2)) frames.push(frame);
@@ -107,13 +110,12 @@ describe('mixed canvas timeline', () => {
   });
   it('uses measured dialogue duration and offsets every audio clip on a mixed timeline', async () => {
     const source = new ConcatenatedVideoSource([
-      { orderIndex: 0, videoUrl: '/render.mp4', posterUrl: null },
+      { videoUrl: '/render.mp4', posterUrl: null, cues: [] },
       still({
-        orderIndex: 1,
         audioUrls: ['/one.wav', '/two.wav'],
         durationSeconds: 15,
       }),
-      still({ orderIndex: 2, durationSeconds: 5 }),
+      still({ durationSeconds: 5 }),
     ]);
     expect(await source.prepare()).toMatchObject({
       clipOffsetsSeconds: [0, 4, 8],
@@ -154,7 +156,10 @@ describe('mixed canvas timeline', () => {
     const missing = new ConcatenatedVideoSource([
       still({ imageUrl: '/missing.png', fallbackImageUrl: '/missing-2.png' }),
     ]);
-    expect((await missing.prepare()).totalDurationSeconds).toBe(5);
+    expect(await missing.prepare()).toMatchObject({
+      totalDurationSeconds: 5,
+      missingStillIndexes: [0],
+    });
     await missing.canvases(0).next();
     expect(context.fillText).not.toHaveBeenCalled();
     expect(context.fillRect).toHaveBeenCalled();
@@ -169,5 +174,42 @@ describe('mixed canvas timeline', () => {
     );
     expect(opened[0]?.dispose).toHaveBeenCalledOnce();
     source.dispose();
+  });
+
+  it('reports undecodable embedded audio and ignores a clip with no audio track', async () => {
+    const source = new ConcatenatedVideoSource([
+      { videoUrl: '/undecodable.mp4', posterUrl: null, cues: [] },
+      { videoUrl: '/no-audio.mp4', posterUrl: null, cues: [] },
+    ]);
+    const prepared = await source.prepare();
+    expect(prepared.silentClipIndexes).toEqual([0]);
+    expect(source.getClipAudioTracks()).toEqual([]);
+    source.dispose();
+  });
+
+  it('copies cue text onto the open clips and rejects a bad cue', () => {
+    const source = new ConcatenatedVideoSource([
+      { videoUrl: '/render.mp4', posterUrl: null, cues: [] },
+    ]);
+    source.updateCues([
+      {
+        videoUrl: '/render.mp4',
+        posterUrl: null,
+        cues: [{ startSeconds: 0, endSeconds: 1, text: 'Now' }],
+      },
+    ]);
+    expect(source.clips[0]?.cues).toEqual([
+      { startSeconds: 0, endSeconds: 1, text: 'Now' },
+    ]);
+    expect(() =>
+      source.updateCues([
+        {
+          videoUrl: '/render.mp4',
+          posterUrl: null,
+          cues: [{ startSeconds: 1, endSeconds: 1, text: 'Bad' }],
+        },
+      ])
+    ).toThrow(/0 <= start < end/);
+    expect(source.clips[0]?.cues[0]?.text).toBe('Now');
   });
 });

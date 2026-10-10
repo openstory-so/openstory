@@ -14,9 +14,12 @@ import {
   type AspectRatio,
 } from '@/models/aspect-ratios';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
-import type { SequencePlayerMeta } from './playback';
-import type { PlaybackClip } from './concatenated-video-source';
-import { playbackClipsKey } from './playback-clips';
+import {
+  playbackClipsKey,
+  type PlaybackClip,
+  type SequencePlayerMeta,
+} from '@openstory/stitch-player';
+import { getLogger } from '@/platform/logger';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -26,20 +29,21 @@ import {
   type VideoPlaySource,
 } from './player-events';
 import { cn } from '@/ui/utils';
+import { playerFrameClassName } from '@/ui/player-frame';
+import { playbackGapMessage } from './playback-gap';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { StitchedPlayer } from '@openstory/stitch-player/react';
+import { toast } from 'sonner';
+import { useEffect, useRef, useState } from 'react';
 
-// Dynamic, and rendered only after mount — see stitched-player-surface.tsx.
-// `@videojs/store` constructs an AbortController at module scope, which
-// Workerd rejects (#1139). `lazy()` alone is not enough (React invokes the
-// loader during SSR); the `mounted` gate is what keeps the server out of it.
-const StitchedPlayerSurface = lazy(() => import('./stitched-player-surface'));
+const logger = getLogger(['openstory', 'sequence-player']);
 
 type SequencePlayerProps = {
   clips: PlaybackClip[];
   musicUrl: string | null;
-  musicLoudnessGainDb: number | null;
+  /** Gain in dB on the music only (a measured loudness normalization); `null` when none was measured, which plays at 0 dB. */
+  musicGainDb: number | null;
   /**
    * Whether the music track plays. Pushed into the engine's music-only gain
    * node so toggling is live and never re-prepares the player (#834). When
@@ -68,16 +72,10 @@ type SequencePlayerProps = {
   draftLabel?: string | null;
 };
 
-function useMounted(): boolean {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  return mounted;
-}
-
 export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   clips,
   musicUrl,
-  musicLoudnessGainDb,
+  musicGainDb,
   musicEnabled,
   onMusicEnabledChange,
   aspectRatio,
@@ -91,7 +89,6 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   draftLabel = null,
 }) => {
   const posthog = usePostHog();
-  const mounted = useMounted();
   const clipsKey = playbackClipsKey(clips);
   // Shots that still have no video (#1690) play as stills on the canvas.
   const hasStills = clips.some((clip) => !('videoUrl' in clip));
@@ -130,13 +127,10 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     setError(null);
     flushWatched(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- clipsKey, not clips identity (#1284)
-  }, [clipsKey, musicUrl, musicLoudnessGainDb]);
+  }, [clipsKey, musicUrl, musicGainDb]);
 
-  const frameClassName = cn(
-    'relative w-full overflow-hidden rounded-lg bg-black',
-    className,
-    getAspectRatioClassName(aspectRatio)
-  );
+  const frameClassName = playerFrameClassName(aspectRatio, className);
+  const gapMessage = meta ? playbackGapMessage(meta) : null;
 
   const overlay = (
     <>
@@ -151,6 +145,20 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         )}
       </div>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        {gapMessage && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-testid="playback-gap-warning"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-black/50 text-amber-400"
+                aria-label="Playback gaps"
+              >
+                <TriangleAlert className="h-4 w-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{gapMessage}</TooltipContent>
+          </Tooltip>
+        )}
         {meta?.hasMixedResolutions && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -168,7 +176,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               {meta.hasMixedAspectRatios
                 ? 'Playback letterboxes them into a common frame'
                 : 'Smaller clips are upscaled to match'}
-              ; the export will be normalized (re-encoded), which is slower.
+              ; a rendered MP4 normalizes them the same way.
             </TooltipContent>
           </Tooltip>
         )}
@@ -224,7 +232,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         <p className="text-xs text-muted-foreground text-center max-w-sm">
           {hasStills
             ? 'Check your connection and retry playback.'
-            : 'Download → Render MP4 on server gives a file any browser plays.'}
+            : 'Render MP4 on server (under Download) gives a file any browser plays.'}
         </p>
         <Button
           variant="outline"
@@ -268,47 +276,51 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       data-state={meta ? 'ready' : 'loading'}
       className={frameClassName}
     >
-      {mounted ? (
-        <Suspense fallback={null}>
-          <div className="absolute inset-0 h-full w-full">
-            <StitchedPlayerSurface
-              clips={clips}
-              musicUrl={musicUrl}
-              musicLoudnessGainDb={musicLoudnessGainDb}
-              musicEnabled={musicEnabled}
-              autoPlay={autoPlay}
-              onLoadProgress={(loaded) => setLoadedClips(loaded)}
-              onMeta={(next) => {
-                setMeta(next);
-                tracker.setDuration(next.durationSeconds);
-              }}
-              onTimeUpdate={(t) => {
-                tracker.tick(t);
-                onTimeUpdate?.(t, meta?.clipOffsetsSeconds);
-              }}
-              onPlay={() => {
-                if (!tracker.isActive()) tracker.start();
-                captureVideoPlay(posthog, {
-                  source: playSource,
-                  sequence_id: sequenceId,
-                });
-                onAutoPlayConsumed?.();
-              }}
-              onPause={() => flushWatched()}
-              onEnded={() => flushWatched(true)}
-              onError={(reason) => {
-                tracker.dispose();
-                setError(reason);
-                captureVideoPlayFailed(posthog, {
-                  source: playSource,
-                  reason,
-                  sequence_id: sequenceId,
-                });
-              }}
-            />
-          </div>
-        </Suspense>
-      ) : null}
+      <div className="absolute inset-0 h-full w-full">
+        <StitchedPlayer
+          clips={clips}
+          musicUrl={musicUrl}
+          musicGainDb={musicGainDb ?? 0}
+          musicEnabled={musicEnabled}
+          autoPlay={autoPlay}
+          className="h-full w-full"
+          logger={logger}
+          onLoadProgress={(loaded) => setLoadedClips(loaded)}
+          onMeta={(next) => {
+            setMeta(next);
+            tracker.setDuration(next.durationSeconds);
+          }}
+          onTimeUpdate={(t) => {
+            tracker.tick(t);
+            onTimeUpdate?.(t, meta?.clipOffsetsSeconds);
+          }}
+          onPlay={() => {
+            if (!tracker.isActive()) tracker.start();
+            captureVideoPlay(posthog, {
+              source: playSource,
+              sequence_id: sequenceId,
+            });
+            onAutoPlayConsumed?.();
+          }}
+          onPause={() => flushWatched()}
+          onEnded={() => flushWatched(true)}
+          onError={(error) => {
+            tracker.dispose();
+            setError(error.message);
+            captureVideoPlayFailed(posthog, {
+              source: playSource,
+              reason: error.message,
+              sequence_id: sequenceId,
+            });
+          }}
+          // Not a playback failure: the cut keeps playing, so say so and move on.
+          onPictureInPictureError={(error) => {
+            toast.error('Picture-in-Picture unavailable', {
+              description: error.message,
+            });
+          }}
+        />
+      </div>
       {!meta && loading}
       {overlay}
     </div>

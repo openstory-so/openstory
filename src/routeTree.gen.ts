@@ -100,6 +100,7 @@ import { Route as AppSequencesIdElementsElementIdRouteImport } from './routes/_a
 import { Route as AppSequencesIdLocationsIndexRouteImport } from './routes/_app/sequences/$id/locations/index'
 import { Route as AppSequencesIdLocationsLocationIdRouteImport } from './routes/_app/sequences/$id/locations/$locationId'
 import { Route as ApiV1SequencesIdExportsRouteImport } from './routes/api/v1/sequences.$id.exports'
+import { Route as ApiSequencesSequenceIdShotsShotIdSubtitlesRouteImport } from './routes/api/sequences/$sequenceId/shots/$shotId/subtitles'
 
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
@@ -559,6 +560,12 @@ const ApiV1SequencesIdExportsRoute = ApiV1SequencesIdExportsRouteImport.update({
   path: '/exports',
   getParentRoute: () => ApiV1SequencesIdRoute,
 } as any)
+const ApiSequencesSequenceIdShotsShotIdSubtitlesRoute =
+  ApiSequencesSequenceIdShotsShotIdSubtitlesRouteImport.update({
+    id: '/api/sequences/$sequenceId/shots/$shotId/subtitles',
+    path: '/api/sequences/$sequenceId/shots/$shotId/subtitles',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -650,6 +657,7 @@ export interface FileRoutesByFullPath {
   '/sequences/$id/cast/': typeof AppSequencesIdCastIndexRoute
   '/sequences/$id/elements/': typeof AppSequencesIdElementsIndexRoute
   '/sequences/$id/locations/': typeof AppSequencesIdLocationsIndexRoute
+  '/api/sequences/$sequenceId/shots/$shotId/subtitles': typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
@@ -739,6 +747,7 @@ export interface FileRoutesByTo {
   '/sequences/$id/cast': typeof AppSequencesIdCastIndexRoute
   '/sequences/$id/elements': typeof AppSequencesIdElementsIndexRoute
   '/sequences/$id/locations': typeof AppSequencesIdLocationsIndexRoute
+  '/api/sequences/$sequenceId/shots/$shotId/subtitles': typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -833,6 +842,7 @@ export interface FileRoutesById {
   '/_app/sequences/$id/cast/': typeof AppSequencesIdCastIndexRoute
   '/_app/sequences/$id/elements/': typeof AppSequencesIdElementsIndexRoute
   '/_app/sequences/$id/locations/': typeof AppSequencesIdLocationsIndexRoute
+  '/api/sequences/$sequenceId/shots/$shotId/subtitles': typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -926,6 +936,7 @@ export interface FileRouteTypes {
     | '/sequences/$id/cast/'
     | '/sequences/$id/elements/'
     | '/sequences/$id/locations/'
+    | '/api/sequences/$sequenceId/shots/$shotId/subtitles'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1015,6 +1026,7 @@ export interface FileRouteTypes {
     | '/sequences/$id/cast'
     | '/sequences/$id/elements'
     | '/sequences/$id/locations'
+    | '/api/sequences/$sequenceId/shots/$shotId/subtitles'
   id:
     | '__root__'
     | '/_app'
@@ -1108,6 +1120,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/$id/cast/'
     | '/_app/sequences/$id/elements/'
     | '/_app/sequences/$id/locations/'
+    | '/api/sequences/$sequenceId/shots/$shotId/subtitles'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1140,6 +1153,7 @@ export interface RootRouteChildren {
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
   ApiV1DeviceTokenRoute: typeof ApiV1DeviceTokenRoute
   ApiV1ScriptsEnhanceRoute: typeof ApiV1ScriptsEnhanceRoute
+  ApiSequencesSequenceIdShotsShotIdSubtitlesRoute: typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1781,6 +1795,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1SequencesIdExportsRouteImport
       parentRoute: typeof ApiV1SequencesIdRoute
     }
+    '/api/sequences/$sequenceId/shots/$shotId/subtitles': {
+      id: '/api/sequences/$sequenceId/shots/$shotId/subtitles'
+      path: '/api/sequences/$sequenceId/shots/$shotId/subtitles'
+      fullPath: '/api/sequences/$sequenceId/shots/$shotId/subtitles'
+      preLoaderRoute: typeof ApiSequencesSequenceIdShotsShotIdSubtitlesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -2034,6 +2055,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,
   ApiV1DeviceTokenRoute: ApiV1DeviceTokenRoute,
   ApiV1ScriptsEnhanceRoute: ApiV1ScriptsEnhanceRoute,
+  ApiSequencesSequenceIdShotsShotIdSubtitlesRoute:
+    ApiSequencesSequenceIdShotsShotIdSubtitlesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

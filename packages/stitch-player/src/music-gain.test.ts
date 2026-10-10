@@ -2,7 +2,7 @@
 // only the music node through this value; scene/dialogue audio is unaffected.
 import { describe, expect, it } from 'vitest';
 
-import { computeMusicGain, loudnessDbToLinear } from './music-gain';
+import { computeMusicGain, loudnessDbToLinear } from './music-gain.js';
 
 describe('computeMusicGain', () => {
   it('returns 0 when music is disabled, whatever the loudness (the #834 mute contract)', () => {

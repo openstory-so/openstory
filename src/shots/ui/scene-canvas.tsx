@@ -231,7 +231,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
       <SequencePlayer
         clips={playbackClips}
         musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}
-        musicLoudnessGainDb={null}
+        musicGainDb={null}
         musicEnabled={scope === 'sequence' ? sequence.includeMusic : false}
         onMusicEnabledChange={(enabled) => setMusicEnabled.mutate(enabled)}
         aspectRatio={aspectRatio}

@@ -276,7 +276,10 @@ changing the area, and update it in the same PR.**
   playhead reaches it (#1845). The HLS playlist and its ingest remux are
   gone — a whole clip must never sit in Worker memory, and a fragmented MP4
   cannot be written without holding it. Download only hands over a render of
-  the current cut; "Render MP4 on server" makes one.
+  the current cut; "Render MP4 on server" makes one. The player itself is
+  `packages/stitch-player` (#1853): it knows clips and cues, never shots —
+  the shot mapping and subtitles (`shotCues`) live in
+  `src/sequences/ui/theatre/playback-clips.ts`.
 
 ## Frame System
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   contextWindow,
   deriveShotDialogueLines,
+  sectionLineTiming,
   speechKey,
   sceneConversation,
   shotDialogue,
@@ -272,5 +273,48 @@ describe('contextWindow', () => {
 
   it('is empty for a shot that speaks nothing', () => {
     expect(contextWindow(voiced, 'nobody')).toEqual([]);
+  });
+});
+
+describe('sectionLineTiming (#1853)', () => {
+  it('keeps only the shot’s turns, moved to the section’s origin', () => {
+    expect(
+      sectionLineTiming({
+        shotId: 's2',
+        fromSeconds: 4,
+        toSeconds: 8,
+        speechTurns: [
+          { shotId: 's1', index: 0, startSeconds: 0, endSeconds: 3.5 },
+          { shotId: 's2', index: 0, startSeconds: 4.25, endSeconds: 5 },
+          { shotId: 's2', index: 1, startSeconds: 5.5, endSeconds: 6.75 },
+        ],
+      })
+    ).toEqual([
+      { index: 0, startSeconds: 0.25, endSeconds: 1 },
+      { index: 1, startSeconds: 1.5, endSeconds: 2.75 },
+    ]);
+  });
+
+  it('clamps a turn that crosses the cut and drops the rest', () => {
+    const section = {
+      shotId: 's2',
+      fromSeconds: 4,
+      toSeconds: 6,
+    };
+    expect(
+      sectionLineTiming({
+        ...section,
+        speechTurns: [
+          { shotId: 's2', index: 0, startSeconds: 3, endSeconds: 4.5 },
+          { shotId: 's2', index: 1, startSeconds: 2, endSeconds: 4 },
+          { shotId: 's2', index: 2, startSeconds: 5.5, endSeconds: 7 },
+          { shotId: 's2', index: 3, startSeconds: 5, endSeconds: 5 },
+          { shotId: 's2', index: 0, startSeconds: 4.5, endSeconds: 5 },
+        ],
+      })
+    ).toEqual([
+      { index: 0, startSeconds: 0, endSeconds: 0.5 },
+      { index: 2, startSeconds: 1.5, endSeconds: 2 },
+    ]);
   });
 });

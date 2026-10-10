@@ -1,28 +1,44 @@
 import type { KnipConfig } from 'knip';
 
 export default {
-  entry: [
-    'src/router.tsx',
-    'src/routes/**/*.{ts,tsx}', // file-based routes
-    'src/**/*.fn.ts', // createServerFn endpoints
-    'scripts/**/*.ts',
-    'src/platform/server/auth/cli-config.ts', // `bun auth:generate` (Better Auth CLI) — was wrongly swept as dead code once
-    '.storybook/**/*.{ts,tsx}',
-    'content-collections.ts', // content-collections build config (root)
-    // MSW request mocks (registered by path, not statically imported).
-    'src/mocks/browser.ts',
-    'src/mocks/server.ts',
-    // Swapped in by .storybook/server-stub-plugin.ts via a Vite alias (string
-    // path), so knip can't trace them from an import.
-    'src/mocks/server-stub.ts',
-    'src/mocks/tanstack-start.ts',
-    // Aliased for `cloudflare:workers` in .storybook/main.ts (string path).
-    'src/mocks/cloudflare-workers.ts',
-    // Aliased for @react-email/code-block in vite.config.ts (string path) to
-    // keep prismjs out of the worker's startup path.
-    'src/platform/server/emails/stubs/code-block.tsx',
-  ],
-  project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+  // Root workspace: the app. `workspaces` (bun) puts knip in workspace mode,
+  // so entry/project live per workspace; ignore lists below apply to all.
+  workspaces: {
+    '.': {
+      entry: [
+        'src/router.tsx',
+        'src/routes/**/*.{ts,tsx}', // file-based routes
+        'src/**/*.fn.ts', // createServerFn endpoints
+        'scripts/**/*.ts',
+        'src/platform/server/auth/cli-config.ts', // `bun auth:generate` (Better Auth CLI) — was wrongly swept as dead code once
+        '.storybook/**/*.{ts,tsx}',
+        'content-collections.ts', // content-collections build config (root)
+        // MSW request mocks (registered by path, not statically imported).
+        'src/mocks/browser.ts',
+        'src/mocks/server.ts',
+        // Swapped in by .storybook/server-stub-plugin.ts via a Vite alias (string
+        // path), so knip can't trace them from an import.
+        'src/mocks/server-stub.ts',
+        'src/mocks/tanstack-start.ts',
+        // Aliased for `cloudflare:workers` in .storybook/main.ts (string path).
+        'src/mocks/cloudflare-workers.ts',
+        // Aliased for @react-email/code-block in vite.config.ts (string path) to
+        // keep prismjs out of the worker's startup path.
+        'src/platform/server/emails/stubs/code-block.tsx',
+      ],
+      project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+    },
+    // @openstory/stitch-player: its four public entries.
+    'packages/stitch-player': {
+      entry: [
+        'src/index.ts',
+        'src/videojs.ts',
+        'src/react.tsx',
+        'src/export.ts',
+      ],
+      project: ['src/**/*.{ts,tsx}'],
+    },
+  },
   ignore: [
     '**/*.gen.ts', // generated (routeTree.gen.ts, etc.)
     '**/*.stories.tsx', // analysed by the Storybook build, not the app graph
@@ -55,6 +71,9 @@ export default {
     '@fontsource-variable/geist',
     '@tailwindcss/typography',
   ],
+  // @openstory/stitch-player's framework peers are optional by design: an
+  // engine-only user installs neither React nor Video.js.
+  rules: { optionalPeerDependencies: 'off' },
   ignoreBinaries: [
     // CLI tools / shell builtins invoked from package.json scripts.
     'stripe',

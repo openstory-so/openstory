@@ -248,6 +248,25 @@ describe('authored versions', () => {
     expect((await methods.getSelected(shotId))?.id).toBe(silenced?.id);
   });
 
+  it('returns only the selected section, with its end and the speech turns', async () => {
+    const methods = createShotDialogueMethods(db);
+    const mine = section(shotId, true, { fromSeconds: 0.5, toSeconds: 2 });
+    const context = section(otherShotId, false, {
+      fromSeconds: 2,
+      toSeconds: 4,
+    });
+    const input = recording([mine, context]);
+    await land(methods, input);
+    expect(await methods.getSelectedSectionsBySequence(sequenceId)).toEqual([
+      {
+        shotId,
+        fromSeconds: 0.5,
+        toSeconds: 2,
+        speechTurns: input.turns,
+      },
+    ]);
+  });
+
   it('lists the selected row of every live shot of the sequence', async () => {
     const methods = createShotDialogueMethods(db);
     await methods.write(shotId, [line('A')], 'prompt');
