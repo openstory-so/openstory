@@ -84,6 +84,8 @@ export async function buildCharacterSheetDraft(
   liveFace: CharacterSheetWorkflowInput['face'];
   /** Why this look cannot be drawn now; null when it can. */
   refusal: string | null;
+  /** The selected sheet version's `model`; null when there is no sheet. */
+  liveVersionModel: string | null;
 }> {
   const { scopedDb, userId, teamId, sequence } = params;
   const look = await requireCharacterLook(
@@ -140,7 +142,6 @@ export async function buildCharacterSheetDraft(
     isDefault: look.isDefault,
     liveFace,
     refusal,
-    /** The selected sheet version's `model`; null when there is no sheet. */
     liveVersionModel: liveVersion?.model ?? null,
   };
 }

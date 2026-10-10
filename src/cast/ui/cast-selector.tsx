@@ -12,7 +12,8 @@ import {
   TalentPickerPanel,
 } from '@/cast/ui/talent/talent-suggestion-selector';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/shadcn/tabs';
-import type { TeamCharacter } from '@/cast/team-characters.fn';
+import type { TeamCharacter } from '@/cast/server/db/characters';
+import { useHydrated } from '@/ui/use-hydrated';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -73,6 +74,9 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
   disabled,
 }) => {
   const [open, setOpen] = useState(false);
+  // Server-rendered before its handler exists: a click then does nothing.
+  // Disabled until hydrated, like the library filters.
+  const hydrated = useHydrated();
   const [search, setSearch] = useState('');
 
   const selected = (characters ?? []).filter((c) => selectedIds.includes(c.id));
@@ -94,7 +98,7 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => setOpen(true)}
-          disabled={disabled}
+          disabled={disabled || !hydrated}
           className="text-muted-foreground"
         >
           Cast
