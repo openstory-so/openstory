@@ -193,12 +193,13 @@ export function useRegenerateLocationSheet() {
     }) => regenerateLocationSheetFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.all,
-      });
-      void queryClient.invalidateQueries({
         queryKey: ['location-sheet-variants'],
       });
       void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      // Returned: pending until the location is re-read as `generating`.
+      return queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
     },
   });
 }

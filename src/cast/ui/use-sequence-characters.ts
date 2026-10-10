@@ -411,12 +411,14 @@ export function useRegenerateCharacterSheet() {
     }) => regenerateCharacterSheetFn({ data }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.all,
-      });
-      void queryClient.invalidateQueries({
         queryKey: ['character-sheet-variants'],
       });
       void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      // Returned, so the mutation stays pending until the character is
+      // re-read as `generating`: the button never shows idle in between.
+      return queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.all,
+      });
     },
   });
 }
@@ -475,13 +477,13 @@ export function useRecastCharacter() {
       talentId: string;
     }) => recastCharacterFn({ data }),
     onSuccess: () => {
-      // Invalidate sequence characters to refresh the list
-      void queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.all,
-      });
       // Invalidate shots that contain this character
       void queryClient.invalidateQueries({ queryKey: ['shots'] });
       void queryClient.invalidateQueries({ queryKey: ['team-characters'] });
+      // Returned: pending until the character is re-read as `generating`.
+      return queryClient.invalidateQueries({
+        queryKey: sequenceCharacterKeys.all,
+      });
     },
   });
 }
