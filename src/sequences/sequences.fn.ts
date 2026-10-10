@@ -38,6 +38,7 @@ import {
   CONTINUE_CREDIT_PROVIDERS,
   estimateContinueCost,
   prepareContinue,
+  withContinueSwitches,
 } from '@/sequences/server/continue-plan';
 import { switchStopAt } from '@/sequences/generation-plan';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
@@ -190,50 +191,32 @@ export const continueGenerationFn = createServerFn({ method: 'POST' })
       errorMessage: 'Insufficient credits to continue generation',
     });
 
-    // The trigger snapshots these off the row, so they save first — and are
-    // put back if it refuses (a run already in flight, no style…): a rejected
-    // click must not leave its switches on a sequence nothing ran with.
-    const settings = {
-      generationStopAt: stopAt,
-      generateStartFrames: requested.generateStartFrames,
-      generateVoices: requested.generateVoices,
-      draftMotion: data.draftMotion,
-    };
-    const before = {
-      generationStopAt: resolveStopAt({
-        generationStopAt: sequence.generationStopAt,
-      }),
-      generateStartFrames: sequence.generateStartFrames,
-      generateVoices: sequence.generateVoices,
-      draftMotion: sequence.draftMotion,
-    };
-    await scopedDb.sequences.update({ id: data.sequenceId, ...settings });
-
-    const restoreOnThrow = async <T>(run: () => Promise<T>): Promise<T> => {
-      try {
-        return await run();
-      } catch (error) {
-        await scopedDb.sequences.update({ id: data.sequenceId, ...before });
-        throw error;
-      }
-    };
-
-    return restoreOnThrow(async () =>
-      triggerContinue(context.scopedDb, {
-        userId: context.user.id,
-        teamId: context.teamId,
-        sequence,
-        // The units, frozen now with every input read from D1 — after the
-        // switches saved, so a shot's mode is the one this click chose.
-        plan: await computePlan({
-          scopedDb,
-          sequenceId: sequence.id,
-          units: work.map(({ kind, id }) => ({ kind, id })),
+    // The trigger snapshots these off the row, so they save first.
+    return withContinueSwitches(
+      scopedDb,
+      sequence,
+      {
+        generationStopAt: stopAt,
+        generateStartFrames: requested.generateStartFrames,
+        generateVoices: requested.generateVoices,
+        draftMotion: data.draftMotion,
+      },
+      async () =>
+        triggerContinue(context.scopedDb, {
           userId: context.user.id,
-        }),
-        stopAt,
-        leftoverGrokShotIds: data.leftoverGrokShotIds,
-      })
+          teamId: context.teamId,
+          sequence,
+          // The units, frozen now with every input read from D1 — after the
+          // switches saved, so a shot's mode is the one this click chose.
+          plan: await computePlan({
+            scopedDb,
+            sequenceId: sequence.id,
+            units: work.map(({ kind, id }) => ({ kind, id })),
+            userId: context.user.id,
+          }),
+          stopAt,
+          leftoverGrokShotIds: data.leftoverGrokShotIds,
+        })
     );
   });
 

@@ -106,6 +106,8 @@ const baseInput = {
   enhance: 'off' as const,
   motion: false,
   music: false,
+  startFrames: false,
+  draftMotion: true,
 };
 
 function pngResponse(): Response {
@@ -137,6 +139,8 @@ describe('runOneShotCreate', () => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
     callLog.length = 0;
+    mocks.claimBytePlusVia.mockReturnValue('byteplus');
+    mocks.resolveOptionalKey.mockResolvedValue(null);
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => pngResponse())
@@ -252,6 +256,30 @@ describe('runOneShotCreate', () => {
       expect(created().videoModels).toEqual(['kling_v3_pro']);
       expect(created().draftMotion).toBe(false);
     });
+  });
+
+  it('creates what the app creates by default: no start frames, stopping at dialogue', async () => {
+    await runOneShotCreate(baseInput, ctx);
+    expect(mocks.createSequences).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stopAt: 'dialogue',
+        generateStartFrames: false,
+        draftMotion: true,
+      }),
+      expect.anything()
+    );
+    await runOneShotCreate(
+      { ...baseInput, startFrames: true, draftMotion: false, motion: true },
+      ctx
+    );
+    expect(mocks.createSequences).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        stopAt: 'motion',
+        generateStartFrames: true,
+        draftMotion: false,
+      }),
+      expect.anything()
+    );
   });
 
   it('ingests every character reference before insert and enqueues sheets only after the sequence exists', async () => {

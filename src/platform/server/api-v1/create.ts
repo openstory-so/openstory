@@ -50,6 +50,7 @@ import {
   waitLink,
 } from './hal';
 import type { ApiCreateSequenceInput } from './input-schema';
+import { apiStopAt } from './input-schema';
 import { sequenceStateResourceSchema } from './state';
 import {
   ingestElements,
@@ -403,17 +404,15 @@ export async function runOneShotCreate(
       analysisModels: input.analysisModels,
       imageModels: input.imageModels,
       videoModels: input.videoModels ?? [videoDefaults.videoModel],
-      // Draft first, like the app (#1756) — but only where this team reaches
-      // BytePlus: a draft that lands on fal is refused, not rendered.
-      draftMotion: (input.draftMotion ?? true) && videoDefaults.byteplus,
-      stopAt: input.stopAt,
-      autoGenerateMotion: input.motion,
-      autoGenerateMusic: input.music,
+      // Always a stop, never the legacy flags: the app's default when the
+      // caller names none (#2084).
+      stopAt: apiStopAt(input),
       // Voices are not a caller choice (#2067). Omitted here, createSequences
       // turns them on wherever voice design is configured.
-      // The API keeps the frame-based workflow: motion is opt-in spend here, and
-      // reference-only (the app default) cannot exist without it.
-      generateStartFrames: true,
+      generateStartFrames: input.startFrames,
+      // Like the composer: Draft first only where this team reaches BytePlus.
+      // A draft that lands on fal is refused, not rendered.
+      draftMotion: input.draftMotion && videoDefaults.byteplus,
       audioModels: input.audioModels,
       // Only Enhance sets the target (#1593); a verbatim script is auto.
       targetDurationSeconds: enhancedScript ? input.targetSeconds : undefined,

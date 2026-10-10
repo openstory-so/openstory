@@ -311,6 +311,11 @@ speaks the same language as the shot override. The resolution lives in one place
 `sequence.generateStartFrames` raw. Nine call sites have to agree; they drifted
 once already.
 
+The public API and MCP default to off as the app does (#2084): `startFrames`
+on `POST /api/v1/sequences` / `create_sequence`, and on `plan_generation`
+(`mode: "missing"`), where omitting it keeps the sequence's setting. Nothing
+on those paths turns start frames on for the caller.
+
 The switch is **not** render-only. It picks the motion-prompt template and
 folds into the motion-prompt hash, so flipping it re-stales that shot's motion
 prompt — deliberately, because rendering a reference-only shot with an

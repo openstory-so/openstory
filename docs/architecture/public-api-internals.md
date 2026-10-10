@@ -21,6 +21,32 @@ drift from its published contract: change the schema and both move together.
 - Use `z.string().meta({ format: 'date-time' })`, not `z.iso.datetime()`: the
   latter also publishes a multi-hundred-character regex.
 
+## Create and Continue take what the app sends (#2084)
+
+`POST /api/v1/sequences` and the MCP `create_sequence` share
+`apiCreateSequenceSchema`; a create from either is the sequence the composer
+would make from the same choices.
+
+- **Same default model as the app (#2088).** A request that names no `videoModels` starts on
+  Seedance 2.5 where the team reaches BytePlus and on `DEFAULT_VIDEO_MODEL` elsewhere
+  (`resolveApiVideoDefaults`, asked the way `getViaAvailabilityFn` asks). `draftMotion` is kept
+  only on that route, as the composer does; `POST /scripts/enhance` shapes the script for the
+  same model.
+- **Same defaults as the app.** `startFrames` is off, `draftMotion` is on, and with no `stopAt` and
+  no `motion` the run stops at `NEW_SEQUENCE_STOP_AT` (dialogue), the
+  composer's own default (`apiStopAt`). It used to stop at images with start
+  frames forced on. Stopping at images with start frames off makes sheets and
+  no stills, so do not move the default stop back without turning neither on.
+- **Continue.** `plan_generation` with `mode: "missing"` takes `startFrames`
+  and `draftMotion` beside `stopAt`. They ride the plan token, the plan and its
+  digest are computed under them, and they are saved on the sequence only at
+  `execute_generation`, through `withContinueSwitches`, the same save and
+  restore the Continue footer uses.
+- **Voices are not a field** on either (#2067).
+- **`ui-settings-parity.test.ts` pins it.** Its two maps are typed against
+  `GenerationSettings` and `ContinueFlags`. A new composer setting or Continue
+  switch needs an API field there, or a stated reason it has none.
+
 ## Server-side export (API)
 
 Theatre Download/Copy and the public API both `POST /api/v1/sequences/$id/exports`. There is no in-browser encode. Overlay icons on the player; desktop also has an Export dropdown next to Copy script. Theatre playback does not use the export at all — see below.
