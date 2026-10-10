@@ -38,6 +38,7 @@ const { drawSheetPortrait } = await import('./sheet-portrait');
 const scopedDb = asStub<WorkflowScopedDb>({
   teamId: 'team-1',
   provenance: {},
+  credentials: { userId: 'user-1' },
   billing: {
     createReservation: mockCreateReservation,
     zeroReservation: mockZeroReservation,
@@ -91,6 +92,10 @@ describe('drawSheetPortrait', () => {
     expect(await draw()).toBe(
       '/r2/characters/team-1/seq-1/char-1/p-portrait.png'
     );
+    // The image call is handed the credentials surface, not the whole db.
+    expect(mockGenerate.mock.calls[0]?.[1]).toEqual({
+      scopedDb: { userId: 'user-1' },
+    });
     expect(mockGenerate.mock.calls[0]?.[0].referenceImageUrls).toEqual([
       '/r2/characters/team-1/seq-1/char-1/sheet.png',
     ]);

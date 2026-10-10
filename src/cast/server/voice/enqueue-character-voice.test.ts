@@ -52,6 +52,7 @@ function character(
     updatedAt: new Date(0),
     sheetImageUrl: null,
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetGeneratedAt: null,
     sheetInputHash: null,
     ...overrides,
