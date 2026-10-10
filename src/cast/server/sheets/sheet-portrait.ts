@@ -8,6 +8,7 @@
  * stored on that version row, so it follows whichever sheet is selected.
  */
 
+import { deleteFile } from '#storage';
 import { generateId } from '@/platform/id';
 import { getLogger } from '@/platform/logger';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
@@ -53,13 +54,20 @@ const PORTRAIT: Record<
  * for it or the draw failed: the sheet is the artifact that matters and
  * still lands, and tiles crop it as they did before portraits. Inside a
  * workflow, call it in one `step.do`: the image is stored before the step
- * returns (#1645), and the charge is keyed on `chargeKey` so a replay cannot
- * charge twice.
+ * returns (#1645).
  *
- * The balance is checked before the paid call, against funds no run holds:
- * a sheet run's reservation covers the sheet, not this. A team's own key
- * does not lift the check, because which key serves this model is only
- * known once the call returns.
+ * The money, in order:
+ * - A hold for the estimate is taken before the paid call. A sheet run's
+ *   reservation covers the sheet, not this, and a check with no hold would
+ *   let two runs spend one balance. No hold, no call. A team's own key does
+ *   not lift it: which key serves this model is known only once the call
+ *   returns.
+ * - A call that fails releases the hold and costs nothing.
+ * - Once the provider has been paid the charge is taken whatever happens to
+ *   the image after. A charge that cannot be taken throws, so a workflow
+ *   step retries it; it is keyed on `chargeKey`, so a replay charges once.
+ * - An image is kept only with its audit row (#1180): one that could not be
+ *   recorded is deleted, and the tile crops.
  */
 export async function drawSheetPortrait(args: {
   scopedDb: WorkflowScopedDb;
@@ -69,28 +77,35 @@ export async function drawSheetPortrait(args: {
   storageDir: string;
   /** The character or sequence location the sheet is of, for the audit row. */
   subjectId: string;
-  /** The run drawing it: keys the charge and names the run on the audit row. */
+  /** The run drawing it: keys the hold and the charge, and names the run. */
   chargeKey: string;
   userId: string;
   sequenceId: string | null;
 }): Promise<string | null> {
   const { scopedDb, kind, sheetUrl } = args;
   const { prompt, bucket } = PORTRAIT[kind];
-  try {
-    const estimate = gateEstimate(
-      estimateImageCost(PORTRAIT_MODEL, '1:1', 1, {
-        pricing: await getEffectiveFalPricing(),
-        edit: true,
-      }),
-      { model: PORTRAIT_MODEL, operation: 'sheet-portrait' }
+
+  const estimate = gateEstimate(
+    estimateImageCost(PORTRAIT_MODEL, '1:1', 1, {
+      pricing: await getEffectiveFalPricing(),
+      edit: true,
+    }),
+    { model: PORTRAIT_MODEL, operation: 'sheet-portrait' }
+  );
+  const hold = await scopedDb.billing.createReservation(estimate, {
+    idempotencyKey: `${args.chargeKey}:portrait-hold`,
+    sequenceId: args.sequenceId ?? undefined,
+  });
+  if (!hold.ok) {
+    logger.info(
+      `No credits for the ${kind} sheet portrait; tiles crop the sheet`
     );
-    if (!(await scopedDb.liveRead.billing.hasEnoughCredits(estimate))) {
-      logger.info(
-        `No credits for the ${kind} sheet portrait; tiles crop the sheet`
-      );
-      return null;
-    }
-    const result = await generateImageWithProvider(
+    return null;
+  }
+
+  let result: Awaited<ReturnType<typeof generateImageWithProvider>>;
+  try {
+    result = await generateImageWithProvider(
       {
         model: PORTRAIT_MODEL,
         prompt,
@@ -100,46 +115,63 @@ export async function drawSheetPortrait(args: {
       },
       { scopedDb }
     );
-    const stored = await storeGeneratedPng(
-      result.imageUrls[0],
-      bucket,
-      `${args.storageDir}/${generateId()}-portrait.png`
-    );
-    // Before the charge: an image with no audit row is not kept (#1180).
-    await recordProvenance(scopedDb.provenance, {
-      teamId: scopedDb.teamId,
-      userId: args.userId,
-      assetKind: kind === 'character' ? 'character_sheet' : 'location_sheet',
-      assetId: args.subjectId,
-      storageKey: stored.path,
-      provider: result.via,
-      model: PORTRAIT_MODEL,
-      providerRequestId: result.metadata.requestId ?? null,
-      workflowRunId: args.chargeKey,
-      prompt,
-      sequenceId: args.sequenceId ?? undefined,
-      referenceImageCount: 1,
-    });
-    await deductWorkflowCredits({
-      scopedDb,
-      costMicros: extractImageCost(result.metadata),
-      usedOwnKey: result.metadata.usedOwnKey,
-      description: `Sheet portrait (${PORTRAIT_MODEL})`,
-      idempotencyKey: `${args.chargeKey}:portrait`,
-      metadata: {
-        model: PORTRAIT_MODEL,
-        kind,
-        sequenceId: args.sequenceId,
-        userId: args.userId,
-      },
-      workflowName: 'SheetPortrait',
-    });
-    return stored.url;
   } catch (error) {
+    await scopedDb.billing.zeroReservation(hold.reservationId);
     logger.warn(`Portrait not drawn for ${kind} sheet; tiles crop the sheet`, {
       err: error,
       sheetUrl,
     });
     return null;
   }
+
+  // The provider is paid from here on.
+  let portraitUrl: string | null = null;
+  const path = `${args.storageDir}/${generateId()}-portrait.png`;
+  try {
+    const stored = await storeGeneratedPng(result.imageUrls[0], bucket, path);
+    try {
+      await recordProvenance(scopedDb.provenance, {
+        teamId: scopedDb.teamId,
+        userId: args.userId,
+        assetKind: kind === 'character' ? 'character_sheet' : 'location_sheet',
+        assetId: args.subjectId,
+        storageKey: stored.path,
+        provider: result.via,
+        model: PORTRAIT_MODEL,
+        providerRequestId: result.metadata.requestId ?? null,
+        workflowRunId: args.chargeKey,
+        prompt,
+        sequenceId: args.sequenceId ?? undefined,
+        referenceImageCount: 1,
+      });
+    } catch (error) {
+      await deleteFile(bucket, path);
+      throw error;
+    }
+    portraitUrl = stored.url;
+  } catch (error) {
+    logger.error(`Portrait drawn for ${kind} sheet but not kept`, {
+      err: error,
+      sheetUrl,
+    });
+  }
+
+  await deductWorkflowCredits({
+    scopedDb,
+    costMicros: extractImageCost(result.metadata),
+    usedOwnKey: result.metadata.usedOwnKey,
+    description: `Sheet portrait (${PORTRAIT_MODEL})`,
+    idempotencyKey: `${args.chargeKey}:portrait`,
+    reservationId: hold.reservationId,
+    metadata: {
+      model: PORTRAIT_MODEL,
+      kind,
+      sequenceId: args.sequenceId,
+      userId: args.userId,
+    },
+    workflowName: 'SheetPortrait',
+  });
+  // What the charge did not take goes back to the balance.
+  await scopedDb.billing.zeroReservation(hold.reservationId);
+  return portraitUrl;
 }

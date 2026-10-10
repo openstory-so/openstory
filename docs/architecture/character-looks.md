@@ -264,8 +264,15 @@ location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
   library location, an element, a sheet from before portraits, and a draw
   that failed. A failed draw never fails the sheet. Tiles then crop the
   sheet as before (`talentSquareImageClassName`).
-- It is charged as its own line ("Sheet portrait"), from the balance, not
-  from the sheet run's reservation.
+- It is charged as its own line ("Sheet portrait"). A hold for the estimate
+  is taken before the paid call (its own, not the sheet run's reservation):
+  no hold, no call, and the tile crops. A failed call releases it. Once the
+  provider is paid the charge is taken even if the image could not be kept.
+  A team's own key does not lift the hold.
+- Each portrait has a provenance row under its sheet's kind; one that could
+  not be recorded is deleted.
+- A voice-only character has no sheet and gets no portrait, an upload
+  included.
 - It is only ever shown. Stills, clips and other looks are drawn from the
   sheet, never from the portrait, and no hash reads it.
 

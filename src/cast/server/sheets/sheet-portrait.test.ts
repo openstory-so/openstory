@@ -11,8 +11,11 @@ const mockGenerate = vi.fn();
 const mockStore = vi.fn();
 const mockDeduct = vi.fn();
 const mockRecordProvenance = vi.fn();
-const mockHasEnoughCredits = vi.fn();
+const mockCreateReservation = vi.fn();
+const mockZeroReservation = vi.fn();
+const mockDeleteFile = vi.fn();
 
+vi.doMock('#storage', () => ({ deleteFile: mockDeleteFile }));
 vi.doMock('@/stills/server/image-generation', () => ({
   generateImageWithProvider: mockGenerate,
 }));
@@ -35,7 +38,10 @@ const { drawSheetPortrait } = await import('./sheet-portrait');
 const scopedDb = asStub<WorkflowScopedDb>({
   teamId: 'team-1',
   provenance: {},
-  liveRead: { billing: { hasEnoughCredits: mockHasEnoughCredits } },
+  billing: {
+    createReservation: mockCreateReservation,
+    zeroReservation: mockZeroReservation,
+  },
 });
 
 const draw = () =>
@@ -52,7 +58,12 @@ const draw = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockHasEnoughCredits.mockResolvedValue(true);
+  mockCreateReservation.mockResolvedValue({
+    ok: true,
+    reservationId: 'hold-1',
+    remaining: 33_600,
+    replay: false,
+  });
   mockGenerate.mockResolvedValue({
     imageUrls: ['https://provider.example/out.png'],
     metadata: { usedOwnKey: false, requestId: 'req-1' },
@@ -66,7 +77,7 @@ beforeEach(() => {
 
 describe('drawSheetPortrait', () => {
   it('makes no paid call when the team cannot pay', async () => {
-    mockHasEnoughCredits.mockResolvedValue(false);
+    mockCreateReservation.mockResolvedValue({ ok: false });
 
     expect(await draw()).toBeNull();
     expect(mockGenerate).not.toHaveBeenCalled();
@@ -90,18 +101,41 @@ describe('drawSheetPortrait', () => {
       })
     );
     expect(mockDeduct).toHaveBeenCalledWith(
-      expect.objectContaining({ idempotencyKey: 'run-1:portrait' })
+      expect.objectContaining({
+        idempotencyKey: 'run-1:portrait',
+        reservationId: 'hold-1',
+      })
     );
+    // The hold is taken before the paid call and released after the charge.
+    expect(mockCreateReservation.mock.invocationCallOrder[0]).toBeLessThan(
+      mockGenerate.mock.invocationCallOrder[0] ?? 0
+    );
+    expect(mockZeroReservation).toHaveBeenCalledWith('hold-1');
     // The audit row comes before the charge.
     expect(mockRecordProvenance.mock.invocationCallOrder[0]).toBeLessThan(
       mockDeduct.mock.invocationCallOrder[0] ?? 0
     );
   });
 
-  it('is null, and charges nothing, when the draw fails', async () => {
+  it('releases the hold and charges nothing when the call fails', async () => {
     mockGenerate.mockRejectedValue(new Error('content flagged'));
 
     expect(await draw()).toBeNull();
     expect(mockDeduct).not.toHaveBeenCalled();
+    expect(mockZeroReservation).toHaveBeenCalledWith('hold-1');
+  });
+
+  it('still charges a paid call whose image could not be recorded, and keeps no image', async () => {
+    mockRecordProvenance.mockRejectedValue(new Error('d1 down'));
+
+    expect(await draw()).toBeNull();
+    expect(mockDeleteFile).toHaveBeenCalledTimes(1);
+    expect(mockDeduct).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when the charge for a paid call cannot be taken', async () => {
+    mockDeduct.mockRejectedValue(new Error('ledger down'));
+
+    await expect(draw()).rejects.toThrow('ledger down');
   });
 });

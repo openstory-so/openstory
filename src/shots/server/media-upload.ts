@@ -697,19 +697,22 @@ export async function setCharacterSheetFromUpload(
   } catch (error) {
     logger.error('realtime emit failed', { err: error });
   }
-  await triggerSheetPortrait({
-    userId: user.id,
-    teamId: context.teamId,
-    sequenceId: sequenceId ?? undefined,
-    subject: {
-      kind: 'character',
-      characterId: character.id,
-      lookId: look.id,
-    },
-    versionId: variant.id,
-    sheetUrl: data.publicUrl,
-    storageDir: `${context.teamId}/${sequenceId ?? 'team'}/${character.id}`,
-  });
+  // A voice-only character is heard, never seen (#1585): no portrait.
+  if (!character.voiceOnly) {
+    await triggerSheetPortrait({
+      userId: user.id,
+      teamId: context.teamId,
+      sequenceId: sequenceId ?? undefined,
+      subject: {
+        kind: 'character',
+        characterId: character.id,
+        lookId: look.id,
+      },
+      versionId: variant.id,
+      sheetUrl: data.publicUrl,
+      storageDir: `${context.teamId}/${sequenceId ?? 'team'}/${character.id}`,
+    });
+  }
   return updated;
 }
 
