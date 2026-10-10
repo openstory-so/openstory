@@ -4,15 +4,21 @@
 
 # @openstory/stitch-player
 
-Play a list of video clips and stills as **one film**, in the browser, with music, dialogue and subtitles, and never encode anything until someone asks for a file.
-
-This is the player behind [OpenStory](https://openstory.so)'s theatre. A cut there changes every few minutes while someone works on it: a shot gets regenerated, a line gets re-recorded, a still stands in for a clip that isn't rendered yet. Re-encoding an MP4 for each change would be slow and pointless. So the player stitches at play time instead: each clip is decoded with [mediabunny](https://mediabunny.dev) (WebCodecs) as the playhead reaches it and drawn onto one canvas, the music is mixed under it through Web Audio, each clip's own sound plays with it, and subtitles are drawn over the picture. The controls, captions button and keyboard shortcuts are [Video.js 10](https://videojs.org). A still with a recorded line plays the same as a finished clip. When you do want a file, the same code encodes one, in the browser.
+A player for AI filmmaking. Stills, dialogue, music and video go in as you make them, and the browser plays that list as one sequence. Nothing is encoded until you ask for a file.
 
 https://github.com/user-attachments/assets/f5dce65f-b042-4e25-bbfe-7914d209b0f3
 
+This is the player behind [OpenStory](https://openstory.so)'s theatre. A shot is often a storyboard still with a recorded line, then a rendered clip, with music under the whole cut. Each piece is decoded as the playhead reaches it ([mediabunny](https://mediabunny.dev) and WebCodecs) and drawn on one canvas. A video plays the sound in its file. A still plays its own line. Subtitles sit on the picture. The controls are [Video.js 10](https://videojs.org).
+
+Swap a still for a clip when the clip exists. The sequence is the same list either way.
+
+When the cut is done, the same stitch writes an MP4 in the browser: H.264 and AAC, through WebCodecs. There is no ffmpeg install and no encode process beside the tab. Playback only reads the clip under the playhead, so a long cut does not mean the whole film sitting in memory.
+
+Give it `https` URLs, or `blob:` URLs of bytes the page already holds. The sequence plays the same online and offline.
+
 ## An animatic in forty lines
 
-Three stills, recorded dialogue, a music bed, subtitles. Nothing is rendered up front; the browser plays it as a film.
+Three stills, recorded lines, a music bed, then one rendered clip.
 
 ```tsx
 import { StitchedPlayer } from '@openstory/stitch-player/react';
@@ -63,7 +69,7 @@ export const Animatic = () => (
 );
 ```
 
-What you get: [Video.js 10](https://videojs.org)'s controls, a captions button that toggles the subtitles (or press `c`), the music attenuated by 6 dB (`musicGainDb` is a gain on the music track only; dialogue is unchanged), and a **Download** button that encodes the whole thing to an MP4 in the browser, with a `.vtt` sidecar. The file streams to disk where `showSaveFilePicker` exists; the audio mix is held in memory either way. Swap a still for a rendered clip later and nothing else changes.
+`musicGainDb` turns the music down and leaves dialogue alone (`-6` here). Captions toggle with the button or `c`. **Download** encodes the cut in the browser and writes a `.vtt` beside it. The file streams to disk where `showSaveFilePicker` exists. The audio mix is held in memory either way.
 
 ## What's in the box
 
@@ -233,7 +239,7 @@ engine.dispose();
 ## Requirements
 
 - **Playback and export need a browser:** WebCodecs and Web Audio. The modules import under Node, and `@openstory/stitch-player/react` is safe to import during server rendering (it loads Video.js only on the client).
-- **Clip and audio servers must allow Range requests.** Cross-origin URLs also need CORS, a 206, and `Access-Control-Expose-Headers: Content-Range`. Same-origin URLs do not need CORS. A `data:` or `blob:` URL works for a still's sound. Playback loads stills as images, which needs no CORS. Export and Picture-in-Picture read the canvas back, so a still from another origin without CORS taints the canvas and those two throw `SecurityError`.
+- **Clip and audio servers must allow Range requests.** Cross-origin URLs also need CORS, a 206, and `Access-Control-Expose-Headers: Content-Range`. Same-origin URLs do not need CORS. A `blob:` URL works for video, music and dialogue when `fetch` answers `Range` with 206, which is how a page plays a cut from bytes it already has. A `data:` URL works for a still's line. Playback loads stills as images, which needs no CORS. Export and Picture-in-Picture read the canvas back, so a still from another origin without CORS taints the canvas and those two throw `SecurityError`.
 - **Encoding (export only):** H.264 and AAC encoders, which Chrome, Edge, Safari 17+ and recent Firefox have.
 
 ## License
