@@ -11,7 +11,7 @@ import {
 } from '@/sequences/ui/use-sequences-with-shots';
 import { useTeamDivergentSequenceVariants } from '@/audio/ui/use-sequence-variants';
 import { useStyles } from '@/look/ui/use-styles';
-import { isSystemAdminFn } from '@/billing/gift-tokens.fn';
+import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useQuery, useInfiniteQuery, useQueries } from '@tanstack/react-query';
 import { Card } from '@/ui/shadcn/card';
 import { Skeleton } from '@/ui/shadcn/skeleton';
@@ -210,11 +210,9 @@ export const EvalView: React.FC<EvalViewProps> = ({
     ]
   );
 
-  const { data: adminStatus, isLoading: adminStatusLoading } = useQuery({
-    queryKey: ['system-admin-status'],
-    queryFn: () => isSystemAdminFn(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: adminStatus, isLoading: adminStatusLoading } = useQuery(
+    systemAdminStatusQueryOptions
+  );
 
   const isAdmin = adminStatus?.isAdmin ?? false;
   const internalDomains = useMemo(

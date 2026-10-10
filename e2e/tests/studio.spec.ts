@@ -128,14 +128,13 @@ test.describe('Images and Clips studio', () => {
   }) => {
     await page.goto('/images');
     await page.evaluate(() => {
-      localStorage.setItem(
-        'openstory:studio-list:v1',
+      document.cookie = `openstory_studio_list_v1=${encodeURIComponent(
         JSON.stringify({
           search: '',
           supportMode: true,
           hideInternal: false,
         })
-      );
+      )}; path=/`;
     });
     await page.goto('/images');
 
