@@ -70,7 +70,7 @@ test.describe('Talent Library', () => {
       'true'
     );
     await expect(
-      page.getByRole('button', { name: 'All Characters' })
+      page.getByRole('button', { name: 'New character' })
     ).toBeVisible();
   });
 

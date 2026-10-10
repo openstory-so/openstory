@@ -26,7 +26,7 @@ export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
   const sheetUrl = portraitUrl ?? character.sheetImageUrl;
 
   return (
-    <Card className="group relative overflow-hidden hover:shadow-lg transition-shadow">
+    <Card className="group relative overflow-hidden py-0 hover:shadow-lg transition-shadow">
       <Link
         to="/characters/$id"
         params={{ id: character.id }}

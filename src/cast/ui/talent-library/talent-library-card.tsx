@@ -36,7 +36,7 @@ export const TalentLibraryCard: React.FC<TalentLibraryCardProps> = ({
   };
 
   return (
-    <Card className="group relative overflow-hidden hover:shadow-lg transition-shadow">
+    <Card className="group relative overflow-hidden py-0 hover:shadow-lg transition-shadow">
       {/* Real anchor navigation: works before hydration and supports
           Cmd/Ctrl/middle-click. Interactive overlays (favorite, staleness)
           live as siblings outside the anchor. */}

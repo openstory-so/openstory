@@ -613,6 +613,9 @@ export async function createTestCharacter(
     name,
     age: '30s',
     voiceOnly: false,
+    // A seen character says what it is rendered as (#2017); the rendering
+    // backfill wrote this for every old row.
+    rendering: 'Photoreal live action',
     isPerson: true,
     talentId,
     source: 'backfill',
