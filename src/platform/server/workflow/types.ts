@@ -1991,6 +1991,29 @@ export interface ElementVisionWorkflowInput extends SequenceWorkflowContext {
   token: string;
 }
 
+/**
+ * Sheet portrait workflow input: the square portrait of a sheet version that
+ * was saved without one (an upload). Everything the run needs is here; it
+ * reads nothing.
+ */
+export interface SheetPortraitWorkflowInput extends SequenceWorkflowContext {
+  /** Whose sheet it is, for the prompt, the row and the event. */
+  subject:
+    | { kind: 'character'; characterId: string; lookId: string }
+    | { kind: 'location'; locationId: string };
+  /** The sheet version row the portrait is written on. */
+  versionId: string;
+  sheetUrl: string;
+  /** The folder the sheet is stored under; the portrait goes beside it. */
+  storageDir: string;
+}
+
+export interface SheetPortraitWorkflowResult {
+  versionId: string;
+  /** Null when the draw failed: the tile keeps cropping the sheet. */
+  portraitUrl: string | null;
+}
+
 export interface ElementVisionWorkflowResult {
   elementId: string;
   description: string;

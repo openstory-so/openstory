@@ -152,6 +152,8 @@ export type CharacterLook = Omit<CharacterLookRow, 'selectedLookVersionId'> &
     lookVersionId: string;
     sheetImageUrl: string | null;
     sheetImagePath: string | null;
+    /** The square portrait drawn from the sheet; null when it has none. */
+    sheetPortraitUrl: string | null;
     sheetGeneratedAt: Date | null;
     sheetInputHash: string | null;
   };

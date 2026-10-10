@@ -15,7 +15,9 @@ function CharacterCrumbLabel({
   return <>{character?.name ?? '…'}</>;
 }
 
-export const Route = createFileRoute('/_app/sequences/$id/cast/$characterId')({
+export const Route = createFileRoute(
+  '/_app/sequences/$id/_workspace/cast/$characterId'
+)({
   component: CharacterDetailPage,
   staticData: {
     breadcrumb: (match) => {

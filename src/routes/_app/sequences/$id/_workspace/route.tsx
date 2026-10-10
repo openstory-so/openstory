@@ -15,13 +15,12 @@ import {
 } from '@/models/resolve-asset-models';
 import { shotPromptPreviewQueryOptions } from '@/shots/ui/shot-prompt-preview-query';
 import { useSidebar } from '@/ui/shadcn/sidebar';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Outlet, useMatch } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
 
-export const Route = createFileRoute('/_app/sequences/$id/scenes')({
-  component: ScenesPage,
+export const Route = createFileRoute('/_app/sequences/$id/_workspace')({
+  component: SequenceWorkspace,
   validateSearch: scenesSearchSchema,
-  staticData: { breadcrumb: 'Scenes' },
   // FailureSummaryBanner classifies content-checker vs full-retry from the
   // shot list. Prefetch so the content banner is in the SSR HTML instead of
   // hydrating over a generic "Generation failed" from `shots ?? []`.
@@ -82,9 +81,18 @@ export const Route = createFileRoute('/_app/sequences/$id/scenes')({
   },
 });
 
-function ScenesPage() {
+/**
+ * The scenes workspace, and what opens inside it. A character, location or
+ * element takes the place of the scene list and the canvas; the inspector on
+ * the right is this one instance on every child route, so it stays put.
+ */
+function SequenceWorkspace() {
   const { id: sequenceId } = Route.useParams();
   const search = Route.useSearch();
+  const onScenes = useMatch({
+    from: '/_app/sequences/$id/_workspace/scenes',
+    shouldThrow: false,
+  });
 
   // The canvas needs the width (#1713): fold the app sidebar to icons on the
   // way in. It stays folded until the expand control (#1807) — a sidebar the
@@ -95,5 +103,11 @@ function ScenesPage() {
     fold.current(false);
   }, []);
 
-  return <ScenesView sequenceId={sequenceId} search={search} />;
+  return (
+    <ScenesView
+      sequenceId={sequenceId}
+      search={search}
+      detail={onScenes ? null : <Outlet />}
+    />
+  );
 }

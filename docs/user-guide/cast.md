@@ -74,7 +74,7 @@ Recasting regenerates the character's reference sheet using the talent's referen
 
 Every character belongs to your team. **Characters** in the main navigation lists all of them, most recently used first. Open a character to see which sequences cast it and how many shots it is in.
 
-Click **New character** to make one before there is a script: give it a name and, if you like, a physical description. Its page is the same page a sequence shows for it: fill in the rest of its bible, add, rename, edit or remove looks, generate or upload a sheet for each look, and design or pick a voice. Only what belongs to a sequence (its shots, **Remove**) waits for one. Use it in a script with `@`, or with **Add existing character** on a cast panel. Analysis in that sequence keeps the character as you wrote it.
+Click **New character** to make one before there is a script: give it a name. Its page opens, the same page a sequence shows for it: fill in the rest of its bible, add, rename, edit or remove looks, generate or upload a sheet for each look, and design or pick a voice. Only what belongs to a sequence (its shots, **Remove**) waits for one. Use it in a script with `@`, or with **Add Character** on a cast panel. Analysis in that sequence keeps the character as you wrote it.
 
 A character stays in the team when a sequence removes it. To take one off the list, open it from **Characters** and click **Delete**. Delete is offered only when no sequence casts it, and the message that follows has **Undo**. A saved voice stays with the character until it is deleted.
 
@@ -85,7 +85,7 @@ Click **Save as talent** to copy the character into your Talent Library. A talen
 A character is reused only when you say so. Two ways:
 
 - **In the script**, type `@` and pick the character. Its name goes into the script in capitals and it joins the sequence's cast at its current version, with every look. Nothing else is stored in the text. On the new-sequence screen the character is added when you press Generate, as long as its name is still in the script.
-- **On the cast panel**, click **Add existing character** and pick the character. No script change.
+- **On the cast panel**, click **Add Character** and pick the character. No script change. **New character** in the same picker makes one from scratch.
 
 Analysis then reads the cast you attached: it keeps the character's bible and looks, links the outfits the script uses and adds a look only for an outfit it does not have. A plain name that is not in the cast is a new character; analysis never reaches into your team's other characters on its own.
 

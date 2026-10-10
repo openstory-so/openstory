@@ -75,13 +75,13 @@ test.describe('Characters page', () => {
     ).toHaveAttribute('aria-current', 'page');
   });
 
-  /** "Add existing character" on `other`'s cast facet. */
+  /** "Add Character" on `other`'s cast facet. */
   async function castIntoSecondSequence(page: Page, other: TestSequence) {
     await page.goto(`/sequences/${other.id}/scenes?facet=cast`);
     await page
-      .getByRole('button', { name: 'Add existing character' })
+      .getByRole('button', { name: 'Add Character' })
       .click({ timeout: HYDRATION_TIMEOUT });
-    const dialog = page.getByRole('dialog', { name: 'Add existing character' });
+    const dialog = page.getByRole('dialog', { name: 'Add character' });
     await dialog.getByLabel('Search characters').fill(character.name);
     await dialog
       .getByRole('button', { name: new RegExp(character.name) })
@@ -93,7 +93,7 @@ test.describe('Characters page', () => {
     ).toBeVisible();
   }
 
-  test('Add existing character casts the character into a second sequence (#2050)', async ({
+  test('Add Character casts the character into a second sequence (#2050)', async ({
     page,
     testUser,
   }) => {

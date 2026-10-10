@@ -302,6 +302,7 @@ export const SceneElementsTab: React.FC<SceneElementsTabProps> = ({
             key={el.id}
             to="/sequences/$id/elements/$elementId"
             params={{ id: sequenceId, elementId: el.id }}
+            search
             className="group relative block overflow-hidden rounded-lg bg-card"
           >
             <div className="relative aspect-square overflow-hidden bg-muted">

@@ -41,6 +41,7 @@ import {
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 import { castChannelId } from '@/cast/cast-channel';
+import { drawSheetPortrait } from '@/cast/server/sheets/sheet-portrait';
 
 const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 
@@ -54,7 +55,12 @@ const logger = getLogger(['openstory', 'workflow', 'character-sheet']);
 async function landSheet(
   scopedDb: WorkflowScopedDb,
   input: CharacterSheetWorkflowInput,
-  stored: { url: string; path: string; model: string },
+  stored: {
+    url: string;
+    path: string;
+    model: string;
+    portraitUrl: string | null;
+  },
   workflowRunId: string
 ): Promise<SheetRunOutcome> {
   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
@@ -71,6 +77,7 @@ async function landSheet(
         claimed,
         url: stored.url,
         storagePath: stored.path,
+        portraitUrl: stored.portraitUrl,
         inputHash: input.snapshotInputHash,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
         bibleVersionId: input.bibleVersionId ?? null,
@@ -156,6 +163,9 @@ async function persistReusedTalentSheet(params: {
         url: storageResult.url,
         path: storageResult.path,
         model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
+        // A reused talent sheet costs nothing, and is the four-across
+        // layout the tile's crop was made for: no portrait is drawn.
+        portraitUrl: null,
       },
       workflowRunId
     )
@@ -396,6 +406,20 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       });
     });
 
+    // The tile's portrait, drawn from the sheet just stored. It lands on the
+    // same version row, so it can never show a sheet other than its own.
+    const portraitUrl = await step.do('draw-portrait', () =>
+      drawSheetPortrait({
+        scopedDb,
+        kind: 'character',
+        sheetUrl: storageResult.url,
+        storageDir: `${teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}`,
+        chargeKey: workflowRunId,
+        userId: input.userId,
+        sequenceId,
+      })
+    );
+
     // Step 4: Land through the claim (#1113). Selected only while the
     // trigger's claim still names this run; otherwise parked as a divergent
     // variant (and `stale:detected` emitted) so a run whose inputs moved, or
@@ -408,6 +432,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           url: storageResult.url,
           path: storageResult.path,
           model: generationParams.model,
+          portraitUrl,
         },
         workflowRunId
       )

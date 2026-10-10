@@ -149,6 +149,7 @@ const locationsWithLiveReference = {
   ...locationBibleColumns,
   referenceImageUrl: locationSheetVariants.url,
   referenceImagePath: locationSheetVariants.storagePath,
+  referencePortraitUrl: locationSheetVariants.portraitUrl,
   referenceGeneratedAt: locationSheetVariants.generatedAt,
   referenceInputHash: locationSheetVariants.inputHash,
 };

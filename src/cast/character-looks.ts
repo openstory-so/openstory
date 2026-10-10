@@ -21,6 +21,7 @@ type WearableLook = CharacterLookMinimal &
     Pick<
       CharacterLook,
       | 'sheetImagePath'
+      | 'sheetPortraitUrl'
       | 'sheetGeneratedAt'
       | 'sheetError'
       | 'pendingPromoteSheetVersionId'
@@ -71,6 +72,7 @@ export function wearLook<T extends object>(character: T, look: WearableLook) {
       ? {}
       : {
           sheetImagePath: look.sheetImagePath,
+          sheetPortraitUrl: look.sheetPortraitUrl ?? null,
           sheetGeneratedAt: look.sheetGeneratedAt ?? null,
           sheetError: look.sheetError ?? null,
           pendingPromoteSheetVersionId:

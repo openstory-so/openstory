@@ -21,7 +21,9 @@ function castLine(sequences: TeamCharacter['sequences']): string {
 export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
   character,
 }) => {
-  const sheetUrl = character.sheetImageUrl;
+  // The portrait drawn from the sheet; a sheet from before portraits is cropped.
+  const portraitUrl = character.sheetPortraitUrl;
+  const sheetUrl = portraitUrl ?? character.sheetImageUrl;
 
   return (
     <Card className="group relative overflow-hidden hover:shadow-lg transition-shadow">
@@ -37,9 +39,9 @@ export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
               src={sheetUrl}
               alt={character.name}
               // The whole four-panel sheet: one panel is a quarter of it.
-              width={960}
+              width={portraitUrl ? 240 : 960}
               height={240}
-              className={talentSquareImageClassName(true)}
+              className={talentSquareImageClassName(!portraitUrl)}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">

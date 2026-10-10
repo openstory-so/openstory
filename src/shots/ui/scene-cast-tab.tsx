@@ -4,7 +4,6 @@
  */
 
 import { AddCharacterDialog } from './add-character-dialog';
-import { AddFromLibraryDialog } from './add-from-library-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -144,18 +143,21 @@ const CastCard: React.FC<CastCardProps> = ({
       <Link
         to="/sequences/$id/cast/$characterId"
         params={{ id: sequenceId, characterId: character.id }}
+        // Opens beside the inspector: the tab and the selection stay as they are.
+        search
         className="block overflow-hidden rounded-lg bg-card cursor-pointer"
       >
-        {/* Character avatar — 4-panel sheet cropped to the close-up (panel 2) */}
+        {/* The portrait drawn from the sheet; a sheet from before portraits
+            is cropped to its close-up (panel 2 of 4). */}
         <div className="aspect-square relative overflow-hidden bg-muted">
           {character.sheetImageUrl ? (
             <AppImage
-              src={character.sheetImageUrl}
+              src={character.sheetPortraitUrl ?? character.sheetImageUrl}
               alt={character.name}
               width={160}
               height={160}
               className={cn(
-                talentSquareImageClassName(true),
+                talentSquareImageClassName(!character.sheetPortraitUrl),
                 'transition-transform duration-500 group-hover:scale-105'
               )}
             />
@@ -320,13 +322,10 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             : 'No cast in this selection — clear the selection to add one'}
         </p>
         {canAdd && (
-          <div className="flex gap-2">
-            <AddCharacterDialog sequenceId={sequenceId} />
-            <AddFromLibraryDialog
-              sequenceId={sequenceId}
-              castCharacterIds={castIds}
-            />
-          </div>
+          <AddCharacterDialog
+            sequenceId={sequenceId}
+            castCharacterIds={castIds}
+          />
         )}
       </div>
     );
@@ -344,13 +343,10 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
           </span>
         </div>
         {canAdd && (
-          <div className="flex gap-2">
-            <AddCharacterDialog sequenceId={sequenceId} />
-            <AddFromLibraryDialog
-              sequenceId={sequenceId}
-              castCharacterIds={castIds}
-            />
-          </div>
+          <AddCharacterDialog
+            sequenceId={sequenceId}
+            castCharacterIds={castIds}
+          />
         )}
       </div>
 

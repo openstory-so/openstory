@@ -233,7 +233,7 @@ the script then names her like any cast member.
   screen the pick goes onto the draft (`castCharacterIds`) and
   `createSequences` attaches before the storyboard trigger, so the first
   analysis reads her. A pick-only row never pills: a plain name is prose
-  until she is attached. The cast panel's **Add existing character**
+  until she is attached. The cast panel's **Add Character**
   attaches with no script change. API: a string in `create_sequence`'s
   `characters` names a team character first (id or name), then talent. Two
   characters of one name, or a name a character and a talent share, is a

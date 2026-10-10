@@ -2259,6 +2259,7 @@ describe('team characters (#2017)', () => {
         lastUsedAt: new Date('2026-02-01T00:00:00Z'),
         castAnywhere: true,
         sheetImageUrl: 'https://x.test/busy.png',
+        sheetPortraitUrl: null,
         sequences: [
           { id: other, title: 'S2' },
           { id: sequenceId, title: 'S' },

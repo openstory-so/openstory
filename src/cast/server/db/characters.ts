@@ -301,6 +301,7 @@ const legacyLookColumns = {
     characters.legacyPendingPromoteSheetVersionId,
   legacySheetImageUrl: characterSheetVariants.url,
   legacySheetImagePath: characterSheetVariants.storagePath,
+  legacySheetPortraitUrl: characterSheetVariants.portraitUrl,
   legacySheetGeneratedAt: characterSheetVariants.generatedAt,
   legacySheetInputHash: characterSheetVariants.inputHash,
 };
@@ -343,6 +344,8 @@ export type TeamCharacter = {
   voiceOnly: boolean;
   /** The default look's selected sheet. */
   sheetImageUrl: string | null;
+  /** The square portrait drawn from that sheet; null when it has none. */
+  sheetPortraitUrl: string | null;
   /** When a sequence casting it last changed; null when none casts it. */
   lastUsedAt: Date | null;
   /**
@@ -548,6 +551,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         legacyPendingPromoteSheetVersionId,
         legacySheetImageUrl,
         legacySheetImagePath,
+        legacySheetPortraitUrl,
         legacySheetGeneratedAt,
         legacySheetInputHash,
         ...character
@@ -561,6 +565,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
             worn
           ),
           sheetImagePath: worn.sheetImagePath,
+          sheetPortraitUrl: worn.sheetPortraitUrl,
           sheetGeneratedAt: worn.sheetGeneratedAt,
           sheetError: worn.sheetError,
           pendingPromoteSheetVersionId: worn.pendingPromoteSheetVersionId,
@@ -581,6 +586,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         pendingPromoteSheetVersionId: legacyPendingPromoteSheetVersionId,
         sheetImageUrl: legacySheetImageUrl,
         sheetImagePath: legacySheetImagePath,
+        sheetPortraitUrl: legacySheetPortraitUrl,
         sheetGeneratedAt: legacySheetGeneratedAt,
         sheetInputHash: legacySheetInputHash,
       };
@@ -902,6 +908,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         physicalDescription: characterBibleColumns.physicalDescription,
         voiceOnly: characterBibleColumns.voiceOnly,
         sheetImageUrl: characterSheetVariants.url,
+        sheetPortraitUrl: characterSheetVariants.portraitUrl,
         lastUsedAt: lastUsedAt.mapWith(sequences.updatedAt),
         castAnywhere: sql<number>`count(${sequenceCast.id}) > 0`.mapWith(
           Boolean

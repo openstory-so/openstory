@@ -16,7 +16,7 @@ function LocationCrumbLabel({
 }
 
 export const Route = createFileRoute(
-  '/_app/sequences/$id/locations/$locationId'
+  '/_app/sequences/$id/_workspace/locations/$locationId'
 )({
   component: LocationDetailPage,
   staticData: {

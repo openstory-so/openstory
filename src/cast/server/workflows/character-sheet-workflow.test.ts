@@ -23,6 +23,7 @@ const mockDeductWorkflowCredits = vi.fn();
 const mockRecordFalUsageStep = vi.fn();
 const mockRecordProvenance = vi.fn();
 const mockEmit = vi.fn();
+const mockDrawSheetPortrait = vi.fn();
 
 vi.doMock('@/platform/server/storage/copy-stored-image', () => ({
   copyStoredImage: mockCopyStoredImage,
@@ -40,6 +41,9 @@ vi.doMock('@/billing/server/workflow-deduction', () => ({
 }));
 vi.doMock('@/platform/server/compliance/provenance', () => ({
   recordProvenance: mockRecordProvenance,
+}));
+vi.doMock('@/cast/server/sheets/sheet-portrait', () => ({
+  drawSheetPortrait: mockDrawSheetPortrait,
 }));
 vi.doMock('@/platform/realtime', () => ({
   getGenerationChannel: () => ({ emit: mockEmit }),
@@ -163,6 +167,9 @@ beforeEach(() => {
     metadata: { usedOwnKey: false, requestId: 'req-1' },
     via: 'fal',
   });
+  mockDrawSheetPortrait.mockResolvedValue(
+    '/r2/characters/team-1/seq-1/char-1/portrait.png'
+  );
   mockStoreGeneratedPng.mockResolvedValue({
     url: '/r2/characters/team-1/seq-1/char-1/out.png',
     path: 'team-1/seq-1/char-1/out.png',
@@ -191,6 +198,11 @@ describe('CharacterSheetWorkflow reuseTalentSheet', () => {
     );
     expect(mockGenerateImageWithProvider).not.toHaveBeenCalled();
     expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
+    // The free path stays free: no portrait is drawn, the tile crops.
+    expect(mockDrawSheetPortrait).not.toHaveBeenCalled();
+    expect(mockPromoteIfPending).toHaveBeenCalledWith(
+      expect.objectContaining({ portraitUrl: null })
+    );
     expect(result.sheetImageUrl).toBe(
       '/r2/characters/team-1/seq-1/char-1/copied.png'
     );
@@ -222,6 +234,19 @@ describe('CharacterSheetWorkflow reuseTalentSheet', () => {
     expect(params.prompt).toContain("this character's default look");
     expect(params.prompt).not.toContain('Elvis Presley');
     expect(params.prompt).not.toContain('/r2/talent/');
+
+    // A generated sheet lands with the portrait drawn from it.
+    expect(mockDrawSheetPortrait).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'character',
+        sheetUrl: '/r2/characters/team-1/seq-1/char-1/out.png',
+      })
+    );
+    expect(mockPromoteIfPending).toHaveBeenCalledWith(
+      expect.objectContaining({
+        portraitUrl: '/r2/characters/team-1/seq-1/char-1/portrait.png',
+      })
+    );
   });
 });
 

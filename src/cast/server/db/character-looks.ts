@@ -79,6 +79,7 @@ const lookColumns = {
   legacyFeatures: legacyBibleFeatures,
   sheetImageUrl: characterSheetVariants.url,
   sheetImagePath: characterSheetVariants.storagePath,
+  sheetPortraitUrl: characterSheetVariants.portraitUrl,
   sheetGeneratedAt: characterSheetVariants.generatedAt,
   sheetInputHash: characterSheetVariants.inputHash,
 };

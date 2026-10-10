@@ -217,7 +217,7 @@ export async function createCharacter(
 /**
  * Make a character with no sequence (#2065, the Characters page). It has a
  * bible and a default look and nothing else: a sequence casts it later with
- * `@` or Add existing character, and draws its sheet and designs its voice
+ * `@` or Add Character, and draws its sheet and designs its voice
  * then, so no voice field is taken here. No event is recorded: events are
  * per sequence.
  */
@@ -308,7 +308,7 @@ export async function updateTeamCharacter(
 
 /**
  * Cast a team character into a sequence (#2050): the `@` picker and the
- * cast panel's Add existing character. One link pinning her current version, a cast
+ * cast panel's Add Character. One link pinning her current version, a cast
  * look per look; nothing is copied and no generation starts. Refused while a
  * live cast member has her name (`characters.attach`).
  */

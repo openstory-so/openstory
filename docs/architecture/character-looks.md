@@ -243,6 +243,32 @@ Each person look's sheet is its own BytePlus portrait asset (the pool keys by
 stored URL). One sheet per look, shared by every sequence, is what keeps a
 series inside the ~45-slot pool: `byteplus-ark.md` has the numbers.
 
+### The tile's portrait
+
+A sheet is several panels, laid out differently by every model, so tiles do
+not crop it. `drawSheetPortrait` (`src/cast/server/sheets/sheet-portrait.ts`)
+makes one square 1K image from the stored sheet with Nano Banana 2 Lite, and
+its address is `portrait_url` on the sheet version row
+(`character_sheet_variants`, and `location_sheet_variants` for a sequence
+location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
+
+- **Generated sheet:** the `draw-portrait` step of `CharacterSheetWorkflow`
+  and `LocationSheetWorkflow`, after the sheet is stored and before it
+  lands. The portrait lands in the same write as the sheet.
+- **Uploaded sheet:** saved with no portrait, so the upload answers at
+  once. The upload triggers `SheetPortraitWorkflow` (`/sheet-portrait`,
+  one run per sheet version), which draws it, writes it once with
+  `setPortrait` and re-sends the sheet's completed event so the tile
+  re-reads. The tile crops the sheet until then.
+- **No portrait:** a sheet copied from talent (that path stays free), a
+  library location, an element, a sheet from before portraits, and a draw
+  that failed. A failed draw never fails the sheet. Tiles then crop the
+  sheet as before (`talentSquareImageClassName`).
+- It is charged as its own line ("Sheet portrait"), from the balance, not
+  from the sheet run's reservation.
+- It is only ever shown. Stills, clips and other looks are drawn from the
+  sheet, never from the portrait, and no hash reads it.
+
 ## Hashes and staleness
 
 - **Sheet hash reads no style (#2017)**: the bible's `rendering` ("Photoreal

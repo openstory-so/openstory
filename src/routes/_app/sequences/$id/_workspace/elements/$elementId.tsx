@@ -15,22 +15,22 @@ function ElementCrumbLabel({
   return <>{element?.token ?? '…'}</>;
 }
 
-export const Route = createFileRoute('/_app/sequences/$id/elements/$elementId')(
-  {
-    component: ElementDetailPage,
-    staticData: {
-      breadcrumb: (match) => {
-        const { id, elementId } = routeParams<{
-          id: string;
-          elementId: string;
-        }>(match);
-        return {
-          label: <ElementCrumbLabel sequenceId={id} elementId={elementId} />,
-        };
-      },
+export const Route = createFileRoute(
+  '/_app/sequences/$id/_workspace/elements/$elementId'
+)({
+  component: ElementDetailPage,
+  staticData: {
+    breadcrumb: (match) => {
+      const { id, elementId } = routeParams<{
+        id: string;
+        elementId: string;
+      }>(match);
+      return {
+        label: <ElementCrumbLabel sequenceId={id} elementId={elementId} />,
+      };
     },
-  }
-);
+  },
+});
 
 function ElementDetailPage() {
   const { id: sequenceId, elementId } = Route.useParams();

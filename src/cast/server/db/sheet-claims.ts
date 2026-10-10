@@ -108,6 +108,8 @@ type LandArgs<H> = {
   claimed: boolean;
   url: string;
   storagePath: string;
+  /** The portrait drawn from the sheet in the same run; null when that failed. */
+  portraitUrl: string | null;
   inputHash: H | null;
   /** The bible version the run read (#1600); null when unknown. */
   bibleVersionId: string | null;
@@ -199,6 +201,7 @@ const versionRow = <H>(args: LandArgs<H>, now: Date) => ({
   model: args.model,
   url: args.url,
   storagePath: args.storagePath,
+  portraitUrl: args.portraitUrl,
   status: 'completed' as const,
   workflowRunId: args.workflowRunId,
   generatedAt: now,

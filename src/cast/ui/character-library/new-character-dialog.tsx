@@ -41,13 +41,12 @@ export const NewCharacterDialog: React.FC = () => {
           </DialogDescription>
         </DialogHeader>
         <NewCharacterForm
-          defaultRendering={PHOTOREAL_RENDERING}
           isPending={createCharacter.isPending}
           submitLabel="Create"
           pendingLabel="Creating…"
           onSubmit={(fields) =>
             createCharacter.mutate(
-              { ...fields, rendering: fields.rendering ?? PHOTOREAL_RENDERING },
+              { ...fields, rendering: PHOTOREAL_RENDERING },
               {
                 onSuccess: (character) => {
                   setOpen(false);
