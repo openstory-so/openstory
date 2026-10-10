@@ -120,29 +120,6 @@ export function libraryCharacterIdOf(item: MentionItem): string | null {
     : null;
 }
 
-/**
- * The picked team characters the script still names in capitals, as a
- * whole word (#2050); undefined when none. A name deleted from the text is a
- * character the create screen must not cast.
- */
-export function castNamedInScript(
-  script: string,
-  pickedIds: readonly string[],
-  library: readonly { id: string; name: string }[]
-): string[] | undefined {
-  const named = pickedIds.filter((id) => {
-    const character = library.find((c) => c.id === id);
-    if (!character) return false;
-    const tag = character.name
-      .toUpperCase()
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^A-Za-z0-9_-])${tag}(?=[^A-Za-z0-9_-]|$)`).test(
-      script
-    );
-  });
-  return named.length > 0 ? named : undefined;
-}
-
 /** Strip "char_001: " prefix from a consistencyTag to get the slug half. */
 function consistencyTagSlug(raw: string | null | undefined): string | null {
   if (!raw) return null;

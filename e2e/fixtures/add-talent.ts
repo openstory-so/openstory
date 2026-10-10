@@ -55,7 +55,7 @@ export async function openAddTalentFromSequence(page: Page): Promise<{
   // DialogTitle is not always the accessible name; match on the heading copy.
   const picker = page
     .getByRole('dialog')
-    .filter({ hasText: 'Select Talent for Casting' });
+    .filter({ has: page.getByRole('tab', { name: 'Talent' }) });
   await expect(picker).toBeVisible({ timeout: 10_000 });
   await picker.getByRole('button', { name: 'Add Talent' }).last().click();
   const dialog = addTalentDialog(page);

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   buildMentionItems,
   filterMentionItems,
-  castNamedInScript,
   libraryCharacterIdOf,
   libraryMentionItems,
   mentionInsertAttrs,
@@ -254,26 +253,5 @@ describe('library characters in the @ picker (#2050)', () => {
     });
     if (!item) throw new Error('expected a cast row');
     expect(libraryCharacterIdOf(item)).toBeNull();
-  });
-});
-
-describe('castNamedInScript (#2050)', () => {
-  const library = [
-    { id: 'lib1', name: 'Ada Lovelace' },
-    { id: 'lib2', name: 'Bo' },
-  ];
-  it('keeps only the picks the script still names in capitals, whole-word', () => {
-    expect(
-      castNamedInScript(
-        'INT. LAB. ADA LOVELACE waits. Bo is gone. BOB enters.',
-        ['lib1', 'lib2', 'lib3'],
-        library
-      )
-    ).toEqual(['lib1']);
-  });
-  it('is undefined when no pick is named', () => {
-    expect(
-      castNamedInScript('Nobody here.', ['lib1'], library)
-    ).toBeUndefined();
   });
 });

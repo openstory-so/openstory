@@ -17,7 +17,6 @@ import { GenerateSequenceIcon } from '@/ui/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/cast/ui/location-library/location-suggestion-selector';
 import {
   buildMentionItems,
-  castNamedInScript,
   libraryCharacterIdOf,
   libraryMentionItems,
   type MentionItem,
@@ -31,6 +30,7 @@ import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
 import { StyleSelector } from '@/look/ui/style-selector';
 import { TalentSuggestionSelector } from '@/cast/ui/talent/talent-suggestion-selector';
+import { CastSelector } from '@/cast/ui/cast-selector';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -471,7 +471,8 @@ export const ScriptView: FC<{
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
-    // Team characters picked with `@` before the sequence exists (#2050).
+    // Team characters picked for a sequence that does not exist yet, in the
+    // cast picker or with `@` (#2050): create casts every one.
     castCharacterIds: [] as string[],
   });
   const {
@@ -656,7 +657,8 @@ export const ScriptView: FC<{
   // Team characters not cast here are offered too, and attach on pick
   // (#2050): straight onto the sequence when there is one, else onto the
   // draft, which create casts before analysis.
-  const { data: libraryCharacters } = useLibraryCharacters(isAuthenticated);
+  const { data: libraryCharacters, isError: libraryCharactersFailed } =
+    useLibraryCharacters(isAuthenticated);
   const attachLibraryCharacter = useAttachLibraryCharacter();
   const { data: mentionElements } = useSequenceElements(mentionSequenceId);
   const { data: mentionCharacters } = useSequenceCharacters(
@@ -672,14 +674,10 @@ export const ScriptView: FC<{
       name: c.name,
       sheetImageUrl: c.sheetImageUrl,
     }));
-    // On the create screen a picked team character is the cast — while
-    // the script still names her; a name deleted from the text puts her
-    // back among the library rows, as create will not cast her either.
-    const named = new Set(
-      castNamedInScript(script ?? '', castCharacterIds, libraryRows) ?? []
-    );
+    // On the create screen a picked team character is the cast, whether or
+    // not the script names her yet.
     const draftCast = libraryRows
-      .filter((c) => named.has(c.id))
+      .filter((c) => castCharacterIds.includes(c.id))
       .map((c) => ({ ...c, characterId: c.id, consistencyTag: null }));
     const cast = mentionSequenceId ? (mentionCharacters ?? []) : draftCast;
     const items = mentionSequenceId
@@ -712,7 +710,6 @@ export const ScriptView: FC<{
     draftElements,
     libraryCharacters,
     castCharacterIds,
-    script,
   ]);
 
   // A picked library row inserts her name as a cast row would; the attach
@@ -1044,13 +1041,9 @@ export const ScriptView: FC<{
         selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
       suggestedLocationIds:
         selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
-      // Only the picks the script still names: a pill deleted from the text
-      // is a character the sequence should not cast.
-      castCharacterIds: castNamedInScript(
-        script ?? baseScript ?? '',
-        castCharacterIds,
-        libraryCharacters ?? []
-      ),
+      // Every pick is cast; the picker shows each one, so none is hidden.
+      castCharacterIds:
+        castCharacterIds.length > 0 ? castCharacterIds : undefined,
       elementUploads:
         draftElements.length > 0
           ? draftElements.map((el) => ({
@@ -1285,17 +1278,35 @@ export const ScriptView: FC<{
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
   const referenceCount =
     selectedTalentIds.length +
+    (isEditing ? 0 : castCharacterIds.length) +
     selectedLocationIds.length +
     (isEditing ? 0 : draftElements.length);
   const referenceSelectors = (
     <>
-      <TalentSuggestionSelector
-        selectedTalentIds={selectedTalentIds}
-        onSelectionChange={(v) =>
-          setSelections((s) => ({ ...s, talentIds: v }))
-        }
-        disabled={loading}
-      />
+      {/* A sequence that exists is cast on its Cast tab and with `@`; only
+          its talent suggestions are edited here. */}
+      {isEditing ? (
+        <TalentSuggestionSelector
+          selectedTalentIds={selectedTalentIds}
+          onSelectionChange={(v) =>
+            setSelections((s) => ({ ...s, talentIds: v }))
+          }
+          disabled={loading}
+        />
+      ) : (
+        <CastSelector
+          // Signed out there is no team to list: the empty tab says so.
+          characters={isAuthenticated ? libraryCharacters : []}
+          failed={libraryCharactersFailed}
+          selectedIds={castCharacterIds}
+          onSelectionChange={(v) =>
+            setSelections((s) => ({ ...s, castCharacterIds: v }))
+          }
+          selectedTalentIds={selectedTalentIds}
+          onTalentChange={(v) => setSelections((s) => ({ ...s, talentIds: v }))}
+          disabled={loading}
+        />
+      )}
       <LocationSuggestionSelector
         selectedLocationIds={selectedLocationIds}
         onSelectionChange={(v) =>

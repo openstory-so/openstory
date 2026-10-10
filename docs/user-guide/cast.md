@@ -82,9 +82,10 @@ Click **Save as talent** to copy the character into your Talent Library. A talen
 
 ## Using a character in another sequence
 
-A character is reused only when you say so. Two ways:
+A character is reused only when you say so. Three ways:
 
-- **In the script**, type `@` and pick the character. Its name goes into the script in capitals and it joins the sequence's cast at its current version, with every look. Nothing else is stored in the text. On the new-sequence screen the character is added when you press Generate, as long as its name is still in the script.
+- **On the new-sequence screen**, click **Cast** and pick characters on the **Characters** tab. Each one joins the sequence when you press Generate, whether or not the script names it yet; a picked character shows beside the button and can be removed there. The **Talent** tab of the same picker suggests talent instead: analysis decides which of the script's own characters each one plays.
+- **In the script**, type `@` and pick the character. Its name goes into the script in capitals and it joins the sequence's cast, with every look. Nothing else is stored in the text. On the new-sequence screen this is the same pick as the Cast picker's: deleting the name from the script does not remove it.
 - **On the cast panel**, click **Add Character** and pick the character. No script change. **New character** in the same picker makes one from scratch.
 
 Analysis then reads the cast you attached: it keeps the character's bible and looks, links the outfits the script uses and adds a look only for an outfit it does not have. A plain name that is not in the cast is a new character; analysis never reaches into your team's other characters on its own.

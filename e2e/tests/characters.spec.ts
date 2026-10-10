@@ -246,6 +246,30 @@ test.describe('Characters page', () => {
     await expect(page.getByText(`Deleted ${name}`)).toBeVisible();
   });
 
+  test('a new sequence picks a team character in the Cast picker (#2017)', async ({
+    page,
+  }) => {
+    await page.goto('/sequences/new');
+    const open = page.getByRole('button', { name: 'Cast', exact: true });
+    if (!(await open.isVisible())) {
+      await page.getByRole('button', { name: 'References' }).click();
+    }
+    await expect(open).toBeEnabled({ timeout: HYDRATION_TIMEOUT });
+    await open.click();
+    const picker = page.getByRole('dialog');
+    // Characters is the first tab: a pick is a direct add.
+    await expect(
+      picker.getByRole('tab', { name: 'Characters' })
+    ).toHaveAttribute('aria-selected', 'true');
+    await picker.getByRole('button', { name: character.name }).click();
+    await picker.getByRole('button', { name: 'Cast 1', exact: true }).click();
+    await expect(picker).not.toBeVisible();
+    // Shown beside the button whether or not the script names it.
+    await expect(
+      page.getByRole('button', { name: `Remove ${character.name}` })
+    ).toBeAttached();
+  });
+
   test('an unknown character is not found, with a way back', async ({
     page,
   }) => {

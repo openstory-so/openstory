@@ -381,7 +381,7 @@ testWithUser.describe('Add Talent from new sequence page', () => {
         timeout: 10_000,
       });
       await expect(
-        picker.getByRole('button', { name: /^Cast 1 role$/i })
+        picker.getByRole('button', { name: /^Cast 1$/i })
       ).toBeVisible();
 
       await cleanupTalentByName(testUser.teamId, uniqueName);
@@ -409,7 +409,7 @@ testWithUser.describe('Add Talent from new sequence page', () => {
         timeout: 10_000,
       });
       await expect(
-        picker.getByRole('button', { name: /^Cast 1 role$/i })
+        picker.getByRole('button', { name: /^Cast 1$/i })
       ).toBeVisible();
       await expect(page.getByRole('link', { name: uniqueName })).toHaveCount(0);
       await expect(

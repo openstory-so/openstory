@@ -233,7 +233,12 @@ the script then names her like any cast member.
   capitals and attaches her (`attachLibraryCharacterFn`); on the create
   screen the pick goes onto the draft (`castCharacterIds`) and
   `createSequences` attaches before the storyboard trigger, so the first
-  analysis reads her. A pick-only row never pills: a plain name is prose
+  analysis reads her. The create screen's **Cast** picker
+  (`cast-selector.tsx`) writes the same `castCharacterIds` from its
+  Characters tab, and every id on the draft is cast, named in the script or
+  not; its Talent tab is the talent suggestions (`suggestedTalentIds`),
+  which analysis matches to the script's own characters. A sequence that
+  exists edits only its talent suggestions there. A pick-only row never pills: a plain name is prose
   until she is attached. The cast panel's **Add Character**
   attaches with no script change. API: a string in `create_sequence`'s
   `characters` names a team character first (id or name), then talent. Two
