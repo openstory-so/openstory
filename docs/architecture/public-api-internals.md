@@ -27,6 +27,11 @@ drift from its published contract: change the schema and both move together.
 `apiCreateSequenceSchema`; a create from either is the sequence the composer
 would make from the same choices.
 
+- **Same default model as the app (#2088).** A request that names no `videoModels` starts on
+  Seedance 2.5 where the team reaches BytePlus and on `DEFAULT_VIDEO_MODEL` elsewhere
+  (`resolveApiVideoDefaults`, asked the way `getViaAvailabilityFn` asks). `draftMotion` is kept
+  only on that route, as the composer does; `POST /scripts/enhance` shapes the script for the
+  same model.
 - **Same defaults as the app.** `startFrames` is off, `draftMotion` is on, and with no `stopAt` and
   no `motion` the run stops at `NEW_SEQUENCE_STOP_AT` (dialogue), the
   composer's own default (`apiStopAt`). It used to stop at images with start

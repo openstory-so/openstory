@@ -85,10 +85,9 @@ import { studioReferenceImages } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
-  DEFAULT_VIDEO_MODEL,
+  defaultVideoModelFor,
   getCompatibleModel,
   IMAGE_TO_VIDEO_MODELS,
-  isOfferedVideoModel,
   supportsDraftMode,
   supportsReferenceImages,
   type ImageToVideoModel,
@@ -372,9 +371,7 @@ export function StudioComposer({
   // the platform default otherwise. The via query is warmed by the `_app`
   // loader, so a signed-in user gets the right answer on first paint.
   const [videoModel, setVideoModel] = useState<ImageToVideoModel>(() =>
-    isOfferedVideoModel('seedance_v2_5', vias)
-      ? 'seedance_v2_5'
-      : DEFAULT_VIDEO_MODEL
+    defaultVideoModelFor(vias)
   );
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);

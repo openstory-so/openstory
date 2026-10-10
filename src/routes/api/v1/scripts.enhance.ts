@@ -18,9 +18,9 @@ import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
 import {
   buildEnhanceGenerator,
   enhanceSseResponse,
+  resolveEnhanceVideoModel,
 } from '@/platform/server/api-v1/enhance';
 import { apiEnhanceScriptSchema } from '@/platform/server/api-v1/enhance-input-schema';
-import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/models/models';
 import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { createFileRoute } from '@tanstack/react-router';
 
@@ -41,7 +41,14 @@ export const Route = createFileRoute('/api/v1/scripts/enhance')({
             );
           }
 
-          const input = apiEnhanceScriptSchema.parse(body);
+          const parsed = apiEnhanceScriptSchema.parse(body);
+          // Resolved once: the rewrite and the duration-fit check below must
+          // judge the script against the same model.
+          const videoModel = await resolveEnhanceVideoModel(
+            parsed.videoModel,
+            context.scopedDb
+          );
+          const input = { ...parsed, videoModel };
           const gen = await buildEnhanceGenerator(input, {
             scopedDb: context.scopedDb,
             user: context.user,
@@ -52,12 +59,7 @@ export const Route = createFileRoute('/api/v1/scripts/enhance')({
           // — billing, the LLM call — surface as a JSON error with the right
           // status before any SSE headers are committed.
           const first = await gen.next();
-          return enhanceSseResponse(first, gen, {
-            videoModel:
-              input.videoModel && isValidImageToVideoModel(input.videoModel)
-                ? input.videoModel
-                : DEFAULT_VIDEO_MODEL,
-          });
+          return enhanceSseResponse(first, gen, { videoModel });
         }),
     },
   },
