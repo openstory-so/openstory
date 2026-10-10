@@ -18,6 +18,7 @@ import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workfl
 import { computeLibraryLocationSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import {
+  addLocationToLibrary,
   attachLocationReferenceImages,
   createLibraryLocation,
   triggerLibraryLocationSheet,
@@ -307,4 +308,11 @@ export const deleteLocationSheetFn = createServerFn({ method: 'POST' })
     }
 
     return { success: true };
+  });
+
+export const addLocationToLibraryFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.object({ locationId: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    return addLocationToLibrary(context.scopedDb, data);
   });

@@ -22,6 +22,7 @@ import {
   restoreSequenceLocation,
   sequenceLocationKeys,
   type TeamLibraryLocation,
+  useAddLocationToLibrary,
   useLocationSheetStaleness,
   useRegenerateLocationSheet,
   useShotIdsForLocation,
@@ -50,7 +51,14 @@ import { estimateImageCost } from '@/billing/cost-estimation';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Loader2, MapPin, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Library,
+  Loader2,
+  MapPin,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { LocationBibleForm } from './location-bible-form';
@@ -73,6 +81,7 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
     isLoading,
     error,
   } = useSequenceLocations(sequenceId);
+  const addToLibrary = useAddLocationToLibrary();
   const recastLocation = useRecastLocation();
   const regenerateSheet = useRegenerateLocationSheet();
   const { data: sequence } = useSequence(sequenceId);
@@ -564,6 +573,28 @@ export const LocationDetailView: React.FC<LocationDetailViewProps> = ({
               </Button>
 
               <div className="flex flex-wrap gap-2">
+                {!location.libraryLocationId && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      addToLibrary.mutate(
+                        { locationId: location.id },
+                        {
+                          onSuccess: () =>
+                            toast.success('Added to location library'),
+                          onError: (error) =>
+                            toast.error('Failed to add to library', {
+                              description: errorMessage(error),
+                            }),
+                        }
+                      )
+                    }
+                    disabled={addToLibrary.isPending}
+                  >
+                    <Library className="mr-2 h-4 w-4" />
+                    {addToLibrary.isPending ? 'Adding…' : 'Add to Library'}
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setIsPickerOpen(true)}

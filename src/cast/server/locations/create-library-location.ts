@@ -171,3 +171,50 @@ export async function createLibraryLocation(
 
   return { location: newLocation, sheetWorkflowInput: workflowInput };
 }
+
+/**
+ * Add an existing sequence location to the team's library (#1695).
+ * Copies name, description, and reference image metadata without re-uploading,
+ * inserts a default location sheet if a reference image is present,
+ * and sets libraryLocationId on the sequence location.
+ */
+export async function addLocationToLibrary(
+  scopedDb: ScopedDb,
+  data: { locationId: string }
+): Promise<LibraryLocation> {
+  const location = await scopedDb.sequenceLocations.getById(data.locationId);
+  if (!location) {
+    throw new Error('Location not found');
+  }
+
+  // Verify the location's sequence belongs to this team
+  await scopedDb.sequences.getForUser({
+    sequenceId: location.sequenceId,
+  });
+
+  const newLocation = await scopedDb.locations.create({
+    name: location.name,
+    description: location.description ?? undefined,
+    referenceImageUrl: location.referenceImageUrl ?? undefined,
+    referenceImagePath: location.referenceImagePath ?? undefined,
+  });
+
+  if (location.referenceImageUrl) {
+    await scopedDb.locationSheets.insert([
+      {
+        locationId: newLocation.id,
+        name: 'Default',
+        imageUrl: location.referenceImageUrl,
+        imagePath: location.referenceImagePath ?? undefined,
+        isDefault: true,
+        source: 'from_library',
+      },
+    ]);
+  }
+
+  await scopedDb.sequenceLocations.update(location.id, {
+    libraryLocationId: newLocation.id,
+  });
+
+  return newLocation;
+}

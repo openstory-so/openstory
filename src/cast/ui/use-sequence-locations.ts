@@ -23,6 +23,7 @@ import {
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import {
+  addLocationToLibraryFn,
   getPublicLibraryLocationsFn,
   getTeamLibraryLocationsFn,
 } from '@/cast/location-library.fn';
@@ -71,6 +72,27 @@ export function useSequenceLocations(sequenceId: string) {
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - locations don't change often
     enabled: !!sequenceId,
+  });
+}
+
+/**
+ * Hook for adding a sequence location to the team's location library
+ */
+export function useAddLocationToLibrary() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: { globalError: true },
+    mutationFn: (data: { locationId: string }) =>
+      addLocationToLibraryFn({ data }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: libraryLocationKeys.all,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sequenceLocationKeys.all,
+      });
+    },
   });
 }
 
