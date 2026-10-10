@@ -64,6 +64,12 @@ export function getRequest() {
   return new Request('http://localhost');
 }
 
+export function getCookie(_name: string): string | undefined {
+  return undefined;
+}
+
+export function setCookie() {}
+
 // Other exports that might be imported from @tanstack/react-start
 export function json(data: any, init?: ResponseInit) {
   return new Response(JSON.stringify(data), {
@@ -75,8 +81,15 @@ export function json(data: any, init?: ResponseInit) {
   });
 }
 
+// Storybook is the browser, so run the `.client(…)` implementation (or a
+// no-op without one), as the Start compiler does for the client bundle.
 export function createIsomorphicFn() {
-  return createBuilder();
+  const chain = (impl: (...args: any[]) => any): any =>
+    Object.assign((...args: any[]) => impl(...args), {
+      server: () => chain(impl),
+      client: (next: (...args: any[]) => any) => chain(next),
+    });
+  return chain(() => undefined);
 }
 
 // `createServerOnlyFn(fn)` wraps a function that should only run on the server.

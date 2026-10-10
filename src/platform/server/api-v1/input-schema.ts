@@ -181,7 +181,7 @@ export const apiCreateSequenceSchema = z
       .min(1)
       .optional()
       .meta({
-        description: `Video (image-to-video) model key(s); first is primary. Defaults to ${DEFAULT_VIDEO_MODEL}.`,
+        description: `Video (image-to-video) model key(s); first is primary. Defaults to seedance_v2_5 where the team can reach it, otherwise ${DEFAULT_VIDEO_MODEL}.`,
       }),
 
     motion: z

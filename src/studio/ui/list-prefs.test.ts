@@ -1,20 +1,17 @@
 /**
  * Images / Videos list prefs (#1568): URL search is the live snapshot;
- * localStorage restores support mode on a bare /images or /videos visit.
+ * a cookie restores support mode on a bare /images or /clips visit.
  * `sort` / `favorites` never turn on this browser's support mode.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mem = new Map<string, string>();
-const localStorageMock = {
-  getItem: (k: string) => mem.get(k) ?? null,
-  setItem: (k: string, v: string) => {
-    mem.set(k, v);
+vi.doMock('@/ui/cookie', () => ({
+  readCookie: (name: string) => mem.get(name),
+  writeCookie: (name: string, value: string) => {
+    mem.set(name, value);
   },
-  removeItem: (k: string) => {
-    mem.delete(k);
-  },
-};
+}));
 
 const storedPrefs = {
   search: 'ada@example.com',
@@ -25,12 +22,6 @@ const storedPrefs = {
 describe('studio list prefs', () => {
   beforeEach(() => {
     mem.clear();
-    vi.stubGlobal('window', { localStorage: localStorageMock });
-    vi.stubGlobal('localStorage', localStorageMock);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it('reads empty URL search as the default list prefs', async () => {
@@ -187,9 +178,12 @@ describe('studio list prefs', () => {
     ).toEqual({ q: user });
   });
 
-  it('round-trips support prefs through localStorage and rejects garbage', async () => {
-    const { loadStudioListPrefs, saveStudioListPrefs, STUDIO_LIST_PREFS_KEY } =
-      await import('./list-prefs');
+  it('round-trips support prefs through the cookie and rejects garbage', async () => {
+    const {
+      loadStudioListPrefs,
+      saveStudioListPrefs,
+      STUDIO_LIST_PREFS_COOKIE,
+    } = await import('./list-prefs');
 
     expect(loadStudioListPrefs()).toBeNull();
     saveStudioListPrefs({
@@ -201,7 +195,31 @@ describe('studio list prefs', () => {
     });
     expect(loadStudioListPrefs()).toEqual(storedPrefs);
 
-    localStorage.setItem(STUDIO_LIST_PREFS_KEY, '{not json');
+    mem.set(STUDIO_LIST_PREFS_COOKIE, '{not json');
     expect(loadStudioListPrefs()).toBeNull();
+  });
+
+  it('sends a bare visit to the remembered support prefs once, keeping sort', async () => {
+    const { rememberStudioListPrefs, saveStudioListPrefs } =
+      await import('./list-prefs');
+
+    expect(rememberStudioListPrefs({ sort: 'oldest' }, false)).toBeNull();
+
+    expect(rememberStudioListPrefs({ support: true }, true)).toBeNull();
+    expect(rememberStudioListPrefs({}, false)).toBeNull();
+    expect(rememberStudioListPrefs({ support: true }, false)).toBeNull();
+    const target = rememberStudioListPrefs({ sort: 'oldest' }, false);
+    expect(target).toEqual({ support: true, sort: 'oldest' });
+    // The redirect target names support prefs, so it does not redirect again.
+    expect(target && rememberStudioListPrefs(target, false)).toBeNull();
+
+    saveStudioListPrefs({
+      search: '',
+      supportMode: false,
+      hideInternal: false,
+      sort: 'oldest',
+      favorites: true,
+    });
+    expect(rememberStudioListPrefs({ sort: 'oldest' }, false)).toBeNull();
   });
 });

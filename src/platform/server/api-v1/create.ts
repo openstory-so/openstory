@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { enhanceScriptToString } from '@/sequences/server/script-enhancement';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
 import { AUTO_STYLE_ID } from '@/look/auto-style';
-import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/models/models';
+import { isValidImageToVideoModel } from '@/models/models';
 import { isShortScript } from '@/models/should-enhance';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
@@ -59,6 +59,7 @@ import {
   resolveTalentIds,
 } from './resolve';
 import { ingestImageToBucket } from './safe-fetch';
+import { resolveApiVideoDefaults } from './video-defaults';
 import {
   attestUploads,
   classifyUpload,
@@ -272,16 +273,22 @@ export async function runOneShotCreate(
     input.enhance === 'always' ||
     (input.enhance === 'auto' && isShortScript(input.script));
 
-  const [style, elementUploads, ingestedCharacters, ingestedLocations] =
-    await Promise.all([
-      // No style (or "auto") is Match script, the app's default (#1213).
-      input.style && input.style !== AUTO_STYLE_ID
-        ? resolveStyle(ctx.scopedDb, input.style)
-        : null,
-      ingestElements(ctx.teamId, input.elements),
-      ingestInlineCharacterImages(input.characters, ctx.teamId),
-      ingestInlineLocationImages(input.locations, ctx.teamId),
-    ]);
+  const [
+    style,
+    elementUploads,
+    ingestedCharacters,
+    ingestedLocations,
+    videoDefaults,
+  ] = await Promise.all([
+    // No style (or "auto") is Match script, the app's default (#1213).
+    input.style && input.style !== AUTO_STYLE_ID
+      ? resolveStyle(ctx.scopedDb, input.style)
+      : null,
+    ingestElements(ctx.teamId, input.elements),
+    ingestInlineCharacterImages(input.characters, ctx.teamId),
+    ingestInlineLocationImages(input.locations, ctx.teamId),
+    resolveApiVideoDefaults(ctx.scopedDb),
+  ]);
   await requireIngestedImageRights(ctx, [
     ...inlineCreates<CharacterCreate>(input.characters).map((item) => ({
       label: `Character "${item.name}"`,
@@ -309,7 +316,7 @@ export async function runOneShotCreate(
         targetDuration: input.targetSeconds,
         videoModel:
           input.videoModels?.find(isValidImageToVideoModel) ??
-          DEFAULT_VIDEO_MODEL,
+          videoDefaults.videoModel,
         aspectRatio: input.aspectRatio,
         // Feed the enhancer the same style + element inputs the UI does.
         ...toEnhanceInputs({ style, elements: elementUploads }),
@@ -400,14 +407,16 @@ export async function runOneShotCreate(
       resolution: input.resolution ?? DEFAULT_RESOLUTION,
       analysisModels: input.analysisModels,
       imageModels: input.imageModels,
-      videoModels: input.videoModels,
+      videoModels: input.videoModels ?? [videoDefaults.videoModel],
       // Always a stop, never the legacy flags: the app's default when the
       // caller names none (#2084).
       stopAt: apiStopAt(input),
       // Voices are not a caller choice (#2067). Omitted here, createSequences
       // turns them on wherever voice design is configured.
       generateStartFrames: input.startFrames,
-      draftMotion: input.draftMotion,
+      // Like the composer: Draft first only where this team reaches BytePlus.
+      // A draft that lands on fal is refused, not rendered.
+      draftMotion: input.draftMotion && videoDefaults.byteplus,
       audioModels: input.audioModels,
       // Only Enhance sets the target (#1593); a verbatim script is auto.
       targetDurationSeconds: enhancedScript ? input.targetSeconds : undefined,
