@@ -427,6 +427,19 @@ export function supportsDraftMode(model: ImageToVideoModel): boolean {
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
 
+/**
+ * The video model new work starts on when none is named: Seedance 2.5 where
+ * the team reaches BytePlus (its only route), the platform default otherwise.
+ * Stored rows never go through this — they keep the model they were made on.
+ */
+export function defaultVideoModelFor(vias: {
+  byteplus?: boolean;
+}): ImageToVideoModel {
+  return isOfferedVideoModel('seedance_v2_5', vias)
+    ? 'seedance_v2_5'
+    : DEFAULT_VIDEO_MODEL;
+}
+
 /** Check if a video model supports audio output. */
 export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {
   const config = IMAGE_TO_VIDEO_MODELS[modelKey];

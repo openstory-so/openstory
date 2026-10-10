@@ -16,6 +16,16 @@ const mocks = vi.hoisted(() => ({
     () => Promise<{ status: 'cleared' | 'signed' | 'needs_portrait' }>
   >(async () => ({ status: 'cleared' })),
   attestUploads: vi.fn(async () => undefined),
+  claimBytePlusVia: vi.fn<
+    (options: { usingOwnFalKey: boolean }) => 'byteplus' | 'fal'
+  >(() => 'fal'),
+  resolveOptionalKey: vi.fn<
+    () => Promise<{ source: 'team' | 'platform' } | null>
+  >(async () => null),
+}));
+
+vi.mock('@/models/server/byteplus-config', () => ({
+  claimBytePlusVia: mocks.claimBytePlusVia,
 }));
 
 vi.mock('@/cast/server/upload-rights', () => ({
@@ -119,6 +129,7 @@ describe('runOneShotCreate', () => {
       styles: { list: async () => [makeStyle()] },
       talent: { list: async () => [], delete: talentDelete },
       locations: { list: async () => [], delete: locationDelete },
+      apiKeys: { resolveOptionalKey: mocks.resolveOptionalKey },
     }),
   };
 
@@ -204,6 +215,43 @@ describe('runOneShotCreate', () => {
     expect(
       mocks.createSequences.mock.calls[0]?.[0].generateVoices
     ).toBeUndefined();
+  });
+
+  describe('video defaults', () => {
+    const created = () => mocks.createSequences.mock.calls[0]?.[0];
+
+    it('starts on Seedance 2.5, drafted first, where the team reaches BytePlus', async () => {
+      mocks.claimBytePlusVia.mockReturnValue('byteplus');
+      await runOneShotCreate(baseInput, ctx);
+      expect(created().videoModels).toEqual(['seedance_v2_5']);
+      expect(created().draftMotion).toBe(true);
+    });
+
+    it('stays on the platform default with no draft where it does not', async () => {
+      mocks.claimBytePlusVia.mockReturnValue('fal');
+      await runOneShotCreate({ ...baseInput, draftMotion: true }, ctx);
+      expect(created().videoModels).toEqual(['seedance_v2']);
+      expect(created().draftMotion).toBe(false);
+    });
+
+    it('asks the route with the team\u2019s own fal key in view', async () => {
+      mocks.resolveOptionalKey.mockResolvedValue({ source: 'team' });
+      await runOneShotCreate(baseInput, ctx);
+      expect(mocks.claimBytePlusVia).toHaveBeenCalledWith({
+        native: true,
+        usingOwnFalKey: true,
+      });
+    });
+
+    it('keeps the caller\u2019s model and lets draftMotion be turned off', async () => {
+      mocks.claimBytePlusVia.mockReturnValue('byteplus');
+      await runOneShotCreate(
+        { ...baseInput, videoModels: ['kling_v3_pro'], draftMotion: false },
+        ctx
+      );
+      expect(created().videoModels).toEqual(['kling_v3_pro']);
+      expect(created().draftMotion).toBe(false);
+    });
   });
 
   it('ingests every character reference before insert and enqueues sheets only after the sequence exists', async () => {

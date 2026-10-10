@@ -179,8 +179,12 @@ export const apiCreateSequenceSchema = z
       .min(1)
       .optional()
       .meta({
-        description: `Video (image-to-video) model key(s); first is primary. Defaults to ${DEFAULT_VIDEO_MODEL}.`,
+        description: `Video (image-to-video) model key(s); first is primary. Defaults to seedance_v2_5 where the team can reach it, otherwise ${DEFAULT_VIDEO_MODEL}.`,
       }),
+    draftMotion: z.boolean().optional().meta({
+      description:
+        'Render motion as 480p drafts first; the 1080p finals are a second, separately billed render (render_sequence_drafts_at_quality, or Render final in the app). Only Seedance 2.5 drafts; ignored for other models and where the team cannot reach it. Default true.',
+    }),
 
     motion: z.boolean().default(false).meta({
       description: 'Generate motion (video) for each shot. Default false.',
