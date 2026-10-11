@@ -124,7 +124,8 @@ const TalentAvatar: React.FC<TalentAvatarProps> = ({ talent, onRemove }) => {
             e.stopPropagation();
             onRemove();
           }}
-          className="absolute -right-1 -top-1 hidden rounded-full bg-destructive p-0.5 text-destructive-foreground group-hover:block"
+          aria-label={`Remove ${talent.name}`}
+          className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
         >
           <X className="h-3 w-3" />
         </button>
@@ -176,7 +177,7 @@ export const TalentPickerPanel: React.FC<
         />
       </div>
 
-      <ScrollArea className="h-[400px]">
+      <ScrollArea className="h-[min(400px,40dvh)]">
         {isLoading ? (
           <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -298,11 +299,21 @@ export const TalentSuggestionSelector: React.FC<
               onSelectionChange={onSelectionChange}
             />
             <div className="flex justify-end">
-              <Button type="submit">
-                {selectedTalentIds.length > 0
-                  ? `Cast ${selectedTalentIds.length} role${selectedTalentIds.length === 1 ? '' : 's'}`
-                  : 'Continue'}
-              </Button>
+              <div className="flex flex-col items-center gap-1">
+                <Button type="submit">
+                  {selectedTalentIds.length > 0
+                    ? `Cast ${selectedTalentIds.length} role${selectedTalentIds.length === 1 ? '' : 's'}`
+                    : 'Continue'}
+                </Button>
+                <span
+                  className={cn(
+                    'text-[10px] text-muted-foreground',
+                    selectedTalentIds.length > 0 && 'invisible'
+                  )}
+                >
+                  without casting
+                </span>
+              </div>
             </div>
           </form>
         </DialogContent>

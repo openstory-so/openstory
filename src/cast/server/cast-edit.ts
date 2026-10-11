@@ -420,12 +420,16 @@ export async function deleteTeamCharacter(
   if (await scopedDb.characters.getCastInAnySequenceOrArchive(characterId)) {
     throw new ConflictError(STILL_CAST_MESSAGE);
   }
-  const voice = await scopedDb.characters.getVoice(characterId);
   if (!(await scopedDb.characters.softDeleteForTeam(characterId))) {
     throw new ConflictError(STILL_CAST_MESSAGE);
   }
   try {
-    await releaseCharacterVoice(scopedDb, voice, actor.userId);
+    // Read after the delete: no sequence can change the voice from here.
+    await releaseCharacterVoice(
+      scopedDb,
+      await scopedDb.characters.getVoice(characterId),
+      actor.userId
+    );
   } catch (error) {
     await scopedDb.characters.restoreForTeam(characterId);
     throw error;

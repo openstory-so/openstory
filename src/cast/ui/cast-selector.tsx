@@ -35,6 +35,8 @@ type CastSelectorProps = {
   /** The team's characters; undefined while they load. */
   characters: readonly TeamCharacter[] | undefined;
   failed: boolean;
+  /** Signed out there is no team: the picker opens on Talent. */
+  signedOut: boolean;
   selectedIds: readonly string[];
   onSelectionChange: (ids: string[]) => void;
   selectedTalentIds: string[];
@@ -67,6 +69,7 @@ const Picture: React.FC<{ character: TeamCharacter; iconClass: string }> = ({
 export const CastSelector: React.FC<CastSelectorProps> = ({
   characters,
   failed,
+  signedOut,
   selectedIds,
   onSelectionChange,
   selectedTalentIds,
@@ -80,6 +83,11 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
   const [search, setSearch] = useState('');
 
   const selected = (characters ?? []).filter((c) => selectedIds.includes(c.id));
+  // A pick the list no longer has (deleted since, or a draft from another
+  // team). Create would refuse it, so it is shown and removable, not dropped.
+  const gone = characters
+    ? selectedIds.filter((id) => !characters.some((c) => c.id === id))
+    : [];
   const shown = characters?.filter((c) =>
     c.name.toLowerCase().includes(search.trim().toLowerCase())
   );
@@ -103,8 +111,23 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
         >
           Cast
         </Button>
-        {selected.length > 0 && (
+        {selected.length + gone.length > 0 && (
           <div className="flex items-center -space-x-2">
+            {gone.map((id) => (
+              <div key={id} className="group relative">
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-destructive bg-muted">
+                  <User className="h-5 w-5 text-muted-foreground/30" />
+                </div>
+                <button
+                  type="button"
+                  aria-label="Remove deleted character"
+                  onClick={() => toggle(id)}
+                  className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
             {selected.slice(0, 4).map((character) => (
               <div key={character.id} className="group relative">
                 <div className="h-10 w-10 overflow-hidden rounded-full border-2 border-primary bg-muted">
@@ -133,7 +156,13 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
         />
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setSearch('');
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <form
             onSubmit={(e) => {
@@ -149,7 +178,10 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
                 Add your characters, or suggest talent for the script's own.
               </DialogDescription>
             </DialogHeader>
-            <Tabs defaultValue="characters" className="flex flex-col gap-4">
+            <Tabs
+              defaultValue={signedOut ? 'talent' : 'characters'}
+              className="flex flex-col gap-4"
+            >
               <TabsList>
                 <TabsTrigger value="characters">Characters</TabsTrigger>
                 <TabsTrigger value="talent">Talent</TabsTrigger>
@@ -174,8 +206,12 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
                   placeholder="Search characters…"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  // Enter would submit the form and close the picker mid-search.
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.preventDefault();
+                  }}
                 />
-                <ScrollArea className="h-[400px]">
+                <ScrollArea className="h-[min(400px,40dvh)]">
                   {failed ? (
                     <p className="py-12 text-center text-sm text-muted-foreground">
                       Could not load characters.
@@ -194,9 +230,11 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
                       <p className="text-sm text-muted-foreground">
                         {search.trim()
                           ? 'No character matches.'
-                          : 'No characters yet.'}
+                          : signedOut
+                            ? 'Sign in to add your characters.'
+                            : 'No characters yet.'}
                       </p>
-                      {!search.trim() && (
+                      {!search.trim() && !signedOut && (
                         <Button asChild variant="outline" size="sm">
                           <Link to="/characters">Open Characters</Link>
                         </Button>

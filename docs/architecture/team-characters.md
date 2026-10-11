@@ -192,8 +192,9 @@ What follows from one character in two sequences:
     (`softDeleteForTeam`) is one UPDATE with the same condition, so a
     sequence that casts the character between the check and the write still
     stops it.
-  - A voice it still points at is released first; Undo does not bring it
-    back.
+  - The delete is written first, then a voice it still points at is
+    released; a release that fails puts the character back. Undo does not
+    bring the voice back.
   - Restoring it in a sequence that removed it (the existing Restore) clears
     the stamp too, and so does a re-analysis that revives its removed link
     there (`characters.create`).

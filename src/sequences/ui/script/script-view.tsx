@@ -1041,7 +1041,7 @@ export const ScriptView: FC<{
         selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
       suggestedLocationIds:
         selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
-      // Every pick is cast; the picker shows each one, so none is hidden.
+      // Every pick is cast; the picker shows each one, a deleted one included.
       castCharacterIds:
         castCharacterIds.length > 0 ? castCharacterIds : undefined,
       elementUploads:
@@ -1295,8 +1295,8 @@ export const ScriptView: FC<{
         />
       ) : (
         <CastSelector
-          // Signed out there is no team to list: the empty tab says so.
           characters={isAuthenticated ? libraryCharacters : []}
+          signedOut={!isAuthenticated}
           failed={libraryCharactersFailed}
           selectedIds={castCharacterIds}
           onSelectionChange={(v) =>
@@ -1584,10 +1584,13 @@ export const ScriptView: FC<{
             </SheetTrigger>
             <SheetContent side="bottom" className="px-4 pb-6">
               <SheetHeader className="px-0">
-                <SheetTitle>Talent, locations & elements</SheetTitle>
+                <SheetTitle>
+                  {isEditing ? 'Talent' : 'Cast'}, locations & elements
+                </SheetTitle>
                 <SheetDescription>
-                  Pre-cast talent, pin locations, or add reference images.
-                  Anything you skip is extracted from the script.
+                  {isEditing ? 'Pre-cast talent' : 'Cast characters or talent'},
+                  pin locations, or add reference images. Anything you skip is
+                  extracted from the script.
                 </SheetDescription>
               </SheetHeader>
               <div className="flex flex-col items-start gap-3">
