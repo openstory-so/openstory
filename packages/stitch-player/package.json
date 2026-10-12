@@ -53,7 +53,7 @@
     "prepack": "bun run build"
   },
   "dependencies": {
-    "mediabunny": "^1.60.0"
+    "mediabunny": "^1.61.3"
   },
   "peerDependencies": {
     "@videojs/media": "^10.0.0",
