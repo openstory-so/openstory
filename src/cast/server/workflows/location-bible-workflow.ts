@@ -7,6 +7,7 @@
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { sheetStartedSummary } from '@/sequences/model-label';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
@@ -169,7 +170,14 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
             const claim =
               await scopedDb.sequenceLocations.claimReferenceIfUnmoved(
                 locationDbId,
-                snapshot
+                snapshot,
+                input.sequenceId
+                  ? {
+                      sequenceId: input.sequenceId,
+                      actorId: input.userId,
+                      summary: sheetStartedSummary(location.name, model),
+                    }
+                  : undefined
               );
             if (!claim.held) {
               logger.warn(

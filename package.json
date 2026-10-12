@@ -177,6 +177,7 @@
     "tailwind-merge": "^3.7.0",
     "tiptap-markdown": "^0.9.0",
     "ulid": "^3.0.2",
+    "virtua": "^0.53.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {

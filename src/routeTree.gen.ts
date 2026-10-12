@@ -85,6 +85,7 @@ import { Route as ApiV1SequencesRouteImport } from './routes/api/v1/sequences'
 import { Route as ApiV1StylesRouteImport } from './routes/api/v1/styles'
 import { Route as AppModelsFamilySplatRouteImport } from './routes/_app/models/family/$'
 import { Route as AppSequencesIdWorkspaceRouteRouteImport } from './routes/_app/sequences/$id/_workspace/route'
+import { Route as AppSequencesIdHistoryRouteImport } from './routes/_app/sequences/$id/history'
 import { Route as AppSequencesIdMusicRouteImport } from './routes/_app/sequences/$id/music'
 import { Route as AppSequencesIdScriptRouteImport } from './routes/_app/sequences/$id/script'
 import { Route as AppSequencesIdTheatreRouteImport } from './routes/_app/sequences/$id/theatre'
@@ -483,6 +484,11 @@ const AppSequencesIdWorkspaceRouteRoute =
     id: '/_workspace',
     getParentRoute: () => AppSequencesIdRouteRoute,
   } as any)
+const AppSequencesIdHistoryRoute = AppSequencesIdHistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
+  getParentRoute: () => AppSequencesIdRouteRoute,
+} as any)
 const AppSequencesIdMusicRoute = AppSequencesIdMusicRouteImport.update({
   id: '/music',
   path: '/music',
@@ -660,6 +666,7 @@ export interface FileRoutesByFullPath {
   '/videos/': typeof AppVideosIndexRoute
   '/api/v1/': typeof ApiV1IndexRoute
   '/models/family/$': typeof AppModelsFamilySplatRoute
+  '/sequences/$id/history': typeof AppSequencesIdHistoryRoute
   '/sequences/$id/music': typeof AppSequencesIdMusicRoute
   '/sequences/$id/script': typeof AppSequencesIdScriptRoute
   '/sequences/$id/theatre': typeof AppSequencesIdTheatreRoute
@@ -752,6 +759,7 @@ export interface FileRoutesByTo {
   '/videos': typeof AppVideosIndexRoute
   '/api/v1': typeof ApiV1IndexRoute
   '/models/family/$': typeof AppModelsFamilySplatRoute
+  '/sequences/$id/history': typeof AppSequencesIdHistoryRoute
   '/sequences/$id/music': typeof AppSequencesIdMusicRoute
   '/sequences/$id/script': typeof AppSequencesIdScriptRoute
   '/sequences/$id/theatre': typeof AppSequencesIdTheatreRoute
@@ -850,6 +858,7 @@ export interface FileRoutesById {
   '/api/v1/': typeof ApiV1IndexRoute
   '/_app/sequences/$id/_workspace': typeof AppSequencesIdWorkspaceRouteRouteWithChildren
   '/_app/models/family/$': typeof AppModelsFamilySplatRoute
+  '/_app/sequences/$id/history': typeof AppSequencesIdHistoryRoute
   '/_app/sequences/$id/music': typeof AppSequencesIdMusicRoute
   '/_app/sequences/$id/script': typeof AppSequencesIdScriptRoute
   '/_app/sequences/$id/theatre': typeof AppSequencesIdTheatreRoute
@@ -946,6 +955,7 @@ export interface FileRouteTypes {
     | '/videos/'
     | '/api/v1/'
     | '/models/family/$'
+    | '/sequences/$id/history'
     | '/sequences/$id/music'
     | '/sequences/$id/script'
     | '/sequences/$id/theatre'
@@ -1038,6 +1048,7 @@ export interface FileRouteTypes {
     | '/videos'
     | '/api/v1'
     | '/models/family/$'
+    | '/sequences/$id/history'
     | '/sequences/$id/music'
     | '/sequences/$id/script'
     | '/sequences/$id/theatre'
@@ -1135,6 +1146,7 @@ export interface FileRouteTypes {
     | '/api/v1/'
     | '/_app/sequences/$id/_workspace'
     | '/_app/models/family/$'
+    | '/_app/sequences/$id/history'
     | '/_app/sequences/$id/music'
     | '/_app/sequences/$id/script'
     | '/_app/sequences/$id/theatre'
@@ -1723,6 +1735,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSequencesIdWorkspaceRouteRouteImport
       parentRoute: typeof AppSequencesIdRouteRoute
     }
+    '/_app/sequences/$id/history': {
+      id: '/_app/sequences/$id/history'
+      path: '/history'
+      fullPath: '/sequences/$id/history'
+      preLoaderRoute: typeof AppSequencesIdHistoryRouteImport
+      parentRoute: typeof AppSequencesIdRouteRoute
+    }
     '/_app/sequences/$id/music': {
       id: '/_app/sequences/$id/music'
       path: '/music'
@@ -1915,6 +1934,7 @@ const AppSequencesIdWorkspaceRouteRouteWithChildren =
 
 interface AppSequencesIdRouteRouteChildren {
   AppSequencesIdWorkspaceRouteRoute: typeof AppSequencesIdWorkspaceRouteRouteWithChildren
+  AppSequencesIdHistoryRoute: typeof AppSequencesIdHistoryRoute
   AppSequencesIdMusicRoute: typeof AppSequencesIdMusicRoute
   AppSequencesIdScriptRoute: typeof AppSequencesIdScriptRoute
   AppSequencesIdTheatreRoute: typeof AppSequencesIdTheatreRoute
@@ -1926,6 +1946,7 @@ interface AppSequencesIdRouteRouteChildren {
 const AppSequencesIdRouteRouteChildren: AppSequencesIdRouteRouteChildren = {
   AppSequencesIdWorkspaceRouteRoute:
     AppSequencesIdWorkspaceRouteRouteWithChildren,
+  AppSequencesIdHistoryRoute: AppSequencesIdHistoryRoute,
   AppSequencesIdMusicRoute: AppSequencesIdMusicRoute,
   AppSequencesIdScriptRoute: AppSequencesIdScriptRoute,
   AppSequencesIdTheatreRoute: AppSequencesIdTheatreRoute,

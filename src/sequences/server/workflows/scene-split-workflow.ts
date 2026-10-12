@@ -108,6 +108,7 @@ import {
   stripCodeFences,
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
+import { recordSequenceEvent } from '@/sequences/server/db/sequence-events';
 import { bibleFromWire } from '@/cast/bible-looks';
 import type {
   CharacterBibleEntry,
@@ -1282,6 +1283,15 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             }
           }
         }
+        const sceneCount = reconciled.scenes.length;
+        await recordSequenceEvent(scopedDb, {
+          sequenceId,
+          actorId: input.userId,
+          kind: 'scene-split.completed',
+          targetType: 'sequence',
+          targetId: sequenceId,
+          summary: `Split the script into ${sceneCount} ${sceneCount === 1 ? 'scene' : 'scenes'}`,
+        });
         return versionIds;
       });
     }

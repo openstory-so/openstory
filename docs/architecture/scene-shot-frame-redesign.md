@@ -236,7 +236,37 @@ sequence_events
 
 Drift is prevented structurally: the event is appended in the **same
 `db.batch()` transaction** as the mutation, from the central scoped-db write
-layer — change and event commit together or not at all.
+layer — change and event commit together or not at all. A retried workflow
+step that narrates one domain row reuses that row's id with
+`onConflictDoNothing` (`buildEventInsertOnce`). A start and the completion of
+the same row use different ids. A run that throws logs one failure from
+`OpenStoryWorkflowEntrypoint` (`log-run-failure`, after `emit-failure`); an
+engine abort does not. Storyboard's `mark-failed` returns without throwing,
+so that path writes `run.failed` itself.
+
+Kinds added for the history page (#2093), beside the image, video, prompt,
+shot, scene, character, look, location, element and sheet selection lines:
+`storyboard.started` / `storyboard.completed`, `analysis.completed`,
+`scene-split.completed`, `image.started`, `preview.generated`,
+`music.started` / `music.generated`, `sheet.started` / `sheet.generated`,
+`voice.started` / `voice.designed`, `dialogue.started` /
+`dialogue.recorded`, `export.started` / `export.finished` /
+`export.failed`, and `run.failed`. `sequence.settings-changed` now carries a
+plain-English summary when the stored style, aspect ratio, image, video,
+music or analysis model, or generation stop actually changes. Model keys stay
+out of `SETTINGS_CHANGED_LABELS` (#1785).
+
+The in-app page is `/sequences/$id/history` (header link "History"). It reads
+`listHistory`: newest first, cursor `id < before`, 40 at a time. A row names
+the actor (`user.name`, or "OpenStory" when the actor is null or missing),
+the summary, a relative time with the exact timestamp on hover, and a link
+to the shot, scene, character, location or element when that target still
+exists. A deleted target keeps its label and drops the link.
+
+A team-character edit, or a sheet, voice or bible started with no sequence
+(`sequenceId` null, Characters page, #2017), writes no sequence event and is
+not fanned out to every sequence that casts the character. Library talent and
+location claims are not sequence-scoped. There is no team-level log.
 
 ## Backfill & migration safety
 

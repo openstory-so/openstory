@@ -22,8 +22,11 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createSequencesMethods } from './sequences';
 import {
+  SETTINGS_CHANGED_LABELS,
   buildEventInsert,
+  buildEventInsertOnce,
   createSequenceEventsMethods,
 } from './sequence-events';
 
@@ -31,6 +34,8 @@ let client: Client;
 let db: Database;
 let sequenceId = '';
 let shotId = '';
+let teamId = '';
+let userId = '';
 
 async function seed() {
   await db.delete(sequenceEvents);
@@ -41,8 +46,14 @@ async function seed() {
   await db.delete(teams);
   await db.delete(user);
 
-  const teamId = generateId();
+  teamId = generateId();
+  userId = generateId();
   sequenceId = generateId();
+  await db.insert(user).values({
+    id: userId,
+    name: 'Ada',
+    email: `${userId}@example.com`,
+  });
   await db.insert(teams).values({ id: teamId, name: 'T', slug: 't' });
   const [style] = await db
     .insert(styles)
@@ -169,5 +180,102 @@ describe('sequenceEvents reads', () => {
     const shotEvents = await m.listByTarget('shot', shotId);
     expect(shotEvents).toHaveLength(1);
     expect(shotEvents[0]?.targetType).toBe('shot');
+  });
+});
+
+describe('listHistory', () => {
+  it('pages newest-first and drops the link when the shot is deleted', async () => {
+    const m = createSequenceEventsMethods(db);
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'a.first',
+      targetType: 'sequence',
+      targetId: sequenceId,
+      summary: 'First',
+    });
+    await m.record({
+      sequenceId,
+      actorId: userId,
+      kind: 'b.second',
+      targetType: 'shot',
+      targetId: shotId,
+      summary: 'Second',
+    });
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'c.third',
+      targetType: 'sequence',
+      targetId: sequenceId,
+      summary: 'Third',
+    });
+
+    const first = await m.listHistory(sequenceId, { limit: 2 });
+    expect(first.events.map((event) => event.summary)).toEqual([
+      'Third',
+      'Second',
+    ]);
+    expect(first.events[1]?.actorName).toBe('Ada');
+    expect(first.events[0]?.actorName).toBe('OpenStory');
+    expect(first.events[1]?.targetLabel).toBe('Shot 1');
+    expect(first.events[1]?.link).toMatchObject({ search: { shot: shotId } });
+    expect(first.nextCursor).toBe(first.events[1]?.id);
+
+    const older = await m.listHistory(sequenceId, {
+      before: first.nextCursor ?? undefined,
+      limit: 2,
+    });
+    expect(older.events.map((event) => event.summary)).toEqual(['First']);
+    expect(older.nextCursor).toBeNull();
+
+    await db
+      .update(shots)
+      .set({ deletedAt: new Date() })
+      .where(eq(shots.id, shotId));
+    const afterDelete = await m.listHistory(sequenceId, { limit: 2 });
+    expect(afterDelete.events[1]?.targetLabel).toBe('Shot 1');
+    expect(afterDelete.events[1]?.link).toBeNull();
+  });
+});
+
+describe('buildEventInsertOnce', () => {
+  it('keeps the first row when the same id is inserted again', async () => {
+    const id = generateId();
+    const input = {
+      id,
+      sequenceId,
+      actorId: null,
+      kind: 'preview.generated',
+      targetType: 'sequence' as const,
+      targetId: sequenceId,
+      summary: 'Once',
+    };
+    await buildEventInsertOnce(db, input);
+    await buildEventInsertOnce(db, { ...input, summary: 'Twice' });
+    const rows = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.id, id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.summary).toBe('Once');
+  });
+});
+
+describe('sequence settings history', () => {
+  it('writes a sentence only when the stored value changes', async () => {
+    const sequences = createSequencesMethods(db, teamId, userId);
+    await sequences.update({ id: sequenceId, aspectRatio: '9:16' });
+    await sequences.update({ id: sequenceId, aspectRatio: '9:16' });
+    await sequences.update({ id: sequenceId, imageModel: 'gpt_image_2' });
+
+    const events =
+      await createSequenceEventsMethods(db).listBySequence(sequenceId);
+    expect(events.map((event) => event.summary)).toEqual([
+      'Changed the image model to GPT Image 2.5',
+      'Changed aspect ratio to 9:16',
+    ]);
+    expect(events[0]?.data).toMatchObject({ fields: ['imageModel'] });
+    expect(SETTINGS_CHANGED_LABELS.imageModel).toBeUndefined();
   });
 });

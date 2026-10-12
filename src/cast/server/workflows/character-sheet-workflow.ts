@@ -8,6 +8,7 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { sheetGeneratedSummary } from '@/sequences/model-label';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -77,6 +78,20 @@ async function landSheet(
         bibleVersionId: input.bibleVersionId ?? null,
         model: stored.model,
         workflowRunId,
+        ...(input.sequenceId
+          ? {
+              activity: {
+                sequenceId: input.sequenceId,
+                actorId: input.userId,
+                targetType: 'character' as const,
+                targetId: input.characterDbId,
+                summary: sheetGeneratedSummary(
+                  input.characterName,
+                  stored.model
+                ),
+              },
+            }
+          : {}),
       }),
     logger,
     logTag: '[CharacterSheetWorkflow:cf]',

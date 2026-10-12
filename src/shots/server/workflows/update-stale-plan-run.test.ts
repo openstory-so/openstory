@@ -407,7 +407,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         bibleVersionId: 'bible-ravi',
         talentId: null,
       },
-      { markGenerating: true }
+      expect.objectContaining({ markGenerating: true })
     );
     expect(result.failures).toEqual([]);
     // The banner moves under a continue.
@@ -456,7 +456,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         bibleVersionId: 'bible-1',
         talentId: 'talent-1',
       },
-      { markGenerating: true }
+      expect.objectContaining({ markGenerating: true })
     );
     expect(payloadOf('spawn-character-sheet-gala')).toMatchObject({
       lookId: 'gala',

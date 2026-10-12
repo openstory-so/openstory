@@ -102,10 +102,18 @@ describe('LocationBibleWorkflow sheet claim', () => {
   it('claims against the bible version and link the upsert returned', async () => {
     await makeWorkflow().runBody(event, step, makeScopedDb('bible-v1'));
 
-    expect(claimReferenceIfUnmoved).toHaveBeenCalledWith('loc-db-1', {
-      bibleVersionId: 'bible-v1',
-      libraryLocationId: 'lib-1',
-    });
+    expect(claimReferenceIfUnmoved).toHaveBeenCalledWith(
+      'loc-db-1',
+      {
+        bibleVersionId: 'bible-v1',
+        libraryLocationId: 'lib-1',
+      },
+      expect.objectContaining({
+        sequenceId: 'seq-1',
+        actorId: 'u1',
+        summary: expect.stringContaining('Started a sheet for Diner'),
+      })
+    );
     expect(claimReference).not.toHaveBeenCalled();
     expect(mockSpawnAndAwaitChild.mock.calls[0]?.[1]).toMatchObject({
       childPayload: { referenceVersionId: 'guarded' },

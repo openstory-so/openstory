@@ -8,6 +8,7 @@
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { sheetStartedSummary } from '@/sequences/model-label';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { buildCharacterInsert } from './cast-records';
@@ -263,7 +264,14 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             await scopedDb.characterLooks.claimSheet(
               unclaimedFields.lookId,
               unclaimedFields,
-              { markGenerating: false }
+              {
+                markGenerating: false,
+                activity: {
+                  sequenceId: sheetSequenceId,
+                  actorId: input.userId,
+                  summary: sheetStartedSummary(character.name, imageModel),
+                },
+              }
             )
           ).versionId
       );
@@ -325,7 +333,13 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             async () =>
               await scopedDb.characters.createPendingVoiceClaim(
                 row.id,
-                input.userId
+                input.userId,
+                {
+                  activity: {
+                    sequenceId,
+                    summary: `Started a voice for ${character.name}`,
+                  },
+                }
               )
           );
           huskId = claim.version.id;

@@ -108,7 +108,12 @@ describe('enqueueCharacterVoiceDesign', () => {
       takes: 2,
       trigger,
     });
-    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1');
+    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1', {
+      activity: {
+        sequenceId: 'seq-1',
+        summary: 'Started a voice for Maya',
+      },
+    });
     expect(trigger).toHaveBeenCalledWith(
       expect.objectContaining({
         characterDbId: 'char-1',
@@ -205,7 +210,12 @@ describe('enqueueCharacterVoiceDesign', () => {
       'failed',
       'Voice design never started'
     );
-    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1');
+    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1', {
+      activity: {
+        sequenceId: 'seq-1',
+        summary: 'Started a voice for Maya',
+      },
+    });
     expect(trigger).toHaveBeenCalledWith(
       expect.objectContaining({ targetVersionId: 'husk-1' })
     );

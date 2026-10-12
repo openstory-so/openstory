@@ -27,6 +27,7 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import { persistSceneLooks } from '@/sequences/server/scene-persistence';
+import { recordSequenceEvent } from '@/sequences/server/db/sequence-events';
 import { relabelBibleLooks, relabelLookPicks } from '@/cast/bible-looks';
 import { createCastRecords } from '@/cast/server/workflows/cast-records';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
@@ -387,6 +388,16 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         await channel.emit('generation.shot:updated', {
           shotId,
           updateType: 'motion-prompt',
+        });
+      }
+      if (sequenceId) {
+        await recordSequenceEvent(scopedDb, {
+          sequenceId,
+          actorId: input.userId,
+          kind: 'analysis.completed',
+          targetType: 'sequence',
+          targetId: sequenceId,
+          summary: 'Analysed the script',
         });
       }
     });

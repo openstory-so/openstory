@@ -13,11 +13,14 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { generateId } from '@/platform/id';
 import {
+  sequenceEvents,
   sequenceExports,
   type SequenceExport,
 } from '@/platform/server/db/schema';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
+import { buildEventInsertOnce } from '@/sequences/server/db/sequence-events';
 import { and, desc, eq } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -79,11 +82,25 @@ export function createSequenceExportsMethods(db: Database) {
       sourceShotsHash: string;
       workflowRunId?: string | null;
     }): Promise<{ row: SequenceExport; created: boolean }> => {
+      const id = generateId();
       try {
-        const [row] = await db
-          .insert(sequenceExports)
-          .values({ ...input, status: 'processing' })
-          .returning();
+        const [rows] = await db.batch([
+          db
+            .insert(sequenceExports)
+            .values({ ...input, id, status: 'processing' })
+            .returning(),
+          buildEventInsertOnce(db, {
+            id,
+            sequenceId: input.sequenceId,
+            actorId: null,
+            kind: 'export.started',
+            targetType: 'sequence',
+            targetId: input.sequenceId,
+            summary: 'Started an export',
+            data: { exportId: id },
+          }),
+        ]);
+        const row = rows[0];
         if (!row) throw new Error('Failed to create sequence export');
         return { row, created: true };
       } catch (err) {
@@ -110,7 +127,24 @@ export function createSequenceExportsMethods(db: Database) {
       id: string,
       fields: { durationSeconds?: number | null }
     ): Promise<void> => {
-      await db
+      const [exp] = await db
+        .select({ sequenceId: sequenceExports.sequenceId })
+        .from(sequenceExports)
+        .where(eq(sequenceExports.id, id))
+        .limit(1);
+      const [logged] = exp
+        ? await db
+            .select({ id: sequenceEvents.id })
+            .from(sequenceEvents)
+            .where(
+              and(
+                eq(sequenceEvents.kind, 'export.finished'),
+                eq(sequenceEvents.targetId, id)
+              )
+            )
+            .limit(1)
+        : [];
+      const ready = db
         .update(sequenceExports)
         .set({
           status: 'ready',
@@ -118,6 +152,23 @@ export function createSequenceExportsMethods(db: Database) {
           durationSeconds: fields.durationSeconds ?? null,
         })
         .where(eq(sequenceExports.id, id));
+      if (!exp || logged) {
+        await ready;
+        return;
+      }
+      await db.batch([
+        ready,
+        buildEventInsertOnce(db, {
+          id: generateId(),
+          sequenceId: exp.sequenceId,
+          actorId: null,
+          kind: 'export.finished',
+          targetType: 'sequence',
+          targetId: id,
+          summary: 'Finished the export',
+          data: { exportId: id },
+        }),
+      ]);
     },
 
     markFailed: async (id: string, error: string): Promise<void> => {

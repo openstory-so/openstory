@@ -104,7 +104,11 @@ import {
 } from './sequence-cast';
 import { demoteCharacterSheetClaims } from './sheet-claims';
 import { effectiveStyling, pickedLook, wearLook } from '@/cast/character-looks';
-import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import {
+  buildEventInsert,
+  buildEventInsertIfPresent,
+  buildEventInsertOnce,
+} from '@/sequences/server/db/sequence-events';
 import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
 /** A new character's bible where the caller left a field out. */
@@ -803,38 +807,53 @@ export function createCharactersMethods(db: Database, teamId: string) {
     data: CharacterVoiceUpdate,
     source: CharacterVoiceVersionSource,
     /** Who did this — required so no writer forgets; null when nobody did. */
-    createdBy: string | null
+    createdBy: string | null,
+    activity?: { sequenceId: string; summary: string } | null
   ): Promise<CharacterVoiceState> => {
     const existing = await voiceOf(id);
     const versionId = generateId();
-    await db.batch([
-      db.insert(characterVoiceVersions).values({
-        id: versionId,
-        characterId: id,
-        voiceId: data.voiceId === undefined ? existing.voiceId : data.voiceId,
-        description:
-          data.voiceDescription === undefined
-            ? existing.voiceDescription
-            : data.voiceDescription,
-        previews:
-          data.voicePreviews === undefined
-            ? existing.voicePreviews
-            : data.voicePreviews,
-        enabled:
-          data.useVoice === undefined ? existing.useVoice : data.useVoice,
-        source,
-        createdBy,
-      }),
-      db
-        .update(characters)
-        .set({
-          ...(data.useVoice === undefined ? {} : { useVoice: data.useVoice }),
-          selectedVoiceVersionId: versionId,
-          pendingPromoteVoiceVersionId: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(characters.id, id)),
-    ]);
+    const writeVersion = db.insert(characterVoiceVersions).values({
+      id: versionId,
+      characterId: id,
+      voiceId: data.voiceId === undefined ? existing.voiceId : data.voiceId,
+      description:
+        data.voiceDescription === undefined
+          ? existing.voiceDescription
+          : data.voiceDescription,
+      previews:
+        data.voicePreviews === undefined
+          ? existing.voicePreviews
+          : data.voicePreviews,
+      enabled: data.useVoice === undefined ? existing.useVoice : data.useVoice,
+      source,
+      createdBy,
+    });
+    const point = db
+      .update(characters)
+      .set({
+        ...(data.useVoice === undefined ? {} : { useVoice: data.useVoice }),
+        selectedVoiceVersionId: versionId,
+        pendingPromoteVoiceVersionId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(characters.id, id));
+    if (activity) {
+      await db.batch([
+        writeVersion,
+        point,
+        buildEventInsertOnce(db, {
+          id: versionId,
+          sequenceId: activity.sequenceId,
+          actorId: createdBy,
+          kind: 'voice.designed',
+          targetType: 'character',
+          targetId: id,
+          summary: activity.summary,
+        }),
+      ]);
+    } else {
+      await db.batch([writeVersion, point]);
+    }
     return await voiceOf(id);
   };
 
@@ -1906,34 +1925,51 @@ export function createCharactersMethods(db: Database, teamId: string) {
     createPendingVoiceClaim: async (
       characterId: string,
       createdBy: string | null,
-      opts?: { workflowRunId?: string | null }
+      opts?: {
+        workflowRunId?: string | null;
+        activity?: { sequenceId: string; summary: string };
+      }
     ) => {
       const existing = await voiceOf(characterId);
       const versionId = generateId();
+      const insertVersion = db
+        .insert(characterVoiceVersions)
+        .values({
+          id: versionId,
+          characterId,
+          source: 'generated',
+          status: 'generating',
+          createdBy,
+          workflowRunId: opts?.workflowRunId ?? null,
+          description: existing.voiceDescription,
+          enabled: existing.useVoice,
+        })
+        .returning();
+      const point = db
+        .update(characters)
+        .set({
+          pendingPromoteVoiceVersionId: versionId,
+          updatedAt: new Date(),
+        })
+        .where(eq(characters.id, characterId))
+        .returning();
       try {
-        const [versionRows, characterRows] = await db.batch([
-          db
-            .insert(characterVoiceVersions)
-            .values({
-              id: versionId,
-              characterId,
-              source: 'generated',
-              status: 'generating',
-              createdBy,
-              workflowRunId: opts?.workflowRunId ?? null,
-              description: existing.voiceDescription,
-              enabled: existing.useVoice,
-            })
-            .returning(),
-          db
-            .update(characters)
-            .set({
-              pendingPromoteVoiceVersionId: versionId,
-              updatedAt: new Date(),
-            })
-            .where(eq(characters.id, characterId))
-            .returning(),
-        ]);
+        const results = opts?.activity
+          ? await db.batch([
+              insertVersion,
+              point,
+              buildEventInsertOnce(db, {
+                id: generateId(),
+                sequenceId: opts.activity.sequenceId,
+                actorId: createdBy,
+                kind: 'voice.started',
+                targetType: 'character',
+                targetId: characterId,
+                summary: opts.activity.summary,
+              }),
+            ])
+          : await db.batch([insertVersion, point]);
+        const [versionRows, characterRows] = results;
         const version = versionRows[0];
         if (!version || !characterRows[0]) {
           throw new Error(
@@ -1980,9 +2016,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
         voiceId?: string | null;
         description?: string | null;
         previews?: VoicePreview[] | null;
-      }
+      },
+      activity?: { sequenceId: string; actorId: string | null; summary: string }
     ) => {
-      const [row] = await db
+      const finish = db
         .update(characterVoiceVersions)
         .set({
           ...(data.voiceId !== undefined ? { voiceId: data.voiceId } : {}),
@@ -2002,7 +2039,37 @@ export function createCharactersMethods(db: Database, teamId: string) {
           )
         )
         .returning();
-      return row ?? null;
+      if (!activity) {
+        const [row] = await finish;
+        return row ?? null;
+      }
+      const [owner] = await db
+        .select({ characterId: characterVoiceVersions.characterId })
+        .from(characterVoiceVersions)
+        .where(eq(characterVoiceVersions.id, versionId))
+        .limit(1);
+      if (!owner) return null;
+      const [rows] = await db.batch([
+        finish,
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: versionId,
+            sequenceId: activity.sequenceId,
+            actorId: activity.actorId,
+            kind: 'voice.designed',
+            targetType: 'character',
+            targetId: owner.characterId,
+            summary: activity.summary,
+          },
+          characterVoiceVersions,
+          and(
+            eq(characterVoiceVersions.id, versionId),
+            eq(characterVoiceVersions.status, 'completed')
+          )
+        ),
+      ]);
+      return rows[0] ?? null;
     },
 
     markVoiceClaimTerminal: async (

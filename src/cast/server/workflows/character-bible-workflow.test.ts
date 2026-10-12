@@ -286,7 +286,13 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
     );
     expect(createPendingVoiceClaim).toHaveBeenCalledWith(
       expect.any(String),
-      'u1'
+      'u1',
+      {
+        activity: {
+          sequenceId: 'seq-1',
+          summary: 'Started a voice for Sam',
+        },
+      }
     );
     expect(mockSpawnAndAwaitChild).toHaveBeenCalledWith(
       expect.anything(),
@@ -419,7 +425,13 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
         bibleVersionId: `bible-${row.id}`,
         talentId: null,
       }),
-      { markGenerating: false }
+      expect.objectContaining({
+        markGenerating: false,
+        activity: expect.objectContaining({
+          sequenceId: 'seq-1',
+          summary: expect.stringContaining('Started a sheet for Sam'),
+        }),
+      })
     );
 
     // The staleness check hashes the stored row, not the LLM entry: a

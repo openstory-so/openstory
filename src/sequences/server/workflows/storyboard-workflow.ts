@@ -25,6 +25,7 @@ import {
 } from '@/sequences/server/notify-sequence-ready';
 import { getGenerationChannel } from '@/platform/realtime';
 import { includesStage } from '@/sequences/pipeline';
+import { recordSequenceEvent } from '@/sequences/server/db/sequence-events';
 import { validateSequenceAuth } from '@/platform/server/workflow/auth';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
@@ -326,6 +327,14 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       const message = continueFailure;
       await step.do('mark-failed', async () => {
         await seq.updateStatus('failed', message);
+        await recordSequenceEvent(scopedDb, {
+          sequenceId,
+          actorId: userId,
+          kind: 'run.failed',
+          targetType: 'sequence',
+          targetId: sequenceId,
+          summary: 'Storyboard failed',
+        });
       });
       await step.do('emit-failed', async () => {
         await getGenerationChannel(sequenceId).emit('generation.failed', {
@@ -337,6 +346,14 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
 
     await step.do('mark-completed', async () => {
       await seq.updateStatus('completed');
+      await recordSequenceEvent(scopedDb, {
+        sequenceId,
+        actorId: userId,
+        kind: 'storyboard.completed',
+        targetType: 'sequence',
+        targetId: sequenceId,
+        summary: 'Finished the storyboard',
+      });
     });
 
     await step.do('emit-complete', async () => {

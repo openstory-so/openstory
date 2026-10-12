@@ -27,7 +27,12 @@ import type { UserWorkflowContext } from './types';
 import { asStub } from '@/test/as-stub';
 
 const zeroReservation = vi.fn(async () => undefined);
-const SCOPED_DB = { scoped: true, billing: { zeroReservation } };
+const recordSequenceEvent = vi.fn(async () => undefined);
+const SCOPED_DB = {
+  scoped: true,
+  billing: { zeroReservation },
+  sequenceEvents: { record: recordSequenceEvent },
+};
 
 vi.doMock('#env', () => ({
   getEnv: () => ({ E2E_TEST: undefined }),
@@ -198,6 +203,7 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
 
       expect(onFailure).not.toHaveBeenCalled();
       expect(notifyParentOfFailure).not.toHaveBeenCalled();
+      expect(recordSequenceEvent).not.toHaveBeenCalled();
     }
   );
 
@@ -219,6 +225,16 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
         event: 'sequence_error',
         properties: { sequence_id: 'seq_1', team_id: 't1' },
       });
+      expect(recordSequenceEvent).toHaveBeenCalledTimes(1);
+      expect(recordSequenceEvent).toHaveBeenCalledWith({
+        sequenceId: 'seq_1',
+        actorId: 'u1',
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: 'seq_1',
+        summary: 'Generation failed',
+        data: { workflow: 'TestWorkflow' },
+      });
     });
 
     test('a transient engine abort does not (the instance resumes)', async () => {
@@ -232,6 +248,7 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
       );
 
       expect(captureProductEvent).not.toHaveBeenCalled();
+      expect(recordSequenceEvent).not.toHaveBeenCalled();
     });
   });
 

@@ -298,6 +298,9 @@ export async function triggerStoryboard(
     id: sequenceId,
     expectedRunId: sequence.workflowRunId,
     claimId,
+    activity: {
+      summary: input.resume ? 'Continued generation' : 'Started the storyboard',
+    },
   });
   if (!claimed) throw new GenerationInProgressError();
 
