@@ -92,6 +92,31 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('mixed canvas timeline', () => {
+  it('holds a still for its shot when the recording is shorter (#2097)', async () => {
+    const source = new ConcatenatedVideoSource([
+      still({ audioUrls: ['/line.wav'], durationSeconds: 5 }),
+    ]);
+    expect(await source.prepare()).toMatchObject({
+      clipDurationsSeconds: [5],
+      clipOffsetsSeconds: [0],
+      totalDurationSeconds: 5,
+    });
+    expect(
+      source
+        .getClipAudioTracks()
+        .map(({ clipOffsetSeconds }) => clipOffsetSeconds)
+    ).toEqual([0]);
+    const frames = [];
+    for await (const frame of source.canvases(0)) frames.push(frame);
+    expect(
+      frames.map(({ timestamp, duration }) => ({ timestamp, duration }))
+    ).toEqual([
+      { timestamp: 0, duration: 5 },
+      { timestamp: 5, duration: 0 },
+    ]);
+    source.dispose();
+  });
+
   it('holds a single still for its full duration, including seeking and the terminal frame', async () => {
     const source = new ConcatenatedVideoSource([still()]);
     expect(await source.prepare()).toMatchObject({
@@ -113,7 +138,8 @@ describe('mixed canvas timeline', () => {
       { videoUrl: '/render.mp4', posterUrl: null, cues: [] },
       still({
         audioUrls: ['/one.wav', '/two.wav'],
-        durationSeconds: 15,
+        // Each file is 2s, so the recording outruns the shot and extends it.
+        durationSeconds: 3,
       }),
       still({ durationSeconds: 5 }),
     ]);

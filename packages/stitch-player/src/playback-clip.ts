@@ -32,7 +32,7 @@ export type PlaybackClip = {
       imageUrl: string | null;
       /** Tried when `imageUrl` fails to load. */
       fallbackImageUrl: string | null;
-      /** How long the still holds when it has no sound; with `audioUrls` it runs as long as the sound. */
+      /** How long the still holds. A longer recording extends the hold until the sound ends. */
       durationSeconds: number;
       /** Sound played over the still, back to back. Each must answer Range requests, or be a `data:` / `blob:` URL. */
       audioUrls: readonly string[];

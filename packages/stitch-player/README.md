@@ -35,7 +35,7 @@ const still = (
 ) => ({
   imageUrl: `https://cdn.example/board/${n}.png`,
   fallbackImageUrl: null,
-  durationSeconds: seconds, // used only when there is no sound
+  durationSeconds: seconds, // the hold, unless the sound runs longer
   audioUrls: [`https://cdn.example/board/${n}.wav`],
   width: 1920,
   height: 1080,
@@ -107,7 +107,7 @@ const clips: PlaybackClip[] = [
   // A rendered clip. Its embedded sound plays with it.
   // `posterUrl` is for a host to show while it waits. This package does not paint it.
   { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
-  // A still, held for as long as its sound runs (or `durationSeconds` when silent).
+  // A still, held for the longer of `durationSeconds` and its sound.
   {
     imageUrl: '/shot-2.png',
     fallbackImageUrl: null,

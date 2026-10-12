@@ -160,7 +160,8 @@ export function toPlaybackClips(
         shot.durationMs != null && shot.durationMs > 0
           ? shot.durationMs / 1000
           : 3;
-      // A still with sound runs as long as all its sound, played back to back.
+      // Captions follow the recording, played back to back. The stitcher holds
+      // the still for the longer of the shot and that recording.
       const soundSeconds = audioClips.reduce(
         (sum, clip) => sum + (clip.durationSeconds ?? 0),
         0
