@@ -69,8 +69,8 @@ jobs:
         uses: changesets/action/version@66d7d1ddafddf1ef45f98ee51a7496f9cdadb2f4 # v2.1.2
         with:
           script: bun run changeset:version
-          commit-message: "ci: version packages"
-          pr-title: "ci: version packages"
+          commit-message: 'ci: version packages'
+          pr-title: 'ci: version packages'
 
   publish:
     name: Publish
