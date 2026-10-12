@@ -2,9 +2,10 @@ name: Publish stitch-player
 
 # Publishes packages/stitch-player to npm as @openstory/stitch-player when a
 # `stitch-player-v*` tag is pushed. The tag must match the package version.
-# Needs the `NPM_TOKEN` repository secret (an npm granular token with publish
-# rights on the @openstory org), or configure npm trusted publishing for this
-# workflow and drop the token.
+# Auth is npm trusted publishing only: this workflow's OIDC token, plus
+# provenance. There is no npm token. On the package, trust
+# openstory-so/openstory, workflow file publish-stitch-player.yml, and allow
+# npm publish.
 
 on:
   push:
@@ -55,5 +56,3 @@ jobs:
       - name: Publish
         working-directory: packages/stitch-player
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
