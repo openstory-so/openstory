@@ -97,7 +97,10 @@
     "cf:dev": "wrangler dev",
     "cf:deploy:prd": "bun run cf:typegen && CLOUDFLARE_ENV=production bun run build && bun run db:migrate:prd && wrangler deploy --env=production",
     "deploy": "bun scripts/flatten-migrations.ts && wrangler d1 migrations apply DB --remote && wrangler deploy",
-    "deploy:production": "bun scripts/flatten-migrations.ts && wrangler d1 migrations apply DB --env=production --remote && wrangler deploy"
+    "deploy:production": "bun scripts/flatten-migrations.ts && wrangler d1 migrations apply DB --env=production --remote && wrangler deploy",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "changeset:publish": "changeset publish"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -177,6 +180,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.3",
     "@clack/prompts": "^1.8.1",
     "@cloudflare/vite-plugin": "^1.62.5",
     "@copilotkit/aimock": "^1.43.0",
