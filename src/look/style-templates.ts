@@ -139,6 +139,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Rough pencil-and-marker pre-vis sketch',
         mood: 'Rough, working-draft, evocative but unfinished -- the look of a story being figured out frame by frame, with energy in the gesture rather than polish',
         artStyle:
           'A single film frame drawn as rough pre-vis -- pencil-and-marker line work over visible underdrawing, simplified silhouettes, flat blocked-in tones, occasional motion lines and action arrows. Faces and hands described with a few decisive strokes -- expressive but not refined. Minimal background detail, just enough to read the staging. One full-bleed sketched frame depicting the scene -- not a grid of panels, and no frame numbers or margin notes. Explicitly NOT polished animation, NOT 3D rendered, NOT photographic, NOT a finished illustration. This is pre-vis -- the bones of a single shot before it is animated',
@@ -342,6 +343,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Stylized painterly animation',
         mood: 'Intense, layered, and emotionally complex',
         artStyle:
           'High-fidelity stylized animation with painterly textures and hand-crafted detail. Environments are richly layered with depth and atmosphere -- decayed grandeur, neon-lit cityscapes, or lush otherworldly landscapes. Characters have grounded proportions with expressive, nuanced faces. Every frame composed like a standalone illustration',
@@ -2173,6 +2175,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Hand-painted storybook illustration',
         mood: 'Gentle, dreamy, reassuring',
         artStyle:
           'Hand-illustrated storybook art with rounded shapes, friendly characters, and a hand-painted texture. The scene feels like a beloved bedtime book -- soft borders, painterly backgrounds, warm faces. Not 3D, not photographic, not computer-perfect',
@@ -2213,6 +2216,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Flat 2D cartoon animation',
         mood: 'Energetic, playful, zany',
         artStyle:
           'Flat 2D cartoon animation in the spirit of 1990s Saturday morning television. Bold color blocks, simple lineart, exaggerated character expressions, big eyes, snappy action poses. Backgrounds are simple painted plates. Not photoreal, not 3D, not CGI',
@@ -2253,6 +2257,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Stop-motion claymation',
         mood: 'Whimsical, handmade, nostalgic',
         artStyle:
           'Stop-motion clay puppet animation with visible thumbprints, subtle deformation between frames, and a slightly imperfect rig. Sets are tabletop dioramas of cardboard and clay. Characters move with quirky weight. Not CGI, not 2D animation',
@@ -2293,6 +2298,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Stop-motion paper cutout animation',
         mood: 'Tactile, crafty, charming',
         artStyle:
           'Stop-motion paper cutout puppets on a layered card background. Characters constructed from scissored card pieces, sometimes with visible brad joints at limbs. Sets are folded paper landscapes. Edges are deliberately imperfect',
@@ -2333,6 +2339,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Watercolor illustration',
         mood: 'Lyrical, gentle, contemplative',
         artStyle:
           'Watercolor illustration on visible cotton paper. Soft washes, brush strokes, occasional pencil underdrawing, slight color bleed at edges. Characters are tender, slightly stylized, painted with a few decisive strokes. Backgrounds are atmospheric washes',
@@ -2373,6 +2380,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Layered papercraft diorama',
         mood: 'Discovery, magical, tactile',
         artStyle:
           'The scene built as a layered papercraft diorama -- characters, trees, and props as scissored, hand-cut paper standing at staggered depths, soft folds and cut edges catching light, against a patterned cut-paper backdrop. A dimensional cut-paper world filling the entire frame',
@@ -2413,6 +2421,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Stop-motion felt and yarn puppet animation',
         mood: 'Soft, cozy, homespun',
         artStyle:
           'Stop-motion felt and yarn puppets with button eyes and hand-stitched mouths. Sets built from textured fabric, knitted backdrops, and felt scenery. Characters move with handmade weight, visible thread and seams celebrated',
@@ -2453,6 +2462,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Chalk drawing on a blackboard',
         mood: 'Inviting, instructive, hand-drawn',
         artStyle:
           'White and pastel chalk drawn on a dark green or black slate. Lines accumulate as the narrator describes. Diagrams, doodles, and characters appear and erase. Visible smudges and chalk dust. Not slick, not vector',
@@ -2493,6 +2503,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: '2D cel-shaded anime',
         mood: 'Wistful, slow, atmospheric',
         artStyle:
           'Hand-drawn cel-shaded anime in the spirit of late 1990s television -- two-tone shading on characters, painted gouache backgrounds, sparse keyframes between long held beats. Subject is often a teen in a quiet domestic moment -- a window seat, a train ride, a corner store',
@@ -2533,6 +2544,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Crayon and colored-pencil picture book illustration',
         mood: 'Playful, bright, child-led',
         artStyle:
           'Hand-drawn picture book illustration with crayon and colored pencil texture. Loose linework, fields of bright flat color, occasional scribble texture, simplified figures with big friendly faces. Backgrounds spare but expressive',
@@ -2576,6 +2588,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Rough pencil-and-marker storyboard sketch',
         mood: 'Working-draft, exploratory, gestural',
         artStyle:
           'A single film frame rendered as a rough pencil-and-marker storyboard sketch. Confident gestural lines, simplified silhouettes, light marker shading. Faces and hands described with a few decisive strokes -- expressive but not finished. One full-bleed drawn frame depicting the scene -- no panel grid, no frame numbers, no margin notes',
@@ -2616,6 +2629,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Untextured 3D greybox blockout',
         mood: 'Functional, schematic, in-progress',
         artStyle:
           'Untextured 3D greybox blockout. Characters are featureless low-poly grey mannequins -- smooth blocky primitives with no faces, no fingers, no surface detail. Props and environment are simple box geometry with minimal detail. Visible polygon edges, flat ambient shading only. A few clearly-staged figures, never a dense crowd. No materials, no textures',
@@ -2656,6 +2670,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Painterly still-frame painting',
         mood: 'Suggestive, atmospheric, painterly',
         artStyle:
           'Single hero moments rendered like still-frame paintings -- a silhouette in fog, a hand on a window, a sun pouring through curtains. Plot is implied, never spelled out. Subject ambiguous, color and light dominant',
@@ -2696,6 +2711,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Monochrome previz render',
         mood: 'Disciplined, compositional, focused',
         artStyle:
           'Full-scene previz rendered in monochrome -- characters, environments, and lighting present, color stripped. Composition, staging, and silhouette tested in pure tone. Sometimes a single hero accent color permitted',
@@ -2736,6 +2752,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Diagrammatic line illustration',
         mood: 'Technical, clear, considered',
         artStyle:
           'Diagrammatic concept illustration. Isometric or exploded views of products, environments, or systems. Clean linework, labels with leader lines, dashed bounding boxes for callouts. Color used sparingly to highlight focus',
@@ -2776,6 +2793,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Marker comp illustration',
         mood: 'Loose, energetic, ad-agency',
         artStyle:
           'A single frame rendered in the style of a marker comp -- bold flat marker tones with one or two accent colors, soft drop shadow under figures, simplified silhouettes. The energy of an art director’s pitch art applied to one full-bleed frame depicting the scene -- no layout-sheet borders, headlines, or callouts',
@@ -2816,6 +2834,7 @@ export const DEFAULT_STYLE_TEMPLATES: StyleTemplateEntry[] = [
     config: {
       version: 2,
       look: {
+        medium: 'Greyscale tonal painting',
         mood: 'Analytical, in-progress, considered',
         artStyle:
           'Full-scene compositions painted in greyscale with five or six tonal values. Characters in silhouette against environments built from blocked-in light and shadow. Composition prioritized over detail',

@@ -11,18 +11,14 @@ import type { StyleConfig } from '@/look/style-config';
 export const PHOTOREAL_RENDERING = 'Photoreal live action';
 
 /**
- * A style's medium, else its art style, else photoreal when there is no
- * style. No system template sets a medium, so the art style is what keeps a
- * claymation sequence's characters out of photoreal.
+ * A style's medium, else photoreal. Never the art style: that is scene
+ * prose (mood, set, grade), and a sheet takes none of it. Every system
+ * template that is not live action sets a medium.
  */
 export function renderingOfStyle(
   style: StyleConfig | null | undefined
 ): string {
-  return (
-    style?.look.medium?.trim() ||
-    style?.look.artStyle.trim() ||
-    PHOTOREAL_RENDERING
-  );
+  return style?.look.medium?.trim() || PHOTOREAL_RENDERING;
 }
 
 /**

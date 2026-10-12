@@ -25,8 +25,9 @@ character with no sequence (#2065).
   version's. It also carries `rendering` (`src/cast/rendering.ts`): what the
   character is rendered as, required unless voice-only (`renderingFor`, in
   every bible writer; a CHECK would need a rebuild). Analysis fills it from
-  the sequence style's medium, else its art style, else photoreal when
-  there is no style (`renderingOfStyle`; no system template sets a medium); a
+  the sequence style's medium, else photoreal (`renderingOfStyle`; never
+  the art style, which is scene prose; every system template that is not
+  live action sets a medium); a
   hand-added character in a sequence takes the same when the form leaves it
   out; the Characters page requires it. The backfill
   (`20261009063136_backfill_character_rendering`) took the first casting
@@ -405,7 +406,10 @@ bible_version_id`. No rebuild, so the #612 trap does not apply.
 **Rendering** (this PR). `20261009063135_character_rendering` (generated,
 one `ADD COLUMN`) and `20261009063136_backfill_character_rendering`
 (hand-written data SQL: the first casting sequence's style medium, else
-"Photoreal live action"; voice-only stays null).
+the medium its system template gets in this release, matched by style
+name because a stored config from before has none, else "Photoreal live
+action"; voice-only stays null). Rewritten on 2026-10-12, after the proof
+below: checked since only on a throwaway SQLite database.
 
 **Proof** (2026-10-09, all six files from migration 154): `wrangler d1
 migrations apply --local` on a throwaway local D1 loaded with that day's
