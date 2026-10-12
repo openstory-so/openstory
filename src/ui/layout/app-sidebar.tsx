@@ -17,6 +17,8 @@ import {
   useSidebar,
 } from '@/ui/shadcn/sidebar';
 import { FeedbackDialog } from '@/platform/ui/feedback/feedback-dialog';
+import { SearchDialog } from '@/platform/ui/search/search-dialog';
+import { useUser } from '@/platform/ui/use-user';
 import { MODELS_ENABLED } from '@/platform/flags';
 import { SITE_CONFIG } from '@/ui/marketing/constants';
 import { Link, useRouterState } from '@tanstack/react-router';
@@ -32,6 +34,7 @@ import {
   MapPin,
   Palette,
   Plus,
+  Search,
   Users,
   Video,
 } from 'lucide-react';
@@ -143,10 +146,27 @@ export function AppSidebar() {
   const posthog = usePostHog();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Search reads the team's own work, so a visitor has nothing to search.
+  const { data: user } = useUser();
+  const canSearch = Boolean(user);
 
   useEffect(() => {
     if (isMobile) setOpenMobile(false);
   }, [pathname, isMobile, setOpenMobile]);
+
+  useEffect(() => {
+    if (!canSearch) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'k') return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey)
+        return;
+      event.preventDefault();
+      setSearchOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canSearch]);
 
   return (
     <Sidebar collapsible="icon">
@@ -187,6 +207,18 @@ export function AppSidebar() {
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {canSearch && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="Search"
+                    aria-keyshortcuts="Meta+K Control+K"
+                    onClick={() => setSearchOpen(true)}
+                  >
+                    <Search />
+                    <span>Search</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
               {navLinks.map(({ to, label, icon: Icon }) => (
                 <SidebarMenuItem key={label}>
                   <SidebarMenuButton asChild tooltip={label}>
@@ -276,6 +308,9 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarFooter>
       <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+      {canSearch && (
+        <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      )}
     </Sidebar>
   );
 }
