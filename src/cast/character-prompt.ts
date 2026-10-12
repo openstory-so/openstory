@@ -190,6 +190,10 @@ const slugify = (name: string): string =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_|_$/g, '');
 
+/** Stands in for a talent's looks when the library holds no description. */
+export const REFERENCE_LIKENESS_INSTRUCTION =
+  "Match the appearance of the person shown in this character's reference image exactly.";
+
 /**
  * Merge talent appearance with character role attributes for casting.
  *
@@ -219,7 +223,7 @@ export const buildCastingAttributes = (
     // rescue it), and the name adds nothing the reference image doesn't carry.
     physicalDescription:
       meta?.physicalDescription ||
-      `Match the appearance of the person shown in this character's reference image exactly.${talent.talentDescription ? ` ${talent.talentDescription}` : ''}`,
+      `${REFERENCE_LIKENESS_INSTRUCTION}${talent.talentDescription ? ` ${talent.talentDescription}` : ''}`,
     // Costume: always from the character role
     standardClothing: scriptEntry.standardClothing,
     // Performance: the talent's own where the library has it, else the role's

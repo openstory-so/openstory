@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. close-up. eye level. The coffee cup and gloved hand dominate the foreground, with Scarlett’s amused face and phone visible behind them in shallow focus. The cyclist is braking beside Scarlett with one gloved hand reaching toward her tilting coffee cup, while Scarlett looks startled and keeps filming. Then: The passing cyclist steadies the coffee, and Scarlett wipes the tiny coral mark from the cup rim with her thumb. Camera: push-in, gradual. Characters: Scarlett: Woman, 27, A 27-year-old woman of average height with a slim, active build, warm medium skin, expressive dark eyes, and dark brown hair worn loose to the shoulders. Her face is youthful, with defined brows and a quick, open smile. Her appearance becomes visibly brighter as the coral lipstick brings color to her complexion, wearing Black fitted turtleneck, black wool coat carried or worn. Passing cyclist: Unspecified, 20s-40s, An athletic adult cyclist with a lean build, wind-flushed face, and quick reflexes. Their hair is mostly concealed by a helmet, and their clothing is streamlined for urban cycling, wearing Fitted cycling jacket, dark athletic trousers, helmet, practical shoes, and gloves. The clothing is functional and slightly wind-resistant, with one gloved hand. Mina: Woman, Late 20s, A woman in her late 20s with an average height and softly angular features, tired eyes, and expressive brows. Her hair is medium-to-dark brown, shoulder length, and easily lifted by the rooftop wind. Her face visibly transforms from exhausted to amused after applying the lipstick, wearing Green utility jacket with a roomy pocket, simple dark top, dark trousers or jeans, and. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/1d93c62988c61185695d685b7c65062dc74421e38b1d3cc4cb165ba835dac3dd.png",
+              "content_type": "image/png",
+              "file_name": "-_8mhkkmqocBfrlbmazr2_BiZJLQM3.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.04
+      }
+    }
+  ]
+}

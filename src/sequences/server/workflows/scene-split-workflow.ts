@@ -73,7 +73,7 @@ import {
   llmCostFromUsage,
   PROMPT_REASONING,
 } from '@/models/server/llm-client';
-import { PREVIEW_IMAGE_MODEL } from '@/models/models';
+import { SHOT_PREVIEW_IMAGE_MODEL } from '@/models/models';
 import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/models/models.config';
 import {
   type SceneSplitBiblesResult,
@@ -110,6 +110,7 @@ import {
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
 import { bibleFromWire } from '@/cast/bible-looks';
 import type {
+  CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
@@ -255,6 +256,7 @@ async function triggerPreviewImage({
   parentInstanceId,
   shot,
   scene,
+  characterBible,
   scopedDb,
 }: {
   input: SceneSplitWorkflowInput;
@@ -262,6 +264,7 @@ async function triggerPreviewImage({
   parentInstanceId: string;
   shot: { id: string; frameId: string; shotNumber: number };
   scene: SceneSplittingScene;
+  characterBible: ReadonlyArray<CharacterBibleEntry>;
   scopedDb: WorkflowScopedDb;
 }): Promise<void> {
   const shotText = previewTextForShot(scene, shot.shotNumber);
@@ -277,8 +280,8 @@ async function triggerPreviewImage({
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(shotText),
-        model: PREVIEW_IMAGE_MODEL,
+        prompt: buildPreviewPrompt(shotText, characterBible),
+        model: SHOT_PREVIEW_IMAGE_MODEL,
         imageSize: aspectRatioToImageSize(input.aspectRatio),
         numImages: 1,
         shotId: shot.id,
@@ -451,6 +454,7 @@ async function persistSceneShots({
   sequenceId,
   parentInstanceId,
   scene,
+  characterBible,
   orderIndex,
   announcedShotIds,
 }: {
@@ -459,6 +463,7 @@ async function persistSceneShots({
   sequenceId: string;
   parentInstanceId: string;
   scene: SceneSplittingScene;
+  characterBible: ReadonlyArray<CharacterBibleEntry>;
   orderIndex: number;
   announcedShotIds?: ReadonlySet<string>;
 }): Promise<SceneSplitWorkflowResult['shotMapping']> {
@@ -496,6 +501,7 @@ async function persistSceneShots({
         shotNumber: row.shotNumber ?? 1,
       },
       scene,
+      characterBible,
       scopedDb,
     });
   }
@@ -1003,6 +1009,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 sequenceId,
                 parentInstanceId: event.instanceId,
                 scene,
+                characterBible,
                 orderIndex,
                 announcedShotIds: new Set(
                   previous.map((entry) => entry.shotId)

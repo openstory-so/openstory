@@ -160,7 +160,7 @@ This is the core orchestration workflow. It runs durable units via `step.do()`, 
 
 **Sub-workflow:** `sceneSplitWorkflow` (`src/sequences/server/workflows/scene-split-workflow.ts`)
 
-Uses streaming LLM output to create scene rows progressively as scenes arrive. Shots exist only once a scene's shot-list entry has landed (#1593); each shot then gets a preview image, copied into R2.
+Uses streaming LLM output to create scene rows progressively as scenes arrive. Shots exist only once a scene's shot-list entry has landed (#1593); each shot then gets a preview image, copied into R2. The preview is a greyscale storyboard sketch drawn by Nano Banana 2 Lite (`SHOT_PREVIEW_IMAGE_MODEL`, #2094) from the whole drawable shot spec (framing, action, camera move, direction) plus the bible description of each character the shot names. It is fired once per shot and never re-fired.
 
 **The attached cast (#2050).** `triggerStoryboard` freezes the sequence's live cast onto the payload (`cast`, required on `StoryboardWorkflowInput`, `AnalyzeScriptWorkflowInput` and `SceneSplitWorkflowInput`; a run queued without it fails at the top of scene-split and analyze-script, `queuedBeforeCast`). The bibles call gets it as a `<CAST>` block beside `<ELEMENTS>` (`formatCastBlock`) and echoes each character's id and look names; with nobody cast the block is absent and the user message is unchanged. After the call, `applyAttachedCast` swaps each shared character (held by the library or another sequence) for her snapshot, so the pinned bible wins, and `create-cast-records` links her (`characterLooks.linkFromAnalysis`) instead of writing a bible version; she is left out of talent matching. See `docs/architecture/team-characters.md`.
 

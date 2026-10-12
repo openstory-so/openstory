@@ -366,10 +366,15 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation. krea_2_turbo stays hidden
- *  (no edit/reference endpoint). flux_2_turbo is a picker model; stored
- *  preview variants may still name it. */
+/** Model for the sequence poster. krea_2_turbo stays hidden (no
+ *  edit/reference endpoint). Stored preview variants may still name it, or
+ *  flux_2_turbo before it. */
 export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
+
+/** Model that draws a shot's storyboard sketch (#2094). Krea could not hold
+ *  a staged frame from the full shot spec; Lite can, at about five times
+ *  the price and a few seconds more. */
+export const SHOT_PREVIEW_IMAGE_MODEL: TextToImageModel = 'nano_banana_2_lite';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(

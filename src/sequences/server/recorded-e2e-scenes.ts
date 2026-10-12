@@ -146,6 +146,8 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   script: string;
   scenes: SceneSplittingScene[];
   characterBible: CharacterBibleEntry[];
+  /** The bible before casting: what the split holds when it fires previews. */
+  splitCharacterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
 } {
@@ -234,6 +236,7 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     script,
     scenes,
     characterBible,
+    splitCharacterBible: analysed.characterBible,
     locationBible,
     elementBible,
   };
