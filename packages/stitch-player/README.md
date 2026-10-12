@@ -8,9 +8,7 @@ A player for AI filmmaking. Stills, dialogue, music and video go in as you make 
 
 ![Temple Street](https://assets.openstory.so/stitch-player/temple-street.gif)
 
-[Temple Street, with sound](https://assets.openstory.so/stitch-player/temple-street.mp4)
-
-[Play it](https://assets.openstory.so/stitch-player/demo)
+[Player Demo](https://assets.openstory.so/stitch-player/demo)
 
 This is the player behind [OpenStory](https://openstory.so)'s theatre. A shot is often a storyboard still with a recorded line, then a rendered clip, with music under the whole cut. Each piece is decoded as the playhead reaches it ([mediabunny](https://mediabunny.dev) and WebCodecs) and drawn on one canvas. A video plays the sound in its file. A still plays its own line. Subtitles sit on the picture. The controls are [Video.js 10](https://videojs.org).
 
