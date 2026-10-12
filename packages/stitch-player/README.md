@@ -4,7 +4,9 @@
 
 # @openstory/stitch-player
 
-A player for AI filmmaking. Stills, dialogue, music and video go in as you make them, and the browser plays that list as one sequence. Nothing is encoded until you ask for a file.
+A player designed for AI filmmaking.
+
+Stills, dialogue, music and video segments can be generated in any order. Give them to stitch-player and the browser plays that list as one sequence. It avoids the need to edit clips together offline, or to use ffmpeg for a preview.
 
 ![Temple Street](https://assets.openstory.so/stitch-player/temple-street.gif)
 
@@ -12,7 +14,7 @@ A player for AI filmmaking. Stills, dialogue, music and video go in as you make 
 
 This is the player behind [OpenStory](https://openstory.so)'s theatre. A shot is often a storyboard still with a recorded line, then a rendered clip, with music under the whole cut. Each piece is decoded as the playhead reaches it ([mediabunny](https://mediabunny.dev) and WebCodecs) and drawn on one canvas. A video plays the sound in its file. A still plays its own line. Subtitles sit on the picture. The controls are [Video.js 10](https://videojs.org).
 
-Swap a still for a clip when the clip exists. The sequence is the same list either way.
+Swap a still for a clip when the clip exists, and the player updates.
 
 When the cut is done, the same stitch writes an MP4 in the browser: H.264 and AAC, through WebCodecs. There is no ffmpeg install and no encode process beside the tab. Playback only reads the clip under the playhead, so a long cut does not mean the whole film sitting in memory.
 
@@ -89,6 +91,8 @@ npm install @openstory/stitch-player
 # for the React surface
 npm install react @videojs/react
 ```
+
+Agents wiring this up should read [`skills/stitch-player/SKILL.md`](skills/stitch-player/SKILL.md).
 
 Built against [Video.js 10](https://videojs.org) (`^10.0.0`).
 
