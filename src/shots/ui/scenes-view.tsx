@@ -227,6 +227,11 @@ function buildSceneModelStatuses<V extends SceneModelVariant>(
 type ScenesViewProps = {
   sequenceId: string;
   search?: ScenesSearch;
+  /**
+   * A character, location or element opened from the inspector. It takes the
+   * place of the scene list and the canvas; the inspector stays where it is.
+   */
+  detail?: React.ReactNode;
 };
 
 const CompareWithPromptDiff: React.FC<{
@@ -310,7 +315,9 @@ const RAIL_COLLAPSED_KEY = 'openstory:scenes-rail-collapsed';
 export const ScenesView: React.FC<ScenesViewProps> = ({
   sequenceId,
   search = {},
+  detail = null,
 }) => {
+  const hasDetail = detail !== null;
   const queryClient = useQueryClient();
   const posthog = usePostHog();
 
@@ -542,6 +549,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
+      // The scene list is not on screen: Escape must not move a selection
+      // nobody can see, and it would close the detail on the way.
+      if (hasDetail) return;
 
       const target = e.target;
       if (target instanceof HTMLElement) {
@@ -599,7 +609,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [handleAscendSelection, shots]);
+  }, [handleAscendSelection, shots, hasDetail]);
 
   // Fetch image variants for this sequence (frame_variants kind:'model', #989)
   const { data: imageVariants } = useSequenceImageVariants(sequenceId);
@@ -1617,7 +1627,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       )}
 
       <div className="flex flex-1 min-h-0">
-        <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
+        <div
+          className={cn(
+            'hidden min-h-0 shrink-0 pl-4 py-4',
+            !hasDetail && 'md:block'
+          )}
+        >
           {/* Both stay mounted — the list's footer drafts survive a fold. */}
           <SceneList
             {...sceneListProps}
@@ -1642,7 +1657,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           />
         </div>
 
-        <div className="md:hidden">
+        <div className={cn('md:hidden', hasDetail && 'hidden')}>
           <MobileSceneDrawer {...sceneListProps} />
         </div>
 
@@ -1652,104 +1667,121 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             preview (#1713). */}
         <div className="@container/workspace flex min-h-0 min-w-0 flex-1">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto @3xl/workspace:flex-row @3xl/workspace:overflow-visible">
-            <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
-              <CanvasViewToggle
-                view={effectiveView}
-                onViewChange={setView}
-                canvasDisabled={!canvasReady}
-                trailing={
-                  <>
-                    <CopyScriptButton sequenceId={sequenceId} />
-                    <SequenceDownloadMenu
-                      sequenceExport={sequenceExport}
-                      draftLabel={theatreDraftLabel(shots ?? [])}
-                      variant="toolbar"
-                      publish={
-                        sequence
-                          ? {
-                              teamId: sequence.teamId,
-                              sequenceId: sequence.id,
-                              defaultTitle: sequence.title,
-                            }
-                          : undefined
-                      }
-                    />
-                  </>
-                }
-              />
-              {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
+            {/* Unmounted, not hidden, under a detail: a hidden player would
+                keep playing its sound. */}
+            {hasDetail ? (
+              <div className="h-full min-w-0 shrink-0 @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+                {detail}
+              </div>
+            ) : (
+              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+                <CanvasViewToggle
+                  view={effectiveView}
+                  onViewChange={setView}
+                  canvasDisabled={!canvasReady}
+                  trailing={
+                    <>
+                      <CopyScriptButton sequenceId={sequenceId} />
+                      <SequenceDownloadMenu
+                        sequenceExport={sequenceExport}
+                        draftLabel={theatreDraftLabel(shots ?? [])}
+                        variant="toolbar"
+                        publish={
+                          sequence
+                            ? {
+                                teamId: sequence.teamId,
+                                sequenceId: sequence.id,
+                                defaultTitle: sequence.title,
+                              }
+                            : undefined
+                        }
+                      />
+                    </>
+                  }
+                />
+                {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
                 block parent the CanvasMediaStage size container computes 0
                 height and the whole canvas collapses. */}
-              <div
-                className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
-                {...canvasSwipe}
-              >
-                {effectiveView === 'script' ? (
-                  <SceneScriptDocument
-                    sequenceId={sequenceId}
-                    scenes={scenes}
-                    selectedSceneIds={selectedScenes.map((s) => s.id)}
-                    onSelectScene={handleFocusScene}
-                    splittingScript={isProcessing ? sequence.script : undefined}
-                  />
-                ) : (
-                  <SceneCanvas
-                    sequenceExport={sequenceExport}
-                    autoPlay={autoPlaySequence}
-                    onAutoPlayConsumed={handleAutoPlayConsumed}
-                    onPlayingShot={setPlayheadShotId}
-                    playingShotId={playingShotId}
-                    selection={selection}
-                    shots={shots}
-                    scenes={scenes}
-                    loadError={shotsError}
-                    sequence={sequence}
-                    aspectRatio={aspectRatio}
-                    selectedTab={effectiveTab}
-                    overrideImageUrl={previewVariantUrl}
-                    overrideVideoUrl={previewVariantVideoUrl}
-                    badgeMessage={playerBadgeMessage}
-                    staleLabel={
-                      !isGenerationActive &&
-                      effectiveTab === 'image-prompt' &&
-                      curSelectedShotId &&
-                      !regeneratingImages.has(curSelectedShotId)
-                        ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                          'stale'
-                          ? 'Out of date'
-                          : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                              'updating'
-                            ? 'Updating…'
-                            : null
-                        : null
-                    }
-                    progressMessage={
-                      isGenerationActive ? (
-                        <RenderWaitCopy
-                          etaMinutes={etaMinutes}
-                          willEmail={willEmail}
-                        />
-                      ) : (
-                        generationState.phases.find(
-                          (p) => p.status === 'active'
-                        )?.phaseName
-                      )
-                    }
-                    retry={selectedShotRetry}
-                    onSelectShot={handleSelectShot}
-                    onSelectScene={handleFocusScene}
-                    sceneImageModel={resolvedImageModel}
-                    regeneratingSceneVariants={regeneratingSceneVariants}
-                    onGenerateSceneVariantsStart={(id) =>
-                      handleRegenerateStart(id, 'scene-variants')
-                    }
-                    firstRunActive={isGenerationActive}
-                  />
-                )}
+                <div
+                  className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
+                  {...canvasSwipe}
+                >
+                  {effectiveView === 'script' ? (
+                    <SceneScriptDocument
+                      sequenceId={sequenceId}
+                      scenes={scenes}
+                      selectedSceneIds={selectedScenes.map((s) => s.id)}
+                      onSelectScene={handleFocusScene}
+                      splittingScript={
+                        isProcessing ? sequence.script : undefined
+                      }
+                    />
+                  ) : (
+                    <SceneCanvas
+                      sequenceExport={sequenceExport}
+                      autoPlay={autoPlaySequence}
+                      onAutoPlayConsumed={handleAutoPlayConsumed}
+                      onPlayingShot={setPlayheadShotId}
+                      playingShotId={playingShotId}
+                      selection={selection}
+                      shots={shots}
+                      scenes={scenes}
+                      loadError={shotsError}
+                      sequence={sequence}
+                      aspectRatio={aspectRatio}
+                      selectedTab={effectiveTab}
+                      overrideImageUrl={previewVariantUrl}
+                      overrideVideoUrl={previewVariantVideoUrl}
+                      badgeMessage={playerBadgeMessage}
+                      staleLabel={
+                        !isGenerationActive &&
+                        effectiveTab === 'image-prompt' &&
+                        curSelectedShotId &&
+                        !regeneratingImages.has(curSelectedShotId)
+                          ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                            'stale'
+                            ? 'Out of date'
+                            : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                                'updating'
+                              ? 'Updating…'
+                              : null
+                          : null
+                      }
+                      progressMessage={
+                        isGenerationActive ? (
+                          <RenderWaitCopy
+                            etaMinutes={etaMinutes}
+                            willEmail={willEmail}
+                          />
+                        ) : (
+                          generationState.phases.find(
+                            (p) => p.status === 'active'
+                          )?.phaseName
+                        )
+                      }
+                      retry={selectedShotRetry}
+                      onSelectShot={handleSelectShot}
+                      onSelectScene={handleFocusScene}
+                      sceneImageModel={resolvedImageModel}
+                      regeneratingSceneVariants={regeneratingSceneVariants}
+                      onGenerateSceneVariantsStart={(id) =>
+                        handleRegenerateStart(id, 'scene-variants')
+                      }
+                      firstRunActive={isGenerationActive}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4">
+            {/* Too narrow for both: the detail has the screen to itself, as
+                it did as a page of its own. */}
+            <div
+              className={cn(
+                'relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4',
+                hasDetail && 'hidden @3xl/workspace:block'
+              )}
+            >
               <div
                 id="scene-inspector"
                 className="@3xl/workspace:flex @3xl/workspace:h-full @3xl/workspace:min-h-0 @3xl/workspace:w-[clamp(280px,38cqw,420px)] @3xl/workspace:flex-col @3xl/workspace:overflow-hidden @3xl/workspace:rounded-lg @3xl/workspace:border @3xl/workspace:bg-background"

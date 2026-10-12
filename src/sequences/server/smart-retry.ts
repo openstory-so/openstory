@@ -61,7 +61,7 @@ import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-
 import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   Sequence,
   Shot,
 } from '@/platform/server/db/schema';
@@ -98,7 +98,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'sequences', 'smart-retry']);
 
 function getSceneCharacterReferenceImages(
-  allCharacters: CharacterWithSheet[],
+  allCharacters: CastCharacterWithSheet[],
   characterTags: string[]
 ) {
   if (characterTags.length === 0) return [];

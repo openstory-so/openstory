@@ -1,11 +1,15 @@
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import { wornStyling } from '@/cast/bible-looks';
+import type {
+  CharacterBibleEntry,
+  TalentSheetMetadata,
+} from '@/shots/scene-analysis.schema';
 
 type TalentMatchPromptRow = {
   id: string;
   name: string;
   description: string | null;
   defaultSheet: {
-    metadata?: CharacterBibleEntry | null;
+    metadata?: TalentSheetMetadata | null;
   } | null;
 };
 
@@ -26,7 +30,7 @@ export function buildMatchingPromptVariables(
   Ethnicity: ${c.ethnicity}
   Physical: ${c.physicalDescription}
   Clothing: ${c.standardClothing}
-  Distinguishing features: ${c.distinguishingFeatures}`
+  Distinguishing features: ${wornStyling(c)}`
     )
     .join('\n\n');
 

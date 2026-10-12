@@ -26,11 +26,11 @@ import {
   talentSheetInputHash,
 } from '@/shots/input-hash';
 import {
+  characterLooks,
   characterSheetVariants,
   characters,
   locationLibrary,
   locationSheetVariants,
-  sequenceCastLooks,
   sequenceLocations,
   sequences,
   styles,
@@ -103,7 +103,12 @@ async function seed() {
       { id: sequenceId, teamId: team.id, title: 'S', styleId: style.id },
     ]);
   const character = await createCharactersMethods(db, team.id).create(
-    { sequenceId, characterId: 'char_001', name: 'Alice' },
+    {
+      sequenceId,
+      characterId: 'char_001',
+      name: 'Alice',
+      rendering: 'Photoreal live action',
+    },
     { source: 'analysis', createdBy: null }
   );
   characterId = character.id;
@@ -365,9 +370,9 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
     });
     await createCharacterLooksMethods(db, team.id).ensureDefault(characterId);
     await db
-      .update(sequenceCastLooks)
+      .update(characterLooks)
       .set({ selectedSheetVersionId: variant.id })
-      .where(eq(sequenceCastLooks.lookId, characterId));
+      .where(eq(characterLooks.id, characterId));
 
     await expect(methods.discard(variant.id)).rejects.toThrow(
       /Cannot discard the selected/
@@ -820,6 +825,7 @@ describe('character sheet versions (append + select)', () => {
     // The parent's mirror columns are no longer written (#1419) — the live
     // sheet is whatever the pointer names.
     const live = await createCharactersMethods(db, team.id).getById(
+      sequenceId,
       characterId
     );
     expect(live?.selectedSheetVersionId).toBe(version.id);
@@ -852,18 +858,25 @@ describe('character sheet versions (append + select)', () => {
       model: 'nano_banana_2',
     });
     expect(
-      (await createCharactersMethods(db, team.id).getById(characterId))
-        ?.selectedSheetVersionId
+      (
+        await createCharactersMethods(db, team.id).getById(
+          sequenceId,
+          characterId
+        )
+      )?.selectedSheetVersionId
     ).toBe(second.version.id);
 
-    await methods.select(characterId, first.version.id, { actorId: null });
+    await methods.select(sequenceId, characterId, first.version.id, {
+      actorId: null,
+    });
     const [after] = await db
       .select()
-      .from(sequenceCastLooks)
-      .where(eq(sequenceCastLooks.lookId, characterId));
+      .from(characterLooks)
+      .where(eq(characterLooks.id, characterId));
     expect(after?.selectedSheetVersionId).toBe(first.version.id);
     // Reads follow the pointer, not a mirror column (#1419).
     const live = await createCharactersMethods(db, team.id).getById(
+      sequenceId,
       characterId
     );
     expect(live?.sheetImageUrl).toBe('https://example.com/a.png');

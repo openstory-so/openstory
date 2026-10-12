@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.\n\n[LAYOUT]:\nThe grid comprises four distinct, technical views arranged horizontally:\n- Panel 1 (Left): Full body frontal view, standing in a neutral pose\n- Panel 2 (Center-Left): Close-up portrait frontal view (chest up)\n- Panel 3 (Center-Right): Full body side profile view facing left\n- Panel 4 (Right): Full body rear view\n\nAll attire, accessories, hair, and features must be perfectly consistent across all four panels.\n\n[CHARACTER IDENTITY]:\nName: Tired florist\nAge: 40s\nGender: Unspecified\nEthnicity: Unspecified\n\nPhysical Appearance:\nA tired-looking adult of average height and medium build with a slightly drawn face, weary eyes, and hair kept practical beneath the compressed conditions of the elevator. Their hands show the working wear of handling flowers and buckets throughout the day.\n\nCostume:\nMuted work shirt beneath a weathered florist's apron or utility jacket, dark trousers, comfortable work shoes, and practical clothing suitable for carrying flowers through the city.\n\nDistinguishing Features:\nCarries a bucket of vivid coral ranunculus, creating a visual echo of Scarlett's lipstick. Their fatigued expression and flower bucket make them immediately recognizable.\n\n[ENVIRONMENT]:\nSeamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.\n\n[OPTICAL & CAMERA SPECS]:\nCommercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.\n\n[LIGHTING]:\nNeutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.\n\n[MATERIALITY]:\nHyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/9c9620513bce745455c249a83b29fb504675787865c17ba66bcee4da3c7f6b29.png"
+        }
+      }
+    }
+  ]
+}

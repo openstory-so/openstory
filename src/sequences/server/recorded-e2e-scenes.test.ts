@@ -66,6 +66,8 @@ describe('recorded script-bibles fixture', () => {
     const { messages } = await getChatPrompt('phase/scene-bibles-chat', {
       script: recorded.slice(scriptStart, scriptEnd),
       elements: recorded.slice(elementsStart, elementsEnd),
+      // The fixture was recorded with nobody cast (#2050).
+      cast: '',
     });
     const user = messages.find((message) => message.role === 'user');
     expect(user && typeof user.content === 'string' ? user.content : '').toBe(
@@ -95,33 +97,34 @@ describe('recorded shot-list fixture', () => {
   });
 });
 
-describe('recorded krea preview fixtures (#1642)', () => {
+describe('recorded shot preview fixtures (#1642, #2094)', () => {
   it('match the shot-spec animatic prompt the split now fires', () => {
-    const kreaDir = resolve(
+    const previewDir = resolve(
       dirname(fileURLToPath(import.meta.url)),
-      '../../../e2e/fixtures/recorded/fal/krea-2-turbo'
+      '../../../e2e/fixtures/recorded/fal/google-nano-banana-2-lite'
     );
-    const kreaFileSchema = z.object({
+    const previewFileSchema = z.object({
       fixtures: z.array(
         z.object({ match: z.object({ userMessage: z.string().optional() }) })
       ),
     });
     const prompts = new Set(
-      readdirSync(kreaDir)
+      readdirSync(previewDir)
         .filter((name) => name.endsWith('.json'))
         .map((name) => {
-          const raw = kreaFileSchema.parse(
-            JSON.parse(readFileSync(resolve(kreaDir, name), 'utf8'))
+          const raw = previewFileSchema.parse(
+            JSON.parse(readFileSync(resolve(previewDir, name), 'utf8'))
           );
           return raw.fixtures[0]?.match.userMessage ?? '';
         })
     );
-    const { scenes } = replayRecordedE2eScenes();
+    const { scenes, splitCharacterBible } = replayRecordedE2eScenes();
     const missing: string[] = [];
     for (const scene of scenes) {
       for (const shot of scene.shots ?? []) {
         const prompt = buildPreviewPrompt(
-          previewTextForShot(scene, shot.shotNumber)
+          previewTextForShot(scene, shot.shotNumber),
+          splitCharacterBible
         );
         if (!prompts.has(prompt)) {
           missing.push(

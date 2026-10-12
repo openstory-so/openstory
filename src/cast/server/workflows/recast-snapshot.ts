@@ -21,7 +21,7 @@ import type { TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
@@ -46,7 +46,7 @@ export const PENDING_SHEET_HASH = 'recast://pending-sheet-hash';
 
 /** The entity whose sheet the awaited child regenerates. */
 export type RecastSubject =
-  | { kind: 'character'; character: CharacterWithSheet }
+  | { kind: 'character'; character: CastCharacterWithSheet }
   | { kind: 'location'; location: SequenceLocationWithReference };
 
 export type RecastRegenerateSnapshot = {

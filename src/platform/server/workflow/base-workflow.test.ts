@@ -135,6 +135,54 @@ function makeWorkflow(impl: () => Promise<unknown>) {
 }
 
 describe('OpenStoryWorkflowEntrypoint.run', () => {
+  test('the payload seam (#2065): a run queued with the old features field sees it folded into the default look', async () => {
+    type Queued = TestPayload & { characterBible: unknown[] };
+    let seen: unknown;
+    class TestWorkflow extends OpenStoryWorkflowEntrypoint<Queued> {
+      protected override runImpl(
+        event: Readonly<WorkflowEvent<Queued>>
+      ): Promise<unknown> {
+        seen = event.payload;
+        return Promise.resolve('ok');
+      }
+    }
+    type Ctor = ConstructorParameters<typeof TestWorkflow>;
+    const workflow = new TestWorkflow(
+      asStub<Ctor[0]>(undefined),
+      asStub<Ctor[1]>({})
+    );
+    const look = {
+      lookId: 'L1',
+      name: 'Default',
+      clothing: 'coat',
+      styling: '',
+    };
+    await workflow.run(
+      {
+        ...makeEvent(false),
+        payload: {
+          userId: 'u1',
+          teamId: 't1',
+          characterBible: [
+            {
+              characterId: 'c1',
+              distinguishingFeatures: 'scar',
+              looks: [look],
+            },
+          ],
+        },
+      },
+      makeStep()
+    );
+    expect(seen).toEqual({
+      userId: 'u1',
+      teamId: 't1',
+      characterBible: [
+        { characterId: 'c1', looks: [{ ...look, styling: 'scar' }] },
+      ],
+    });
+  });
+
   test.each([ENGINE_ABORT, DO_RESET])(
     'platform interruption "%s": rethrows without onFailure or parent failure-notify',
     async (message) => {

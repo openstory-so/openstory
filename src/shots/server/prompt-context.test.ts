@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import { buildCastCharacterBible } from '@/cast/character-prompt';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
   StyleConfig,
@@ -27,6 +27,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
   Scene,
+  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 
 const style: StyleConfig = migrateStyleConfigV1ToV2({
@@ -48,12 +49,12 @@ const alice: CharacterBibleEntry = {
   physicalDescription: '',
   standardClothing: '',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: '',
 };
 const bob: CharacterBibleEntry = { ...alice, characterId: 'bob', name: 'Bob' };
@@ -442,15 +443,15 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     physicalDescription: 'Tall, blonde hair, blue eyes',
     standardClothing: 'Dark trench coat',
     looks: [],
-    distinguishingFeatures: 'Scar on left cheek',
     personality: '',
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'detective_sarah_blonde_30s',
   };
-  const talentSheet: CharacterBibleEntry = {
+  const talentSheet: TalentSheetMetadata = {
     characterId: 'talent_1',
     name: 'Elvis Presley',
     age: '25',
@@ -483,7 +484,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
 
   // Simulate the row the character-bible workflow persists, then read it back
   // the way `getShotStalenessFn` does at verify time.
-  const makeCharacter = (b: CharacterBibleEntry): CharacterWithSheet => ({
+  const makeCharacter = (b: CharacterBibleEntry): CastCharacterWithSheet => ({
     id: `row_${b.characterId}`,
     sequenceId: 'seq_1',
     talentId: 'talent_1',
@@ -494,11 +495,12 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     ethnicity: b.ethnicity,
     physicalDescription: b.physicalDescription,
     standardClothing: b.standardClothing,
-    distinguishingFeatures: b.distinguishingFeatures,
+    legacyDistinguishingFeatures: null,
     personality: '',
     movement: '',
     voiceOnly: b.voiceOnly,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: null,
     voiceDescription: b.voiceDescription || null,
     voicePreviews: null,
@@ -511,6 +513,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     firstMentionLine: null,
     sheetImageUrl: null,
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetStatus: 'completed',
     sheetGeneratedAt: null,
     sheetError: null,
@@ -524,7 +527,6 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     // Cast in its sequence (#2017).
     castId: 'cast-1',
     teamId: 'team-1',
-    inLibrary: false,
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
@@ -634,6 +636,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     firstMentionLine: l.firstMention.lineNumber || null,
     referenceImageUrl: null,
     referenceImagePath: null,
+    referencePortraitUrl: null,
     referenceStatus: 'completed',
     referenceGeneratedAt: null,
     referenceError: null,

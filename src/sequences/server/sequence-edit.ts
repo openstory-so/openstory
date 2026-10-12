@@ -8,7 +8,6 @@ import {
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/models/models';
-import { releaseCharacterVoice } from '@/cast/server/voice/release-voice';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import {
@@ -101,15 +100,8 @@ export async function archiveSequence(
 ): Promise<void> {
   const prevStatus = sequence.status;
   if (prevStatus === 'archived') return;
-  // Archive frees the cast's voice slots (#1553). Descriptions and previews
-  // stay, so an unarchive can regenerate. Runs BEFORE the status flip: a
-  // failed release throws past it, the sequence stays live, and the next
-  // attempt retries the rows still holding an id.
-  // Known gap: a voice child still running lands its id after this loop;
-  // that slot is only freed by a later soft-delete or regenerate.
-  for (const character of await scopedDb.characters.list(sequence.id)) {
-    await releaseCharacterVoice(scopedDb, character, actor.userId);
-  }
+  // The cast is the team's: a voice is held until its character is deleted
+  // (#2017), so an archive touches none.
   await scopedDb.sequence(sequence.id).updateStatus('archived');
   await scopedDb.sequenceEvents.record({
     sequenceId: sequence.id,

@@ -1,5 +1,6 @@
 import {
   charactersToBible,
+  legacyStylingByCharacter,
   sequenceElementsToBible,
   sequenceLocationsToBible,
 } from '@/cast/server/bibles-from-scoped';
@@ -14,6 +15,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type {
+  LegacyStylingByCharacter,
   MotionPromptHashInput,
   VisualPromptHashInput,
 } from '@/shots/input-hash';
@@ -26,7 +28,15 @@ import {
  * Everything a prompt hash reads except the shot's lines, which the motion
  * hash takes separately (`dialogue`, #1784) — the caller resolves them.
  */
-export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'>;
+export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'> & {
+  /**
+   * Verify only (#2065): the stored parts a digest stamped before the
+   * default look took the bible's features hashed, for every character of
+   * the sequence, each in the look this scene dresses it in. No stamp reads
+   * it, and it is never frozen on a payload.
+   */
+  legacyStyling: LegacyStylingByCharacter;
+};
 
 export type ShotPromptContextSequence = {
   id: string;
@@ -114,17 +124,17 @@ export async function loadShotPromptContext(args: {
     getAnalysisModelById(sequence.analysisModel)?.id ??
     DEFAULT_ANALYSIS_MODEL;
 
+  // Each character in the outfit this scene picks for it (#2015): the
+  // prompt, and its hash, read that look's clothing.
+  const dressed = dressForScene(characters, scene.continuity?.characterLooks);
   return {
     scene,
     styleConfig: resolveSequenceStyleConfig({
       snapshot: sequence.styleConfig,
       live: style?.config,
     }),
-    // Each character in the outfit this scene picks for it (#2015): the
-    // prompt, and its hash, read that look's clothing.
-    characterBible: charactersToBible(
-      dressForScene(characters, scene.continuity?.characterLooks)
-    ),
+    characterBible: charactersToBible(dressed),
+    legacyStyling: legacyStylingByCharacter(dressed),
     locationBible: sequenceLocationsToBible(locations),
     elementBible: sequenceElementsToBible(elements),
     aspectRatio: sequence.aspectRatio,

@@ -54,6 +54,7 @@ interface __BaseEnv_Env {
 	BYTEPLUS_GOVERNOR: DurableObjectNamespace<import("./src/server").BytePlusGovernor>;
 	IMAGE_WORKFLOW: Workflow<Parameters<import("./src/server").ImageWorkflow['run']>[0]['payload']>;
 	ELEMENT_VISION_WORKFLOW: Workflow<Parameters<import("./src/server").ElementVisionWorkflow['run']>[0]['payload']>;
+	SHEET_PORTRAIT_WORKFLOW: Workflow<Parameters<import("./src/server").SheetPortraitWorkflow['run']>[0]['payload']>;
 	ELEMENT_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").ElementSheetWorkflow['run']>[0]['payload']>;
 	MUSIC_WORKFLOW: Workflow<Parameters<import("./src/server").MusicWorkflow['run']>[0]['payload']>;
 	MOTION_WORKFLOW: Workflow<Parameters<import("./src/server").MotionWorkflow['run']>[0]['payload']>;
@@ -146,6 +147,7 @@ declare namespace Cloudflare {
 		BYTEPLUS_GOVERNOR: DurableObjectNamespace<import("./src/server").BytePlusGovernor>;
 		IMAGE_WORKFLOW: Workflow<Parameters<import("./src/server").ImageWorkflow['run']>[0]['payload']>;
 		ELEMENT_VISION_WORKFLOW: Workflow<Parameters<import("./src/server").ElementVisionWorkflow['run']>[0]['payload']>;
+		SHEET_PORTRAIT_WORKFLOW: Workflow<Parameters<import("./src/server").SheetPortraitWorkflow['run']>[0]['payload']>;
 		ELEMENT_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").ElementSheetWorkflow['run']>[0]['payload']>;
 		MUSIC_WORKFLOW: Workflow<Parameters<import("./src/server").MusicWorkflow['run']>[0]['payload']>;
 		MOTION_WORKFLOW: Workflow<Parameters<import("./src/server").MotionWorkflow['run']>[0]['payload']>;
@@ -232,6 +234,7 @@ declare namespace Cloudflare {
 		BYTEPLUS_GOVERNOR: DurableObjectNamespace<import("./src/server").BytePlusGovernor>;
 		IMAGE_WORKFLOW: Workflow<Parameters<import("./src/server").ImageWorkflow['run']>[0]['payload']>;
 		ELEMENT_VISION_WORKFLOW: Workflow<Parameters<import("./src/server").ElementVisionWorkflow['run']>[0]['payload']>;
+		SHEET_PORTRAIT_WORKFLOW: Workflow<Parameters<import("./src/server").SheetPortraitWorkflow['run']>[0]['payload']>;
 		ELEMENT_SHEET_WORKFLOW: Workflow<Parameters<import("./src/server").ElementSheetWorkflow['run']>[0]['payload']>;
 		MUSIC_WORKFLOW: Workflow<Parameters<import("./src/server").MusicWorkflow['run']>[0]['payload']>;
 		MOTION_WORKFLOW: Workflow<Parameters<import("./src/server").MotionWorkflow['run']>[0]['payload']>;

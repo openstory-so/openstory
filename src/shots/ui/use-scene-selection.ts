@@ -105,16 +105,17 @@ export function useSceneSelection({
     [selection, setSelection]
   );
 
+  // A tab change stays on the route it was made on: with a character,
+  // location or element open (#2015) it must not close what is open.
   const setFacet = useCallback(
     (facet: SceneFacet) => {
       void navigate({
-        to: '/sequences/$id/scenes',
-        params: { id: sequenceId },
+        to: '.',
         search: selectionToSearchParams(selection, facet, search.view),
         replace: true,
       });
     },
-    [navigate, sequenceId, selection, search.view]
+    [navigate, selection, search.view]
   );
 
   return {

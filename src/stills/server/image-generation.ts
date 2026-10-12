@@ -202,6 +202,10 @@ async function resolveOptionalXaiKey(
 async function resolveOptionalGoogleKey(
   scopedDb?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
+  // Under E2E a native via is off unless its base URL points at the mock,
+  // so a laptop key cannot bill a test run or slip past the recorder.
+  const env = getEnv();
+  if (env.E2E_TEST === 'true' && !env.GEMINI_BASE_URL) return undefined;
   if (scopedDb) return scopedDb.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;

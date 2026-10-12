@@ -89,7 +89,11 @@ export async function computeGenerationPlan(
   const shots = await scopedDb.shots.listBySequence(sequenceId);
   // Script is the root, not a unit: nothing to plan until it made shots.
   if (shots.length === 0) return [];
-  return planUnits(await loadPlanInput(scopedDb, sequence, shots), sequenceId);
+  const units = planUnits(
+    await loadPlanInput(scopedDb, sequence, shots),
+    sequenceId
+  );
+  return units;
 }
 
 async function loadPlanInput(
@@ -302,6 +306,9 @@ async function loadPlanInput(
         ])
         .map(async (c) => ({
           id: c.lookId,
+          // A look other than the default is drawn from this character's
+          // default sheet (the look whose id is the character's).
+          characterId: c.id,
           sheet: await sheetVerdict(
             !!c.sheetImageUrl,
             c.sheetStatus === 'generating' ||

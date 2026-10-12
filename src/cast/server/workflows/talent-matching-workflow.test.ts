@@ -74,12 +74,12 @@ const entry = (
   physicalDescription: '',
   standardClothing: '',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: overrides.characterId,
   ...overrides,
 });

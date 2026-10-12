@@ -262,18 +262,6 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.sequenceCast.characterId,
       to: r.characters.id,
     }),
-    looks: r.many.sequenceCastLooks(),
-  },
-
-  sequenceCastLooks: {
-    cast: r.one.sequenceCast({
-      from: r.sequenceCastLooks.castId,
-      to: r.sequenceCast.id,
-    }),
-    look: r.one.characterLooks({
-      from: r.sequenceCastLooks.lookId,
-      to: r.characterLooks.id,
-    }),
   },
 
   characterLooks: {

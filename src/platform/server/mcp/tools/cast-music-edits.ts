@@ -15,6 +15,7 @@ import {
 } from '@/cast/bible-field';
 import { lookFieldsSchema } from '@/cast/look-field';
 import {
+  attachLibraryCharacter,
   createCharacter,
   createCharacterLook,
   removeCharacterLook,
@@ -158,10 +159,44 @@ const createCharacterTool = openstoryTool({
   },
 });
 
+const addCharacterToSequenceTool = openstoryTool({
+  name: 'add_character_to_sequence',
+  description:
+    'Cast a team character (list_library_characters) into a sequence (#2050): one cast link, every look, nothing copied, no generation. The sequence reads the character as it is now and after every later edit. The script names the character in capitals; analysis then links to it rather than making a new character. Refused while a live cast member of the sequence already has that name (CONFLICT). A deleted character is NOT_FOUND. Idempotent for a character the sequence already casts.',
+  scope: 'sequences:write',
+  annotations: idempotent,
+  inputSchema: characterInput,
+  outputSchema: z.object({
+    characterId: z.string(),
+    token: z.string(),
+    name: z.string(),
+  }),
+  run: async (
+    { sequenceId: id, characterId: charId },
+    { scopedDb, userId }
+  ) => {
+    const sequence = await productionAccess(scopedDb).sequence(id);
+    const character = await attachLibraryCharacter(
+      scopedDb,
+      { userId },
+      sequence.id,
+      charId
+    );
+    return {
+      data: {
+        characterId: character.id,
+        token: character.characterId,
+        name: character.name,
+      },
+      summary: `Added ${character.name}.`,
+    };
+  },
+});
+
 const updateCharacterTool = openstoryTool({
   name: 'update_character',
   description:
-    'Edit a character’s bible (read it with get_character). An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. The character’s sheet and the prompts that use it become stale; no generation starts.',
+    'Edit a character’s bible (read it with get_character). An unsent field keeps its value; an empty string clears a text field; booleans (voiceOnly, isPerson) and enums cannot be cleared, only set. voiceOnly is required: true means the character is only heard, never seen. isPerson cannot be set to false while the character is cast with a talent who is a real person, or its sheet is an uploaded photo of a real person. The character’s sheet and the prompts that use it become stale; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: characterBibleFieldsSchema
@@ -402,7 +437,7 @@ const listCharacterLookVersionsTool = productionRead(
 const createCharacterLookTool = openstoryTool({
   name: 'create_character_look',
   description:
-    'Add an outfit (a look) to a character: a name, the clothing, and any hair, makeup or injury notes that go with it. It has no sheet until regenerate_character_sheet is called with its lookId. A scene wears it once update_scene sets continuity.characterLooks.',
+    'Add an outfit (a look) to a character: a name, the clothing, and any hair, makeup or injury notes that go with it. It has no sheet until regenerate_character_sheet is called with its lookId, and that call is refused until the default look has a sheet — the new look is drawn from that face. Uploading its own sheet (set_character_sheet_from_upload) is allowed at any time. A scene wears it once update_scene sets continuity.characterLooks.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: characterInput.extend(lookFieldsSchema.shape),
@@ -996,6 +1031,7 @@ export const castMusicTools = [
   listCharacterVoices,
   listDeletedCastTool,
   createCharacterTool,
+  addCharacterToSequenceTool,
   updateCharacterTool,
   deleteCharacterTool,
   restoreCharacterTool,

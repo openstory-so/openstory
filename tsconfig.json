@@ -28,12 +28,23 @@
     "noUnusedParameters": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      // The workspace package, from source — no build step in dev.
+      "@openstory/stitch-player": ["./packages/stitch-player/src/index.ts"],
+      "@openstory/stitch-player/videojs": [
+        "./packages/stitch-player/src/videojs.ts"
+      ],
+      "@openstory/stitch-player/react": [
+        "./packages/stitch-player/src/react.tsx"
+      ],
+      "@openstory/stitch-player/export": [
+        "./packages/stitch-player/src/export.ts"
+      ]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],
   // `containers/**` is a separate, self-contained build (its own tsconfig +
   // deps, Node/NodeNext target) typechecked in its Docker image — keep it out
   // of the Worker typecheck.
-  "exclude": ["node_modules", "containers"]
+  "exclude": ["node_modules", "containers", "packages/*/dist"]
 }

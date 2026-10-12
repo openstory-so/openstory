@@ -25,10 +25,10 @@ import { copyTextToClipboard } from '@/ui/clipboard';
 import {
   batchCreateGiftTokensFn,
   createGiftTokenFn,
-  isSystemAdminFn,
   listGiftTokensFn,
   redeemGiftTokenFn,
 } from '@/billing/gift-tokens.fn';
+import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Check, Copy, Gift, Layers, LinkIcon, ShieldCheck } from 'lucide-react';
@@ -38,11 +38,9 @@ import { toast } from 'sonner';
 const RETURN_KEY = 'openstory:billing-return';
 
 export function GiftCodeSettings() {
-  const { data: adminStatus, isLoading: adminLoading } = useQuery({
-    queryKey: ['system-admin-status'],
-    queryFn: () => isSystemAdminFn(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: adminStatus, isLoading: adminLoading } = useQuery(
+    systemAdminStatusQueryOptions
+  );
 
   return (
     <div className="space-y-6">

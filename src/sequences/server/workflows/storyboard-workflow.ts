@@ -202,6 +202,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           pendingAutoStyleId: input.pendingAutoStyleId,
           analysisModelId,
           elementIds,
+          cast: input.cast,
           musicPromptSource: input.musicPromptSource,
           imageModel,
           imageModels: input.imageModels ?? [imageModel],

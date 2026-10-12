@@ -9,8 +9,16 @@ import {
 describe('reference provenance (#1657)', () => {
   const live = liveReferenceIdentity({
     characters: [
-      { id: 'c1', selectedSheetVersionId: 'csv-2', sheetImageUrl: '/r2/a.png' },
-      { id: 'c2', selectedSheetVersionId: null, sheetImageUrl: '/r2/b.png' },
+      {
+        id: 'c1',
+        selectedSheetVersionId: 'csv-2',
+        sheetImageUrl: '/r2/a.png',
+      },
+      {
+        id: 'c2',
+        selectedSheetVersionId: null,
+        sheetImageUrl: '/r2/b.png',
+      },
     ],
     locations: [
       {

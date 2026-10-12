@@ -5,6 +5,12 @@ import type {
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
 import type {
+  LegacyStylingByCharacter,
+  LegacyStylingParts,
+} from '@/shots/input-hash';
+import type {
+  CastCharacterWithSheet,
+  CharacterLink,
   CharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
@@ -34,25 +40,59 @@ function looksToBible(c: CharacterWithSheet): CharacterLookEntry[] {
   ];
 }
 
-/** Nullable columns read as `''` — a bible entry's fields are all required. */
-export function characterToBible(c: CharacterWithSheet): CharacterBibleEntry {
+/**
+ * Nullable columns read as `''` — a bible entry's fields are all required.
+ * A character read from no sequence has no script id (#2017): its entry
+ * carries its own id, which nothing in that sequence-less run tags by.
+ */
+export function characterToBible(
+  c: CharacterWithSheet & Partial<Pick<CharacterLink, 'characterId'>>
+): CharacterBibleEntry {
   return {
     looks: looksToBible(c),
-    characterId: c.characterId,
+    characterId: c.characterId ?? c.id,
     name: c.name,
     age: c.age ?? '',
     gender: c.gender ?? '',
     ethnicity: c.ethnicity ?? '',
     physicalDescription: c.physicalDescription ?? '',
     standardClothing: c.standardClothing ?? '',
-    distinguishingFeatures: c.distinguishingFeatures ?? '',
     personality: c.personality ?? '',
     movement: c.movement ?? '',
     voiceDescription: c.voiceDescription ?? '',
     voiceOnly: c.voiceOnly,
     isPerson: c.isPerson,
+    rendering: c.rendering ?? '',
     consistencyTag: c.consistencyTag ?? '',
   };
+}
+
+/**
+ * The stored parts a digest stamped before #2065 hashed for this character,
+ * in the look it is wearing: that look's own styling and the bible's legacy
+ * features. Verify only (`LegacyStylingParts`).
+ */
+export function legacyStylingParts(
+  c: Pick<
+    CharacterWithSheet,
+    'legacyDistinguishingFeatures' | 'lookId' | 'looks'
+  >
+): LegacyStylingParts {
+  return {
+    distinguishingFeatures: c.legacyDistinguishingFeatures,
+    // A character with no look row yet has no styling of its own.
+    styling:
+      c.looks.find((look) => look.id === c.lookId)?.storedStyling ?? null,
+  };
+}
+
+/** {@link legacyStylingParts} of each character, by its script id. */
+export function legacyStylingByCharacter(
+  rows: readonly CastCharacterWithSheet[]
+): LegacyStylingByCharacter {
+  return Object.fromEntries(
+    rows.map((row) => [row.characterId, legacyStylingParts(row)])
+  );
 }
 
 export function charactersToBible(

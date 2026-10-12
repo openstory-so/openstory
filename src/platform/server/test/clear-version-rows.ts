@@ -7,7 +7,6 @@ import {
   characterVoiceVersions,
   locationBibleVersions,
   sequenceCast,
-  sequenceCastLooks,
   sequenceStyleVersions,
 } from '@/platform/server/db/schema';
 
@@ -18,7 +17,6 @@ import {
  * test that wipes characters, locations, sequences or teams calls this first.
  */
 export async function clearVersionRows(db: Database): Promise<void> {
-  await db.delete(sequenceCastLooks);
   await db.delete(sequenceCast);
   await db.delete(characterSheetVariants);
   await db.delete(characterVoiceVersions);

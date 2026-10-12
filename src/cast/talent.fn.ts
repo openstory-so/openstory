@@ -32,6 +32,7 @@ import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
 import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
+import { requireCharacter } from '@/cast/server/cast-edit';
 import { releaseVoiceIfUnreferenced } from '@/cast/server/voice/release-voice';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
@@ -48,7 +49,6 @@ import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 const talentIdSchema = z.object({ talentId: ulidSchema });
 const sheetIdSchema = z.object({ sheetId: ulidSchema });
 const mediaIdSchema = z.object({ mediaId: ulidSchema });
-const characterIdSchema = z.object({ characterId: ulidSchema });
 
 // List Talent
 
@@ -472,21 +472,32 @@ export const analyzeTalentMediaFn = createServerFn({ method: 'POST' })
     };
   });
 
-export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
+/**
+ * Save a sequence's character as a new talent: its description, voice and
+ * sheet, as that sequence casts it. This is what "Add to Library" did before
+ * the library became a flag on the character (#2017). It stays, as "Save as
+ * talent", until #2018 says what a talent is.
+ */
+export const saveCharacterAsTalentFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(characterIdSchema))
+  .validator(
+    zodValidator(
+      // Null from the Characters page (#2017).
+      z.object({ sequenceId: ulidSchema.nullable(), characterId: ulidSchema })
+    )
+  )
   .handler(async ({ context, data }) => {
-    const character = await context.scopedDb.characters.getById(
+    if (data.sequenceId !== null) {
+      // Verify the sequence belongs to this team
+      await context.scopedDb.sequences.getForUser({
+        sequenceId: data.sequenceId,
+      });
+    }
+    const character = await requireCharacter(
+      context.scopedDb,
+      data.sequenceId,
       data.characterId
     );
-    if (!character) {
-      throw new Error('Character not found');
-    }
-
-    // Verify the character's sequence belongs to this team
-    await context.scopedDb.sequences.getForUser({
-      sequenceId: character.sequenceId,
-    });
 
     const newTalent = await context.scopedDb.talent.create({
       name: character.name,
@@ -508,7 +519,12 @@ export const addCharacterToLibraryFn = createServerFn({ method: 'POST' })
       name: 'Default',
       imageUrl: character.sheetImageUrl,
       imagePath: character.sheetImagePath ?? undefined,
-      metadata: characterToBible(character),
+      // The talent's features are its own field. The character's are its
+      // default look's styling (#2065), which is what this sheet shows.
+      metadata: {
+        ...characterToBible(character),
+        distinguishingFeatures: character.styling ?? '',
+      },
       isDefault: true,
       source: 'script_analysis',
     });

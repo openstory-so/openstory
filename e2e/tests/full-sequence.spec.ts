@@ -271,7 +271,7 @@ SUPER:  CORAL.  OUT NOW.
         throw new Error('test setup: expected at least one test talent');
       }
       await page.getByText(firstTalent.name).click();
-      await page.getByRole('button', { name: 'Cast 1 role' }).click();
+      await page.getByRole('button', { name: 'Cast 1', exact: true }).click();
       await expect(talentDialog).not.toBeVisible();
 
       // 6. Pick location.

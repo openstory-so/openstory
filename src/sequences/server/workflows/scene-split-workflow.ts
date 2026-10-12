@@ -57,13 +57,23 @@
  * JSON-stringified around the boundary for CF's `Rpc.Serializable<T>` check.
  */
 
-import { queuedBeforeLooks } from '@/cast/server/workflows/sheet-snapshots';
+import { renderingOfStyle } from '@/cast/rendering';
+import {
+  queuedBeforeCast,
+  queuedBeforeLooks,
+} from '@/cast/server/workflows/sheet-snapshots';
+import {
+  applyAttachedCast,
+  castEchoProblem,
+  castTags,
+  formatCastBlock,
+} from '@/cast/attached-cast';
 import {
   callLLMStream,
   llmCostFromUsage,
   PROMPT_REASONING,
 } from '@/models/server/llm-client';
-import { PREVIEW_IMAGE_MODEL } from '@/models/models';
+import { SHOT_PREVIEW_IMAGE_MODEL } from '@/models/models';
 import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/models/models.config';
 import {
   type SceneSplitBiblesResult,
@@ -100,6 +110,7 @@ import {
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
 import { bibleFromWire } from '@/cast/bible-looks';
 import type {
+  CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
@@ -245,6 +256,7 @@ async function triggerPreviewImage({
   parentInstanceId,
   shot,
   scene,
+  characterBible,
   scopedDb,
 }: {
   input: SceneSplitWorkflowInput;
@@ -252,6 +264,7 @@ async function triggerPreviewImage({
   parentInstanceId: string;
   shot: { id: string; frameId: string; shotNumber: number };
   scene: SceneSplittingScene;
+  characterBible: ReadonlyArray<CharacterBibleEntry>;
   scopedDb: WorkflowScopedDb;
 }): Promise<void> {
   const shotText = previewTextForShot(scene, shot.shotNumber);
@@ -267,8 +280,8 @@ async function triggerPreviewImage({
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(shotText),
-        model: PREVIEW_IMAGE_MODEL,
+        prompt: buildPreviewPrompt(shotText, characterBible),
+        model: SHOT_PREVIEW_IMAGE_MODEL,
         imageSize: aspectRatioToImageSize(input.aspectRatio),
         numImages: 1,
         shotId: shot.id,
@@ -441,6 +454,7 @@ async function persistSceneShots({
   sequenceId,
   parentInstanceId,
   scene,
+  characterBible,
   orderIndex,
   announcedShotIds,
 }: {
@@ -449,6 +463,7 @@ async function persistSceneShots({
   sequenceId: string;
   parentInstanceId: string;
   scene: SceneSplittingScene;
+  characterBible: ReadonlyArray<CharacterBibleEntry>;
   orderIndex: number;
   announcedShotIds?: ReadonlySet<string>;
 }): Promise<SceneSplitWorkflowResult['shotMapping']> {
@@ -486,6 +501,7 @@ async function persistSceneShots({
         shotNumber: row.shotNumber ?? 1,
       },
       scene,
+      characterBible,
       scopedDb,
     });
   }
@@ -532,6 +548,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const input = event.payload;
     const { sequenceId, modelId, elements = [] } = input;
     const script = input.script;
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2050
+    if (!input.cast) throw queuedBeforeCast();
+    // The attached cast (#2050): the bibles call echoes these ids and look
+    // names. Empty when nothing is cast, and then absent from the message.
+    const castBlock = formatCastBlock(input.cast);
 
     const elementsBlock =
       elements.length > 0
@@ -835,6 +856,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         promptVars: {
           script: gutteredScript,
           elements: elementsBlock,
+          cast: castBlock,
           userCountry: input.userCountry ?? '',
         },
         responseSchema: sceneSplitBiblesResultSchema,
@@ -881,10 +903,23 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     if (biblesResult.characterBible.some((entry) => !entry.looks)) {
       throw queuedBeforeLooks();
     }
-    const { characterBible, sceneLooks } = bibleFromWire(
+    // A shared cast character keeps her pinned bible and looks (#2050); the
+    // model's entry only says which looks she wears and which are new. An
+    // entry that mislabels the cast fails the run here, before anything is
+    // written.
+    const echo = castEchoProblem(biblesResult.characterBible, input.cast);
+    if (echo) throw new NonRetryableError(echo, 'WorkflowValidationError');
+    const wire = bibleFromWire(
       biblesResult.characterBible,
       sceneIdForLine,
-      script.split('\n').length
+      script.split('\n').length,
+      castTags(input.cast),
+      renderingOfStyle(input.styleConfig)
+    );
+    const { characterBible, sceneLooks } = applyAttachedCast(
+      wire.characterBible,
+      wire.sceneLooks,
+      input.cast
     );
     // sceneId first: downstream prompt interpolation serializes these entries
     // with JSON.stringify, and the aimock fixtures match on that text — keep
@@ -974,6 +1009,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 sequenceId,
                 parentInstanceId: event.instanceId,
                 scene,
+                characterBible,
                 orderIndex,
                 announcedShotIds: new Set(
                   previous.map((entry) => entry.shotId)

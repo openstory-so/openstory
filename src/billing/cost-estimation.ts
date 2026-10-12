@@ -65,6 +65,7 @@ type GateOperation =
   | 'batch-motion'
   | 'motion'
   | 'motion-workflow'
+  | 'sheet-portrait'
   | 'shot-image'
   | 'shot-variants'
   | 'smart-retry:image'

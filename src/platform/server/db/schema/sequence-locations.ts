@@ -134,6 +134,8 @@ export type SequenceLocation = Omit<
 export type SequenceLocationWithReference = SequenceLocation & {
   referenceImageUrl: string | null;
   referenceImagePath: string | null;
+  /** The square image drawn from the sheet; null when it has none. */
+  referencePortraitUrl: string | null;
   referenceGeneratedAt: Date | null;
   referenceInputHash: string | null;
 };

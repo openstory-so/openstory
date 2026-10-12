@@ -5,6 +5,7 @@
  * `media-upload.fn.ts` for the staleness and DAG contracts.
  */
 import { wearLook } from '@/cast/character-looks';
+import { defaultLookFace } from '@/cast/look-sheet-face';
 import {
   requireCharacterLook,
   requireLiveLook,
@@ -24,7 +25,11 @@ import {
   type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
 import { StyleConfigSchema } from '@/look/style-config';
-import { AttestationRequiredError, NotFoundError } from '@/platform/errors';
+import {
+  AttestationRequiredError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import {
   characterSheetTalentHashFields,
   computeStyleConfigHash,
@@ -43,9 +48,11 @@ import type { Sequence, User } from '@/platform/server/db/schema';
 import type { ShotEditContext } from '@/shots/server/shot-context';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { ValidationError } from '@/platform/errors';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { getGenerationChannel } from '@/platform/realtime';
+import { castChannelId } from '@/cast/cast-channel';
+import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
+import { requireCharacter } from '@/cast/server/cast-edit';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
   computeUploadedStillInputHash,
@@ -79,6 +86,11 @@ type SequenceUploadContext = {
   user: Pick<User, 'id'>;
   teamId: string;
   sequence: Sequence;
+};
+
+/** A character upload: through a sequence, or from the Characters page (#2017). */
+type CastUploadContext = Omit<SequenceUploadContext, 'sequence'> & {
+  sequence: Sequence | null;
 };
 
 /**
@@ -553,7 +565,7 @@ async function resolveSheetHashContext(
  * re-stale because they hash the new selected version id.
  */
 export async function setCharacterSheetFromUpload(
-  context: SequenceUploadContext,
+  context: CastUploadContext,
   data: {
     characterId: string;
     /** The look the sheet is of (#2015). A character id names its default. */
@@ -562,33 +574,35 @@ export async function setCharacterSheetFromUpload(
   }
 ) {
   const { scopedDb, sequence, user } = context;
+  const sequenceId = sequence?.id ?? null;
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.CHARACTERS,
     context.teamId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
-  const owner = await scopedDb.characters.getById(data.characterId);
-  if (!owner || owner.sequenceId !== sequence.id) {
-    throw new NotFoundError('Character not found');
-  }
+  const owner = await requireCharacter(scopedDb, sequenceId, data.characterId);
   // The sheet is one look's (#2015): the hash below reads that look's
   // clothing and styling, as a generated sheet's would.
   const look = requireLiveLook(
     await requireCharacterLook(scopedDb, owner, data.lookId)
   );
+  // An upload is the user's own image: it needs no face to be drawn from, so
+  // it is allowed before the default look has a sheet (decided 2026-10-07).
+  // It is stamped with whatever face exists now, null when none, so it reads
+  // stale once a (new) default sheet lands, as a generated look would.
+  const face = look.isDefault ? null : defaultLookFace(owner.looks);
   const character = wearLook(owner, look);
   const isPerson = isPersonFromUploadLedger(
     character.isPerson,
     await likenessFromLedger(scopedDb, data.publicUrl)
   );
 
-  // Same upstream resolution the character-sheet workflow uses.
+  // No image model drew an upload, and the sheet is shared by sequences
+  // with different ones (#2017): it is stamped with the upload marker, which
+  // the verify reads off the live version (`uploadedCharacterSheetHashMatchesStored`).
   const cast = await resolveCastTalent(scopedDb, character.talentId);
-  const { styleConfigHash, imageModel } = await resolveSheetHashContext(
-    scopedDb,
-    sequence
-  );
+  const imageModel = USER_UPLOAD_MODEL;
   const inputHash = await computeCharacterSheetInputHash({
     characterBible: {
       name: character.name,
@@ -597,13 +611,15 @@ export async function setCharacterSheetFromUpload(
       ethnicity: character.ethnicity,
       physicalDescription: character.physicalDescription,
       standardClothing: character.standardClothing,
-      distinguishingFeatures: character.distinguishingFeatures,
+      rendering: character.rendering,
       consistencyTag: character.consistencyTag,
     },
     styling: character.styling,
+    faceSheetVersionId: face === null ? null : face.versionId,
     talentSheetHash: cast.talentSheetInputHash ?? null,
     talent: characterSheetTalentHashFields(cast),
-    styleConfigHash,
+    // The current shape reads no style (#2017).
+    styleConfigHash: null,
     imageModel,
   });
 
@@ -611,6 +627,7 @@ export async function setCharacterSheetFromUpload(
   // row, only when it moved.
   if (isPerson !== character.isPerson) {
     await scopedDb.characters.updateBible(
+      sequenceId,
       character.id,
       { isPerson },
       { actorId: user.id, source: 'edit' }
@@ -628,23 +645,25 @@ export async function setCharacterSheetFromUpload(
       inputHash,
       model: USER_UPLOAD_MODEL,
     });
-  const updated = await scopedDb.characters.getById(character.id);
-  if (!updated) throw new NotFoundError('Character not found');
-  await scopedDb.sequenceEvents.record({
-    sequenceId: sequence.id,
-    actorId: user.id,
-    kind: 'sheet.uploaded',
-    targetType: 'character',
-    targetId: character.id,
-    summary: `Uploaded sheet for ${character.name}`,
-    data: {
-      characterId: character.id,
-      lookId: look.id,
-      variantId: variant.id,
-    },
-  });
+  const updated = await requireCharacter(scopedDb, sequenceId, character.id);
+  // A write from no sequence writes no event (#2017).
+  if (sequence) {
+    await scopedDb.sequenceEvents.record({
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'sheet.uploaded',
+      targetType: 'character',
+      targetId: character.id,
+      summary: `Uploaded sheet for ${character.name}`,
+      data: {
+        characterId: character.id,
+        lookId: look.id,
+        variantId: variant.id,
+      },
+    });
+  }
   try {
-    await getGenerationChannel(sequence.id).emit(
+    await getGenerationChannel(castChannelId(sequenceId, character.id)).emit(
       'generation.character-sheet:progress',
       {
         characterId: character.id,
@@ -655,6 +674,22 @@ export async function setCharacterSheetFromUpload(
     );
   } catch (error) {
     logger.error('realtime emit failed', { err: error });
+  }
+  // A voice-only character is heard, never seen (#1585): no portrait.
+  if (!character.voiceOnly) {
+    await triggerSheetPortrait({
+      userId: user.id,
+      teamId: context.teamId,
+      sequenceId: sequenceId ?? undefined,
+      subject: {
+        kind: 'character',
+        characterId: character.id,
+        lookId: look.id,
+      },
+      versionId: variant.id,
+      sheetUrl: data.publicUrl,
+      storageDir: `${context.teamId}/${sequenceId ?? 'team'}/${character.id}`,
+    });
   }
   return updated;
 }
@@ -729,6 +764,15 @@ export async function setLocationSheetFromUpload(
   } catch (error) {
     logger.error('realtime emit failed', { err: error });
   }
+  await triggerSheetPortrait({
+    userId: user.id,
+    teamId: context.teamId,
+    sequenceId: sequence.id,
+    subject: { kind: 'location', locationId: location.id },
+    versionId: variant.id,
+    sheetUrl: data.publicUrl,
+    storageDir: `${context.teamId}/${sequence.id}/${location.id}`,
+  });
   return updated;
 }
 

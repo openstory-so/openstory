@@ -20,7 +20,6 @@ import {
 import { assessDurationFit } from '@/models/enhance-duration';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
 import {
-  DEFAULT_VIDEO_MODEL,
   isValidImageToVideoModel,
   type ImageToVideoModel,
 } from '@/models/models';
@@ -32,6 +31,7 @@ import { createSequenceLink, enhanceScriptLink } from './discovery';
 import type { ApiEnhanceScriptInput } from './enhance-input-schema';
 import { API_V1_BASE, type HalLinks, getLink } from './hal';
 import { resolveStyle } from './resolve';
+import { resolveApiVideoDefaults } from './video-defaults';
 
 const logger = getLogger(['openstory', 'api-v1']);
 
@@ -40,6 +40,20 @@ export type EnhanceContext = {
   user: { id: string };
   teamId: string;
 };
+
+/**
+ * The model the enhancer shapes the script for: the caller's, else what a new
+ * sequence would start on for this team — so an enhanced script fits the
+ * model `POST /sequences` then defaults to.
+ */
+export async function resolveEnhanceVideoModel(
+  videoModel: string | undefined,
+  scopedDb: ScopedDb
+): Promise<ImageToVideoModel> {
+  return videoModel && isValidImageToVideoModel(videoModel)
+    ? videoModel
+    : (await resolveApiVideoDefaults(scopedDb)).videoModel;
+}
 
 /**
  * Turn the public enhance input into the shared enhancement generator. When a
@@ -61,10 +75,7 @@ export async function buildEnhanceGenerator(
   const data: EnhanceScriptInput = {
     script: input.script,
     targetDuration: input.targetSeconds,
-    videoModel:
-      input.videoModel && isValidImageToVideoModel(input.videoModel)
-        ? input.videoModel
-        : DEFAULT_VIDEO_MODEL,
+    videoModel: await resolveEnhanceVideoModel(input.videoModel, ctx.scopedDb),
     aspectRatio:
       input.aspectRatio ??
       (style

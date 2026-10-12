@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
 import { SidebarMenuButton, SidebarMenuItem } from '@/ui/shadcn/sidebar';
-import { isSystemAdminFn } from '@/billing/gift-tokens.fn';
+import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useUser } from '@/platform/ui/use-user';
 import { authClient } from '@/platform/ui/auth/client';
 import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
@@ -162,11 +162,7 @@ export function UserSidebarFooter() {
 }
 
 function AdminMenuItem() {
-  const { data: adminStatus } = useQuery({
-    queryKey: ['system-admin-status'],
-    queryFn: () => isSystemAdminFn(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: adminStatus } = useQuery(systemAdminStatusQueryOptions);
 
   if (!adminStatus?.isAdmin) return null;
 

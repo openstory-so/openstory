@@ -922,7 +922,7 @@ export function createSequencesMethods(
           .from(sequences)
           .where(still)
       )} and ${styleMovesTo(params.id, params.styleId, styleConfig)}`;
-      const [, , , rows] = await db.batch([
+      const [, , rows] = await db.batch([
         insertStyleVersion(db, {
           id: styleVersionId,
           sequenceId: params.id,

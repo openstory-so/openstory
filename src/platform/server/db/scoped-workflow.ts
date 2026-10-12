@@ -164,14 +164,14 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     'hasEnoughCredits' | 'checkAutoTopUp' | 'getBalance'
   >;
   /**
-   * `getById`: the pending-promote pointer at Voice Design persist (#1715) —
+   * `getVoice`: the pending-promote pointer at Voice Design persist (#1715) —
    * demote must win. `listWithSheets`: live
    * bibles for a re-render. `getVoiceReferenceCount`: slot occupancy when
    * releasing a replaced or demoted designed voice.
    */
   characters: Pick<
     ScopedDb['characters'],
-    'getById' | 'listWithSheets' | 'getVoiceReferenceCount'
+    'getVoice' | 'listWithSheets' | 'getVoiceReferenceCount'
   >;
   /**
    * `getSelected` only, and only for `getAnchorImageUrl`

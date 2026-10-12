@@ -39,10 +39,9 @@ export type VoicePreview = {
  * Characters table
  *
  * A character belongs to the team (#2017). A sequence uses one through a
- * `sequence_cast` link, which pins the bible version it reads; the script id,
- * the soft-remove and the cast talent are that link's (the talent is on the
- * pinned bible version). The character keeps identity, its current bible
- * version and its voice.
+ * `sequence_cast` link that holds the script id and the soft-remove; the
+ * character itself, at its current bible, voice and looks, is what every
+ * sequence reads. The talent is on the current bible version.
  */
 export const characters = snakeCase.table(
   'characters',
@@ -55,13 +54,15 @@ export const characters = snakeCase.table(
     teamId: text()
       .notNull()
       .references(() => teams.id),
-    // In the team library: offered to new sequences. A character that is not
-    // lives only as long as some sequence casts it.
-    inLibrary: integer({ mode: 'boolean' }).default(false).notNull(),
-    // The character's CURRENT `character_bible_versions` row (#1600, #2017):
-    // the one a new sequence adopts. A sequence reads the version its cast
-    // link pins, not this. No FK (same cycle-avoidance as the sheet pointer).
-    // Null only on a row written by a worker older than #1600.
+    // Unread since #2065: every team character is listed and attachable.
+    // Dropped in a follow-up (a native drop, no rebuild).
+    legacyInLibrary: integer('in_library', { mode: 'boolean' })
+      .default(false)
+      .notNull(),
+    // The character's current `character_bible_versions` row (#1600), read
+    // by every sequence that casts it. No FK (same cycle-avoidance as the
+    // sheet pointer). Null only on a row written by a worker older than
+    // #1600.
     selectedBibleVersionId: text(),
     // LEGACY bible columns (#1600). The bible lives in
     // `character_bible_versions`; these are read only as the fallback for a
@@ -123,6 +124,10 @@ export const characters = snakeCase.table(
       'pending_promote_sheet_version_id'
     ),
     // Timestamps
+    // Deleted from the team (#2065): off the Characters page and the `@`
+    // picker, rows kept. Null while live. Not the same as a sequence
+    // removing it, which is `sequence_cast.removedAt`.
+    deletedAt: integer({ mode: 'timestamp' }),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())
       .notNull(),
@@ -164,21 +169,32 @@ export type LegacyCharacterSheetColumn =
   | 'legacyPendingPromoteSheetVersionId';
 
 /**
- * A character as one sequence casts it (#2017): the fields of its
- * `sequence_cast` link, under the names the character's own columns had.
+ * The `sequence_cast` link a cast read came through (#2017). Only a read
+ * made through a sequence has one: a character read from no sequence (the
+ * Characters page) is a plain {@link Character}, and what it can do there
+ * takes no link.
  */
-export type CharacterCast = {
+export type CharacterLink = {
   /** The `sequence_cast` row this read came through. */
   castId: string;
   sequenceId: string;
   /** The script id in this sequence, e.g. "char_001". */
   characterId: string;
-  /** The talent on the pinned bible version. */
+};
+
+/**
+ * A character as one sequence casts it (#2017): the fields of its
+ * `sequence_cast` link, under the names the character's own columns had.
+ */
+export type CharacterCast = CharacterLink & {
+  /** The talent on the current bible version. */
   talentId: string | null;
   /** Removed from this sequence (`sequence_cast.removedAt`). */
   deletedAt: Date | null;
-  /** The bible version this sequence pins. */
+  /** The character's current bible version. */
   selectedBibleVersionId: string;
+  /** The character's current voice version; null when it has no voice. */
+  selectedVoiceVersionId: string | null;
 };
 
 /**
@@ -192,7 +208,11 @@ export type CharacterWornLook = {
   lookId: string;
   lookName: string;
   standardClothing: string | null;
-  /** Hair, makeup, injuries. */
+  /**
+   * Hair, makeup, injuries. On the default look this is the EFFECTIVE
+   * styling (`effectiveStyling`, #2065): the look's own joined with the
+   * bible's legacy features text.
+   */
   styling: string | null;
   sheetStatus: SheetStatus;
   sheetError: string | null;
@@ -209,12 +229,24 @@ export type Character = Omit<
   CharacterRow,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
+  | 'legacyInLibrary'
+  // The row's own `deletedAt` (deleted from the team) on a read from no
+  // sequence; a cast read carries its link's, from `CharacterCast`.
+  | 'deletedAt'
   | 'selectedBibleVersionId'
+  | 'selectedVoiceVersionId'
 > &
-  CharacterCast &
+  Omit<CharacterCast, keyof CharacterLink> &
   CharacterBible &
   CharacterWornLook &
   CharacterVoice & {
+    /**
+     * LEGACY (#2065): the features text the pinned bible version still
+     * holds. Already part of the default look's `styling`; read only by
+     * the digests stamped before #2065, by the write that carries it to
+     * the next bible version, and by the deprecated API field.
+     */
+    legacyDistinguishingFeatures: string | null;
     /** Every look, default first; removed ones included (`deletedAt`). */
     looks: CharacterLook[];
   };
@@ -245,9 +277,15 @@ export type CharacterVoice = {
 export type CharacterWithSheet = Character & {
   sheetImageUrl: string | null;
   sheetImagePath: string | null;
+  /** The square portrait drawn from the sheet; null when it has none. */
+  sheetPortraitUrl: string | null;
   sheetGeneratedAt: Date | null;
   sheetInputHash: string | null;
 };
+
+/** A character read through a sequence's link (#2017). */
+export type CastCharacter = Character & CharacterLink;
+export type CastCharacterWithSheet = CharacterWithSheet & CharacterLink;
 
 /**
  * A new character: the row's own columns plus the bible its first version
@@ -260,6 +298,8 @@ export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
   | LegacyCharacterBibleColumn
   | LegacyCharacterSheetColumn
+  | 'legacyInLibrary'
+  | 'deletedAt'
   | 'selectedBibleVersionId'
   // The scoped module's own team.
   | 'teamId'
@@ -268,15 +308,15 @@ export type NewCharacter = Omit<
   // left out keeps the cast and `null` uncasts.
   Pick<CharacterCast, 'sequenceId' | 'characterId'> &
   Partial<Pick<CharacterCast, 'talentId'>> &
-  Pick<CharacterBible, 'name'> &
-  Partial<Omit<CharacterBible, 'name'>> &
+  Pick<CharacterBible, 'name' | 'rendering'> &
+  Partial<Omit<CharacterBible, 'name' | 'rendering'>> &
   // The default look's clothing and sheet lifecycle (#2015). `sheetStatus`
   // defaults to 'pending', as the column did.
   Partial<Pick<CharacterWornLook, 'standardClothing' | 'sheetStatus'>> &
   Partial<Pick<CharacterVoice, 'voiceId' | 'voiceDescription'>>;
 
 export type CharacterMinimal = Pick<
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   | 'id'
   | 'characterId'
   | 'name'
@@ -303,5 +343,8 @@ export type CharacterWithTalent = CharacterWithSheet & {
     id: string;
     name: string;
     imageUrl: string | null;
+    /** A real person, from the upload ledger; holds `isPerson` (#2065). */
+    isHuman: boolean | null;
   } | null;
 };
+export type CastCharacterWithTalent = CharacterWithTalent & CharacterLink;

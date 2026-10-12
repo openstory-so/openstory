@@ -145,6 +145,11 @@
       "class_name": "ElementVisionWorkflow",
     },
     {
+      "name": "sheet-portrait-workflow",
+      "binding": "SHEET_PORTRAIT_WORKFLOW",
+      "class_name": "SheetPortraitWorkflow",
+    },
+    {
       "name": "element-sheet-workflow",
       "binding": "ELEMENT_SHEET_WORKFLOW",
       "class_name": "ElementSheetWorkflow",
@@ -439,6 +444,11 @@
           "name": "element-vision-workflow",
           "binding": "ELEMENT_VISION_WORKFLOW",
           "class_name": "ElementVisionWorkflow",
+        },
+        {
+          "name": "sheet-portrait-workflow",
+          "binding": "SHEET_PORTRAIT_WORKFLOW",
+          "class_name": "SheetPortraitWorkflow",
         },
         {
           "name": "element-sheet-workflow",
@@ -750,6 +760,11 @@
           "name": "element-vision-workflow",
           "binding": "ELEMENT_VISION_WORKFLOW",
           "class_name": "ElementVisionWorkflow",
+        },
+        {
+          "name": "sheet-portrait-workflow",
+          "binding": "SHEET_PORTRAIT_WORKFLOW",
+          "class_name": "SheetPortraitWorkflow",
         },
         {
           "name": "element-sheet-workflow",

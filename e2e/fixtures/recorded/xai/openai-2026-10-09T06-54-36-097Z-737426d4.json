@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.\n\n[LAYOUT]:\nThe grid comprises four distinct, technical views arranged horizontally:\n- Panel 1 (Left): Full body frontal view, standing in a neutral pose\n- Panel 2 (Center-Left): Close-up portrait frontal view (chest up)\n- Panel 3 (Center-Right): Full body side profile view facing left\n- Panel 4 (Right): Full body rear view\n\nAll attire, accessories, hair, and features must be perfectly consistent across all four panels.\n\n[CHARACTER IDENTITY]:\nName: Courier\nAge: 20s-40s\nGender: Unspecified\nEthnicity: Unspecified\n\nPhysical Appearance:\nAn adult courier of average height with a compact, work-hardened build and a focused face partially obscured by the parcel stack. Their posture is braced from carrying weight, with practical hands and an alert, forward-facing gaze.\n\nCostume:\nDark delivery jacket, durable trousers, comfortable work shoes, and a practical messenger or utility setup. The courier carries a tall, unstable-looking stack of parcels against the chest.\n\nDistinguishing Features:\nThe stack of parcels balanced in both arms is the defining feature, limiting visibility and making the courier's careful balance visually distinctive.\n\n[ENVIRONMENT]:\nSeamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.\n\n[OPTICAL & CAMERA SPECS]:\nCommercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.\n\n[LIGHTING]:\nNeutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.\n\n[MATERIALITY]:\nHyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/c9b017dbf284882447882962e0cab3ace4519a5e1c804b1592a3cbb202cbdcc8.png"
+        }
+      }
+    }
+  ]
+}

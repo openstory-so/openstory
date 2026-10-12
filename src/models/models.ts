@@ -366,10 +366,15 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation. krea_2_turbo stays hidden
- *  (no edit/reference endpoint). flux_2_turbo is a picker model; stored
- *  preview variants may still name it. */
+/** Model for the sequence poster. krea_2_turbo stays hidden (no
+ *  edit/reference endpoint). Stored preview variants may still name it, or
+ *  flux_2_turbo before it. */
 export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
+
+/** Model that draws a shot's storyboard sketch (#2094). Krea could not hold
+ *  a staged frame from the full shot spec; Lite can, at about five times
+ *  the price and a few seconds more. */
+export const SHOT_PREVIEW_IMAGE_MODEL: TextToImageModel = 'nano_banana_2_lite';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(
@@ -426,6 +431,19 @@ export function supportsDraftMode(model: ImageToVideoModel): boolean {
 }
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
+
+/**
+ * The video model new work starts on when none is named: Seedance 2.5 where
+ * the team reaches BytePlus (its only route), the platform default otherwise.
+ * Stored rows never go through this — they keep the model they were made on.
+ */
+export function defaultVideoModelFor(vias: {
+  byteplus?: boolean;
+}): ImageToVideoModel {
+  return isOfferedVideoModel('seedance_v2_5', vias)
+    ? 'seedance_v2_5'
+    : DEFAULT_VIDEO_MODEL;
+}
 
 /** Check if a video model supports audio output. */
 export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {

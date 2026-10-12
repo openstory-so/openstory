@@ -8,7 +8,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
-import { Loader2 } from 'lucide-react';
 
 type RecastConfirmDialogProps = {
   open: boolean;
@@ -58,8 +57,7 @@ export const RecastConfirmDialog: React.FC<RecastConfirmDialogProps> = ({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <span>{isLoading ? `${verb}ing…` : verb}</span>
+            {isLoading ? `${verb}ing…` : verb}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

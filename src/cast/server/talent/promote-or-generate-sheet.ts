@@ -4,7 +4,7 @@
  * the talent has no convergent sheet yet.
  */
 
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { getLogger } from '@/platform/logger';
@@ -46,7 +46,7 @@ export async function maybePromoteOrGenerateSheet(
   const convergentSheets = talentRecord.sheets.filter((s) => !s.divergedAt);
 
   let uploadedSheetUrl: string | undefined;
-  let uploadedSheetMetadata: CharacterBibleEntry | undefined;
+  let uploadedSheetMetadata: TalentSheetMetadata | undefined;
   try {
     const analysis = await analyzeTalentMediaForTeam({
       scopedDb: params.scopedDb,

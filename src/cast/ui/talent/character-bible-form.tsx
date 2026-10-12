@@ -1,3 +1,5 @@
+import { personLockMessage } from '@/cast/likeness';
+import type { PersonLock } from '@/cast/likeness';
 import { BibleField } from '@/cast/ui/bible-field';
 import { Button } from '@/ui/shadcn/button';
 import { Checkbox } from '@/ui/shadcn/checkbox';
@@ -10,9 +12,9 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 import { useUpdateSequenceCharacter } from '@/cast/ui/use-sequence-characters';
+import { useUpdateTeamCharacter } from '@/cast/ui/use-team-characters';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -22,8 +24,7 @@ const characterFormSchema = z.object({
   gender: z.string().max(2000).default(''),
   ethnicity: z.string().max(2000).default(''),
   physicalDescription: z.string().max(2000).default(''),
-  standardClothing: z.string().max(2000).default(''),
-  distinguishingFeatures: z.string().max(2000).default(''),
+  rendering: z.string().max(2000).default(''),
   personality: z.string().max(2000),
   movement: z.string().max(2000).default(''),
   // A checked box submits 'on'; an unchecked one is absent from FormData.
@@ -35,17 +36,45 @@ const characterFormSchema = z.object({
     .optional(),
 });
 
+/** The fields the form seeds from; a cast read and a team read both have them. */
+type BibleFormCharacter = Pick<
+  CharacterWithSheet,
+  | 'id'
+  | 'name'
+  | 'age'
+  | 'gender'
+  | 'ethnicity'
+  | 'physicalDescription'
+  | 'rendering'
+  | 'personality'
+  | 'movement'
+  | 'voiceOnly'
+  | 'isPerson'
+> & {
+  /** Why it must stay a person (#2065); null leaves the select editable. */
+  personLock: PersonLock | null;
+};
+
 /**
  * Editable character bible (#1108 Phase 2). Uncontrolled inputs seeded from
  * the row (key the form by character id at the call site so switching
  * characters reseeds); one Save persists every field — an emptied input clears
  * that field server-side. Prompts/sheet staleness follows by hash derivation.
+ * Clothing, hair, makeup and marks that come and go are not here: they are
+ * the looks' (#2065), edited in the looks row.
+ *
+ * `sequenceId` null is the Characters page, for a character no sequence
+ * casts (#2065, #2017): the same fields, written with no sequence event.
  */
 export const CharacterBibleForm: React.FC<{
-  sequenceId: string;
-  character: CharacterWithSheet;
-}> = ({ sequenceId, character }) => {
-  const updateCharacter = useUpdateSequenceCharacter();
+  sequenceId: string | null;
+  character: BibleFormCharacter & Pick<CharacterWithSheet, 'voiceDescription'>;
+}> = (props) => {
+  const { character } = props;
+  const updateSequenceCharacter = useUpdateSequenceCharacter();
+  const updateTeamCharacter = useUpdateTeamCharacter();
+  const isPending =
+    updateSequenceCharacter.isPending || updateTeamCharacter.isPending;
   // A voice-only character (#1585) has no appearance: hide the empty
   // appearance fields (the schema defaults them to '') and label
   // personality as the voice.
@@ -65,15 +94,27 @@ export const CharacterBibleForm: React.FC<{
       });
       return;
     }
-    updateCharacter.mutate(
-      { sequenceId, characterId: character.id, ...result.data },
+    const callbacks = {
+      onSuccess: () => toast.success('Character saved'),
+      onError: (error: Error) =>
+        toast.error('Failed to save character', {
+          description: errorMessage(error),
+        }),
+    };
+    if (props.sequenceId === null) {
+      updateTeamCharacter.mutate(
+        { characterId: character.id, ...result.data },
+        callbacks
+      );
+      return;
+    }
+    updateSequenceCharacter.mutate(
       {
-        onSuccess: () => toast.success('Character saved'),
-        onError: (error) =>
-          toast.error('Failed to save character', {
-            description: errorMessage(error),
-          }),
-      }
+        sequenceId: props.sequenceId,
+        characterId: character.id,
+        ...result.data,
+      },
+      callbacks
     );
   };
 
@@ -119,24 +160,14 @@ export const CharacterBibleForm: React.FC<{
           textarea
         />
       )}
-      {showAppearance(character.standardClothing) && (
-        <BibleField
-          idPrefix="character"
-          label="Standard Clothing"
-          name="standardClothing"
-          defaultValue={character.standardClothing}
-          textarea
-        />
-      )}
-      {showAppearance(character.distinguishingFeatures) && (
-        <BibleField
-          idPrefix="character"
-          label="Distinguishing Features"
-          name="distinguishingFeatures"
-          defaultValue={character.distinguishingFeatures}
-          textarea
-        />
-      )}
+      {/* Always shown: unticking Voice only needs it in the same save. */}
+      <BibleField
+        idPrefix="character"
+        label="Rendered as"
+        name="rendering"
+        defaultValue={character.rendering}
+        required={!character.voiceOnly}
+      />
       <div className="flex flex-col gap-1">
         <Label
           htmlFor="character-isPerson"
@@ -144,15 +175,27 @@ export const CharacterBibleForm: React.FC<{
         >
           Person
         </Label>
+        {/* Locked (#2065): shows Person, and with no `name` it is not
+            submitted, so the server keeps what it holds. */}
         <Select
-          name="isPerson"
-          defaultValue={character.isPerson ? 'true' : 'false'}
+          // Uncontrolled: reseed when the lock lands or lifts.
+          key={character.personLock?.reason ?? 'unlocked'}
+          name={character.personLock ? undefined : 'isPerson'}
+          disabled={character.personLock !== null}
+          defaultValue={
+            character.personLock || character.isPerson ? 'true' : 'false'
+          }
           items={{
             true: 'Person',
             false: 'Not a person',
           }}
         >
-          <SelectTrigger id="character-isPerson">
+          <SelectTrigger
+            id="character-isPerson"
+            aria-describedby={
+              character.personLock ? 'character-isPerson-reason' : undefined
+            }
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -160,6 +203,14 @@ export const CharacterBibleForm: React.FC<{
             <SelectItem value="false">Not a person</SelectItem>
           </SelectContent>
         </Select>
+        {character.personLock && (
+          <p
+            id="character-isPerson-reason"
+            className="text-xs text-muted-foreground"
+          >
+            {personLockMessage(character.personLock)}
+          </p>
+        )}
       </div>
       {/* The way back from a bible call that misfiled an on-screen character
           as a voice (#1585): untick, save, then generate the sheet. */}
@@ -200,11 +251,8 @@ export const CharacterBibleForm: React.FC<{
         hint="Language, age, quality, persona, emotion, timbre — what can be heard, not how they look."
       />
       <div className="flex justify-end">
-        <Button type="submit" disabled={updateCharacter.isPending}>
-          {updateCharacter.isPending && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          {updateCharacter.isPending ? 'Saving…' : 'Save'}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </form>

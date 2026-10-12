@@ -220,7 +220,8 @@ export function useUploadCharacterSheet() {
   return useMutation({
     mutationFn: async (input: {
       file: File;
-      sequenceId: string;
+      /** Null from the Characters page (#2017). */
+      sequenceId: string | null;
       characterId: string;
       /** The look the sheet is of (#2015); the default look when omitted. */
       lookId?: string;
@@ -247,10 +248,10 @@ export function useUploadCharacterSheet() {
         },
       });
     },
-    onSuccess: async (_result, { sequenceId }) => {
+    onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: sequenceCharacterKeys.list(sequenceId),
+          queryKey: sequenceCharacterKeys.all,
         }),
         queryClient.invalidateQueries({
           queryKey: characterSheetVariantKeys.all,

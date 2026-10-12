@@ -55,6 +55,10 @@ export const characterSheetVariants = snakeCase.table(
 
     url: text(),
     storagePath: text(),
+    // A square portrait drawn from this sheet, for tiles and avatars. Null on
+    // rows from before portraits and when the draw failed: tiles then crop
+    // the sheet itself.
+    portraitUrl: text(),
 
     status: text()
       .$type<CharacterSheetVariantStatus>()

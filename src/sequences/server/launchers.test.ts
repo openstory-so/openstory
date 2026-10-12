@@ -89,6 +89,7 @@ function makeScopedDb(opts: {
   locations?: Array<{ id: string; name: string; description: string | null }>;
   musicPrompt?: string | null;
   generationStopAt?: GenerationStage;
+  cast?: never[];
 }) {
   const updateStatus = vi.fn();
   const claimWorkflowSlot = vi.fn<
@@ -123,11 +124,14 @@ function makeScopedDb(opts: {
   );
   const getTalentByIds = vi.fn(async () => opts.talent ?? []);
   const getLocationsByIds = vi.fn(async () => opts.locations ?? []);
+  const listCharacters = vi.fn(async () => opts.cast ?? []);
+  const getHeldElsewhere = vi.fn(async () => false);
   const getMemberEmail = vi.fn(async () => 'owner@example.com');
   const stub = {
     sequences: { getForUser, claimWorkflowSlot, update },
     styles: { getById: getStyleById },
     sequenceElements: { list: listElements },
+    characters: { list: listCharacters, getHeldElsewhere },
     talent: { getByIds: getTalentByIds },
     locations: { getByIds: getLocationsByIds },
     teamManagement: { getMemberEmail },
@@ -260,6 +264,8 @@ describe('triggerStoryboard', () => {
       imageModel: DEFAULT_IMAGE_MODEL,
       videoModel: DEFAULT_VIDEO_MODEL,
       elementIds: ['el_1', 'el_2'],
+      // The live cast, frozen here (#2050); this sequence casts nobody yet.
+      cast: [],
       // No music prompt on the row yet, so whatever the pipeline writes is a
       // first generation — resolved here, not by a lookup in the grandchild.
       musicPromptSource: 'ai-generated',

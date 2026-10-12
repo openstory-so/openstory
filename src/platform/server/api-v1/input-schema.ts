@@ -98,7 +98,7 @@ const characterRefSchema = z
   .meta({
     id: 'CharacterRef',
     description:
-      'Existing talent by id or name (string), or an inline create object.',
+      'Existing team character or talent by id or name (string), or an inline create object. A team character is cast into the sequence; a name two team characters share, or a character and a talent share, is a conflict that asks for the id.',
   });
 const locationRefSchema = z
   .union([z.string().min(1), createLocationSchema])
@@ -181,7 +181,7 @@ export const apiCreateSequenceSchema = z
       .min(1)
       .optional()
       .meta({
-        description: `Video (image-to-video) model key(s); first is primary. Defaults to ${DEFAULT_VIDEO_MODEL}.`,
+        description: `Video (image-to-video) model key(s); first is primary. Defaults to seedance_v2_5 where the team can reach it, otherwise ${DEFAULT_VIDEO_MODEL}.`,
       }),
 
     motion: z

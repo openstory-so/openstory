@@ -36,7 +36,11 @@ import { estimateStoryboardPreflightCost } from '@/billing/storyboard-preflight-
 import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { ValidationError } from '@/platform/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 import { allowsUnfundedGeneration } from '@/sequences/pipeline';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import {
@@ -51,6 +55,7 @@ import {
   type CreateSequenceInput,
 } from './sequence.schemas';
 import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
+import { attachLibraryCharacter } from '@/cast/server/cast-edit';
 import { copySequenceElements } from '@/cast/server/sequence-elements/copy-sequence-elements';
 import {
   assertDraftElementUploadsAttachable,
@@ -158,6 +163,7 @@ export const createSequences = createServerOnlyFn(
       targetDurationSeconds,
       suggestedTalentIds,
       suggestedLocationIds,
+      castCharacterIds,
       elementUploads,
       sourceSequenceId,
     } = data;
@@ -315,6 +321,26 @@ export const createSequences = createServerOnlyFn(
       pricing: await getEffectiveFalPricing(),
     });
 
+    // Team characters the script references (#2050) are checked before any
+    // row is written: every pick must be the team's, and no two may share
+    // a name, or the attach after the insert would leave an empty sequence.
+    if (castCharacterIds?.length) {
+      const library = await context.scopedDb.characters.listTeam();
+      const names = new Map<string, string>();
+      for (const id of new Set(castCharacterIds)) {
+        const character = library.find((c) => c.id === id);
+        if (!character) throw new NotFoundError('Character not found');
+        const key = character.name.trim().toLowerCase();
+        const other = names.get(key);
+        if (other) {
+          throw new ConflictError(
+            `${character.name} is picked twice. Rename one first.`
+          );
+        }
+        names.set(key, character.id);
+      }
+    }
+
     // Automatic style (#1213). `'auto'` asks for a fresh script-derived style;
     // a style already bound to another sequence (regenerate / copy of an auto
     // sequence) is cloned rather than shared, so each sequence owns its row.
@@ -371,6 +397,17 @@ export const createSequences = createServerOnlyFn(
                 ? suggestedLocationIds
                 : undefined,
             });
+
+            // Team characters the script references (#2050) are cast
+            // before the trigger, so the launcher's cast snapshot has them.
+            for (const characterId of castCharacterIds ?? []) {
+              await attachLibraryCharacter(
+                context.scopedDb,
+                { userId: context.user.id },
+                sequence.id,
+                characterId
+              );
+            }
 
             // Point rows at any draft element uploads (insert + vision; the
             // R2 object is not moved — see attachElementUpload). Runs before

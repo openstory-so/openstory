@@ -80,11 +80,13 @@ const SceneLookPicker: React.FC<{
     (look) => !look.deletedAt || look.id === wornLookId
   );
   if (looks.length < 2) return null;
+  const label = (look: (typeof looks)[number]) =>
+    look.isDefault ? `${look.name} (default look)` : look.name;
   return (
     <Select
       value={wornLookId}
       // The trigger shows the look's name, not its id.
-      items={Object.fromEntries(looks.map((look) => [look.id, look.name]))}
+      items={Object.fromEntries(looks.map((look) => [look.id, label(look)]))}
       disabled={update.isPending}
       onValueChange={(lookId) => {
         if (!lookId) return;
@@ -117,7 +119,7 @@ const SceneLookPicker: React.FC<{
       <SelectContent>
         {looks.map((look) => (
           <SelectItem key={look.id} value={look.id}>
-            {look.name}
+            {label(look)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -141,18 +143,21 @@ const CastCard: React.FC<CastCardProps> = ({
       <Link
         to="/sequences/$id/cast/$characterId"
         params={{ id: sequenceId, characterId: character.id }}
+        // Opens beside the inspector: the tab and the selection stay as they are.
+        search
         className="block overflow-hidden rounded-lg bg-card cursor-pointer"
       >
-        {/* Character avatar — 4-panel sheet cropped to the close-up (panel 2) */}
+        {/* The portrait drawn from the sheet; a sheet from before portraits
+            is cropped to its close-up (panel 2 of 4). */}
         <div className="aspect-square relative overflow-hidden bg-muted">
           {character.sheetImageUrl ? (
             <AppImage
-              src={character.sheetImageUrl}
+              src={character.sheetPortraitUrl ?? character.sheetImageUrl}
               alt={character.name}
               width={160}
               height={160}
               className={cn(
-                talentSquareImageClassName(true),
+                talentSquareImageClassName(!character.sheetPortraitUrl),
                 'transition-transform duration-500 group-hover:scale-105'
               )}
             />
@@ -303,6 +308,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   // so a newly added one (referenced by no scene yet) would not appear here,
   // and the click would read as a no-op.
   const canAdd = shotIds === null;
+  const castIds = new Set((characters ?? []).map((c) => c.id));
 
   if (scopedCast.length === 0) {
     return (
@@ -315,7 +321,12 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             ? 'No cast yet'
             : 'No cast in this selection — clear the selection to add one'}
         </p>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <AddCharacterDialog
+            sequenceId={sequenceId}
+            castCharacterIds={castIds}
+          />
+        )}
       </div>
     );
   }
@@ -331,7 +342,12 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             {scopedCast.length === 1 ? 'character' : 'characters'}
           </span>
         </div>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <AddCharacterDialog
+            sequenceId={sequenceId}
+            castCharacterIds={castIds}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">

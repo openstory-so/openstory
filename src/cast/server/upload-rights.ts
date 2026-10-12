@@ -219,6 +219,41 @@ export async function likenessFromLedger(
 }
 
 /**
+ * The URLs among these the ledger saw a real person in: `likenessFromLedger`
+ * is `real`, for many URLs in one read (#2065). It never throws, so a list
+ * read always loads, and it fails closed: a row under a retired statement
+ * counts as a real person, where `likenessFromLedger` would throw. Only a
+ * cleared row, or no row, is not one. This is a safety gate, and an old row
+ * must not be the way to make a character not a person.
+ */
+export async function realPersonUrls(
+  scopedDb: Pick<ScopedDb, 'compliance'>,
+  urls: readonly string[]
+): Promise<Set<string>> {
+  const urlByHash = new Map<string, string>();
+  for (const url of new Set(urls)) urlByHash.set(await sha256Hex(url), url);
+  const rows = await scopedDb.compliance.attestations.listForSubjects(
+    'uploaded_image',
+    [...urlByHash.keys()]
+  );
+  const real = new Set<string>();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    // Newest first: only a subject's first row is its verdict.
+    if (seen.has(row.subjectId)) continue;
+    seen.add(row.subjectId);
+    const url = urlByHash.get(row.subjectId);
+    if (
+      url !== undefined &&
+      row.statementVersion !== LIKENESS_CLEARED_V1.version
+    ) {
+      real.add(url);
+    }
+  }
+  return real;
+}
+
+/**
  * After a finalize moves an object, cover the new URL with the same row so
  * the library copy passes the gate without a second look.
  */

@@ -16,6 +16,7 @@ import {
   computeCharacterSheetHashFromDto,
 } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
+import { wornStyling } from '@/cast/bible-looks';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
 import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
@@ -192,10 +193,18 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
 
       // Shared with the reservation gate, which counts the sheets that will
       // actually be billed — see `reusesTalentSheet`.
-      const reuseTalentSheet = reusesTalentSheet(character, talentMatch);
+      const reuseTalentSheet = reusesTalentSheet(
+        {
+          standardClothing: character.standardClothing,
+          styling: wornStyling(character),
+        },
+        talentMatch
+      );
 
       const created = createdByDbId.get(characterDbId);
-      if (!created) {
+      // A created row means `create-character-records` had the sequence.
+      const sheetSequenceId = input.sequenceId;
+      if (!created || !sheetSequenceId) {
         throw new WorkflowValidationError(
           `[CharacterBibleWorkflow:cf] No created row for ${characterDbId}`
         );
@@ -208,6 +217,9 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         characterDbId,
         lookId: created.lookId,
         lookVersionId: created.lookVersionId,
+        // The bible run draws each character's default look, which has no
+        // face to be drawn from.
+        face: null,
         lookStyling: created.lookStyling,
         talentId: created.talentId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a result cached before #1600
@@ -231,7 +243,6 @@ export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           ? 'This character must exactly match the person shown in the reference image'
           : undefined,
         reuseTalentSheet,
-        styleConfig: input.styleConfig,
         castTalentDescription: talentMatch?.talentDescription ?? null,
         talentSheetInputHash: talentMatch?.sheetInputHash ?? null,
       };

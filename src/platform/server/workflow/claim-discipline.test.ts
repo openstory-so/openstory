@@ -36,8 +36,9 @@ type ClaimDomain = {
   claim: ScopedMethod;
   /** Clears the claim on failure ONLY if this run still holds it. */
   clear: ScopedMethod;
-  /** Moves the pointer and consumes the claim in one guarded UPDATE. */
-  promote: ScopedMethod;
+  /** Moves the pointer and consumes the claim in one guarded UPDATE. A domain
+   * with two ways to land (a drawn row, an existing row pointed at) names both. */
+  promote: ScopedMethod | readonly [ScopedMethod, ...ScopedMethod[]];
   /** The user's selector: moves the pointer unconditionally. Never from a run. */
   userSelect: ScopedMethod;
 };
@@ -63,13 +64,12 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   // Sheets (#1113): pointer claims on the parent row naming the id the run's
   // result will carry. The row is appended at completion (no pending row),
   // so a claim miss parks it as divergent in the same batch. A character's
-  // sheets belong to its looks (#2015), and the pointer and the claim to the
-  // sequence that uses the look (#2017): they are on `sequence_cast_looks`,
-  // one per look per sequence, and the claim is taken only while the look
-  // version, bible version and talent that sequence pins are still the ones
-  // the run was snapshotted from (#1863).
+  // sheets belong to its looks (#2015): the pointer and the claim are on
+  // `character_looks`, and the claim is taken only while the look version,
+  // the bible version and the talent are still the ones the run was
+  // snapshotted from (#1863).
   'character sheets': {
-    tables: ['character_sheet_variants', 'sequence_cast_looks'],
+    tables: ['character_sheet_variants', 'character_looks'],
     claim: 'characterLooks.claimSheet',
     clear: 'characterLooks.failSheetClaim',
     promote: 'characterSheetVariants.promoteIfPending',
@@ -299,14 +299,16 @@ describe('claim discipline (#1130)', () => {
     const missing: string[] = [];
     for (const [name, domain] of Object.entries(CLAIM_DOMAINS)) {
       for (const role of ['claim', 'clear', 'promote', 'userSelect'] as const) {
-        const [module = '', method = ''] = domain[role].split('.');
-        const methods: unknown = Reflect.get(scopedDb, module);
-        const fn: unknown =
-          typeof methods === 'object' && methods !== null
-            ? Reflect.get(methods, method)
-            : undefined;
-        if (typeof fn !== 'function') {
-          missing.push(`${name}.${role}: ${domain[role]}`);
+        for (const spelled of [domain[role]].flat()) {
+          const [module = '', method = ''] = spelled.split('.');
+          const methods: unknown = Reflect.get(scopedDb, module);
+          const fn: unknown =
+            typeof methods === 'object' && methods !== null
+              ? Reflect.get(methods, method)
+              : undefined;
+          if (typeof fn !== 'function') {
+            missing.push(`${name}.${role}: ${spelled}`);
+          }
         }
       }
     }

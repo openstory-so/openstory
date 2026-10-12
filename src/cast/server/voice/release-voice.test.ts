@@ -38,6 +38,8 @@ function makeScopedDb(referenceCount: number) {
   const scopedDb = asStub<ScopedDb>({
     characters: {
       getVoiceReferenceCount: vi.fn(async () => referenceCount),
+      // The character's own pointer and pin: what its release drops.
+      getOwnVoiceHolds: vi.fn(async () => Math.min(referenceCount, 1)),
       markVoiceReleased,
       updateVoice,
     },

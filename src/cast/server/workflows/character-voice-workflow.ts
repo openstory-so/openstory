@@ -61,6 +61,7 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
+import { castChannelId } from '@/cast/cast-channel';
 
 const logger = getLogger(['openstory', 'workflow', 'character-voice']);
 
@@ -78,7 +79,9 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   ): Promise<CharacterVoiceWorkflowResult> {
     const input = event.payload;
     const { characterDbId, sequenceId, characterBible } = input;
-    const channel = getGenerationChannel(sequenceId);
+    const channel = getGenerationChannel(
+      castChannelId(sequenceId, characterDbId)
+    );
     const targetVersionId = input.targetVersionId;
     // Stamp the child instance id before design so reconcile can verify a
     // bible-spawned husk (insert has no run id) instead of failing it at 5 min.
@@ -112,7 +115,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             responseSchema: voiceDescriptionSchema,
           },
           {
-            sequenceId,
+            sequenceId: sequenceId ?? undefined,
             userId: input.userId,
             workflowRunId: event.instanceId,
             scopedDb,
@@ -166,9 +169,9 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         );
         return { voiceId, emit: 'completed' as const };
       }
-      const live = await scopedDb.liveRead.characters.getById(characterDbId);
+      const live = await scopedDb.liveRead.characters.getVoice(characterDbId);
       const shouldPromote =
-        live?.pendingPromoteVoiceVersionId === targetVersionId;
+        live.pendingPromoteVoiceVersionId === targetVersionId;
       if (!shouldPromote) {
         // Persist replay after promote: pointer is already cleared and this
         // husk is the selected voice. Do not treat that as a demote.
@@ -177,8 +180,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         if (
           existing?.status === 'completed' &&
           existing.voiceId === voiceId &&
-          (live?.selectedVoiceVersionId === targetVersionId ||
-            live?.voiceId === voiceId)
+          (live.selectedVoiceVersionId === targetVersionId ||
+            live.voiceId === voiceId)
         ) {
           return { voiceId, emit: 'completed' as const };
         }
@@ -208,6 +211,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           return { voiceId: null, emit: 'failed' as const };
         }
       }
+      // The sequence the run was for pins the new voice (#2017); the others
+      // keep theirs.
       const promoted = await scopedDb.characters.promoteVoiceClaimIfPending(
         characterDbId,
         targetVersionId
@@ -246,7 +251,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const designed = await designVoicePreviews(key, voiceDescription);
       const stored: VoicePreview[] = [];
       for (const preview of designed) {
-        const path = `${input.teamId}/${sequenceId}/${characterDbId}/${generateId()}.mp3`;
+        const path = `${input.teamId}/${sequenceId ?? 'team'}/${characterDbId}/${generateId()}.mp3`;
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,
@@ -296,7 +301,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const top = previews[0];
       if (!top) throw new Error('No preview to save');
       return saveDesignedVoice(key, {
-        voiceName: `${characterBible.name} · ${sequenceId.slice(-6)}`,
+        voiceName: `${characterBible.name} · ${characterDbId.slice(-6)}`,
         voiceDescription,
         generatedVoiceId: top.generatedVoiceId,
       });
@@ -333,7 +338,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         responseSchema: voiceRangeScriptSchema,
       },
       {
-        sequenceId,
+        sequenceId: sequenceId ?? undefined,
         userId: input.userId,
         workflowRunId: event.instanceId,
         scopedDb,
@@ -464,7 +469,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         model: asset.model,
         workflowRunId: event.instanceId,
         prompt: asset.prompt,
-        sequenceId: input.sequenceId,
+        sequenceId: input.sequenceId ?? undefined,
       });
     });
   }
@@ -489,7 +494,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         error
       );
     }
-    await getGenerationChannel(sequenceId).emit(
+    await getGenerationChannel(castChannelId(sequenceId, characterDbId)).emit(
       'generation.character-voice:progress',
       { characterId: characterDbId, status: 'failed', error }
     );

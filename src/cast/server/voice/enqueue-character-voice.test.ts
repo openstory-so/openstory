@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CharacterWithSheet } from '@/platform/server/db/schema';
+import type { CastCharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { enqueueCharacterVoiceDesign } from './enqueue-character-voice';
 import { asStub } from '@/test/as-stub';
 
 function character(
-  overrides: Partial<CharacterWithSheet> = {}
-): CharacterWithSheet {
+  overrides: Partial<CastCharacterWithSheet> = {}
+): CastCharacterWithSheet {
   return {
     id: 'char-1',
     sequenceId: 'seq-1',
@@ -18,11 +18,12 @@ function character(
     ethnicity: null,
     physicalDescription: null,
     standardClothing: null,
-    distinguishingFeatures: null,
+    legacyDistinguishingFeatures: null,
     personality: null,
     movement: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: 'voice-old',
     voiceDescription: 'Warm alto',
     voicePreviews: null,
@@ -44,7 +45,6 @@ function character(
     // Cast in its sequence (#2017).
     castId: 'cast-1',
     teamId: 'team-1',
-    inLibrary: false,
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
     deletedAt: null,
@@ -52,6 +52,7 @@ function character(
     updatedAt: new Date(0),
     sheetImageUrl: null,
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetGeneratedAt: null,
     sheetInputHash: null,
     ...overrides,
@@ -101,6 +102,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -126,6 +128,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -145,6 +148,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -164,6 +168,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       enqueueCharacterVoiceDesign({
         scopedDb,
         character: character(),
+        sequenceId: 'seq-1',
         userId: 'user-1',
         analysisModel: null,
         takes: 2,
@@ -189,6 +194,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -224,6 +230,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -252,6 +259,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,

@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.\n\n[LAYOUT]:\nThe grid comprises four distinct, technical views arranged horizontally:\n- Panel 1 (Left): Full body frontal view, standing in a neutral pose\n- Panel 2 (Center-Left): Close-up portrait frontal view (chest up)\n- Panel 3 (Center-Right): Full body side profile view facing left\n- Panel 4 (Right): Full body rear view\n\nAll attire, accessories, hair, and features must be perfectly consistent across all four panels.\n\n[CHARACTER IDENTITY]:\nName: Passing cyclist\nAge: 20s-40s\nGender: Unspecified\nEthnicity: Unspecified\n\nPhysical Appearance:\nAn athletic adult cyclist with a lean build, wind-flushed face, and quick reflexes. Their hair is mostly concealed by a helmet, and their clothing is streamlined for urban cycling.\n\nCostume:\nFitted cycling jacket, dark athletic trousers, helmet, practical shoes, and gloves. The clothing is functional and slightly wind-resistant, with one gloved hand prominently visible as it steadies Scarlett's coffee.\n\nDistinguishing Features:\nA cycling helmet and gloves, especially the single gloved hand that catches and stabilizes the cup without stopping for long.\n\n[ENVIRONMENT]:\nSeamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.\n\n[OPTICAL & CAMERA SPECS]:\nCommercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.\n\n[LIGHTING]:\nNeutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.\n\n[MATERIALITY]:\nHyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/5e6b2a8ee7fa7faebe8e842d5d4d8063da412b8c68a32adb8b23e62d194692ff.png"
+        }
+      }
+    }
+  ]
+}

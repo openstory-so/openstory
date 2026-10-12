@@ -56,13 +56,25 @@ export const characterBibleFieldsSchema = z.object({
   gender: bibleField.optional(),
   ethnicity: bibleField.optional(),
   physicalDescription: bibleField.optional(),
-  standardClothing: bibleField.optional(),
-  distinguishingFeatures: bibleField.optional(),
+  standardClothing: bibleField.optional().meta({
+    description:
+      'Deprecated: the default look’s clothing. Edit the look instead.',
+  }),
+  // Not a bible field any more (#2065): `cast-edit` folds it into the
+  // default look's styling.
+  distinguishingFeatures: bibleField.optional().meta({
+    description:
+      'Deprecated: appended to the default look’s styling unless already there; blank is ignored. Edit the look’s styling instead.',
+  }),
   personality: bibleField.optional(),
   movement: bibleField.optional(),
   voiceDescription: bibleField.optional(),
   consistencyTag: bibleField.optional(),
   isPerson: z.boolean().optional(),
+  rendering: bibleField.optional().meta({
+    description:
+      'What the character is rendered as, e.g. "Photoreal live action" or "3D animated, Pixar-like". Required unless voice-only; a new character in a sequence takes the sequence style’s when left out.',
+  }),
 });
 
 /** The user-editable location bible fields (#1108); the library link stays on recast. */

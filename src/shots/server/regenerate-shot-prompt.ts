@@ -192,6 +192,7 @@ export async function regenerateShotPrompt(
                 voiceHistory,
                 visualSelected?.createdAt ?? new Date(0)
               ),
+              legacyStyling: ctx.legacyStyling,
               acceptLegacy:
                 (visualSelected?.specVersionId ?? null) === selectedSpec.id,
             }
@@ -208,6 +209,7 @@ export async function regenerateShotPrompt(
                 voiceHistory,
                 motionSelected?.createdAt ?? new Date(0)
               ),
+              legacyStyling: ctx.legacyStyling,
               acceptLegacy:
                 (motionSelected?.specVersionId ?? null) === selectedSpec.id,
             }

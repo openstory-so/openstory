@@ -387,6 +387,26 @@ export function createScenesMethods(db: Database) {
       if (first) await db.batch([first, ...rest]);
     },
 
+    /**
+     * The statements {@link updateContinuity} would run, for a caller's own
+     * batch: a one-off character copy re-points every scene's look picks in
+     * the batch that makes the copy (#2017), so a part-way failure leaves no
+     * scene pointing at a look the cast does not have.
+     */
+    updateContinuityStatements: async (
+      sceneId: DbSceneId,
+      continuity: NonNullable<SceneNarrative['continuity']>,
+      opts: { actorId: string | null }
+    ) => {
+      const [existing] = await selectScenes().where(eq(scenes.id, sceneId));
+      if (!existing) throw new NotFoundError(`Scene ${sceneId} not found`);
+      return await narrativeWrite(
+        existing,
+        { continuity },
+        { source: 'edit', createdBy: opts.actorId }
+      );
+    },
+
     delete: async (sceneId: DbSceneId): Promise<boolean> => {
       const result = await db.delete(scenes).where(eq(scenes.id, sceneId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime

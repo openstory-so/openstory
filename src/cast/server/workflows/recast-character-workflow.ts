@@ -168,10 +168,14 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           lookId: input.lookId,
           lookVersionId: input.lookVersionId,
           lookStyling: input.lookStyling,
+          // A recast redraws the default look, which has no face to be drawn
+          // from: it is the face.
+          face: null,
           talentId: input.talentId,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,
-          sequenceId: input.sequenceId,
+          // A recast runs through a sequence (its shots are re-rendered).
+          sequenceId: input.sequenceId ?? null,
           teamId: input.teamId,
           userId: input.userId,
           imageModel: input.imageModel,
@@ -179,7 +183,6 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           talentMetadata: input.talentMetadata,
           talentDescription: input.talentDescription,
           reuseTalentSheet: input.reuseTalentSheet,
-          styleConfig: input.styleConfig,
           talentSheetInputHash: input.talentSheetInputHash,
           castTalentDescription: input.castTalentDescription,
           // The claim recastCharacterFn took (#1113).

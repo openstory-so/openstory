@@ -1,9 +1,10 @@
 /**
  * Images / Videos list toolbar prefs (#1568).
  *
- * Live state lives in the /images and /videos search params (shareable).
- * localStorage is the memory for a bare visit (sidebar / breadcrumb) so
- * support mode survives leaving the page — same contract as sequences.
+ * Live state lives in the /images and /clips search params (shareable).
+ * A cookie is the memory for a bare visit (sidebar / breadcrumb) so support
+ * mode survives leaving the page, restored on the server before the first
+ * paint — same contract as sequences.
  *
  * `sort` and `favorites` stay on the URL only; they are not stored, so a
  * remembered Support overlay does not clobber Newest/Oldest.
@@ -12,9 +13,10 @@
  * with a 307, which sours the sitemap entry (#814).
  */
 import { studioSortSchema, type StudioSort } from '@/studio/schema';
+import { readCookie, writeCookie } from '@/ui/cookie';
 import { z } from 'zod';
 
-export const STUDIO_LIST_PREFS_KEY = 'openstory:studio-list:v1';
+export const STUDIO_LIST_PREFS_COOKIE = 'openstory_studio_list_v1';
 
 export const studioListSearchSchema = z.object({
   user: z.string().email().optional(),
@@ -110,12 +112,10 @@ export function prefsToSearch(
 }
 
 export function loadStudioListPrefs(): StoredStudioListPrefs | null {
-  if (typeof window === 'undefined') return null;
+  const raw = readCookie(STUDIO_LIST_PREFS_COOKIE);
+  if (!raw) return null;
   try {
-    const raw = localStorage.getItem(STUDIO_LIST_PREFS_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    const result = storedPrefsSchema.safeParse(parsed);
+    const result = storedPrefsSchema.safeParse(JSON.parse(raw));
     return result.success ? result.data : null;
   } catch {
     return null;
@@ -123,17 +123,31 @@ export function loadStudioListPrefs(): StoredStudioListPrefs | null {
 }
 
 export function saveStudioListPrefs(prefs: StudioListPrefs): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(
-      STUDIO_LIST_PREFS_KEY,
-      JSON.stringify({
-        search: prefs.search,
-        supportMode: prefs.supportMode,
-        hideInternal: prefs.hideInternal,
-      })
-    );
-  } catch {
-    // private mode / quota
+  writeCookie(
+    STUDIO_LIST_PREFS_COOKIE,
+    JSON.stringify({
+      search: prefs.search,
+      supportMode: prefs.supportMode,
+      hideInternal: prefs.hideInternal,
+    })
+  );
+}
+
+/**
+ * Route `beforeLoad`: a URL that names support prefs is remembered; a bare
+ * visit gets the search to redirect to. The redirect target names support
+ * prefs, so it never redirects twice. A hover preload remembers nothing.
+ */
+export function rememberStudioListPrefs(
+  search: StudioListSearch,
+  preload: boolean
+): StudioListSearch | null {
+  if (searchSpecifiesSupportPrefs(search)) {
+    if (!preload) saveStudioListPrefs(prefsFromSearch(search));
+    return null;
   }
+  const next = prefsToSearch(
+    resolveStudioListPrefs(search, loadStudioListPrefs())
+  );
+  return searchSpecifiesSupportPrefs(next) ? next : null;
 }

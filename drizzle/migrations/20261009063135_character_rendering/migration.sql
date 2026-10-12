@@ -1,0 +1,1 @@
+ALTER TABLE `character_bible_versions` ADD `rendering` text;

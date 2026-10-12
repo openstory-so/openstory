@@ -42,6 +42,7 @@ describe('sequence composer draft', () => {
       sampleStyleId: 'noir',
       selectedTalentIds: [],
       selectedLocationIds: [],
+      castCharacterIds: [],
       elementUploads: [],
     });
     expect(readSequenceDraft()).toMatchObject({
@@ -57,6 +58,7 @@ describe('sequence composer draft', () => {
         styleId: 'auto',
         selectedTalentIds: [],
         selectedLocationIds: [],
+        castCharacterIds: [],
         elementUploads: [],
         savedAt: Date.now(),
       })
@@ -75,6 +77,7 @@ describe('sequence composer draft', () => {
       sampleStyleId: null,
       selectedTalentIds: [],
       selectedLocationIds: [],
+      castCharacterIds: [],
       elementUploads: [],
     });
     vi.setSystemTime(new Date('2026-08-30T12:00:01Z'));

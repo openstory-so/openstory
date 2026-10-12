@@ -31,7 +31,7 @@ import {
   sequences,
   shotDialogueClaims,
   characterSheetVariants,
-  sequenceCastLooks,
+  characterLooks,
   characterVoiceVersions,
   characters,
   videoVariants,
@@ -357,10 +357,10 @@ async function reconcileMusicClaimsPass(db: Database): Promise<number> {
 }
 
 /**
- * Settle look sheet claims no run will settle (#2015). A sequence's cast look
- * (#2017) holds a claim on the id its sheet row will carry; the landing batch
- * inserts that row and clears the claim together, so a worker of this version
- * never leaves the two states below.
+ * Settle look sheet claims no run will settle (#2015). A look holds a claim
+ * on the id its sheet row will carry; the landing batch inserts that row and
+ * clears the claim together, so a worker of this version never leaves the
+ * two states below.
  *
  * 1. The claimed row already exists as a plain completed sheet. Only an
  *    older worker does that: it landed the run on the character's or the
@@ -377,16 +377,13 @@ export async function reconcileLookSheetClaimsPass(
 ): Promise<number> {
   const landed = await db
     .select({
-      castLookId: sequenceCastLooks.id,
-      claim: sequenceCastLooks.pendingPromoteSheetVersionId,
+      lookId: characterLooks.id,
+      claim: characterLooks.pendingPromoteSheetVersionId,
     })
-    .from(sequenceCastLooks)
+    .from(characterLooks)
     .innerJoin(
       characterSheetVariants,
-      eq(
-        characterSheetVariants.id,
-        sequenceCastLooks.pendingPromoteSheetVersionId
-      )
+      eq(characterSheetVariants.id, characterLooks.pendingPromoteSheetVersionId)
     )
     .where(
       and(
@@ -401,7 +398,7 @@ export async function reconcileLookSheetClaimsPass(
   for (const row of landed) {
     if (!row.claim) continue;
     const promoted = await db
-      .update(sequenceCastLooks)
+      .update(characterLooks)
       .set({
         selectedSheetVersionId: row.claim,
         pendingPromoteSheetVersionId: null,
@@ -410,16 +407,16 @@ export async function reconcileLookSheetClaimsPass(
       })
       .where(
         and(
-          eq(sequenceCastLooks.id, row.castLookId),
-          eq(sequenceCastLooks.pendingPromoteSheetVersionId, row.claim)
+          eq(characterLooks.id, row.lookId),
+          eq(characterLooks.pendingPromoteSheetVersionId, row.claim)
         )
       )
-      .returning({ id: sequenceCastLooks.id });
+      .returning({ id: characterLooks.id });
     updated += promoted.length;
   }
 
   const died = await db
-    .update(sequenceCastLooks)
+    .update(characterLooks)
     .set({
       pendingPromoteSheetVersionId: null,
       sheetStatus: 'failed',
@@ -427,14 +424,11 @@ export async function reconcileLookSheetClaimsPass(
     })
     .where(
       and(
-        isNotNull(sequenceCastLooks.pendingPromoteSheetVersionId),
-        lt(
-          sequenceCastLooks.updatedAt,
-          new Date(Date.now() - LOOK_SHEET_DEAD_MS)
-        )
+        isNotNull(characterLooks.pendingPromoteSheetVersionId),
+        lt(characterLooks.updatedAt, new Date(Date.now() - LOOK_SHEET_DEAD_MS))
       )
     )
-    .returning({ id: sequenceCastLooks.id });
+    .returning({ id: characterLooks.id });
 
   return updated + died.length;
 }

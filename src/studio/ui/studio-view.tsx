@@ -1,6 +1,6 @@
 import { StudioComposer, type StudioComposerHandle } from './studio-composer';
 import { StudioGallery, type StudioGalleryAsset } from './studio-gallery';
-import { isSystemAdminFn } from '@/billing/gift-tokens.fn';
+import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { Button } from '@/ui/shadcn/button';
 import { Input } from '@/ui/shadcn/input';
@@ -8,16 +8,12 @@ import { Label } from '@/ui/shadcn/label';
 import { Switch } from '@/ui/shadcn/switch';
 import { PageContainer } from '@/ui/layout/page-container';
 import { PageIntro } from '@/ui/typography/page-intro';
-import { useIsomorphicLayoutEffect } from '@/ui/use-isomorphic-layout-effect';
 import { useAdminStudioAssets, useStudioAssets } from './use-studio-assets';
 import { studioPrompt } from './outputs';
 import {
-  loadStudioListPrefs,
   prefsFromSearch,
   prefsToSearch,
-  resolveStudioListPrefs,
   saveStudioListPrefs,
-  searchSpecifiesSupportPrefs,
   type StudioListPrefs,
   type StudioListSearch,
 } from './list-prefs';
@@ -36,24 +32,7 @@ function useStudioListPrefs(
   search: StudioListSearch,
   navigate: StudioListNavigate
 ) {
-  const restored = useRef(false);
   const prefs = prefsFromSearch(search);
-
-  useIsomorphicLayoutEffect(() => {
-    if (restored.current) return;
-    restored.current = true;
-
-    if (searchSpecifiesSupportPrefs(search)) {
-      saveStudioListPrefs(prefsFromSearch(search));
-      return;
-    }
-
-    const resolved = resolveStudioListPrefs(search, loadStudioListPrefs());
-    const nextSearch = prefsToSearch(resolved, search.user);
-    if (Object.keys(nextSearch).length === 0) return;
-    saveStudioListPrefs(resolved);
-    void navigate({ search: nextSearch, replace: true });
-  }, [navigate, search]);
 
   const setPrefs = useCallback(
     (next: StudioListPrefs) => {
@@ -82,9 +61,7 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
   const to = activity === 'video' ? '/clips' : '/images';
 
   const { data: adminStatus, isLoading: adminStatusLoading } = useQuery({
-    queryKey: ['system-admin-status'],
-    queryFn: () => isSystemAdminFn(),
-    staleTime: 5 * 60 * 1000,
+    ...systemAdminStatusQueryOptions,
     enabled: isAuthenticated,
   });
 

@@ -26,6 +26,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { landSheetRun } from './sheet-divergence';
+import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
 import type { SheetRunOutcome } from './sheet-divergence';
 import { locationSheetHashMatchesStored } from './sheet-snapshots';
 import { getLogger } from '@/platform/logger';
@@ -231,7 +232,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
             }),
           logger,
           logTag: '[LocationSheetWorkflow:cf]',
-          sequenceId,
+          channelId: sequenceId,
           entityType: 'location',
           entityId: locationDbId,
           versionId,
@@ -244,6 +245,25 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     if (reconcileOutcome.kind === 'convergent') {
       sheetVersionId = reconcileOutcome.versionId;
     }
+
+    // The sheet is saved: start its portrait run — see the character twin.
+    await step.do('trigger-portrait', async () => {
+      await triggerSheetPortrait(
+        {
+          userId: input.userId,
+          teamId,
+          sequenceId,
+          subject: { kind: 'location', locationId: locationDbId },
+          versionId: reconcileOutcome.versionId,
+          sheetUrl: storageResult.url,
+          storageDir: `${teamId}/${sequenceId}/${locationDbId}`,
+        },
+        await scopedDb.liveRead.compliance.listEnforcementFor(
+          input.userId,
+          teamId
+        )
+      );
+    });
 
     if (reconcileOutcome.kind === 'divergent') {
       // `stale:detected` is out and the land batch settled the status

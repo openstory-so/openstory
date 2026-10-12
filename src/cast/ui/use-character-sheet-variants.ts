@@ -1,6 +1,6 @@
 import {
   discardCharacterSheetVariantFn,
-  getSequenceCharacterDivergentVariantsFn,
+  getCharacterDivergentVariantsFn,
   listCharacterSheetVersionsFn,
   promoteCharacterSheetVariantFn,
   selectCharacterSheetVersionFn,
@@ -11,43 +11,40 @@ import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import type { CharacterSheetVariant } from '@/platform/server/db/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+/** Null is the Characters page (#2017): the same sheets, no sequence. */
+const scope = (sequenceId: string | null) => sequenceId ?? 'team';
+
 export const characterSheetVariantKeys = {
   all: ['character-sheet-variants'] as const,
   divergentBySequence: (sequenceId: string) =>
     [...characterSheetVariantKeys.all, 'sequence', sequenceId] as const,
-  history: (sequenceId: string, characterId: string) =>
+  divergentByCharacter: (characterId: string) =>
+    [...characterSheetVariantKeys.all, 'character', characterId] as const,
+  history: (sequenceId: string | null, characterId: string) =>
     [
       ...characterSheetVariantKeys.all,
       'history',
-      sequenceId,
+      scope(sequenceId),
       characterId,
     ] as const,
 };
 
-/**
- * Query the active divergent character-sheet alternates for every character
- * in a sequence. Drives the corner-dot indicator on talent cards and the
- * banner on the character detail view. Mirrors `useDivergentVariants`.
- */
-export function useCharacterDivergentVariants(
-  sequenceId: string | undefined,
-  options?: { refetchInterval?: number | false }
+/** One character's live divergent alternates: the detail view's banner. */
+export function useCharacterOwnDivergentVariants(
+  sequenceId: string | null,
+  characterId: string
 ) {
   return useQuery<CharacterSheetVariant[]>({
-    queryKey: characterSheetVariantKeys.divergentBySequence(sequenceId ?? ''),
-    queryFn: async () => {
-      if (!sequenceId) throw new Error('sequenceId is required');
-      return getSequenceCharacterDivergentVariantsFn({ data: { sequenceId } });
-    },
-    enabled: !!sequenceId,
+    queryKey: characterSheetVariantKeys.divergentByCharacter(characterId),
+    queryFn: () =>
+      getCharacterDivergentVariantsFn({ data: { sequenceId, characterId } }),
     staleTime: 30_000,
-    refetchInterval: options?.refetchInterval ?? false,
   });
 }
 
 /** One look's sheet versions (#2015); the default look's when `lookId` is omitted. */
 export function useCharacterSheetVersions(
-  sequenceId: string,
+  sequenceId: string | null,
   characterId: string,
   lookId?: string
 ) {
@@ -60,7 +57,7 @@ export function useCharacterSheetVersions(
       listCharacterSheetVersionsFn({
         data: { sequenceId, characterId, lookId },
       }),
-    enabled: !!sequenceId && !!characterId,
+    enabled: !!characterId,
     staleTime: 15_000,
   });
 }
@@ -69,7 +66,7 @@ export function useSelectCharacterSheetVersion() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: {
-      sequenceId: string;
+      sequenceId: string | null;
       characterId: string;
       versionId: string;
     }) => selectCharacterSheetVersionFn({ data: input }),
@@ -85,22 +82,22 @@ export function useSelectCharacterSheetVersion() {
   });
 }
 
-type VariantInput = { sequenceId: string; variantId: string };
+type VariantInput = { sequenceId: string | null; variantId: string };
 
 export function usePromoteCharacterSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: VariantInput) =>
       promoteCharacterSheetVariantFn({ data: input }),
-    onSuccess: async (_, { sequenceId }) => {
+    onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: characterSheetVariantKeys.divergentBySequence(sequenceId),
+          queryKey: characterSheetVariantKeys.all,
         }),
         // The promoted url overwrites characters.sheetImageUrl — invalidate
-        // the upstream characters list so the live image swaps in the UI.
+        // the upstream character reads so the live image swaps in the UI.
         queryClient.invalidateQueries({
-          queryKey: sequenceCharacterKeys.list(sequenceId),
+          queryKey: sequenceCharacterKeys.all,
         }),
       ]);
     },
@@ -116,9 +113,9 @@ export function useDiscardCharacterSheetVariant() {
   >({
     mutationFn: async (input) =>
       discardCharacterSheetVariantFn({ data: input }),
-    onSuccess: async (_, { sequenceId }) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: characterSheetVariantKeys.divergentBySequence(sequenceId),
+        queryKey: characterSheetVariantKeys.all,
       });
     },
   });
@@ -129,9 +126,9 @@ export function useUndiscardCharacterSheetVariant() {
   return useMutation<{ variantId: string }, Error, VariantInput>({
     mutationFn: async (input) =>
       undiscardCharacterSheetVariantFn({ data: input }),
-    onSuccess: async (_, { sequenceId }) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: characterSheetVariantKeys.divergentBySequence(sequenceId),
+        queryKey: characterSheetVariantKeys.all,
       });
     },
   });

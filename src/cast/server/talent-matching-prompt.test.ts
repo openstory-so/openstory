@@ -10,13 +10,20 @@ const character: CharacterBibleEntry = {
   ethnicity: '',
   physicalDescription: 'Wiry, sunburnt',
   standardClothing: 'dusty leather duster and a cowboy hat',
-  looks: [],
-  distinguishingFeatures: 'scar on left cheek',
+  looks: [
+    {
+      lookId: 'jack:default',
+      name: 'Default',
+      clothing: 'dusty leather duster and a cowboy hat',
+      styling: 'scar on left cheek',
+    },
+  ],
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'jack',
 };
 
@@ -40,6 +47,7 @@ const talent = {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'sam',
     },
   },

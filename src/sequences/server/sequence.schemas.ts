@@ -172,6 +172,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation
     suggestedLocationIds: z.array(z.string()).optional(),
+    // Team characters the script references with `@` (#2050): cast into
+    // the new sequence before analysis runs, so analysis reads them.
+    castCharacterIds: z.array(z.string()).optional(),
     // Draft element uploads: images already at a permanent key, waiting for a
     // sequence to point rows at them (#1471). One schema, shared with the
     // localStorage draft and the public API — see `draftElementUploadSchema`.

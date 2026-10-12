@@ -113,12 +113,12 @@ const entry = (
   physicalDescription: '',
   standardClothing: '',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: overrides.characterId,
   ...overrides,
 });
@@ -134,6 +134,7 @@ const narrator = entry({
   personality: 'dry, unhurried, faintly amused',
   voiceOnly: true,
   isPerson: true,
+  rendering: 'Photoreal live action',
 });
 
 function makeEvent(
@@ -178,12 +179,14 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
         characterId: 'sam',
         voiceOnly: false,
         isPerson: true,
+        rendering: 'Photoreal live action',
         sheetStatus: 'generating',
       }),
       expect.objectContaining({
         characterId: 'narrator',
         voiceOnly: true,
         isPerson: true,
+        rendering: null,
         sheetStatus: 'completed',
       }),
     ]);

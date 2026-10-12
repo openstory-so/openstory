@@ -35,7 +35,10 @@ import { getMimeTypeFromExtension } from '@/platform/server/storage/file';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
-import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
+import {
+  castAccessMiddleware,
+  sequenceAccessMiddleware,
+} from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import {
   replaceFrameContent,
@@ -178,33 +181,37 @@ export const setSequenceMusicFromUploadFn = createServerFn({ method: 'POST' })
 // — the sequence-side mirror of the library `manual_upload` source).
 // ---------------------------------------------------------------------------
 
+// `sequenceId` null is the Characters page (#2017): the same upload, stored
+// under the team, with no sequence event or channel.
 const characterSheetPresignInput = z.object({
-  sequenceId: ulidSchema,
+  sequenceId: ulidSchema.nullable(),
   characterId: ulidSchema,
   filename: z.string().min(1),
 });
 
 export const presignCharacterSheetUploadFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(characterSheetPresignInput))
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.CHARACTERS,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`,
+      context.sequence
+        ? `teams/${context.teamId}/sequences/${context.sequence.id}/characters/${data.characterId}/${generateId()}`
+        : `teams/${context.teamId}/characters/${data.characterId}/${generateId()}`,
       data.filename,
       'image'
     );
   });
 
 const setCharacterSheetInput = z.object({
-  sequenceId: ulidSchema,
+  sequenceId: ulidSchema.nullable(),
   characterId: ulidSchema,
   // The look the sheet is of (#2015); the default look when omitted.
   lookId: ulidSchema.optional(),
   publicUrl: mediaUrlSchema,
 });
 export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(setCharacterSheetInput))
   .handler(({ context, data }) =>
     setCharacterSheetFromUpload(context, {

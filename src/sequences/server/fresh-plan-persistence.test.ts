@@ -56,12 +56,12 @@ const character: CharacterBibleEntry = {
   physicalDescription: 'dark hair',
   standardClothing: 'yellow coat',
   looks: [],
-  distinguishingFeatures: '',
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'maya',
 };
 const location: LocationBibleEntry = {
@@ -183,6 +183,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
   }
   await createCastRecords(toWorkflowScopedDb(scopedDb), {
     sequenceId,
+    cast: [],
     characterBible: [character],
     locationBible: [location],
     elementBible: [],
@@ -293,6 +294,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
   ).toBe(true);
   await createCastRecords(toWorkflowScopedDb(scopedDb), {
     sequenceId,
+    cast: [],
     characterBible: [{ ...character, standardClothing: 'red armor' }],
     locationBible: [location],
     elementBible: [],
@@ -309,6 +311,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
   // Restore the bible first so the following assertion isolates a style edit.
   await createCastRecords(toWorkflowScopedDb(scopedDb), {
     sequenceId,
+    cast: [],
     characterBible: [character],
     locationBible: [location],
     elementBible: [],

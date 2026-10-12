@@ -18,7 +18,10 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { CharacterWithSheet, SceneRow } from '@/platform/server/db/schema';
+import type {
+  CastCharacterWithSheet,
+  SceneRow,
+} from '@/platform/server/db/schema';
 import { canonicalBibleTag } from '@/cast/bible-field';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import type { DbSceneId } from '@/shots/scene-id';
@@ -39,7 +42,7 @@ export function applyLookPatch(
   current: Readonly<Record<string, string>>,
   patch: Readonly<Record<string, string | null>>,
   characters: readonly Pick<
-    CharacterWithSheet,
+    CastCharacterWithSheet,
     'name' | 'characterId' | 'consistencyTag' | 'looks'
   >[]
 ): Record<string, string> {

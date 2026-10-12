@@ -69,10 +69,14 @@ describe('talentSquarePreview', () => {
 });
 
 describe('talentSquareImageClassName', () => {
-  it('aims a sheet at panel 2 (1/3, not the panel centre) and a headshot at the top', () => {
-    expect(talentSquareImageClassName(true)).toContain('object-[33.333%_top]');
-    expect(talentSquareImageClassName(true)).not.toContain('37.5%');
-    expect(talentSquareImageClassName(false)).toContain('object-top');
-    expect(talentSquareImageClassName(false)).not.toContain('33.333%');
+  it('lays a sheet out four boxes wide and slides panel 2 into the box; a headshot fills it from the top', () => {
+    const sheet = talentSquareImageClassName(true).split(' ');
+    expect(sheet).toEqual(
+      expect.arrayContaining(['w-[400%]', 'max-w-none', '-translate-x-1/4'])
+    );
+    expect(sheet).not.toContain('w-full');
+    const headshot = talentSquareImageClassName(false).split(' ');
+    expect(headshot).toEqual(expect.arrayContaining(['w-full', 'object-top']));
+    expect(headshot).not.toContain('w-[400%]');
   });
 });

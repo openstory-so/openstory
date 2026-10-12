@@ -4,6 +4,7 @@
  * visual/motion/music aimock matchers in lockstep with slice-derived metadata.
  */
 
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -145,6 +146,8 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   script: string;
   scenes: SceneSplittingScene[];
   characterBible: CharacterBibleEntry[];
+  /** The bible before casting: what the split holds when it fires previews. */
+  splitCharacterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
 } {
@@ -185,7 +188,9 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   const analysed = bibleFromWire(
     bibles.characterBible,
     sceneIdForLine,
-    script.split('\n').length
+    script.split('\n').length,
+    new Map(),
+    PHOTOREAL_RENDERING
   );
   const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
     characterBible: analysed.characterBible,
@@ -231,6 +236,7 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     script,
     scenes,
     characterBible,
+    splitCharacterBible: analysed.characterBible,
     locationBible,
     elementBible,
   };

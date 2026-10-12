@@ -1,19 +1,32 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 @import 'tw-animate-css';
-@import '@videojs/react/video/minimal-skin.css';
+@import '@videojs/react/video/neutral-skin.css';
 
 /* Video.js icon controls (play/mute/fullscreen) are ~38px; mobile hit target is 44. */
 @media (max-width: 767px) {
-  .media-minimal-skin .media-button--icon {
+  .media-skin .media-button {
     width: 44px;
     height: 44px;
     min-height: 44px;
   }
 }
 
+/* Our players sit inside their own rounded frames (`rounded-lg overflow-hidden`),
+   so the skin's inner 1px frame border and its larger corner radius would show
+   as a second, inset border. Let the app frame be the only one. */
+.media-skin {
+  --media-frame-border: transparent;
+  --media-video-border-radius: 0;
+}
+
+/* The shot player draws its own caption layer. The skin's cue box does not paint. */
+.shot-captions video::-webkit-media-text-track-container {
+  display: none;
+}
+
 /* Theatre stitcher renders a canvas, not <video>. The skin only sizes video. */
-.media-minimal-skin canvas {
+.media-skin canvas {
   display: block;
   width: 100%;
   height: 100%;

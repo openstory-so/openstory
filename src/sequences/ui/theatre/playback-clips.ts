@@ -1,4 +1,8 @@
-import type { PlaybackClip } from './playback-clip';
+import {
+  cuesToWebVTT,
+  type PlaybackClip,
+  type PlaybackCue,
+} from '@openstory/stitch-player';
 
 import type { ShotView } from '@/shots/shot-view';
 import {
@@ -13,7 +17,13 @@ import {
 
 type PlaybackShot = Pick<
   ShotView,
-  'previewThumbnailUrl' | 'durationMs' | 'audioClips'
+  | 'id'
+  | 'shotNumber'
+  | 'previewThumbnailUrl'
+  | 'durationMs'
+  | 'audioClips'
+  | 'dialogue'
+  | 'dialogueTiming'
 > & {
   video: { url: string | null } | null;
   image: { url: string | null } | null;
@@ -36,10 +46,93 @@ export function groupPlaybackShots<
   return groups;
 }
 
-/** One continuous timeline: rendered clips where available, stills elsewhere. */
+/**
+ * The subtitles for one shot, placed from `offsetSeconds` — where the shot
+ * starts inside its clip. A line runs for the time its reading spoke it
+ * (`dialogueTiming`, derived from the speech on read); lines the reading
+ * did not time — every line of a shot with no reading yet, or a line added
+ * after the reading — show together for the whole shot. The wording is what
+ * was spoken (`spokenLines`), else what was written.
+ */
+export function shotCues(
+  shot: Pick<PlaybackShot, 'dialogue' | 'audioClips' | 'dialogueTiming'>,
+  offsetSeconds: number,
+  shotSeconds: number
+): PlaybackCue[] {
+  const lines = shot.dialogue?.presence ? shot.dialogue.lines : [];
+  if (lines.length === 0) return [];
+  const spoken = new Map(
+    (shot.audioClips?.[0]?.spokenLines ?? []).map((line) => [
+      line.index,
+      line.text,
+    ])
+  );
+  const textOf = (index: number): string | null => {
+    const line = lines[index];
+    if (!line) return null;
+    const said = spoken.get(index) ?? line.line;
+    return line.character ? `${line.character}: ${said}` : said;
+  };
+  const windowEnd = offsetSeconds + shotSeconds;
+  const timed = (shot.dialogueTiming ?? []).flatMap((line) => {
+    const text = textOf(line.index);
+    if (!text) return [];
+    const startSeconds = offsetSeconds + line.startSeconds;
+    const endSeconds = Math.min(windowEnd, offsetSeconds + line.endSeconds);
+    // A reading that runs past this shot must not paint the next packed shot.
+    if (!(startSeconds < endSeconds) || startSeconds >= windowEnd) return [];
+    return [{ startSeconds, endSeconds, text }];
+  });
+  const timedIndexes = new Set(
+    (shot.dialogueTiming ?? []).map((line) => line.index)
+  );
+  const untimed = lines
+    .map((_, index) => (timedIndexes.has(index) ? null : textOf(index)))
+    .filter((text) => text !== null);
+  if (untimed.length === 0) return timed;
+  return [
+    ...timed,
+    {
+      startSeconds: offsetSeconds,
+      endSeconds: offsetSeconds + shotSeconds,
+      text: untimed.join('\n'),
+    },
+  ];
+}
+
+/**
+ * WebVTT for a shot video, on the file's own timeline. One shot starts at 0.
+ * A packed clip lists every member in order, same windows as the sequence
+ * player. Null when no line would show. The shot player loads this as a
+ * captions track; Video.js paints it.
+ */
+export function shotVideoSubtitlesVtt(
+  shots: readonly (PackedClipShot &
+    Pick<PlaybackShot, 'dialogue' | 'audioClips' | 'dialogueTiming'>)[]
+): string | null {
+  const cues = packedClipWindows(shots).flatMap((window, i) => {
+    const member = shots[i];
+    return member
+      ? shotCues(member, window.startSeconds, window.durationSeconds)
+      : [];
+  });
+  if (cues.length === 0) return null;
+  return cuesToWebVTT([{ videoUrl: 'shot', posterUrl: null, cues }], [0]);
+}
+
+/** Changes when the WebVTT text changes, so the captions track reloads. */
+export function subtitleTrackRevision(vtt: string): string {
+  let hash = 0;
+  for (let i = 0; i < vtt.length; i++) {
+    hash = (Math.imul(31, hash) + vtt.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/** One continuous timeline: rendered clips where available, stills elsewhere. Clips play in array order. */
 export function toPlaybackClips(
   shots: readonly PlaybackShot[],
-  aspectRatio: AspectRatio = '16:9'
+  aspectRatio: AspectRatio
 ): PlaybackClip[] {
   const clips: PlaybackClip[] = [];
   for (const group of groupPlaybackShots(shots)) {
@@ -50,22 +143,36 @@ export function toPlaybackClips(
     const previewUrl = shot.previewThumbnailUrl ?? null;
     if (videoUrl) {
       clips.push({
-        orderIndex: clips.length,
         videoUrl,
         posterUrl: stillUrl ?? previewUrl,
+        cues: packedClipWindows(group).flatMap((window, i) => {
+          const member = group[i];
+          return member
+            ? shotCues(member, window.startSeconds, window.durationSeconds)
+            : [];
+        }),
       });
     } else {
+      const audioClips = shot.audioClips ?? [];
+      // Legacy shots with no stored duration hold for 3 s (see
+      // docs/architecture/elevenlabs.md, "Mixed previews").
+      const durationSeconds =
+        shot.durationMs != null && shot.durationMs > 0
+          ? shot.durationMs / 1000
+          : 3;
+      // A still with sound runs as long as all its sound, played back to back.
+      const soundSeconds = audioClips.reduce(
+        (sum, clip) => sum + (clip.durationSeconds ?? 0),
+        0
+      );
       clips.push({
-        orderIndex: clips.length,
         imageUrl: stillUrl ?? previewUrl,
         fallbackImageUrl:
           stillUrl && previewUrl && previewUrl !== stillUrl ? previewUrl : null,
-        durationSeconds:
-          shot.durationMs != null && shot.durationMs > 0
-            ? shot.durationMs / 1000
-            : 3,
-        audioUrls: (shot.audioClips ?? []).map((clip) => clip.url),
+        durationSeconds,
+        audioUrls: audioClips.map((clip) => clip.url),
         ...aspectRatioToDimensions(aspectRatio),
+        cues: shotCues(shot, 0, soundSeconds || durationSeconds),
       });
     }
   }
@@ -83,28 +190,6 @@ export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
     if (out[out.length - 1] !== url) out.push(url);
   }
   return out;
-}
-
-/**
- * Identity of a stitched clip list (order + URLs). A new `PlaybackClip[]` of
- * the same clips (shots refetch while others generate) is not a new list (#1284).
- */
-export function playbackClipsKey(clips: readonly PlaybackClip[]): string {
-  return JSON.stringify(
-    clips.map((clip) =>
-      'videoUrl' in clip
-        ? [clip.orderIndex, clip.videoUrl]
-        : [
-            clip.orderIndex,
-            clip.imageUrl,
-            clip.fallbackImageUrl,
-            clip.durationSeconds,
-            clip.audioUrls,
-            clip.width,
-            clip.height,
-          ]
-    )
-  );
 }
 
 /**

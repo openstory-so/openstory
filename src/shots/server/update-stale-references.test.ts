@@ -4,14 +4,51 @@ import type { Character, Sequence } from '@/platform/server/db/schema';
 import { buildPlanReferences } from './update-stale-references';
 import { asStub } from '@/test/as-stub';
 
-const { buildSheet, estimateSheets } = vi.hoisted(() => ({
-  buildSheet: vi.fn(),
-  estimateSheets: vi.fn(
-    ({ characterSheets }: { characterSheets: number }) => characterSheets * 100
-  ),
-}));
+const { buildSheet, buildDraft, estimateSheets, findReusable } = vi.hoisted(
+  () => ({
+    buildSheet: vi.fn(),
+    // No finished sheet elsewhere unless a test says so (#2017).
+    findReusable: vi.fn(
+      async (_args: {
+        lookId: string;
+        model: string;
+        inputHash: string;
+      }): Promise<{ id: string; url: string; storagePath: string } | null> =>
+        null
+    ),
+    buildDraft: vi.fn(async ({ lookId }: { lookId: string }) => ({
+      draft: { characterDbId: 'maya', lookId },
+      isDefault: false,
+      liveFace: null,
+      refusal: 'Drawn from the default look. Generate that sheet first.',
+    })),
+    estimateSheets: vi.fn(
+      ({ characterSheets }: { characterSheets: number }) =>
+        characterSheets * 100
+    ),
+  })
+);
 vi.mock('@/cast/server/sheets/character-sheet-trigger', () => ({
   buildRegenerateCharacterSheetPayload: buildSheet,
+  buildCharacterSheetDraft: buildDraft,
+}));
+vi.mock('@/cast/server/workflows/sheet-snapshots', () => ({
+  // The face joins the hash: a finished draft hashes differently per face.
+  finishCharacterSheetPayload: async (
+    draft: { lookId: string },
+    face: { versionId: string } | null
+  ) => ({
+    ...draft,
+    face,
+    snapshotInputHash: `hash-${draft.lookId}-${face?.versionId ?? 'none'}`,
+  }),
+  // The digest a pre-#2065 sheet carries: the same inputs, with the look's
+  // stored parts beside them.
+  computeCharacterSheetHashFromDtoBefore2065: async (
+    payload: { snapshotInputHash: string },
+    legacy: { distinguishingFeatures: string | null; styling: string | null }
+  ) =>
+    `old-${payload.snapshotInputHash}-${legacy.distinguishingFeatures}-${legacy.styling}`,
 }));
 vi.mock('@/cast/server/sheets/location-sheet-trigger', () => ({
   buildRegenerateLocationSheetPayload: vi.fn(),
@@ -49,6 +86,7 @@ async function references(
   const scopedDb = asStub<ScopedDb>({
     teamId: 'team',
     characters: { list: async () => [character] },
+    characterSheetVariants: { findReusable },
   });
   // sheet-only planning reads the id and model settings
   const sequence = asStub<Sequence>({
@@ -132,13 +170,86 @@ describe('plan reference talent-sheet reuse', () => {
         { kind: 'sheet:character', id: 'gala' },
       ]
     );
-    // The default look matches the talent's own clothes and copies its sheet;
-    // the gown does not, so it is drawn. The look no unit names is skipped.
+    // The default look matches the talent's own clothes and copies its sheet.
+    // The gown is drawn from that sheet, so it waits for it in the same run
+    // (a draft with no face), and is billed. The look no unit names is
+    // skipped.
     expect(result?.characterSheets).toEqual([
       expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
-      expect.objectContaining({ lookId: 'gala', reuseTalentSheet: false }),
     ]);
+    expect(result?.lookSheetsAfterDefault).toEqual([
+      expect.objectContaining({ lookId: 'gala' }),
+    ]);
+    expect(buildSheet).toHaveBeenCalledTimes(1);
     expect(result?.cost.sheets).toBe(100);
+  });
+  it('never copies the talent sheet onto a look other than the default', async () => {
+    buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
+      characterDbId: 'maya',
+      lookId,
+      reuseTalentSheet: false,
+      referenceImageUrl: 'https://example.com/talent.jpg',
+      talentMetadata: { standardClothing: 'yellow rain jacket' },
+      castTalentDescription: 'A matching actor',
+    }));
+    const look = (id: string, isDefault: boolean) =>
+      asStub<Character['looks'][number]>({
+        id,
+        name: id,
+        isDefault,
+        clothing: 'yellow rain jacket',
+        styling: null,
+        sheetImageUrl: null,
+        sheetStatus: 'pending',
+        sheetInputHash: null,
+        selectedSheetVersionId: null,
+      });
+    const result = await references(
+      { looks: [look('maya', true), look('gala', false)] },
+      [
+        { kind: 'sheet:character', id: 'maya' },
+        { kind: 'sheet:character', id: 'gala' },
+      ]
+    );
+    expect(result?.characterSheets).toEqual([
+      expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
+    ]);
+    expect(result?.lookSheetsAfterDefault).toEqual([
+      expect.objectContaining({ lookId: 'gala' }),
+    ]);
+  });
+  it('draws a look now, from the live default sheet, when this run does not make the default', async () => {
+    buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
+      characterDbId: 'maya',
+      lookId,
+      reuseTalentSheet: false,
+      face: { url: '/r2/maya.png', versionId: 'maya-v1' },
+    }));
+    const look = (id: string, isDefault: boolean) =>
+      asStub<Character['looks'][number]>({
+        id,
+        name: id,
+        isDefault,
+        clothing: 'gown',
+        styling: null,
+        sheetImageUrl: isDefault ? '/r2/maya.png' : null,
+        sheetStatus: 'completed',
+        sheetInputHash: null,
+        selectedSheetVersionId: isDefault ? 'maya-v1' : null,
+      });
+    const result = await references(
+      { looks: [look('maya', true), look('gala', false)] },
+      [{ kind: 'sheet:character', id: 'gala' }]
+    );
+    expect(result?.characterSheets).toEqual([
+      expect.objectContaining({
+        lookId: 'gala',
+        reuseTalentSheet: false,
+        face: { url: '/r2/maya.png', versionId: 'maya-v1' },
+      }),
+    ]);
+    expect(result?.lookSheetsAfterDefault).toEqual([]);
+    expect(buildDraft).not.toHaveBeenCalled();
   });
   it('excludes voice-only cast from sheet work and its cost', async () => {
     const result = await references({ voiceOnly: true });

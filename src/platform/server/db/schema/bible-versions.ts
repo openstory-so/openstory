@@ -57,11 +57,21 @@ export const characterBibleVersions = snakeCase.table(
     // character with no look, and to say what a sheet made before looks was
     // drawn in; never written.
     legacyStandardClothing: text('standard_clothing'),
-    distinguishingFeatures: text(),
+    // LEGACY (#2065): the default look's styling owns this text. Read only
+    // by `effectiveStyling` (the default look's styling is its own joined
+    // with this) and by the digests stamped before #2065; nulled by the
+    // first edit of the default look's styling, otherwise carried forward
+    // unchanged. Backfilled and dropped after `LEGACY_HASH_UNTIL`.
+    legacyDistinguishingFeatures: text('distinguishing_features'),
     personality: text(),
     movement: text(),
     voiceOnly: integer({ mode: 'boolean' }).notNull(),
     isPerson: integer({ mode: 'boolean' }).notNull(),
+    // What the character is rendered as (#2017): "Photoreal live action",
+    // "3D animated, Pixar-like". The one thing a sheet takes from a style.
+    // Null exactly when `voiceOnly` (`renderingFor`, `src/cast/rendering.ts`);
+    // a CHECK would need a table rebuild, so the writers enforce it.
+    rendering: text(),
     consistencyTag: text(),
     // Who plays the character in this version (#2017): a recast is a new
     // version. Null when uncast. Not a bible field: it is not authored text
@@ -127,11 +137,11 @@ export const CHARACTER_BIBLE_FIELDS = [
   'gender',
   'ethnicity',
   'physicalDescription',
-  'distinguishingFeatures',
   'personality',
   'movement',
   'voiceOnly',
   'isPerson',
+  'rendering',
   'consistencyTag',
 ] as const satisfies readonly (keyof CharacterBibleVersion)[];
 

@@ -112,8 +112,8 @@ Here's your caffeine fix. How's it going?
       const talentDialog = page.getByRole('dialog');
       await expect(talentDialog).toBeVisible({ timeout: 10000 });
       await expect(
-        talentDialog.getByText('Select Talent for Casting')
-      ).toBeVisible();
+        talentDialog.getByRole('tab', { name: 'Talent' })
+      ).toHaveAttribute('aria-selected', 'true');
 
       // Verify our test talents appear in the dialog (use variable names)
       const firstTalent = testTalents[0];
@@ -128,9 +128,7 @@ Here's your caffeine fix. How's it going?
       await page.getByText(firstTalent.name).click();
 
       // Submit dialog (button text reflects selection count)
-      await talentDialog
-        .getByRole('button', { name: /^Cast \d+ roles?$/i })
-        .click();
+      await talentDialog.getByRole('button', { name: /^Cast \d+$/i }).click();
       await expect(talentDialog).not.toBeVisible();
 
       // Verify submit button is ready (may have different text based on state)
