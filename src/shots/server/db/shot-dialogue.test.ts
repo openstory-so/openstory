@@ -90,6 +90,7 @@ const land = async (methods: Methods, input: AppendDialogueSpeechInput) => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId: entry.shotId, sourceKey: entry.sourceKey }],
         workflowRunId: `run-${entry.id}`,
+        actorId: null,
       });
       claimId = claims[entry.shotId] ?? 'not-claimed';
       claimIdBySectionId.set(entry.id, claimId);
@@ -575,16 +576,22 @@ describe('recordings and sections', () => {
       const first = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-a',
+        actorId: null,
       });
       const second = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-b',
+        actorId: null,
       });
       expect(Object.keys(first)).toEqual([shotId]);
       expect(second).toEqual({});
       // A replay of the first run's own claim step gets its claim back.
       expect(
-        await methods.claimSpeech({ ...request, workflowRunId: 'run-a' })
+        await methods.claimSpeech({
+          ...request,
+          workflowRunId: 'run-a',
+          actorId: null,
+        })
       ).toEqual(first);
       // Different words are a different recording: both may run.
       expect(
@@ -592,6 +599,7 @@ describe('recordings and sections', () => {
           await methods.claimSpeech({
             shots: [{ shotId, sourceKey: 'other-words' }],
             workflowRunId: 'run-b',
+            actorId: null,
           })
         )
       ).toEqual([shotId]);
@@ -608,6 +616,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k2' }],
         workflowRunId: 'run-late',
+        actorId: null,
       });
       claimIdBySectionId.set(late.id, claims[shotId] ?? '');
       // …and the user picks a reading before it lands.
@@ -647,6 +656,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-old-words',
+        actorId: null,
       });
       claimIdBySectionId.set(late.id, claims[shotId] ?? '');
 
@@ -664,6 +674,7 @@ describe('recordings and sections', () => {
       await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-live',
+        actorId: null,
       });
       expect([
         ...(await methods.listShotIdsWithLiveClaim([shotId, otherShotId])),
@@ -679,6 +690,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-cancelled',
+        actorId: null,
       });
       const claimId = claims[shotId] ?? '';
       claimIdBySectionId.set(late.id, claimId);
@@ -707,6 +719,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-dies',
+        actorId: null,
       });
       await methods.failClaims(Object.values(claims), 'ElevenLabs 502');
       expect(await methods.listLiveClaims(shotId)).toEqual([]);
@@ -715,6 +728,7 @@ describe('recordings and sections', () => {
           await methods.claimSpeech({
             ...request,
             workflowRunId: 'run-next',
+            actorId: null,
           })
         )
       ).toEqual([shotId]);

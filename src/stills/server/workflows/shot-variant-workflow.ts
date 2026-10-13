@@ -72,6 +72,8 @@ type PrepResult = {
 };
 
 export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariantWorkflowInput> {
+  protected override readonly failureLabel = 'Image generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ShotVariantWorkflowInput>>,
     step: WorkflowStep,

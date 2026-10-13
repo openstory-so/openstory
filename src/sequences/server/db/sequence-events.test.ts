@@ -604,8 +604,12 @@ describe('listHistory', () => {
       'This still',
     ]);
 
+    // 50 scenes is the most the server fn accepts. The list is one bound
+    // value per use, so the statement stays under D1's 100 parameters.
     const scenePage = await m.listHistory(sequenceId, {
-      scope: { sceneIds: [sceneId] },
+      scope: {
+        sceneIds: [sceneId, ...Array.from({ length: 49 }, () => generateId())],
+      },
       limit: 20,
     });
     expect(scenePage.events.map((event) => event.summary).sort()).toEqual([
@@ -702,11 +706,45 @@ describe('export.finished', () => {
       .where(
         and(
           eq(sequenceEvents.kind, 'export.finished'),
-          eq(sequenceEvents.targetId, exportId)
+          eq(sequenceEvents.sequenceId, sequenceId)
         )
       );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.summary).toBe('Finished the export');
+    // Same target as export.started and export.failed: the sequence.
+    expect(rows[0]?.targetId).toBe(sequenceId);
+    expect(rows[0]?.data).toEqual({ exportId });
+  });
+});
+
+describe('storyboard.started', () => {
+  const started = () =>
+    db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'storyboard.started'));
+
+  it('is written with the claim, and not when the claim is lost', async () => {
+    const methods = createSequencesMethods(db, teamId, userId);
+    const lost = await methods.claimWorkflowSlot({
+      id: sequenceId,
+      expectedRunId: 'someone-else',
+      claimId: 'run-lost',
+      activity: { summary: 'Started the storyboard' },
+    });
+    expect(lost).toBe(false);
+    expect(await started()).toHaveLength(0);
+
+    const won = await methods.claimWorkflowSlot({
+      id: sequenceId,
+      expectedRunId: null,
+      claimId: 'run-won',
+      activity: { summary: 'Started the storyboard' },
+    });
+    expect(won).toBe(true);
+    const rows = await started();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.actorId).toBe(userId);
   });
 });
 

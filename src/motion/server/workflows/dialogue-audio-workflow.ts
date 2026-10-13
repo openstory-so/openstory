@@ -94,6 +94,8 @@ export function planSceneAdoption(
 }
 
 export class DialogueAudioWorkflow extends OpenStoryWorkflowEntrypoint<DialogueAudioWorkflowInput> {
+  protected override readonly failureLabel = 'Dialogue';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<DialogueAudioWorkflowInput>>,
     step: WorkflowStep,

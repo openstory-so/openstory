@@ -108,6 +108,7 @@ import {
   buildEventInsert,
   buildEventInsertIfPresent,
   buildEventInsertOnce,
+  eventNotLogged,
 } from '@/sequences/server/db/sequence-events';
 import { CHARACTER_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
@@ -808,7 +809,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
     source: CharacterVoiceVersionSource,
     /** Who did this — required so no writer forgets; null when nobody did. */
     createdBy: string | null,
-    activity?: { sequenceId: string; summary: string } | null
+    /** The history line. Null for a write made from no sequence. */
+    activity: { sequenceId: string; summary: string } | null
   ): Promise<CharacterVoiceState> => {
     const existing = await voiceOf(id);
     const versionId = generateId();
@@ -1048,7 +1050,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
             id,
             { voiceDescription },
             'user-edit',
-            opts.actorId
+            opts.actorId,
+            null
           );
         }
       }
@@ -1123,7 +1126,13 @@ export function createCharactersMethods(db: Database, teamId: string) {
       voiceDescription !== undefined &&
       voiceDescription !== existing.voiceDescription
     ) {
-      await updateVoice(id, { voiceDescription }, 'user-edit', opts.actorId);
+      await updateVoice(
+        id,
+        { voiceDescription },
+        'user-edit',
+        opts.actorId,
+        null
+      );
     }
     return await reread(sequenceId, id);
   }
@@ -1684,6 +1693,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           // A voice id only ever arrives as the cast talent's copy.
           voicePatch.voiceId ? 'library' : 'analysis',
           // Seeded by the cast-records step, not by a person.
+          null,
           null
         );
         return await reread(sequenceId, id);
@@ -1925,9 +1935,10 @@ export function createCharactersMethods(db: Database, teamId: string) {
     createPendingVoiceClaim: async (
       characterId: string,
       createdBy: string | null,
-      opts?: {
+      opts: {
         workflowRunId?: string | null;
-        activity?: { sequenceId: string; summary: string };
+        /** The start line. Null for a run started from no sequence. */
+        activity: { sequenceId: string; summary: string } | null;
       }
     ) => {
       const existing = await voiceOf(characterId);
@@ -1940,7 +1951,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           source: 'generated',
           status: 'generating',
           createdBy,
-          workflowRunId: opts?.workflowRunId ?? null,
+          workflowRunId: opts.workflowRunId ?? null,
           description: existing.voiceDescription,
           enabled: existing.useVoice,
         })
@@ -1954,7 +1965,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         .where(eq(characters.id, characterId))
         .returning();
       try {
-        const results = opts?.activity
+        const results = opts.activity
           ? await db.batch([
               insertVersion,
               point,
@@ -2017,7 +2028,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
         description?: string | null;
         previews?: VoicePreview[] | null;
       },
-      activity?: { sequenceId: string; actorId: string | null; summary: string }
+      /** The history line. Null for a run started from no sequence. */
+      activity: {
+        sequenceId: string;
+        actorId: string | null;
+        summary: string;
+      } | null
     ) => {
       const finish = db
         .update(characterVoiceVersions)
@@ -2054,18 +2070,26 @@ export function createCharactersMethods(db: Database, teamId: string) {
         buildEventInsertIfPresent(
           db,
           {
-            id: versionId,
+            id: generateId(),
             sequenceId: activity.sequenceId,
             actorId: activity.actorId,
             kind: 'voice.designed',
             targetType: 'character',
             targetId: owner.characterId,
             summary: activity.summary,
+            data: { voiceVersionId: versionId },
           },
           characterVoiceVersions,
           and(
             eq(characterVoiceVersions.id, versionId),
-            eq(characterVoiceVersions.status, 'completed')
+            eq(characterVoiceVersions.status, 'completed'),
+            eventNotLogged(
+              db,
+              activity.sequenceId,
+              'voice.designed',
+              'voiceVersionId',
+              versionId
+            )
           )
         ),
       ]);

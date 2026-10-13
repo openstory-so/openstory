@@ -68,7 +68,9 @@ import {
 import { mediaModelName } from '@/sequences/model-label';
 import {
   buildEventInsert,
+  buildEventInsertIfPresent,
   buildEventInsertOnce,
+  eventNotLogged,
 } from '@/sequences/server/db/sequence-events';
 
 function readStringProp(value: object, key: string): string | null {
@@ -868,7 +870,8 @@ export function createFrameVariantsMethods(db: Database) {
       promptVersionId?: string | null;
       /** False for an added model (`variantOnly`, #1942). */
       isPrimary: boolean;
-      actorId?: string | null;
+      /** Who started it. Null when no person did. */
+      actorId: string | null;
     }): Promise<FrameVariant> => {
       const id = generateId();
       const [rows] = await db.batch([
@@ -891,7 +894,7 @@ export function createFrameVariantsMethods(db: Database) {
         buildEventInsertOnce(db, {
           id,
           sequenceId: input.sequenceId,
-          actorId: input.actorId ?? null,
+          actorId: input.actorId,
           kind: 'image.started',
           targetType: 'frame',
           targetId: input.frameId,
@@ -984,16 +987,30 @@ export function createFrameVariantsMethods(db: Database) {
       // step retry. A run queued before #1152 opened none and inserts.
       if (existing?.status === 'completed') return existing;
       const previewEvent = (variantId: string) =>
-        buildEventInsertOnce(db, {
-          id: variantId,
-          sequenceId: input.sequenceId,
-          actorId: null,
-          kind: 'preview.generated',
-          targetType: 'frame',
-          targetId: input.frameId,
-          summary: `Generated a preview with ${mediaModelName(input.model)}`,
-          data: { model: input.model },
-        });
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: input.sequenceId,
+            actorId: null,
+            kind: 'preview.generated',
+            targetType: 'frame',
+            targetId: input.frameId,
+            summary: `Generated a preview with ${mediaModelName(input.model)}`,
+            data: { variantId, model: input.model },
+          },
+          frameVariants,
+          and(
+            eq(frameVariants.id, variantId),
+            eventNotLogged(
+              db,
+              input.sequenceId,
+              'preview.generated',
+              'variantId',
+              variantId
+            )
+          )
+        );
       if (existing) {
         const [landed] = await db.batch([
           db

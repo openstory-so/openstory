@@ -17,6 +17,9 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { generateId } from '@/platform/id';
+import { isEngineAbortError } from '@/platform/server/workflow/errors';
+import type { WorkflowStep } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
 import {
   characterBibleVersions,
@@ -40,7 +43,7 @@ import type {
   SequenceEventData,
   SequenceEventTargetType,
 } from '@/platform/server/db/schema';
-import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, notExists, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import {
@@ -94,10 +97,18 @@ export function buildEventInsert(db: Database, input: RecordEventInput) {
 const bound = (value: string | number | null, name: string) =>
   sql`${value}`.as(name);
 
-function eventColumns(input: RecordEventInput & { id: string }) {
+/**
+ * The select list of an insert-select. Drizzle wants every table column, in
+ * table order, so the sequence id (a bound value or a joined column) is
+ * passed in and placed here.
+ */
+function eventColumns<S>(
+  input: Omit<RecordEventInput, 'sequenceId'> & { id: string },
+  sequenceId: S
+) {
   return {
     id: bound(input.id, 'id'),
-    sequenceId: bound(input.sequenceId, 'sequence_id'),
+    sequenceId,
     actorId:
       input.actorId === null
         ? sql`null`.as('actor_id')
@@ -137,7 +148,8 @@ export function buildEventInsertOnce(
 
 /**
  * Insert the event only when `source` has a matching row, so a lost claim
- * writes nothing and a retry hits the stable id. `where` is that gate.
+ * writes nothing. `where` is that gate. A retry adds no second line only when
+ * the caller passes a stable id or gates on {@link eventNotLogged}.
  */
 export function buildEventInsertIfPresent(
   db: Database,
@@ -147,8 +159,40 @@ export function buildEventInsertIfPresent(
 ) {
   return db
     .insert(sequenceEvents)
-    .select(db.select(eventColumns(input)).from(source).where(where).limit(1))
+    .select(
+      db
+        .select(eventColumns(input, bound(input.sequenceId, 'sequence_id')))
+        .from(source)
+        .where(where)
+        .limit(1)
+    )
     .onConflictDoNothing();
+}
+
+/**
+ * True while no `kind` line of this sequence carries `data[key] = value`.
+ * A completion line takes a fresh id so it sorts when it is written, not when
+ * its run started; this gate is what stops a retried step adding a second.
+ */
+export function eventNotLogged(
+  db: Database,
+  sequenceId: string,
+  kind: string,
+  key: string,
+  value: string
+): SQL {
+  return notExists(
+    db
+      .select({ one: sql`1` })
+      .from(sequenceEvents)
+      .where(
+        and(
+          eq(sequenceEvents.sequenceId, sequenceId),
+          eq(sequenceEvents.kind, kind),
+          sql`json_extract(${sequenceEvents.data}, ${`$.${key}`}) = ${value}`
+        )
+      )
+  );
 }
 
 /**
@@ -164,20 +208,22 @@ export function buildDialogueStartEvent(
     targetId: string;
   }
 ) {
-  const columns = eventColumns({
-    id: input.id,
-    sequenceId: '',
-    actorId: input.actorId,
-    kind: 'dialogue.started',
-    targetType: 'shot',
-    targetId: input.targetId,
-    summary: 'Started recording dialogue',
-  });
+  const columns = eventColumns(
+    {
+      id: input.id,
+      actorId: input.actorId,
+      kind: 'dialogue.started',
+      targetType: 'shot',
+      targetId: input.targetId,
+      summary: 'Started recording dialogue',
+    },
+    shots.sequenceId
+  );
   return db
     .insert(sequenceEvents)
     .select(
       db
-        .select({ ...columns, sequenceId: shots.sequenceId })
+        .select(columns)
         .from(shotDialogueClaims)
         .innerJoin(shots, eq(shots.id, shotDialogueClaims.shotId))
         .where(eq(shotDialogueClaims.id, input.id))
@@ -187,27 +233,31 @@ export function buildDialogueStartEvent(
 }
 
 /**
- * A workflow step's completion line. Workflow unit tests stub `scopedDb`
- * without this surface; a missing method is a stub, not a failed run.
+ * A run's own history line, in its own step after the work it describes.
+ * History never fails that work: a line that cannot be written is logged and
+ * the run goes on. The id is checkpointed first, so a retried insert adds no
+ * second line.
  */
-export async function recordSequenceEvent(
-  db: {
-    sequenceEvents?: {
-      record?: (input: RecordEventInput) => Promise<unknown>;
-      recordOnce?: (
-        input: RecordEventInput & { id: string }
-      ) => Promise<unknown>;
-    };
+export async function logRunEvent(
+  step: WorkflowStep,
+  events: {
+    recordOnce: (input: RecordEventInput & { id: string }) => Promise<void>;
   },
-  input: RecordEventInput & { id: string }
+  name: string,
+  input: RecordEventInput
 ): Promise<void> {
-  const events = db.sequenceEvents;
-  if (!events) return;
-  if (events.recordOnce) {
-    await events.recordOnce(input);
-    return;
+  try {
+    const id = await step.do(`${name}-event-id`, async () => generateId());
+    await step.do(`${name}-event`, async () => {
+      await events.recordOnce({ ...input, id });
+    });
+  } catch (error) {
+    if (isEngineAbortError(error)) throw error;
+    getLogger(['openstory', 'sequence-events']).error(
+      'activity-log line was not written',
+      { err: error, kind: input.kind, sequenceId: input.sequenceId }
+    );
   }
-  await events.record?.(input);
 }
 
 /**
@@ -343,12 +393,18 @@ function historyScopeFilter(
     return eventsForShots(db, sequenceId, eq(shots.id, scope.shotId));
   }
   if (scope.sceneIds.length === 0) return sql`0`;
+  // The scene list is matched five times in this one statement. As a JSON
+  // array it is one bound value each time; an `in (?, ?, …)` list would pass
+  // D1's 100-parameter limit at about 18 scenes.
+  const sceneIds = JSON.stringify(scope.sceneIds);
+  const inScenes = (column: SQL | typeof shots.sceneId) =>
+    sql`${column} in (select value from json_each(${sceneIds}))`;
   return or(
     and(
       eq(sequenceEvents.targetType, 'scene'),
-      inArray(sequenceEvents.targetId, scope.sceneIds)
+      inScenes(sql`${sequenceEvents.targetId}`)
     ),
-    eventsForShots(db, sequenceId, inArray(shots.sceneId, scope.sceneIds))
+    eventsForShots(db, sequenceId, inScenes(shots.sceneId))
   );
 }
 
@@ -433,7 +489,7 @@ export function createSequenceEventsMethods(db: Database) {
     listHistory: async (
       sequenceId: string,
       options?: {
-        before?: string | null;
+        before?: string;
         limit?: number;
         scope?: HistoryScope;
       }
@@ -944,16 +1000,14 @@ export function createSequenceEventsMethods(db: Database) {
 }
 
 /**
- * Event appended by `scopedDb.sequences.update` when a hash-bearing sequence
- * setting changes (#1194). Style / aspect ratio switches leave no timestamp
- * on any row (style is a snapshot), so this is the only way to date them for
- * `findStalenessCauses`.
+ * Event appended by `scopedDb.sequences.update` when a sequence setting
+ * changes: style, aspect ratio, a model, or the generation stop. Style and
+ * aspect ratio switches leave no timestamp on any row (style is a snapshot),
+ * so this is the only way to date them for `findStalenessCauses` (#1194).
  *
  * Model switches are not a staleness cause (#1785): a switch applies to the
- * next generation and never stales what exists. The history sentence still
- * names an image, video, music or analysis model change, and a generation
- * stop. `SETTINGS_CHANGED_LABELS` stays style and aspect ratio, which is
- * what staleness reads.
+ * next generation and never stales what exists. `SETTINGS_CHANGED_LABELS`
+ * stays style and aspect ratio, which is what staleness reads.
  */
 export const SETTINGS_CHANGED_EVENT = 'sequence.settings-changed';
 

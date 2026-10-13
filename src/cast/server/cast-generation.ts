@@ -5,7 +5,7 @@
  * character's voice and cancel that design. Each spends credits through the
  * workflow it triggers.
  */
-import { safeTextToImageModel } from '@/models/models';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { sheetStartedSummary } from '@/sequences/model-label';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from '@/cast/character-prompt';
@@ -117,18 +117,17 @@ export async function regenerateCharacterSheet(
   const { versionId: sheetVersionId } =
     await scopedDb.characterLooks.claimSheet(payload.lookId, payload, {
       markGenerating: true,
-      ...(payload.sequenceId
+      activity: payload.sequenceId
         ? {
-            activity: {
-              sequenceId: payload.sequenceId,
-              actorId: actor.userId,
-              summary: sheetStartedSummary(
-                character.name,
-                payload.imageModel ?? ''
-              ),
-            },
+            sequenceId: payload.sequenceId,
+            actorId: actor.userId,
+            // The model the sheet workflow renders with when none is set.
+            summary: sheetStartedSummary(
+              character.name,
+              payload.imageModel ?? DEFAULT_IMAGE_MODEL
+            ),
           }
-        : {}),
+        : null,
     });
   await emitProgress(
     castChannelId(payload.sequenceId, character.id),
@@ -272,7 +271,8 @@ export async function recastCharacter(
         voicePreviews: null,
       },
       'library',
-      actor.userId
+      actor.userId,
+      null
     );
     await releaseReplacedVoice(
       scopedDb,
@@ -574,7 +574,10 @@ export async function regenerateLocationSheet(
       activity: {
         sequenceId: sequence.id,
         actorId: actor.userId,
-        summary: sheetStartedSummary(location.name, payload.imageModel ?? ''),
+        summary: sheetStartedSummary(
+          location.name,
+          payload.imageModel ?? DEFAULT_IMAGE_MODEL
+        ),
       },
     }
   );

@@ -31,6 +31,8 @@ const EMPTY: ShotSpecRewriteWorkflowResult = {
 };
 
 export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpecRewriteWorkflowInput> {
+  protected override readonly failureLabel = 'Shot rewrite';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ShotSpecRewriteWorkflowInput>>,
     step: WorkflowStep,

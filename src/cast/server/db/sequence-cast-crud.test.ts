@@ -190,7 +190,8 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-a', voicePreviews: [], useVoice: true },
       'generated',
-      actorId
+      actorId,
+      null
     );
     expect((await methods.listVoiceVersions(created.id))[0]?.createdBy).toBe(
       actorId
@@ -199,6 +200,7 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-b' },
       'library',
+      null,
       null
     );
 
@@ -259,7 +261,8 @@ describe('characters bible CRUD + soft-remove', () => {
         ],
       },
       'generated',
-      actorId
+      actorId,
+      null
     );
     const before = await methods.listVoiceVersions(created.id);
     const stamped = await methods.stampPreviewUnusable(
@@ -294,7 +297,8 @@ describe('characters bible CRUD + soft-remove', () => {
     const before = await methods.listVoiceVersions(created.id);
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     expect(husk.status).toBe('generating');
     expect(husk.source).toBe('generated');
@@ -320,8 +324,12 @@ describe('characters bible CRUD + soft-remove', () => {
       },
       { source: 'analysis', createdBy: null }
     );
-    const first = await methods.createPendingVoiceClaim(created.id, actorId);
-    const second = await methods.createPendingVoiceClaim(created.id, actorId);
+    const first = await methods.createPendingVoiceClaim(created.id, actorId, {
+      activity: null,
+    });
+    const second = await methods.createPendingVoiceClaim(created.id, actorId, {
+      activity: null,
+    });
     expect(first.created).toBe(true);
     expect(second.created).toBe(false);
     expect(second.version.id).toBe(first.version.id);
@@ -343,11 +351,13 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
       'generated',
-      actorId
+      actorId,
+      null
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     const afterInsert = await methods.getById(sequenceId, created.id);
     expect(afterInsert?.voiceId).toBe('voice-old');
@@ -355,7 +365,11 @@ describe('characters bible CRUD + soft-remove', () => {
       saved.selectedVoiceVersionId
     );
     expect(afterInsert?.pendingPromoteVoiceVersionId).toBe(husk.id);
-    await methods.completeVoiceClaimIfLive(husk.id, { voiceId: 'voice-new' });
+    await methods.completeVoiceClaimIfLive(
+      husk.id,
+      { voiceId: 'voice-new' },
+      null
+    );
     const afterComplete = await methods.getById(sequenceId, created.id);
     expect(afterComplete?.voiceId).toBe('voice-old');
     expect(afterComplete?.selectedVoiceVersionId).toBe(
@@ -367,6 +381,64 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     expect(promoted?.voiceId).toBe('voice-new');
     expect(promoted?.selectedVoiceVersionId).toBe(husk.id);
+  });
+
+  it('logs a voice start and one designed line, and none from no sequence', async () => {
+    const methods = createCharactersMethods(db, teamId);
+    const created = await methods.create(
+      {
+        sequenceId,
+        characterId: 'voice_events',
+        name: 'Maya',
+        rendering: 'Photoreal live action',
+      },
+      { source: 'analysis', createdBy: null }
+    );
+    await db.delete(sequenceEvents);
+    const voiceKinds = async () =>
+      (await eventKinds()).filter((kind) => kind.startsWith('voice.')).sort();
+
+    // From no sequence (the Characters page): nothing to log against.
+    const quiet = await methods.createPendingVoiceClaim(created.id, actorId, {
+      activity: null,
+    });
+    await methods.completeVoiceClaimIfLive(
+      quiet.version.id,
+      { voiceId: 'voice-quiet' },
+      null
+    );
+    expect(await voiceKinds()).toEqual([]);
+
+    const { version: husk } = await methods.createPendingVoiceClaim(
+      created.id,
+      actorId,
+      { activity: { sequenceId, summary: 'Started a voice for Maya' } }
+    );
+    const designed = {
+      sequenceId,
+      actorId,
+      summary: 'Designed a voice for Maya',
+    };
+    await methods.completeVoiceClaimIfLive(
+      husk.id,
+      { voiceId: 'voice-new' },
+      designed
+    );
+    // A replayed completion step: the husk is no longer live.
+    await methods.completeVoiceClaimIfLive(
+      husk.id,
+      { voiceId: 'voice-new' },
+      designed
+    );
+    expect(await voiceKinds()).toEqual(['voice.designed', 'voice.started']);
+    const [line] = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'voice.designed'));
+    expect(line?.targetId).toBe(created.id);
+    // Its own id, minted at completion. The husk's id dates from the claim.
+    expect(line?.id).not.toBe(husk.id);
+    expect(line?.data).toEqual({ voiceVersionId: husk.id });
   });
 
   it('completes a live husk in place without appending history (#1715)', async () => {
@@ -382,27 +454,36 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
-    const completed = await methods.completeVoiceClaimIfLive(husk.id, {
-      voiceId: 'voice-new',
-      description: 'Warm alto',
-      previews: [
-        {
-          generatedVoiceId: 'take-1',
-          url: '/r2/a.mp3',
-          path: 'a.mp3',
-          takeNumber: 1,
-        },
-      ],
-    });
+    const completed = await methods.completeVoiceClaimIfLive(
+      husk.id,
+      {
+        voiceId: 'voice-new',
+        description: 'Warm alto',
+        previews: [
+          {
+            generatedVoiceId: 'take-1',
+            url: '/r2/a.mp3',
+            path: 'a.mp3',
+            takeNumber: 1,
+          },
+        ],
+      },
+      null
+    );
     expect(completed?.id).toBe(husk.id);
     expect(completed?.status).toBe('completed');
     expect(completed?.voiceId).toBe('voice-new');
     expect(await methods.listVoiceVersions(created.id)).toHaveLength(1);
     expect(await methods.listLiveVoiceClaims(created.id)).toEqual([]);
     expect(
-      await methods.completeVoiceClaimIfLive(husk.id, { voiceId: 'other' })
+      await methods.completeVoiceClaimIfLive(
+        husk.id,
+        { voiceId: 'other' },
+        null
+      )
     ).toBeNull();
   });
 
@@ -419,7 +500,8 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     const failed = await methods.markVoiceClaimTerminal(
       husk.id,
@@ -431,7 +513,11 @@ describe('characters bible CRUD + soft-remove', () => {
     const after = await methods.getById(sequenceId, created.id);
     expect(after?.pendingPromoteVoiceVersionId).toBeNull();
     expect(
-      await methods.completeVoiceClaimIfLive(husk.id, { voiceId: 'voice-x' })
+      await methods.completeVoiceClaimIfLive(
+        husk.id,
+        { voiceId: 'voice-x' },
+        null
+      )
     ).toBeNull();
   });
 
@@ -450,11 +536,13 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-a', voiceDescription: 'Original' },
       'generated',
-      actorId
+      actorId,
+      null
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     expect(
       (await methods.getById(sequenceId, created.id))
@@ -486,24 +574,30 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
       'generated',
-      actorId
+      actorId,
+      null
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
-    await methods.completeVoiceClaimIfLive(husk.id, {
-      voiceId: 'voice-new',
-      description: 'Warm alto',
-      previews: [
-        {
-          generatedVoiceId: 'take-1',
-          url: '/r2/a.mp3',
-          path: 'a.mp3',
-          takeNumber: 1,
-        },
-      ],
-    });
+    await methods.completeVoiceClaimIfLive(
+      husk.id,
+      {
+        voiceId: 'voice-new',
+        description: 'Warm alto',
+        previews: [
+          {
+            generatedVoiceId: 'take-1',
+            url: '/r2/a.mp3',
+            path: 'a.mp3',
+            takeNumber: 1,
+          },
+        ],
+      },
+      null
+    );
     const promoted = await methods.promoteVoiceClaimIfPending(
       created.id,
       husk.id
@@ -528,20 +622,27 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-old', voiceDescription: 'Original' },
       'generated',
-      actorId
+      actorId,
+      null
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
-    await methods.completeVoiceClaimIfLive(husk.id, {
-      voiceId: 'voice-new',
-    });
+    await methods.completeVoiceClaimIfLive(
+      husk.id,
+      {
+        voiceId: 'voice-new',
+      },
+      null
+    );
     await methods.updateVoice(
       created.id,
       { voiceId: 'voice-lib' },
       'library',
-      actorId
+      actorId,
+      null
     );
     expect(
       (await methods.getById(sequenceId, created.id))
@@ -568,12 +669,13 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     expect(
       await methods.promoteVoiceClaimIfPending(created.id, husk.id)
     ).toBeNull();
-    await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null });
+    await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null }, null);
     expect(
       await methods.promoteVoiceClaimIfPending(created.id, husk.id)
     ).toBeNull();
@@ -594,17 +696,20 @@ describe('characters bible CRUD + soft-remove', () => {
       created.id,
       { voiceId: 'voice-a' },
       'generated',
-      actorId
+      actorId,
+      null
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     await methods.updateVoice(
       created.id,
       { voiceId: 'voice-lib' },
       'library',
-      actorId
+      actorId,
+      null
     );
     const live = await methods.getById(sequenceId, created.id);
     expect(live?.pendingPromoteVoiceVersionId).toBeNull();
@@ -627,7 +732,8 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
     await expect(
       methods.selectVoiceVersion(created.id, husk.id)
@@ -647,9 +753,10 @@ describe('characters bible CRUD + soft-remove', () => {
     );
     const { version: husk } = await methods.createPendingVoiceClaim(
       created.id,
-      actorId
+      actorId,
+      { activity: null }
     );
-    await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null });
+    await methods.completeVoiceClaimIfLive(husk.id, { voiceId: null }, null);
     await expect(
       methods.selectVoiceVersion(created.id, husk.id)
     ).rejects.toThrow(/no saved take/i);
@@ -679,10 +786,23 @@ describe('characters bible CRUD + soft-remove', () => {
       maya.id,
       { voiceId: 'shared' },
       'generated',
+      null,
       null
     );
-    await methods.updateVoice(otto.id, { voiceId: 'shared' }, 'library', null);
-    await methods.updateVoice(maya.id, { voiceId: 'kept' }, 'library', null);
+    await methods.updateVoice(
+      otto.id,
+      { voiceId: 'shared' },
+      'library',
+      null,
+      null
+    );
+    await methods.updateVoice(
+      maya.id,
+      { voiceId: 'kept' },
+      'library',
+      null,
+      null
+    );
 
     // The id is deleted at ElevenLabs once, for everyone (#1657).
     await methods.markVoiceReleased('shared');
@@ -818,7 +938,13 @@ describe('characters bible CRUD + soft-remove', () => {
       },
       { source: 'analysis', createdBy: null }
     );
-    await methods.updateVoice(moved.id, { voiceId: 'other' }, 'library', null);
+    await methods.updateVoice(
+      moved.id,
+      { voiceId: 'other' },
+      'library',
+      null,
+      null
+    );
     const [seq] = await db
       .select({ teamId: sequences.teamId })
       .from(sequences)
@@ -1729,12 +1855,14 @@ describe('team characters (#2017)', () => {
       created.id,
       { voiceId: 'voice-a' },
       'library',
+      null,
       null
     );
     await chars().updateVoice(
       created.id,
       { voiceId: 'voice-b' },
       'library',
+      null,
       null
     );
     return created;
@@ -1800,7 +1928,13 @@ describe('team characters (#2017)', () => {
   it('an unselected voice version that still holds a slot stops the delete', async () => {
     const created = await withSheetAndVoices('char_001');
     // What releaseCharacterVoice writes: the live pointer is dropped.
-    await chars().updateVoice(created.id, { voiceId: null }, 'removed', null);
+    await chars().updateVoice(
+      created.id,
+      { voiceId: null },
+      'removed',
+      null,
+      null
+    );
     // Neither id is selected any more, and neither is released.
     expect((await chars().getVoiceIdsToRelease(created.id)).sort()).toEqual([
       'voice-a',
@@ -1837,6 +1971,7 @@ describe('team characters (#2017)', () => {
       created.id,
       { voiceId: newSeedVoiceId() },
       'generated',
+      null,
       null
     );
     // A voice copied from a talent: the talent still points at it.
@@ -1845,6 +1980,7 @@ describe('team characters (#2017)', () => {
       created.id,
       { voiceId: 'voice-t' },
       'library',
+      null,
       null
     );
 

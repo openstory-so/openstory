@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
 import { sequenceMusicInputHash } from '@/shots/input-hash';
 import {
+  sequenceEvents,
   sequenceMusicVariants,
   sequences,
   styles,
@@ -30,6 +31,7 @@ const userRow = { id: '', name: 'U', email: 'u@example.com' };
 let sequenceId = '';
 
 async function seed() {
+  await db.delete(sequenceEvents);
   await db.delete(sequenceMusicVariants);
   await db.delete(sequences);
   await db.delete(styles);
@@ -126,6 +128,33 @@ describe('music claim lifecycle (#1115)', () => {
     expect(seq.musicStatus).toBe('completed');
     expect(seq.musicUrl).toBe('/r2/audio/a.mp3');
     expect(seq.musicPath).toBe('a.mp3');
+  });
+
+  it('logs one start and one finish line, and the finish sorts when it lands', async () => {
+    const methods = createSequenceVariantsMethods(db);
+    const claim = {
+      sequenceId,
+      ...track,
+      id: generateId(),
+      isPrimary: true,
+      workflowRunId: 'run-1',
+    };
+    const id = await methods.claimMusic(claim);
+    // A retried claim step finds its own row.
+    await methods.claimMusic(claim);
+    if (!id) throw new Error('claim returned null');
+    await methods.completeMusicClaim(id, landing('/r2/audio/a.mp3'));
+    await methods.completeMusicClaim(id, landing('/r2/audio/a.mp3'));
+
+    const rows = await db.select().from(sequenceEvents);
+    expect(rows.map((row) => row.kind).sort()).toEqual([
+      'music.generated',
+      'music.started',
+    ]);
+    const generated = rows.find((row) => row.kind === 'music.generated');
+    // Its own id, minted at landing. The row's id dates from the claim.
+    expect(generated?.id).not.toBe(id);
+    expect(generated?.data).toEqual({ variantId: id, model: track.model });
   });
 
   it('a replayed completion changes nothing', async () => {

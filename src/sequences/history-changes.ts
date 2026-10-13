@@ -1,6 +1,7 @@
 /**
- * The lines under a history sentence: a setting's from → to, or the previous
- * text of an edit. Version ids and workflow names stay out.
+ * What a history row shows, read from an event's `data`: the sentence, the
+ * lines under it (a setting's from → to, or the previous text of an edit),
+ * the media it names, and which rows fold into one. Client-safe.
  */
 
 import { GENERATION_STAGE_META, isGenerationStage } from '@/sequences/pipeline';
@@ -8,7 +9,9 @@ import { mediaModelName } from '@/sequences/model-label';
 import type { HistorySettingKey } from '@/sequences/model-label';
 
 /** What the inspector is showing. Omitted means the whole sequence. */
-export type HistoryScope = { shotId: string } | { sceneIds: string[] };
+export type HistoryScope =
+  | { readonly shotId: string }
+  | { readonly sceneIds: readonly string[] };
 
 export type HistoryChange = {
   label: string;

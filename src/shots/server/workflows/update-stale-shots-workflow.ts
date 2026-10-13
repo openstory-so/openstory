@@ -204,6 +204,8 @@ type PromptScenes = {
 };
 
 export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<UpdateStaleShotsWorkflowInput> {
+  protected override readonly failureLabel = 'Update';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>,
     step: WorkflowStep,
@@ -341,6 +343,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               targets: plan.targets,
               sequenceId,
               parentInstanceId,
+              actorId: userId,
             })
           )
         : { claimsByShot: {}, skipped: [] };
@@ -623,7 +626,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               scopedDb.characters.createPendingVoiceClaim(id, userId, {
                 activity: {
                   sequenceId,
-                  summary: `Started a voice for ${payload.characterBible?.name ?? 'the character'}`,
+                  summary: `Started a voice for ${payload.characterBible.name}`,
                 },
               })
             );

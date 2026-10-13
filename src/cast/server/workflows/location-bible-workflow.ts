@@ -30,6 +30,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'location-bible']);
 
 export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationBibleWorkflowInput> {
+  protected override readonly failureLabel = 'Location design';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<LocationBibleWorkflowInput>>,
     step: WorkflowStep,
@@ -177,7 +179,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
                       actorId: input.userId,
                       summary: sheetStartedSummary(location.name, model),
                     }
-                  : undefined
+                  : null
               );
             if (!claim.held) {
               logger.warn(

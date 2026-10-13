@@ -15,7 +15,6 @@
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
-  sequenceEvents,
   sequenceExports,
   type SequenceExport,
 } from '@/platform/server/db/schema';
@@ -23,8 +22,9 @@ import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-i
 import {
   buildEventInsertIfPresent,
   buildEventInsertOnce,
+  eventNotLogged,
 } from '@/sequences/server/db/sequence-events';
-import { and, desc, eq, notExists } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 
@@ -159,23 +159,19 @@ export function createSequenceExportsMethods(db: Database) {
             actorId: null,
             kind: 'export.finished',
             targetType: 'sequence',
-            targetId: id,
+            targetId: exp.sequenceId,
             summary: 'Finished the export',
             data: { exportId: id },
           },
           sequenceExports,
           and(
             eq(sequenceExports.id, id),
-            notExists(
-              db
-                .select({ id: sequenceEvents.id })
-                .from(sequenceEvents)
-                .where(
-                  and(
-                    eq(sequenceEvents.kind, 'export.finished'),
-                    eq(sequenceEvents.targetId, id)
-                  )
-                )
+            eventNotLogged(
+              db,
+              exp.sequenceId,
+              'export.finished',
+              'exportId',
+              id
             )
           )
         ),

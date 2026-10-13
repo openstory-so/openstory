@@ -108,7 +108,7 @@ import {
   stripCodeFences,
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
-import { recordSequenceEvent } from '@/sequences/server/db/sequence-events';
+import { logRunEvent } from '@/sequences/server/db/sequence-events';
 import { bibleFromWire } from '@/cast/bible-looks';
 import type {
   CharacterBibleEntry,
@@ -541,6 +541,8 @@ async function reportDroppedBoundaries(
 }
 
 export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWorkflowInput> {
+  protected override readonly failureLabel = 'Scene split';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<SceneSplitWorkflowInput>>,
     step: WorkflowStep,
@@ -1176,10 +1178,6 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // deleting stream-linked scenes fails with DrizzleQueryError (#1072).
     let dialogueVersionIdByShotId: Record<string, string> = {};
     if (sequenceId && reconciled.scenes.length > 0) {
-      const sceneSplitEventId = await step.do(
-        'scene-split-completed-event-id',
-        async () => generateId()
-      );
       dialogueVersionIdByShotId = await step.do('persist-scenes', async () => {
         const versionIds: Record<string, string> = {};
         const sceneRows = [];
@@ -1287,18 +1285,22 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
             }
           }
         }
-        const sceneCount = reconciled.scenes.length;
-        await recordSequenceEvent(scopedDb, {
-          id: sceneSplitEventId,
+        return versionIds;
+      });
+      const sceneCount = reconciled.scenes.length;
+      await logRunEvent(
+        step,
+        scopedDb.sequenceEvents,
+        'scene-split-completed',
+        {
           sequenceId,
           actorId: input.userId,
           kind: 'scene-split.completed',
           targetType: 'sequence',
           targetId: sequenceId,
           summary: `Split the script into ${sceneCount} ${sceneCount === 1 ? 'scene' : 'scenes'}`,
-        });
-        return versionIds;
-      });
+        }
+      );
     }
 
     // Step 5: Deduct credits — one deduction per LLM call.

@@ -10,11 +10,13 @@ import type {
 } from '@/sequences/server/db/sequence-events';
 import { PromptDiffView } from '@/shots/ui/prompts/prompt-diff-view';
 import { AppImage } from '@/ui/shadcn/app-image';
+import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { cn } from '@/ui/utils';
 import { Link } from '@tanstack/react-router';
 import { useSuspenseInfiniteQuery } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useRef } from 'react';
 
 const linkClass =
   'rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -162,6 +164,9 @@ function useHistory(sequenceId: string, scope?: HistoryScope) {
       }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    // Nothing invalidates this key, and every edit adds a line. Refetch each
+    // time the log is opened.
+    staleTime: 0,
   });
 }
 
@@ -175,26 +180,22 @@ function HistoryList({
   const events = hideAutoSelectedRenders(
     history.data.pages.flatMap((page) => page.events)
   );
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = history;
+  const {
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    fetchNextPage,
+  } = history;
+
+  // Rows differ in height (stills, diffs), so each is measured as it mounts.
   const scrollRef = useRef<HTMLDivElement>(null);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const root = scrollRef.current;
-    const sentinel = sentinelRef.current;
-    if (!root || !sentinel || !hasNextPage) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !isFetchingNextPage) {
-          void fetchNextPage();
-        }
-      },
-      { root, rootMargin: '200px' }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const virtualizer = useVirtualizer({
+    count: events.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 96,
+    overscan: 6,
+    getItemKey: (index) => events[index]?.id ?? index,
+  });
 
   return (
     <div
@@ -207,12 +208,40 @@ function HistoryList({
         </p>
       ) : (
         <div className="flex flex-col gap-2">
-          {events.map((entry) => (
-            <HistoryRow key={entry.id} entry={entry} />
-          ))}
-          <div ref={sentinelRef} className="h-px" aria-hidden />
-          {isFetchingNextPage ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
+          <div
+            className="relative w-full"
+            style={{ height: virtualizer.getTotalSize() }}
+          >
+            {virtualizer.getVirtualItems().map((row) => {
+              const entry = events[row.index];
+              if (!entry) return null;
+              return (
+                <div
+                  key={row.key}
+                  ref={virtualizer.measureElement}
+                  data-index={row.index}
+                  className="absolute left-0 top-0 w-full pb-2"
+                  style={{ transform: `translateY(${row.start}px)` }}
+                >
+                  <HistoryRow entry={entry} />
+                </div>
+              );
+            })}
+          </div>
+          {isFetchNextPageError ? (
+            <p role="alert" className="text-sm text-destructive">
+              Older history did not load.
+            </p>
+          ) : null}
+          {hasNextPage ? (
+            <Button
+              variant="outline"
+              className="self-start"
+              disabled={isFetchingNextPage}
+              onClick={() => void fetchNextPage()}
+            >
+              {isFetchingNextPage ? 'Loading…' : 'Load older'}
+            </Button>
           ) : null}
         </div>
       )}
@@ -241,6 +270,15 @@ export function HistoryColumn({
   const history = useHistory(sequenceId, scope);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex justify-end px-4 pt-3 text-xs text-muted-foreground">
+        <Link
+          to="/sequences/$id/history"
+          params={{ id: sequenceId }}
+          className={linkClass}
+        >
+          All history
+        </Link>
+      </div>
       <HistoryList history={history} className="px-4 py-3" />
     </div>
   );

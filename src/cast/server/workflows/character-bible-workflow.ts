@@ -44,6 +44,8 @@ const logger = getLogger(['openstory', 'workflow', 'character-bible']);
 const PARENT_BINDING_NAME = 'CHARACTER_BIBLE_WORKFLOW';
 
 export class CharacterBibleWorkflow extends OpenStoryWorkflowEntrypoint<CharacterBibleWorkflowInput> {
+  protected override readonly failureLabel = 'Character design';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterBibleWorkflowInput>>,
     step: WorkflowStep,

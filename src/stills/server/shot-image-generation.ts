@@ -128,6 +128,7 @@ export async function generateShotImage(
       model: workflowInput.model ?? DEFAULT_IMAGE_MODEL,
       pendingInputHash: workflowInput.snapshotInputHash,
       isPrimary: true,
+      actorId: context.user.id,
     });
   } catch (error) {
     const raced = (

@@ -20,11 +20,7 @@ import {
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
-import {
-  sequenceEvents,
-  sequenceMusicVariants,
-  sequences,
-} from '@/platform/server/db/schema';
+import { sequenceMusicVariants, sequences } from '@/platform/server/db/schema';
 import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import type {
   Sequence,
@@ -33,9 +29,9 @@ import type {
 import { mediaModelName } from '@/sequences/model-label';
 import {
   buildEventInsertIfPresent,
-  buildEventInsertOnce,
+  eventNotLogged,
 } from '@/sequences/server/db/sequence-events';
-import { and, asc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
@@ -204,17 +200,7 @@ export function createSequenceVariantsMethods(db: Database) {
         sequenceMusicVariants,
         and(
           eq(sequenceMusicVariants.id, id),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(sequenceEvents)
-              .where(
-                and(
-                  eq(sequenceEvents.kind, 'music.started'),
-                  sql`json_extract(${sequenceEvents.data}, '$.variantId') = ${id}`
-                )
-              )
-          )
+          eventNotLogged(db, input.sequenceId, 'music.started', 'variantId', id)
         )
       );
       if (!input.isPrimary) {
@@ -366,16 +352,30 @@ export function createSequenceVariantsMethods(db: Database) {
               eq(sequences.pendingPromoteMusicVariantId, variantId)
             )
           ),
-        buildEventInsertOnce(db, {
-          id: variantId,
-          sequenceId: input.sequenceId,
-          actorId: null,
-          kind: 'music.generated',
-          targetType: 'sequence',
-          targetId: input.sequenceId,
-          summary: `Generated music with ${mediaModelName(current.model)}`,
-          data: { variantId, model: current.model },
-        }),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: input.sequenceId,
+            actorId: null,
+            kind: 'music.generated',
+            targetType: 'sequence',
+            targetId: input.sequenceId,
+            summary: `Generated music with ${mediaModelName(current.model)}`,
+            data: { variantId, model: current.model },
+          },
+          sequenceMusicVariants,
+          and(
+            eq(sequenceMusicVariants.id, variantId),
+            eventNotLogged(
+              db,
+              input.sequenceId,
+              'music.generated',
+              'variantId',
+              variantId
+            )
+          )
+        ),
       ]);
       const landed = await getMusicById(variantId);
       if (!landed)

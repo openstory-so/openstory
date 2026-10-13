@@ -129,6 +129,7 @@ export async function releaseCharacterVoice(
     // 'removed' says the character dropped the id; only `releasedAt` says the
     // provider slot was actually freed.
     'removed',
-    createdBy
+    createdBy,
+    null
   );
 }

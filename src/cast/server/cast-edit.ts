@@ -463,7 +463,8 @@ export async function setCharacterVoiceEnabled(
     character.id,
     { useVoice: enabled },
     enabled ? 'user-edit' : 'disabled',
-    actor.userId
+    actor.userId,
+    null
   );
   if (!enabled) {
     await releaseCharacterVoice(scopedDb, character, actor.userId);

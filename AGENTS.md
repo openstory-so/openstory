@@ -425,7 +425,7 @@ See `src/ui/` and any domain's `ui/` for the house pattern.
 - Animation: honor `prefers-reduced-motion`; animate `transform`/`opacity`; interruptible. CSS > WAAPI > JS libs.
 - Accessibility: redundant cues (not color-only), `aria-label` for icon-only buttons, tabular numerics for comparisons, prefer native semantics.
 - Buttons: no icons on labelled buttons — text only, and loading is the label (`Generating…`), not a spinner. Only an icon-only button (`size="icon"` + `aria-label`) carries an icon. Keep labels one line: a count list goes in muted text under the button, not in it.
-- Performance: virtualize long lists (`virtua`); explicit image dimensions; mutations <500ms.
+- Performance: virtualize long lists (`useVirtualizer` from `@tanstack/react-virtual`); explicit image dimensions; mutations <500ms.
 
 ---
 

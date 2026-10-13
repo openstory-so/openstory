@@ -72,6 +72,8 @@ const SEED_READ_STEP = {
 } as const satisfies WorkflowStepConfig;
 
 export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<CharacterVoiceWorkflowInput> {
+  protected override readonly failureLabel = 'Voice design';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     step: WorkflowStep,
@@ -207,7 +209,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           description: voiceDescription,
           previews: parked,
         },
-        voiceActivity ? { ...voiceActivity, actorId: input.userId } : undefined
+        voiceActivity ? { ...voiceActivity, actorId: input.userId } : null
       );
       if (!completed) {
         // step.do replay after D1 committed: the husk is already completed.

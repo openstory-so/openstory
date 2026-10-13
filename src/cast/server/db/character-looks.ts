@@ -1244,11 +1244,12 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
       snapshot: LookSheetSnapshot,
       opts: {
         markGenerating: boolean;
-        activity?: {
+        /** The start line. Null for a run started from no sequence. */
+        activity: {
           sequenceId: string;
           actorId: string | null;
           summary: string;
-        };
+        } | null;
       }
     ): Promise<{ versionId: string; held: boolean }> => {
       const look = await requireLook(db, teamId, lookId);

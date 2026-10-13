@@ -78,20 +78,15 @@ async function landSheet(
         bibleVersionId: input.bibleVersionId ?? null,
         model: stored.model,
         workflowRunId,
-        ...(input.sequenceId
+        activity: input.sequenceId
           ? {
-              activity: {
-                sequenceId: input.sequenceId,
-                actorId: input.userId,
-                targetType: 'character' as const,
-                targetId: input.characterDbId,
-                summary: sheetGeneratedSummary(
-                  input.characterName,
-                  stored.model
-                ),
-              },
+              sequenceId: input.sequenceId,
+              actorId: input.userId,
+              targetType: 'character',
+              targetId: input.characterDbId,
+              summary: sheetGeneratedSummary(input.characterName, stored.model),
             }
-          : {}),
+          : null,
       }),
     logger,
     logTag: '[CharacterSheetWorkflow:cf]',
@@ -218,6 +213,8 @@ async function persistReusedTalentSheet(params: {
 const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'team';
 
 export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<CharacterSheetWorkflowInput> {
+  protected override readonly failureLabel = 'Character sheet';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>,
     step: WorkflowStep,

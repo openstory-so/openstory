@@ -40,6 +40,7 @@ import { simpleHash } from '@/platform/hash';
 import { generateIdAt } from '@/platform/id';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import type { WorkflowFailureActivity } from '@/platform/server/workflow/errors';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { computeImageWorkflowHashFromDto } from './image-workflow-snapshot';
@@ -77,6 +78,16 @@ type PrepResult = {
 };
 
 export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInput> {
+  protected override readonly failureLabel = 'Image generation';
+
+  protected override failureActivity(
+    payload: ImageWorkflowInput
+  ): WorkflowFailureActivity {
+    return payload.skipStorage
+      ? { kind: 'run.failed', summary: 'Preview failed' }
+      : super.failureActivity(payload);
+  }
+
   /**
    * The frame this run writes to: the trigger's `frameId`, re-read only to
    * confirm it still exists (deleted mid-run is a stand-down). Every spawner

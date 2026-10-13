@@ -11,7 +11,7 @@ const historyScopeSchema = z.union([
 
 const historyInputSchema = z.object({
   sequenceId: ulidSchema,
-  before: z.string().optional(),
+  before: ulidSchema.optional(),
   scope: historyScopeSchema.optional(),
 });
 

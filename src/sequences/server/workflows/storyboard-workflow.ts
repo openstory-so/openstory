@@ -47,6 +47,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'storyboard']);
 
 export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWorkflowInput> {
+  protected override readonly failureLabel = 'Storyboard';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<StoryboardWorkflowInput>>,
     step: WorkflowStep,

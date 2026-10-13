@@ -741,8 +741,8 @@ export function createSequencesMethods(
       id: string;
       expectedRunId: string | null;
       claimId: string;
-      /** Set by the launcher so the claim and its start line commit together. */
-      activity?: { summary: string };
+      /** The start line, committed with the claim. Null writes none. */
+      activity: { summary: string } | null;
     }): Promise<boolean> => {
       const where = and(
         eq(sequences.id, params.id),

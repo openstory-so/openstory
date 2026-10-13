@@ -25,11 +25,13 @@ import {
   type WorkflowScopedDb,
 } from '@/platform/server/db/scoped-workflow';
 import {
+  isChildFailureError,
   isEngineAbortError,
   isRecipientInFiniteStateError,
   WorkflowLoggedError,
   WorkflowValidationError,
 } from './errors';
+import type { WorkflowFailureActivity } from './errors';
 import { sanitizeFailResponse } from './sanitize-fail-response';
 import type { UserWorkflowContext } from './types';
 import {
@@ -96,40 +98,11 @@ function extractSequenceId(payload: UserWorkflowContext): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
-/**
- * One failure line for the sequence activity log. Copy lives here so the
- * platform base does not import a product domain. Engine aborts never reach
- * this: they rethrow before the log step.
- */
-function failureActivity(
-  workflowName: string,
-  payload: UserWorkflowContext
-): { kind: string; summary: string } {
-  if (workflowName === 'SequenceExportWorkflow') {
-    return { kind: 'export.failed', summary: 'Export failed' };
-  }
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- optional preview flag, not on the base payload
-  const skipStorage = (payload as { skipStorage?: boolean }).skipStorage;
-  if (workflowName === 'ImageWorkflow' && skipStorage === true) {
-    return { kind: 'run.failed', summary: 'Preview failed' };
-  }
-  const labels: Record<string, string> = {
-    AnalyzeScriptWorkflow: 'Script analysis',
-    SceneSplitWorkflow: 'Scene split',
-    StoryboardWorkflow: 'Storyboard',
-    MusicWorkflow: 'Music generation',
-    CharacterSheetWorkflow: 'Character sheet',
-    LocationSheetWorkflow: 'Location sheet',
-    CharacterVoiceWorkflow: 'Voice design',
-    DialogueAudioWorkflow: 'Dialogue',
-    DialogueTakeWorkflow: 'Dialogue',
-    ImageWorkflow: 'Image generation',
-    MotionWorkflow: 'Motion',
-    ShotImagesWorkflow: 'Image generation',
-    UpdateStaleShotsWorkflow: 'Update',
-  };
-  const label = labels[workflowName] ?? 'Generation';
-  return { kind: 'run.failed', summary: `${label} failed` };
+/** The one shot a run works on, when its payload names one. */
+function extractShotId(payload: UserWorkflowContext): string | undefined {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- optional slot not part of the base payload type
+  const id = (payload as { shotId?: string }).shotId;
+  return typeof id === 'string' ? id : undefined;
 }
 
 export type OpenStoryFailureContext<T extends UserWorkflowContext> = {
@@ -153,6 +126,18 @@ export abstract class OpenStoryWorkflowEntrypoint<
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<unknown>;
+
+  /**
+   * What failed, for the sequence history: the line reads
+   * "{failureLabel} failed". Required, so a new workflow names itself and the
+   * platform base holds no product copy.
+   */
+  protected abstract readonly failureLabel: string;
+
+  /** The failure line. Override when the sentence depends on the payload. */
+  protected failureActivity(_payload: T): WorkflowFailureActivity {
+    return { kind: 'run.failed', summary: `${this.failureLabel} failed` };
+  }
 
   /**
    * Optional failure hook. Runs inside a `step.do('emit-failure')` so the
@@ -301,39 +286,6 @@ export abstract class OpenStoryWorkflowEntrypoint<
         }
       }
 
-      const failedSequenceId = extractSequenceId(event.payload);
-      const logged =
-        error instanceof WorkflowLoggedError
-          ? error.activity
-          : failureActivity(this.constructor.name, event.payload);
-      if (failedSequenceId && logged) {
-        try {
-          // Checkpoint the id before the insert. A retry of the insert step
-          // reuses it, so `recordOnce` does not append a second line.
-          const eventId = await step.do('failure-event-id', async () =>
-            generateId()
-          );
-          await step.do('log-run-failure', async () => {
-            await scopedDb.sequenceEvents.recordOnce({
-              id: eventId,
-              sequenceId: failedSequenceId,
-              actorId: event.payload.userId,
-              kind: logged.kind,
-              targetType: 'sequence',
-              targetId: failedSequenceId,
-              summary: logged.summary,
-              data: { workflow: this.constructor.name },
-            });
-          });
-        } catch (logError) {
-          if (isEngineAbortError(logError)) throw logError;
-          logger.error(
-            `[${this.constructor.name}] failed to write the activity-log failure:`,
-            { err: logError }
-          );
-        }
-      }
-
       // Notify the parent on failure too — otherwise a parent's
       // `step.waitForEvent` would hang until its timeout. The send is durable
       // (retried inside its own step.do); if delivery is still impossible after
@@ -356,6 +308,44 @@ export abstract class OpenStoryWorkflowEntrypoint<
               { err: notifyError }
             );
           }
+        }
+      }
+
+      // One history line per failure. A parent that failed only because its
+      // child did writes none: the child's line already says what broke. This
+      // runs after the parent is told, so a log that cannot be written never
+      // keeps a parent waiting. Engine aborts never reach here.
+      const failedSequenceId = extractSequenceId(event.payload);
+      if (failedSequenceId && !isChildFailureError(error)) {
+        const logged =
+          error instanceof WorkflowLoggedError
+            ? error.activity
+            : this.failureActivity(event.payload);
+        const shotId = extractShotId(event.payload);
+        try {
+          // Checkpoint the id before the insert. A retry of the insert step
+          // reuses it, so `recordOnce` does not append a second line.
+          const eventId = await step.do('failure-event-id', async () =>
+            generateId()
+          );
+          await step.do('log-run-failure', async () => {
+            await scopedDb.sequenceEvents.recordOnce({
+              id: eventId,
+              sequenceId: failedSequenceId,
+              actorId: event.payload.userId,
+              kind: logged.kind,
+              targetType: shotId ? 'shot' : 'sequence',
+              targetId: shotId ?? failedSequenceId,
+              summary: logged.summary,
+              data: { workflow: this.constructor.name },
+            });
+          });
+        } catch (logError) {
+          if (isEngineAbortError(logError)) throw logError;
+          logger.error(
+            `[${this.constructor.name}] failed to write the activity-log failure:`,
+            { err: logError }
+          );
         }
       }
 

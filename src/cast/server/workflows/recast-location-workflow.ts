@@ -139,6 +139,8 @@ async function regenerateShots(
 }
 
 export class RecastLocationWorkflow extends OpenStoryWorkflowEntrypoint<RecastLocationWorkflowInput> {
+  protected override readonly failureLabel = 'Location recast';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RecastLocationWorkflowInput>>,
     step: WorkflowStep,

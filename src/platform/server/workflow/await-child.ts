@@ -31,6 +31,7 @@ import { getLogger } from '@/platform/logger';
 import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
+  childFailureMessage,
   isInstanceAlreadyExistsError,
   isRecipientInFiniteStateError,
 } from './errors';
@@ -276,7 +277,7 @@ export async function spawnAndAwaitChild<TInput, TOutput>(
   const outcome = payload as ChildOutcome<TOutput>;
 
   if (outcome.status === 'failed') {
-    throw new Error(`Child workflow ${args.childId} failed: ${outcome.error}`);
+    throw new Error(childFailureMessage(args.childId, outcome.error));
   }
   return outcome.output;
 }

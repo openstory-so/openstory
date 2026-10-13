@@ -51,7 +51,7 @@ export async function enqueueCharacterVoiceDesign(args: {
           sequenceId,
           summary: `Started a voice for ${character.name}`,
         }
-      : undefined
+      : null
   );
   if (claim.alreadyInFlight) {
     return {
@@ -118,7 +118,7 @@ async function takeLiveVoiceClaimOrInsert(
   scopedDb: ScopedDb,
   characterId: string,
   userId: string,
-  activity?: { sequenceId: string; summary: string }
+  activity: { sequenceId: string; summary: string } | null
 ): Promise<{
   alreadyInFlight: boolean;
   version: { id: string; workflowRunId: string | null };
@@ -139,7 +139,7 @@ async function takeLiveVoiceClaimOrInsert(
   let inserted = await scopedDb.characters.createPendingVoiceClaim(
     characterId,
     userId,
-    activity ? { activity } : undefined
+    { activity }
   );
   if (inserted.created) {
     return { alreadyInFlight: false, version: inserted.version };
@@ -155,7 +155,7 @@ async function takeLiveVoiceClaimOrInsert(
   inserted = await scopedDb.characters.createPendingVoiceClaim(
     characterId,
     userId,
-    activity ? { activity } : undefined
+    { activity }
   );
   if (inserted.created) {
     return { alreadyInFlight: false, version: inserted.version };

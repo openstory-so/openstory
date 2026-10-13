@@ -236,34 +236,51 @@ sequence_events
 
 Drift is prevented structurally: the event is appended in the **same
 `db.batch()` transaction** as the mutation, from the central scoped-db write
-layer — change and event commit together or not at all. A retried workflow
-step keeps one line only when the caller passes the same id to
-`onConflictDoNothing` (`buildEventInsertOnce`). Completions that narrate one
-domain row reuse that row's id (`music.generated`, `sheet.generated`,
-`voice.designed`, `dialogue.recorded`, `preview.generated`). A run-level
-line (analysis, scene split, storyboard completion, and `log-run-failure`)
-checkpoints a fresh ULID in an earlier `step.do` and inserts that id. A
-start line whose id is minted inside the claim write can still duplicate if
-that whole step replays after the insert committed. `music.started` is one
-line per sequence while a claim is open (`notExists`), not a stable id.
-`export.finished` inserts only when no finished line already targets that
-export. A start and the completion of the same row use different ids. A run
-that throws logs one failure from `OpenStoryWorkflowEntrypoint`
-(`log-run-failure`, after `emit-failure`); an engine abort does not.
-Storyboard's `mark-failed` returns without throwing, so that path writes
-`run.failed` itself. A credits shortfall throws `WorkflowLoggedError`
-carrying the top-up sentence, so the base does not also write "Storyboard
-failed". The ready email runs after `mark-completed`; a send failure is
+layer — change and event commit together or not at all. History orders by event id, so **an event's id is minted when the event is
+written**, never borrowed from a row that was created earlier. A completion
+that narrates one domain row (`music.generated`, `sheet.generated`,
+`voice.designed`, `preview.generated`, `export.finished`) takes a fresh id
+and carries that row's id in `data`; `eventNotLogged` gates the insert on no
+line of that kind already naming the row, so a retried step adds no second
+line. `music.started` is gated the same way: one line per music variant
+row, whether or not the run holds the pointer claim. `dialogue.recorded`
+takes a fresh id inside `appendSpeech`, whose early return on an existing
+speech is what stops a replay. A line whose id is the row it opens in the same
+write (`image.started`, `export.started`) is already dated correctly.
+
+A run-level line checkpoints a fresh ULID in a `step.do` and inserts that id
+with `onConflictDoNothing` (`buildEventInsertOnce`). Analysis and scene
+split write theirs through `logRunEvent`, in a step of its own after the
+work: a line that cannot be written is logged and the run goes on. Storyboard
+completion commits its line in the same batch as the status. A start line
+whose id is minted inside the claim write (`sheet.started`,
+`storyboard.started`, `voice.started`) can still duplicate if that whole
+step replays after the insert committed.
+
+Failure lines have two writers. A run that throws logs one line from
+`OpenStoryWorkflowEntrypoint` (`log-run-failure`, after `emit-failure` and
+after the parent is told); an engine abort does not. The sentence is the
+workflow's own required `failureLabel` ("{label} failed"), or its
+`failureActivity` override (export, preview). The line targets the shot
+when the payload names one, otherwise the sequence. A parent that failed
+only because a child it awaited failed writes none: the child's line already
+says what broke. A trigger that never became a run is logged by
+`recordTriggerFailure` in the server module that tried to start it
+(`run.failed`, or `export.failed` from `export.ts`); a failed log there
+never replaces the trigger error. Storyboard's `mark-failed` returns without
+throwing, so that path writes `run.failed` itself. A credits shortfall
+throws `WorkflowLoggedError` carrying the top-up sentence, so the base does
+not also write "Storyboard failed". The ready email runs after `mark-completed`; a send failure is
 logged and swallowed, and the sequence stays completed.
 
-Kinds added for the history page (#2093), beside the image, video, prompt,
-shot, scene, character, look, location, element and sheet selection lines:
+Run and generation kinds (#2093), beside the image, video, prompt, shot,
+scene, character, look, location, element and sheet selection lines:
 `storyboard.started` / `storyboard.completed`, `analysis.completed`,
 `scene-split.completed`, `image.started`, `preview.generated`,
 `music.started` / `music.generated`, `sheet.started` / `sheet.generated`,
 `voice.started` / `voice.designed`, `dialogue.started` /
 `dialogue.recorded`, `export.started` / `export.finished` /
-`export.failed`, and `run.failed`. `sequence.settings-changed` now carries a
+`export.failed`, and `run.failed`. `sequence.settings-changed` carries a
 plain-English summary when the stored style, aspect ratio, image, video,
 music or analysis model, or generation stop actually changes. Model keys stay
 out of `SETTINGS_CHANGED_LABELS` (#1785).

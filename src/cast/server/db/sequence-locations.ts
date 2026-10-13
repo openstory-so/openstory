@@ -503,11 +503,12 @@ export function createSequenceLocationsMethods(db: Database) {
       id: string,
       opts: {
         markGenerating: boolean;
-        activity?: {
+        /** The start line. Null writes none. */
+        activity: {
           sequenceId: string;
           actorId: string | null;
           summary: string;
-        };
+        } | null;
       }
     ): Promise<string> => {
       const versionId = generateId();
@@ -560,11 +561,12 @@ export function createSequenceLocationsMethods(db: Database) {
     claimReferenceIfUnmoved: async (
       id: string,
       snapshot: { bibleVersionId: string; libraryLocationId: string | null },
-      activity?: {
+      /** The start line. Null writes none. */
+      activity: {
         sequenceId: string;
         actorId: string | null;
         summary: string;
-      }
+      } | null
     ): Promise<{ versionId: string; held: boolean }> => {
       const versionId = generateId();
       const claim = db

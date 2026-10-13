@@ -344,7 +344,8 @@ export function createShotDialogueMethods(db: Database) {
     claimSpeech: async (input: {
       shots: ReadonlyArray<{ shotId: string; sourceKey: string }>;
       workflowRunId: string;
-      actorId?: string | null;
+      /** Who started it. Null when no person did. */
+      actorId: string | null;
     }): Promise<Record<string, string>> => {
       if (input.shots.length === 0) return {};
       const drafted = input.shots.map((shot) => ({
@@ -603,9 +604,12 @@ export function createShotDialogueMethods(db: Database) {
               ),
           ];
         }),
+        // A fresh id, so the line sorts when the recording lands. The speech
+        // id dates from before the take. The early return above is what
+        // keeps a replayed step from adding a second line.
         adopting.length === 0
           ? buildEventInsertOnce(db, {
-              id: input.id,
+              id: generateId(),
               sequenceId: input.sequenceId,
               actorId: null,
               kind: 'dialogue.recorded',
@@ -619,7 +623,7 @@ export function createShotDialogueMethods(db: Database) {
           : buildEventInsertIfPresent(
               db,
               {
-                id: input.id,
+                id: generateId(),
                 sequenceId: input.sequenceId,
                 actorId: null,
                 kind: 'dialogue.recorded',

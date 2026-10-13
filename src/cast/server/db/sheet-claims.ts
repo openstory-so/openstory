@@ -28,7 +28,11 @@ import type {
   SQLiteUpdateSetSource,
 } from 'drizzle-orm/sqlite-core';
 import type { Database } from '@/platform/server/db/client';
-import { buildEventInsertOnce } from '@/sequences/server/db/sequence-events';
+import { generateId } from '@/platform/id';
+import {
+  buildEventInsertIfPresent,
+  eventNotLogged,
+} from '@/sequences/server/db/sequence-events';
 import type { SequenceEventTargetType } from '@/platform/server/db/schema';
 import {
   characterLooks,
@@ -115,14 +119,14 @@ type LandArgs<H> = {
   bibleVersionId: string | null;
   model: string;
   workflowRunId: string;
-  /** Set only when the run was started from a sequence. */
-  activity?: {
+  /** The history line. Null for a run started from no sequence. */
+  activity: {
     sequenceId: string;
     actorId: string | null;
     targetType: Extract<SequenceEventTargetType, 'character' | 'location'>;
     targetId: string;
     summary: string;
-  };
+  } | null;
 };
 
 /** What {@link landSheetVersion} needs from one sheet entity's tables. */
@@ -208,15 +212,30 @@ async function landSheetVersion<P extends SQLiteTable, V extends SQLiteTable>(
         park,
         settle,
         read,
-        buildEventInsertOnce(db, {
-          id: versionId,
-          sequenceId: activity.sequenceId,
-          actorId: activity.actorId,
-          kind: 'sheet.generated',
-          targetType: activity.targetType,
-          targetId: activity.targetId,
-          summary: activity.summary,
-        }),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: activity.sequenceId,
+            actorId: activity.actorId,
+            kind: 'sheet.generated',
+            targetType: activity.targetType,
+            targetId: activity.targetId,
+            summary: activity.summary,
+            data: { sheetVersionId: versionId },
+          },
+          spec.parent,
+          and(
+            spec.isParent,
+            eventNotLogged(
+              db,
+              activity.sequenceId,
+              'sheet.generated',
+              'sheetVersionId',
+              versionId
+            )
+          )
+        ),
       ])
     : await db.batch([insertVersion, promote, park, settle, read]);
   const row = results[4][0];

@@ -20,6 +20,7 @@ import {
   characters,
   sceneScriptVersions,
   scenes,
+  sequenceEvents,
   locationLibrary,
   locationSheetVariants,
   sequenceLocations,
@@ -188,7 +189,7 @@ async function claim(lookId = characterId) {
   const { versionId } = await looks().claimSheet(
     lookId,
     await snapshotOf(lookId),
-    { markGenerating: true }
+    { markGenerating: true, activity: null }
   );
   return versionId;
 }
@@ -206,9 +207,13 @@ const landCharacter = (
   url = `/r2/${versionId}.png`,
   bibleVersionId: string | null = null,
   claimed = true,
-  lookId = characterId
+  lookId = characterId,
+  activity: Parameters<
+    ReturnType<typeof charVersions>['promoteIfPending']
+  >[0]['activity'] = null
 ) =>
   charVersions().promoteIfPending({
+    activity,
     characterId,
     lookId,
     lookVersionId: null,
@@ -499,6 +504,7 @@ describe('look sheet claims (#2015)', () => {
     );
     const { versionId, held } = await looks().claimSheet(gala.id, snapshot, {
       markGenerating: true,
+      activity: null,
     });
     expect(held).toBe(false);
     expect((await lookOf(gala.id)).pendingPromoteSheetVersionId).toBeNull();
@@ -508,6 +514,60 @@ describe('look sheet claims (#2015)', () => {
       'parked'
     );
     expect((await lookOf(gala.id)).selectedSheetVersionId).toBeNull();
+  });
+
+  it('logs the start with a held claim, and one finish line when the sheet lands', async () => {
+    const start = { sequenceId, actorId: userId, summary: 'Started a sheet' };
+    const { versionId } = await looks().claimSheet(
+      characterId,
+      await snapshotOf(characterId),
+      { markGenerating: true, activity: start }
+    );
+    const finish = {
+      sequenceId,
+      actorId: userId,
+      targetType: 'character' as const,
+      targetId: characterId,
+      summary: 'Generated a sheet',
+    };
+    const land = () =>
+      landCharacter(versionId, undefined, null, true, characterId, finish);
+    expect(await land()).toBe('promoted');
+    // A replayed landing step.
+    expect(await land()).toBe('promoted');
+
+    const rows = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.sequenceId, sequenceId));
+    expect(rows.map((row) => row.kind).sort()).toEqual([
+      'sheet.generated',
+      'sheet.started',
+    ]);
+    const generated = rows.find((row) => row.kind === 'sheet.generated');
+    // Its own id, minted at landing. The version id dates from the claim.
+    expect(generated?.id).not.toBe(versionId);
+    expect(generated?.data).toEqual({ sheetVersionId: versionId });
+  });
+
+  it('a claim that is not held logs no start', async () => {
+    const snapshot = await snapshotOf(characterId);
+    await chars().updateBible(
+      sequenceId,
+      characterId,
+      { physicalDescription: 'short' },
+      { source: 'edit', actorId: userId }
+    );
+    const { held } = await looks().claimSheet(characterId, snapshot, {
+      markGenerating: true,
+      activity: { sequenceId, actorId: userId, summary: 'Started a sheet' },
+    });
+    expect(held).toBe(false);
+    const started = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'sheet.started'));
+    expect(started).toHaveLength(0);
   });
 
   it('is not taken once the bible or the cast moved after the snapshot', async () => {
@@ -522,6 +582,7 @@ describe('look sheet claims (#2015)', () => {
       (
         await looks().claimSheet(characterId, snapshot, {
           markGenerating: true,
+          activity: null,
         })
       ).held
     ).toBe(false);
@@ -532,6 +593,7 @@ describe('look sheet claims (#2015)', () => {
       (
         await looks().claimSheet(characterId, recast, {
           markGenerating: true,
+          activity: null,
         })
       ).held
     ).toBe(false);
@@ -854,6 +916,7 @@ describe('look sheet claims (#2015)', () => {
 describe('sequence location claims', () => {
   const landLocation = (versionId: string) =>
     locVersions().promoteIfPending({
+      activity: null,
       locationId,
       versionId,
       claimed: true,
@@ -868,11 +931,13 @@ describe('sequence location claims', () => {
   it('lands while held and parks after a bible edit', async () => {
     const first = await locs().claimReference(locationId, {
       markGenerating: true,
+      activity: null,
     });
     expect(await landLocation(first)).toBe('promoted');
 
     const second = await locs().claimReference(locationId, {
       markGenerating: true,
+      activity: null,
     });
     await locs().updateBible(
       locationId,
@@ -885,12 +950,14 @@ describe('sequence location claims', () => {
   it('is revoked by a relink and by the library reference moving', async () => {
     let versionId = await locs().claimReference(locationId, {
       markGenerating: true,
+      activity: null,
     });
     await locs().update(locationId, { libraryLocationId: libraryId });
     expect(await landLocation(versionId)).toBe('parked');
 
     versionId = await locs().claimReference(locationId, {
       markGenerating: true,
+      activity: null,
     });
     const claimId = await library().claimReference(libraryId);
     await library().updateReferenceIfClaimed(
@@ -916,7 +983,8 @@ describe('sequence location claims', () => {
   it('a conditional claim is held while the bible and link are live', async () => {
     const claim = await locs().claimReferenceIfUnmoved(
       locationId,
-      await snapshot()
+      await snapshot(),
+      null
     );
     expect(claim.held).toBe(true);
     expect(await landLocation(claim.versionId)).toBe('promoted');
@@ -929,7 +997,11 @@ describe('sequence location claims', () => {
       { keyFeatures: 'neon sign' },
       { actorId: userId }
     );
-    const claim = await locs().claimReferenceIfUnmoved(locationId, before);
+    const claim = await locs().claimReferenceIfUnmoved(
+      locationId,
+      before,
+      null
+    );
     expect(claim.held).toBe(false);
     expect(await landLocation(claim.versionId)).toBe('parked');
   });
@@ -937,7 +1009,11 @@ describe('sequence location claims', () => {
   it('a conditional claim is not taken after a relink', async () => {
     const before = await snapshot();
     await locs().update(locationId, { libraryLocationId: null });
-    const claim = await locs().claimReferenceIfUnmoved(locationId, before);
+    const claim = await locs().claimReferenceIfUnmoved(
+      locationId,
+      before,
+      null
+    );
     expect(claim.held).toBe(false);
   });
 });
@@ -1114,7 +1190,10 @@ describe('re-analysis upserts (#1113)', () => {
   });
 
   it('revokes a location claim when the bulk upsert moves an input', async () => {
-    await locs().claimReference(locationId, { markGenerating: true });
+    await locs().claimReference(locationId, {
+      markGenerating: true,
+      activity: null,
+    });
     await locs().createBulk(
       [{ ...(await location()), id: generateId(), description: 'moved' }],
       { source: 'analysis', createdBy: null }
@@ -1125,6 +1204,7 @@ describe('re-analysis upserts (#1113)', () => {
   it('keeps a location claim when the bulk upsert is identical', async () => {
     const claim = await locs().claimReference(locationId, {
       markGenerating: true,
+      activity: null,
     });
     await locs().createBulk([{ ...(await location()), id: generateId() }], {
       source: 'analysis',
@@ -1140,6 +1220,7 @@ describe('re-analysis upserts (#1113)', () => {
       .where(eq(characterLooks.id, characterId));
     await looks().claimSheet(characterId, await snapshotOf(characterId), {
       markGenerating: false,
+      activity: null,
     });
     expect((await character()).sheetStatus).toBe('completed');
   });
