@@ -284,15 +284,6 @@ export function HistoryColumn({
   const history = useHistory(sequenceId, scope);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex justify-end px-4 pt-3 text-xs text-muted-foreground">
-        <Link
-          to="/sequences/$id/history"
-          params={{ id: sequenceId }}
-          className={linkClass}
-        >
-          All history
-        </Link>
-      </div>
       <HistoryList history={history} className="px-4 py-3" />
     </div>
   );
