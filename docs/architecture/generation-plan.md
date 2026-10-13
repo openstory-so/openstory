@@ -397,7 +397,11 @@ agent hands back, and the launched runs are the operation.
   cost. It launches only through `execute_generation`. Retry planning throws
   `GENERATION_IN_PROGRESS` on a live run rather than reporting a blocker:
   the dry run reads the same mutex. The editor's own smart retry is
-  unchanged.
+  unchanged. A failed sequence whose shots show no failure (the run failed
+  on a voice, a dialogue take, a reference) is never a full storyboard
+  (#2104): the plan still owes that work, so smart retry refuses with
+  "continue generation" (plan `missing`), and the editor's failure banner
+  continues the plan at the run's own stop and switches.
 - **Export (#1461).** Exports spend no credits and `startExport` (the REST
   route's service) already reuses a ready MP4 of the cut or joins its live
   render, so there is no plan to approve: `plan_export` is a read
