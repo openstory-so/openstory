@@ -201,6 +201,20 @@ function HistoryList({
     <div
       ref={scrollRef}
       className={cn('min-h-0 flex-1 overflow-y-auto', className)}
+      // Older rows load as the end comes near. After a failed load this
+      // stops, so it cannot retry in a loop; the button below retries.
+      onScroll={(event) => {
+        const el = event.currentTarget;
+        const left = el.scrollHeight - el.scrollTop - el.clientHeight;
+        if (
+          left < 400 &&
+          hasNextPage &&
+          !isFetchingNextPage &&
+          !isFetchNextPageError
+        ) {
+          void fetchNextPage();
+        }
+      }}
     >
       {events.length === 0 ? (
         <p className="text-sm text-muted-foreground">
