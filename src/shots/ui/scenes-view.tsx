@@ -1536,7 +1536,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   remainingRef.current = remainingSeconds;
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
 
-  // Progress rides in the view-toggle row (#1427) — no layout shift, and it
+  // Progress rides in the app header (#1427) — no layout shift, and it
   // never sits on top of anything you might want to click.
   const progressChip = isGenerationActive ? (
     <GenerationProgressBanner
@@ -1611,7 +1611,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   return (
     <div className="@container/scenes flex h-full flex-col">
-      {/* Progress rides in the sequence title row (#1427) — no layout shift,
+      {/* Progress rides in the app header (#1427) — no layout shift,
           and it never sits on top of anything you might want to click. */}
       <SequenceHeaderPortal>{progressChip}</SequenceHeaderPortal>
 
@@ -1792,6 +1792,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                     scenes={scenes}
                     shots={shots}
                     sequenceId={sequenceId}
+                    title={sequence?.title}
                     resolvedSequenceImageModel={resolvedSequenceImageModel}
                     resolvedSequenceVideoModel={resolvedSequenceVideoModel}
                     styleId={sequence?.styleId ?? undefined}

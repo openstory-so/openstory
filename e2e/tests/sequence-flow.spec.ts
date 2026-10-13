@@ -183,6 +183,13 @@ testWithUser.describe('Variant Selection', () => {
       page.getByRole('heading', { name: testSequence.title })
     ).toBeVisible({ timeout: 15000 });
 
+    // The title is renamed from sequence settings (#2102), not a title row.
+    await expect(
+      page.getByRole('button', {
+        name: `Rename sequence ${testSequence.title}`,
+      })
+    ).toBeVisible();
+
     // Also wait for the shot thumbnail to be visible
     // Shots load via a separate API call from the sequence data, so needs its own timeout
     const shotThumbnail = page.getByRole('img', { name: 'Scene 1' });
