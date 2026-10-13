@@ -27,6 +27,7 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import { persistSceneLooks } from '@/sequences/server/scene-persistence';
+import { generateId } from '@/platform/id';
 import { recordSequenceEvent } from '@/sequences/server/db/sequence-events';
 import { relabelBibleLooks, relabelLookPicks } from '@/cast/bible-looks';
 import { createCastRecords } from '@/cast/server/workflows/cast-records';
@@ -366,6 +367,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
     });
     // Each shot's spec lands as its first version, with the prompts derived
     // from it (#1915). Derivation reads only the spec and the frozen bibles.
+    const analysisEventId = sequenceId
+      ? await step.do('analysis-completed-event-id', async () => generateId())
+      : undefined;
     await step.do('persist-shot-specs', async () => {
       for (const item of shotWorkItems(scenes, shotMapping)) {
         const written = await persistShotSpec(scopedDb, item, {
@@ -390,8 +394,9 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
           updateType: 'motion-prompt',
         });
       }
-      if (sequenceId) {
+      if (sequenceId && analysisEventId) {
         await recordSequenceEvent(scopedDb, {
+          id: analysisEventId,
           sequenceId,
           actorId: input.userId,
           kind: 'analysis.completed',

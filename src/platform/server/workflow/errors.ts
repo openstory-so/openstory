@@ -16,6 +16,21 @@ export class WorkflowValidationError extends Error {
   }
 }
 
+/**
+ * A thrown run whose history line is not the generic "{workflow} failed".
+ * `activity: null` writes no line (the run already logged its own outcome).
+ * The base rethrows this as non-retryable, same as a validation error.
+ */
+export class WorkflowLoggedError extends Error {
+  constructor(
+    message: string,
+    readonly activity: { kind: string; summary: string } | null
+  ) {
+    super(message);
+    this.name = 'WorkflowLoggedError';
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (typeof error === 'string') return error;
   if (

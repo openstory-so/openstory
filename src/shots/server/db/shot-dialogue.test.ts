@@ -9,6 +9,7 @@ import { generateId } from '@/platform/id';
 import {
   dialogueSpeeches,
   scenes,
+  sequenceEvents,
   sequences,
   shotDialogueSections,
   shotDialogueVersions,
@@ -20,7 +21,7 @@ import {
 import type { ShotDialogueLine } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -559,6 +560,13 @@ describe('recordings and sections', () => {
       expect((await shotRow())?.audioClips).toEqual([clipOf(shotId)]);
       // Completed: no longer in flight.
       expect(await methods.listLiveClaims(shotId)).toEqual([]);
+      const recorded = await db
+        .select()
+        .from(sequenceEvents)
+        .where(eq(sequenceEvents.kind, 'dialogue.recorded'));
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]?.summary).toBe('Recorded dialogue');
+      expect(recorded[0]?.targetId).toBe(shotId);
     });
 
     it('a second run for the same shot and the same words stands down', async () => {
@@ -605,9 +613,23 @@ describe('recordings and sections', () => {
       // …and the user picks a reading before it lands.
       await methods.selectSection(shotId, picked.id, [pickedClip]);
 
+      const before = await db
+        .select()
+        .from(sequenceEvents)
+        .where(eq(sequenceEvents.kind, 'dialogue.recorded'));
       const landed = await land(methods, recording([late]));
 
       expect(landed.promotedShotIds).toEqual([]);
+      const after = await db
+        .select()
+        .from(sequenceEvents)
+        .where(
+          and(
+            eq(sequenceEvents.kind, 'dialogue.recorded'),
+            eq(sequenceEvents.sequenceId, sequenceId)
+          )
+        );
+      expect(after).toHaveLength(before.length);
       expect(
         (await methods.getSectionById(picked.id))?.selectedAt
       ).not.toBeNull();

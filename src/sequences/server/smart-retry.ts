@@ -84,6 +84,7 @@ import {
   notifySequenceReady,
   sequenceScenesUrl,
 } from './notify-sequence-ready';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import { assertNoActiveStoryboard, triggerStoryboard } from './launchers';
 import type {
   BatchMotionMusicWorkflowInput,
@@ -727,6 +728,14 @@ export async function executeSmartRetry(
             { sequenceId: sequence.id, variantId },
             error instanceof Error ? error.message : String(error)
           );
+          await recordTriggerFailure(context.scopedDb.sequenceEvents, {
+            sequenceId: sequence.id,
+            actorId: user.id,
+            kind: 'run.failed',
+            targetType: 'sequence',
+            targetId: sequence.id,
+            summary: 'Music generation failed',
+          });
           throw error;
         }
         // Outside the try: a started run's claim must not be failed.

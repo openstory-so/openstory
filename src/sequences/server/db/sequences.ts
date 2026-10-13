@@ -59,8 +59,10 @@ import { describeSettingsChange } from '@/sequences/model-label';
 import {
   buildEventInsert,
   buildEventInsertIfPresent,
+  buildEventInsertOnce,
   SETTINGS_CHANGED_EVENT,
 } from './sequence-events';
+import type { RecordEventInput } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
 import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
 import {
@@ -870,7 +872,10 @@ export function createSequencesMethods(
             targetType: 'sequence',
             targetId: id,
             summary: settingsChange.summary,
-            data: { fields: settingsChange.fields },
+            data: {
+              fields: settingsChange.fields,
+              changes: settingsChange.changes,
+            },
           })
         : null;
       if (styleConfig !== undefined && params.styleId !== undefined) {
@@ -1088,11 +1093,20 @@ export function createSequencesMethods(
 
 export function createSequenceMethods(db: Database, sequenceId: string) {
   return {
-    updateStatus: async (status: SequenceStatus, error?: string | null) => {
-      await db
+    updateStatus: async (
+      status: SequenceStatus,
+      error?: string | null,
+      event?: RecordEventInput & { id: string }
+    ) => {
+      const write = db
         .update(sequences)
         .set({ status, statusError: error ?? null, updatedAt: new Date() })
         .where(eq(sequences.id, sequenceId));
+      if (!event) {
+        await write;
+        return;
+      }
+      await db.batch([write, buildEventInsertOnce(db, event)]);
     },
   };
 }

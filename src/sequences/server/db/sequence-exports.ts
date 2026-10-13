@@ -20,8 +20,11 @@ import {
   type SequenceExport,
 } from '@/platform/server/db/schema';
 import { isUniqueConstraintError } from '@/platform/server/db/scoped/divergent-insert';
-import { buildEventInsertOnce } from '@/sequences/server/db/sequence-events';
-import { and, desc, eq } from 'drizzle-orm';
+import {
+  buildEventInsertIfPresent,
+  buildEventInsertOnce,
+} from '@/sequences/server/db/sequence-events';
+import { and, desc, eq, notExists } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 
@@ -132,18 +135,6 @@ export function createSequenceExportsMethods(db: Database) {
         .from(sequenceExports)
         .where(eq(sequenceExports.id, id))
         .limit(1);
-      const [logged] = exp
-        ? await db
-            .select({ id: sequenceEvents.id })
-            .from(sequenceEvents)
-            .where(
-              and(
-                eq(sequenceEvents.kind, 'export.finished'),
-                eq(sequenceEvents.targetId, id)
-              )
-            )
-            .limit(1)
-        : [];
       const ready = db
         .update(sequenceExports)
         .set({
@@ -152,22 +143,42 @@ export function createSequenceExportsMethods(db: Database) {
           durationSeconds: fields.durationSeconds ?? null,
         })
         .where(eq(sequenceExports.id, id));
-      if (!exp || logged) {
+      if (!exp) {
         await ready;
         return;
       }
+      // `export.started` already uses this row's id. A second ready call
+      // sees the finished line inside the same statement.
       await db.batch([
         ready,
-        buildEventInsertOnce(db, {
-          id: generateId(),
-          sequenceId: exp.sequenceId,
-          actorId: null,
-          kind: 'export.finished',
-          targetType: 'sequence',
-          targetId: id,
-          summary: 'Finished the export',
-          data: { exportId: id },
-        }),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: exp.sequenceId,
+            actorId: null,
+            kind: 'export.finished',
+            targetType: 'sequence',
+            targetId: id,
+            summary: 'Finished the export',
+            data: { exportId: id },
+          },
+          sequenceExports,
+          and(
+            eq(sequenceExports.id, id),
+            notExists(
+              db
+                .select({ id: sequenceEvents.id })
+                .from(sequenceEvents)
+                .where(
+                  and(
+                    eq(sequenceEvents.kind, 'export.finished'),
+                    eq(sequenceEvents.targetId, id)
+                  )
+                )
+            )
+          )
+        ),
       ]);
     },
 

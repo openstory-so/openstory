@@ -92,6 +92,7 @@ function makeScopedDb(opts: {
   cast?: never[];
 }) {
   const updateStatus = vi.fn();
+  const recordSequenceEvent = vi.fn(async () => undefined);
   const claimWorkflowSlot = vi.fn<
     (params: {
       id: string;
@@ -136,12 +137,14 @@ function makeScopedDb(opts: {
     locations: { getByIds: getLocationsByIds },
     teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
+    sequenceEvents: { record: recordSequenceEvent },
   };
   // minimal ScopedDb stub exposing only what the launcher touches
   const scopedDb = asStub<ScopedDb>(stub);
   return {
     scopedDb,
     updateStatus,
+    recordSequenceEvent,
     claimWorkflowSlot,
     update,
     getForUser,
@@ -221,6 +224,7 @@ describe('triggerStoryboard', () => {
       id: 'seq_1',
       expectedRunId: 'openstory-so_storyboard_old',
       claimId: expect.stringMatching(/^storyboard-seq_1-/),
+      activity: { summary: 'Started the storyboard' },
     });
     expect(updateStatus).toHaveBeenCalledWith('processing');
     const claimId = claimWorkflowSlot.mock.calls[0]?.[0]?.claimId;
@@ -534,6 +538,29 @@ describe('triggerStoryboard', () => {
       GenerationInProgressError
     );
     expect(triggerWorkflowMock).not.toHaveBeenCalled();
+  });
+
+  test('a trigger that throws after the claim marks the sequence failed and logs it', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockRejectedValue(new Error('workflow down'));
+    const { scopedDb, updateStatus, recordSequenceEvent } = makeScopedDb({
+      workflowRunId: null,
+    });
+
+    await expect(triggerStoryboard(scopedDb, INPUT)).rejects.toThrow(
+      'workflow down'
+    );
+    expect(updateStatus).toHaveBeenCalledWith('processing');
+    expect(updateStatus).toHaveBeenCalledWith('failed', 'workflow down');
+    expect(recordSequenceEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sequenceId: 'seq_1',
+        actorId: INPUT.userId,
+        kind: 'run.failed',
+        summary: 'Storyboard failed',
+      })
+    );
   });
 
   test('missing sequenceId → throws before touching the db', async () => {

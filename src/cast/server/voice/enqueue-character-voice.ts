@@ -8,6 +8,7 @@ import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { newVoiceProvider } from '@/models/server/seed-speech-config';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -85,6 +86,16 @@ export async function enqueueCharacterVoiceDesign(args: {
       'failed',
       error instanceof Error ? error.message : String(error)
     );
+    if (sequenceId) {
+      await recordTriggerFailure(scopedDb.sequenceEvents, {
+        sequenceId,
+        actorId: userId,
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: sequenceId,
+        summary: 'Voice design failed',
+      });
+    }
     throw error;
   }
   await scopedDb.characters.stampVoiceClaimWorkflowRunId(

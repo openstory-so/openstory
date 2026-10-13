@@ -60,7 +60,14 @@ const HISTORY_SETTING_KEYS = [
   'generationStopAt',
 ] as const;
 
-type HistorySettingKey = (typeof HISTORY_SETTING_KEYS)[number];
+export type HistorySettingKey = (typeof HISTORY_SETTING_KEYS)[number];
+
+/** Raw from/to stored on `sequence.settings-changed`. Names are resolved at read. */
+export type SettingsFieldChange = {
+  field: HistorySettingKey;
+  from: string | null;
+  to: string | null;
+};
 
 type HistorySettingValues = {
   styleId: string | null;
@@ -80,40 +87,55 @@ type HistorySettingValues = {
 export function describeSettingsChange(
   before: HistorySettingValues,
   values: Partial<HistorySettingValues>
-): { fields: HistorySettingKey[]; summary: string } | null {
+): {
+  fields: HistorySettingKey[];
+  changes: SettingsFieldChange[];
+  summary: string;
+} | null {
   const sentences: string[] = [];
   const fields: HistorySettingKey[] = [];
+  const changes: SettingsFieldChange[] = [];
   const changed = (key: HistorySettingKey): boolean =>
     key in values && values[key] !== before[key];
+  const note = (field: HistorySettingKey) => {
+    fields.push(field);
+    const from = before[field];
+    const to = values[field];
+    changes.push({
+      field,
+      from: from == null ? null : String(from),
+      to: to == null ? null : String(to),
+    });
+  };
 
   if (changed('styleId')) {
-    fields.push('styleId');
+    note('styleId');
     sentences.push('Changed the style');
   }
   if (changed('aspectRatio') && values.aspectRatio) {
-    fields.push('aspectRatio');
+    note('aspectRatio');
     sentences.push(`Changed aspect ratio to ${values.aspectRatio}`);
   }
   if (changed('imageModel') && values.imageModel) {
-    fields.push('imageModel');
+    note('imageModel');
     sentences.push(
       `Changed the image model to ${mediaModelName(values.imageModel)}`
     );
   }
   if (changed('videoModel') && values.videoModel) {
-    fields.push('videoModel');
+    note('videoModel');
     sentences.push(
       `Changed the video model to ${mediaModelName(values.videoModel)}`
     );
   }
   if (changed('musicModel') && values.musicModel) {
-    fields.push('musicModel');
+    note('musicModel');
     sentences.push(
       `Changed the music model to ${mediaModelName(values.musicModel)}`
     );
   }
   if (changed('analysisModel') && values.analysisModel) {
-    fields.push('analysisModel');
+    note('analysisModel');
     sentences.push(
       `Changed the analysis model to ${mediaModelName(values.analysisModel)}`
     );
@@ -121,12 +143,12 @@ export function describeSettingsChange(
   if (changed('generationStopAt') && values.generationStopAt) {
     const stop = values.generationStopAt;
     if (isGenerationStage(stop)) {
-      fields.push('generationStopAt');
+      note('generationStopAt');
       sentences.push(
         `Changed where generation stops to ${GENERATION_STAGE_META[stop].shortName}`
       );
     }
   }
   if (sentences.length === 0) return null;
-  return { fields, summary: sentences.join('. ') };
+  return { fields, changes, summary: sentences.join('. ') };
 }

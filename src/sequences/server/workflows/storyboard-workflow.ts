@@ -25,11 +25,15 @@ import {
 } from '@/sequences/server/notify-sequence-ready';
 import { getGenerationChannel } from '@/platform/realtime';
 import { includesStage } from '@/sequences/pipeline';
-import { recordSequenceEvent } from '@/sequences/server/db/sequence-events';
+import { generateId } from '@/platform/id';
 import { validateSequenceAuth } from '@/platform/server/workflow/auth';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
-import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import {
+  isEngineAbortError,
+  WorkflowLoggedError,
+  WorkflowValidationError,
+} from '@/platform/server/workflow/errors';
 import type {
   AnalyzeScriptWorkflowInput,
   UpdateStaleShotsWorkflowInput,
@@ -269,7 +273,10 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
             }
           );
         });
-        throw new NonRetryableError(message);
+        throw new WorkflowLoggedError(message, {
+          kind: 'run.failed',
+          summary: message,
+        });
       }
       if (!frozen.plan) throw new NonRetryableError('Fresh plan missing');
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- exact checkpoint above
@@ -325,9 +332,13 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
 
     if (continueFailure) {
       const message = continueFailure;
+      const failedEventId = await step.do(
+        'storyboard-failed-event-id',
+        async () => generateId()
+      );
       await step.do('mark-failed', async () => {
-        await seq.updateStatus('failed', message);
-        await recordSequenceEvent(scopedDb, {
+        await seq.updateStatus('failed', message, {
+          id: failedEventId,
           sequenceId,
           actorId: userId,
           kind: 'run.failed',
@@ -344,9 +355,13 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       return;
     }
 
+    const completedEventId = await step.do(
+      'storyboard-completed-event-id',
+      async () => generateId()
+    );
     await step.do('mark-completed', async () => {
-      await seq.updateStatus('completed');
-      await recordSequenceEvent(scopedDb, {
+      await seq.updateStatus('completed', null, {
+        id: completedEventId,
         sequenceId,
         actorId: userId,
         kind: 'storyboard.completed',
@@ -368,17 +383,24 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     if (!includesStage(input.stopAt, 'motion')) return;
 
     // After emit-complete: a send retry must not strand the player on processing.
-    await step.do('email-ready', async () => {
-      await notifySequenceReady({
-        scopedDb,
-        sequenceId,
-        ownerEmail: input.ownerEmail,
-        sequenceUrl: input.sequenceUrl || sequenceScenesUrl(sequenceId),
-        posterUrl,
-        notify: input.notify,
-        userId,
+    // The step's own retries run first. A send that still fails must not
+    // un-complete the sequence or append "Storyboard failed".
+    try {
+      await step.do('email-ready', async () => {
+        await notifySequenceReady({
+          scopedDb,
+          sequenceId,
+          ownerEmail: input.ownerEmail,
+          sequenceUrl: input.sequenceUrl || sequenceScenesUrl(sequenceId),
+          posterUrl,
+          notify: input.notify,
+          userId,
+        });
       });
-    });
+    } catch (error) {
+      if (isEngineAbortError(error)) throw error;
+      logger.error('Storyboard ready email was not sent', { err: error });
+    }
   }
 
   protected override async onFailure({

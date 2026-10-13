@@ -22,7 +22,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { WorkflowValidationError } from './errors';
+import { WorkflowLoggedError, WorkflowValidationError } from './errors';
 import type { UserWorkflowContext } from './types';
 import { asStub } from '@/test/as-stub';
 
@@ -31,7 +31,10 @@ const recordSequenceEvent = vi.fn(async () => undefined);
 const SCOPED_DB = {
   scoped: true,
   billing: { zeroReservation },
-  sequenceEvents: { record: recordSequenceEvent },
+  sequenceEvents: {
+    record: recordSequenceEvent,
+    recordOnce: recordSequenceEvent,
+  },
 };
 
 vi.doMock('#env', () => ({
@@ -78,6 +81,7 @@ const DO_RESET = 'Durable Object reset because its code was updated.';
 
 type TestPayload = UserWorkflowContext & {
   sequenceId?: string;
+  skipStorage?: boolean;
   _parent?: {
     bindingName: string;
     parentInstanceId: string;
@@ -227,6 +231,7 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
       });
       expect(recordSequenceEvent).toHaveBeenCalledTimes(1);
       expect(recordSequenceEvent).toHaveBeenCalledWith({
+        id: expect.any(String),
         sequenceId: 'seq_1',
         actorId: 'u1',
         kind: 'run.failed',
@@ -235,6 +240,97 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
         summary: 'Generation failed',
         data: { workflow: 'TestWorkflow' },
       });
+    });
+
+    test('a logged error stores its own sentence', async () => {
+      recordSequenceEvent.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(
+          new WorkflowLoggedError('top up', {
+            kind: 'run.failed',
+            summary: 'Not enough credits to generate images for 2 scenes.',
+          })
+        )
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toBeInstanceOf(NonRetryableError);
+
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: 'Not enough credits to generate images for 2 scenes.',
+          kind: 'run.failed',
+        })
+      );
+    });
+
+    test('a logged error with no activity writes no line', async () => {
+      recordSequenceEvent.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new WorkflowLoggedError('already logged', null))
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toBeInstanceOf(NonRetryableError);
+
+      expect(recordSequenceEvent).not.toHaveBeenCalled();
+    });
+
+    test('export and preview runs use their own failure sentences', async () => {
+      recordSequenceEvent.mockClear();
+      class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<TestPayload> {
+        protected override runImpl(): Promise<unknown> {
+          return Promise.reject(new Error('render down'));
+        }
+      }
+      class ImageWorkflow extends OpenStoryWorkflowEntrypoint<TestPayload> {
+        protected override runImpl(): Promise<unknown> {
+          return Promise.reject(new Error('image down'));
+        }
+      }
+      type Ctor = ConstructorParameters<typeof SequenceExportWorkflow>;
+      const ctx = asStub<Ctor[0]>(undefined);
+      const env = asStub<Ctor[1]>({});
+
+      await expect(
+        new SequenceExportWorkflow(ctx, env).run(
+          makeEvent(false, { sequenceId: 'seq_1' }),
+          makeStep()
+        )
+      ).rejects.toThrow('render down');
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'export.failed',
+          summary: 'Export failed',
+        })
+      );
+
+      recordSequenceEvent.mockClear();
+      await expect(
+        new ImageWorkflow(ctx, env).run(
+          makeEvent(false, { sequenceId: 'seq_1', skipStorage: true }),
+          makeStep()
+        )
+      ).rejects.toThrow('image down');
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'run.failed',
+          summary: 'Preview failed',
+        })
+      );
+
+      recordSequenceEvent.mockClear();
+      await expect(
+        new ImageWorkflow(ctx, env).run(
+          makeEvent(false, { sequenceId: 'seq_1', skipStorage: false }),
+          makeStep()
+        )
+      ).rejects.toThrow('image down');
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ summary: 'Image generation failed' })
+      );
     });
 
     test('a transient engine abort does not (the instance resumes)', async () => {

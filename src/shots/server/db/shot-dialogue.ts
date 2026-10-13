@@ -24,6 +24,7 @@
 import { generateId } from '@/platform/id';
 import {
   buildDialogueStartEvent,
+  buildEventInsertIfPresent,
   buildEventInsertOnce,
 } from '@/sequences/server/db/sequence-events';
 import type { Database } from '@/platform/server/db/client';
@@ -602,19 +603,46 @@ export function createShotDialogueMethods(db: Database) {
               ),
           ];
         }),
-        buildEventInsertOnce(db, {
-          id: input.id,
-          sequenceId: input.sequenceId,
-          actorId: null,
-          kind: 'dialogue.recorded',
-          targetType: adopting.length === 1 ? 'shot' : 'sequence',
-          targetId:
-            adopting.length === 1
-              ? (adopting[0]?.shotId ?? input.sequenceId)
-              : input.sequenceId,
-          summary:
-            input.adoptedAs === 'mic' ? 'Recorded a line' : 'Recorded dialogue',
-        }),
+        adopting.length === 0
+          ? buildEventInsertOnce(db, {
+              id: input.id,
+              sequenceId: input.sequenceId,
+              actorId: null,
+              kind: 'dialogue.recorded',
+              targetType: 'sequence',
+              targetId: input.sequenceId,
+              summary:
+                input.adoptedAs === 'mic'
+                  ? 'Recorded a line'
+                  : 'Recorded dialogue',
+            })
+          : buildEventInsertIfPresent(
+              db,
+              {
+                id: input.id,
+                sequenceId: input.sequenceId,
+                actorId: null,
+                kind: 'dialogue.recorded',
+                targetType: adopting.length === 1 ? 'shot' : 'sequence',
+                targetId:
+                  adopting.length === 1
+                    ? (adopting[0]?.shotId ?? input.sequenceId)
+                    : input.sequenceId,
+                summary:
+                  input.adoptedAs === 'mic'
+                    ? 'Recorded a line'
+                    : 'Recorded dialogue',
+              },
+              shotDialogueClaims,
+              and(
+                inArray(
+                  shotDialogueClaims.id,
+                  adopting.map((section) => section.adopt.claimId)
+                ),
+                eq(shotDialogueClaims.status, 'completed'),
+                isNotNull(shotDialogueClaims.promotedAt)
+              )
+            ),
       ]);
       return await promoted();
     },

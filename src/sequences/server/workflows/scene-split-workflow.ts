@@ -1176,6 +1176,10 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     // deleting stream-linked scenes fails with DrizzleQueryError (#1072).
     let dialogueVersionIdByShotId: Record<string, string> = {};
     if (sequenceId && reconciled.scenes.length > 0) {
+      const sceneSplitEventId = await step.do(
+        'scene-split-completed-event-id',
+        async () => generateId()
+      );
       dialogueVersionIdByShotId = await step.do('persist-scenes', async () => {
         const versionIds: Record<string, string> = {};
         const sceneRows = [];
@@ -1285,6 +1289,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         }
         const sceneCount = reconciled.scenes.length;
         await recordSequenceEvent(scopedDb, {
+          id: sceneSplitEventId,
           sequenceId,
           actorId: input.userId,
           kind: 'scene-split.completed',

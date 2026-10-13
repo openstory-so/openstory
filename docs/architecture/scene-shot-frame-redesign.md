@@ -237,12 +237,24 @@ sequence_events
 Drift is prevented structurally: the event is appended in the **same
 `db.batch()` transaction** as the mutation, from the central scoped-db write
 layer — change and event commit together or not at all. A retried workflow
-step that narrates one domain row reuses that row's id with
-`onConflictDoNothing` (`buildEventInsertOnce`). A start and the completion of
-the same row use different ids. A run that throws logs one failure from
-`OpenStoryWorkflowEntrypoint` (`log-run-failure`, after `emit-failure`); an
-engine abort does not. Storyboard's `mark-failed` returns without throwing,
-so that path writes `run.failed` itself.
+step keeps one line only when the caller passes the same id to
+`onConflictDoNothing` (`buildEventInsertOnce`). Completions that narrate one
+domain row reuse that row's id (`music.generated`, `sheet.generated`,
+`voice.designed`, `dialogue.recorded`, `preview.generated`). A run-level
+line (analysis, scene split, storyboard completion, and `log-run-failure`)
+checkpoints a fresh ULID in an earlier `step.do` and inserts that id. A
+start line whose id is minted inside the claim write can still duplicate if
+that whole step replays after the insert committed. `music.started` is one
+line per sequence while a claim is open (`notExists`), not a stable id.
+`export.finished` inserts only when no finished line already targets that
+export. A start and the completion of the same row use different ids. A run
+that throws logs one failure from `OpenStoryWorkflowEntrypoint`
+(`log-run-failure`, after `emit-failure`); an engine abort does not.
+Storyboard's `mark-failed` returns without throwing, so that path writes
+`run.failed` itself. A credits shortfall throws `WorkflowLoggedError`
+carrying the top-up sentence, so the base does not also write "Storyboard
+failed". The ready email runs after `mark-completed`; a send failure is
+logged and swallowed, and the sequence stays completed.
 
 Kinds added for the history page (#2093), beside the image, video, prompt,
 shot, scene, character, look, location, element and sheet selection lines:
@@ -256,12 +268,32 @@ plain-English summary when the stored style, aspect ratio, image, video,
 music or analysis model, or generation stop actually changes. Model keys stay
 out of `SETTINGS_CHANGED_LABELS` (#1785).
 
-The in-app page is `/sequences/$id/history` (header link "History"). It reads
-`listHistory`: newest first, cursor `id < before`, 40 at a time. A row names
-the actor (`user.name`, or "OpenStory" when the actor is null or missing),
-the summary, a relative time with the exact timestamp on hover, and a link
-to the shot, scene, character, location or element when that target still
-exists. A deleted target keeps its label and drops the link.
+History on the inspector scope row opens the log in that column (the phone
+settings drawer uses the same inspector). It does not leave the scenes
+page. `/sequences/$id/history` is the same list for a direct URL. The
+header stays the breadcrumb and the live progress chip. It reads
+`listHistory`: newest first, cursor `id < before`, 40 at a time, and the
+next page loads when the list is scrolled to the end. A row names the actor
+(`user.name`, or "OpenStory" when the actor is null or missing), the
+summary, a relative time with the exact timestamp on hover, and a link to
+the shot, scene, character, location or element when the page can still
+open it. A stored from and to render with the same word diff as prompt
+history. Text the event only kept as previous is struck through. An image
+event shows that variant's still. A video event shows a Cloudflare Media
+Transformations JPEG of the clip (`mode=frame,time=0s`), the same poster the
+sequence list uses. The browser requests that image. A local or off-zone
+clip has no transform, so the row falls back to the start frame on the
+version's manifest. A stored summary that names a model by key is shown
+with the catalogue name.
+`sequence.settings-changed`
+keeps `data.fields` for staleness and adds `data.changes`
+(`{ field, from, to }`) for the diff. Older settings rows have fields
+only, so they keep the sentence. A shot link needs the shot in this
+sequence and not deleted. A
+clip (`video.cancelled`, `video.discarded`, `video.undiscarded`) resolves
+through the variant manifest to that shot. A character link needs the
+character still cast on this sequence. A deleted target keeps its label and
+drops the link.
 
 A team-character edit, or a sheet, voice or bible started with no sequence
 (`sequenceId` null, Characters page, #2017), writes no sequence event and is

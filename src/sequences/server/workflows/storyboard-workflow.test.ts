@@ -22,6 +22,7 @@ import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { StoryboardWorkflowInput } from '@/platform/server/workflow/types';
+import { WorkflowLoggedError } from '@/platform/server/workflow/errors';
 import { asStub } from '@/test/as-stub';
 
 vi.doMock('@/platform/server/db/scoped', () => ({
@@ -57,8 +58,15 @@ const freezeFreshGenerationPlan = vi.fn(async () => ({
 vi.doMock('@/sequences/server/freeze-fresh-generation-plan', () => ({
   freezeFreshGenerationPlan,
 }));
+const gateStoryboardRenders = vi.fn(
+  async (): Promise<{
+    spawnRenders: boolean;
+    neededMicros: number;
+    remainingMicros: number;
+  }> => ({ spawnRenders: true, neededMicros: 0, remainingMicros: 0 })
+);
 vi.doMock('@/billing/server/storyboard-render-gate', () => ({
-  gateStoryboardRenders: vi.fn(async () => ({ spawnRenders: true })),
+  gateStoryboardRenders,
 }));
 
 // Dynamic import so the mocks above apply (vi.doMock is not hoisted).
@@ -276,7 +284,15 @@ describe('StoryboardWorkflow email-ready', () => {
     expect(names.indexOf('email-ready')).toBeGreaterThan(
       names.indexOf('emit-complete')
     );
-    expect(updateStatus).toHaveBeenCalledWith('completed');
+    expect(updateStatus).toHaveBeenCalledWith(
+      'completed',
+      null,
+      expect.objectContaining({
+        kind: 'storyboard.completed',
+        summary: 'Finished the storyboard',
+        id: expect.any(String),
+      })
+    );
     expect(notifySequenceReady).toHaveBeenCalledTimes(1);
     expect(notifySequenceReady).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -306,6 +322,51 @@ describe('StoryboardWorkflow email-ready', () => {
     expect(notifySequenceReady).toHaveBeenCalledWith(
       expect.objectContaining({ notify: false })
     );
+  });
+
+  test('a ready-email failure leaves the storyboard completed', async () => {
+    notifySequenceReady.mockReset();
+    notifySequenceReady.mockRejectedValue(new Error('smtp down'));
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockResolvedValue(undefined);
+    const { scopedDb, updateStatus } = makeRunImplDb();
+
+    await expect(
+      makeWorkflow().invokeRunImpl(
+        makeEvent('seq_1'),
+        makeStep().step,
+        scopedDb
+      )
+    ).resolves.toBeUndefined();
+
+    expect(updateStatus).toHaveBeenCalledWith(
+      'completed',
+      null,
+      expect.objectContaining({ kind: 'storyboard.completed' })
+    );
+    expect(updateStatus).not.toHaveBeenCalledWith(
+      'failed',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  test('an engine abort during the ready email still aborts', async () => {
+    notifySequenceReady.mockReset();
+    notifySequenceReady.mockRejectedValue(
+      new Error('Aborting engine: Grace period complete')
+    );
+    spawnAndAwaitChild.mockReset();
+    spawnAndAwaitChild.mockResolvedValue(undefined);
+    const { scopedDb } = makeRunImplDb();
+
+    await expect(
+      makeWorkflow().invokeRunImpl(
+        makeEvent('seq_1'),
+        makeStep().step,
+        scopedDb
+      )
+    ).rejects.toThrow('Aborting engine: Grace period complete');
   });
 });
 
@@ -443,7 +504,15 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
       }
     );
 
-    expect(updateStatus).toHaveBeenCalledWith('failed', 'Insufficient credits');
+    expect(updateStatus).toHaveBeenCalledWith(
+      'failed',
+      'Insufficient credits',
+      expect.objectContaining({
+        kind: 'run.failed',
+        summary: 'Storyboard failed',
+        id: expect.any(String),
+      })
+    );
     expect(updateStatus).not.toHaveBeenCalledWith('completed');
     expect(names).toContain('emit-failed');
     expect(names).not.toContain('email-ready');
@@ -452,9 +521,36 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
   test('an early stop completes without spending the ready email', async () => {
     const { updateStatus, names } = await run({ stopAt: 'script' });
 
-    expect(updateStatus).toHaveBeenCalledWith('completed');
+    expect(updateStatus).toHaveBeenCalledWith(
+      'completed',
+      null,
+      expect.objectContaining({ kind: 'storyboard.completed' })
+    );
     expect(names).toContain('emit-complete');
     expect(names).not.toContain('email-ready');
     expect(notifySequenceReady).not.toHaveBeenCalled();
+  });
+
+  test('a credits shortfall keeps the top-up sentence off the generic failure line', async () => {
+    gateStoryboardRenders.mockResolvedValueOnce({
+      spawnRenders: false,
+      neededMicros: 5_000_000,
+      remainingMicros: 0,
+    });
+    emit.mockReset();
+    const { scopedDb, updateStatus } = makeRunImplDb();
+    const { step, names } = makeStep();
+
+    await expect(
+      makeWorkflow().invokeRunImpl(makeEvent('seq_1'), step, scopedDb)
+    ).rejects.toBeInstanceOf(WorkflowLoggedError);
+
+    expect(updateStatus).toHaveBeenCalledWith(
+      'failed',
+      expect.stringMatching(/not enough credits to generate/i)
+    );
+    expect(names).toContain('emit-reservation-short');
+    expect(names).not.toContain('mark-completed');
+    expect(names).not.toContain('email-ready');
   });
 });

@@ -17,11 +17,13 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { getLogger } from '@/platform/logger';
 import {
   characterBibleVersions,
   characters,
   frameVariants,
   frames,
+  videoVariants,
   locationBibleVersions,
   scenes,
   sequenceCast,
@@ -30,6 +32,7 @@ import {
   sequenceLocations,
   shotDialogueClaims,
   shots,
+  styles,
   user,
 } from '@/platform/server/db/schema';
 import type {
@@ -40,6 +43,15 @@ import type {
 import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
+import {
+  displaySummary,
+  historyChanges,
+  mediaVersionIds,
+  styleIdsInHistoryData,
+} from '@/sequences/history-changes';
+import type { HistoryChange } from '@/sequences/history-changes';
+import { videoPosterUrl } from '@/look/cloudflare-video';
+import { toCdnUrl } from '@/platform/server/storage/buckets';
 import { dbSceneId } from '@/shots/scene-id';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
@@ -181,12 +193,39 @@ export function buildDialogueStartEvent(
 export async function recordSequenceEvent(
   db: {
     sequenceEvents?: {
-      record: (input: RecordEventInput) => Promise<unknown>;
+      record?: (input: RecordEventInput) => Promise<unknown>;
+      recordOnce?: (
+        input: RecordEventInput & { id: string }
+      ) => Promise<unknown>;
     };
   },
+  input: RecordEventInput & { id: string }
+): Promise<void> {
+  const events = db.sequenceEvents;
+  if (!events) return;
+  if (events.recordOnce) {
+    await events.recordOnce(input);
+    return;
+  }
+  await events.record?.(input);
+}
+
+/**
+ * A trigger that never became a run. The shared workflow failure step cannot
+ * see it. A failed log must not replace the trigger error.
+ */
+export async function recordTriggerFailure(
+  events: { record: (input: RecordEventInput) => Promise<unknown> },
   input: RecordEventInput
 ): Promise<void> {
-  await db.sequenceEvents?.record(input);
+  try {
+    await events.record(input);
+  } catch (error) {
+    getLogger(['openstory', 'sequence-events']).error(
+      'activity-log failure was not written',
+      { err: error, kind: input.kind, sequenceId: input.sequenceId }
+    );
+  }
 }
 
 export type HistoryLink =
@@ -208,6 +247,12 @@ export type HistoryLink =
       params: { id: string; elementId: string };
     };
 
+/** A stored still, or a Cloudflare JPEG of a clip's first frame. */
+export type HistoryPreview = {
+  url: string;
+  model: string;
+};
+
 export type HistoryEntry = {
   id: string;
   kind: string;
@@ -216,6 +261,12 @@ export type HistoryEntry = {
   createdAt: string;
   targetLabel: string;
   link: HistoryLink | null;
+  /** From → to, or the previous text when that is all the event kept. */
+  changes: HistoryChange[];
+  /** The still this event names. A clip uses a Cloudflare frame JPEG when the zone can extract one. */
+  preview: HistoryPreview | null;
+  /** The still it replaced, when the event stored that version id. */
+  previousPreview: HistoryPreview | null;
 };
 
 export type HistoryPage = {
@@ -244,6 +295,16 @@ export function createSequenceEventsMethods(db: Database) {
         );
       }
       return row;
+    },
+
+    /**
+     * Insert under a caller-chosen id. A retried step that commits the same
+     * id no-ops. Does not throw when the row is already there.
+     */
+    recordOnce: async (
+      input: RecordEventInput & { id: string }
+    ): Promise<void> => {
+      await buildEventInsertOnce(db, input);
     },
 
     /** The timeline: every event for a sequence, newest first (ULID order). */
@@ -290,7 +351,8 @@ export function createSequenceEventsMethods(db: Database) {
 
     /**
      * History page: newest first, cursor `before` is the oldest id already
-     * shown (`id < before`). `pageOf` is oldest-first and is the wrong order.
+     * shown (`id < before`). A paged `pageOf` is oldest-first, so this read
+     * does not use it.
      */
     listHistory: async (
       sequenceId: string,
@@ -319,6 +381,21 @@ export function createSequenceEventsMethods(db: Database) {
           .map((row) => row.event.targetId);
 
       const shotIds = ids('shot');
+      const styleIds = [
+        ...new Set(
+          page.flatMap((row) => styleIdsInHistoryData(row.event.data))
+        ),
+      ];
+      const mediaIds = [
+        ...new Set(
+          page.flatMap((row) => {
+            const ids = mediaVersionIds(row.event.data);
+            return [ids.versionId, ids.prevVersionId].filter(
+              (id): id is string => id != null
+            );
+          })
+        ),
+      ];
       const [
         shotRows,
         sceneRows,
@@ -327,6 +404,10 @@ export function createSequenceEventsMethods(db: Database) {
         elementRows,
         frameRows,
         variantRows,
+        videoRows,
+        styleRows,
+        imageVersionRows,
+        videoVersionRows,
       ] = await Promise.all([
         shotIds.length === 0
           ? []
@@ -443,6 +524,8 @@ export function createSequenceEventsMethods(db: Database) {
                 shotId: frames.shotId,
                 shotNumber: shots.shotNumber,
                 deletedAt: shots.deletedAt,
+                url: frameVariants.url,
+                model: frameVariants.model,
               })
               .from(frameVariants)
               .innerJoin(frames, eq(frames.id, frameVariants.frameId))
@@ -453,17 +536,182 @@ export function createSequenceEventsMethods(db: Database) {
                   inArray(frameVariants.id, ids('variant'))
                 )
               ),
+        ids('variant').length === 0
+          ? []
+          : db
+              .select({
+                id: videoVariants.id,
+                manifest: videoVariants.manifest,
+                url: videoVariants.url,
+                model: videoVariants.model,
+              })
+              .from(videoVariants)
+              .where(
+                and(
+                  eq(videoVariants.sequenceId, sequenceId),
+                  inArray(videoVariants.id, ids('variant'))
+                )
+              ),
+        styleIds.length === 0
+          ? []
+          : db
+              .select({ id: styles.id, name: styles.name })
+              .from(styles)
+              .where(inArray(styles.id, styleIds)),
+        mediaIds.length === 0
+          ? []
+          : db
+              .select({
+                id: frameVariants.id,
+                url: frameVariants.url,
+                model: frameVariants.model,
+              })
+              .from(frameVariants)
+              .where(
+                and(
+                  eq(frameVariants.sequenceId, sequenceId),
+                  inArray(frameVariants.id, mediaIds)
+                )
+              ),
+        mediaIds.length === 0
+          ? []
+          : db
+              .select({
+                id: videoVariants.id,
+                manifest: videoVariants.manifest,
+                url: videoVariants.url,
+                model: videoVariants.model,
+              })
+              .from(videoVariants)
+              .where(
+                and(
+                  eq(videoVariants.sequenceId, sequenceId),
+                  inArray(videoVariants.id, mediaIds)
+                )
+              ),
       ]);
+      const styleNames = new Map(
+        styleRows.map((style) => [style.id, style.name])
+      );
 
       const byId = <T extends { id: string }>(list: T[]) =>
         new Map(list.map((row) => [row.id, row]));
-      const shotById = byId(shotRows);
       const sceneById = byId(sceneRows);
       const characterById = byId(characterRows);
       const locationById = byId(locationRows);
       const elementById = byId(elementRows);
       const frameById = byId(frameRows);
       const variantById = byId(variantRows);
+      const videoShotIds = [
+        ...new Set(
+          videoRows.flatMap((row) => {
+            const shotId = row.manifest[0]?.shotId;
+            return shotId ? [shotId] : [];
+          })
+        ),
+      ];
+      const knownShotIds = new Set(shotRows.map((shot) => shot.id));
+      const missingVideoShotIds = videoShotIds.filter(
+        (id) => !knownShotIds.has(id)
+      );
+      const videoById = byId(videoRows);
+      const imageVersionById = byId(imageVersionRows);
+      const videoVersionById = byId(videoVersionRows);
+      const posterFrameIds = [
+        ...new Set(
+          [...videoRows, ...videoVersionRows].flatMap((row) => {
+            const frameId = row.manifest[0]?.frameVersionId;
+            if (!frameId) return [];
+            if (imageVersionById.has(frameId) || variantById.has(frameId)) {
+              return [];
+            }
+            return [frameId];
+          })
+        ),
+      ];
+      const [extraShots, posterFrames] = await Promise.all([
+        missingVideoShotIds.length === 0
+          ? []
+          : db
+              .select({
+                id: shots.id,
+                shotNumber: shots.shotNumber,
+                deletedAt: shots.deletedAt,
+              })
+              .from(shots)
+              .where(
+                and(
+                  eq(shots.sequenceId, sequenceId),
+                  inArray(shots.id, missingVideoShotIds)
+                )
+              ),
+        posterFrameIds.length === 0
+          ? []
+          : db
+              .select({
+                id: frameVariants.id,
+                url: frameVariants.url,
+                model: frameVariants.model,
+              })
+              .from(frameVariants)
+              .where(
+                and(
+                  eq(frameVariants.sequenceId, sequenceId),
+                  inArray(frameVariants.id, posterFrameIds)
+                )
+              ),
+      ]);
+      const shotById = new Map<
+        string,
+        {
+          id: string;
+          shotNumber: number | null;
+          deletedAt: Date | null;
+        }
+      >();
+      for (const shot of shotRows) shotById.set(shot.id, shot);
+      for (const shot of extraShots) shotById.set(shot.id, shot);
+      const posterById = byId(posterFrames);
+
+      const stillFor = (
+        frameId: string | null
+      ): { url: string; model: string } | null => {
+        if (!frameId) return null;
+        const row =
+          imageVersionById.get(frameId) ??
+          posterById.get(frameId) ??
+          variantById.get(frameId);
+        if (!row?.url) return null;
+        return { url: row.url, model: row.model };
+      };
+
+      // A clip previews as a Cloudflare JPEG of its first frame
+      // (`cdn-cgi/media/mode=frame`). The browser requests that image. The
+      // clip file is not a history URL. Off-zone and local `/r2` clips have
+      // no transform, so they fall back to the start frame on the manifest.
+      const videoPreview = (video: {
+        url: string | null;
+        model: string;
+        manifest: { frameVersionId?: string | null }[];
+      }): HistoryPreview | null => {
+        if (video.url) {
+          const source = toCdnUrl(video.url) ?? video.url;
+          const poster = videoPosterUrl(source, 192);
+          if (poster) return { url: poster, model: video.model };
+        }
+        const still = stillFor(video.manifest[0]?.frameVersionId ?? null);
+        if (!still) return null;
+        return { url: still.url, model: video.model };
+      };
+
+      const mediaPreview = (id: string | null): HistoryPreview | null => {
+        if (!id) return null;
+        const image = imageVersionById.get(id);
+        if (image?.url) return { url: image.url, model: image.model };
+        const video = videoVersionById.get(id) ?? videoById.get(id);
+        if (!video) return null;
+        return videoPreview(video);
+      };
 
       const scenesLink = (search: {
         shot?: string;
@@ -477,6 +725,7 @@ export function createSequenceEventsMethods(db: Database) {
       const events: HistoryEntry[] = page.map(({ event, actorName }) => {
         let targetLabel = 'Sequence';
         let link: HistoryLink | null = scenesLink({});
+        let preview: HistoryPreview | null = null;
         const targetId = event.targetId;
         if (event.targetType === 'shot') {
           const shot = shotById.get(targetId);
@@ -525,33 +774,63 @@ export function createSequenceEventsMethods(db: Database) {
                   params: { id: sequenceId, elementId: element.id },
                 }
               : null;
-        } else if (
-          event.targetType === 'frame' ||
-          event.targetType === 'variant'
-        ) {
-          const hit =
-            event.targetType === 'frame'
-              ? frameById.get(targetId)
-              : variantById.get(targetId);
-          if (!hit && event.targetType === 'variant') {
-            targetLabel = 'Clip';
+        } else if (event.targetType === 'frame') {
+          const hit = frameById.get(targetId);
+          targetLabel = hit ? `Shot ${hit.shotNumber}` : 'Shot';
+          link =
+            hit && isNullDate(hit.deletedAt)
+              ? scenesLink({ shot: hit.shotId })
+              : null;
+        } else if (event.targetType === 'variant') {
+          const frameHit = variantById.get(targetId);
+          const videoHit = videoById.get(targetId);
+          const videoShotId = videoHit?.manifest[0]?.shotId;
+          const videoShot = videoShotId ? shotById.get(videoShotId) : undefined;
+          if (frameHit) {
+            targetLabel = `Shot ${frameHit.shotNumber}`;
+            link = isNullDate(frameHit.deletedAt)
+              ? scenesLink({ shot: frameHit.shotId })
+              : null;
+            if (frameHit.url) {
+              preview = { url: frameHit.url, model: frameHit.model };
+            }
+          } else if (videoShot) {
+            targetLabel = `Shot ${videoShot.shotNumber}`;
+            link = isNullDate(videoShot.deletedAt)
+              ? scenesLink({ shot: videoShot.id })
+              : null;
+          } else if (videoShotId) {
+            targetLabel = 'Shot';
             link = null;
           } else {
-            targetLabel = hit ? `Shot ${hit.shotNumber}` : 'Shot';
-            link =
-              hit && isNullDate(hit.deletedAt)
-                ? scenesLink({ shot: hit.shotId })
-                : null;
+            targetLabel = 'Clip';
+            link = null;
           }
+          if (!preview && videoHit) {
+            preview = videoPreview(videoHit);
+          }
+        } else {
+          // A new target type fails this assignment instead of linking as
+          // the sequence.
+          event.targetType satisfies 'sequence';
+          targetLabel = 'Sequence';
+          link = scenesLink({});
         }
+        const versions = mediaVersionIds(event.data);
         return {
           id: event.id,
           kind: event.kind,
-          summary: event.summary ?? event.kind.replaceAll('.', ' '),
+          summary: displaySummary(
+            event.summary ?? event.kind.replaceAll('.', ' '),
+            event.data
+          ),
           actorName: actorName ?? 'OpenStory',
           createdAt: event.createdAt.toISOString(),
           targetLabel,
           link,
+          changes: historyChanges(event.data, styleNames),
+          preview: mediaPreview(versions.versionId) ?? preview,
+          previousPreview: mediaPreview(versions.prevVersionId),
         };
       });
 
@@ -587,11 +866,11 @@ export function createSequenceEventsMethods(db: Database) {
  * on any row (style is a snapshot), so this is the only way to date them for
  * `findStalenessCauses`.
  *
- * Model switches are not here (#1785): a switch applies to the next
- * generation and never stales what exists — verify pins the still's own
- * image model, the prompt's own analysis model and the sheet version's own
- * model, and clips ignore the video model. Naming them would blame a switch
- * for staleness it cannot cause.
+ * Model switches are not a staleness cause (#1785): a switch applies to the
+ * next generation and never stales what exists. The history sentence still
+ * names an image, video, music or analysis model change, and a generation
+ * stop. `SETTINGS_CHANGED_LABELS` stays style and aspect ratio, which is
+ * what staleness reads.
  */
 export const SETTINGS_CHANGED_EVENT = 'sequence.settings-changed';
 

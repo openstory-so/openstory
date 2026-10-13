@@ -17,6 +17,7 @@ import {
 } from '@/billing/cost-estimation';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
@@ -278,6 +279,14 @@ export async function addModelToSequence(
           model,
         });
       }
+      await recordTriggerFailure(scopedDb.sequenceEvents, {
+        sequenceId: sequence.id,
+        actorId: user.id,
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: sequence.id,
+        summary: 'Music generation failed',
+      });
       throw error;
     }
   }

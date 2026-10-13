@@ -15,6 +15,7 @@ import { castChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import { requireCharacter } from '@/cast/server/cast-edit';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type {
   CharacterSheetWorkflowInput,
   LocationSheetWorkflowInput,
@@ -158,6 +159,16 @@ export async function regenerateCharacterSheet(
       sheetVersionId,
       error instanceof Error ? error.message : String(error)
     );
+    if (payload.sequenceId) {
+      await recordTriggerFailure(scopedDb.sequenceEvents, {
+        sequenceId: payload.sequenceId,
+        actorId: actor.userId,
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: payload.sequenceId,
+        summary: 'Character sheet failed',
+      });
+    }
     throw error;
   }
   return { characterId: character.id, workflowRunId };
@@ -591,6 +602,14 @@ export async function regenerateLocationSheet(
       referenceVersionId,
       error instanceof Error ? error.message : String(error)
     );
+    await recordTriggerFailure(scopedDb.sequenceEvents, {
+      sequenceId: sequence.id,
+      actorId: actor.userId,
+      kind: 'run.failed',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: 'Location sheet failed',
+    });
     throw error;
   }
   return { locationDbId: location.id, workflowRunId };

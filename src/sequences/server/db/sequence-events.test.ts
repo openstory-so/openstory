@@ -7,25 +7,37 @@
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { dbSceneId } from '@/shots/scene-id';
 import {
+  characterBibleVersions,
+  characters,
+  frameVariants,
   frames,
+  renderSegments,
+  scenes,
+  sequenceCast,
   sequenceEvents,
+  sequenceExports,
   sequences,
   shots,
   styles,
   teams,
   user,
+  videoVariants,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createSequenceExportsMethods } from './sequence-exports';
 import { createSequencesMethods } from './sequences';
+import { videoPosterUrl } from '@/look/cloudflare-video';
 import {
   SETTINGS_CHANGED_LABELS,
   buildEventInsert,
+  buildEventInsertIfPresent,
   buildEventInsertOnce,
   createSequenceEventsMethods,
 } from './sequence-events';
@@ -39,8 +51,16 @@ let userId = '';
 
 async function seed() {
   await db.delete(sequenceEvents);
+  await db.delete(frameVariants);
   await db.delete(frames);
+  await db.delete(videoVariants);
+  await db.delete(renderSegments);
   await db.delete(shots);
+  await db.delete(scenes);
+  await db.delete(sequenceExports);
+  await db.delete(sequenceCast);
+  await db.delete(characterBibleVersions);
+  await db.delete(characters);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -237,6 +257,269 @@ describe('listHistory', () => {
     expect(afterDelete.events[1]?.targetLabel).toBe('Shot 1');
     expect(afterDelete.events[1]?.link).toBeNull();
   });
+
+  it('links a scene, a cast character, a still, and a clip', async () => {
+    const sceneId = dbSceneId(generateId());
+    const clipShotId = generateId();
+    const frameId = generateId();
+    const stillId = generateId();
+    const segmentId = generateId();
+    const clipId = generateId();
+    const characterId = generateId();
+    const bibleId = generateId();
+    await db.insert(scenes).values({ id: sceneId, sequenceId, orderIndex: 2 });
+    await db.insert(shots).values({
+      id: clipShotId,
+      sequenceId,
+      shotNumber: 4,
+    });
+    await db.insert(frames).values({ id: frameId, shotId, sequenceId });
+    await db.insert(frameVariants).values({
+      id: stillId,
+      frameId,
+      sequenceId,
+      model: 'nano',
+      url: '/r2/still.png',
+    });
+    await db.insert(renderSegments).values({
+      id: segmentId,
+      sceneId,
+      sequenceId,
+    });
+    await db.insert(videoVariants).values({
+      id: clipId,
+      renderSegmentId: segmentId,
+      sequenceId,
+      model: 'wan',
+      url: '/r2/clip.mp4',
+      manifest: [
+        {
+          shotId: clipShotId,
+          motionPromptVersionId: null,
+          frameVersionId: stillId,
+          usesStartFrame: true,
+          durationMs: 1000,
+          audioClipIds: [],
+          audioSourceKey: null,
+          dialogueKey: null,
+          referenceKeys: [],
+        },
+      ],
+    });
+    await db.insert(characters).values({
+      id: characterId,
+      teamId,
+      legacyName: 'Maya',
+      selectedBibleVersionId: bibleId,
+    });
+    await db.insert(characterBibleVersions).values({
+      id: bibleId,
+      characterId,
+      name: 'Maya',
+      voiceOnly: false,
+      isPerson: false,
+      source: 'edit',
+    });
+    await db.insert(sequenceCast).values({
+      sequenceId,
+      characterId,
+      scriptCharacterId: 'char_001',
+    });
+
+    const m = createSequenceEventsMethods(db);
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'scene.added',
+      targetType: 'scene',
+      targetId: sceneId,
+      summary: 'Scene',
+    });
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'character.added',
+      targetType: 'character',
+      targetId: characterId,
+      summary: 'Cast',
+    });
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'image.generated',
+      targetType: 'variant',
+      targetId: stillId,
+      summary: 'Still',
+    });
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'video.cancelled',
+      targetType: 'variant',
+      targetId: clipId,
+      summary: 'Clip',
+    });
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'video.discarded',
+      targetType: 'variant',
+      targetId: generateId(),
+      summary: 'Missing clip',
+    });
+
+    const page = await m.listHistory(sequenceId, { limit: 10 });
+    const bySummary = new Map(
+      page.events.map((event) => [event.summary, event])
+    );
+    expect(bySummary.get('Scene')).toMatchObject({
+      targetLabel: 'Scene 3',
+      link: { search: { scenes: sceneId } },
+    });
+    expect(bySummary.get('Cast')).toMatchObject({
+      targetLabel: 'Maya',
+      link: { params: { characterId } },
+    });
+    expect(bySummary.get('Still')).toMatchObject({
+      targetLabel: 'Shot 1',
+      link: { search: { shot: shotId } },
+      preview: { url: '/r2/still.png', model: 'nano' },
+      previousPreview: null,
+    });
+    expect(bySummary.get('Clip')).toMatchObject({
+      targetLabel: 'Shot 4',
+      link: { search: { shot: clipShotId } },
+      preview: { url: '/r2/still.png', model: 'wan' },
+      previousPreview: null,
+    });
+    expect(JSON.stringify(page.events)).not.toContain('/r2/clip.mp4');
+    expect(bySummary.get('Missing clip')).toMatchObject({
+      targetLabel: 'Clip',
+      link: null,
+    });
+
+    await db
+      .update(sequenceCast)
+      .set({ removedAt: new Date() })
+      .where(eq(sequenceCast.characterId, characterId));
+    const uncast = await m.listHistory(sequenceId, { limit: 10 });
+    expect(
+      uncast.events.find((event) => event.summary === 'Cast')
+    ).toMatchObject({ targetLabel: 'Maya', link: null });
+  });
+
+  it('previews a selected clip from its start frame and skips a clip with none', async () => {
+    const sceneId = dbSceneId(generateId());
+    const segmentId = generateId();
+    const frameId = generateId();
+    const prevStillId = generateId();
+    const nextStillId = generateId();
+    const prevClipId = generateId();
+    const nextClipId = generateId();
+    const bareClipId = generateId();
+    await db.insert(scenes).values({ id: sceneId, sequenceId, orderIndex: 0 });
+    await db.insert(frames).values({ id: frameId, shotId, sequenceId });
+    await db.insert(frameVariants).values([
+      {
+        id: prevStillId,
+        frameId,
+        sequenceId,
+        model: 'nano',
+        url: '/r2/prev.png',
+      },
+      {
+        id: nextStillId,
+        frameId,
+        sequenceId,
+        model: 'nano',
+        url: '/r2/next.png',
+      },
+    ]);
+    await db.insert(renderSegments).values({
+      id: segmentId,
+      sceneId,
+      sequenceId,
+    });
+    const manifest = (frameVersionId: string | null) => [
+      {
+        shotId,
+        motionPromptVersionId: null,
+        frameVersionId,
+        usesStartFrame: frameVersionId != null,
+        durationMs: 1000,
+        audioClipIds: [] as string[],
+        audioSourceKey: null,
+        dialogueKey: null,
+        referenceKeys: [] as string[],
+      },
+    ];
+    await db.insert(videoVariants).values([
+      {
+        id: prevClipId,
+        renderSegmentId: segmentId,
+        sequenceId,
+        model: 'wan',
+        url: '/r2/prev.mp4',
+        manifest: manifest(prevStillId),
+      },
+      {
+        id: nextClipId,
+        renderSegmentId: segmentId,
+        sequenceId,
+        model: 'minimax_h3_max',
+        url: 'https://assets.openstory.so/videos/next.mp4',
+        manifest: manifest(nextStillId),
+      },
+      {
+        id: bareClipId,
+        renderSegmentId: segmentId,
+        sequenceId,
+        model: 'wan',
+        url: '/r2/bare.mp4',
+        manifest: manifest(null),
+      },
+    ]);
+    const m = createSequenceEventsMethods(db);
+    await m.record({
+      sequenceId,
+      actorId: userId,
+      kind: 'video.selected',
+      targetType: 'shot',
+      targetId: shotId,
+      summary: 'Selected minimax_h3_max video',
+      data: {
+        versionId: nextClipId,
+        prevVersionId: prevClipId,
+        model: 'minimax_h3_max',
+      },
+    });
+    await m.record({
+      sequenceId,
+      actorId: null,
+      kind: 'video.rendered',
+      targetType: 'shot',
+      targetId: shotId,
+      summary: 'Rendered wan video',
+      data: { versionId: bareClipId, model: 'wan' },
+    });
+
+    const page = await m.listHistory(sequenceId, { limit: 10 });
+    expect(
+      page.events.find((event) => event.kind === 'video.selected')
+    ).toMatchObject({
+      summary: 'Selected MiniMax H3 Max video',
+      preview: {
+        url: videoPosterUrl('https://assets.openstory.so/videos/next.mp4', 192),
+        model: 'minimax_h3_max',
+      },
+      previousPreview: { url: '/r2/prev.png', model: 'wan' },
+    });
+    expect(
+      page.events.find((event) => event.kind === 'video.rendered')
+    ).toMatchObject({ preview: null, previousPreview: null });
+    expect(JSON.stringify(page.events)).not.toContain('/r2/prev.mp4');
+    expect(JSON.stringify(page.events)).not.toContain('/r2/bare.mp4');
+  });
 });
 
 describe('buildEventInsertOnce', () => {
@@ -262,6 +545,76 @@ describe('buildEventInsertOnce', () => {
   });
 });
 
+describe('buildEventInsertIfPresent', () => {
+  it('writes nothing when the source row is absent', async () => {
+    const id = generateId();
+    const input = {
+      id,
+      sequenceId,
+      actorId: null,
+      kind: 'sheet.started',
+      targetType: 'sequence' as const,
+      targetId: sequenceId,
+      summary: 'Started a sheet',
+    };
+    await db.batch([
+      buildEventInsertIfPresent(
+        db,
+        input,
+        sequences,
+        eq(sequences.id, 'missing')
+      ),
+    ]);
+    const missed = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.id, id));
+    expect(missed).toHaveLength(0);
+
+    await db.batch([
+      buildEventInsertIfPresent(
+        db,
+        input,
+        sequences,
+        eq(sequences.id, sequenceId)
+      ),
+    ]);
+    const hit = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.id, id));
+    expect(hit).toHaveLength(1);
+    expect(hit[0]?.summary).toBe('Started a sheet');
+  });
+});
+
+describe('export.finished', () => {
+  it('records one finished line when ready is called twice', async () => {
+    const exports = createSequenceExportsMethods(db);
+    const exportId = generateId();
+    await db.insert(sequenceExports).values({
+      id: exportId,
+      sequenceId,
+      url: '/r2/cut.mp4',
+      storagePath: 'cut.mp4',
+      status: 'processing',
+    });
+    await exports.markReady(exportId, { durationSeconds: 3 });
+    await exports.markReady(exportId, { durationSeconds: 3 });
+    const rows = await db
+      .select()
+      .from(sequenceEvents)
+      .where(
+        and(
+          eq(sequenceEvents.kind, 'export.finished'),
+          eq(sequenceEvents.targetId, exportId)
+        )
+      );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.summary).toBe('Finished the export');
+  });
+});
+
 describe('sequence settings history', () => {
   it('writes a sentence only when the stored value changes', async () => {
     const sequences = createSequencesMethods(db, teamId, userId);
@@ -275,7 +628,20 @@ describe('sequence settings history', () => {
       'Changed the image model to GPT Image 2.5',
       'Changed aspect ratio to 9:16',
     ]);
-    expect(events[0]?.data).toMatchObject({ fields: ['imageModel'] });
+    expect(events[0]?.data).toMatchObject({
+      fields: ['imageModel'],
+      changes: [
+        { field: 'imageModel', from: 'nano_banana_2', to: 'gpt_image_2' },
+      ],
+    });
     expect(SETTINGS_CHANGED_LABELS.imageModel).toBeUndefined();
+
+    const page = await createSequenceEventsMethods(db).listHistory(sequenceId);
+    expect(page.events[0]?.changes).toEqual([
+      { label: 'Image', from: 'Nano Banana 2', to: 'GPT Image 2.5' },
+    ]);
+    expect(page.events[1]?.changes).toEqual([
+      { label: 'Aspect ratio', from: '16:9', to: '9:16' },
+    ]);
   });
 });
