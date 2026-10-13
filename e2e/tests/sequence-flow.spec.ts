@@ -218,7 +218,9 @@ testWithUser.describe('Variant Selection', () => {
 
       // Scenes: the bar opens the list in a drawer; its footer controls work.
       await page.getByTestId('mobile-scene-nav').click();
-      await expect(drawer.getByText('Whole sequence')).toBeVisible();
+      await expect(
+        drawer.getByText('Whole sequence', { exact: true })
+      ).toBeVisible();
       const stopSlider = drawer.getByRole('slider');
       const before = await stopSlider.getAttribute('aria-valuenow');
       await stopSlider.press('End');
@@ -226,7 +228,9 @@ testWithUser.describe('Variant Selection', () => {
         'aria-valuenow',
         before ?? ''
       );
-      await expect(drawer.getByText('Whole sequence')).toBeVisible();
+      await expect(
+        drawer.getByText('Whole sequence', { exact: true })
+      ).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(drawer).toBeHidden();
     }
