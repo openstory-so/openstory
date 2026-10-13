@@ -28,6 +28,12 @@ import type {
   SQLiteUpdateSetSource,
 } from 'drizzle-orm/sqlite-core';
 import type { Database } from '@/platform/server/db/client';
+import { generateId } from '@/platform/id';
+import {
+  buildEventInsertIfPresent,
+  eventNotLogged,
+} from '@/sequences/server/db/sequence-events';
+import type { SequenceEventTargetType } from '@/platform/server/db/schema';
 import {
   characterLooks,
   characterSheetVariants,
@@ -113,6 +119,14 @@ type LandArgs<H> = {
   bibleVersionId: string | null;
   model: string;
   workflowRunId: string;
+  /** The history line. Null for a run started from no sequence. */
+  activity: {
+    sequenceId: string;
+    actorId: string | null;
+    targetType: Extract<SequenceEventTargetType, 'character' | 'location'>;
+    targetId: string;
+    summary: string;
+  } | null;
 };
 
 /** What {@link landSheetVersion} needs from one sheet entity's tables. */
@@ -151,44 +165,80 @@ type SheetLandSpec<P extends SQLiteTable, V extends SQLiteTable> = {
 async function landSheetVersion<P extends SQLiteTable, V extends SQLiteTable>(
   db: Database,
   spec: SheetLandSpec<P, V>,
-  { versionId, claimed }: Pick<LandArgs<unknown>, 'versionId' | 'claimed'>
+  args: Pick<LandArgs<unknown>, 'versionId' | 'claimed' | 'activity'>
 ): Promise<SheetLanding> {
-  const [, , , , [row]] = await db.batch([
-    db.insert(spec.variants).values(spec.version).onConflictDoNothing(),
-    db
-      .update(spec.parent)
-      .set(spec.promote)
-      .where(
-        and(
-          spec.isParent,
-          claimed ? eq(spec.claim, versionId) : isNull(spec.claim)
-        )
-      ),
-    db
-      .update(spec.variants)
-      .set(spec.park)
-      .where(
-        and(
-          eq(spec.versionIdColumn, versionId),
-          isNull(spec.divergedAt),
-          notExists(
-            db
-              .select({ one: sql`1` })
-              .from(spec.parent)
-              .where(and(spec.isParent, eq(spec.selected, versionId)))
-          ),
-          notExists(spec.twinParked)
-        )
-      ),
-    db
-      .update(spec.parent)
-      .set(spec.settle)
-      .where(and(spec.isParent, isNull(spec.claim), spec.isGenerating)),
-    db
-      .select({ selected: spec.selected })
-      .from(spec.parent)
-      .where(spec.isParent),
-  ]);
+  const { versionId, claimed, activity } = args;
+  const insertVersion = db
+    .insert(spec.variants)
+    .values(spec.version)
+    .onConflictDoNothing();
+  const promote = db
+    .update(spec.parent)
+    .set(spec.promote)
+    .where(
+      and(
+        spec.isParent,
+        claimed ? eq(spec.claim, versionId) : isNull(spec.claim)
+      )
+    );
+  const park = db
+    .update(spec.variants)
+    .set(spec.park)
+    .where(
+      and(
+        eq(spec.versionIdColumn, versionId),
+        isNull(spec.divergedAt),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(spec.parent)
+            .where(and(spec.isParent, eq(spec.selected, versionId)))
+        ),
+        notExists(spec.twinParked)
+      )
+    );
+  const settle = db
+    .update(spec.parent)
+    .set(spec.settle)
+    .where(and(spec.isParent, isNull(spec.claim), spec.isGenerating));
+  const read = db
+    .select({ selected: spec.selected })
+    .from(spec.parent)
+    .where(spec.isParent);
+  const results = activity
+    ? await db.batch([
+        insertVersion,
+        promote,
+        park,
+        settle,
+        read,
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: activity.sequenceId,
+            actorId: activity.actorId,
+            kind: 'sheet.generated',
+            targetType: activity.targetType,
+            targetId: activity.targetId,
+            summary: activity.summary,
+            data: { sheetVersionId: versionId },
+          },
+          spec.parent,
+          and(
+            spec.isParent,
+            eventNotLogged(
+              db,
+              activity.sequenceId,
+              'sheet.generated',
+              'sheetVersionId',
+              versionId
+            )
+          )
+        ),
+      ])
+    : await db.batch([insertVersion, promote, park, settle, read]);
+  const row = results[4][0];
   if (!row) throw new Error(`${spec.entity} not found`);
   return row.selected === versionId ? 'promoted' : 'parked';
 }

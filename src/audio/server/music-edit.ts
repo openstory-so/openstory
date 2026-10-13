@@ -22,6 +22,7 @@ import {
   musicPromptInputHashMatches,
 } from '@/shots/input-hash';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type {
   MusicPromptWorkflowInput,
   MusicWorkflowInput,
@@ -248,6 +249,14 @@ export async function generateMusic(
       { sequenceId: sequence.id, variantId },
       error instanceof Error ? error.message : String(error)
     );
+    await recordTriggerFailure(scopedDb.sequenceEvents, {
+      sequenceId: sequence.id,
+      actorId: actor.userId,
+      kind: 'run.failed',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: 'Music generation failed',
+    });
     throw error;
   }
 

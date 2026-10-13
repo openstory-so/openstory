@@ -16,6 +16,7 @@
  */
 
 import { configureFalProxyFromEnv } from '@/models/server/fal-config';
+import { generateId } from '@/platform/id';
 import { ensureE2eModelPricing } from '@/billing/server/seed-model-pricing';
 import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import { createScopedDb } from '@/platform/server/db/scoped';
@@ -24,10 +25,13 @@ import {
   type WorkflowScopedDb,
 } from '@/platform/server/db/scoped-workflow';
 import {
+  isChildFailureError,
   isEngineAbortError,
   isRecipientInFiniteStateError,
+  WorkflowLoggedError,
   WorkflowValidationError,
 } from './errors';
+import type { WorkflowFailureActivity } from './errors';
 import { sanitizeFailResponse } from './sanitize-fail-response';
 import type { UserWorkflowContext } from './types';
 import {
@@ -94,6 +98,13 @@ function extractSequenceId(payload: UserWorkflowContext): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
+/** The one shot a run works on, when its payload names one. */
+function extractShotId(payload: UserWorkflowContext): string | undefined {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- optional slot not part of the base payload type
+  const id = (payload as { shotId?: string }).shotId;
+  return typeof id === 'string' ? id : undefined;
+}
+
 export type OpenStoryFailureContext<T extends UserWorkflowContext> = {
   event: Readonly<WorkflowEvent<T>>;
   error: string;
@@ -115,6 +126,18 @@ export abstract class OpenStoryWorkflowEntrypoint<
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<unknown>;
+
+  /**
+   * What failed, for the sequence history: the line reads
+   * "{failureLabel} failed". Required, so a new workflow names itself and the
+   * platform base holds no product copy.
+   */
+  protected abstract readonly failureLabel: string;
+
+  /** The failure line. Override when the sentence depends on the payload. */
+  protected failureActivity(_payload: T): WorkflowFailureActivity {
+    return { kind: 'run.failed', summary: `${this.failureLabel} failed` };
+  }
 
   /**
    * Optional failure hook. Runs inside a `step.do('emit-failure')` so the
@@ -288,11 +311,52 @@ export abstract class OpenStoryWorkflowEntrypoint<
         }
       }
 
+      // One history line per failure. A parent that failed only because its
+      // child did writes none: the child's line already says what broke. This
+      // runs after the parent is told, so a log that cannot be written never
+      // keeps a parent waiting. Engine aborts never reach here.
+      const failedSequenceId = extractSequenceId(event.payload);
+      if (failedSequenceId && !isChildFailureError(error)) {
+        const logged =
+          error instanceof WorkflowLoggedError
+            ? error.activity
+            : this.failureActivity(event.payload);
+        const shotId = extractShotId(event.payload);
+        try {
+          // Checkpoint the id before the insert. A retry of the insert step
+          // reuses it, so `recordOnce` does not append a second line.
+          const eventId = await step.do('failure-event-id', async () =>
+            generateId()
+          );
+          await step.do('log-run-failure', async () => {
+            await scopedDb.sequenceEvents.recordOnce({
+              id: eventId,
+              sequenceId: failedSequenceId,
+              actorId: event.payload.userId,
+              kind: logged.kind,
+              targetType: shotId ? 'shot' : 'sequence',
+              targetId: shotId ?? failedSequenceId,
+              summary: logged.summary,
+              data: { workflow: this.constructor.name },
+            });
+          });
+        } catch (logError) {
+          if (isEngineAbortError(logError)) throw logError;
+          logger.error(
+            `[${this.constructor.name}] failed to write the activity-log failure:`,
+            { err: logError }
+          );
+        }
+      }
+
       // `WorkflowValidationError` is a plain Error subclass, which CF treats as
       // retryable — so without this re-wrap CF would retry validation throws up
       // to the step's retry limit (10× by default). Re-throw as CF's
       // `NonRetryableError` so the instance fails immediately.
-      if (error instanceof WorkflowValidationError) {
+      if (
+        error instanceof WorkflowValidationError ||
+        error instanceof WorkflowLoggedError
+      ) {
         throw new NonRetryableError(sanitized, error.name);
       }
       throw error;

@@ -52,8 +52,10 @@ import {
   getAnalysisModelById,
 } from '@/models/models.config';
 import { generateId } from '@/platform/id';
+import { getLogger } from '@/platform/logger';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { NotFoundError, ValidationError } from '@/platform/errors';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
@@ -70,6 +72,8 @@ import type {
   StoryboardTriggerInput,
   StoryboardWorkflowInput,
 } from '@/platform/server/workflow/types';
+
+const logger = getLogger(['openstory', 'launchers']);
 
 /** Thrown when a storyboard run is already in flight for the sequence. */
 export class GenerationInProgressError extends Error {
@@ -298,6 +302,9 @@ export async function triggerStoryboard(
     id: sequenceId,
     expectedRunId: sequence.workflowRunId,
     claimId,
+    activity: {
+      summary: input.resume ? 'Continued generation' : 'Started the storyboard',
+    },
   });
   if (!claimed) throw new GenerationInProgressError();
 
@@ -309,9 +316,31 @@ export async function triggerStoryboard(
   // crashes after create() but the caller retries the whole launcher, the
   // fresh claim produces a fresh instance; a stranded claim resolves as
   // 'failed' on the next acquire and the slot recovers.
-  const workflowRunId = await triggerWorkflow('/storyboard', payload, {
-    deduplicationId: claimId,
-  });
+  let workflowRunId: string;
+  try {
+    workflowRunId = await triggerWorkflow('/storyboard', payload, {
+      deduplicationId: claimId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      await scopedDb.sequence(sequenceId).updateStatus('failed', message);
+    } catch (statusError) {
+      logger.error('Storyboard trigger status was not marked failed', {
+        err: statusError,
+        sequenceId,
+      });
+    }
+    await recordTriggerFailure(scopedDb.sequenceEvents, {
+      sequenceId,
+      actorId: input.userId,
+      kind: 'run.failed',
+      targetType: 'sequence',
+      targetId: sequenceId,
+      summary: 'Storyboard failed',
+    });
+    throw error;
+  }
   await scopedDb.sequences.update({ id: sequenceId, workflowRunId });
 
   return { workflowRunId };

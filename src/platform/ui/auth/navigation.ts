@@ -6,27 +6,6 @@
 import { isServerRedirect } from './oauth-login-resume';
 
 /**
- * Get the redirect URL from query params
- * For use in auth pages to read the intended destination
- * @param searchParams - URLSearchParams or query params object
- * @returns Redirect path or default (`/`, the app home)
- */
-export function getRedirectFromParams(
-  searchParams: URLSearchParams | Record<string, string | string[] | undefined>
-): string {
-  let redirectTo: string | null = null;
-
-  if (searchParams instanceof URLSearchParams) {
-    redirectTo = searchParams.get('redirectTo');
-  } else if (typeof searchParams === 'object' && searchParams.redirectTo) {
-    const value = searchParams.redirectTo;
-    redirectTo = Array.isArray(value) ? (value[0] ?? null) : value;
-  }
-
-  return sanitizeAuthRedirect(redirectTo);
-}
-
-/**
  * Safe in-app path for post-login navigation / OAuth `callbackURL`.
  *
  * Better Auth rejects relative callbackURLs that include a hash fragment

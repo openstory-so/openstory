@@ -86,6 +86,8 @@ function classifyMotionFailure(message: string): StudioPollOutcome {
 }
 
 export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<StudioGenerationWorkflowInput> {
+  protected override readonly failureLabel = 'Studio generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     step: WorkflowStep,

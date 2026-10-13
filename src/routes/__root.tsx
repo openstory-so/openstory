@@ -3,6 +3,7 @@
 // oxlint-disable-next-line boundaries/no-server-imports
 import { getProductionDeploymentAppUrl } from '@/platform/server/env/environment';
 import { IS_PREVIEW_DEPLOYMENT } from '@/platform/flags';
+import { LastPageTracker } from '@/platform/ui/auth/last-page-tracker';
 import { DocsReferrerTracker } from '@/ui/docs/docs-referrer-tracker';
 import {
   AppUpdatedNotice,
@@ -146,6 +147,7 @@ function RootLayout() {
       <body>
         <Providers queryClient={queryClient}>
           <DocsReferrerTracker />
+          <LastPageTracker />
           <Outlet />
         </Providers>
         <Scripts />

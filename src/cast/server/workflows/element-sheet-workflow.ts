@@ -93,6 +93,8 @@ export function collectElementResults(
 }
 
 export class ElementSheetWorkflow extends OpenStoryWorkflowEntrypoint<ElementSheetWorkflowInput> {
+  protected override readonly failureLabel = 'Element sheet';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ElementSheetWorkflowInput>>,
     step: WorkflowStep,

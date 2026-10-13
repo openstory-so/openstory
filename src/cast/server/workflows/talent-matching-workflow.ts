@@ -24,6 +24,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'talent-matching']);
 
 export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMatchingWorkflowInput> {
+  protected override readonly failureLabel = 'Talent matching';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<TalentMatchingWorkflowInput>>,
     step: WorkflowStep,

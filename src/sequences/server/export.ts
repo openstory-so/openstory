@@ -211,6 +211,23 @@ export async function startExport(
           exportId: row.id,
         })
       );
+    // The workflow never starts, so the shared failure step cannot log this.
+    await scopedDb.sequenceEvents
+      .record({
+        sequenceId,
+        actorId: input.userId,
+        kind: 'export.failed',
+        targetType: 'sequence',
+        targetId: sequenceId,
+        summary: 'Export failed',
+        data: { exportId: row.id },
+      })
+      .catch((logError: unknown) =>
+        logger.error('Export failure log failed', {
+          err: logError,
+          exportId: row.id,
+        })
+      );
     throw error;
   }
   // The render is running; a lost run id only costs observability.

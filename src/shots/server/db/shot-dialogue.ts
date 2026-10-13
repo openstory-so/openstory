@@ -21,6 +21,12 @@
  * clear-then-set done as two round trips that raced.
  */
 
+import { generateId } from '@/platform/id';
+import {
+  buildDialogueStartEvent,
+  buildEventInsertIfPresent,
+  buildEventInsertOnce,
+} from '@/sequences/server/db/sequence-events';
 import type { Database } from '@/platform/server/db/client';
 import { NotFoundError } from '@/platform/errors';
 import {
@@ -338,20 +344,33 @@ export function createShotDialogueMethods(db: Database) {
     claimSpeech: async (input: {
       shots: ReadonlyArray<{ shotId: string; sourceKey: string }>;
       workflowRunId: string;
+      /** Who started it. Null when no person did. */
+      actorId: string | null;
     }): Promise<Record<string, string>> => {
       if (input.shots.length === 0) return {};
-      const [first, ...rest] = input.shots.map((shot) =>
+      const drafted = input.shots.map((shot) => ({
+        ...shot,
+        id: generateId(),
+      }));
+      const statements = drafted.flatMap((shot) => [
         db
           .insert(shotDialogueClaims)
           .values({
+            id: shot.id,
             shotId: shot.shotId,
             sourceKey: shot.sourceKey,
             pendingSourceKey: shot.sourceKey,
             status: 'generating',
             workflowRunId: input.workflowRunId,
           })
-          .onConflictDoNothing()
-      );
+          .onConflictDoNothing(),
+        buildDialogueStartEvent(db, {
+          id: shot.id,
+          actorId: input.actorId ?? null,
+          targetId: shot.shotId,
+        }),
+      ]);
+      const [first, ...rest] = statements;
       if (first) await db.batch([first, ...rest]);
       const mine = await db
         .select({
@@ -585,6 +604,49 @@ export function createShotDialogueMethods(db: Database) {
               ),
           ];
         }),
+        // A fresh id, so the line sorts when the recording lands. The speech
+        // id dates from before the take. The early return above is what
+        // keeps a replayed step from adding a second line.
+        adopting.length === 0
+          ? buildEventInsertOnce(db, {
+              id: generateId(),
+              sequenceId: input.sequenceId,
+              actorId: null,
+              kind: 'dialogue.recorded',
+              targetType: 'sequence',
+              targetId: input.sequenceId,
+              summary:
+                input.adoptedAs === 'mic'
+                  ? 'Recorded a line'
+                  : 'Recorded dialogue',
+            })
+          : buildEventInsertIfPresent(
+              db,
+              {
+                id: generateId(),
+                sequenceId: input.sequenceId,
+                actorId: null,
+                kind: 'dialogue.recorded',
+                targetType: adopting.length === 1 ? 'shot' : 'sequence',
+                targetId:
+                  adopting.length === 1
+                    ? (adopting[0]?.shotId ?? input.sequenceId)
+                    : input.sequenceId,
+                summary:
+                  input.adoptedAs === 'mic'
+                    ? 'Recorded a line'
+                    : 'Recorded dialogue',
+              },
+              shotDialogueClaims,
+              and(
+                inArray(
+                  shotDialogueClaims.id,
+                  adopting.map((section) => section.adopt.claimId)
+                ),
+                eq(shotDialogueClaims.status, 'completed'),
+                isNotNull(shotDialogueClaims.promotedAt)
+              )
+            ),
       ]);
       return await promoted();
     },

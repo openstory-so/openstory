@@ -50,7 +50,10 @@ import {
   pickLocationBible,
   mergeDefined,
 } from './bible-versions';
-import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import {
+  buildEventInsert,
+  buildEventInsertIfPresent,
+} from '@/sequences/server/db/sequence-events';
 import { LOCATION_SHEET_BIBLE_FIELDS } from '@/shots/input-hash';
 
 /** A new location's bible where the caller left a field out. */
@@ -498,15 +501,54 @@ export function createSequenceLocationsMethods(db: Database) {
      */
     claimReference: async (
       id: string,
-      opts: { markGenerating: boolean }
+      opts: {
+        markGenerating: boolean;
+        /** The start line. Null writes none. */
+        activity: {
+          sequenceId: string;
+          actorId: string | null;
+          summary: string;
+        } | null;
+      }
     ): Promise<string> => {
       const versionId = generateId();
-      await update(id, {
+      const fields = {
         pendingPromoteReferenceVersionId: versionId,
         ...(opts.markGenerating
           ? { referenceStatus: 'generating' as const, referenceError: null }
           : {}),
-      });
+      };
+      if (!opts.activity) {
+        await update(id, fields);
+        return versionId;
+      }
+      const [claimed] = await db.batch([
+        db
+          .update(sequenceLocations)
+          .set({ ...fields, updatedAt: new Date() })
+          .where(eq(sequenceLocations.id, id))
+          .returning({ id: sequenceLocations.id }),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: opts.activity.sequenceId,
+            actorId: opts.activity.actorId,
+            kind: 'sheet.started',
+            targetType: 'location',
+            targetId: id,
+            summary: opts.activity.summary,
+          },
+          sequenceLocations,
+          and(
+            eq(sequenceLocations.id, id),
+            eq(sequenceLocations.pendingPromoteReferenceVersionId, versionId)
+          )
+        ),
+      ]);
+      if (claimed.length === 0) {
+        throw new Error(`Sequence location ${id} not found`);
+      }
       return versionId;
     },
 
@@ -518,10 +560,16 @@ export function createSequenceLocationsMethods(db: Database) {
      */
     claimReferenceIfUnmoved: async (
       id: string,
-      snapshot: { bibleVersionId: string; libraryLocationId: string | null }
+      snapshot: { bibleVersionId: string; libraryLocationId: string | null },
+      /** The start line. Null writes none. */
+      activity: {
+        sequenceId: string;
+        actorId: string | null;
+        summary: string;
+      } | null
     ): Promise<{ versionId: string; held: boolean }> => {
       const versionId = generateId();
-      const result = await db
+      const claim = db
         .update(sequenceLocations)
         .set({
           pendingPromoteReferenceVersionId: versionId,
@@ -537,8 +585,32 @@ export function createSequenceLocationsMethods(db: Database) {
             sql`${sequenceLocations.libraryLocationId} IS ${snapshot.libraryLocationId}`
           )
         );
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
-      return { versionId, held: (result.rowsAffected ?? 0) > 0 };
+      if (!activity) {
+        const result = await claim;
+        // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
+        return { versionId, held: (result.rowsAffected ?? 0) > 0 };
+      }
+      const [claimed] = await db.batch([
+        claim.returning({ id: sequenceLocations.id }),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: activity.sequenceId,
+            actorId: activity.actorId,
+            kind: 'sheet.started',
+            targetType: 'location',
+            targetId: id,
+            summary: activity.summary,
+          },
+          sequenceLocations,
+          and(
+            eq(sequenceLocations.id, id),
+            eq(sequenceLocations.pendingPromoteReferenceVersionId, versionId)
+          )
+        ),
+      ]);
+      return { versionId, held: claimed.length > 0 };
     },
 
     /** The twin of `characters.failSheetClaim`. */

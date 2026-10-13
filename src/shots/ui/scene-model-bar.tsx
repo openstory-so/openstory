@@ -58,6 +58,9 @@ type SceneModelBarProps = {
   targetDurationSeconds?: number | null;
   /** The LLM that analysed the script into scenes. Fixed post-analysis. */
   analysisModel?: string;
+  /** History fills the inspector when this is set. */
+  historyOpen?: boolean;
+  onHistoryToggle?: () => void;
 };
 
 const SettingRow: React.FC<{ label: string; children: React.ReactNode }> = ({
@@ -84,6 +87,8 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   resolution,
   targetDurationSeconds,
   analysisModel,
+  historyOpen = false,
+  onHistoryToggle,
 }) => {
   const posthog = usePostHog();
   const scope = selectionScope(selection);
@@ -94,14 +99,26 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
     <div className="space-y-3 px-4 py-3">
       <div className="flex items-center justify-between gap-2">
         <ScopeBreadcrumb selection={selection} scenes={scenes} shots={shots} />
-        {/* Esc walks shot → scene → sequence; no keyboard on a phone. */}
-        {scope !== 'sequence' && (
-          <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground md:flex">
-            <Kbd>esc</Kbd> up
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {onHistoryToggle && (
+            <button
+              type="button"
+              aria-pressed={historyOpen}
+              onClick={onHistoryToggle}
+              className="inline-flex h-11 items-center rounded-sm px-1 text-sm text-muted-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-6"
+            >
+              History
+            </button>
+          )}
+          {/* Esc walks shot → scene → sequence; no keyboard on a phone. */}
+          {scope !== 'sequence' && (
+            <span className="hidden shrink-0 items-center gap-1 text-[11px] text-muted-foreground md:flex">
+              <Kbd>esc</Kbd> up
+            </span>
+          )}
+        </div>
       </div>
-      {showSequenceSettings && (
+      {showSequenceSettings && !historyOpen && (
         <div className="space-y-2">
           {sequenceId && title !== undefined && (
             <SettingRow label="Title">

@@ -21,6 +21,7 @@ import {
   tabsForScope,
 } from './scene-script-prompts';
 import { FailureSummaryBanner } from '@/sequences/ui/failure-summary-banner';
+import { HistoryColumn, HistorySkeleton } from '@/sequences/ui/history-page';
 import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
@@ -117,6 +118,7 @@ import {
   estimateTotalSeconds,
 } from '@/sequences/time-estimate';
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -1614,70 +1616,98 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onLeftoverGrokChange: handleLeftoverGrokChange,
   };
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   // One inspector, two homes: the side column, or on a phone the drawer the
   // bottom bar's cog opens. Never both, so its state and ids exist once.
+  // History stays on this column: the control opens the log here.
+  const modelBar = (
+    <SceneModelBar
+      selection={selection}
+      scenes={scenes}
+      shots={shots}
+      sequenceId={sequenceId}
+      title={sequence?.title}
+      resolvedSequenceImageModel={resolvedSequenceImageModel}
+      resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+      styleId={sequence?.styleId ?? undefined}
+      stylePending={sequence?.styleConfig == null}
+      aspectRatio={aspectRatio}
+      resolution={sequence?.resolution}
+      targetDurationSeconds={sequence?.targetDurationSeconds}
+      analysisModel={sequence?.analysisModel ?? undefined}
+      historyOpen={historyOpen}
+      onHistoryToggle={() => setHistoryOpen((open) => !open)}
+    />
+  );
   const inspector = (
-    <ScrollArea className="h-full min-h-0">
-      <SceneModelBar
-        selection={selection}
-        scenes={scenes}
-        shots={shots}
-        sequenceId={sequenceId}
-        title={sequence?.title}
-        resolvedSequenceImageModel={resolvedSequenceImageModel}
-        resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-        styleId={sequence?.styleId ?? undefined}
-        stylePending={sequence?.styleConfig == null}
-        aspectRatio={aspectRatio}
-        resolution={sequence?.resolution}
-        targetDurationSeconds={sequence?.targetDurationSeconds}
-        analysisModel={sequence?.analysisModel ?? undefined}
-      />
-      <div className="@container/inspector px-4 pb-4">
-        <SceneScriptPrompts
-          shot={selectedShot}
-          sequenceId={sequenceId}
-          resolution={sequence?.resolution}
-          sequenceGeneratesStartFrames={generateStartFrames}
-          sequenceDraftMotion={sequence?.draftMotion ?? false}
-          selectedTab={effectiveTab}
-          visibleTabs={visibleTabs}
-          onTabChange={setFacet}
-          regeneratingImages={regeneratingImages}
-          regeneratingMotion={regeneratingMotion}
-          onRegenerateStart={handleRegenerateStart}
-          aspectRatio={aspectRatio}
-          variantForSelectedModel={variantForSelectedModel}
-          videoVariantForSelectedModel={videoVariantForSelectedModel}
-          segment={selectedSegment}
-          segmentSpanLabel={selectedSegmentSpanLabel}
-          resolvedImageModel={resolvedImageModel}
-          leftoverGrokShotIds={leftoverGrokShotIds}
-          resolvedVideoModel={resolvedVideoModel}
-          imageModelStatuses={sceneImageModelStatuses}
-          videoModelStatuses={sceneVideoModelStatuses}
-          onImageModelChange={handleImageModelChange}
-          onVideoModelChange={handleVideoModelChange}
-          styleName={styleName}
-          styleCategory={styleCategory}
-          shotDivergentVariants={divergentVariants?.filter(
-            (v) => v.shotId === curSelectedShotId
-          )}
-          onCompareDivergent={(variant) => setCompareVariant(variant)}
-          facetShotIds={facetShotIds}
-          musicEditable={scope === 'sequence'}
-          sceneScope={scope === 'scenes'}
-          scene={scriptScene}
-          scopeShots={scopeShots}
-          filmSeconds={shots ? sumShotSeconds(shots) : undefined}
-          scopeStaleness={scopeStaleness}
-          scopeStalenessFailed={scopeStalenessFailed}
-          onSelectShot={handleSelectShot}
-          scenes={scenes}
-          onSelectScene={handleFocusScene}
-        />
-      </div>
-    </ScrollArea>
+    <div className="flex h-full min-h-0 flex-col">
+      {historyOpen ? (
+        <>
+          {modelBar}
+          <Suspense fallback={<HistorySkeleton />}>
+            <HistoryColumn
+              sequenceId={sequenceId}
+              scope={
+                selection.shotId
+                  ? { shotId: selection.shotId }
+                  : selection.sceneIds.length > 0
+                    ? { sceneIds: selection.sceneIds }
+                    : undefined
+              }
+            />
+          </Suspense>
+        </>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          {modelBar}
+          <div className="@container/inspector px-4 pb-4">
+            <SceneScriptPrompts
+              shot={selectedShot}
+              sequenceId={sequenceId}
+              resolution={sequence?.resolution}
+              sequenceGeneratesStartFrames={generateStartFrames}
+              sequenceDraftMotion={sequence?.draftMotion ?? false}
+              selectedTab={effectiveTab}
+              visibleTabs={visibleTabs}
+              onTabChange={setFacet}
+              regeneratingImages={regeneratingImages}
+              regeneratingMotion={regeneratingMotion}
+              onRegenerateStart={handleRegenerateStart}
+              aspectRatio={aspectRatio}
+              variantForSelectedModel={variantForSelectedModel}
+              videoVariantForSelectedModel={videoVariantForSelectedModel}
+              segment={selectedSegment}
+              segmentSpanLabel={selectedSegmentSpanLabel}
+              resolvedImageModel={resolvedImageModel}
+              leftoverGrokShotIds={leftoverGrokShotIds}
+              resolvedVideoModel={resolvedVideoModel}
+              imageModelStatuses={sceneImageModelStatuses}
+              videoModelStatuses={sceneVideoModelStatuses}
+              onImageModelChange={handleImageModelChange}
+              onVideoModelChange={handleVideoModelChange}
+              styleName={styleName}
+              styleCategory={styleCategory}
+              shotDivergentVariants={divergentVariants?.filter(
+                (v) => v.shotId === curSelectedShotId
+              )}
+              onCompareDivergent={(variant) => setCompareVariant(variant)}
+              facetShotIds={facetShotIds}
+              musicEditable={scope === 'sequence'}
+              sceneScope={scope === 'scenes'}
+              scene={scriptScene}
+              scopeShots={scopeShots}
+              filmSeconds={shots ? sumShotSeconds(shots) : undefined}
+              scopeStaleness={scopeStaleness}
+              scopeStalenessFailed={scopeStalenessFailed}
+              onSelectShot={handleSelectShot}
+              scenes={scenes}
+              onSelectScene={handleFocusScene}
+            />
+          </div>
+        </ScrollArea>
+      )}
+    </div>
   );
 
   return (

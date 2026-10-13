@@ -8,6 +8,7 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { sheetGeneratedSummary } from '@/sequences/model-label';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -77,6 +78,15 @@ async function landSheet(
         bibleVersionId: input.bibleVersionId ?? null,
         model: stored.model,
         workflowRunId,
+        activity: input.sequenceId
+          ? {
+              sequenceId: input.sequenceId,
+              actorId: input.userId,
+              targetType: 'character',
+              targetId: input.characterDbId,
+              summary: sheetGeneratedSummary(input.characterName, stored.model),
+            }
+          : null,
       }),
     logger,
     logTag: '[CharacterSheetWorkflow:cf]',
@@ -203,6 +213,8 @@ async function persistReusedTalentSheet(params: {
 const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'team';
 
 export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<CharacterSheetWorkflowInput> {
+  protected override readonly failureLabel = 'Character sheet';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>,
     step: WorkflowStep,

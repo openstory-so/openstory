@@ -33,6 +33,8 @@ type LocationMatchEntry = {
 };
 
 export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<LocationMatchingWorkflowInput> {
+  protected override readonly failureLabel = 'Location matching';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<LocationMatchingWorkflowInput>>,
     step: WorkflowStep,

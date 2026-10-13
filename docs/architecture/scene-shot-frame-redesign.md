@@ -236,7 +236,92 @@ sequence_events
 
 Drift is prevented structurally: the event is appended in the **same
 `db.batch()` transaction** as the mutation, from the central scoped-db write
-layer — change and event commit together or not at all.
+layer — change and event commit together or not at all. History orders by event id, so **an event's id is minted when the event is
+written**, never borrowed from a row that was created earlier. A completion
+that narrates one domain row (`music.generated`, `sheet.generated`,
+`voice.designed`, `preview.generated`, `export.finished`) takes a fresh id
+and carries that row's id in `data`; `eventNotLogged` gates the insert on no
+line of that kind already naming the row, so a retried step adds no second
+line. `music.started` is gated the same way: one line per music variant
+row, whether or not the run holds the pointer claim. `dialogue.recorded`
+takes a fresh id inside `appendSpeech`, whose early return on an existing
+speech is what stops a replay. A line whose id is the row it opens in the same
+write (`image.started`, `export.started`) is already dated correctly.
+
+A run-level line checkpoints a fresh ULID in a `step.do` and inserts that id
+with `onConflictDoNothing` (`buildEventInsertOnce`). Analysis and scene
+split write theirs through `logRunEvent`, in a step of its own after the
+work: a line that cannot be written is logged and the run goes on. Storyboard
+completion commits its line in the same batch as the status. A start line
+whose id is minted inside the claim write (`sheet.started`,
+`storyboard.started`, `voice.started`) can still duplicate if that whole
+step replays after the insert committed.
+
+Failure lines have two writers. A run that throws logs one line from
+`OpenStoryWorkflowEntrypoint` (`log-run-failure`, after `emit-failure` and
+after the parent is told); an engine abort does not. The sentence is the
+workflow's own required `failureLabel` ("{label} failed"), or its
+`failureActivity` override (export, preview). The line targets the shot
+when the payload names one, otherwise the sequence. A parent that failed
+only because a child it awaited failed writes none: the child's line already
+says what broke. A trigger that never became a run is logged by
+`recordTriggerFailure` in the server module that tried to start it
+(`run.failed`, or `export.failed` from `export.ts`); a failed log there
+never replaces the trigger error. Storyboard's `mark-failed` returns without
+throwing, so that path writes `run.failed` itself. A credits shortfall
+throws `WorkflowLoggedError` carrying the top-up sentence, so the base does
+not also write "Storyboard failed". The ready email runs after `mark-completed`; a send failure is
+logged and swallowed, and the sequence stays completed.
+
+Run and generation kinds (#2093), beside the image, video, prompt, shot,
+scene, character, look, location, element and sheet selection lines:
+`storyboard.started` / `storyboard.completed`, `analysis.completed`,
+`scene-split.completed`, `image.started`, `preview.generated`,
+`music.started` / `music.generated`, `sheet.started` / `sheet.generated`,
+`voice.started` / `voice.designed`, `dialogue.started` /
+`dialogue.recorded`, `export.started` / `export.finished` /
+`export.failed`, and `run.failed`. `sequence.settings-changed` carries a
+plain-English summary when the stored style, aspect ratio, image, video,
+music or analysis model, or generation stop actually changes. Model keys stay
+out of `SETTINGS_CHANGED_LABELS` (#1785).
+
+History on the inspector scope row opens the log in that column (the phone
+settings drawer uses the same inspector). It does not leave the scenes
+page. The list follows the selection: a shot shows that shot (its frames,
+stills and clips included), selected scenes show those scenes and the
+shots in them, and the sequence itself shows the whole log.
+`/sequences/$id/history` is the whole log for a direct URL. The
+header stays the breadcrumb and the live progress chip. It reads
+`listHistory`: newest first, cursor `id < before`, 40 at a time, and the
+next page loads when the list is scrolled to the end. A row names the actor
+(`user.name`, or "OpenStory" when the actor is null or missing), the
+summary, a relative time with the exact timestamp on hover, and a link to
+the shot, scene, character, location or element when the page can still
+open it. A stored from and to render with the same word diff as prompt
+history. Text the event only kept as previous is struck through. An image
+event shows that variant's still. A video event shows a Cloudflare Media
+Transformations JPEG of the clip (`mode=frame,time=0s`), the same poster the
+sequence list uses. The browser requests that image. A local or off-zone
+clip has no transform, so the row falls back to the start frame on the
+version's manifest. A primary render also logs that the same clip was
+selected. The list shows that pair as the render alone. A later pick of an
+older clip stays its own row, and so does a render that never became the
+shot's clip. A stored summary that names a model by key is shown
+with the catalogue name.
+`sequence.settings-changed`
+keeps `data.fields` for staleness and adds `data.changes`
+(`{ field, from, to }`) for the diff. Older settings rows have fields
+only, so they keep the sentence. A shot link needs the shot in this
+sequence and not deleted. A
+clip (`video.cancelled`, `video.discarded`, `video.undiscarded`) resolves
+through the variant manifest to that shot. A character link needs the
+character still cast on this sequence. A deleted target keeps its label and
+drops the link.
+
+A team-character edit, or a sheet, voice or bible started with no sequence
+(`sequenceId` null, Characters page, #2017), writes no sequence event and is
+not fanned out to every sequence that casts the character. Library talent and
+location claims are not sequence-scoped. There is no team-level log.
 
 ## Backfill & migration safety
 

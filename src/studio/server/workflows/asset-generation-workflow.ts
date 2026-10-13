@@ -218,6 +218,8 @@ async function configureFalForTeam(scopedDb: WorkflowScopedDb): Promise<void> {
 }
 
 export class AssetGenerationWorkflow extends OpenStoryWorkflowEntrypoint<AssetGenerationWorkflowInput> {
+  protected override readonly failureLabel = 'Studio generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<AssetGenerationWorkflowInput>>,
     step: WorkflowStep,

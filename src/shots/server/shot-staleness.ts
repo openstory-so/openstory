@@ -1287,7 +1287,7 @@ async function findStalenessCauses(args: {
   // A snapshot with history names the knobs that moved (#1600) in place of
   // the bare "Style" a switch event would give.
   const styleKnobs = styleMoved(inputHistory.style, sequence.styleConfig, at);
-  // Older events also list model switches, which never stale (#1785).
+  // Events also list model switches, which never stale (#1785).
   for (const f of fields) {
     if (f === 'styleId' && styleKnobs !== null) continue;
     const label = SETTINGS_CHANGED_LABELS[f];

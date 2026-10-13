@@ -5,7 +5,8 @@
  * character's voice and cancel that design. Each spends credits through the
  * workflow it triggers.
  */
-import { safeTextToImageModel } from '@/models/models';
+import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
+import { sheetStartedSummary } from '@/sequences/model-label';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { personLocksOf } from '@/cast/server/person-lock';
@@ -14,6 +15,7 @@ import { castChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import { requireCharacter } from '@/cast/server/cast-edit';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type {
   CharacterSheetWorkflowInput,
   LocationSheetWorkflowInput,
@@ -115,6 +117,17 @@ export async function regenerateCharacterSheet(
   const { versionId: sheetVersionId } =
     await scopedDb.characterLooks.claimSheet(payload.lookId, payload, {
       markGenerating: true,
+      activity: payload.sequenceId
+        ? {
+            sequenceId: payload.sequenceId,
+            actorId: actor.userId,
+            // The model the sheet workflow renders with when none is set.
+            summary: sheetStartedSummary(
+              character.name,
+              payload.imageModel ?? DEFAULT_IMAGE_MODEL
+            ),
+          }
+        : null,
     });
   await emitProgress(
     castChannelId(payload.sequenceId, character.id),
@@ -145,6 +158,16 @@ export async function regenerateCharacterSheet(
       sheetVersionId,
       error instanceof Error ? error.message : String(error)
     );
+    if (payload.sequenceId) {
+      await recordTriggerFailure(scopedDb.sequenceEvents, {
+        sequenceId: payload.sequenceId,
+        actorId: actor.userId,
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: payload.sequenceId,
+        summary: 'Character sheet failed',
+      });
+    }
     throw error;
   }
   return { characterId: character.id, workflowRunId };
@@ -248,7 +271,8 @@ export async function recastCharacter(
         voicePreviews: null,
       },
       'library',
-      actor.userId
+      actor.userId,
+      null
     );
     await releaseReplacedVoice(
       scopedDb,
@@ -302,6 +326,7 @@ export async function recastCharacter(
 
   // Always generate a character sheet showing the talent in costume. The
   // claim is taken after the cast writes above, which revoke older ones.
+  const imageModel = safeTextToImageModel(sequence.imageModel);
   const { versionId: sheetVersionId } =
     await scopedDb.characterLooks.claimSheet(
       look.id,
@@ -310,7 +335,14 @@ export async function recastCharacter(
         bibleVersionId: updatedCharacter.selectedBibleVersionId,
         talentId: data.talentId,
       },
-      { markGenerating: true }
+      {
+        markGenerating: true,
+        activity: {
+          sequenceId: sequence.id,
+          actorId: actor.userId,
+          summary: sheetStartedSummary(character.name, imageModel),
+        },
+      }
     );
 
   await emitProgress(sequence.id, (channel) =>
@@ -324,7 +356,6 @@ export async function recastCharacter(
   // Freeze every regenerate-shots input here, at the trigger. The workflow
   // used to rebuild this after its sheet child finished — eight live reads
   // against state the user never authorised.
-  const imageModel = safeTextToImageModel(sequence.imageModel);
   const { shotSnapshots, snapshotInputHash } =
     await buildRecastRegenerateSnapshots({
       scopedDb,
@@ -538,7 +569,17 @@ export async function regenerateLocationSheet(
   // inputs before this run lands revokes it.
   const referenceVersionId = await scopedDb.sequenceLocations.claimReference(
     location.id,
-    { markGenerating: true }
+    {
+      markGenerating: true,
+      activity: {
+        sequenceId: sequence.id,
+        actorId: actor.userId,
+        summary: sheetStartedSummary(
+          location.name,
+          payload.imageModel ?? DEFAULT_IMAGE_MODEL
+        ),
+      },
+    }
   );
   await emitProgress(location.sequenceId, (channel) =>
     channel.emit('generation.location-sheet:progress', {
@@ -564,6 +605,14 @@ export async function regenerateLocationSheet(
       referenceVersionId,
       error instanceof Error ? error.message : String(error)
     );
+    await recordTriggerFailure(scopedDb.sequenceEvents, {
+      sequenceId: sequence.id,
+      actorId: actor.userId,
+      kind: 'run.failed',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: 'Location sheet failed',
+    });
     throw error;
   }
   return { locationDbId: location.id, workflowRunId };
@@ -628,9 +677,17 @@ export async function recastLocation(
   }
 
   // Claimed after the relink above, which revokes older claims (#1113).
+  const imageModel = safeTextToImageModel(sequence.imageModel);
   const referenceVersionId = await scopedDb.sequenceLocations.claimReference(
     data.locationId,
-    { markGenerating: true }
+    {
+      markGenerating: true,
+      activity: {
+        sequenceId: location.sequenceId,
+        actorId: actor.userId,
+        summary: sheetStartedSummary(location.name, imageModel),
+      },
+    }
   );
 
   await emitProgress(location.sequenceId, (channel) =>
@@ -649,7 +706,6 @@ export async function recastLocation(
   // Freeze every regenerate-shots input here, at the trigger. The workflow
   // used to rebuild this after its sheet child finished — eight live reads
   // against state the user never authorised.
-  const imageModel = safeTextToImageModel(sequence.imageModel);
   const { shotSnapshots, snapshotInputHash } =
     await buildRecastRegenerateSnapshots({
       scopedDb,

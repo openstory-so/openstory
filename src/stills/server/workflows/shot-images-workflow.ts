@@ -99,6 +99,8 @@ type SceneImageContext = {
 };
 
 export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWorkflowInput> {
+  protected override readonly failureLabel = 'Image generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ShotImagesWorkflowInput>>,
     step: WorkflowStep,

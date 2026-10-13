@@ -150,6 +150,7 @@ export async function generateDialogueSpeech(
           sourceKey: dialogueClipSourceKey(linesOf(args.lines, shotId)),
         })),
         workflowRunId: args.workflowRunId,
+        actorId: args.userId,
       });
       // The open panel shows "Generating…" from here (#1653).
       await Promise.all(

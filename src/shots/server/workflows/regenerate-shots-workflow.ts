@@ -56,6 +56,8 @@ type ImageChildOutput = {
 };
 
 export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<RegenerateShotsWorkflowInput> {
+  protected override readonly failureLabel = 'Regeneration';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>>,
     step: WorkflowStep,

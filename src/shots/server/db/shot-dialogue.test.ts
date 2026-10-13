@@ -9,6 +9,7 @@ import { generateId } from '@/platform/id';
 import {
   dialogueSpeeches,
   scenes,
+  sequenceEvents,
   sequences,
   shotDialogueSections,
   shotDialogueVersions,
@@ -20,7 +21,7 @@ import {
 import type { ShotDialogueLine } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { type Client, createClient } from '@libsql/client';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -89,6 +90,7 @@ const land = async (methods: Methods, input: AppendDialogueSpeechInput) => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId: entry.shotId, sourceKey: entry.sourceKey }],
         workflowRunId: `run-${entry.id}`,
+        actorId: null,
       });
       claimId = claims[entry.shotId] ?? 'not-claimed';
       claimIdBySectionId.set(entry.id, claimId);
@@ -559,6 +561,13 @@ describe('recordings and sections', () => {
       expect((await shotRow())?.audioClips).toEqual([clipOf(shotId)]);
       // Completed: no longer in flight.
       expect(await methods.listLiveClaims(shotId)).toEqual([]);
+      const recorded = await db
+        .select()
+        .from(sequenceEvents)
+        .where(eq(sequenceEvents.kind, 'dialogue.recorded'));
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]?.summary).toBe('Recorded dialogue');
+      expect(recorded[0]?.targetId).toBe(shotId);
     });
 
     it('a second run for the same shot and the same words stands down', async () => {
@@ -567,16 +576,22 @@ describe('recordings and sections', () => {
       const first = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-a',
+        actorId: null,
       });
       const second = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-b',
+        actorId: null,
       });
       expect(Object.keys(first)).toEqual([shotId]);
       expect(second).toEqual({});
       // A replay of the first run's own claim step gets its claim back.
       expect(
-        await methods.claimSpeech({ ...request, workflowRunId: 'run-a' })
+        await methods.claimSpeech({
+          ...request,
+          workflowRunId: 'run-a',
+          actorId: null,
+        })
       ).toEqual(first);
       // Different words are a different recording: both may run.
       expect(
@@ -584,6 +599,7 @@ describe('recordings and sections', () => {
           await methods.claimSpeech({
             shots: [{ shotId, sourceKey: 'other-words' }],
             workflowRunId: 'run-b',
+            actorId: null,
           })
         )
       ).toEqual([shotId]);
@@ -600,14 +616,29 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k2' }],
         workflowRunId: 'run-late',
+        actorId: null,
       });
       claimIdBySectionId.set(late.id, claims[shotId] ?? '');
       // …and the user picks a reading before it lands.
       await methods.selectSection(shotId, picked.id, [pickedClip]);
 
+      const before = await db
+        .select()
+        .from(sequenceEvents)
+        .where(eq(sequenceEvents.kind, 'dialogue.recorded'));
       const landed = await land(methods, recording([late]));
 
       expect(landed.promotedShotIds).toEqual([]);
+      const after = await db
+        .select()
+        .from(sequenceEvents)
+        .where(
+          and(
+            eq(sequenceEvents.kind, 'dialogue.recorded'),
+            eq(sequenceEvents.sequenceId, sequenceId)
+          )
+        );
+      expect(after).toHaveLength(before.length);
       expect(
         (await methods.getSectionById(picked.id))?.selectedAt
       ).not.toBeNull();
@@ -625,6 +656,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-old-words',
+        actorId: null,
       });
       claimIdBySectionId.set(late.id, claims[shotId] ?? '');
 
@@ -642,6 +674,7 @@ describe('recordings and sections', () => {
       await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-live',
+        actorId: null,
       });
       expect([
         ...(await methods.listShotIdsWithLiveClaim([shotId, otherShotId])),
@@ -657,6 +690,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         shots: [{ shotId, sourceKey: 'k' }],
         workflowRunId: 'run-cancelled',
+        actorId: null,
       });
       const claimId = claims[shotId] ?? '';
       claimIdBySectionId.set(late.id, claimId);
@@ -685,6 +719,7 @@ describe('recordings and sections', () => {
       const claims = await methods.claimSpeech({
         ...request,
         workflowRunId: 'run-dies',
+        actorId: null,
       });
       await methods.failClaims(Object.values(claims), 'ElevenLabs 502');
       expect(await methods.listLiveClaims(shotId)).toEqual([]);
@@ -693,6 +728,7 @@ describe('recordings and sections', () => {
           await methods.claimSpeech({
             ...request,
             workflowRunId: 'run-next',
+            actorId: null,
           })
         )
       ).toEqual([shotId]);

@@ -53,8 +53,10 @@ import {
   finishCharacterSheetPayload,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { generateId } from '@/platform/id';
+import { sheetStartedSummary } from '@/sequences/model-label';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import {
+  DEFAULT_IMAGE_MODEL,
   DEFAULT_MUSIC_MODEL,
   supportsDraftMode,
   type AudioModel,
@@ -202,6 +204,8 @@ type PromptScenes = {
 };
 
 export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<UpdateStaleShotsWorkflowInput> {
+  protected override readonly failureLabel = 'Update';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>,
     step: WorkflowStep,
@@ -339,6 +343,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               targets: plan.targets,
               sequenceId,
               parentInstanceId,
+              actorId: userId,
             })
           )
         : { claimsByShot: {}, skipped: [] };
@@ -424,7 +429,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       const claimCharacterSheet = async (
         payload: Pick<
           CharacterSheetWorkflowInput,
-          'lookId' | 'lookVersionId' | 'bibleVersionId' | 'talentId'
+          | 'lookId'
+          | 'lookVersionId'
+          | 'bibleVersionId'
+          | 'talentId'
+          | 'characterName'
+          | 'imageModel'
         >
       ): Promise<string | null> => {
         // One sheet per look (#2015).
@@ -443,7 +453,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     bibleVersionId: payload.bibleVersionId,
                     talentId: payload.talentId,
                   },
-                  { markGenerating: true }
+                  {
+                    markGenerating: true,
+                    activity: {
+                      sequenceId,
+                      actorId: userId,
+                      summary: sheetStartedSummary(
+                        payload.characterName,
+                        payload.imageModel ?? DEFAULT_IMAGE_MODEL
+                      ),
+                    },
+                  }
                 )
               ).versionId
           );
@@ -520,6 +540,14 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               () =>
                 scopedDb.sequenceLocations.claimReference(id, {
                   markGenerating: true,
+                  activity: {
+                    sequenceId,
+                    actorId: userId,
+                    summary: sheetStartedSummary(
+                      payload.locationName,
+                      payload.imageModel ?? DEFAULT_IMAGE_MODEL
+                    ),
+                  },
                 })
             );
           } catch (error) {
@@ -595,7 +623,12 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           let huskId: string | undefined;
           try {
             const claim = await step.do(`claim-voice-${id}`, () =>
-              scopedDb.characters.createPendingVoiceClaim(id, userId)
+              scopedDb.characters.createPendingVoiceClaim(id, userId, {
+                activity: {
+                  sequenceId,
+                  summary: `Started a voice for ${payload.characterBible.name}`,
+                },
+              })
             );
             huskId = claim.version.id;
             // Someone else's design is in flight: it is making this voice.

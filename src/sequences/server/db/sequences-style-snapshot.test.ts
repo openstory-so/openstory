@@ -176,6 +176,7 @@ describe('createSequencesMethods style snapshot', () => {
     );
     const locationClaim = await locations.claimReference(location.id, {
       markGenerating: true,
+      activity: null,
     });
     // A character's sheet claim is on its cast look (#2017).
     const characters = createCharactersMethods(db, teamId);
@@ -195,7 +196,7 @@ describe('createSequencesMethods style snapshot', () => {
         bibleVersionId: character.selectedBibleVersionId,
         talentId: character.talentId,
       },
-      { markGenerating: true }
+      { markGenerating: true, activity: null }
     );
     if (!sheet.held) throw new Error('test setup: sheet claim not taken');
     const claim = { location: locationClaim, sheet: sheet.versionId };

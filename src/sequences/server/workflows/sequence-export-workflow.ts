@@ -30,6 +30,7 @@ import type {
 } from '@/platform/server/workflow/types';
 import type { VideoExportContainer } from '@/sequences/server/video-export-container';
 import { getContainer } from '@cloudflare/containers';
+import type { WorkflowFailureActivity } from '@/platform/server/workflow/errors';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 /** Wire contract — keep in sync with `containers/video-export/src/types.ts`. */
@@ -53,6 +54,12 @@ type ContainerEnv = {
 };
 
 export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<SequenceExportWorkflowInput> {
+  protected override readonly failureLabel = 'Export';
+
+  protected override failureActivity(): WorkflowFailureActivity {
+    return { kind: 'export.failed', summary: 'Export failed' };
+  }
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<SequenceExportWorkflowInput>>,
     step: WorkflowStep,

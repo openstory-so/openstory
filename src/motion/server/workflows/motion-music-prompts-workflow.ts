@@ -27,6 +27,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'motion-music-prompts']);
 
 export class MotionMusicPromptsWorkflow extends OpenStoryWorkflowEntrypoint<MotionMusicPromptsWorkflowInput> {
+  protected override readonly failureLabel = 'Music prompt';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionMusicPromptsWorkflowInput>>,
     step: WorkflowStep,

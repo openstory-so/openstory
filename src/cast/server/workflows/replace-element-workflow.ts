@@ -218,6 +218,8 @@ async function safeEmit(
 }
 
 export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceElementWorkflowInput> {
+  protected override readonly failureLabel = 'Element replacement';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ReplaceElementWorkflowInput>>,
     step: WorkflowStep,
@@ -384,6 +386,7 @@ export class ReplaceElementWorkflow extends OpenStoryWorkflowEntrypoint<ReplaceE
           model: modelFor(snapshot),
           workflowRunId: event.instanceId,
           isPrimary: true,
+          actorId: input.userId,
         });
         return claim.id;
       });

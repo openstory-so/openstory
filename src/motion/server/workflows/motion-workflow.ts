@@ -156,6 +156,8 @@ function classifyMotionFailure(message: string): MotionPollOutcome {
 }
 
 export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowInput> {
+  protected override readonly failureLabel = 'Motion';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionWorkflowInput>>,
     step: WorkflowStep,
