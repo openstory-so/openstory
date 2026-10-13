@@ -13,8 +13,7 @@ import { SceneThumbnail } from './scene-thumbnail';
  * Phone stand-in for the desktop sidebar: a bottom bar that names the
  * selection and opens a drawer hosting the same `SceneList` — scene groups,
  * segment brackets, whole-sequence row, batch footer — so the two surfaces
- * can't drift. The cog folds the inspector panel, which sits under the preview
- * on a phone.
+ * can't drift. The cog opens the inspector, which is a drawer on a phone.
  */
 export const MobileSceneDrawer: React.FC<
   SceneListProps & {
@@ -111,8 +110,9 @@ export const MobileSceneDrawer: React.FC<
           variant="ghost"
           size="icon"
           className="size-11 shrink-0"
-          aria-label={settingsOpen ? 'Hide settings' : 'Show settings'}
-          aria-pressed={settingsOpen}
+          aria-label="Open settings"
+          aria-haspopup="dialog"
+          aria-expanded={settingsOpen}
           onClick={() => onSettingsOpenChange(!settingsOpen)}
         >
           <Settings />

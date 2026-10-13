@@ -190,25 +190,35 @@ testWithUser.describe('Variant Selection', () => {
       })
     ).toBeVisible();
 
-    // At phone width the bottom bar's cog folds the settings panel away.
+    // At phone width the settings are a drawer the bottom bar's cog opens,
+    // and the title can be renamed from inside it.
     const viewport = page.viewportSize();
     await page.setViewportSize({ width: 390, height: 844 });
     const renameTitle = page.getByRole('button', {
       name: `Rename sequence ${testSequence.title}`,
     });
+    await expect(renameTitle).toBeHidden();
+    const cog = page.getByRole('button', { name: 'Open settings' });
     // Retried: a click before hydration is dropped.
     await expect(async () => {
-      await page
-        .getByRole('button', { name: 'Hide settings' })
-        .click({ timeout: 1000 });
-      await expect(renameTitle).toBeHidden({ timeout: 1000 });
+      await cog.click({ timeout: 1000 });
+      await expect(renameTitle).toBeVisible({ timeout: 1000 });
     }).toPass({ timeout: 15000 });
-    await page.getByRole('button', { name: 'Show settings' }).click();
-    await expect(renameTitle).toBeVisible();
-    if (viewport) await page.setViewportSize(viewport);
+    await renameTitle.click();
+    const renamed = `${testSequence.title} renamed`;
+    await page.getByPlaceholder('Sequence title').fill(renamed);
+    await page.keyboard.press('Enter');
     await expect(
-      page.getByRole('button', { name: 'Hide settings' })
+      page.getByRole('button', { name: `Rename sequence ${renamed}` })
+    ).toBeVisible();
+    // The popover takes the first Escape while it is still closing.
+    await expect(page.getByPlaceholder('Sequence title')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(
+      page.getByRole('button', { name: `Rename sequence ${renamed}` })
     ).toBeHidden();
+    if (viewport) await page.setViewportSize(viewport);
+    await expect(cog).toBeHidden();
 
     // Also wait for the shot thumbnail to be visible
     // Shots load via a separate API call from the sequence data, so needs its own timeout
