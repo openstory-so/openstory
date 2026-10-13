@@ -40,7 +40,7 @@ import type {
   SequenceEventData,
   SequenceEventTargetType,
 } from '@/platform/server/db/schema';
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import type { SQLiteTable } from 'drizzle-orm/sqlite-core';
 import {
@@ -49,7 +49,7 @@ import {
   mediaVersionIds,
   styleIdsInHistoryData,
 } from '@/sequences/history-changes';
-import type { HistoryChange } from '@/sequences/history-changes';
+import type { HistoryChange, HistoryScope } from '@/sequences/history-changes';
 import { videoPosterUrl } from '@/look/cloudflare-video';
 import { toCdnUrl } from '@/platform/server/storage/buckets';
 import { dbSceneId } from '@/shots/scene-id';
@@ -259,6 +259,10 @@ export type HistoryEntry = {
   summary: string;
   actorName: string;
   createdAt: string;
+  /** The row the event points at. Used to pair a render with its auto-select. */
+  targetId: string;
+  /** The media version the event stored, when it stored one. */
+  versionId: string | null;
   targetLabel: string;
   link: HistoryLink | null;
   /** From → to, or the previous text when that is all the event kept. */
@@ -275,6 +279,78 @@ export type HistoryPage = {
 };
 
 const HISTORY_PAGE_SIZE = 40;
+
+/**
+ * Events for the shots `shotMatch` names, including their frames, stills, and
+ * clips. A packed clip counts when any manifest entry is one of those shots.
+ */
+function eventsForShots(
+  db: Database,
+  sequenceId: string,
+  shotMatch: SQL
+): SQL | undefined {
+  const shotWhere = and(eq(shots.sequenceId, sequenceId), shotMatch);
+  const shotIds = db.select({ id: shots.id }).from(shots).where(shotWhere);
+  const frameIds = db
+    .select({ id: frames.id })
+    .from(frames)
+    .innerJoin(shots, eq(shots.id, frames.shotId))
+    .where(and(eq(frames.sequenceId, sequenceId), shotMatch));
+  const stillIds = db
+    .select({ id: frameVariants.id })
+    .from(frameVariants)
+    .innerJoin(frames, eq(frames.id, frameVariants.frameId))
+    .innerJoin(shots, eq(shots.id, frames.shotId))
+    .where(and(eq(frameVariants.sequenceId, sequenceId), shotMatch));
+  const clipIds = db
+    .select({ id: videoVariants.id })
+    .from(videoVariants)
+    .where(
+      and(
+        eq(videoVariants.sequenceId, sequenceId),
+        sql`exists (
+          select 1 from json_each(${videoVariants.manifest}) as je
+          where json_extract(je.value, '$.shotId') in ${shotIds}
+        )`
+      )
+    );
+  return or(
+    and(
+      eq(sequenceEvents.targetType, 'shot'),
+      inArray(sequenceEvents.targetId, shotIds)
+    ),
+    and(
+      eq(sequenceEvents.targetType, 'frame'),
+      inArray(sequenceEvents.targetId, frameIds)
+    ),
+    and(
+      eq(sequenceEvents.targetType, 'variant'),
+      or(
+        inArray(sequenceEvents.targetId, stillIds),
+        inArray(sequenceEvents.targetId, clipIds)
+      )
+    )
+  );
+}
+
+function historyScopeFilter(
+  db: Database,
+  sequenceId: string,
+  scope: HistoryScope | undefined
+): SQL | undefined {
+  if (!scope) return undefined;
+  if ('shotId' in scope) {
+    return eventsForShots(db, sequenceId, eq(shots.id, scope.shotId));
+  }
+  if (scope.sceneIds.length === 0) return sql`0`;
+  return or(
+    and(
+      eq(sequenceEvents.targetType, 'scene'),
+      inArray(sequenceEvents.targetId, scope.sceneIds)
+    ),
+    eventsForShots(db, sequenceId, inArray(shots.sceneId, scope.sceneIds))
+  );
+}
 
 function isNullDate(value: Date | null): boolean {
   return value == null;
@@ -356,7 +432,11 @@ export function createSequenceEventsMethods(db: Database) {
      */
     listHistory: async (
       sequenceId: string,
-      options?: { before?: string | null; limit?: number }
+      options?: {
+        before?: string | null;
+        limit?: number;
+        scope?: HistoryScope;
+      }
     ): Promise<HistoryPage> => {
       const limit = options?.limit ?? HISTORY_PAGE_SIZE;
       const rows = await db
@@ -369,7 +449,8 @@ export function createSequenceEventsMethods(db: Database) {
         .where(
           and(
             eq(sequenceEvents.sequenceId, sequenceId),
-            options?.before ? lt(sequenceEvents.id, options.before) : undefined
+            options?.before ? lt(sequenceEvents.id, options.before) : undefined,
+            historyScopeFilter(db, sequenceId, options?.scope)
           )
         )
         .orderBy(desc(sequenceEvents.id))
@@ -826,6 +907,8 @@ export function createSequenceEventsMethods(db: Database) {
           ),
           actorName: actorName ?? 'OpenStory',
           createdAt: event.createdAt.toISOString(),
+          targetId: event.targetId,
+          versionId: versions.versionId,
           targetLabel,
           link,
           changes: historyChanges(event.data, styleNames),

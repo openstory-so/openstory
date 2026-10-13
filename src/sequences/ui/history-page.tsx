@@ -1,4 +1,6 @@
 import { getSequenceHistoryFn } from '@/sequences/history.fn';
+import { hideAutoSelectedRenders } from '@/sequences/history-changes';
+import type { HistoryScope } from '@/sequences/history-changes';
 import { mediaModelName } from '@/sequences/model-label';
 import type { HistoryChange } from '@/sequences/history-changes';
 import type {
@@ -141,13 +143,20 @@ function HistoryRow({ entry }: { entry: HistoryEntry }) {
   );
 }
 
-function useHistory(sequenceId: string) {
+function scopeKey(scope: HistoryScope | undefined): string {
+  if (!scope) return 'sequence';
+  if ('shotId' in scope) return `shot:${scope.shotId}`;
+  return `scenes:${[...scope.sceneIds].sort().join(',')}`;
+}
+
+function useHistory(sequenceId: string, scope?: HistoryScope) {
   return useSuspenseInfiniteQuery({
-    queryKey: ['sequence-history', sequenceId],
+    queryKey: ['sequence-history', sequenceId, scopeKey(scope)],
     queryFn: ({ pageParam }) =>
       getSequenceHistoryFn({
         data: {
           sequenceId,
+          ...(scope ? { scope } : {}),
           ...(pageParam ? { before: pageParam } : {}),
         },
       }),
@@ -163,7 +172,9 @@ function HistoryList({
   history: ReturnType<typeof useHistory>;
   className?: string;
 }) {
-  const events = history.data.pages.flatMap((page) => page.events);
+  const events = hideAutoSelectedRenders(
+    history.data.pages.flatMap((page) => page.events)
+  );
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = history;
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -219,8 +230,15 @@ export function HistorySkeleton() {
 }
 
 /** The log filling the inspector column once History is open. */
-export function HistoryColumn({ sequenceId }: { sequenceId: string }) {
-  const history = useHistory(sequenceId);
+export function HistoryColumn({
+  sequenceId,
+  scope,
+}: {
+  sequenceId: string;
+  /** Shot, or the selected scenes. Omitted on the sequence itself. */
+  scope?: HistoryScope;
+}) {
+  const history = useHistory(sequenceId, scope);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <HistoryList history={history} className="px-4 py-3" />

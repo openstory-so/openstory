@@ -1646,7 +1646,16 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         <>
           {modelBar}
           <Suspense fallback={<HistorySkeleton />}>
-            <HistoryColumn sequenceId={sequenceId} />
+            <HistoryColumn
+              sequenceId={sequenceId}
+              scope={
+                selection.shotId
+                  ? { shotId: selection.shotId }
+                  : selection.sceneIds.length > 0
+                    ? { sceneIds: selection.sceneIds }
+                    : undefined
+              }
+            />
           </Suspense>
         </>
       ) : (

@@ -7,6 +7,9 @@ import { GENERATION_STAGE_META, isGenerationStage } from '@/sequences/pipeline';
 import { mediaModelName } from '@/sequences/model-label';
 import type { HistorySettingKey } from '@/sequences/model-label';
 
+/** What the inspector is showing. Omitted means the whole sequence. */
+export type HistoryScope = { shotId: string } | { sceneIds: string[] };
+
 export type HistoryChange = {
   label: string;
   /** Previous value, already named for a person. */
@@ -195,4 +198,61 @@ export function historyChanges(
   const settings = settingChanges(data, styleNames);
   if (settings.length > 0) return settings;
   return previousChanges(data);
+}
+
+type ClipEvent = {
+  id: string;
+  kind: string;
+  targetId: string;
+  versionId: string | null;
+  previousPreview: { url: string; model: string } | null;
+};
+
+/**
+ * A finished primary render logs the file and then selects that same file.
+ * Those are one action. A later pick of an older clip stays, and so does a
+ * render that never became the shot's clip.
+ *
+ * `events` is newest first. The kept row is the render. It takes the
+ * selection's previous still when the render did not store one.
+ */
+export function hideAutoSelectedRenders<T extends ClipEvent>(
+  events: readonly T[]
+): T[] {
+  const hidden = new Set<string>();
+  const previousByRender = new Map<string, T['previousPreview']>();
+  for (let i = 0; i < events.length; i++) {
+    const selected = events[i];
+    if (
+      !selected ||
+      selected.kind !== 'video.selected' ||
+      !selected.versionId
+    ) {
+      continue;
+    }
+    let olderIndex = i + 1;
+    while (
+      olderIndex < events.length &&
+      events[olderIndex]?.targetId !== selected.targetId
+    ) {
+      olderIndex++;
+    }
+    const rendered = events[olderIndex];
+    if (
+      rendered?.kind !== 'video.rendered' ||
+      rendered.versionId !== selected.versionId
+    ) {
+      continue;
+    }
+    hidden.add(selected.id);
+    if (selected.previousPreview && !rendered.previousPreview) {
+      previousByRender.set(rendered.id, selected.previousPreview);
+    }
+  }
+  return events.flatMap((event) => {
+    if (hidden.has(event.id)) return [];
+    const previousPreview = previousByRender.get(event.id);
+    if (!previousPreview) return [event];
+    return [{ ...event, previousPreview }];
+  });
 }

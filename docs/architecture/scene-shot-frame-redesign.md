@@ -270,7 +270,10 @@ out of `SETTINGS_CHANGED_LABELS` (#1785).
 
 History on the inspector scope row opens the log in that column (the phone
 settings drawer uses the same inspector). It does not leave the scenes
-page. `/sequences/$id/history` is the same list for a direct URL. The
+page. The list follows the selection: a shot shows that shot (its frames,
+stills and clips included), selected scenes show those scenes and the
+shots in them, and the sequence itself shows the whole log.
+`/sequences/$id/history` is the whole log for a direct URL. The
 header stays the breadcrumb and the live progress chip. It reads
 `listHistory`: newest first, cursor `id < before`, 40 at a time, and the
 next page loads when the list is scrolled to the end. A row names the actor
@@ -283,7 +286,10 @@ event shows that variant's still. A video event shows a Cloudflare Media
 Transformations JPEG of the clip (`mode=frame,time=0s`), the same poster the
 sequence list uses. The browser requests that image. A local or off-zone
 clip has no transform, so the row falls back to the start frame on the
-version's manifest. A stored summary that names a model by key is shown
+version's manifest. A primary render also logs that the same clip was
+selected. The list shows that pair as the render alone. A later pick of an
+older clip stays its own row, and so does a render that never became the
+shot's clip. A stored summary that names a model by key is shown
 with the catalogue name.
 `sequence.settings-changed`
 keeps `data.fields` for staleness and adds `data.changes`

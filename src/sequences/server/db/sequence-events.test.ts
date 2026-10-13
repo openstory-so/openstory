@@ -520,6 +520,101 @@ describe('listHistory', () => {
     expect(JSON.stringify(page.events)).not.toContain('/r2/prev.mp4');
     expect(JSON.stringify(page.events)).not.toContain('/r2/bare.mp4');
   });
+
+  it('limits history to a shot, or to a scene and the shots in it', async () => {
+    const sceneId = dbSceneId(generateId());
+    const otherSceneId = dbSceneId(generateId());
+    const otherShotId = generateId();
+    const frameId = generateId();
+    const stillId = generateId();
+    const segmentId = generateId();
+    const clipId = generateId();
+    await db.insert(scenes).values([
+      { id: sceneId, sequenceId, orderIndex: 0 },
+      { id: otherSceneId, sequenceId, orderIndex: 1 },
+    ]);
+    await db.update(shots).set({ sceneId }).where(eq(shots.id, shotId));
+    await db.insert(shots).values({
+      id: otherShotId,
+      sequenceId,
+      sceneId: otherSceneId,
+      shotNumber: 2,
+    });
+    await db.insert(frames).values({ id: frameId, shotId, sequenceId });
+    await db.insert(frameVariants).values({
+      id: stillId,
+      frameId,
+      sequenceId,
+      model: 'nano',
+      url: '/r2/still.png',
+    });
+    await db.insert(renderSegments).values({
+      id: segmentId,
+      sceneId,
+      sequenceId,
+    });
+    await db.insert(videoVariants).values({
+      id: clipId,
+      renderSegmentId: segmentId,
+      sequenceId,
+      model: 'wan',
+      url: '/r2/clip.mp4',
+      manifest: [
+        {
+          shotId,
+          motionPromptVersionId: null,
+          frameVersionId: null,
+          usesStartFrame: true,
+          durationMs: 1000,
+          audioClipIds: [],
+          audioSourceKey: null,
+          dialogueKey: null,
+          referenceKeys: [],
+        },
+      ],
+    });
+    const m = createSequenceEventsMethods(db);
+    const note = (
+      summary: string,
+      targetType: 'shot' | 'scene' | 'variant' | 'sequence',
+      targetId: string
+    ) =>
+      m.record({
+        sequenceId,
+        actorId: null,
+        kind: 'note',
+        targetType,
+        targetId,
+        summary,
+      });
+    await note('This shot', 'shot', shotId);
+    await note('This still', 'variant', stillId);
+    await note('This clip', 'variant', clipId);
+    await note('This scene', 'scene', sceneId);
+    await note('Other shot', 'shot', otherShotId);
+    await note('Settings', 'sequence', sequenceId);
+
+    const shotPage = await m.listHistory(sequenceId, {
+      scope: { shotId },
+      limit: 20,
+    });
+    expect(shotPage.events.map((event) => event.summary).sort()).toEqual([
+      'This clip',
+      'This shot',
+      'This still',
+    ]);
+
+    const scenePage = await m.listHistory(sequenceId, {
+      scope: { sceneIds: [sceneId] },
+      limit: 20,
+    });
+    expect(scenePage.events.map((event) => event.summary).sort()).toEqual([
+      'This clip',
+      'This scene',
+      'This shot',
+      'This still',
+    ]);
+  });
 });
 
 describe('buildEventInsertOnce', () => {
