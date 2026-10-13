@@ -277,7 +277,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       >;
     }
     // Fresh and continue share the same durable execution path.
-    let continueFailure: string | null = null;
+    let unitsFailed = false;
     if (input.plan || plan.targets.length || plan.references || plan.music) {
       const result = await spawnAndAwaitChild<
         UpdateStaleShotsWorkflowInput,
@@ -303,16 +303,11 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         // in parallel), plus notify lag under a burst.
         timeout: '4 hours',
       });
-      // The executor records a unit's failure and carries on; the run as a
-      // whole did not finish what was asked, so it ends failed, not
-      // completed, and sends no "ready" email.
-      const [first] = result.failures;
-      if (first) {
-        continueFailure =
-          result.failures.length === 1
-            ? first.error
-            : `${result.failures.length} steps failed. First: ${first.error}`;
-      }
+      // The executor records a unit's failure on the unit and carries on. The
+      // failure stays there (#2104): copied onto the sequence it outlives the
+      // shot it came from and asks for a whole regenerate. The run still
+      // sends no "ready" email.
+      unitsFailed = result.failures.length > 0;
     }
 
     const reservationId = input.reservationId;
@@ -320,19 +315,6 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       await step.do('zero-reservation', async () => {
         await scopedDb.billing.zeroReservation(reservationId);
       });
-    }
-
-    if (continueFailure) {
-      const message = continueFailure;
-      await step.do('mark-failed', async () => {
-        await seq.updateStatus('failed', message);
-      });
-      await step.do('emit-failed', async () => {
-        await getGenerationChannel(sequenceId).emit('generation.failed', {
-          message,
-        });
-      });
-      return;
     }
 
     await step.do('mark-completed', async () => {
@@ -348,7 +330,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // "Your video is ready" is a one-shot claim per sequence: sending it for
     // a run that stopped before motion would spend it on a board with no video
     // and silence the real completion (#1408).
-    if (!includesStage(input.stopAt, 'motion')) return;
+    if (unitsFailed || !includesStage(input.stopAt, 'motion')) return;
 
     // After emit-complete: a send retry must not strand the player on processing.
     await step.do('email-ready', async () => {

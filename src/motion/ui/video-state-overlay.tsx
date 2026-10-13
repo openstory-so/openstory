@@ -1,6 +1,6 @@
 import { BlobLoader } from '@/ui/shadcn/blob-loader';
 import {
-  CONTENT_REJECTION_USER_HINT,
+  contentRejectionHint,
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/models/content-rejection';
@@ -128,7 +128,7 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
                 {CONTENT_REJECTION_USER_TITLE}
               </p>
               <p className="max-w-xs text-center text-xs text-muted-foreground">
-                {CONTENT_REJECTION_USER_HINT}
+                {contentRejectionHint(videoFailed ? videoError : imageError)}
               </p>
             </>
           ) : (
