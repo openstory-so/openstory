@@ -307,7 +307,9 @@ export class ConcatenatedVideoSource {
         videoTrack: null,
         silent: false,
         audioTracks,
-        duration: audioDuration || clip.durationSeconds,
+        // A short recording must not rush the shot. A longer one still
+        // holds the picture until the sound ends.
+        duration: Math.max(audioDuration, clip.durationSeconds),
         dimensions: { width: clip.width, height: clip.height },
       };
     } catch (error) {

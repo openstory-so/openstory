@@ -57,6 +57,8 @@ type MotionBatchWorkflowResult = {
 };
 
 export class MotionBatchWorkflow extends OpenStoryWorkflowEntrypoint<BatchMotionMusicWorkflowInput> {
+  protected override readonly failureLabel = 'Motion';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<BatchMotionMusicWorkflowInput>>,
     step: WorkflowStep,

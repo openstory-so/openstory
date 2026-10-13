@@ -157,6 +157,19 @@ export function contentFilterLlmMessage(subject: string): string {
 export const CONTENT_REJECTION_USER_HINT =
   'Edit the script or the visual prompt, or retry.';
 
+const CLIP_REJECTION_PREFIX = 'Content checker rejected ';
+
+/**
+ * What to do about a blocked shot. A clip's terminal error
+ * ({@link clipContentRejectionMessage}) already says what was refused and how
+ * to change it, and that is not always the script or the prompt (#2104: a
+ * refused dialogue recording). Anything else gets the general hint.
+ */
+export function contentRejectionHint(error: string | null | undefined): string {
+  const at = error?.indexOf(CLIP_REJECTION_PREFIX) ?? -1;
+  return error && at >= 0 ? error.slice(at) : CONTENT_REJECTION_USER_HINT;
+}
+
 /**
  * Bible-level failure message when EVERY child failed a content check:
  * `Blocked by the content checker: Ron Weasley, Harry Potter`. Parent
@@ -270,9 +283,9 @@ export function clipContentRejectionMessage(args: {
   if (flags.audioInput) {
     const audio = args.inputs?.audio ?? {
       name: 'the generated dialogue',
-      fix: "Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script",
+      fix: "Regenerate the dialogue for another reading, change the lines in the script, or set the shot's dialogue audio to Video model",
     };
-    return `Content checker rejected ${audio.name} (${tried}). ${audio.fix}.`;
+    return `${CLIP_REJECTION_PREFIX}${audio.name} (${tried}). ${audio.fix}.`;
   }
   const still = args.inputs
     ? args.inputs.still
@@ -295,7 +308,7 @@ export function clipContentRejectionMessage(args: {
     : flags.prompt
       ? `Rewrite ${promptName}.`
       : `Rewrite ${promptName}${still ? ` or ${lower(still.fix)}` : ''}.${rejectionReason(args.rejections.at(-1) ?? '')}`;
-  return `Content checker rejected ${what} (${tried}). ${hint}`;
+  return `${CLIP_REJECTION_PREFIX}${what} (${tried}). ${hint}`;
 }
 
 /**

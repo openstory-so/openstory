@@ -11,7 +11,7 @@ Play `PlaybackClip[]` in order. The README in this package has the install and t
 
 A video clip is `{ videoUrl, posterUrl, cues }`. It plays the audio inside the file.
 
-A still is `{ imageUrl, fallbackImageUrl, durationSeconds, audioUrls, width, height, cues }`. `audioUrls` play back to back, and the still lasts as long as that sound. `durationSeconds` is the length only when `audioUrls` is empty. `width` and `height` are the still's pixel size.
+A still is `{ imageUrl, fallbackImageUrl, durationSeconds, audioUrls, width, height, cues }`. `audioUrls` play back to back from the start of the still. The still lasts for the longer of that sound and `durationSeconds`. `width` and `height` are the still's pixel size.
 
 `posterUrl` is for a host to show while it waits. This package does not paint it.
 

@@ -358,7 +358,7 @@ const references = {
   lookSheetsAfterDefault: [],
   locationSheets: [{ locationDbId: 'hall' }],
   elementSheets: { entries: [{ elementId: 'mug' }] },
-  voices: [{ characterDbId: 'maya' }],
+  voices: [{ characterDbId: 'maya', characterBible: { name: 'Maya' } }],
   cost: { sheets: 0, voices: 0 },
 };
 
@@ -397,6 +397,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
     });
     expect(payloadOf('spawn-character-voice-maya')).toEqual({
       characterDbId: 'maya',
+      characterBible: { name: 'Maya' },
       targetVersionId: 'husk-maya',
     });
     // The claim is taken on the look the payload names, as it was frozen.
@@ -407,7 +408,15 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         bibleVersionId: 'bible-ravi',
         talentId: null,
       },
-      { markGenerating: true }
+      {
+        markGenerating: true,
+        // The start line commits with the claim, named for who ran it.
+        activity: {
+          sequenceId: expect.any(String),
+          actorId: expect.any(String),
+          summary: expect.stringContaining('Started a sheet for'),
+        },
+      }
     );
     expect(result.failures).toEqual([]);
     // The banner moves under a continue.
@@ -456,7 +465,7 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         bibleVersionId: 'bible-1',
         talentId: 'talent-1',
       },
-      { markGenerating: true }
+      expect.objectContaining({ markGenerating: true })
     );
     expect(payloadOf('spawn-character-sheet-gala')).toMatchObject({
       lookId: 'gala',

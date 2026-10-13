@@ -21,6 +21,7 @@ import {
 } from '@/platform/server/db/schema';
 import type { TeamMemberRole } from '@/platform/server/db/schema/teams';
 import { createAdminMethods } from '@/platform/server/db/scoped/admin';
+import { createSearchMethods } from '@/platform/server/db/scoped/search';
 import { createApiKeysMethods } from '@/models/server/db/api-keys';
 import { createBillingMethods } from '@/billing/server/db/billing';
 import { createCharacterLooksMethods } from '@/cast/server/db/character-looks';
@@ -487,6 +488,7 @@ export function createScopedDb(teamId: string, userId: string) {
     billing: createBillingMethods(db, teamId, userId),
     apiKeys: createApiKeysMethods(db, teamId, userId),
     teamManagement: createTeamManagementMethods(db, teamId, userId),
+    search: createSearchMethods(db, teamId),
 
     // Compliance (#1180). `provenance` is its own domain rather than a member
     // of `compliance` because workflows must reach it and the workflow write

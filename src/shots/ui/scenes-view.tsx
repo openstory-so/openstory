@@ -21,6 +21,7 @@ import {
   tabsForScope,
 } from './scene-script-prompts';
 import { FailureSummaryBanner } from '@/sequences/ui/failure-summary-banner';
+import { HistoryColumn, HistorySkeleton } from '@/sequences/ui/history-page';
 import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
@@ -105,6 +106,8 @@ import type { GenerationPhaseConfig } from '@/sequences/ui/generation-stream.red
 import { useGenerationStream } from '@/sequences/ui/use-generation-stream';
 import { useStaleDetected } from './use-stale-detected';
 import { cn } from '@/ui/utils';
+import { useIsMobile } from '@/ui/use-mobile';
+import { Drawer, DrawerContent, DrawerTitle } from '@/ui/shadcn/drawer';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
@@ -115,6 +118,7 @@ import {
   estimateTotalSeconds,
 } from '@/sequences/time-estimate';
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -334,6 +338,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     setView,
   } = useSceneSelection({ search, sequenceId });
   const [autoPlaySequence, setAutoPlaySequence] = useState(false);
+  // Phone only: the bottom bar's cog opens the inspector as a drawer.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const isMobile = useIsMobile();
   const handlePlaySequence = useCallback(() => {
     handleClearSelection();
     setView('canvas');
@@ -1536,7 +1543,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   remainingRef.current = remainingSeconds;
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
 
-  // Progress rides in the view-toggle row (#1427) — no layout shift, and it
+  // Progress rides in the app header (#1427) — no layout shift, and it
   // never sits on top of anything you might want to click.
   const progressChip = isGenerationActive ? (
     <GenerationProgressBanner
@@ -1609,9 +1616,103 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     onLeftoverGrokChange: handleLeftoverGrokChange,
   };
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // One inspector, two homes: the side column, or on a phone the drawer the
+  // bottom bar's cog opens. Never both, so its state and ids exist once.
+  // History stays on this column: the control opens the log here.
+  const modelBar = (
+    <SceneModelBar
+      selection={selection}
+      scenes={scenes}
+      shots={shots}
+      sequenceId={sequenceId}
+      title={sequence?.title}
+      resolvedSequenceImageModel={resolvedSequenceImageModel}
+      resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+      styleId={sequence?.styleId ?? undefined}
+      stylePending={sequence?.styleConfig == null}
+      aspectRatio={aspectRatio}
+      resolution={sequence?.resolution}
+      targetDurationSeconds={sequence?.targetDurationSeconds}
+      analysisModel={sequence?.analysisModel ?? undefined}
+      historyOpen={historyOpen}
+      onHistoryToggle={() => setHistoryOpen((open) => !open)}
+    />
+  );
+  const inspector = (
+    <div className="flex h-full min-h-0 flex-col">
+      {historyOpen ? (
+        <>
+          {modelBar}
+          <Suspense fallback={<HistorySkeleton />}>
+            <HistoryColumn
+              sequenceId={sequenceId}
+              scope={
+                selection.shotId
+                  ? { shotId: selection.shotId }
+                  : selection.sceneIds.length > 0
+                    ? { sceneIds: selection.sceneIds }
+                    : undefined
+              }
+            />
+          </Suspense>
+        </>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          {modelBar}
+          <div className="@container/inspector px-4 pb-4">
+            <SceneScriptPrompts
+              shot={selectedShot}
+              sequenceId={sequenceId}
+              resolution={sequence?.resolution}
+              sequenceGeneratesStartFrames={generateStartFrames}
+              sequenceDraftMotion={sequence?.draftMotion ?? false}
+              selectedTab={effectiveTab}
+              visibleTabs={visibleTabs}
+              onTabChange={setFacet}
+              regeneratingImages={regeneratingImages}
+              regeneratingMotion={regeneratingMotion}
+              onRegenerateStart={handleRegenerateStart}
+              aspectRatio={aspectRatio}
+              variantForSelectedModel={variantForSelectedModel}
+              videoVariantForSelectedModel={videoVariantForSelectedModel}
+              segment={selectedSegment}
+              segmentSpanLabel={selectedSegmentSpanLabel}
+              resolvedImageModel={resolvedImageModel}
+              leftoverGrokShotIds={leftoverGrokShotIds}
+              resolvedVideoModel={resolvedVideoModel}
+              imageModelStatuses={sceneImageModelStatuses}
+              videoModelStatuses={sceneVideoModelStatuses}
+              onImageModelChange={handleImageModelChange}
+              onVideoModelChange={handleVideoModelChange}
+              styleName={styleName}
+              styleCategory={styleCategory}
+              shotDivergentVariants={divergentVariants?.filter(
+                (v) => v.shotId === curSelectedShotId
+              )}
+              onCompareDivergent={(variant) => setCompareVariant(variant)}
+              facetShotIds={facetShotIds}
+              musicEditable={scope === 'sequence'}
+              sceneScope={scope === 'scenes'}
+              scene={scriptScene}
+              scopeShots={scopeShots}
+              filmSeconds={shots ? sumShotSeconds(shots) : undefined}
+              scopeStaleness={scopeStaleness}
+              scopeStalenessFailed={scopeStalenessFailed}
+              onSelectShot={handleSelectShot}
+              scenes={scenes}
+              onSelectScene={handleFocusScene}
+            />
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  );
+
   return (
     <div className="@container/scenes flex h-full flex-col">
-      {/* Progress rides in the sequence title row (#1427) — no layout shift,
+      {/* Progress rides in the app header (#1427) — no layout shift,
           and it never sits on top of anything you might want to click. */}
       <SequenceHeaderPortal>{progressChip}</SequenceHeaderPortal>
 
@@ -1658,7 +1759,23 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         </div>
 
         <div className={cn('md:hidden', hasDetail && 'hidden')}>
-          <MobileSceneDrawer {...sceneListProps} />
+          <MobileSceneDrawer
+            {...sceneListProps}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+          {isMobile && (
+            <Drawer
+              showSwipeHandle
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+            >
+              <DrawerContent className="pb-[env(safe-area-inset-bottom)] [--drawer-content-height:85dvh] data-[swipe-axis=y]:[--drawer-content-max-height:85dvh]">
+                <DrawerTitle className="sr-only">Settings</DrawerTitle>
+                {inspector}
+              </DrawerContent>
+            </Drawer>
+          )}
         </div>
 
         {/* Queried on the width left AFTER the scenes column, so folding the
@@ -1674,7 +1791,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 {detail}
               </div>
             ) : (
-              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+              // On a phone the canvas has the screen; the inspector is a
+              // drawer. The padding clears the fixed bottom bar.
+              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:pb-[calc(4rem+env(safe-area-inset-bottom))] @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
                 <CanvasViewToggle
                   view={effectiveView}
                   onViewChange={setView}
@@ -1778,7 +1897,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 it did as a page of its own. */}
             <div
               className={cn(
-                'relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4',
+                'relative z-10 min-w-0 shrink-0 border-t bg-background max-md:hidden @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4',
                 hasDetail && 'hidden @3xl/workspace:block'
               )}
             >
@@ -1786,70 +1905,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 id="scene-inspector"
                 className="@3xl/workspace:flex @3xl/workspace:h-full @3xl/workspace:min-h-0 @3xl/workspace:w-[clamp(280px,38cqw,420px)] @3xl/workspace:flex-col @3xl/workspace:overflow-hidden @3xl/workspace:rounded-lg @3xl/workspace:border @3xl/workspace:bg-background"
               >
-                <ScrollArea className="h-full min-h-0">
-                  <SceneModelBar
-                    selection={selection}
-                    scenes={scenes}
-                    shots={shots}
-                    sequenceId={sequenceId}
-                    resolvedSequenceImageModel={resolvedSequenceImageModel}
-                    resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                    styleId={sequence?.styleId ?? undefined}
-                    stylePending={sequence?.styleConfig == null}
-                    aspectRatio={aspectRatio}
-                    resolution={sequence?.resolution}
-                    targetDurationSeconds={sequence?.targetDurationSeconds}
-                    analysisModel={sequence?.analysisModel ?? undefined}
-                  />
-                  <div className="@container/inspector px-4 pb-4">
-                    <SceneScriptPrompts
-                      shot={selectedShot}
-                      sequenceId={sequenceId}
-                      resolution={sequence?.resolution}
-                      sequenceGeneratesStartFrames={generateStartFrames}
-                      sequenceDraftMotion={sequence?.draftMotion ?? false}
-                      selectedTab={effectiveTab}
-                      visibleTabs={visibleTabs}
-                      onTabChange={setFacet}
-                      regeneratingImages={regeneratingImages}
-                      regeneratingMotion={regeneratingMotion}
-                      onRegenerateStart={handleRegenerateStart}
-                      aspectRatio={aspectRatio}
-                      variantForSelectedModel={variantForSelectedModel}
-                      videoVariantForSelectedModel={
-                        videoVariantForSelectedModel
-                      }
-                      segment={selectedSegment}
-                      segmentSpanLabel={selectedSegmentSpanLabel}
-                      resolvedImageModel={resolvedImageModel}
-                      leftoverGrokShotIds={leftoverGrokShotIds}
-                      resolvedVideoModel={resolvedVideoModel}
-                      imageModelStatuses={sceneImageModelStatuses}
-                      videoModelStatuses={sceneVideoModelStatuses}
-                      onImageModelChange={handleImageModelChange}
-                      onVideoModelChange={handleVideoModelChange}
-                      styleName={styleName}
-                      styleCategory={styleCategory}
-                      shotDivergentVariants={divergentVariants?.filter(
-                        (v) => v.shotId === curSelectedShotId
-                      )}
-                      onCompareDivergent={(variant) =>
-                        setCompareVariant(variant)
-                      }
-                      facetShotIds={facetShotIds}
-                      musicEditable={scope === 'sequence'}
-                      sceneScope={scope === 'scenes'}
-                      scene={scriptScene}
-                      scopeShots={scopeShots}
-                      filmSeconds={shots ? sumShotSeconds(shots) : undefined}
-                      scopeStaleness={scopeStaleness}
-                      scopeStalenessFailed={scopeStalenessFailed}
-                      onSelectShot={handleSelectShot}
-                      scenes={scenes}
-                      onSelectScene={handleFocusScene}
-                    />
-                  </div>
-                </ScrollArea>
+                {!isMobile && inspector}
               </div>
             </div>
           </div>

@@ -4,6 +4,7 @@
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { sheetGeneratedSummary } from '@/sequences/model-label';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -34,6 +35,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'location-sheet']);
 
 export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationSheetWorkflowInput> {
+  protected override readonly failureLabel = 'Location sheet';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<LocationSheetWorkflowInput>>,
     step: WorkflowStep,
@@ -229,6 +232,16 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
               bibleVersionId: input.bibleVersionId ?? null,
               model: generationParams.model,
               workflowRunId,
+              activity: {
+                sequenceId,
+                actorId: input.userId,
+                targetType: 'location',
+                targetId: locationDbId,
+                summary: sheetGeneratedSummary(
+                  input.locationName,
+                  generationParams.model
+                ),
+              },
             }),
           logger,
           logTag: '[LocationSheetWorkflow:cf]',

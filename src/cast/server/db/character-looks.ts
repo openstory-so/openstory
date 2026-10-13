@@ -46,7 +46,10 @@ import {
   sequenceCast,
   sequences,
 } from '@/platform/server/db/schema';
-import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import {
+  buildEventInsert,
+  buildEventInsertIfPresent,
+} from '@/sequences/server/db/sequence-events';
 import { effectiveStyling } from '@/cast/character-looks';
 import {
   characterBibleColumns,
@@ -1239,11 +1242,19 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
     claimSheet: async (
       lookId: string,
       snapshot: LookSheetSnapshot,
-      opts: { markGenerating: boolean }
+      opts: {
+        markGenerating: boolean;
+        /** The start line. Null for a run started from no sequence. */
+        activity: {
+          sequenceId: string;
+          actorId: string | null;
+          summary: string;
+        } | null;
+      }
     ): Promise<{ versionId: string; held: boolean }> => {
       const look = await requireLook(db, teamId, lookId);
       const versionId = generateId();
-      const result = await db
+      const claim = db
         .update(characterLooks)
         .set({
           pendingPromoteSheetVersionId: versionId,
@@ -1274,7 +1285,31 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
               )}`
           )
         );
-      return { versionId, held: (result.rowsAffected ?? 0) > 0 };
+      if (!opts.activity) {
+        const result = await claim;
+        return { versionId, held: (result.rowsAffected ?? 0) > 0 };
+      }
+      const [claimed] = await db.batch([
+        claim.returning({ id: characterLooks.id }),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: opts.activity.sequenceId,
+            actorId: opts.activity.actorId,
+            kind: 'sheet.started',
+            targetType: 'character',
+            targetId: look.characterId,
+            summary: opts.activity.summary,
+          },
+          characterLooks,
+          and(
+            eq(characterLooks.id, look.id),
+            eq(characterLooks.pendingPromoteSheetVersionId, versionId)
+          )
+        ),
+      ]);
+      return { versionId, held: claimed.length > 0 };
     },
 
     /**

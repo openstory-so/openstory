@@ -34,6 +34,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'library-talent-sheet']);
 
 export class LibraryTalentSheetWorkflow extends OpenStoryWorkflowEntrypoint<LibraryTalentSheetWorkflowInput> {
+  protected override readonly failureLabel = 'Talent sheet';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>,
     step: WorkflowStep,

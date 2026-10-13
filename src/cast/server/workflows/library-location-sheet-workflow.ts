@@ -32,6 +32,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'library-location-sheet']);
 
 export class LibraryLocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LibraryLocationSheetWorkflowInput> {
+  protected override readonly failureLabel = 'Location sheet';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<LibraryLocationSheetWorkflowInput>>,
     step: WorkflowStep,

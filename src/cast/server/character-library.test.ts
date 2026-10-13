@@ -94,7 +94,13 @@ async function voiced() {
     },
     { source: 'analysis', createdBy: null }
   );
-  await chars().updateVoice(created.id, { voiceId: VOICE }, 'generated', null);
+  await chars().updateVoice(
+    created.id,
+    { voiceId: VOICE },
+    'generated',
+    null,
+    null
+  );
   return { sequenceId, created };
 }
 

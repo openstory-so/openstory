@@ -608,7 +608,7 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
         scopedDb
       )
     ).rejects.toThrow(
-      `Content checker rejected the generated dialogue (${NAME}). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script.`
+      `Content checker rejected the generated dialogue (${NAME}). Regenerate the dialogue for another reading, change the lines in the script, or set the shot's dialogue audio to Video model.`
     );
     expect(mockSubmit).toHaveBeenCalledTimes(3);
     expect(mockSoften).not.toHaveBeenCalled();

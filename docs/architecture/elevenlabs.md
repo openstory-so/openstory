@@ -513,9 +513,11 @@ Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 includes every shot before rendering is complete. `toPlaybackClips` uses
 rendered clips where available and still entries elsewhere, preferring the
 selected still with the storyboard preview as fallback. A still plays its
-selected `shots.audioClips` and holds for their actual combined duration;
-without audio it holds for `durationMs` (3 seconds for legacy missing
-durations). The Mediabunny canvas source yields timed still frames on the same
+selected `shots.audioClips` from the start of the shot and holds for the
+longer of the shot (`durationMs`, 3 seconds when that is missing) and the
+clips' combined duration. A short take no longer rushes the picture.
+`shotIdAtSequenceTime` reads the stitcher's measured offsets, so the
+highlighted shot follows that hold. The Mediabunny canvas source yields timed still frames on the same
 timeline as video frames; it does not encode temporary videos. PCM dialogue
 cut files are decoded with `AudioBufferSink` and scheduled on the existing
 audio clock, so pause, seeking, volume and music work across both kinds of

@@ -14,6 +14,7 @@ import { GlobalBillingGateDialog } from '@/billing/ui/billing-gate-dialog';
 import { AppSidebar } from './app-sidebar';
 import { AutoTopUpFailedBanner } from './auto-top-up-failed-banner';
 import { Breadcrumbs } from './breadcrumbs';
+import { SEQUENCE_HEADER_SLOT_ID } from '@/sequences/ui/sequence-header-slot';
 import { ComplianceRestrictionBanner } from './compliance-restriction-banner';
 import { InvalidApiKeyBanner } from './invalid-api-key-banner';
 
@@ -42,6 +43,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 <div className="min-w-0 flex-1">
                   <Breadcrumbs />
                 </div>
+                {/* Sequence generation progress portals in here (#1427,
+                    #2102). `@container` so the chip sizes its label against
+                    the room it has, which needs the slot to be `flex-1`;
+                    `empty:hidden` so an idle slot takes nothing from the
+                    breadcrumb. */}
+                <div
+                  id={SEQUENCE_HEADER_SLOT_ID}
+                  className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
+                />
               </header>
               <ComplianceRestrictionBanner />
               <InvalidApiKeyBanner />

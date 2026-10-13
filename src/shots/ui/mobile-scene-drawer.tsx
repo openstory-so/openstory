@@ -1,27 +1,33 @@
-import { Sheet, SheetContent, SheetTitle } from '@/ui/shadcn/sheet';
+import { Button } from '@/ui/shadcn/button';
+import { Drawer, DrawerContent, DrawerTitle } from '@/ui/shadcn/drawer';
 import { shotDraftLabel } from '@/motion/draft-mode';
 import type { SceneWithScript } from './use-scenes';
 import type { SceneSelection } from './scene-selection';
 import { plainSceneTitle } from '@/platform/markdown-plain';
-import { ChevronUp } from 'lucide-react';
+import { ChevronUp, Settings } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { SceneList, type SceneListProps } from './scene-list';
 import { SceneThumbnail } from './scene-thumbnail';
 
 /**
  * Phone stand-in for the desktop sidebar: a bottom bar that names the
- * selection and opens a sheet hosting the same `SceneList` — scene groups,
+ * selection and opens a drawer hosting the same `SceneList` — scene groups,
  * segment brackets, whole-sequence row, batch footer — so the two surfaces
- * can't drift.
+ * can't drift. The cog opens the inspector, which is a drawer on a phone.
  */
-export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
+export const MobileSceneDrawer: React.FC<
+  SceneListProps & {
+    settingsOpen: boolean;
+    onSettingsOpenChange: (open: boolean) => void;
+  }
+> = ({ settingsOpen, onSettingsOpenChange, ...listProps }) => {
   const { shots, scenes, selection, aspectRatio } = listProps;
   const selectedShotId = selection.shotId;
   const selectedSceneIds = selection.sceneIds;
 
-  // The sheet is open *for* one selection. Every pick inside it is a
+  // The drawer is open *for* one selection. Every pick inside it is a
   // navigation (shot cards are links, scene headers and "Whole sequence" call
-  // back), and `selection` is a new object after any of them — so the sheet
+  // back), and `selection` is a new object after any of them — so the drawer
   // closes itself without wiring a close into each row.
   const [openFor, setOpenFor] = useState<SceneSelection | null>(null);
   const jumpOpen = openFor === selection;
@@ -72,50 +78,61 @@ export const MobileSceneDrawer: React.FC<SceneListProps> = (listProps) => {
 
   return (
     <>
-      <button
-        type="button"
-        data-testid="mobile-scene-nav"
-        className="fixed inset-x-0 bottom-0 z-40 flex min-h-11 items-center gap-3 border-t bg-background px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-        aria-haspopup="dialog"
-        aria-expanded={jumpOpen}
-        aria-label={`${label}. Open scene list`}
-        onClick={() => setOpenFor(selection)}
-      >
-        <SceneThumbnail
-          thumbnailUrl={previewShot?.image?.url}
-          previewThumbnailUrl={previewShot?.previewThumbnailUrl}
-          thumbnailStatus={previewShot?.imageStatus || undefined}
-          videoUrl={previewShot?.video?.url}
-          draftLabel={shotDraftLabel(previewShot)}
-          gridSheetUrl={previewShot?.gridSheet?.url}
-          pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
-          pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}
-          alt={isSequence ? 'Sequence' : sceneTitle}
-          aspectRatio={aspectRatio}
-          className="aspect-square h-10 w-10 shrink-0 rounded"
-        />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {label}
-        </span>
-        <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-      </button>
+      <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-1 border-t bg-background pr-2 pb-[env(safe-area-inset-bottom)]">
+        <button
+          type="button"
+          data-testid="mobile-scene-nav"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 px-4 py-2 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-haspopup="dialog"
+          aria-expanded={jumpOpen}
+          aria-label={`${label}. Open scene list`}
+          onClick={() => setOpenFor(selection)}
+        >
+          <SceneThumbnail
+            thumbnailUrl={previewShot?.image?.url}
+            previewThumbnailUrl={previewShot?.previewThumbnailUrl}
+            thumbnailStatus={previewShot?.imageStatus || undefined}
+            videoUrl={previewShot?.video?.url}
+            draftLabel={shotDraftLabel(previewShot)}
+            gridSheetUrl={previewShot?.gridSheet?.url}
+            pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
+            pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}
+            alt={isSequence ? 'Sequence' : sceneTitle}
+            aspectRatio={aspectRatio}
+            className="aspect-square h-10 w-10 shrink-0 rounded"
+          />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {label}
+          </span>
+          <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-11 shrink-0"
+          aria-label="Open settings"
+          aria-haspopup="dialog"
+          aria-expanded={settingsOpen}
+          onClick={() => onSettingsOpenChange(!settingsOpen)}
+        >
+          <Settings />
+        </Button>
+      </div>
 
-      <Sheet
+      <Drawer
+        showSwipeHandle
         open={jumpOpen}
         onOpenChange={(open) => setOpenFor(open ? selection : null)}
       >
-        <SheetContent
-          side="bottom"
-          className="flex min-h-0 flex-col gap-0 overflow-hidden pb-[env(safe-area-inset-bottom)] data-[side=bottom]:h-[70dvh]"
-        >
-          <SheetTitle className="sr-only">Scenes</SheetTitle>
+        <DrawerContent className="pb-[env(safe-area-inset-bottom)] [--drawer-content-height:92dvh] data-[swipe-axis=y]:[--drawer-content-max-height:92dvh]">
+          <DrawerTitle className="sr-only">Scenes</DrawerTitle>
           <SceneList
             {...listProps}
             scrollToSelection
             className="min-h-0 w-full flex-1 rounded-none border-0"
           />
-        </SheetContent>
-      </Sheet>
+        </DrawerContent>
+      </Drawer>
     </>
   );
 };

@@ -237,7 +237,12 @@ describe('CharacterVoiceWorkflow', () => {
           }),
           expect.objectContaining({ generatedVoiceId: 'g2', takeNumber: 2 }),
         ],
-      })
+      }),
+      {
+        sequenceId: 'seq-1',
+        actorId: 'u1',
+        summary: 'Designed a voice for Sam',
+      }
     );
     expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
     expect(mockReleaseReplaced).toHaveBeenCalled();
@@ -400,7 +405,11 @@ describe('CharacterVoiceWorkflow', () => {
       'char-1',
       expect.objectContaining({ voiceId: 'voice-1' }),
       'generated',
-      'u1'
+      'u1',
+      {
+        sequenceId: 'seq-1',
+        summary: 'Designed a voice for Sam',
+      }
     );
     expect(completeVoiceClaimIfLive).not.toHaveBeenCalled();
     expect(result.voiceId).toBe('voice-1');

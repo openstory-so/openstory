@@ -169,6 +169,73 @@ testWithUser.describe('Variant Selection', () => {
     await cleanupSequenceById(testSequence.id, testSequence.styleId);
   });
 
+  testWithUser(
+    'phone: settings and scenes open as drawers (#2102)',
+    async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/sequences/${testSequence.id}/scenes`);
+
+      // One crumb on a phone, and it is the sequence title, not "Scenes".
+      await expect(
+        page.getByRole('navigation', { name: 'breadcrumb' })
+      ).toContainText(testSequence.title);
+
+      // Settings: the bottom bar's cog opens the inspector in a drawer.
+      const renameTitle = page.getByRole('button', {
+        name: `Rename sequence ${testSequence.title}`,
+      });
+      await expect(renameTitle).toBeHidden();
+      const drawer = page.getByRole('dialog');
+      // Retried: a click before hydration is dropped.
+      await expect(async () => {
+        await page
+          .getByRole('button', { name: 'Open settings' })
+          .click({ timeout: 1000 });
+        await expect(renameTitle).toBeVisible({ timeout: 1000 });
+      }).toPass({ timeout: 15000 });
+
+      // Popovers work from inside the drawer: rename the sequence...
+      await renameTitle.click();
+      const renamed = `${testSequence.title} renamed`;
+      await page.getByPlaceholder('Sequence title').fill(renamed);
+      await page.keyboard.press('Enter');
+      const renamedTitle = page.getByRole('button', {
+        name: `Rename sequence ${renamed}`,
+      });
+      await expect(renamedTitle).toBeVisible();
+      await expect(page.getByPlaceholder('Sequence title')).toBeHidden();
+
+      // ...and set the target length.
+      const lengthChip = drawer.getByTestId('film-length-chip');
+      await lengthChip.click();
+      await page.getByRole('radio', { name: '30s' }).click();
+      await expect(lengthChip).toHaveText('30s');
+      await page.keyboard.press('Escape');
+      await expect(renamedTitle).toBeVisible();
+
+      await page.keyboard.press('Escape');
+      await expect(renamedTitle).toBeHidden();
+
+      // Scenes: the bar opens the list in a drawer; its footer controls work.
+      await page.getByTestId('mobile-scene-nav').click();
+      await expect(
+        drawer.getByText('Whole sequence', { exact: true })
+      ).toBeVisible();
+      const stopSlider = drawer.getByRole('slider');
+      const before = await stopSlider.getAttribute('aria-valuenow');
+      await stopSlider.press('End');
+      await expect(stopSlider).not.toHaveAttribute(
+        'aria-valuenow',
+        before ?? ''
+      );
+      await expect(
+        drawer.getByText('Whole sequence', { exact: true })
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(drawer).toBeHidden();
+    }
+  );
+
   testWithUser('can select variant from grid', async ({ page }) => {
     // Verify initial state in database
     const shotBefore = await getTestShot(testShot.id);
@@ -182,6 +249,13 @@ testWithUser.describe('Variant Selection', () => {
     await expect(
       page.getByRole('heading', { name: testSequence.title })
     ).toBeVisible({ timeout: 15000 });
+
+    // The title is renamed from sequence settings (#2102), not a title row.
+    await expect(
+      page.getByRole('button', {
+        name: `Rename sequence ${testSequence.title}`,
+      })
+    ).toBeVisible();
 
     // Also wait for the shot thumbnail to be visible
     // Shots load via a separate API call from the sequence data, so needs its own timeout

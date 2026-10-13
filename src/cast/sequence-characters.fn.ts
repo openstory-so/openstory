@@ -317,7 +317,8 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
         character.id,
         { voiceId: take.generatedVoiceId, voicePreviews: previews },
         'generated',
-        context.user.id
+        context.user.id,
+        null
       );
       await releaseReplacedVoice(
         context.scopedDb,
@@ -382,7 +383,8 @@ export const chooseCharacterVoiceTakeFn = createServerFn({ method: 'POST' })
           previews,
       },
       'generated',
-      context.user.id
+      context.user.id,
+      null
     );
     await releaseReplacedVoice(context.scopedDb, character.voiceId, voiceId);
     return { characterId: character.id, voiceId };
@@ -461,7 +463,8 @@ export const assignCharacterVoiceFn = createServerFn({ method: 'POST' })
       character.id,
       { voiceId, ...(voiceDescription ? { voiceDescription } : {}) },
       'library',
-      context.user.id
+      context.user.id,
+      null
     );
     await releaseReplacedVoice(context.scopedDb, character.voiceId, voiceId);
     return { characterId: character.id, voiceId };

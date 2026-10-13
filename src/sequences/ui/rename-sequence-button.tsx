@@ -1,7 +1,7 @@
 /**
- * Pencil-popover rename for the sequence title (#1108 Phase 4), following the
- * element token rename pattern (#1079). Enter saves, Escape closes the
- * popover (cancel), errors surface inline.
+ * The Title row in sequence settings (#2102): the title is the trigger, like
+ * the target-length chip beside it. Enter saves, Escape closes the popover
+ * (cancel), errors surface inline.
  */
 
 import { Button } from '@/ui/shadcn/button';
@@ -9,7 +9,6 @@ import { Input } from '@/ui/shadcn/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/ui/shadcn/popover';
 import { useRenameSequence } from './use-sequences';
 import { errorMessage } from '@/platform/errors';
-import { Pencil } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 export const RenameSequenceButton: React.FC<{
@@ -49,18 +48,16 @@ export const RenameSequenceButton: React.FC<{
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
+          className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-sm hover:bg-muted/60 max-md:min-h-11"
           aria-label={`Rename sequence ${title}`}
         >
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
+          {title}
+        </button>
       </PopoverTrigger>
       <PopoverContent
-        align="start"
+        align="end"
         className="w-80"
         onOpenAutoFocus={(event) => {
           event.preventDefault();

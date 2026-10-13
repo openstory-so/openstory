@@ -4,11 +4,13 @@ import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import {
   CONTENT_REJECTION_USER_HINT,
   CONTENT_REJECTION_USER_TITLE,
+  contentRejectionHint,
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { CREDITS_SHORT_TITLE, creditsShortHint } from '@/billing/credits-short';
 import type { FailureSummary } from '@/sequences/failure-analysis';
 import { cn } from '@/ui/utils';
+import { Link } from '@tanstack/react-router';
 import {
   AlertCircle,
   ChevronDown,
@@ -92,7 +94,10 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
           id="failure-banner-details"
           className={cn('md:block', mobileExpanded ? 'block' : 'hidden')}
         >
-          {isWarning && <p>{CONTENT_REJECTION_USER_HINT}</p>}
+          {/* A listed shot carries its own remedy below (#2104). */}
+          {isWarning && summary.groups.length === 0 && (
+            <p>{CONTENT_REJECTION_USER_HINT}</p>
+          )}
 
           {summary.groups.length === 0 && summary.error && !calm && (
             <p className="mt-1 text-xs font-mono">
@@ -111,18 +116,28 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
                     <span className="font-semibold">{group.category}:</span>
                     {group.shots.map((f) => (
                       <div key={f.shotId} className="ml-2">
-                        {[
-                          `Scene ${f.sceneNumber}`,
-                          f.sceneTitle !== `Scene ${f.sceneNumber}` &&
-                            ` (${f.sceneTitle})`,
-                          !isWarning && `: ${errorLabel(f.error)}`,
-                        ]
-                          .filter(Boolean)
-                          .join('')}
+                        <Link
+                          from="/sequences/$id/scenes"
+                          search={(prev) => ({
+                            ...prev,
+                            scenes: undefined,
+                            shot: f.shotId,
+                          })}
+                          className="inline-block py-1 underline"
+                        >
+                          {f.sceneTitle === `Scene ${f.sceneNumber}`
+                            ? f.sceneTitle
+                            : `Scene ${f.sceneNumber} (${f.sceneTitle})`}
+                        </Link>
+                        {`: ${isWarning ? contentRejectionHint(f.error) : errorLabel(f.error)}`}
                       </div>
                     ))}
-                    {group.error && !isWarning && (
-                      <div className="ml-2">{errorLabel(group.error)}</div>
+                    {group.error && (
+                      <div className="ml-2">
+                        {isWarning
+                          ? contentRejectionHint(group.error)
+                          : errorLabel(group.error)}
+                      </div>
                     )}
                   </div>
                 ))}

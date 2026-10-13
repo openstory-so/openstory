@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONTENT_REJECTION_PATTERNS,
+  CONTENT_REJECTION_USER_HINT,
+  contentRejectionHint,
   clipContentRejectionMessage,
   flaggedInputs,
   contentRejectionSubjects,
@@ -186,7 +188,7 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
         softened: false,
       })
     ).toBe(
-      "Content checker rejected the generated dialogue (Seedance 2.5). Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script."
+      "Content checker rejected the generated dialogue (Seedance 2.5). Regenerate the dialogue for another reading, change the lines in the script, or set the shot's dialogue audio to Video model."
     );
     expect(
       clipContentRejectionMessage({
@@ -314,5 +316,20 @@ describe('flaggedInputs / clipContentRejectionMessage (#1373)', () => {
     ).toBe(
       'Content checker rejected the clip (Seedance 2.5). Rewrite the prompt. (The output video contains sensitive content.)'
     );
+  });
+});
+
+describe('contentRejectionHint (#2104)', () => {
+  it("gives a clip's own remedy, and the general hint for anything else", () => {
+    const clip = clipContentRejectionMessage({
+      rejections: ['InputAudioSensitiveContentDetected: refused'],
+      models: ['Seedance 2.5'],
+      softened: false,
+    });
+    expect(contentRejectionHint(`Motion failed: ${clip}`)).toBe(clip);
+    expect(contentRejectionHint('body.prompt: content policy violation')).toBe(
+      CONTENT_REJECTION_USER_HINT
+    );
+    expect(contentRejectionHint(null)).toBe(CONTENT_REJECTION_USER_HINT);
   });
 });

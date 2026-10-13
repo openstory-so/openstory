@@ -27,6 +27,7 @@ import {
   type GenerationStage,
 } from '@/sequences/pipeline';
 import { persistSceneLooks } from '@/sequences/server/scene-persistence';
+import { logRunEvent } from '@/sequences/server/db/sequence-events';
 import { relabelBibleLooks, relabelLookPicks } from '@/cast/bible-looks';
 import { createCastRecords } from '@/cast/server/workflows/cast-records';
 import { shotWorkItems } from '@/shots/server/shot-work-items';
@@ -43,6 +44,8 @@ const logger = getLogger(['openstory', 'workflow', 'analyze-script']);
 const PARENT_BINDING_NAME = 'ANALYZE_SCRIPT_WORKFLOW' as const;
 
 export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeScriptWorkflowInput> {
+  protected override readonly failureLabel = 'Script analysis';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<AnalyzeScriptWorkflowInput>>,
     step: WorkflowStep,
@@ -390,6 +393,16 @@ export class AnalyzeScriptWorkflow extends OpenStoryWorkflowEntrypoint<AnalyzeSc
         });
       }
     });
+    if (sequenceId) {
+      await logRunEvent(step, scopedDb.sequenceEvents, 'analysis-completed', {
+        sequenceId,
+        actorId: input.userId,
+        kind: 'analysis.completed',
+        targetType: 'sequence',
+        targetId: sequenceId,
+        summary: 'Analysed the script',
+      });
+    }
     await stageComplete('script');
     await recordDuration('script');
   }

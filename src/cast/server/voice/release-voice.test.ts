@@ -162,7 +162,8 @@ describe('releaseCharacterVoice', () => {
       { voiceId: null },
       'removed',
       // Who dropped the voice rides onto the history row.
-      'user-1'
+      'user-1',
+      null
     );
     expect(mockDelete.mock.invocationCallOrder[0]).toBeLessThan(
       updateVoice.mock.invocationCallOrder[0] ?? 0

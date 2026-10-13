@@ -19,6 +19,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'element-vision']);
 
 export class ElementVisionWorkflow extends OpenStoryWorkflowEntrypoint<ElementVisionWorkflowInput> {
+  protected override readonly failureLabel = 'Element analysis';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ElementVisionWorkflowInput>>,
     step: WorkflowStep,

@@ -22,12 +22,28 @@ import { describe, expect, test, vi } from 'vitest';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { WorkflowValidationError } from './errors';
+import {
+  childFailureMessage,
+  WorkflowLoggedError,
+  WorkflowValidationError,
+} from './errors';
+import type { WorkflowFailureActivity } from './errors';
 import type { UserWorkflowContext } from './types';
 import { asStub } from '@/test/as-stub';
 
 const zeroReservation = vi.fn(async () => undefined);
-const SCOPED_DB = { scoped: true, billing: { zeroReservation } };
+const recordSequenceEvent = vi.fn(async (_input: { id: string }) => undefined);
+// The failure line goes through `recordOnce` only: `record` mints its own
+// id, so a retried step would append a second line.
+const recordWithFreshId = vi.fn(async () => undefined);
+const SCOPED_DB = {
+  scoped: true,
+  billing: { zeroReservation },
+  sequenceEvents: {
+    record: recordWithFreshId,
+    recordOnce: recordSequenceEvent,
+  },
+};
 
 vi.doMock('#env', () => ({
   getEnv: () => ({ E2E_TEST: undefined }),
@@ -73,6 +89,7 @@ const DO_RESET = 'Durable Object reset because its code was updated.';
 
 type TestPayload = UserWorkflowContext & {
   sequenceId?: string;
+  shotId?: string;
   _parent?: {
     bindingName: string;
     parentInstanceId: string;
@@ -114,6 +131,8 @@ function makeStep(): WorkflowStep {
 function makeWorkflow(impl: () => Promise<unknown>) {
   const onFailure = vi.fn();
   class TestWorkflow extends OpenStoryWorkflowEntrypoint<TestPayload> {
+    protected override readonly failureLabel = 'Test run';
+
     protected override runImpl(): Promise<unknown> {
       return impl();
     }
@@ -139,6 +158,8 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
     type Queued = TestPayload & { characterBible: unknown[] };
     let seen: unknown;
     class TestWorkflow extends OpenStoryWorkflowEntrypoint<Queued> {
+      protected override readonly failureLabel = 'Test run';
+
       protected override runImpl(
         event: Readonly<WorkflowEvent<Queued>>
       ): Promise<unknown> {
@@ -198,6 +219,7 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
 
       expect(onFailure).not.toHaveBeenCalled();
       expect(notifyParentOfFailure).not.toHaveBeenCalled();
+      expect(recordSequenceEvent).not.toHaveBeenCalled();
     }
   );
 
@@ -219,6 +241,167 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
         event: 'sequence_error',
         properties: { sequence_id: 'seq_1', team_id: 't1' },
       });
+      expect(recordSequenceEvent).toHaveBeenCalledTimes(1);
+      expect(recordSequenceEvent).toHaveBeenCalledWith({
+        id: expect.any(String),
+        sequenceId: 'seq_1',
+        actorId: 'u1',
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: 'seq_1',
+        summary: 'Test run failed',
+        data: { workflow: 'TestWorkflow' },
+      });
+      expect(recordWithFreshId).not.toHaveBeenCalled();
+    });
+
+    test('a run on one shot logs its failure against that shot', async () => {
+      recordSequenceEvent.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error('fal request failed'))
+      );
+
+      await expect(
+        workflow.run(
+          makeEvent(false, { sequenceId: 'seq_1', shotId: 'shot_1' }),
+          makeStep()
+        )
+      ).rejects.toThrow('fal request failed');
+
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ targetType: 'shot', targetId: 'shot_1' })
+      );
+    });
+
+    test('a retried log step reuses the checkpointed id', async () => {
+      recordSequenceEvent.mockClear();
+      recordSequenceEvent.mockRejectedValueOnce(new Error('D1 busy'));
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error('fal request failed'))
+      );
+      // A step that retries its body once, as the engine does.
+      const step = asStub<WorkflowStep>({
+        do: vi.fn(async (_name: string, fn: () => Promise<unknown>) => {
+          try {
+            return await fn();
+          } catch {
+            return await fn();
+          }
+        }),
+      });
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), step)
+      ).rejects.toThrow('fal request failed');
+
+      expect(recordSequenceEvent).toHaveBeenCalledTimes(2);
+      const ids = recordSequenceEvent.mock.calls.map(([input]) => input.id);
+      expect(ids[0]).toBe(ids[1]);
+    });
+
+    test('a failure line that cannot be written leaves the run error, cleanup and parent notice intact', async () => {
+      recordSequenceEvent.mockReset();
+      recordSequenceEvent.mockRejectedValue(new Error('no such sequence'));
+      notifyParentOfFailure.mockReset();
+      notifyParentOfFailure.mockResolvedValue(undefined);
+      const { workflow, onFailure } = makeWorkflow(() =>
+        Promise.reject(new Error('fal request failed'))
+      );
+
+      await expect(
+        workflow.run(makeEvent(true, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toThrow('fal request failed');
+
+      expect(onFailure).toHaveBeenCalledTimes(1);
+      expect(notifyParentOfFailure).toHaveBeenCalledTimes(1);
+      // The parent hears first: a log that cannot be written must not keep it
+      // waiting.
+      expect(notifyParentOfFailure.mock.invocationCallOrder[0]).toBeLessThan(
+        recordSequenceEvent.mock.invocationCallOrder[0] ?? 0
+      );
+      recordSequenceEvent.mockReset();
+      recordSequenceEvent.mockResolvedValue(undefined);
+    });
+
+    test('an engine abort while writing the failure line rethrows the abort', async () => {
+      recordSequenceEvent.mockReset();
+      recordSequenceEvent.mockRejectedValueOnce(new Error(ENGINE_ABORT));
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error('fal request failed'))
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toThrow(ENGINE_ABORT);
+      recordSequenceEvent.mockReset();
+      recordSequenceEvent.mockResolvedValue(undefined);
+    });
+
+    test('a logged error stores its own sentence', async () => {
+      recordSequenceEvent.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(
+          new WorkflowLoggedError('top up', {
+            kind: 'run.failed',
+            summary: 'Not enough credits to generate images for 2 scenes.',
+          })
+        )
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toBeInstanceOf(NonRetryableError);
+
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          summary: 'Not enough credits to generate images for 2 scenes.',
+          kind: 'run.failed',
+        })
+      );
+    });
+
+    test('a parent that failed because its child did writes no second line', async () => {
+      recordSequenceEvent.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(
+          new Error(childFailureMessage('child_01XYZ', 'fal request failed'))
+        )
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toThrow('fal request failed');
+
+      expect(recordSequenceEvent).not.toHaveBeenCalled();
+    });
+
+    test('a workflow that overrides the failure line stores that line', async () => {
+      recordSequenceEvent.mockClear();
+      class ExportLike extends OpenStoryWorkflowEntrypoint<TestPayload> {
+        protected override readonly failureLabel = 'Export';
+
+        protected override failureActivity(): WorkflowFailureActivity {
+          return { kind: 'export.failed', summary: 'Export failed' };
+        }
+
+        protected override runImpl(): Promise<unknown> {
+          return Promise.reject(new Error('render down'));
+        }
+      }
+      type Ctor = ConstructorParameters<typeof ExportLike>;
+
+      await expect(
+        new ExportLike(asStub<Ctor[0]>(undefined), asStub<Ctor[1]>({})).run(
+          makeEvent(false, { sequenceId: 'seq_1' }),
+          makeStep()
+        )
+      ).rejects.toThrow('render down');
+      expect(recordSequenceEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'export.failed',
+          summary: 'Export failed',
+        })
+      );
     });
 
     test('a transient engine abort does not (the instance resumes)', async () => {
@@ -232,6 +415,7 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
       );
 
       expect(captureProductEvent).not.toHaveBeenCalled();
+      expect(recordSequenceEvent).not.toHaveBeenCalled();
     });
   });
 

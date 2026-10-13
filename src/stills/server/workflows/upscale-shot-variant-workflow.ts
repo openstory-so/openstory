@@ -238,6 +238,8 @@ export async function persistUpscaleSelection(params: {
 }
 
 export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<UpscaleShotVariantWorkflowInput> {
+  protected override readonly failureLabel = 'Upscale';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<UpscaleShotVariantWorkflowInput>>,
     step: WorkflowStep,

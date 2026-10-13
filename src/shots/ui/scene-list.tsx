@@ -774,7 +774,8 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       />
       {/* A picker per kind of model the run will use (#2004). */}
       {offerContinue && onModelsChange && (
-        <>
+        // Two to a row in the phone drawer, where the footer crowds the list.
+        <div className="flex flex-col gap-3 max-md:grid max-md:grid-cols-2 max-md:gap-2 max-md:[&>*:last-child:nth-child(odd)]:col-span-2">
           {/* Voice design writes its description and range script with it. */}
           {continueUses('voice', 'spec', 'prompt:music') && (
             <ModelSelector
@@ -821,7 +822,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
               disabled={isGenerating}
             />
           )}
-        </>
+        </div>
       )}
       {offerContinue && (
         <>
@@ -1084,9 +1085,11 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       </ScrollArea>
 
       {(showSteps || showButton || showMusicFooter || showDraftFooter) && (
-        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-4">
+        <div className="sticky bottom-0 border-t bg-background p-4 flex flex-col gap-4 max-md:gap-2 max-md:p-3">
           {showSteps && (
-            <div className="flex flex-col gap-3">{stepsSection}</div>
+            <div className="flex flex-col gap-3 max-md:gap-2">
+              {stepsSection}
+            </div>
           )}
 
           {/* Generate Motion — not while a switch turned on offers earlier

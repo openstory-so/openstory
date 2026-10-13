@@ -72,6 +72,8 @@ const SEED_READ_STEP = {
 } as const satisfies WorkflowStepConfig;
 
 export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<CharacterVoiceWorkflowInput> {
+  protected override readonly failureLabel = 'Voice design';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     step: WorkflowStep,
@@ -155,6 +157,12 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       };
       // Pre-#1715 payloads have no husk. Write the old way; do not release
       // a slot this run never claimed as a version.
+      const voiceActivity = input.sequenceId
+        ? {
+            sequenceId: input.sequenceId,
+            summary: `Designed a voice for ${input.characterBible.name}`,
+          }
+        : null;
       if (!targetVersionId) {
         await scopedDb.characters.updateVoice(
           characterDbId,
@@ -165,7 +173,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             useVoice: true,
           },
           'generated',
-          input.userId
+          input.userId,
+          voiceActivity
         );
         return { voiceId, emit: 'completed' as const };
       }
@@ -199,7 +208,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           voiceId,
           description: voiceDescription,
           previews: parked,
-        }
+        },
+        voiceActivity ? { ...voiceActivity, actorId: input.userId } : null
       );
       if (!completed) {
         // step.do replay after D1 committed: the husk is already completed.

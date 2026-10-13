@@ -27,6 +27,8 @@ export const Route = createFileRoute(
       }>(match);
       return {
         label: <LocationCrumbLabel sequenceId={id} locationId={locationId} />,
+        // Its own name beats the sequence title on a phone.
+        keepOnMobile: true,
       };
     },
   },

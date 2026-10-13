@@ -8,8 +8,7 @@ import {
   createInitialState,
   type GenerationPhaseConfig,
 } from '@/sequences/ui/generation-stream.reducer';
-import { SEQUENCE_HEADER_SLOT_ID } from '@/sequences/ui/sequence-header-slot';
-import { UNTITLED_SEQUENCE_TITLE } from '@/sequences/untitled-sequence-title';
+import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { CanvasViewToggle } from '@/shots/ui/canvas-view-toggle';
 import { SceneScriptDocument } from '@/shots/ui/scene-script-document';
@@ -48,23 +47,13 @@ export function CreatingScenesView({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mx-auto w-full max-w-[1920px] shrink-0 space-y-1 px-6 pt-4">
-        <div className="flex min-w-0 items-center gap-1">
-          <h1 className="truncate text-sm font-medium">
-            {UNTITLED_SEQUENCE_TITLE}
-          </h1>
-          <div
-            id={SEQUENCE_HEADER_SLOT_ID}
-            className="@container flex min-w-0 flex-1 items-center justify-end pl-2"
-          >
-            <GenerationProgressBanner
-              generationState={generationState}
-              isProcessing
-              script={script}
-            />
-          </div>
-        </div>
-      </div>
+      <SequenceHeaderPortal>
+        <GenerationProgressBanner
+          generationState={generationState}
+          isProcessing
+          script={script}
+        />
+      </SequenceHeaderPortal>
       <div className="mx-auto w-full max-w-[1920px] flex-1 min-h-0 overflow-hidden">
         <div className="@container/scenes flex h-full min-h-0">
           <div className="hidden shrink-0 pl-4 py-4 md:block">

@@ -16,6 +16,42 @@ export class WorkflowValidationError extends Error {
   }
 }
 
+/** One failed run's line in the sequence activity log. */
+export type WorkflowFailureActivity = {
+  readonly kind: 'run.failed' | 'export.failed';
+  readonly summary: string;
+};
+
+/**
+ * A thrown run whose history line is its own sentence, not the workflow's
+ * "{failureLabel} failed". The base rethrows this as non-retryable, same as
+ * a validation error.
+ */
+export class WorkflowLoggedError extends Error {
+  constructor(
+    message: string,
+    readonly activity: WorkflowFailureActivity
+  ) {
+    super(message);
+    this.name = 'WorkflowLoggedError';
+  }
+}
+
+/** The message `spawnAndAwaitChild` throws in a parent whose child failed. */
+export function childFailureMessage(childId: string, error: string): string {
+  return `Child workflow ${childId} failed: ${error}`;
+}
+
+/**
+ * True when a run failed only because a child it awaited failed. The child
+ * wrote the history line, so the parent writes none. Matched on message text
+ * like its neighbours: an error that crossed a step boundary keeps its
+ * message, not its class.
+ */
+export function isChildFailureError(error: unknown): boolean {
+  return /^Child workflow \S+ failed: /.test(errorMessage(error));
+}
+
 function errorMessage(error: unknown): string {
   if (typeof error === 'string') return error;
   if (

@@ -21,6 +21,7 @@ import type {
   regenerateShotSchema,
 } from '@/shots/server/shot.schemas';
 import { dbSceneId } from '@/shots/scene-id';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
 import {
   getSceneLocationReferenceImages,
@@ -127,6 +128,7 @@ export async function generateShotImage(
       model: workflowInput.model ?? DEFAULT_IMAGE_MODEL,
       pendingInputHash: workflowInput.snapshotInputHash,
       isPrimary: true,
+      actorId: context.user.id,
     });
   } catch (error) {
     const raced = (
@@ -159,6 +161,14 @@ export async function generateShotImage(
       'failed',
       error instanceof Error ? error.message : String(error)
     );
+    await recordTriggerFailure(context.scopedDb.sequenceEvents, {
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'run.failed',
+      targetType: 'sequence',
+      targetId: sequence.id,
+      summary: 'Image generation failed',
+    });
     throw error;
   }
   await context.scopedDb.frameVariants.update(claim.id, { workflowRunId });

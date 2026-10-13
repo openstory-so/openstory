@@ -29,6 +29,8 @@ export const Route = createFileRoute(
         label: (
           <CharacterCrumbLabel sequenceId={id} characterId={characterId} />
         ),
+        // Its own name beats the sequence title on a phone.
+        keepOnMobile: true,
       };
     },
   },

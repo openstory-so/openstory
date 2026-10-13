@@ -142,6 +142,8 @@ async function regenerateShots(
 }
 
 export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastCharacterWorkflowInput> {
+  protected override readonly failureLabel = 'Recast';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RecastCharacterWorkflowInput>>,
     step: WorkflowStep,

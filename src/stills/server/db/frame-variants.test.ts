@@ -897,6 +897,7 @@ describe('frameVariants pending claims (#1085)', () => {
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
       workflowRunId: 'run-claim',
+      actorId: null,
     });
     const chained = await m.createPendingClaim({
       isPrimary: true,
@@ -905,6 +906,7 @@ describe('frameVariants pending claims (#1085)', () => {
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-dep',
       workflowRunId: 'run-chain',
+      actorId: null,
     });
 
     const live = await m.listLiveClaims(frameId);
@@ -921,6 +923,7 @@ describe('frameVariants pending claims (#1085)', () => {
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
     await m.markTerminal(claim.id, 'cancelled', 'Cancelled by user');
 
@@ -945,6 +948,7 @@ describe('frameVariants pending claims (#1085)', () => {
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
     await m.claimForGeneration(claim.id, {
       workflowRunId: 'run-1',
@@ -973,6 +977,7 @@ describe('frameVariants pending claims (#1085)', () => {
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
     await m.claimForGeneration(claim.id, {
       workflowRunId: 'run-1',
@@ -998,6 +1003,7 @@ describe('frameVariants pending claims (#1085)', () => {
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-1',
+      actorId: null,
     });
     const other = await m.createPendingClaim({
       isPrimary: true,
@@ -1005,6 +1011,7 @@ describe('frameVariants pending claims (#1085)', () => {
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-other',
+      actorId: null,
     });
     const direct = await m.createPendingClaim({
       isPrimary: true,
@@ -1012,6 +1019,7 @@ describe('frameVariants pending claims (#1085)', () => {
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
 
     const cascaded = await m.cancelByDependency(
@@ -1043,6 +1051,7 @@ describe('frameVariants pending claims (#1085)', () => {
       model: 'nano_banana_2',
       pendingInputHash: 'shared-hash',
       workflowRunId: 'run-holder',
+      actorId: null,
     });
     // Chained claim starts with null hash (excluded from unique index).
     const chained = await m.createPendingClaim({
@@ -1052,6 +1061,7 @@ describe('frameVariants pending claims (#1085)', () => {
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-1',
       workflowRunId: 'run-chain',
+      actorId: null,
     });
 
     // Stamping the shared hash onto the chained row hits the partial unique index.
@@ -1508,6 +1518,7 @@ describe('frameVariants primary still status (#1942)', () => {
       sequenceId,
       model: 'nano_banana_2',
       isPrimary: true,
+      actorId: null,
     });
     const failed = await m.failUnclaimed(claim.id, 'never started');
     expect(failed).toMatchObject({ status: 'failed', error: 'never started' });
@@ -1519,6 +1530,7 @@ describe('frameVariants primary still status (#1942)', () => {
       sequenceId,
       model: 'nano_banana_2',
       isPrimary: true,
+      actorId: null,
     });
     await m.claimForGeneration(held.id, {
       workflowRunId: 'child-run',

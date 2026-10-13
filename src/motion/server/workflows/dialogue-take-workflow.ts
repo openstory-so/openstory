@@ -23,6 +23,8 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
 export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTakeWorkflowInput> {
+  protected override readonly failureLabel = 'Dialogue';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<DialogueTakeWorkflowInput>>,
     step: WorkflowStep,
@@ -40,6 +42,7 @@ export class DialogueTakeWorkflow extends OpenStoryWorkflowEntrypoint<DialogueTa
       const claims = await scopedDb.shotDialogue.claimSpeech({
         shots: [{ shotId: input.shotId, sourceKey: input.sourceKey }],
         workflowRunId,
+        actorId: input.userId,
       });
       await emit();
       return claims[input.shotId] ?? null;

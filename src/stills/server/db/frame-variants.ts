@@ -65,7 +65,13 @@ import {
   buildFrameImageSelection,
   type PromotableFrameVariant,
 } from '@/shots/server/db/frames';
-import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import { mediaModelName } from '@/sequences/model-label';
+import {
+  buildEventInsert,
+  buildEventInsertIfPresent,
+  buildEventInsertOnce,
+  eventNotLogged,
+} from '@/sequences/server/db/sequence-events';
 
 function readStringProp(value: object, key: string): string | null {
   if (!(key in value)) return null;
@@ -864,22 +870,39 @@ export function createFrameVariantsMethods(db: Database) {
       promptVersionId?: string | null;
       /** False for an added model (`variantOnly`, #1942). */
       isPrimary: boolean;
+      /** Who started it. Null when no person did. */
+      actorId: string | null;
     }): Promise<FrameVariant> => {
-      const [row] = await db
-        .insert(frameVariants)
-        .values({
-          frameId: input.frameId,
+      const id = generateId();
+      const [rows] = await db.batch([
+        db
+          .insert(frameVariants)
+          .values({
+            id,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'model',
+            model: input.model,
+            status: 'pending',
+            isPrimary: input.isPrimary,
+            pendingInputHash: input.pendingInputHash ?? null,
+            dependsOnVersionId: input.dependsOnVersionId ?? null,
+            workflowRunId: input.workflowRunId ?? null,
+            promptVersionId: input.promptVersionId ?? null,
+          })
+          .returning(),
+        buildEventInsertOnce(db, {
+          id,
           sequenceId: input.sequenceId,
-          kind: 'model',
-          model: input.model,
-          status: 'pending',
-          isPrimary: input.isPrimary,
-          pendingInputHash: input.pendingInputHash ?? null,
-          dependsOnVersionId: input.dependsOnVersionId ?? null,
-          workflowRunId: input.workflowRunId ?? null,
-          promptVersionId: input.promptVersionId ?? null,
-        })
-        .returning();
+          actorId: input.actorId,
+          kind: 'image.started',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: `Started an image with ${mediaModelName(input.model)}`,
+          data: { model: input.model },
+        }),
+      ]);
+      const row = rows[0];
       if (!row) {
         throw new Error(
           `Failed to insert pending image claim for frame ${input.frameId}`
@@ -963,44 +986,79 @@ export function createFrameVariantsMethods(db: Database) {
       // The row `openPreview` opened lands in place; a completed one is a
       // step retry. A run queued before #1152 opened none and inserts.
       if (existing?.status === 'completed') return existing;
+      const previewEvent = (variantId: string) =>
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: input.sequenceId,
+            actorId: null,
+            kind: 'preview.generated',
+            targetType: 'frame',
+            targetId: input.frameId,
+            summary: `Generated a preview with ${mediaModelName(input.model)}`,
+            data: { variantId, model: input.model },
+          },
+          frameVariants,
+          and(
+            eq(frameVariants.id, variantId),
+            eventNotLogged(
+              db,
+              input.sequenceId,
+              'preview.generated',
+              'variantId',
+              variantId
+            )
+          )
+        );
       if (existing) {
-        const [landed] = await db
-          .update(frameVariants)
-          .set({
-            model: input.model,
-            url: input.url,
-            storagePath: input.storagePath,
-            status: 'completed',
-            generatedAt: new Date(),
-            promptHash: input.promptHash,
-            updatedAt: new Date(),
-          })
-          .where(eq(frameVariants.id, existing.id))
-          .returning();
-        if (!landed) {
+        const [landed] = await db.batch([
+          db
+            .update(frameVariants)
+            .set({
+              model: input.model,
+              url: input.url,
+              storagePath: input.storagePath,
+              status: 'completed',
+              generatedAt: new Date(),
+              promptHash: input.promptHash,
+              updatedAt: new Date(),
+            })
+            .where(eq(frameVariants.id, existing.id))
+            .returning(),
+          previewEvent(existing.id),
+        ]);
+        const row = landed[0];
+        if (!row) {
           throw new Error(
             `Failed to land preview variant ${existing.id} for frame ${input.frameId}`
           );
         }
-        return landed;
+        return row;
       }
-      const [row] = await db
-        .insert(frameVariants)
-        .values({
-          frameId: input.frameId,
-          sequenceId: input.sequenceId,
-          kind: 'preview',
-          model: input.model,
-          url: input.url,
-          storagePath: input.storagePath,
-          status: 'completed',
-          isPrimary: false,
-          generatedAt: new Date(),
-          promptHash: input.promptHash,
-          promptVersionId: null,
-          workflowRunId: input.workflowRunId,
-        })
-        .returning();
+      const id = generateId();
+      const [inserted] = await db.batch([
+        db
+          .insert(frameVariants)
+          .values({
+            id,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'preview',
+            model: input.model,
+            url: input.url,
+            storagePath: input.storagePath,
+            status: 'completed',
+            isPrimary: false,
+            generatedAt: new Date(),
+            promptHash: input.promptHash,
+            promptVersionId: null,
+            workflowRunId: input.workflowRunId,
+          })
+          .returning(),
+        previewEvent(id),
+      ]);
+      const row = inserted[0];
       if (!row) {
         throw new Error(
           `Failed to record preview variant for frame ${input.frameId}`

@@ -26,6 +26,11 @@ import type {
   Sequence,
   SequenceMusicVariant,
 } from '@/platform/server/db/schema';
+import { mediaModelName } from '@/sequences/model-label';
+import {
+  buildEventInsertIfPresent,
+  eventNotLogged,
+} from '@/sequences/server/db/sequence-events';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { SQL } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
@@ -180,23 +185,44 @@ export function createSequenceVariantsMethods(db: Database) {
         .select({ id: sequenceMusicVariants.id })
         .from(sequenceMusicVariants)
         .where(eq(sequenceMusicVariants.id, id));
+      const started = buildEventInsertIfPresent(
+        db,
+        {
+          id: generateId(),
+          sequenceId: input.sequenceId,
+          actorId: null,
+          kind: 'music.started',
+          targetType: 'sequence',
+          targetId: input.sequenceId,
+          summary: `Started music with ${mediaModelName(input.model)}`,
+          data: { variantId: id, model: input.model },
+        },
+        sequenceMusicVariants,
+        and(
+          eq(sequenceMusicVariants.id, id),
+          eventNotLogged(db, input.sequenceId, 'music.started', 'variantId', id)
+        )
+      );
       if (!input.isPrimary) {
-        await db
-          .insert(sequenceMusicVariants)
-          .values({
-            id,
-            sequenceId: input.sequenceId,
-            model: input.model,
-            prompt: input.prompt,
-            tags: input.tags,
-            durationSeconds: input.durationSeconds,
-            status: 'pending',
-            isPrimary: false,
-            workflowRunId: input.workflowRunId,
-            createdAt: at,
-            updatedAt: at,
-          })
-          .onConflictDoNothing();
+        await db.batch([
+          db
+            .insert(sequenceMusicVariants)
+            .values({
+              id,
+              sequenceId: input.sequenceId,
+              model: input.model,
+              prompt: input.prompt,
+              tags: input.tags,
+              durationSeconds: input.durationSeconds,
+              status: 'pending',
+              isPrimary: false,
+              workflowRunId: input.workflowRunId,
+              createdAt: at,
+              updatedAt: at,
+            })
+            .onConflictDoNothing(),
+          started,
+        ]);
         return id;
       }
       const casGuard: SQL | undefined =
@@ -251,6 +277,7 @@ export function createSequenceVariantsMethods(db: Database) {
           )
           .onConflictDoNothing(),
         opened,
+        started,
       ]);
       return rows.length > 0 ? id : null;
     },
@@ -287,6 +314,10 @@ export function createSequenceVariantsMethods(db: Database) {
       input: CompleteMusicClaimInput
     ): Promise<SequenceMusicVariant> => {
       const now = new Date();
+      const current = await getMusicById(variantId);
+      if (!current) {
+        throw new Error(`SequenceMusicVariant ${variantId} not found`);
+      }
       const claimMissed = sql`(select ${sequences.pendingPromoteMusicVariantId} from ${sequences} where ${sequences.id} = ${input.sequenceId}) is not ${variantId}`;
       await db.batch([
         db
@@ -321,6 +352,30 @@ export function createSequenceVariantsMethods(db: Database) {
               eq(sequences.pendingPromoteMusicVariantId, variantId)
             )
           ),
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: input.sequenceId,
+            actorId: null,
+            kind: 'music.generated',
+            targetType: 'sequence',
+            targetId: input.sequenceId,
+            summary: `Generated music with ${mediaModelName(current.model)}`,
+            data: { variantId, model: current.model },
+          },
+          sequenceMusicVariants,
+          and(
+            eq(sequenceMusicVariants.id, variantId),
+            eventNotLogged(
+              db,
+              input.sequenceId,
+              'music.generated',
+              'variantId',
+              variantId
+            )
+          )
+        ),
       ]);
       const landed = await getMusicById(variantId);
       if (!landed)

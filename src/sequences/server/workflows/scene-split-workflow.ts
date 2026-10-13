@@ -108,6 +108,7 @@ import {
   stripCodeFences,
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
+import { logRunEvent } from '@/sequences/server/db/sequence-events';
 import { bibleFromWire } from '@/cast/bible-looks';
 import type {
   CharacterBibleEntry,
@@ -540,6 +541,8 @@ async function reportDroppedBoundaries(
 }
 
 export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWorkflowInput> {
+  protected override readonly failureLabel = 'Scene split';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<SceneSplitWorkflowInput>>,
     step: WorkflowStep,
@@ -1284,6 +1287,20 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         }
         return versionIds;
       });
+      const sceneCount = reconciled.scenes.length;
+      await logRunEvent(
+        step,
+        scopedDb.sequenceEvents,
+        'scene-split-completed',
+        {
+          sequenceId,
+          actorId: input.userId,
+          kind: 'scene-split.completed',
+          targetType: 'sequence',
+          targetId: sequenceId,
+          summary: `Split the script into ${sceneCount} ${sceneCount === 1 ? 'scene' : 'scenes'}`,
+        }
+      );
     }
 
     // Step 5: Deduct credits — one deduction per LLM call.

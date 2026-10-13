@@ -19,6 +19,8 @@ import type {
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
 export class SheetPortraitWorkflow extends OpenStoryWorkflowEntrypoint<SheetPortraitWorkflowInput> {
+  protected override readonly failureLabel = 'Portrait';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<SheetPortraitWorkflowInput>>,
     step: WorkflowStep,
