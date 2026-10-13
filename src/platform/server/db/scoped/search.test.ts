@@ -217,7 +217,19 @@ async function seedTeam(word: string) {
     .values({ id: userId, name: 'U', email: `${userId}@example.com` });
   const [style] = await db
     .insert(styles)
-    .values({ teamId, name: 'S', config: {} as never })
+    .values({
+      teamId,
+      name: 'S',
+      config: {
+        artStyle: 'Cinematic',
+        colorPalette: ['#000000'],
+        lighting: 'Natural',
+        cameraWork: 'Standard',
+        mood: 'Dramatic',
+        referenceFilms: [],
+        colorGrading: 'Natural',
+      },
+    })
     .returning();
   if (!style) throw new Error('seed failed');
   const sequence = await seedSequence(teamId, style.id, word);
