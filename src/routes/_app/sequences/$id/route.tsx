@@ -37,6 +37,7 @@ export const Route = createFileRoute('/_app/sequences/$id')({
         {
           label: <SequenceCrumbLabel id={id} />,
           to: getDefaultSequenceTabPath(id),
+          keepOnMobile: true,
         },
       ];
     },

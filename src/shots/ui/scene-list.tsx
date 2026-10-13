@@ -774,7 +774,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
       />
       {/* A picker per kind of model the run will use (#2004). */}
       {offerContinue && onModelsChange && (
-        // Two to a row in the phone sheet, where the footer crowds the list.
+        // Two to a row in the phone drawer, where the footer crowds the list.
         <div className="flex flex-col gap-3 max-md:grid max-md:grid-cols-2 max-md:gap-2 max-md:[&>*:last-child:nth-child(odd)]:col-span-2">
           {/* Voice design writes its description and range script with it. */}
           {continueUses('voice', 'spec', 'prompt:music') && (
@@ -939,7 +939,7 @@ const SceneListComponent: React.FC<SceneListProps> = ({
         className
       )}
     >
-      <div className="flex items-center justify-between border-b px-4 py-3 max-md:pr-12">
+      <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-1">
           {onCollapse && (
             <Button

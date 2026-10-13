@@ -14,6 +14,12 @@ import { Fragment } from 'react';
 export type BreadcrumbCrumb = {
   label: React.ReactNode;
   to?: string;
+  /**
+   * A phone shows one crumb. That is the current page unless an ancestor
+   * names the thing better than the page does ("Scenes" says less than the
+   * sequence title), in which case the ancestor sets this.
+   */
+  keepOnMobile?: true;
 };
 
 // Subset of AnyRouteMatch that breadcrumb resolution actually needs. Defined
@@ -69,16 +75,19 @@ export const Breadcrumbs: React.FC = () => {
   const crumbs = matches.flatMap(resolveCrumbs);
 
   if (crumbs.length === 0) return null;
+  const kept = crumbs.map((crumb) => crumb.keepOnMobile).lastIndexOf(true);
+  // No crumb asks: the current page.
+  const mobileIndex = kept === -1 ? crumbs.length - 1 : kept;
 
   return (
     <Breadcrumb className="min-w-0">
       <BreadcrumbList className="flex-nowrap">
         {crumbs.map((crumb, i) => {
           const isLast = i === crumbs.length - 1;
-          // shadcn sidebar-07: hide ancestor crumbs on small screens, keep
-          // the current page. Long titles line-clamp instead of wrapping the
-          // header (which stretched the vertical separator).
-          const hideOnMobile = !isLast && crumbs.length > 1;
+          // shadcn sidebar-07: one crumb on small screens. Long titles
+          // line-clamp instead of wrapping the header (which stretched the
+          // vertical separator).
+          const hideOnMobile = i !== mobileIndex;
           const labelText =
             typeof crumb.label === 'string' ? crumb.label : undefined;
           return (
@@ -100,11 +109,7 @@ export const Breadcrumbs: React.FC = () => {
                   </BreadcrumbLink>
                 )}
               </BreadcrumbItem>
-              {!isLast && (
-                <BreadcrumbSeparator
-                  className={hideOnMobile ? 'hidden md:block' : undefined}
-                />
-              )}
+              {!isLast && <BreadcrumbSeparator className="hidden md:block" />}
             </Fragment>
           );
         })}

@@ -1,5 +1,5 @@
 import { Button } from '@/ui/shadcn/button';
-import { Sheet, SheetContent, SheetTitle } from '@/ui/shadcn/sheet';
+import { Drawer, DrawerContent, DrawerTitle } from '@/ui/shadcn/drawer';
 import { shotDraftLabel } from '@/motion/draft-mode';
 import type { SceneWithScript } from './use-scenes';
 import type { SceneSelection } from './scene-selection';
@@ -11,7 +11,7 @@ import { SceneThumbnail } from './scene-thumbnail';
 
 /**
  * Phone stand-in for the desktop sidebar: a bottom bar that names the
- * selection and opens a sheet hosting the same `SceneList` — scene groups,
+ * selection and opens a drawer hosting the same `SceneList` — scene groups,
  * segment brackets, whole-sequence row, batch footer — so the two surfaces
  * can't drift. The cog folds the inspector panel, which sits under the preview
  * on a phone.
@@ -26,9 +26,9 @@ export const MobileSceneDrawer: React.FC<
   const selectedShotId = selection.shotId;
   const selectedSceneIds = selection.sceneIds;
 
-  // The sheet is open *for* one selection. Every pick inside it is a
+  // The drawer is open *for* one selection. Every pick inside it is a
   // navigation (shot cards are links, scene headers and "Whole sequence" call
-  // back), and `selection` is a new object after any of them — so the sheet
+  // back), and `selection` is a new object after any of them — so the drawer
   // closes itself without wiring a close into each row.
   const [openFor, setOpenFor] = useState<SceneSelection | null>(null);
   const jumpOpen = openFor === selection;
@@ -119,22 +119,19 @@ export const MobileSceneDrawer: React.FC<
         </Button>
       </div>
 
-      <Sheet
+      <Drawer
         open={jumpOpen}
         onOpenChange={(open) => setOpenFor(open ? selection : null)}
       >
-        <SheetContent
-          side="bottom"
-          className="flex min-h-0 flex-col gap-0 overflow-hidden pb-[env(safe-area-inset-bottom)] data-[side=bottom]:h-[92dvh]"
-        >
-          <SheetTitle className="sr-only">Scenes</SheetTitle>
+        <DrawerContent className="min-h-0 overflow-hidden pb-[env(safe-area-inset-bottom)] data-[vaul-drawer-direction=bottom]:h-[92dvh] data-[vaul-drawer-direction=bottom]:max-h-[92dvh]">
+          <DrawerTitle className="sr-only">Scenes</DrawerTitle>
           <SceneList
             {...listProps}
             scrollToSelection
             className="min-h-0 w-full flex-1 rounded-none border-0"
           />
-        </SheetContent>
-      </Sheet>
+        </DrawerContent>
+      </Drawer>
     </>
   );
 };

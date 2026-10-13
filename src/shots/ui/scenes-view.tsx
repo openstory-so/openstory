@@ -1681,7 +1681,16 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                 {detail}
               </div>
             ) : (
-              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+              <div
+                className={cn(
+                  'flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1',
+                  // Panel folded on a phone: the canvas takes the screen, so
+                  // the video grows and what sits under it can be reached.
+                  // The padding clears the fixed bottom bar.
+                  !settingsOpen &&
+                    'max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:pb-16'
+                )}
+              >
                 <CanvasViewToggle
                   view={effectiveView}
                   onViewChange={setView}
