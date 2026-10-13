@@ -6,6 +6,7 @@
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
+import { dbSceneId } from '@/shots/scene-id';
 import {
   characterBibleVersions,
   characterLooks,
@@ -62,7 +63,7 @@ const spec = (action: string) => ({
 async function seedSequence(teamId: string, styleId: string, word: string) {
   const ids = {
     sequence: generateId(),
-    scene: generateId(),
+    scene: dbSceneId(generateId()),
     sceneVersion: generateId(),
     shot: generateId(),
     specVersion: generateId(),
