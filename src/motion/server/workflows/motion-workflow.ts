@@ -1034,7 +1034,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             // and by the native xAI / Ark / Google inline vias; the rest
             // substitute tokens with descriptions.
             referenceImages,
-            scopedDb: scopedDb.credentials,
+            credentials: scopedDb.credentials,
             arkAssets,
             multiPrompt,
             draft: input.draft,

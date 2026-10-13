@@ -212,7 +212,7 @@ async function generateOnce(
     }
     try {
       const result = await generateImageWithProvider(params, {
-        scopedDb: scopedDb.credentials,
+        credentials: scopedDb.credentials,
         observability: {
           observationName: 'shot-image',
           tags: ['image'],

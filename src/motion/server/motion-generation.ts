@@ -86,7 +86,7 @@ import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 const logger = getLogger(['openstory', 'motion', 'generation']);
 
 export type GenerateMotionOptions = {
-  scopedDb?: CredentialScopedDb;
+  credentials?: CredentialScopedDb;
   /**
    * The rendered start frame. Absent only in reference-only mode, where no
    * still was ever generated and the clip is driven by the prompt plus the
@@ -171,18 +171,18 @@ export type MotionJobSubmission = {
 };
 
 async function resolveFalMotionKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey> {
-  if (scopedDb) return scopedDb.resolveKey('fal');
+  if (credentials) return credentials.resolveKey('fal');
   return { key: getEnv().FAL_KEY, source: 'platform' };
 }
 
 /** Undefined when the model isn't Grok or no xAI key exists — it then goes to
  *  fal as before (#1167). */
 async function resolveOptionalXaiKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('xai');
+  if (credentials) return credentials.resolveOptionalKey('xai');
   const platformKey = getEnv().XAI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -190,9 +190,9 @@ async function resolveOptionalXaiKey(
 /** Undefined when the model isn't Omni Flash or no Google key exists — it
  *  then goes to fal as before. */
 async function resolveOptionalGoogleKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  if (credentials) return credentials.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -216,11 +216,11 @@ async function resolveOptionalGoogleKey(
  */
 export async function canRenderReferenceOnly(
   modelKey: ImageToVideoModel,
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<boolean> {
   if (supportsReferenceOnlyMotion(modelKey)) return true;
   return referenceOnlyCapableWith(modelKey, {
-    xai: Boolean(await resolveOptionalXaiKey(scopedDb)),
+    xai: Boolean(await resolveOptionalXaiKey(credentials)),
   });
 }
 
@@ -231,18 +231,18 @@ export async function canRenderReferenceOnly(
  */
 export async function resolveMotionVia(
   modelKey: ImageToVideoModel,
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<MediaVia> {
   if (isNativeGrokVideoModel(modelKey)) {
-    const xaiKey = await resolveOptionalXaiKey(scopedDb);
+    const xaiKey = await resolveOptionalXaiKey(credentials);
     if (xaiKey) return 'xai';
   }
   if (isNativeGeminiVideoModel(modelKey)) {
-    const googleKey = await resolveOptionalGoogleKey(scopedDb);
+    const googleKey = await resolveOptionalGoogleKey(credentials);
     if (googleKey) return 'google';
   }
   if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
-    const falKey = await resolveOptionalFalKey(scopedDb);
+    const falKey = await resolveOptionalFalKey(credentials);
     return claimBytePlusVia({
       native: true,
       usingOwnFalKey: falKey?.source === 'team',
@@ -257,9 +257,9 @@ export async function resolveMotionVia(
  * which never sends an edit.
  */
 export async function seedanceRunsOnArk(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<boolean> {
-  return (await resolveMotionVia('seedance_v2_5', scopedDb)) === 'byteplus';
+  return (await resolveMotionVia('seedance_v2_5', credentials)) === 'byteplus';
 }
 
 function createNativeMotionAdapter(apiKey: string) {
@@ -294,9 +294,9 @@ async function inlineNativeReferenceImages(
 }
 
 async function resolveOptionalFalKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('fal');
+  if (credentials) return credentials.resolveOptionalKey('fal');
   const platformKey = getEnv().FAL_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -333,7 +333,7 @@ async function submitFalMotionJob(
     'fal',
     options.referenceOnly ?? false
   );
-  const key = await resolveFalMotionKey(options.scopedDb);
+  const key = await resolveFalMotionKey(options.credentials);
 
   // Locally-served /r2/ image URLs aren't reachable by real fal — swap them
   // for a fal-storage upload first (no-op in prod and e2e replay).
@@ -471,12 +471,14 @@ export async function submitMotionJob(
   // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
   // Google-only) deploy must not reach it. BytePlus is platform-only (no
   // resolveOptionalKey('byteplus')) and yields to a BYOK fal team.
-  const via = await resolveMotionVia(modelKey, options.scopedDb);
+  const via = await resolveMotionVia(modelKey, options.credentials);
   const xaiKey =
-    via === 'xai' ? await resolveOptionalXaiKey(options.scopedDb) : undefined;
+    via === 'xai'
+      ? await resolveOptionalXaiKey(options.credentials)
+      : undefined;
   const googleKey =
     via === 'google'
-      ? await resolveOptionalGoogleKey(options.scopedDb)
+      ? await resolveOptionalGoogleKey(options.credentials)
       : undefined;
 
   // A clip or voice line this model cannot use — it takes no reference of
@@ -705,7 +707,7 @@ export async function submitMotionJob(
       // Every still that can carry a face was registered by the workflow
       // (`arkStillsForMotion` → `ingestArkAssets`); the rest are plain URLs.
       // A still missing from the map throws — nothing is re-derived here.
-      const falKey = await resolveOptionalFalKey(options.scopedDb);
+      const falKey = await resolveOptionalFalKey(options.credentials);
       const imageUrl = options.imageUrl
         ? arkUrlFor(options.arkAssets, options.imageUrl)
         : undefined;
@@ -784,7 +786,7 @@ export async function submitMotionJob(
 export async function pollMotionJob(
   jobId: string,
   modelKey: ImageToVideoModel,
-  scopedDb?: CredentialScopedDb,
+  credentials?: CredentialScopedDb,
   viaStamp: string = 'fal',
   endpointId?: string
 ) {
@@ -794,7 +796,7 @@ export async function pollMotionJob(
 
   switch (via) {
     case 'xai': {
-      const key = await resolveOptionalXaiKey(scopedDb);
+      const key = await resolveOptionalXaiKey(credentials);
       if (!key) {
         throw new Error(
           `Motion job ${jobId} was submitted to xAI but no xAI key is available to poll it`
@@ -806,7 +808,7 @@ export async function pollMotionJob(
       });
     }
     case 'google': {
-      const key = await resolveOptionalGoogleKey(scopedDb);
+      const key = await resolveOptionalGoogleKey(credentials);
       if (!key) {
         throw new Error(
           `Motion job ${jobId} was submitted to Google but no Google key is available to poll it`
@@ -836,7 +838,7 @@ export async function pollMotionJob(
       return result;
     }
     case 'fal': {
-      const key = await resolveFalMotionKey(scopedDb);
+      const key = await resolveFalMotionKey(credentials);
       // Bound a single status fetch — the workflow already budgets total poll
       // wall-clock across batches; this only prevents one hung HTTP call from
       // freezing a poll step forever (#826).

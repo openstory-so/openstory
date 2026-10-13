@@ -259,7 +259,7 @@ serve a reference-only shot, and the via is claimed per team at submit time
 know which way a given team will resolve months later, so it stays conservative.
 
 Where the via IS known, ask the honest question instead:
-`canRenderReferenceOnly(model, scopedDb)` in `motion-generation.ts` returns true
+`canRenderReferenceOnly(model, credentials)` in `motion-generation.ts` returns true
 for Grok whenever an xAI key resolves. `MotionWorkflow`'s entry guard and the
 content-flag rescue both use it, which is what lets Grok rescue a flagged
 reference-only shot rather than committing itself onto the row and then dying.
