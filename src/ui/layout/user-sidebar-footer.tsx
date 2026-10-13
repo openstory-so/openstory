@@ -11,9 +11,10 @@ import { SidebarMenuButton, SidebarMenuItem } from '@/ui/shadcn/sidebar';
 import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useUser } from '@/platform/ui/use-user';
 import { authClient } from '@/platform/ui/auth/client';
+import { rememberLastPage } from '@/platform/ui/auth/last-page';
 import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   BarChart3,
   ChevronsUpDown,
@@ -30,6 +31,9 @@ export function UserSidebarFooter() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const resumeHref = useRouterState({
+    select: (s) => `${s.location.pathname}${s.location.searchStr}`,
+  });
 
   // Initial session resolve only — not after sign-out (we seed null session
   // so isLoading stays false and "Sign in" shows immediately).
@@ -51,7 +55,12 @@ export function UserSidebarFooter() {
     return (
       <SidebarMenuItem>
         <SidebarMenuButton asChild tooltip="Sign in">
-          <Link to="/login">
+          <Link
+            to="/login"
+            onClick={() => {
+              rememberLastPage(resumeHref);
+            }}
+          >
             <LogIn />
             <span>Sign in</span>
           </Link>

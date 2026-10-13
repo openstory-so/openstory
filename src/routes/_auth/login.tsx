@@ -6,7 +6,8 @@
 import { AuthForm } from '@/platform/ui/auth/auth-form';
 import { OpenStoryLogo } from '@/ui/icons/openstory-logo';
 import { PageContainer } from '@/ui/layout/page-container';
-import { getRedirectFromParams } from '@/platform/ui/auth/navigation';
+import { loginRedirect } from '@/platform/ui/auth/last-page';
+import { useHydrated } from '@/ui/use-hydrated';
 import { Link, createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
@@ -23,7 +24,8 @@ export const Route = createFileRoute('/_auth/login')({
 function LoginPage() {
   const search = Route.useSearch();
   const { authOptions } = Route.useRouteContext();
-  const redirectTo = getRedirectFromParams(search);
+  const hydrated = useHydrated();
+  const redirectTo = loginRedirect(search.redirectTo, hydrated);
   const email = search.email || '';
 
   return (
