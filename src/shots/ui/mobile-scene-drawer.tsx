@@ -120,10 +120,11 @@ export const MobileSceneDrawer: React.FC<
       </div>
 
       <Drawer
+        showSwipeHandle
         open={jumpOpen}
         onOpenChange={(open) => setOpenFor(open ? selection : null)}
       >
-        <DrawerContent className="min-h-0 overflow-hidden pb-[env(safe-area-inset-bottom)] data-[vaul-drawer-direction=bottom]:h-[92dvh] data-[vaul-drawer-direction=bottom]:max-h-[92dvh]">
+        <DrawerContent className="pb-[env(safe-area-inset-bottom)] [--drawer-content-height:92dvh] data-[swipe-axis=y]:[--drawer-content-max-height:92dvh]">
           <DrawerTitle className="sr-only">Scenes</DrawerTitle>
           <SceneList
             {...listProps}
