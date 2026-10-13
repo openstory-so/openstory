@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 const historyScopeSchema = z.union([
   z.object({ shotId: ulidSchema }),
-  z.object({ sceneIds: z.array(ulidSchema).min(1).max(50) }),
+  z.object({ sceneIds: z.array(ulidSchema).min(1).max(50).readonly() }),
 ]);
 
 const historyInputSchema = z.object({
