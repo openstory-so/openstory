@@ -190,7 +190,7 @@ testWithUser.describe('Variant Selection', () => {
       })
     ).toBeVisible();
 
-    // At phone width the settings fold away under the preview.
+    // At phone width the bottom bar's cog folds the settings panel away.
     const viewport = page.viewportSize();
     await page.setViewportSize({ width: 390, height: 844 });
     const renameTitle = page.getByRole('button', {

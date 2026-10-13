@@ -334,6 +334,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     setView,
   } = useSceneSelection({ search, sequenceId });
   const [autoPlaySequence, setAutoPlaySequence] = useState(false);
+  // Phone only: the bottom bar's cog folds the inspector panel, which sits
+  // under the preview there.
+  const [settingsOpen, setSettingsOpen] = useState(true);
   const handlePlaySequence = useCallback(() => {
     handleClearSelection();
     setView('canvas');
@@ -1658,7 +1661,11 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         </div>
 
         <div className={cn('md:hidden', hasDetail && 'hidden')}>
-          <MobileSceneDrawer {...sceneListProps} />
+          <MobileSceneDrawer
+            {...sceneListProps}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
         </div>
 
         {/* Queried on the width left AFTER the scenes column, so folding the
@@ -1779,7 +1786,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             <div
               className={cn(
                 'relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4',
-                hasDetail && 'hidden @3xl/workspace:block'
+                hasDetail && 'hidden @3xl/workspace:block',
+                // No bottom bar from `md` up, so no cog to bring it back.
+                !settingsOpen && 'hidden md:block'
               )}
             >
               <div
