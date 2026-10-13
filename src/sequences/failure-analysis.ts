@@ -55,6 +55,13 @@ export type FailureSummary = {
    * error. Mixed or infrastructure failures stay 'error'.
    */
   tone: 'error' | 'warning' | 'credits';
+  /**
+   * The run failed on steps no shot row records (a voice, a dialogue
+   * recording, a reference) and every shot has its prompts. The generation
+   * plan still owes that work, so the fix is to continue, never to rebuild
+   * the storyboard over the user's edits (#2104).
+   */
+  continueFromPlan: boolean;
 };
 
 function sceneNumberOf(shot: Shot, scenesById: ScenesById): number {
@@ -226,6 +233,7 @@ export function analyzeFailures(
       hasFailed: true,
       error: sequence.statusError,
       tone: toneOf(sequence.statusError),
+      continueFromPlan: false,
     };
   }
 
@@ -317,9 +325,23 @@ export function analyzeFailures(
     // Full retry re-runs everything including generation
   }
 
-  // Catch-all: sequence failed but no specific failures identified
+  // Sequence failed but no shot shows why. With shots on the board, the
+  // missing work is in the generation plan: continue it (#2104).
   if (sequence.status === 'failed' && groups.length === 0) {
-    requiresFullRetry = true;
+    const tone = toneOf(sequence.statusError);
+    return {
+      requiresFullRetry: false,
+      headline:
+        tone === 'credits'
+          ? CREDITS_SHORT_TITLE
+          : "Some steps didn't finish \u2014 continue to retry them",
+      groups: [],
+      totalFailures: 1,
+      hasFailed: true,
+      error: sequence.statusError,
+      tone,
+      continueFromPlan: true,
+    };
   }
 
   // Mid-pipeline crash (e.g. scene-split after streaming some shots, #1072):
@@ -344,6 +366,7 @@ export function analyzeFailures(
       hasFailed: true,
       error: sequence.statusError,
       tone: toneOf(sequence.statusError),
+      continueFromPlan: false,
     };
   }
 
@@ -372,6 +395,7 @@ export function analyzeFailures(
     totalFailures,
     hasFailed,
     error: sequence.statusError,
+    continueFromPlan: false,
     tone:
       requiresFullRetry || groups.length === 0
         ? toneOf(sequence.statusError)

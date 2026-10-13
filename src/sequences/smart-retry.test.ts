@@ -1167,6 +1167,21 @@ describe('executeSmartRetry — planned retry (#1461)', () => {
     expect(triggerStoryboardMock).not.toHaveBeenCalled();
   });
 
+  test('a failure no shot records is refused, not rebuilt (#2104)', async () => {
+    resetMocks();
+    const { context } = makeContext(
+      makeSequence({
+        status: 'failed',
+        statusError: 'Dialogue not recorded for this shot',
+      }),
+      [makeShot()]
+    );
+    await expect(executeSmartRetry(context, { dryRun: true })).rejects.toThrow(
+      /continue generation/
+    );
+    expect(triggerStoryboardMock).not.toHaveBeenCalled();
+  });
+
   test('a full-storyboard dry run prices it and reserves or starts nothing', async () => {
     resetMocks();
     const { context } = makeContext(makeSequence(), []);

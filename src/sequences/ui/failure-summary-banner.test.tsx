@@ -14,6 +14,7 @@ const contentSummary: FailureSummary = {
   hasFailed: true,
   error: 'Blocked by the content checker: Harry Potter',
   tone: 'warning',
+  continueFromPlan: false,
 };
 
 const creditsSummary: FailureSummary = {
@@ -25,6 +26,7 @@ const creditsSummary: FailureSummary = {
   error:
     'Not enough credits to generate images for 11 scenes. Add $4.20 more, then continue.',
   tone: 'credits',
+  continueFromPlan: false,
 };
 
 const generationFailed: FailureSummary = {
@@ -35,6 +37,7 @@ const generationFailed: FailureSummary = {
   hasFailed: true,
   error: 'Workflow timed out while generating scene prompts',
   tone: 'error',
+  continueFromPlan: false,
 };
 
 describe('FailureSummaryBanner', () => {
@@ -91,5 +94,28 @@ describe('FailureSummaryBanner', () => {
     expect(html).toContain('Regenerate Sequence');
     expect(html).toContain('Show details');
     expect(html).toContain('aria-expanded="false"');
+  });
+
+  it('offers to continue, not regenerate, when no shot records the failure (#2104)', () => {
+    const html = renderToStaticMarkup(
+      <FailureSummaryBanner
+        summary={{
+          ...generationFailed,
+          requiresFullRetry: false,
+          headline: "Some steps didn't finish \u2014 continue to retry them",
+          error: '6 steps failed. First: Dialogue not recorded for this shot',
+          continueFromPlan: true,
+        }}
+        onRetry={() => undefined}
+        onFullRetry={() => undefined}
+        onContinue={() => undefined}
+        isRetrying={false}
+      />
+    );
+
+    expect(html).toContain('Continue generation');
+    expect(html).toContain('Dialogue not recorded');
+    expect(html).not.toContain('Regenerate Sequence');
+    expect(html).not.toContain('full retry required');
   });
 });

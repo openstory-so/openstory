@@ -28,6 +28,7 @@ const creditsSummary: FailureSummary = {
   error:
     'Not enough credits to generate images for 11 scenes. Add $4.20 more, then continue.',
   tone: 'credits',
+  continueFromPlan: false,
 };
 
 const contentSummary: FailureSummary = {
@@ -39,6 +40,7 @@ const contentSummary: FailureSummary = {
   hasFailed: true,
   error: 'Blocked by the content checker: Harry Potter',
   tone: 'warning',
+  continueFromPlan: false,
 };
 
 const failedSummary: FailureSummary = {
@@ -50,6 +52,7 @@ const failedSummary: FailureSummary = {
   error:
     'Child workflow scene-split failed: Failed query: delete from "scenes"',
   tone: 'error',
+  continueFromPlan: false,
 };
 
 export const CreditsShort: Story = {

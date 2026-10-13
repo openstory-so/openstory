@@ -291,6 +291,14 @@ export async function executeSmartRetry(
     throw new ValidationError('No failures found to retry');
   }
 
+  // Nothing failed on a shot: the plan still owes the work, and a storyboard
+  // rebuild would discard the user's edits to recover it (#2104).
+  if (summary.continueFromPlan) {
+    throw new ValidationError(
+      'No shot failed — continue generation to finish the steps that did not complete.'
+    );
+  }
+
   // Full retry fallback
   if (summary.requiresFullRetry) {
     if (options.smartOnly) {

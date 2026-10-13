@@ -33,6 +33,7 @@ import {
   getSequencesFn,
 } from '@/sequences/sequences.fn';
 import { firstStageWithWork } from '@/sequences/generation-plan';
+import { resolveStopAt } from '@/sequences/pipeline';
 import {
   generationPlanKeys,
   refetchAfterRefusedContinue,
@@ -1458,6 +1459,27 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     [sequenceId, leftoverGrokShotIds, queryClient, resetGenerationStream]
   );
 
+  // A failure no shot records (a voice, a dialogue take) is still owed by the
+  // plan: continue it at the run's own settings rather than rebuild (#2104).
+  const handleContinueFromBanner = useCallback(async () => {
+    if (!sequence) return;
+    setIsRetrying(true);
+    try {
+      await handleContinueGeneration({
+        stopAt: resolveStopAt(sequence),
+        generateStartFrames: sequence.generateStartFrames,
+        generateVoices: sequence.generateVoices,
+        draftMotion: sequence.draftMotion,
+      });
+    } catch (error) {
+      toast.error('Could not continue generation', {
+        description: errorMessage(error),
+      });
+    } finally {
+      setIsRetrying(false);
+    }
+  }, [sequence, handleContinueGeneration]);
+
   // Render every approved draft at 1080p (#1756). The workflow flips each
   // segment to generating; invalidate so the list picks that up.
   const handleRenderDraftsAtQuality = useCallback(async () => {
@@ -1693,6 +1715,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           summary={failureSummary}
           onRetry={() => void handleSmartRetry()}
           onFullRetry={() => void handleSmartRetry()}
+          onContinue={() => void handleContinueFromBanner()}
           isRetrying={isRetrying}
         />
       )}

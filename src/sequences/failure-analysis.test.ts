@@ -588,6 +588,25 @@ describe('analyzeFailures', () => {
     expect(result.groups.map((g) => g.category)).toEqual(['motion']);
   });
 
+  test('a failure no shot records continues the plan, never a full retry (#2104)', () => {
+    const shots = [
+      makeShot(),
+      makeShot({ shot: { id: 'shot-2' }, sources: { video: null } }),
+    ];
+    const sequence = makeSequence({
+      status: 'failed',
+      statusError: '6 steps failed. First: Dialogue not recorded for this shot',
+    });
+
+    const result = analyzeFailures(shots, sequence, SCENES);
+
+    expect(result.continueFromPlan).toBe(true);
+    expect(result.requiresFullRetry).toBe(false);
+    expect(result.hasFailed).toBe(true);
+    expect(result.headline).not.toContain('full retry');
+    expect(result.error).toContain('Dialogue not recorded');
+  });
+
   test('completed sequence with no failures', () => {
     const shots = [makeShot()];
     const sequence = makeSequence({ status: 'completed' });

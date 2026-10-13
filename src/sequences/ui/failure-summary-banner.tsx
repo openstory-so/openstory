@@ -30,6 +30,8 @@ type FailureSummaryBannerProps = {
   summary: FailureSummary;
   onRetry: () => void;
   onFullRetry?: () => void;
+  /** Continue the generation plan — for failures no shot records (#2104). */
+  onContinue?: () => void;
   isRetrying: boolean;
 };
 
@@ -37,12 +39,17 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
   summary,
   onRetry,
   onFullRetry,
+  onContinue,
   isRetrying,
 }) => {
   const isWarning = summary.tone === 'warning';
   const isCredits = summary.tone === 'credits';
   const calm = isWarning || isCredits;
   const continueGeneration = () => {
+    if (summary.continueFromPlan && onContinue) {
+      onContinue();
+      return;
+    }
     if (summary.requiresFullRetry && onFullRetry) {
       onFullRetry();
       return;
@@ -161,10 +168,14 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
                 className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`}
               />
               {isRetrying
-                ? 'Retrying\u2026'
-                : summary.requiresFullRetry
-                  ? 'Regenerate Sequence'
-                  : 'Retry'}
+                ? summary.continueFromPlan
+                  ? 'Continuing\u2026'
+                  : 'Retrying\u2026'
+                : summary.continueFromPlan
+                  ? 'Continue generation'
+                  : summary.requiresFullRetry
+                    ? 'Regenerate Sequence'
+                    : 'Retry'}
             </Button>
           )}
         </div>
