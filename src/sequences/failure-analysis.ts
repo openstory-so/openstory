@@ -180,13 +180,39 @@ export function analyzeLoadedFailures(
   return analyzeFailures(shots, sequence, scenesById);
 }
 
+/**
+ * A stored `failed` that no live shot backs any more (#2104): every shot has a
+ * clip and nothing is owed on music. The sequence is derived from its shots,
+ * so deleting or fixing the shot that failed the run clears the failure —
+ * there is nothing left for a retry to make.
+ */
+export function sequenceFailureOutlived(
+  sequence: Pick<Sequence, 'status' | 'includeMusic' | 'musicStatus'>,
+  shots: number,
+  videosReady: number
+): boolean {
+  return (
+    sequence.status === 'failed' &&
+    shots > 0 &&
+    videosReady === shots &&
+    (!sequence.includeMusic || sequence.musicStatus === 'completed')
+  );
+}
+
 export function analyzeFailures(
   // The still's lifecycle is the anchor frame's primary row (#1942) and the video's on
   // the segment's primary render (#1067).
   shots: ShotView[],
-  sequence: Sequence,
+  stored: Sequence,
   scenesById: ScenesById
 ): FailureSummary {
+  const sequence: Sequence = sequenceFailureOutlived(
+    stored,
+    shots.length,
+    shots.filter((s) => Boolean(s.video?.url)).length
+  )
+    ? { ...stored, status: 'completed', statusError: null }
+    : stored;
   const groups: FailureGroup[] = [];
   let requiresFullRetry = false;
 

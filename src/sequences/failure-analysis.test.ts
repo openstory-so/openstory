@@ -549,6 +549,45 @@ describe('analyzeFailures', () => {
     expect(result.error).toContain('delete from "scenes"');
   });
 
+  test('a failure no live shot backs any more clears (#2104)', () => {
+    // The clip that failed was deleted; every remaining shot has a clip.
+    const sequence = makeSequence({
+      status: 'failed',
+      musicStatus: 'completed',
+      statusError:
+        'Content checker rejected the generated dialogue (Seedance 2.5). Regenerate the dialogue for another reading.',
+    });
+
+    const result = analyzeFailures([makeShot()], sequence, SCENES);
+
+    expect(result.hasFailed).toBe(false);
+    expect(result.requiresFullRetry).toBe(false);
+    expect(result.error).toBeNull();
+  });
+
+  test('a failure stays while a shot still lacks its clip (#2104)', () => {
+    const shots = [
+      makeShot(),
+      makeShot({
+        shot: { id: 'shot-2' },
+        sources: {
+          video: null,
+          primaryVideo: render({ status: 'failed', url: null }),
+        },
+      }),
+    ];
+    const sequence = makeSequence({
+      status: 'failed',
+      musicStatus: 'completed',
+      statusError: 'Upstream error',
+    });
+
+    const result = analyzeFailures(shots, sequence, SCENES);
+
+    expect(result.hasFailed).toBe(true);
+    expect(result.groups.map((g) => g.category)).toEqual(['motion']);
+  });
+
   test('completed sequence with no failures', () => {
     const shots = [makeShot()];
     const sequence = makeSequence({ status: 'completed' });

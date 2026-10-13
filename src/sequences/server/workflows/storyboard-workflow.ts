@@ -38,8 +38,25 @@ import type { UpdateStaleShotsResult } from '@/shots/server/workflows/update-sta
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
+import { isContentRejectionError } from '@/models/content-rejection';
 
 const logger = getLogger(['openstory', 'workflow', 'storyboard']);
+
+/**
+ * A content-checker refusal of a shot's still or clip. The image / motion
+ * child that met it failed its own row, so the failure already lives on the
+ * shot; writing it onto the sequence too stuck a "Script didn't pass" banner
+ * there that no shot edit or delete could clear (#2104).
+ */
+function isShotRecordedRejection(failure: {
+  stage: string;
+  error: string;
+}): boolean {
+  return (
+    (failure.stage === 'image' || failure.stage === 'video') &&
+    isContentRejectionError(failure.error)
+  );
+}
 
 export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWorkflowInput> {
   protected override async runImpl(
@@ -278,6 +295,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     }
     // Fresh and continue share the same durable execution path.
     let continueFailure: string | null = null;
+    let shotFailures = false;
     if (input.plan || plan.targets.length || plan.references || plan.music) {
       const result = await spawnAndAwaitChild<
         UpdateStaleShotsWorkflowInput,
@@ -305,9 +323,13 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
       });
       // The executor records a unit's failure and carries on; the run as a
       // whole did not finish what was asked, so it ends failed, not
-      // completed, and sends no "ready" email.
+      // completed, and sends no "ready" email. A content-checker refusal of
+      // a shot's still or clip is the exception (#2104): the child recorded
+      // it on the shot's own row, so the sequence completes and the shot
+      // card carries the failure and its shot-level fixes.
+      shotFailures = result.failures.length > 0;
       const [first] = result.failures;
-      if (first) {
+      if (first && !result.failures.every(isShotRecordedRejection)) {
         continueFailure =
           result.failures.length === 1
             ? first.error
@@ -348,7 +370,8 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
     // "Your video is ready" is a one-shot claim per sequence: sending it for
     // a run that stopped before motion would spend it on a board with no video
     // and silence the real completion (#1408).
-    if (!includesStage(input.stopAt, 'motion')) return;
+    // A shot still failing means the video is not ready.
+    if (!includesStage(input.stopAt, 'motion') || shotFailures) return;
 
     // After emit-complete: a send retry must not strand the player on processing.
     await step.do('email-ready', async () => {

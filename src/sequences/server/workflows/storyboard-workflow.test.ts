@@ -449,6 +449,33 @@ describe('StoryboardWorkflow stop-at + resume (#1408)', () => {
     expect(names).not.toContain('email-ready');
   });
 
+  test("a shot's content-checker refusal stays on the shot, not the sequence (#2104)", async () => {
+    // the wrapper only forwards it
+    const plan = asStub<NonNullable<StoryboardWorkflowInput['plan']>>({
+      targets: [],
+    });
+    const { updateStatus, names } = await run(
+      { stopAt: 'motion', resume: true, plan },
+      {
+        failures: [
+          {
+            shotId: 'shot_1',
+            stage: 'video',
+            error:
+              'Content checker rejected the generated dialogue (Seedance 2.5). Regenerate the dialogue for another reading.',
+          },
+        ],
+      }
+    );
+
+    expect(updateStatus).toHaveBeenCalledWith('completed');
+    expect(updateStatus).not.toHaveBeenCalledWith('failed', expect.anything());
+    expect(names).toContain('emit-complete');
+    expect(names).not.toContain('emit-failed');
+    // A shot still failing: the video is not ready.
+    expect(names).not.toContain('email-ready');
+  });
+
   test('an early stop completes without spending the ready email', async () => {
     const { updateStatus, names } = await run({ stopAt: 'script' });
 

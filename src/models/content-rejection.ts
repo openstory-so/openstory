@@ -270,7 +270,7 @@ export function clipContentRejectionMessage(args: {
   if (flags.audioInput) {
     const audio = args.inputs?.audio ?? {
       name: 'the generated dialogue',
-      fix: "Set the shot's dialogue audio to Video model, regenerate the dialogue for another reading, or change the lines in the script",
+      fix: "Regenerate the dialogue for another reading, change the lines in the script, or set the shot's dialogue audio to Video model",
     };
     return `Content checker rejected ${audio.name} (${tried}). ${audio.fix}.`;
   }

@@ -3,6 +3,7 @@ import type { Sequence, SequenceExport } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotProductionReadiness } from './db/sequences';
 import { usesStartFrame } from '@/shots/use-start-frame';
+import { sequenceFailureOutlived } from '@/sequences/failure-analysis';
 
 export const productionStatusSchema = z.object({
   sequenceId: z.string(),
@@ -82,7 +83,7 @@ export async function readProductionStatus(
 
 /** Selected usability and last-attempt failures can both be true. No DB enum changes. */
 export function buildProductionStatus(
-  sequence: Sequence,
+  stored: Sequence,
   read: ProductionStatusRead,
   includeFailures: boolean
 ) {
@@ -97,6 +98,14 @@ export function buildProductionStatus(
       rows.flatMap((r) => (r.renderSegmentId ? [r.renderSegmentId] : []))
     ).size,
   };
+  // A failure no live shot backs any more is not reported (#2104).
+  const sequence: Sequence = sequenceFailureOutlived(
+    stored,
+    counts.shots,
+    counts.videosReady
+  )
+    ? { ...stored, status: 'completed', statusError: null }
+    : stored;
   const hasFailures =
     counts.videosFailed > 0 ||
     (sequence.includeMusic && sequence.musicStatus === 'failed') ||
@@ -169,7 +178,7 @@ export function buildProductionStatus(
   return {
     sequenceId: sequence.id,
     status,
-    sequenceStatus: sequence.status,
+    sequenceStatus: stored.status,
     counts,
     musicStatus: sequence.musicStatus,
     workflowRunIds: [...workflowRunIds].slice(0, 100),
