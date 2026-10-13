@@ -11,6 +11,7 @@ import type { ImageToVideoModel, TextToImageModel } from '@/models/models';
 import { getAspectRatioData, type AspectRatio } from '@/models/aspect-ratios';
 import { RESOLUTION_OPTIONS, type Resolution } from '@/models/resolutions';
 import { Badge } from '@/ui/shadcn/badge';
+import { cn } from '@/ui/utils';
 import { selectionScope, type SceneSelection } from './scene-selection';
 import { ScopeBreadcrumb } from './scope-breadcrumb';
 import type { SceneWithScript } from './use-scenes';
@@ -18,6 +19,7 @@ import type { ShotView } from '@/shots/shot-view';
 import { usePostHog } from '@posthog/react';
 import { Link } from '@tanstack/react-router';
 import { CopyPlus } from 'lucide-react';
+import { useId, useState } from 'react';
 
 /**
  * Scope breadcrumb for the inspector (#1713), plus — at sequence scope — the settings that
@@ -85,6 +87,10 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
   const posthog = usePostHog();
   const scope = selectionScope(selection);
   const showSequenceSettings = scope === 'sequence';
+  // Narrow layouts stack the inspector under the preview, where the settings
+  // push the tabs off screen — so they fold there. Wide layouts ignore this.
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const settingsId = useId();
   const ratio = aspectRatio ? getAspectRatioData(aspectRatio) : undefined;
 
   return (
@@ -97,9 +103,27 @@ export const SceneModelBar: React.FC<SceneModelBarProps> = ({
             <Kbd>esc</Kbd> up
           </span>
         )}
+        {showSequenceSettings && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="shrink-0 @3xl/workspace:hidden"
+            aria-expanded={settingsOpen}
+            aria-controls={settingsId}
+            onClick={() => setSettingsOpen((open) => !open)}
+          >
+            {settingsOpen ? 'Hide settings' : 'Show settings'}
+          </Button>
+        )}
       </div>
       {showSequenceSettings && (
-        <div className="space-y-2">
+        <div
+          id={settingsId}
+          className={cn(
+            'space-y-2',
+            !settingsOpen && 'hidden @3xl/workspace:block'
+          )}
+        >
           {sequenceId && title !== undefined && (
             <SettingRow label="Title">
               <RenameSequenceButton sequenceId={sequenceId} title={title} />

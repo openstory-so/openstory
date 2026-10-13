@@ -190,6 +190,26 @@ testWithUser.describe('Variant Selection', () => {
       })
     ).toBeVisible();
 
+    // At phone width the settings fold away under the preview.
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const renameTitle = page.getByRole('button', {
+      name: `Rename sequence ${testSequence.title}`,
+    });
+    // Retried: a click before hydration is dropped.
+    await expect(async () => {
+      await page
+        .getByRole('button', { name: 'Hide settings' })
+        .click({ timeout: 1000 });
+      await expect(renameTitle).toBeHidden({ timeout: 1000 });
+    }).toPass({ timeout: 15000 });
+    await page.getByRole('button', { name: 'Show settings' }).click();
+    await expect(renameTitle).toBeVisible();
+    if (viewport) await page.setViewportSize(viewport);
+    await expect(
+      page.getByRole('button', { name: 'Hide settings' })
+    ).toBeHidden();
+
     // Also wait for the shot thumbnail to be visible
     // Shots load via a separate API call from the sequence data, so needs its own timeout
     const shotThumbnail = page.getByRole('img', { name: 'Scene 1' });
