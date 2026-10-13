@@ -1,6 +1,11 @@
 /**
  * Global search (#2100): one substring query per kind of thing, team-scoped.
  *
+ * The team boundary (pinned by `search.test.ts`): every query starts from a
+ * row that carries the team, or joins the team's sequence. Version pointers
+ * have no foreign key, so each version join also names its parent: a pointer
+ * that strays to another team's version matches nothing.
+ *
  * Reads only what is live and current: no archived sequences, no deleted
  * rows, and for versioned text only the selected version.
  *
@@ -106,7 +111,10 @@ export function createSearchMethods(db: Database, teamId: string) {
         .innerJoin(sequences, eq(sequences.id, scenes.sequenceId))
         .innerJoin(
           sceneScriptVersions,
-          eq(sceneScriptVersions.id, scenes.selectedScriptVersionId)
+          and(
+            eq(sceneScriptVersions.id, scenes.selectedScriptVersionId),
+            eq(sceneScriptVersions.sceneId, scenes.id)
+          )
         )
         .where(and(liveSequence, isNull(scenes.deletedAt), any(sceneTexts)))
         .orderBy(desc(scenes.updatedAt))
@@ -137,20 +145,33 @@ export function createSearchMethods(db: Database, teamId: string) {
         .innerJoin(sequences, eq(sequences.id, shots.sequenceId))
         .leftJoin(
           shotSpecVersions,
-          eq(shotSpecVersions.id, shots.selectedSpecVersionId)
+          and(
+            eq(shotSpecVersions.id, shots.selectedSpecVersionId),
+            eq(shotSpecVersions.shotId, shots.id)
+          )
         )
         .leftJoin(
           shotPromptVersions,
-          eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId)
+          and(
+            eq(shotPromptVersions.id, shots.selectedMotionPromptVersionId),
+            eq(shotPromptVersions.shotId, shots.id)
+          )
         )
         // The anchor frame, as `shot-view-query` joins it.
         .leftJoin(
           frames,
-          and(eq(frames.shotId, shots.id), eq(frames.orderIndex, 0))
+          and(
+            eq(frames.shotId, shots.id),
+            eq(frames.orderIndex, 0),
+            eq(frames.sequenceId, shots.sequenceId)
+          )
         )
         .leftJoin(
           framePromptVersions,
-          eq(framePromptVersions.id, frames.selectedImagePromptVersionId)
+          and(
+            eq(framePromptVersions.id, frames.selectedImagePromptVersionId),
+            eq(framePromptVersions.frameId, frames.id)
+          )
         )
         .leftJoin(
           shotDialogueVersions,
@@ -182,12 +203,24 @@ export function createSearchMethods(db: Database, teamId: string) {
         .from(characters)
         .innerJoin(
           characterBibleVersions,
-          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+          and(
+            eq(characterBibleVersions.id, characters.selectedBibleVersionId),
+            eq(characterBibleVersions.characterId, characters.id)
+          )
         )
-        .leftJoin(characterLooks, eq(characterLooks.id, characters.id))
+        .leftJoin(
+          characterLooks,
+          and(
+            eq(characterLooks.id, characters.id),
+            eq(characterLooks.characterId, characters.id)
+          )
+        )
         .leftJoin(
           characterLookVersions,
-          eq(characterLookVersions.id, characterLooks.selectedLookVersionId)
+          and(
+            eq(characterLookVersions.id, characterLooks.selectedLookVersionId),
+            eq(characterLookVersions.lookId, characterLooks.id)
+          )
         )
         .where(
           and(
@@ -235,7 +268,13 @@ export function createSearchMethods(db: Database, teamId: string) {
         .innerJoin(sequences, eq(sequences.id, sequenceLocations.sequenceId))
         .leftJoin(
           locationBibleVersions,
-          eq(locationBibleVersions.id, sequenceLocations.selectedBibleVersionId)
+          and(
+            eq(
+              locationBibleVersions.id,
+              sequenceLocations.selectedBibleVersionId
+            ),
+            eq(locationBibleVersions.locationId, sequenceLocations.id)
+          )
         )
         .where(
           and(
