@@ -17,7 +17,9 @@ export type BreadcrumbCrumb = {
   /**
    * A phone shows one crumb. That is the current page unless an ancestor
    * names the thing better than the page does ("Scenes" says less than the
-   * sequence title), in which case the ancestor sets this.
+   * sequence title), in which case the ancestor sets this. A deeper page
+   * with a name of its own (a character under that sequence) sets it too,
+   * and the deepest wins.
    */
   keepOnMobile?: true;
 };
@@ -70,14 +72,21 @@ export function resolveCrumbs(match: BreadcrumbMatch): BreadcrumbCrumb[] {
   return [resolved];
 }
 
+/**
+ * The one crumb a phone shows: the deepest that asks (`keepOnMobile`), else
+ * the current page.
+ */
+export function mobileCrumbIndex(crumbs: BreadcrumbCrumb[]): number {
+  const kept = crumbs.map((crumb) => crumb.keepOnMobile).lastIndexOf(true);
+  return kept === -1 ? crumbs.length - 1 : kept;
+}
+
 export const Breadcrumbs: React.FC = () => {
   const matches = useMatches();
   const crumbs = matches.flatMap(resolveCrumbs);
 
   if (crumbs.length === 0) return null;
-  const kept = crumbs.map((crumb) => crumb.keepOnMobile).lastIndexOf(true);
-  // No crumb asks: the current page.
-  const mobileIndex = kept === -1 ? crumbs.length - 1 : kept;
+  const mobileIndex = mobileCrumbIndex(crumbs);
 
   return (
     <Breadcrumb className="min-w-0">

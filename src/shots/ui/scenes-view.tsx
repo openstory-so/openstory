@@ -1763,7 +1763,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             ) : (
               // On a phone the canvas has the screen; the inspector is a
               // drawer. The padding clears the fixed bottom bar.
-              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:pb-16 @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:pb-[calc(4rem+env(safe-area-inset-bottom))] @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
                 <CanvasViewToggle
                   view={effectiveView}
                   onViewChange={setView}

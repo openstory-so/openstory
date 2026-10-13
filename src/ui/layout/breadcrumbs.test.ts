@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  mobileCrumbIndex,
   resolveCrumbs,
   type BreadcrumbMatch,
   type BreadcrumbValue,
@@ -54,5 +55,33 @@ describe('resolveCrumbs', () => {
   test('treats null/undefined from a function as no crumbs', () => {
     expect(resolveCrumbs(makeMatch(() => null))).toEqual([]);
     expect(resolveCrumbs(makeMatch(() => undefined))).toEqual([]);
+  });
+});
+
+describe('mobileCrumbIndex', () => {
+  test('the current page when no crumb asks', () => {
+    expect(mobileCrumbIndex([{ label: 'Sequences' }, { label: 'New' }])).toBe(
+      1
+    );
+  });
+
+  test('an ancestor that asks beats a generic page name', () => {
+    expect(
+      mobileCrumbIndex([
+        { label: 'Sequences' },
+        { label: 'Golden Hour Surf', keepOnMobile: true },
+        { label: 'Scenes' },
+      ])
+    ).toBe(1);
+  });
+
+  test('the deepest crumb that asks wins', () => {
+    expect(
+      mobileCrumbIndex([
+        { label: 'Sequences' },
+        { label: 'Golden Hour Surf', keepOnMobile: true },
+        { label: 'John', keepOnMobile: true },
+      ])
+    ).toBe(2);
   });
 });

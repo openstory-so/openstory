@@ -43,8 +43,11 @@ type SceneModelBarProps = {
   scenes?: SceneWithScript[];
   shots?: ShotView[];
   sequenceId?: string;
-  /** The sequence title; renamed from the Title row (#2102). */
-  title?: string;
+  /**
+   * The sequence title, renamed from the Title row (#2102). Undefined only
+   * while the sequence is loading.
+   */
+  title: string | undefined;
   resolvedSequenceImageModel: TextToImageModel;
   resolvedSequenceVideoModel: ImageToVideoModel;
   styleId?: string;

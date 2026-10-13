@@ -50,7 +50,7 @@ export const RenameSequenceButton: React.FC<{
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-sm hover:bg-muted/60"
+          className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-sm hover:bg-muted/60 max-md:min-h-11"
           aria-label={`Rename sequence ${title}`}
         >
           {title}
