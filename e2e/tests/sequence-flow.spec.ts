@@ -219,8 +219,13 @@ testWithUser.describe('Variant Selection', () => {
       // Scenes: the bar opens the list in a drawer; its footer controls work.
       await page.getByTestId('mobile-scene-nav').click();
       await expect(drawer.getByText('Whole sequence')).toBeVisible();
-      // The slider's tick labels are buttons hidden from the a11y tree.
-      await drawer.getByText('Casting', { exact: true }).click();
+      const stopSlider = drawer.getByRole('slider');
+      const before = await stopSlider.getAttribute('aria-valuenow');
+      await stopSlider.press('End');
+      await expect(stopSlider).not.toHaveAttribute(
+        'aria-valuenow',
+        before ?? ''
+      );
       await expect(drawer.getByText('Whole sequence')).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(drawer).toBeHidden();
