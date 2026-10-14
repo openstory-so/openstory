@@ -1,6 +1,6 @@
 {
   "name": "@openstory/stitch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Plays a list of video clips and timed stills as one sequence in the browser — no server encode. Mediabunny on a canvas, with music, per-clip dialogue and subtitles. Optional Video.js 10 adapter and React surface.",
   "keywords": [
     "concatenate",
