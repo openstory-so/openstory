@@ -92,7 +92,7 @@ import {
 } from '@/motion/server/video-storage';
 
 type StudioVideoJobOptions = {
-  scopedDb?: CredentialScopedDb;
+  credentials?: CredentialScopedDb;
   prompt: string;
   model: ImageToVideoModel;
   duration?: StudioDuration;
@@ -124,24 +124,24 @@ export type StudioVideoJobSubmission = {
 };
 
 async function resolveFalKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey> {
-  if (scopedDb) return scopedDb.resolveKey('fal');
+  if (credentials) return credentials.resolveKey('fal');
   return { key: getEnv().FAL_KEY, source: 'platform' };
 }
 
 async function resolveOptionalXaiKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('xai');
+  if (credentials) return credentials.resolveOptionalKey('xai');
   const platformKey = getEnv().XAI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
 async function resolveOptionalFalKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('fal');
+  if (credentials) return credentials.resolveOptionalKey('fal');
   const platformKey = getEnv().FAL_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -155,9 +155,9 @@ function createNativeVideoAdapter(apiKey: string) {
 }
 
 async function resolveOptionalGoogleKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  if (credentials) return credentials.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -267,7 +267,7 @@ async function submitFalStudioVideoJob(
     );
   }
   if (mode !== 'text') {
-    const key = await resolveFalKey(options.scopedDb);
+    const key = await resolveFalKey(options.credentials);
     const { endpointId, built } = await buildStudioImageModeInput(
       options,
       modelKey,
@@ -297,7 +297,7 @@ async function submitFalStudioVideoJob(
     resolution: options.resolution,
     generateAudio: options.generateAudio,
   });
-  const key = await resolveFalKey(options.scopedDb);
+  const key = await resolveFalKey(options.credentials);
   const endpointId = studioVideoEndpointId(modelKey);
   const job = await generateVideo({
     adapter: falVideo(endpointId, { apiKey: key.key }),
@@ -403,7 +403,7 @@ async function buildStudioBytePlusPrompt(
   }
 
   if (mode === 'reference') {
-    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    const falKey = await resolveOptionalFalKey(options.credentials);
     const images = (options.referenceImages ?? []).map((url) =>
       urlPart(url, 'reference', options.arkAssets)
     );
@@ -482,10 +482,10 @@ export async function submitStudioVideoJob(
   // Same claim order as sequence motion: xAI, then Google, then Ark, then
   // fal.
   const xaiKey = isNativeGrokVideoModel(modelKey)
-    ? await resolveOptionalXaiKey(options.scopedDb)
+    ? await resolveOptionalXaiKey(options.credentials)
     : undefined;
   const googleKey = isNativeGeminiVideoModel(modelKey)
-    ? await resolveOptionalGoogleKey(options.scopedDb)
+    ? await resolveOptionalGoogleKey(options.credentials)
     : undefined;
   let via: MediaVia;
   if (xaiKey) {
@@ -493,7 +493,7 @@ export async function submitStudioVideoJob(
   } else if (googleKey) {
     via = 'google';
   } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
-    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    const falKey = await resolveOptionalFalKey(options.credentials);
     via = claimBytePlusVia({
       native: true,
       usingOwnFalKey: falKey?.source === 'team',
@@ -759,12 +759,12 @@ export async function submitStudioVideoJob(
 
 export async function pollStudioVideoJob(
   job: Pick<StudioVideoJobSubmission, 'jobId' | 'via' | 'endpointId'>,
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ) {
   const via = assertMediaVia(job.via);
   switch (via) {
     case 'xai': {
-      const key = await resolveOptionalXaiKey(scopedDb);
+      const key = await resolveOptionalXaiKey(credentials);
       if (!key) {
         throw new Error(
           `Studio video job ${job.jobId} was submitted to xAI but no xAI key is available to poll it`
@@ -776,7 +776,7 @@ export async function pollStudioVideoJob(
       });
     }
     case 'fal': {
-      const key = await resolveFalKey(scopedDb);
+      const key = await resolveFalKey(credentials);
       return getVideoJobStatus({
         adapter: falVideo(job.endpointId, {
           apiKey: key.key,
@@ -789,7 +789,7 @@ export async function pollStudioVideoJob(
       });
     }
     case 'google': {
-      const key = await resolveOptionalGoogleKey(scopedDb);
+      const key = await resolveOptionalGoogleKey(credentials);
       if (!key) {
         throw new Error(
           `Studio video job ${job.jobId} was submitted to Google but no Google key is available to poll it`

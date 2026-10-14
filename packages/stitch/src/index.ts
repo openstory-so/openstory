@@ -1,14 +1,14 @@
 /**
- * @openstory/stitch-player — plays N clip videos and timed stills as one
+ * @openstory/stitch — plays N clip videos and timed stills as one
  * sequence on a canvas, in the browser, with music, per-clip dialogue and
  * subtitles. Playback and export need WebCodecs (via mediabunny) and Web
  * Audio. The modules themselves import under Node.
  *
  * Entry points:
- * - `@openstory/stitch-player`         this file: the engine, no framework.
- * - `@openstory/stitch-player/videojs` a Video.js 10 media adapter.
- * - `@openstory/stitch-player/react`   a React surface under the Video.js skin.
- * - `@openstory/stitch-player/export`  in-browser MP4 export of the same stitch.
+ * - `@openstory/stitch`         this file: the engine, no framework.
+ * - `@openstory/stitch/videojs` a Video.js 10 media adapter.
+ * - `@openstory/stitch/react`   a React surface under the Video.js skin.
+ * - `@openstory/stitch/export`  in-browser MP4 export of the same stitch.
  */
 export {
   SequencePlayerEngine,
@@ -28,6 +28,7 @@ export {
 } from './playback-clip.js';
 export { playbackClipsKey } from './playback-clips-key.js';
 export { cueTextAt } from './cues.js';
+export { playbackGapMessage } from './playback-gap.js';
 export { cuesToWebVTT } from './webvtt.js';
 export { createRangedReader, createRangedSource } from './ranged-source.js';
 export { computeMusicGain, loudnessDbToLinear } from './music-gain.js';
@@ -38,6 +39,7 @@ export {
   type PlayWaitSettlement,
 } from './play-attempt.js';
 export {
+  canvasResolution,
   computeTargetResolution,
   describeResolutions,
   detectMixedAspectRatios,

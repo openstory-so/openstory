@@ -1,12 +1,14 @@
 <p align="center">
-  <img src="../../.github/openstory-logo.svg" alt="OpenStory" width="275" />
+  <img src="https://assets.openstory.so/brand/openstory-logo-dark.png" alt="OpenStory" width="275" />
 </p>
 
-# @openstory/stitch-player
+# @openstory/stitch
+
+[中文](README.zh-CN.md) · [Français](README.fr.md) · [Español](README.es.md)
 
 A player designed for AI filmmaking.
 
-Stills, dialogue, music and video segments can be generated in any order. Give them to stitch-player and the browser plays that list as one sequence. It avoids the need to edit clips together offline, or to use ffmpeg for a preview.
+Stills, dialogue, music and video segments can be generated in any order. Give them to stitch and the browser plays that list as one sequence. It avoids the need to edit clips together offline, or to use ffmpeg for a preview.
 
 ![Temple Street](https://assets.openstory.so/stitch-player/temple-street.gif)
 
@@ -25,7 +27,7 @@ Give it `https` URLs, or `blob:` URLs of bytes the page already holds. The seque
 Three stills, recorded lines, a music bed, then one rendered clip.
 
 ```tsx
-import { StitchedPlayer } from '@openstory/stitch-player/react';
+import { StitchedPlayer } from '@openstory/stitch/react';
 import '@videojs/react/video/neutral-skin.css';
 
 const still = (
@@ -77,22 +79,90 @@ export const Animatic = () => (
 
 ## What's in the box
 
-| Import                             | What                                                                                                                | Also install                                              |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `@openstory/stitch-player`         | The engine: `SequencePlayerEngine`, `ConcatenatedVideoSource`, clip types, pure helpers.                            | nothing                                                   |
-| `@openstory/stitch-player/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.org) custom media, so the Video.js skin drives the engine. | nothing at runtime (`@videojs/media` is a type-only peer) |
-| `@openstory/stitch-player/react`   | `StitchedPlayer`: the canvas under Video.js's `NeutralVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react`                                 |
-| `@openstory/stitch-player/export`  | `exportSequence` and `downloadSequence`: the same stitch, encoded to MP4 in the browser.                            | nothing                                                   |
+| Import                      | What                                                                                                                | Also install                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `@openstory/stitch`         | The engine: `SequencePlayerEngine`, `ConcatenatedVideoSource`, clip types, pure helpers.                            | nothing                                                   |
+| `@openstory/stitch/videojs` | `StitchedSequenceMedia`, a [Video.js 10](https://videojs.org) custom media, so the Video.js skin drives the engine. | nothing at runtime (`@videojs/media` is a type-only peer) |
+| `@openstory/stitch/react`   | `StitchedPlayer`: the canvas under Video.js's `NeutralVideoSkin`, with subtitles and the Download button.           | `react`, `@videojs/react`                                 |
+| `@openstory/stitch/export`  | `exportSequence` and `downloadSequence`: the same stitch, encoded to MP4 in the browser.                            | nothing                                                   |
 
 `mediabunny` is a dependency, so it installs with the package. The React peers are optional: `react` ^19 and `@videojs/react` ^10. `@videojs/media` is a type-only peer of the Video.js entry; `@videojs/react` brings it in for the React surface.
 
 ```sh
-npm install @openstory/stitch-player
+npm install @openstory/stitch
 # for the React surface
 npm install react @videojs/react
 ```
 
-Agents wiring this up should read [`skills/stitch-player/SKILL.md`](skills/stitch-player/SKILL.md).
+## Command
+
+`npx @openstory/stitch` plays local stills and videos in the browser. It listens on `127.0.0.1`, prints the URL, and opens it. The page is this player: captions, a music switch, a loading line, and Download. The frame is the canvas box of the clips, so a portrait cut fills the window as portrait. The process runs until Ctrl+C. `--no-open` skips the browser. `--port` chooses the port.
+
+Files play in the order you name them.
+
+```sh
+npx @openstory/stitch \
+  --music score.mp3 --music-gain -3 \
+  --subs lines.srt \
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent." \
+  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?"
+```
+
+- A `.mp4`, `.webm`, or `.mov` is a video. It plays the sound inside the file.
+- A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
+- `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` (default 4) and that sound.
+- `--poster` is the still shown while the cut opens. It belongs on an opening video.
+- `--fallback` is the picture tried when the still before it fails to load.
+- `--cue START-END TEXT` is a subtitle on the clip before it. Times are seconds from the start of that clip. Quote the text.
+- `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. A cue that crosses a cut is split onto both clips.
+- `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB, and defaults to 0. The page can turn the bed off. Dialogue stays at its own level.
+
+## Skill
+
+Run the command with npx, as above. `/stitch` does the same thing and leaves the page running.
+
+Install both skills into the current project:
+
+```sh
+npx @openstory/stitch skill
+```
+
+That copies [`stitch`](skills/stitch/SKILL.md) (`/stitch`) and [`stitch-player`](skills/stitch-player/SKILL.md), the contract for embedding the React player, into `.agents/skills/` and `.claude/skills/`. Add `--global` to copy them into your home directory instead. Run it again after an upgrade to replace both.
+
+```sh
+npx @openstory/stitch skill --global
+```
+
+Or install the [OpenStory plugin](https://github.com/openstory-so/skills) to get `create-style`, `create-sequence`, and `stitch` together. The plugin does not include `stitch-player`:
+
+```sh
+npx skills add openstory-so/skills
+```
+
+Grok:
+
+```sh
+grok plugin marketplace add openstory-so/skills
+grok plugin install openstory --trust
+```
+
+Claude Code:
+
+```
+/plugin marketplace add openstory-so/skills
+/plugin install openstory@openstory
+```
+
+Codex:
+
+```sh
+codex plugin marketplace add openstory-so/skills
+codex plugin add openstory@openstory
+```
+
+ChatGPT desktop app: open Plugins, choose Add a marketplace, enter `openstory-so/skills`, and install OpenStory. Those skills run in the desktop app.
+
+`@openstory/stitch-player@0.1.0` was the first publish of this package. Install `@openstory/stitch` from here on.
 
 Built against [Video.js 10](https://videojs.org) (`^10.0.0`).
 
@@ -101,11 +171,11 @@ Built against [Video.js 10](https://videojs.org) (`^10.0.0`).
 A clip is a rendered video or a timed still. Clips play in array order.
 
 ```ts
-import type { PlaybackClip } from '@openstory/stitch-player';
+import type { PlaybackClip } from '@openstory/stitch';
 
 const clips: PlaybackClip[] = [
   // A rendered clip. Its embedded sound plays with it.
-  // `posterUrl` is for a host to show while it waits. This package does not paint it.
+  // `posterUrl` is for a host to show while it waits. The player does not paint it.
   { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
   // A still, held for the longer of `durationSeconds` and its sound.
   {
@@ -129,7 +199,7 @@ const clips: PlaybackClip[] = [
 ## React
 
 ```tsx
-import { StitchedPlayer } from '@openstory/stitch-player/react';
+import { StitchedPlayer } from '@openstory/stitch/react';
 
 <StitchedPlayer
   clips={clips}
@@ -155,10 +225,7 @@ Subtitles are drawn by the surface, not by a `<video>` element (there is none), 
 ## Export
 
 ```ts
-import {
-  exportSequence,
-  downloadSequence,
-} from '@openstory/stitch-player/export';
+import { exportSequence, downloadSequence } from '@openstory/stitch/export';
 
 // A file in memory, plus the subtitles as WebVTT.
 const { blob, vtt, durationSeconds } = await exportSequence({
@@ -189,7 +256,7 @@ The export runs the same stitching code, so the file matches the preview: same f
 ## Video.js 10 only
 
 ```ts
-import { StitchedSequenceMedia } from '@openstory/stitch-player/videojs';
+import { StitchedSequenceMedia } from '@openstory/stitch/videojs';
 
 const media = new StitchedSequenceMedia();
 media.setListeners({ onError: console.error });
@@ -210,7 +277,7 @@ media.activeCueText; // the subtitle at the playhead, or null
 ## Engine only
 
 ```ts
-import { SequencePlayerEngine } from '@openstory/stitch-player';
+import { SequencePlayerEngine } from '@openstory/stitch';
 
 const engine = new SequencePlayerEngine({
   canvas,
@@ -244,7 +311,7 @@ engine.dispose();
 
 ## Requirements
 
-- **Playback and export need a browser:** WebCodecs and Web Audio. The modules import under Node, and `@openstory/stitch-player/react` is safe to import during server rendering (it loads Video.js only on the client).
+- **Playback and export need a browser:** WebCodecs and Web Audio. The modules import under Node, and `@openstory/stitch/react` is safe to import during server rendering (it loads Video.js only on the client).
 - **Clip and audio servers must allow Range requests.** Cross-origin URLs also need CORS, a 206, and `Access-Control-Expose-Headers: Content-Range`. Same-origin URLs do not need CORS. A `blob:` URL works for video, music and dialogue when `fetch` answers `Range` with 206, which is how a page plays a cut from bytes it already has. A `data:` URL works for a still's line. Playback loads stills as images, which needs no CORS. Export and Picture-in-Picture read the canvas back, so a still from another origin without CORS taints the canvas and those two throw `SecurityError`.
 - **Encoding (export only):** H.264 and AAC encoders, which Chrome, Edge, Safari 17+ and recent Firefox have.
 

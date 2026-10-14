@@ -109,7 +109,7 @@ export class MusicWorkflow extends OpenStoryWorkflowEntrypoint<MusicWorkflowInpu
         model,
         teamId,
         sequenceId,
-        scopedDb: scopedDb.credentials,
+        credentials: scopedDb.credentials,
         observability: {
           observationName: 'music',
           tags: ['music'],

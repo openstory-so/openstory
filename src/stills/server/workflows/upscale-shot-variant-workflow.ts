@@ -330,7 +330,7 @@ export class UpscaleShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<Upsc
           numImages: 1,
           outputFormat: 'png',
         },
-        { scopedDb: scopedDb.credentials }
+        { credentials: scopedDb.credentials }
       );
       // Stored in the same step: an inline-bytes result has no URL to pass
       // to a later one, and the image would ride the checkpoint (#1645).

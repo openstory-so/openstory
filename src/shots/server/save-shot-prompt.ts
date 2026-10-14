@@ -16,6 +16,7 @@ import {
 } from './prompt-context';
 import { getFrameImageUrl } from './frame-image';
 import { loadShotPromptDialogue } from './shot-dialogue';
+import { redrawShotPreview } from './shot-preview';
 import { rescanContinuityFromPrompt } from './rescan-continuity-from-prompt';
 import { dbSceneId } from '@/shots/scene-id';
 import { getLogger } from '@/platform/logger';
@@ -27,7 +28,7 @@ const logger = getLogger(['openstory', 'server', 'save-shot-prompt']);
 export async function saveShotPrompt(
   context: Pick<
     ShotEditContext,
-    'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'scene'
+    'shot' | 'frame' | 'sequence' | 'scopedDb' | 'user' | 'teamId' | 'scene'
   >,
   data: {
     promptType: 'visual' | 'motion';
@@ -166,5 +167,6 @@ export async function saveShotPrompt(
     analysisModel,
     createdBy: user.id,
   });
+  await redrawShotPreview({ ...context, scene }, text);
   return { unchanged: false, versionId: inserted.id, scene } as const;
 }

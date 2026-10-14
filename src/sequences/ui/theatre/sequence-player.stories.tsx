@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react';
 import { SequencePlayer } from './sequence-player';
-import type { PlaybackClip } from '@openstory/stitch-player';
+import type { PlaybackClip } from '@openstory/stitch';
 import {
   exportSequence,
   type ExportSequenceResult,
-} from '@openstory/stitch-player/export';
-import { StitchedPlayer } from '@openstory/stitch-player/react';
+} from '@openstory/stitch/export';
+import { StitchedPlayer } from '@openstory/stitch/react';
 import { Button } from '@/ui/shadcn/button';
 import { useState } from 'react';
 import videoUrl from '../../../../e2e/fixtures/test-video.mp4?url';

@@ -28,13 +28,15 @@ export default {
       ],
       project: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
     },
-    // @openstory/stitch-player: its four public entries.
-    'packages/stitch-player': {
+    // @openstory/stitch: its four public entries. The bin is plain JS.
+    'packages/stitch': {
       entry: [
         'src/index.ts',
         'src/videojs.ts',
         'src/react.tsx',
         'src/export.ts',
+        // The stitch bin. Knip does not follow the plain JS shim.
+        'src/cli.ts',
       ],
       project: ['src/**/*.{ts,tsx}'],
     },
@@ -71,7 +73,7 @@ export default {
     '@fontsource-variable/geist',
     '@tailwindcss/typography',
   ],
-  // @openstory/stitch-player's framework peers are optional by design: an
+  // @openstory/stitch's framework peers are optional by design: an
   // engine-only user installs neither React nor Video.js.
   rules: { optionalPeerDependencies: 'off' },
   ignoreBinaries: [

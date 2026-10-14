@@ -136,7 +136,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           }),
         },
         {
-          scopedDb: scopedDb.credentials,
+          credentials: scopedDb.credentials,
           observability: {
             observationName: 'studio-image',
             tags: ['studio', 'image'],
@@ -275,7 +275,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             endImageUrl: input.endImageUrl,
             draft: input.draft,
             finalFromDraftTaskId: event.payload.finalFromDraftTaskId,
-            scopedDb: scopedDb.credentials,
+            credentials: scopedDb.credentials,
           });
           return { ok: true as const, job };
         } catch (error) {

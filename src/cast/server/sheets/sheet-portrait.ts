@@ -126,7 +126,7 @@ export async function drawSheetPortrait(args: {
         referenceImageUrls: [sheetUrl],
       },
       // The credentials half, as every workflow image call passes it.
-      { scopedDb: scopedDb.credentials }
+      { credentials: scopedDb.credentials }
     );
   } catch (error) {
     await scopedDb.billing.zeroReservation(hold.reservationId);

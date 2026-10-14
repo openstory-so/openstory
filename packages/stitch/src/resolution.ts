@@ -45,7 +45,7 @@ function toEvenCeil(value: number): number {
  * canvas deep in the export pipeline.
  */
 export function computeTargetResolution(
-  dimensions: ClipDimensions[]
+  dimensions: readonly ClipDimensions[]
 ): ClipDimensions {
   if (dimensions.length === 0) {
     throw new Error('computeTargetResolution: at least one clip is required');
@@ -63,6 +63,19 @@ export function computeTargetResolution(
     if (dim.height > height) height = dim.height;
   }
   return { width: toEvenCeil(width), height: toEvenCeil(height) };
+}
+
+/**
+ * The canvas box for a cut. Videos own it: a still is drawn into that box
+ * and must not grow it. A cut with no video uses the stills.
+ */
+export function canvasResolution(
+  videoDimensions: readonly ClipDimensions[],
+  clipDimensions: readonly ClipDimensions[]
+): ClipDimensions {
+  return computeTargetResolution(
+    videoDimensions.length > 0 ? videoDimensions : clipDimensions
+  );
 }
 
 function isPositiveFinite(value: number): boolean {

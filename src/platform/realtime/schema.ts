@@ -151,6 +151,8 @@ export const realtimeSchema = {
         .optional(),
       thumbnailUrl: z.string().optional(),
       previewThumbnailUrl: z.string().optional(),
+      // The preview row's createdAt, sent with its url (#2111).
+      previewCreatedAt: z.string().optional(),
       model: z.string().optional(),
       // In-flight retry state (#882). Emitted before a retry attempt while
       // `status` stays `generating`, so the player overlay can show

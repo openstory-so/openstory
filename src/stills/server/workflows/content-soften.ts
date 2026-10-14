@@ -307,7 +307,7 @@ export async function generateImageSoftening(
       );
       try {
         const result = await generateImageWithProvider(params, {
-          scopedDb: scopedDb.credentials,
+          credentials: scopedDb.credentials,
         });
         // Same step, deliberately — see `store` on the args.
         const stored = await args.store(result);

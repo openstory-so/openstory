@@ -6,6 +6,7 @@
 
 import { describe, expect, test } from 'vitest';
 import {
+  canvasResolution,
   computeTargetResolution,
   describeResolutions,
   detectMixedAspectRatios,
@@ -107,6 +108,27 @@ describe('computeTargetResolution', () => {
     expect(() =>
       computeTargetResolution([{ width: Infinity, height: 1080 }])
     ).toThrow(/invalid dimensions/);
+  });
+});
+
+describe('canvasResolution', () => {
+  test('videos own the box, so a still cannot grow it', () => {
+    expect(
+      canvasResolution(
+        [{ width: 480, height: 854 }],
+        [
+          { width: 480, height: 854 },
+          { width: 1920, height: 1080 },
+        ]
+      )
+    ).toEqual({ width: 480, height: 854 });
+  });
+
+  test('a still-only cut uses the stills', () => {
+    expect(canvasResolution([], [{ width: 1, height: 1 }])).toEqual({
+      width: 2,
+      height: 2,
+    });
   });
 });
 

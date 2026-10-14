@@ -126,7 +126,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
                 prompt,
                 imageSize: aspectRatioToImageSize(aspectRatio),
               },
-              { scopedDb: scopedDb.credentials }
+              { credentials: scopedDb.credentials }
             );
             const generatedPosterUrl = result.imageUrls[0];
             if (!generatedPosterUrl) return null;

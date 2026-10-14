@@ -25,7 +25,8 @@ Preview-ness is a third `frame_variants` kind (`'preview'`) — a render of the
 RAW SCENE TEXT rather than of the frame's prompt, so it can appear during script
 analysis, before a prompt version exists. It is never selectable, never
 promotable, and never snapshotted into a render manifest; `ShotView`
-projects the newest non-discarded one as `previewThumbnailUrl`.
+projects the newest non-discarded one as `previewThumbnailUrl` and
+`previewCreatedAt` (the time a newer-sketch check reads, #2111).
 
 > **History (#1101).** This level originally carried a
 > `source preview|generated` column, where `source = 'preview'` was a cheap

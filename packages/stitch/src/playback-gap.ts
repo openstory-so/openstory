@@ -1,5 +1,3 @@
-import type { SequencePlayerMeta } from '@openstory/stitch-player';
-
 function clipList(indexes: readonly number[]): string {
   const names = indexes.map((index) => `clip ${index + 1}`);
   if (names.length <= 1) return names[0] ?? '';
@@ -8,17 +6,14 @@ function clipList(indexes: readonly number[]): string {
 }
 
 /**
- * What the theatre says when a cut plays with a hole: no score, a silent
- * clip, or a dark still. Null when there is nothing to warn about. An
- * in-browser export refuses the same holes; this warning is the one the
- * viewer sees while playback continues.
+ * What to say when a cut plays with a hole: no score, a silent clip, or a
+ * dark still. Null when there is nothing to warn about. Playback continues.
  */
-export function playbackGapMessage(
-  meta: Pick<
-    SequencePlayerMeta,
-    'musicUndecodable' | 'silentClipIndexes' | 'missingStillIndexes'
-  >
-): string | null {
+export function playbackGapMessage(meta: {
+  musicUndecodable: boolean;
+  silentClipIndexes: readonly number[];
+  missingStillIndexes: readonly number[];
+}): string | null {
   const parts: string[] = [];
   if (meta.musicUndecodable) {
     parts.push('This browser cannot play the music, so the score is silent.');

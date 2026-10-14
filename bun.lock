@@ -20,7 +20,7 @@
         "@logtape/redaction": "^2.4.0",
         "@modelcontextprotocol/server": "2.3.1",
         "@openrouter/sdk": "0.13.20",
-        "@openstory/stitch-player": "workspace:*",
+        "@openstory/stitch": "workspace:*",
         "@opentelemetry/api": "^1.9.1",
         "@opentelemetry/exporter-metrics-otlp-http": "^0.223.0",
         "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",
@@ -132,9 +132,12 @@
         "ws": "^8.22.0",
       },
     },
-    "packages/stitch-player": {
-      "name": "@openstory/stitch-player",
+    "packages/stitch": {
+      "name": "@openstory/stitch",
       "version": "0.1.0",
+      "bin": {
+        "stitch": "./bin/stitch.mjs",
+      },
       "dependencies": {
         "mediabunny": "^1.61.3",
       },
@@ -623,7 +626,7 @@
 
     "@openrouter/sdk": ["@openrouter/sdk@0.13.20", "", { "dependencies": { "zod": "^3.25.0 || ^4.0.0" } }, "sha512-fx4o19FHgadEldfrSOgSbXAi32hCE3O708q1nxcoxYrW6fP6/WggX3o5PmnlnObzmxrqLMkZpqg188K+Twguhg=="],
 
-    "@openstory/stitch-player": ["@openstory/stitch-player@workspace:packages/stitch-player"],
+    "@openstory/stitch": ["@openstory/stitch@workspace:packages/stitch"],
 
     "@opentelemetry/api": ["@opentelemetry/api@1.9.1", "", {}, "sha512-gLyJlPHPZYdAk1JENA9LeHejZe1Ti77/pTeFm/nMXmQH/HFZlcS/O2XJB+L8fkbrNSqhdtlvjBVjxwUYanNH5Q=="],
 

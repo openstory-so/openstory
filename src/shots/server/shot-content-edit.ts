@@ -18,6 +18,7 @@ import {
   regenerateShotPrompt,
 } from './regenerate-shot-prompt';
 import type { ShotEditContext } from './shot-context';
+import { redrawShotPreview } from './shot-preview';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { terminateSingleArtifactRun } from '@/platform/server/workflow/run-outcome';
 
@@ -46,7 +47,10 @@ function restoredPromptProvenance(row: {
  * can share its ULID across both tables, so probing would be ambiguous.
  */
 export async function restoreShotPromptVersion(
-  context: Pick<ShotEditContext, 'scopedDb' | 'user' | 'shot' | 'frame'>,
+  context: Pick<
+    ShotEditContext,
+    'scopedDb' | 'user' | 'teamId' | 'shot' | 'frame' | 'sequence' | 'scene'
+  >,
   promptType: 'visual' | 'motion',
   versionId: string
 ): Promise<{ variantId: string }> {
@@ -100,6 +104,7 @@ export async function restoreShotPromptVersion(
     createdBy: user.id,
     ...restoredPromptProvenance(chosen),
   });
+  await redrawShotPreview(context, chosen.text);
   return { variantId: inserted.id };
 }
 

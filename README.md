@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/openstory-logo.svg" alt="OpenStory" width="275" />
+  <img src="https://assets.openstory.so/brand/openstory-logo-dark.png" alt="OpenStory" width="275" />
 </p>
 
 <h1 align="center">OpenStory</h1>
@@ -123,6 +123,26 @@ See [`.env.example`](.env.example) for all optional configuration (Google OAuth,
 | `bun setup --prod`  | Interactive production setup + deploy               |
 | `bun cf:deploy:prd` | Manual production deploy (build → migrate → deploy) |
 
+## Stitch
+
+The theatre player lives in [`packages/stitch`](packages/stitch) and publishes as [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch).
+
+Run a local cut with npx. It prints an `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
+
+```sh
+npx @openstory/stitch --music score.mp3 shot.mp4
+```
+
+Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills. That install includes `create-style`, `create-sequence`, and `stitch` (`/stitch`). `npx @openstory/stitch skill` copies `/stitch` and `stitch-player`, the contract for embedding the React player. The plugin does not include `stitch-player`.
+
+```sh
+npx skills add openstory-so/skills
+```
+
+Grok, Claude Code, Codex, and the ChatGPT desktop app can add `openstory-so/skills` as a marketplace and install the OpenStory plugin. The per-client commands are in that repo.
+
+The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md). That page is also in [中文](packages/stitch/README.zh-CN.md), [français](packages/stitch/README.fr.md), and [español](packages/stitch/README.es.md).
+
 ## Project Structure
 
 ```
@@ -138,6 +158,7 @@ src/
     api/          # Webhooks: workflows and auth only
     _app/         # App shell (anonymous-browsable; actions gated behind login)
 e2e/              # Playwright end-to-end tests
+packages/stitch/  # Theatre player, the stitch command, and the stitch skills
 scripts/          # CLI utilities and setup
 ```
 

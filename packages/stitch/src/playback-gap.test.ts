@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playbackGapMessage } from './playback-gap';
+import { playbackGapMessage } from './playback-gap.js';
 
 const clear = {
   musicUndecodable: false,

@@ -13,12 +13,15 @@ import {
 } from '@/platform/realtime';
 import { getLogger } from '@/platform/logger';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import type {
   ShotSpecRewriteWorkflowInput,
   ShotSpecRewriteWorkflowResult,
 } from '@/platform/server/workflow/types';
 import { completeDerivedPrompts } from '@/shots/server/rebuild-shot-prompts';
+import { redrawShotPreviewInRun } from '@/shots/server/shot-preview';
+import { deriveMotionPrompt } from '@/shots/shot-list.derive';
 import { storedShotSpecSchema } from '@/shots/shot-list.schema';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 
@@ -102,6 +105,28 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
         motionWritten: input.motionWritten,
         currencyHash: input.specInputHash,
       });
+
+      if (
+        input.referenceOnly &&
+        prompts.motionVersionId &&
+        input.sequenceId &&
+        input.frameId
+      ) {
+        await redrawShotPreviewInRun(scopedDb, {
+          userId: input.userId,
+          teamId: input.teamId,
+          sequenceId: input.sequenceId,
+          shotId: input.shotId,
+          frameId: input.frameId,
+          aspectRatio: input.aspectRatio,
+          reservationId: input.reservationId,
+          motionPrompt: deriveMotionPrompt(version.spec, {
+            referenceOnly: true,
+          }).text,
+          characterBible: input.characterBible,
+          deduplicationId: previewImageDedupId(event.instanceId, input.shotId),
+        });
+      }
 
       if (input.sequenceId) {
         const channel = getGenerationChannel(input.sequenceId);

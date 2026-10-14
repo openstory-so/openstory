@@ -1,6 +1,7 @@
 import { Button } from '@/ui/shadcn/button';
 import { Drawer, DrawerContent, DrawerTitle } from '@/ui/shadcn/drawer';
 import { shotDraftLabel } from '@/motion/draft-mode';
+import { shownClipUrl } from '@/shots/shot-view';
 import type { SceneWithScript } from './use-scenes';
 import type { SceneSelection } from './scene-selection';
 import { plainSceneTitle } from '@/platform/markdown-plain';
@@ -75,6 +76,7 @@ export const MobileSceneDrawer: React.FC<
     selectedShot ??
     sceneShots.find((s) => s.image?.url || s.previewThumbnailUrl) ??
     shots?.find((s) => s.image?.url || s.previewThumbnailUrl);
+  const previewClipUrl = previewShot ? shownClipUrl(previewShot) : null;
 
   return (
     <>
@@ -92,8 +94,8 @@ export const MobileSceneDrawer: React.FC<
             thumbnailUrl={previewShot?.image?.url}
             previewThumbnailUrl={previewShot?.previewThumbnailUrl}
             thumbnailStatus={previewShot?.imageStatus || undefined}
-            videoUrl={previewShot?.video?.url}
-            draftLabel={shotDraftLabel(previewShot)}
+            videoUrl={previewClipUrl}
+            draftLabel={previewClipUrl ? shotDraftLabel(previewShot) : null}
             gridSheetUrl={previewShot?.gridSheet?.url}
             pendingUpscaleIndex={previewShot?.pendingUpscaleIndex}
             pendingUpscaleUrl={previewShot?.pendingUpscaleUrl}

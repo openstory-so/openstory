@@ -567,13 +567,13 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return;
         }
 
-        // A preview is a render of the caller's shot-spec prompt (#1642),
-        // not of the frame's visual prompt (#1101). It lands as its own
+        // A preview is a render of the caller's shot-spec or motion prompt
+        // (#1642, #2111), not of the frame's visual prompt (#1101). It lands as its own
         // `kind: 'preview'` row: keyed by that prompt's hash, never paired
         // with a prompt version, never selectable or promotable.
         // `skipStorage` names that (no version row, no status flip); the
         // bytes are still copied into R2 above.
-        await scopedDb.frameVariants.recordPreview({
+        const preview = await scopedDb.frameVariants.recordPreview({
           frameId: anchor.id,
           sequenceId: anchor.sequenceId,
           model: generation.params.model,
@@ -585,7 +585,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
 
         await getGenerationChannel(sequenceId).emit(
           'generation.image:progress',
-          { shotId, previewThumbnailUrl: upload.url }
+          {
+            shotId,
+            previewThumbnailUrl: upload.url,
+            previewCreatedAt: preview.createdAt.toISOString(),
+          }
         );
       });
     }

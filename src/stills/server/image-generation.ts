@@ -58,7 +58,7 @@ export type { ImageGenerationParams } from '@/stills/build-image-request';
 
 /** Non-serializable options passed separately from ImageGenerationParams */
 export type ImageGenerationOptions = {
-  scopedDb?: CredentialScopedDb;
+  credentials?: CredentialScopedDb;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
   onQueueUpdate?: (update: {
@@ -109,7 +109,7 @@ export async function generateImageWithProvider(
     ...options?.observability,
     // `??` after the spread: an explicit `userId: undefined` in
     // `observability` would otherwise overwrite the derived id.
-    userId: options?.observability?.userId ?? options?.scopedDb?.userId,
+    userId: options?.observability?.userId ?? options?.credentials?.userId,
   };
 
   // Same order as video: native xAI first so an xAI-only deploy never
@@ -117,10 +117,10 @@ export async function generateImageWithProvider(
   // and a Google key resolves, then BytePlus (platform Ark, vetoed for a
   // BYOK fal team).
   const xaiKey = isNativeGrokImageModel(params.model)
-    ? await resolveOptionalXaiKey(options?.scopedDb)
+    ? await resolveOptionalXaiKey(options?.credentials)
     : undefined;
   const googleKey = isNativeGeminiImageModel(params.model)
-    ? await resolveOptionalGoogleKey(options?.scopedDb)
+    ? await resolveOptionalGoogleKey(options?.credentials)
     : undefined;
   let via: MediaVia;
   if (xaiKey) {
@@ -131,8 +131,8 @@ export async function generateImageWithProvider(
     isNativeBytePlusImageModel(params.model) &&
     isBytePlusConfigured()
   ) {
-    const falKey = options?.scopedDb
-      ? await options.scopedDb.resolveOptionalKey('fal')
+    const falKey = options?.credentials
+      ? await options.credentials.resolveOptionalKey('fal')
       : getEnv().FAL_KEY
         ? { key: getEnv().FAL_KEY, source: 'platform' as const }
         : undefined;
@@ -192,21 +192,21 @@ export async function generateImageWithProvider(
 }
 
 async function resolveOptionalXaiKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('xai');
+  if (credentials) return credentials.resolveOptionalKey('xai');
   const platformKey = getEnv().XAI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
 async function resolveOptionalGoogleKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
   // Under E2E a native via is off unless its base URL points at the mock,
   // so a laptop key cannot bill a test run or slip past the recorder.
   const env = getEnv();
   if (env.E2E_TEST === 'true' && !env.GEMINI_BASE_URL) return undefined;
-  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  if (credentials) return credentials.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -316,8 +316,8 @@ async function generateImageInternal(
       break;
     }
     case 'fal': {
-      const key = options?.scopedDb
-        ? await options.scopedDb.resolveKey('fal')
+      const key = options?.credentials
+        ? await options.credentials.resolveKey('fal')
         : { key: getEnv().FAL_KEY, source: 'platform' as const };
 
       // Locally-served /r2/ reference URLs aren't reachable by real fal — swap

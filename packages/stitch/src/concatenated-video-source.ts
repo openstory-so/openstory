@@ -24,7 +24,7 @@ import {
 } from 'mediabunny';
 import { createRangedSource } from './ranged-source.js';
 import {
-  computeTargetResolution,
+  canvasResolution,
   describeResolutions,
   detectMixedAspectRatios,
   detectMixedResolutions,
@@ -212,9 +212,7 @@ export class ConcatenatedVideoSource {
     const videoDimensions = opened
       .filter((o) => o.videoTrack)
       .map((o) => o.dimensions);
-    const target = computeTargetResolution(
-      videoDimensions.length ? videoDimensions : clipDimensions
-    );
+    const target = canvasResolution(videoDimensions, clipDimensions);
     const hasMixedResolutions = detectMixedResolutions(videoDimensions);
 
     this.inputs = inputs;

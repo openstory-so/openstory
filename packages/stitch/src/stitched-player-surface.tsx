@@ -49,7 +49,7 @@ export type StitchedPlayerSurfaceProps = {
   /** Where the engine reports non-fatal problems. Defaults to `console`. */
   logger?: StitchLogger;
   /**
-   * Show a Download button (top right), enabled once the clips are open. It
+   * Show a Download icon button (top right), enabled once the clips are open. It
    * pauses, exports in the browser from the clips the player already opened,
    * and saves the MP4 — plus a `.vtt` sidecar unless `subtitles` says
    * otherwise. See `downloadSequence`.
@@ -75,6 +75,7 @@ const fill: CSSProperties = { width: '100%', height: '100%' };
 
 const downloadLayer: CSSProperties = {
   position: 'absolute',
+  zIndex: 4,
   top: '0.5rem',
   right: '0.5rem',
   display: 'flex',
@@ -85,13 +86,19 @@ const downloadLayer: CSSProperties = {
 };
 
 const downloadButton: CSSProperties = {
-  padding: '0.4em 0.8em',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '2rem',
+  height: '2rem',
+  padding: 0,
   border: 0,
-  borderRadius: '0.4em',
-  background: 'rgba(0, 0, 0, 0.6)',
+  borderRadius: '0.375rem',
+  background: 'rgba(0, 0, 0, 0.5)',
   color: '#fff',
   font: 'inherit',
-  fontSize: '0.875rem',
+  fontSize: '0.625rem',
+  lineHeight: 1,
   cursor: 'pointer',
 };
 
@@ -103,6 +110,27 @@ const downloadError: CSSProperties = {
   color: '#fca5a5',
   fontSize: '0.75rem',
 };
+
+/** Lucide `download`. */
+function DownloadIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 15V3" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+    </svg>
+  );
+}
 
 type DownloadProps = NonNullable<StitchedPlayerSurfaceProps['download']>;
 
@@ -157,13 +185,23 @@ const Download: React.FC<{
     <div data-part="stitch-download" style={downloadLayer}>
       <button
         type="button"
-        style={downloadButton}
+        style={{
+          ...downloadButton,
+          opacity: ready && progress === null ? 1 : 0.6,
+        }}
         disabled={!ready || progress !== null}
+        aria-label={
+          progress === null
+            ? 'Download'
+            : `Exporting… ${Math.round(progress * 100)}%`
+        }
         onClick={() => void run()}
       >
-        {progress === null
-          ? 'Download'
-          : `Exporting… ${Math.round(progress * 100)}%`}
+        {progress === null ? (
+          <DownloadIcon />
+        ) : (
+          <span>{`${Math.round(progress * 100)}%`}</span>
+        )}
       </button>
       {error ? (
         <p role="alert" style={downloadError}>

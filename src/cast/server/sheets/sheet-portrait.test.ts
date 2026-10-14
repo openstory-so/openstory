@@ -110,7 +110,7 @@ describe('drawSheetPortrait', () => {
     );
     // The image call is handed the credentials surface, not the whole db.
     expect(mockGenerate.mock.calls[0]?.[1]).toEqual({
-      scopedDb: { userId: 'user-1' },
+      credentials: { userId: 'user-1' },
     });
     expect(mockGenerate.mock.calls[0]?.[0].referenceImageUrls).toEqual([
       '/r2/characters/team-1/seq-1/char-1/sheet.png',
