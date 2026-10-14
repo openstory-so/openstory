@@ -35,6 +35,8 @@ export default {
         'src/videojs.ts',
         'src/react.tsx',
         'src/export.ts',
+        // The stitch bin. Knip does not follow the plain JS shim.
+        'src/cli.ts',
       ],
       project: ['src/**/*.{ts,tsx}'],
     },

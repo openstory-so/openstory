@@ -90,11 +90,18 @@ export const Animatic = () => (
 npm install @openstory/stitch
 # for the React surface
 npm install react @videojs/react
-# copy the agent skill into .agents/skills/stitch
-npx @openstory/stitch
 ```
 
-`--global` copies the skill to `~/.agents/skills/stitch` instead. The skill is [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md): which sound belongs on a clip, how music is mixed, and which URLs the player can read.
+Play local files in the browser. The command serves them on `127.0.0.1` and opens the page. A video plays the sound inside the file. `--audio` and `--seconds` belong to the still before them. `--cue` belongs to the clip before it.
+
+```sh
+npx @openstory/stitch \
+  --music score.mp3 --music-gain -3 \
+  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
+  shot.mp4 --cue 0-1.5 "Love that accent."
+```
+
+`npx @openstory/stitch skill` copies the agent skill into `.agents/skills/stitch`. Add `--global` to copy it to `~/.agents/skills/stitch`. The skill's name is `stitch`, so agents that load it show a `/stitch` command. The instructions are [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md).
 
 `@openstory/stitch-player@0.1.0` was the first publish of this package. Install `@openstory/stitch` from here on.
 

@@ -53,7 +53,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.cli.json && vite build --config player/vite.config.ts",
     "prepack": "bun run build"
   },
   "dependencies": {
