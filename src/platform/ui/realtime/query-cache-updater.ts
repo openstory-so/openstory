@@ -219,6 +219,7 @@ export function updateQueryCacheFromEvent(
         data,
         'previewThumbnailUrl'
       );
+      const previewCreatedAt = getOptionalString(data, 'previewCreatedAt');
       const status = data.status;
       // A finished or failed artifact changes what the plan owes.
       if (status === 'completed' || status === 'failed') {
@@ -252,6 +253,9 @@ export function updateQueryCacheFromEvent(
                   // refetch; the row itself is not in this cache.
                   previewThumbnailUrl:
                     previewThumbnailUrl ?? f.previewThumbnailUrl,
+                  previewCreatedAt: previewCreatedAt
+                    ? new Date(previewCreatedAt)
+                    : f.previewCreatedAt,
                   pendingUpscaleUrl:
                     status === 'completed' || status === 'failed'
                       ? null

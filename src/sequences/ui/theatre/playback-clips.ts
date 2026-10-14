@@ -4,7 +4,7 @@ import {
   type PlaybackCue,
 } from '@openstory/stitch-player';
 
-import type { ShotView } from '@/shots/shot-view';
+import { sketchIsNewerThanClip, type ShotView } from '@/shots/shot-view';
 import {
   packedClipWindows,
   shotIdAtTime,
@@ -20,12 +20,13 @@ type PlaybackShot = Pick<
   | 'id'
   | 'shotNumber'
   | 'previewThumbnailUrl'
+  | 'previewCreatedAt'
   | 'durationMs'
   | 'audioClips'
   | 'dialogue'
   | 'dialogueTiming'
 > & {
-  video: { url: string | null } | null;
+  video: { url: string | null; generatedAt: Date | null } | null;
   image: { url: string | null } | null;
 };
 
@@ -44,6 +45,29 @@ export function groupPlaybackShots<
     else groups.push([shot]);
   }
   return groups;
+}
+
+type ClipTimes = {
+  previewCreatedAt: Date | null;
+  video: { url: string | null; generatedAt: Date | null } | null;
+};
+
+/**
+ * The shots as the theatre plays them: a clip older than its shot's sketch
+ * plays as that sketch (#2111). A packed clip goes whole: no part of it can
+ * be played on its own, and it re-renders as one.
+ */
+function withoutOutdatedClips<S extends ClipTimes>(
+  shots: readonly S[]
+): readonly S[] {
+  const outdated = new Set(
+    shots.filter(sketchIsNewerThanClip).map((shot) => shot.video?.url)
+  );
+  return shots.map((shot) =>
+    shot.video?.url && outdated.has(shot.video.url)
+      ? { ...shot, video: null }
+      : shot
+  );
 }
 
 /**
@@ -135,7 +159,7 @@ export function toPlaybackClips(
   aspectRatio: AspectRatio
 ): PlaybackClip[] {
   const clips: PlaybackClip[] = [];
-  for (const group of groupPlaybackShots(shots)) {
+  for (const group of groupPlaybackShots(withoutOutdatedClips(shots))) {
     const shot = group[0];
     if (!shot) continue;
     const videoUrl = shot.video?.url;
@@ -199,15 +223,13 @@ export function collapseConsecutiveUrls(urls: readonly string[]): string[] {
  * clip, shots split the clip in their own `durationMs` proportions, so a clip that came back a little
  * longer than asked still lands on the right shot.
  */
-export function shotIdAtSequenceTime<
-  S extends PackedClipShot & { video: { url: string | null } | null },
->(
+export function shotIdAtSequenceTime<S extends PackedClipShot & ClipTimes>(
   shots: readonly S[],
   time: number,
   /** The measured start of each playback clip, when known. */
   clipOffsetsSeconds?: readonly number[]
 ): string | undefined {
-  const clips = groupPlaybackShots(shots).map((group) =>
+  const clips = groupPlaybackShots(withoutOutdatedClips(shots)).map((group) =>
     packedClipWindows(group)
   );
   let cursor = 0;

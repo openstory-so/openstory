@@ -24,9 +24,10 @@ const toClips = (
 const shot = (url: string | null, extra?: { status?: string }) => ({
   id: `shot-${url ?? 'still'}`,
   shotNumber: null,
-  video: url ? { url, status: extra?.status } : null,
+  video: url ? { url, status: extra?.status, generatedAt: null } : null,
   image: null,
   previewThumbnailUrl: null,
+  previewCreatedAt: null,
   durationMs: 5000,
   audioClips: null,
   dialogue: null,
@@ -112,7 +113,9 @@ it('prefers the selected still and plays its recorded take only when there is no
     fallbackImageUrl: '/preview.png',
     audioUrls: ['/take.wav'],
   });
-  expect(toClips([{ ...input, video: { url: '/render.mp4' } }])).toEqual([
+  expect(
+    toClips([{ ...input, video: { url: '/render.mp4', generatedAt: null } }])
+  ).toEqual([
     {
       videoUrl: '/render.mp4',
       posterUrl: '/still.png',
@@ -152,7 +155,8 @@ describe('shotIdAtSequenceTime (#1771)', () => {
     id,
     shotNumber: null,
     durationMs,
-    video: url ? { url } : null,
+    previewCreatedAt: null,
+    video: url ? { url, generatedAt: null } : null,
   });
   // Clips: packed clip (s1 4s + s2 6s), still s3 (3s), clip s4 (5s).
   const shots = [
@@ -362,5 +366,53 @@ describe('subtitleTrackRevision', () => {
     expect(a).toBe(
       subtitleTrackRevision('WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi\n')
     );
+  });
+});
+
+describe('a sketch newer than its clip (#2111)', () => {
+  const finished = new Date('2026-10-01T00:00:00Z');
+  const before = new Date('2026-09-30T00:00:00Z');
+  const after = new Date('2026-10-02T00:00:00Z');
+  const rendered = (
+    id: string,
+    url: string,
+    previewCreatedAt: Date | null,
+    generatedAt: Date | null = finished
+  ) => ({
+    ...shot(url),
+    id,
+    previewThumbnailUrl: `/${id}-sketch.png`,
+    previewCreatedAt,
+    video: { url, generatedAt },
+  });
+
+  it('plays the sketch drawn after the clip finished', () => {
+    expect(toClips([rendered('s1', '/a.mp4', after)])).toEqual([
+      expect.objectContaining({ imageUrl: '/s1-sketch.png' }),
+    ]);
+  });
+
+  it('keeps the clip over an older sketch or a clip with no finish time', () => {
+    expect(toClips([rendered('s1', '/a.mp4', before)])).toEqual([
+      expect.objectContaining({ videoUrl: '/a.mp4' }),
+    ]);
+    expect(toClips([rendered('s1', '/a.mp4', after, null)])).toEqual([
+      expect.objectContaining({ videoUrl: '/a.mp4' }),
+    ]);
+  });
+
+  it('plays a whole packed clip as sketches when one member is newer', () => {
+    const shots = [
+      rendered('s1', '/packed.mp4', before),
+      rendered('s2', '/packed.mp4', after),
+      rendered('s3', '/b.mp4', before),
+    ];
+    expect(toClips(shots)).toEqual([
+      expect.objectContaining({ imageUrl: '/s1-sketch.png' }),
+      expect.objectContaining({ imageUrl: '/s2-sketch.png' }),
+      expect.objectContaining({ videoUrl: '/b.mp4' }),
+    ]);
+    // Each sketch holds its own 5s, so the playhead finds s2 at 5.5s.
+    expect(shotIdAtSequenceTime(shots, 5.5)).toBe('s2');
   });
 });

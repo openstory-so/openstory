@@ -87,6 +87,37 @@ preview is what fills the scene rail while the clip renders — without it the
 rail has nothing to show until the video lands, and the anchor frame is where
 that preview variant hangs.
 
+**The preview follows the motion prompt.** It is the only picture of a
+reference-only shot, so an edit that changes the shot's motion prompt redraws
+it from that prompt (`redrawShotPreview`, `src/shots/server/shot-preview.ts`):
+a saved spec or Rebuild, a hand edit, a restored version, and Rewrite shot.
+The reference-only motion prompt is the spec's framing, action and camera,
+the same text the scene-split sketch is drawn from. Each redraw is a new
+`kind: 'preview'` row and the rail shows the newest: older sketches are not
+versions, since none of them reaches the clip. A shot with a start frame never
+redraws, because its still takes over.
+
+**A sketch newer than the clip replaces it in the rail and the theatre
+(#2111).** `sketchIsNewerThanClip` (`src/shots/shot-view.ts`) compares the
+preview row's `createdAt` (`ShotView.previewCreatedAt`) with the selected
+clip's `generatedAt`. A sketch is redrawn only when the prompt changes, so a
+newer sketch means the clip shows a shot that is no longer written. The rail
+thumbnails pass no clip (`shownClipUrl`), and the theatre plays the sketch for
+the shot's length with its dialogue (`withoutOutdatedClips` in
+`playback-clips.ts`). A packed clip with one newer member plays as sketches
+throughout, since no part of it plays alone and it re-renders as one. A new
+render finishes after the sketch, so the clip comes back.
+
+- **Times, not ids.** Clips copied in by the #990 and #1067 backfills reuse
+  their shot's id, which sorts before the shot's first sketch. A clip with no
+  `generatedAt` keeps showing.
+- **Not staleness.** A clip also goes stale for changes a sketch cannot show
+  (a voice, a sheet). Swapping a good clip for an older sketch would be wrong.
+- **The shot player keeps the clip.** It is the one place to watch the
+  selected clip, so it plays it with the stale badge.
+- **Ceiling:** a prompt edited while its clip was rendering lets that clip win
+  when it lands.
+
 **The motion/music prompts run as part of phase 3, next to the sheets.** Phase
 3 produces sheets — images — and the prompt child reads bible TEXT: the bibles
 come from scene-split, casting resolves at the end of phase 2, and there are no

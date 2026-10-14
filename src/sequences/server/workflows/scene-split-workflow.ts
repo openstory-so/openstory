@@ -73,7 +73,6 @@ import {
   llmCostFromUsage,
   PROMPT_REASONING,
 } from '@/models/server/llm-client';
-import { SHOT_PREVIEW_IMAGE_MODEL } from '@/models/models';
 import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/models/models.config';
 import {
   type SceneSplitBiblesResult,
@@ -123,7 +122,6 @@ import {
   buildSceneNarrative,
   buildSceneShotLinks,
 } from '@/sequences/server/scene-persistence';
-import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { durationGridForModel } from '@/motion/snap-duration';
@@ -140,11 +138,10 @@ import {
 import { getGenerationChannel } from '@/platform/realtime';
 import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { triggerShotPreview } from '@/shots/server/shot-preview';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import type {
-  ImageWorkflowInput,
   SceneSplitWorkflowInput,
   SceneSplitWorkflowResult,
 } from '@/platform/server/workflow/types';
@@ -275,24 +272,16 @@ async function triggerPreviewImage({
       input.userId,
       input.teamId
     );
-    await triggerWorkflow(
-      '/image',
+    await triggerShotPreview(
       {
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(shotText, characterBible),
-        model: SHOT_PREVIEW_IMAGE_MODEL,
-        imageSize: aspectRatioToImageSize(input.aspectRatio),
-        numImages: 1,
         shotId: shot.id,
-        // Without this the run stands down before generating — and before
-        // #1101 it generated, billed, then dropped the preview at
-        // `record-preview-variant` (#1119).
         frameId: shot.frameId,
-        skipStorage: true,
-        variantOnly: false,
-      } satisfies ImageWorkflowInput,
+        aspectRatio: input.aspectRatio,
+        prompt: buildPreviewPrompt(shotText, characterBible),
+      },
       {
         deduplicationId: previewImageDedupId(parentInstanceId, shot.id),
         enforcement,

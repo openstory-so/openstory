@@ -173,6 +173,11 @@ export type ShotView = Shot & {
    * provider URL). Fallback behind `image.url`, never a selectable still.
    */
   previewThumbnailUrl: string | null;
+  /**
+   * When that preview row was opened: the time its sketch was started. Read
+   * by {@link sketchIsNewerThanClip}.
+   */
+  previewCreatedAt: Date | null;
   video: VideoVariant | null;
   primaryVideo: VideoVariant | null;
   /**
@@ -305,6 +310,7 @@ export function toShotView(
     frame,
     image,
     previewThumbnailUrl: preview?.url ?? null,
+    previewCreatedAt: preview?.createdAt ?? null,
     imagePromptVersion,
     primaryImage,
     imageStatus,
@@ -421,4 +427,37 @@ export function isMotionGenerating(
 ): boolean {
   const hasStill = shot.imageStatus === 'completed' && !!shot.image?.url;
   return (referenceOnly || hasStill) && shot.videoStatus === 'generating';
+}
+
+/**
+ * Is the shot's sketch newer than its clip (#2111)? A sketch is redrawn only
+ * when a reference-only shot's prompt changes, so a clip that finished before
+ * the sketch was started shows a shot that is no longer written. The rail and
+ * the theatre then show the sketch; a new render brings the clip back.
+ *
+ * Times, not ids: clips copied in by migrations reuse their shot's id, which
+ * sorts before the shot's first sketch. A clip with no finish time keeps
+ * showing. Ceiling: a prompt edited while its clip was rendering lets that
+ * clip win when it lands.
+ */
+export function sketchIsNewerThanClip(shot: {
+  previewCreatedAt: Date | null;
+  video: { generatedAt: Date | null } | null;
+}): boolean {
+  const drawn = shot.previewCreatedAt;
+  const finished = shot.video?.generatedAt;
+  // `new Date`: a patched cache row can hold the ISO string.
+  return (
+    !!drawn &&
+    !!finished &&
+    new Date(drawn).getTime() > new Date(finished).getTime()
+  );
+}
+
+/** The clip the rail shows for a shot: none while its sketch is newer. */
+export function shownClipUrl(shot: {
+  previewCreatedAt: Date | null;
+  video: { url: string | null; generatedAt: Date | null } | null;
+}): string | null {
+  return sketchIsNewerThanClip(shot) ? null : (shot.video?.url ?? null);
 }

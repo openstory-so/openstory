@@ -58,7 +58,9 @@ type SceneThumbnailProps = {
  *  5. loader / skeleton / failed
  *
  * 3 above 4 is the point: reference-only renders no still, so the preview is
- * a composition the finished clip does not have.
+ * a composition the finished clip does not have. Callers pass no clip while
+ * the sketch is newer than it (`shownClipUrl`, #2111): then the sketch is the
+ * shot as written and the clip is not.
  */
 export function chooseThumbnailSource(input: {
   thumbnailUrl?: string | null;
