@@ -121,7 +121,19 @@ npx @openstory/stitch \
 
 Ejecute el comando con npx, como arriba. `/stitch` hace lo mismo y deja la página en marcha.
 
-Instale el [plugin de OpenStory](https://github.com/openstory-so/skills) para obtener `create-style`, `create-sequence` y `stitch` juntos:
+Instale ambas skills en el proyecto actual:
+
+```sh
+npx @openstory/stitch skill
+```
+
+Eso copia [`stitch`](skills/stitch/SKILL.md) (`/stitch`) y [`stitch-player`](skills/stitch-player/SKILL.md), el contrato para incrustar el reproductor de React, en `.agents/skills/` y `.claude/skills/`. Añada `--global` para copiarlas en su directorio de inicio. Ejecútelo de nuevo después de actualizar para reemplazar ambas.
+
+```sh
+npx @openstory/stitch skill --global
+```
+
+O instale el [plugin de OpenStory](https://github.com/openstory-so/skills) para obtener `create-style`, `create-sequence` y `stitch` juntos. El plugin no incluye `stitch-player`:
 
 ```sh
 npx skills add openstory-so/skills
@@ -149,8 +161,6 @@ codex plugin add openstory@openstory
 ```
 
 Aplicación de escritorio de ChatGPT: abra Plugins, elija Add a marketplace, escriba `openstory-so/skills` e instale OpenStory. Esas skills se ejecutan en la aplicación de escritorio.
-
-`npx @openstory/stitch skill` copia ambas skills en `.agents/skills/` y `.claude/skills/`: [`stitch`](skills/stitch/SKILL.md) (`/stitch`) y [`stitch-player`](skills/stitch-player/SKILL.md), el contrato para incrustar el reproductor de React. `--global` copia ambos árboles en el directorio de inicio. El plugin de OpenStory incluye `/stitch` y no incluye `stitch-player`.
 
 `@openstory/stitch-player@0.1.0` fue la primera publicación de este paquete. A partir de ahora instale `@openstory/stitch`.
 

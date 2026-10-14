@@ -121,7 +121,19 @@ npx @openstory/stitch \
 
 Run the command with npx, as above. `/stitch` does the same thing and leaves the page running.
 
-Install the [OpenStory plugin](https://github.com/openstory-so/skills) to get `create-style`, `create-sequence`, and `stitch` together:
+Install both skills into the current project:
+
+```sh
+npx @openstory/stitch skill
+```
+
+That copies [`stitch`](skills/stitch/SKILL.md) (`/stitch`) and [`stitch-player`](skills/stitch-player/SKILL.md), the contract for embedding the React player, into `.agents/skills/` and `.claude/skills/`. Add `--global` to copy them into your home directory instead. Run it again after an upgrade to replace both.
+
+```sh
+npx @openstory/stitch skill --global
+```
+
+Or install the [OpenStory plugin](https://github.com/openstory-so/skills) to get `create-style`, `create-sequence`, and `stitch` together. The plugin does not include `stitch-player`:
 
 ```sh
 npx skills add openstory-so/skills
@@ -149,8 +161,6 @@ codex plugin add openstory@openstory
 ```
 
 ChatGPT desktop app: open Plugins, choose Add a marketplace, enter `openstory-so/skills`, and install OpenStory. Those skills run in the desktop app.
-
-`npx @openstory/stitch skill` copies both skills into `.agents/skills/` and `.claude/skills/`: [`stitch`](skills/stitch/SKILL.md) (`/stitch`) and [`stitch-player`](skills/stitch-player/SKILL.md), the contract for embedding the React player. `--global` copies both trees into the home directory. The OpenStory plugin includes `/stitch` and does not include `stitch-player`.
 
 `@openstory/stitch-player@0.1.0` was the first publish of this package. Install `@openstory/stitch` from here on.
 

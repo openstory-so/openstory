@@ -121,7 +121,19 @@ npx @openstory/stitch \
 
 用 npx 运行上面的命令。`/stitch` 做同一件事，并让页面保持运行。
 
-安装 [OpenStory 插件](https://github.com/openstory-so/skills)，可以一次得到 `create-style`、`create-sequence` 和 `stitch`：
+把两个 skill 安装到当前项目：
+
+```sh
+npx @openstory/stitch skill
+```
+
+这会把 [`stitch`](skills/stitch/SKILL.md)（`/stitch`）和 [`stitch-player`](skills/stitch-player/SKILL.md)（嵌入 React 播放器的约定）复制到 `.agents/skills/` 和 `.claude/skills/`。加上 `--global` 则复制到用户主目录。升级后再运行一次，即可替换这两个 skill。
+
+```sh
+npx @openstory/stitch skill --global
+```
+
+也可以安装 [OpenStory 插件](https://github.com/openstory-so/skills)，一次得到 `create-style`、`create-sequence` 和 `stitch`。插件不包含 `stitch-player`：
 
 ```sh
 npx skills add openstory-so/skills
@@ -149,8 +161,6 @@ codex plugin add openstory@openstory
 ```
 
 ChatGPT 桌面应用：打开 Plugins，选择 Add a marketplace，输入 `openstory-so/skills`，安装 OpenStory。这些 skill 在桌面应用里运行。
-
-`npx @openstory/stitch skill` 把两个 skill 复制到 `.agents/skills/` 和 `.claude/skills/`：[`stitch`](skills/stitch/SKILL.md)（`/stitch`）和 [`stitch-player`](skills/stitch-player/SKILL.md)，后者是嵌入 React 播放器的约定。`--global` 把两套目录复制到用户主目录。OpenStory 插件包含 `/stitch`，不包含 `stitch-player`。
 
 `@openstory/stitch-player@0.1.0` 是这个包的第一次发布。之后请安装 `@openstory/stitch`。
 
