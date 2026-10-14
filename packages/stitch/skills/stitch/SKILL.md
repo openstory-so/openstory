@@ -16,14 +16,14 @@ metadata:
 From the directory that holds the files, or with paths that reach them:
 
 ```sh
-stitch \
+npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
   board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
   shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
 ```
 
-`npx @openstory/stitch` is the same command when `stitch` is not installed.
+Leave that process running and give the user the URL it prints.
 
 1. Put the stills and videos in play order.
 2. A `.mp4`, `.webm`, or `.mov` is a video. Its dialogue is the audio inside the file. Do not pass `--audio` for a video.
@@ -33,11 +33,13 @@ stitch \
 6. `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. Times in the file are from the start of the first clip. A cue that crosses a cut is split onto both clips. Use this instead of one `--cue` per line when a file already exists.
 7. `--poster` is the still shown on the video before it while the cut opens. `--fallback` is the picture tried when the still before it fails to load.
 8. `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB. It defaults to 0. The page can turn that bed off; dialogue stays.
-9. Run it and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
+9. Run that `npx` command and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
 
 ## Installing this command
 
-`stitch skill` copies this directory to `.agents/skills/stitch`. `stitch skill --global` copies it to `~/.agents/skills/stitch`. Agents that read that folder list it as `/stitch` because the `name` is `stitch`.
+Prefer the OpenStory plugin, which includes this skill plus `create-style` and `create-sequence`: `npx skills add openstory-so/skills`. Grok, Claude Code, Codex, and the ChatGPT desktop app install that repo as a marketplace plugin named OpenStory. If `/stitch` is missing, tell the user to install the plugin.
+
+`npx @openstory/stitch skill` copies only this skill to `.agents/skills/stitch`. `--global` copies it to `~/.agents/skills/stitch`.
 
 ## Clips, when embedding the player
 

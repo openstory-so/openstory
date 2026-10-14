@@ -127,11 +127,21 @@ See [`.env.example`](.env.example) for all optional configuration (Google OAuth,
 
 The theatre player lives in [`packages/stitch`](packages/stitch) and publishes as [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch).
 
-`npx @openstory/stitch` plays local stills, videos, dialogue, subtitles, and music in the browser. It prints a `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
+Run a local cut with npx. It prints a `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
 
-`npx @openstory/stitch skill` installs the agent skill into `.agents/skills/stitch`. Add `--global` to install it at `~/.agents/skills/stitch`. Agents that load that folder list it as `/stitch`.
+```sh
+npx @openstory/stitch --music score.mp3 shot.mp4
+```
 
-The flags, the `/stitch` instructions, and the player API are in [packages/stitch/README.md](packages/stitch/README.md).
+Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills. That install includes `create-style`, `create-sequence`, and `stitch` (`/stitch`).
+
+```sh
+npx skills add openstory-so/skills
+```
+
+Grok, Claude Code, Codex, and the ChatGPT desktop app can add `openstory-so/skills` as a marketplace and install the OpenStory plugin. The per-client commands are in that repo.
+
+The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md).
 
 ## Project Structure
 

@@ -117,7 +117,38 @@ npx @openstory/stitch \
 
 ## Skill
 
-`npx @openstory/stitch skill` copies the skill into `.agents/skills/stitch`. `--global` copies it to `~/.agents/skills/stitch`. The skill name is `stitch`, and it is marked user-invocable, so agents that load that folder show a `/stitch` command. `/stitch` runs the command above and leaves it running. The instructions are [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md).
+Run the command with npx, as above. `/stitch` does the same thing and leaves the page running.
+
+Install the [OpenStory plugin](https://github.com/openstory-so/skills) to get `create-style`, `create-sequence`, and `stitch` together:
+
+```sh
+npx skills add openstory-so/skills
+```
+
+Grok:
+
+```sh
+grok plugin marketplace add openstory-so/skills
+grok plugin install openstory --trust
+```
+
+Claude Code:
+
+```
+/plugin marketplace add openstory-so/skills
+/plugin install openstory@openstory
+```
+
+Codex:
+
+```sh
+codex plugin marketplace add openstory-so/skills
+codex plugin add openstory@openstory
+```
+
+ChatGPT desktop app: open Plugins, choose Add a marketplace, enter `openstory-so/skills`, and install OpenStory. Those skills run in the desktop app.
+
+`npx @openstory/stitch skill` copies only this skill into `.agents/skills/stitch`. `--global` copies it to `~/.agents/skills/stitch`. The instructions are [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md).
 
 `@openstory/stitch-player@0.1.0` was the first publish of this package. Install `@openstory/stitch` from here on.
 
