@@ -16,6 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import {
   playbackClipsKey,
+  playbackGapMessage,
   type PlaybackClip,
   type SequencePlayerMeta,
 } from '@openstory/stitch';
@@ -30,7 +31,6 @@ import {
 } from './player-events';
 import { cn } from '@/ui/utils';
 import { playerFrameClassName } from '@/ui/player-frame';
-import { playbackGapMessage } from './playback-gap';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
 import { StitchedPlayer } from '@openstory/stitch/react';

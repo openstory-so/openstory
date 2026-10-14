@@ -28,6 +28,7 @@ export {
 } from './playback-clip.js';
 export { playbackClipsKey } from './playback-clips-key.js';
 export { cueTextAt } from './cues.js';
+export { playbackGapMessage } from './playback-gap.js';
 export { cuesToWebVTT } from './webvtt.js';
 export { createRangedReader, createRangedSource } from './ranged-source.js';
 export { computeMusicGain, loudnessDbToLinear } from './music-gain.js';

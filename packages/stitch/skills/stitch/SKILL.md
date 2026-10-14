@@ -2,7 +2,7 @@
 name: stitch
 description: Play local stills, dialogue, music, and video as one sequence in the browser with the stitch command. Use when the user runs /stitch, or asks to stitch, preview, or play a cut from local image, audio, and video files.
 user-invocable: true
-argument-hint: '[--music file] <image-or-video> [--audio file] [--seconds n] [--cue start-end text]...'
+argument-hint: '[--music file] [--subs file.srt] <image-or-video> [--audio file] [--seconds n] [--cue start-end text]...'
 metadata:
   opencode/slash: 'true'
 ---
@@ -18,8 +18,9 @@ From the directory that holds the files, or with paths that reach them:
 ```sh
 stitch \
   --music score.mp3 --music-gain -3 \
+  --subs lines.srt \
   board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
-  shot.mp4 --cue 0-1.5 "Love that accent."
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
 ```
 
 `npx @openstory/stitch` is the same command when `stitch` is not installed.
@@ -29,8 +30,10 @@ stitch \
 3. A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
 4. `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` and that sound. `--seconds` defaults to 4.
 5. `--cue START-END TEXT` is a subtitle on the clip before it. Quote the text. Times are seconds from the start of that clip.
-6. `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB. It defaults to 0.
-7. Run it and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
+6. `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. Times in the file are from the start of the first clip. A cue that crosses a cut is split onto both clips. Use this instead of one `--cue` per line when a file already exists.
+7. `--poster` is the still shown on the video before it while the cut opens. `--fallback` is the picture tried when the still before it fails to load.
+8. `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB. It defaults to 0. The page can turn that bed off; dialogue stays.
+9. Run it and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
 
 ## Installing this command
 

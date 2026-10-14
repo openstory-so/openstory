@@ -17,23 +17,27 @@ import { fileURLToPath } from 'node:url';
 
 import { readImageSize } from './image-size.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
+import { placeTimelineCues } from './place-cues.js';
 import { canvasResolution } from './resolution.js';
 import type { ClipDimensions } from './resolution.js';
-import { readVideoDisplaySize } from './video-size.js';
+import { parseSubtitles } from './subtitles.js';
+import type { TimelineCue } from './subtitles.js';
+import { readAudioDuration, readVideoDisplaySize } from './video-size.js';
 
 const STILL_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
 const DEFAULT_STILL_SECONDS = 4;
 
-export const usage = `Usage: stitch [--music file] [--music-gain db] [--port n] [--no-open]
-             <file> [--audio file] [--seconds n] [--cue start-end text]...
+export const usage = `Usage: stitch [--music file] [--music-gain db] [--subs file] [--port n] [--no-open]
+             <file> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...
 
        stitch skill [--global]
 
 Play local stills and videos in the browser. A .mp4, .webm, or .mov is a
 video, and it plays the sound inside the file. A .png, .jpg, .jpeg, or .webp is a
-still. --audio and --seconds belong to the still before them. --cue belongs
-to the clip before it. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
+still. --poster belongs to the video before it. --fallback, --audio, and
+--seconds belong to the still before them. --cue belongs to the clip before
+it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
 
 stitch skill copies the skill into .agents/skills/stitch, which agents load
 as the /stitch command. --global copies it to ~/.agents/skills/stitch.
@@ -44,6 +48,7 @@ type Still = {
   file: string;
   seconds: number;
   audio: string[];
+  fallback: string | null;
   width: number;
   height: number;
   cues: PlaybackCue[];
@@ -52,6 +57,7 @@ type Still = {
 type Video = {
   kind: 'video';
   file: string;
+  poster: string | null;
   cues: PlaybackCue[];
 };
 
@@ -61,6 +67,8 @@ export type LocalCut = {
   clips: LocalClip[];
   music: string | null;
   musicGainDb: number;
+  /** Whole-cut subtitles. Null when --subs was omitted. */
+  subs: TimelineCue[] | null;
   open: boolean;
   port: number;
 };
@@ -106,6 +114,7 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   const clips: LocalClip[] = [];
   let music: string | null = null;
   let musicGainDb = 0;
+  let subs: TimelineCue[] | null = null;
   let open = true;
   let port = 0;
 
@@ -139,6 +148,34 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
       i += 1;
       continue;
     }
+    if (arg === '--subs') {
+      if (subs) throw new Error('--subs is already set');
+      const file = await existingFile(take(arg, i), cwd);
+      const extension = extname(file).toLowerCase();
+      if (!new Set(['.srt', '.vtt', '.webvtt']).has(extension)) {
+        throw new Error('--subs needs an .srt or .vtt file');
+      }
+      subs = parseSubtitles(await readFile(file, 'utf8'), file);
+      i += 1;
+      continue;
+    }
+    if (arg === '--poster') {
+      const clip = previousClip(clips, arg);
+      if (clip.kind !== 'video') {
+        throw new Error('--poster belongs on a video');
+      }
+      if (clip.poster) throw new Error('--poster is already set');
+      clip.poster = await existingFile(take(arg, i), cwd);
+      i += 1;
+      continue;
+    }
+    if (arg === '--fallback') {
+      const clip = previousStill(clips, arg);
+      if (clip.fallback) throw new Error('--fallback is already set');
+      clip.fallback = await existingFile(take(arg, i), cwd);
+      i += 1;
+      continue;
+    }
     if (arg === '--audio' || arg === '--seconds') {
       const clip = previousStill(clips, arg);
       if (arg === '--audio')
@@ -162,7 +199,7 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   }
 
   if (clips.length === 0) throw new Error('Name at least one still or video');
-  return { clips, music, musicGainDb, open, port };
+  return { clips, music, musicGainDb, subs, open, port };
 }
 
 function previousClip(clips: LocalClip[], flag: string): LocalClip {
@@ -184,7 +221,9 @@ function previousStill(clips: LocalClip[], flag: string): Still {
 async function clipFromFile(arg: string, cwd: string): Promise<LocalClip> {
   const file = await existingFile(arg, cwd);
   const extension = extname(file).toLowerCase();
-  if (VIDEO_EXTENSIONS.has(extension)) return { kind: 'video', file, cues: [] };
+  if (VIDEO_EXTENSIONS.has(extension)) {
+    return { kind: 'video', file, poster: null, cues: [] };
+  }
   if (STILL_EXTENSIONS.has(extension)) {
     const bytes = await readFile(file);
     let size: { width: number; height: number };
@@ -203,6 +242,7 @@ async function clipFromFile(arg: string, cwd: string): Promise<LocalClip> {
       file,
       seconds: DEFAULT_STILL_SECONDS,
       audio: [],
+      fallback: null,
       width: size.width,
       height: size.height,
       cues: [],
@@ -247,6 +287,12 @@ function portValue(value: string): number {
   return port;
 }
 
+async function stillDuration(clip: Still): Promise<number> {
+  let audio = 0;
+  for (const file of clip.audio) audio += await readAudioDuration(file);
+  return Math.max(clip.seconds, audio);
+}
+
 function cue(range: string, text: string): PlaybackCue {
   const match = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(range);
   if (!match) throw new Error(`--cue range looks like 0-2, got ${range}`);
@@ -276,27 +322,38 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
   const clips: PlaybackClip[] = [];
   const videoDimensions: ClipDimensions[] = [];
   const clipDimensions: ClipDimensions[] = [];
+  const durations: number[] = [];
   for (const clip of cut.clips) {
     if (clip.kind === 'video') {
       const size = await readVideoDisplaySize(clip.file);
       videoDimensions.push(size);
       clipDimensions.push(size);
+      if (cut.subs) durations.push(size.durationSeconds);
       clips.push({
         videoUrl: await urlFor(clip.file),
-        posterUrl: null,
+        posterUrl: clip.poster ? await urlFor(clip.poster) : null,
         cues: clip.cues,
       });
     } else {
       clipDimensions.push({ width: clip.width, height: clip.height });
+      if (cut.subs) durations.push(await stillDuration(clip));
       clips.push({
         imageUrl: await urlFor(clip.file),
-        fallbackImageUrl: null,
+        fallbackImageUrl: clip.fallback ? await urlFor(clip.fallback) : null,
         durationSeconds: clip.seconds,
         audioUrls: await Promise.all(clip.audio.map((file) => urlFor(file))),
         width: clip.width,
         height: clip.height,
         cues: clip.cues,
       });
+    }
+  }
+  if (cut.subs) {
+    const placed = placeTimelineCues(durations, cut.subs);
+    for (let i = 0; i < clips.length; i++) {
+      const clip = clips[i];
+      const extra = placed[i] ?? [];
+      if (clip) clips[i] = { ...clip, cues: [...clip.cues, ...extra] };
     }
   }
   const frame = canvasResolution(videoDimensions, clipDimensions);

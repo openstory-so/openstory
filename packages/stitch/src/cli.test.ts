@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('./video-size.js', () => ({
-  readVideoDisplaySize: async () => ({ width: 480, height: 854 }),
+  readVideoDisplaySize: async () => ({
+    width: 480,
+    height: 854,
+    durationSeconds: 4,
+  }),
+  readAudioDuration: async () => 5,
 }));
 import {
   installSkill,
@@ -97,6 +102,71 @@ describe('stitch arguments', () => {
       await expect(
         parseArgs(['shot.mp4', '--audio', 'line.wav'], cwd)
       ).rejects.toThrow(/belongs on a still/);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('places a subtitle file on the clips it covers', async () => {
+    const cwd = await tempDir('stitch-subs-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'shot.mp4'), 'video');
+      await writeFile(
+        join(cwd, 'lines.srt'),
+        '1\n00:00:01,000 --> 00:00:02,000\nOn the still\n\n2\n00:00:02,500 --> 00:00:03,500\nAcross\n'
+      );
+      const request = await parseArgs(
+        [
+          'board.png',
+          '--seconds',
+          '3',
+          'shot.mp4',
+          '--subs',
+          'lines.srt',
+          '--no-open',
+        ],
+        cwd
+      );
+      if (request.kind !== 'play') throw new Error('expected a cut');
+      const served = await serveCut(request);
+      expect(served.clips[0]?.cues).toEqual([
+        { startSeconds: 1, endSeconds: 2, text: 'On the still' },
+        { startSeconds: 2.5, endSeconds: 3, text: 'Across' },
+      ]);
+      expect(served.clips[1]?.cues).toEqual([
+        { startSeconds: 0, endSeconds: 0.5, text: 'Across' },
+      ]);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('attaches a poster to a video and a fallback to a still', async () => {
+    const cwd = await tempDir('stitch-poster-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'other.png'), png);
+      await writeFile(join(cwd, 'shot.mp4'), 'video');
+      const request = await parseArgs(
+        [
+          'shot.mp4',
+          '--poster',
+          'board.png',
+          'other.png',
+          '--fallback',
+          'board.png',
+        ],
+        cwd
+      );
+      if (request.kind !== 'play') throw new Error('expected a cut');
+      expect(request.clips[0]).toMatchObject({ kind: 'video' });
+      expect(request.clips[1]).toMatchObject({
+        kind: 'still',
+        fallback: join(cwd, 'board.png'),
+      });
+      if (request.clips[0]?.kind !== 'video') return;
+      expect(request.clips[0].poster).toBe(join(cwd, 'board.png'));
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

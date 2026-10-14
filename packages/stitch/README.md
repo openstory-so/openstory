@@ -92,11 +92,12 @@ npm install @openstory/stitch
 npm install react @videojs/react
 ```
 
-Play local files in the browser. The command serves them on `127.0.0.1` and opens the page. A video plays the sound inside the file. `--audio` and `--seconds` belong to the still before them. `--cue` belongs to the clip before it.
+Play local files in the browser. The command serves them on `127.0.0.1` and opens the page. A video plays the sound inside the file. `--audio` and `--seconds` belong to the still before them. `--cue` belongs to the clip before it. `--subs` is one `.srt` or `.vtt` for the whole cut.
 
 ```sh
 npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
+  --subs lines.srt \
   board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
   shot.mp4 --cue 0-1.5 "Love that accent."
 ```
