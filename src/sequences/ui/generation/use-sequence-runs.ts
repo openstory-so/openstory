@@ -78,6 +78,9 @@ export function useSequenceRuns(sequenceId: string | undefined): WorkflowRun[] {
     return () => {
       cancelled = true;
     };
+    // `state` is the list to snapshot and `publish` writes it. A new run
+    // must not refetch, so neither is a dependency.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [status, sequenceId]);
 
   return state.runs;
