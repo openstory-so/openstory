@@ -92,17 +92,32 @@ npm install @openstory/stitch
 npm install react @videojs/react
 ```
 
-Play local files in the browser. The command serves them on `127.0.0.1` and opens the page. A video plays the sound inside the file. `--audio` and `--seconds` belong to the still before them. `--cue` belongs to the clip before it. `--subs` is one `.srt` or `.vtt` for the whole cut.
+## Command
+
+`npx @openstory/stitch` plays local stills and videos in the browser. It listens on `127.0.0.1`, prints the URL, and opens it. The page is this player: captions, a music switch, a loading line, and Download. The frame is the canvas box of the clips, so a portrait cut fills the window as portrait. The process runs until Ctrl+C. `--no-open` skips the browser. `--port` chooses the port.
+
+Files play in the order you name them.
 
 ```sh
 npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
   board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
-  shot.mp4 --cue 0-1.5 "Love that accent."
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
 ```
 
-`npx @openstory/stitch skill` copies the agent skill into `.agents/skills/stitch`. Add `--global` to copy it to `~/.agents/skills/stitch`. The skill's name is `stitch`, so agents that load it show a `/stitch` command. The instructions are [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md).
+- A `.mp4`, `.webm`, or `.mov` is a video. It plays the sound inside the file.
+- A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
+- `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` (default 4) and that sound.
+- `--poster` is the still shown on the video before it while the cut opens.
+- `--fallback` is the picture tried when the still before it fails to load.
+- `--cue START-END TEXT` is a subtitle on the clip before it. Times are seconds from the start of that clip. Quote the text.
+- `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. A cue that crosses a cut is split onto both clips.
+- `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB, and defaults to 0. The page can turn the bed off. Dialogue stays at its own level.
+
+## Skill
+
+`npx @openstory/stitch skill` copies the skill into `.agents/skills/stitch`. `--global` copies it to `~/.agents/skills/stitch`. The skill name is `stitch`, and it is marked user-invocable, so agents that load that folder show a `/stitch` command. `/stitch` runs the command above and leaves it running. The instructions are [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md).
 
 `@openstory/stitch-player@0.1.0` was the first publish of this package. Install `@openstory/stitch` from here on.
 

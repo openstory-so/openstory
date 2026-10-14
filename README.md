@@ -123,6 +123,16 @@ See [`.env.example`](.env.example) for all optional configuration (Google OAuth,
 | `bun setup --prod`  | Interactive production setup + deploy               |
 | `bun cf:deploy:prd` | Manual production deploy (build → migrate → deploy) |
 
+## Stitch
+
+The theatre player lives in [`packages/stitch`](packages/stitch) and publishes as [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch).
+
+`npx @openstory/stitch` plays local stills, videos, dialogue, subtitles, and music in the browser. It prints a `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
+
+`npx @openstory/stitch skill` installs the agent skill into `.agents/skills/stitch`. Add `--global` to install it at `~/.agents/skills/stitch`. Agents that load that folder list it as `/stitch`.
+
+The flags, the `/stitch` instructions, and the player API are in [packages/stitch/README.md](packages/stitch/README.md).
+
 ## Project Structure
 
 ```
@@ -138,6 +148,7 @@ src/
     api/          # Webhooks: workflows and auth only
     _app/         # App shell (anonymous-browsable; actions gated behind login)
 e2e/              # Playwright end-to-end tests
+packages/stitch/  # Theatre player, the stitch command, and the /stitch skill
 scripts/          # CLI utilities and setup
 ```
 
