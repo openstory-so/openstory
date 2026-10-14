@@ -16,5 +16,5 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/cli.ts", "src/image-size.ts"]
+  "include": ["src/cli.ts", "src/image-size.ts", "src/video-size.ts"]
 }

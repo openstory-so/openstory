@@ -17,6 +17,9 @@ import { fileURLToPath } from 'node:url';
 
 import { readImageSize } from './image-size.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
+import { canvasResolution } from './resolution.js';
+import type { ClipDimensions } from './resolution.js';
+import { readVideoDisplaySize } from './video-size.js';
 
 const STILL_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
@@ -64,6 +67,9 @@ export type LocalCut = {
 
 export type ServedCut = {
   clips: PlaybackClip[];
+  /** Canvas box. Videos own it; a still-only cut uses the stills. */
+  frameWidth: number;
+  frameHeight: number;
   musicUrl: string | null;
   musicGainDb: number;
   files: ReadonlyMap<string, string>;
@@ -268,14 +274,20 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
   };
 
   const clips: PlaybackClip[] = [];
+  const videoDimensions: ClipDimensions[] = [];
+  const clipDimensions: ClipDimensions[] = [];
   for (const clip of cut.clips) {
     if (clip.kind === 'video') {
+      const size = await readVideoDisplaySize(clip.file);
+      videoDimensions.push(size);
+      clipDimensions.push(size);
       clips.push({
         videoUrl: await urlFor(clip.file),
         posterUrl: null,
         cues: clip.cues,
       });
     } else {
+      clipDimensions.push({ width: clip.width, height: clip.height });
       clips.push({
         imageUrl: await urlFor(clip.file),
         fallbackImageUrl: null,
@@ -287,8 +299,11 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
       });
     }
   }
+  const frame = canvasResolution(videoDimensions, clipDimensions);
   return {
     clips,
+    frameWidth: frame.width,
+    frameHeight: frame.height,
     musicUrl: cut.music ? await urlFor(cut.music) : null,
     musicGainDb: cut.musicGainDb,
     files,
@@ -361,6 +376,8 @@ async function handleRequest(
   if (url.pathname === '/cut.json') {
     const body = JSON.stringify({
       clips: served.clips,
+      frameWidth: served.frameWidth,
+      frameHeight: served.frameHeight,
       musicUrl: served.musicUrl,
       musicGainDb: served.musicGainDb,
     });

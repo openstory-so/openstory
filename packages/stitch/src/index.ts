@@ -38,6 +38,7 @@ export {
   type PlayWaitSettlement,
 } from './play-attempt.js';
 export {
+  canvasResolution,
   computeTargetResolution,
   describeResolutions,
   detectMixedAspectRatios,

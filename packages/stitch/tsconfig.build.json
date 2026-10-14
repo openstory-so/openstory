@@ -21,6 +21,7 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/cli.ts",
-    "src/image-size.ts"
+    "src/image-size.ts",
+    "src/video-size.ts"
   ]
 }

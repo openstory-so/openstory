@@ -5,6 +5,8 @@ import type { PlaybackClip, PlaybackCue } from '../src/playback-clip';
 
 type Cut = {
   clips: PlaybackClip[];
+  frameWidth: number;
+  frameHeight: number;
   musicUrl: string | null;
   musicGainDb: number;
 };
@@ -15,17 +17,22 @@ if (!stage) throw new Error('missing #stage');
 const response = await fetch('/cut.json');
 if (!response.ok) throw new Error(`cut.json returned ${response.status}`);
 const cut = readCut(await response.json());
+stage.style.setProperty('--ar', String(cut.frameWidth / cut.frameHeight));
 
-createRoot(stage).render(
-  <StitchedPlayer
-    clips={cut.clips}
-    musicUrl={cut.musicUrl}
-    musicGainDb={cut.musicGainDb}
-    musicEnabled={cut.musicUrl !== null}
-    subtitles
-    download={{ filename: 'cut.mp4' }}
-  />
-);
+createRoot(stage).render(<Preview cut={cut} />);
+
+function Preview({ cut }: { cut: Cut }) {
+  return (
+    <StitchedPlayer
+      clips={cut.clips}
+      musicUrl={cut.musicUrl}
+      musicGainDb={cut.musicGainDb}
+      musicEnabled={cut.musicUrl !== null}
+      subtitles
+      download={{ filename: 'cut.mp4' }}
+    />
+  );
+}
 
 function readCut(value: unknown): Cut {
   const record = recordOf(value, 'cut.json');
@@ -35,6 +42,8 @@ function readCut(value: unknown): Cut {
   }
   return {
     clips: clips.map((clip) => readClip(clip)),
+    frameWidth: positive(record.frameWidth, 'frameWidth'),
+    frameHeight: positive(record.frameHeight, 'frameHeight'),
     musicUrl: stringOrNull(record.musicUrl, 'musicUrl'),
     musicGainDb: numberOf(record.musicGainDb, 'musicGainDb'),
   };
@@ -93,6 +102,12 @@ function stringOrNull(value: unknown, label: string): string | null {
 function numberOf(value: unknown, label: string): number {
   if (typeof value === 'number') return value;
   throw new Error(`${label} is not a number`);
+}
+
+function positive(value: unknown, label: string): number {
+  const number = numberOf(value, label);
+  if (!(number > 0)) throw new Error(`${label} needs a positive number`);
+  return number;
 }
 
 function stringsOf(value: unknown, label: string): string[] {

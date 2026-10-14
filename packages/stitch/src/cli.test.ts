@@ -1,7 +1,11 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('./video-size.js', () => ({
+  readVideoDisplaySize: async () => ({ width: 480, height: 854 }),
+}));
 import {
   installSkill,
   main,
@@ -78,6 +82,8 @@ describe('stitch arguments', () => {
         posterUrl: null,
       });
       expect(served.musicUrl).toBe('/media/3');
+      expect(served.frameWidth).toBe(480);
+      expect(served.frameHeight).toBe(854);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -120,6 +126,8 @@ describe('stitch preview', () => {
           (response) => response.text()
         );
         expect(cut).toContain('"imageUrl":"/media/0"');
+        expect(cut).toContain('"frameWidth":2');
+        expect(cut).toContain('"frameHeight":2');
         const media = await fetch(new URL('/media/0', preview.url), {
           headers: { Range: 'bytes=0-3' },
         });

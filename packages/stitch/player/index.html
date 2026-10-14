@@ -8,23 +8,25 @@
       body,
       #root {
         margin: 0;
-        min-height: 100%;
+        height: 100%;
         background: #171717;
         color: #f5f5f5;
         font: 16px/1.4 sans-serif;
       }
       #root {
         box-sizing: border-box;
-        min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 32px 24px;
+        container-type: size;
       }
       #stage {
         position: relative;
-        width: min(960px, 100%);
-        aspect-ratio: 16 / 9;
+        /* --ar is width / height, written from /cut.json before React mounts. */
+        width: min(100cqw, calc(100cqh * var(--ar)));
+        height: min(100cqh, calc(100cqw / var(--ar)));
+        aspect-ratio: var(--ar);
         overflow: hidden;
         border-radius: 12px;
         background: #000;
