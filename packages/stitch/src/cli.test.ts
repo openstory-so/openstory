@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,7 +10,10 @@ vi.mock('./video-size.js', () => ({
     height: 854,
     durationSeconds: 4,
   }),
-  readAudioDuration: async () => 5,
+  readAudioDuration: async (file: string) => {
+    if (file.includes('bad')) throw new Error(`${file} has no audio track`);
+    return 5;
+  },
 }));
 import {
   installSkill,
@@ -177,6 +181,95 @@ describe('stitch arguments', () => {
       /Unknown argument: --nope/
     );
   });
+
+  it('keeps cue text that starts with a dash', async () => {
+    const cwd = await tempDir('stitch-dash-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      const request = await parseArgs(
+        ['board.png', '--cue', '0-2', '- I know.'],
+        cwd
+      );
+      if (request.kind !== 'play') throw new Error('expected a cut');
+      expect(request.clips[0]?.cues).toEqual([
+        { startSeconds: 0, endSeconds: 2, text: '- I know.' },
+      ]);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [['--poster', 'board.png'], /comes after the clip/],
+    [['board.png', '--poster', 'board.png'], /--poster belongs on a video/],
+    [
+      ['board.png', 'shot.mp4', '--poster', 'board.png'],
+      /--poster belongs on the first clip/,
+    ],
+    [['shot.mp4', '--poster', 'notes.txt'], /not a png, jpg, jpeg, or webp/],
+    [['board.png', '--fallback', 'broken.png'], /broken\.png: the png header/],
+    [['--cue', '0-1', 'hi'], /comes after the clip/],
+    [['board.png', '--cue', '2-1', 'hi'], /0 <= start < end/],
+    [['board.png', '--cue', '0-2'], /needs a range and text/],
+    [['board.png', '--seconds', '0'], /positive number/],
+    [['board.png', '--port', '70000'], /port number/],
+    [['board.png', '--port', 'abc'], /port number/],
+    [['board.png', '--subs', 'notes.txt'], /\.srt or \.vtt/],
+    [['board.png', '--music', 'bad.mp3'], /bad\.mp3 has no audio track/],
+    [['board.png', '--audio', 'bad.wav'], /bad\.wav has no audio track/],
+    [['missing.png'], /missing\.png does not exist/],
+    [['folder'], /folder is not a file/],
+    [['notes.txt'], /not a still or a video/],
+    [['broken.png'], /broken\.png: the png header is unreadable/],
+    [[], /at least one still or video/],
+  ])('refuses %j', async (argv, error) => {
+    const cwd = await tempDir('stitch-refuse-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'broken.png'), png.subarray(0, 12));
+      await writeFile(join(cwd, 'shot.mp4'), 'video');
+      await writeFile(join(cwd, 'notes.txt'), 'notes');
+      await writeFile(join(cwd, 'bad.mp3'), 'music');
+      await writeFile(join(cwd, 'bad.wav'), 'line');
+      await mkdir(join(cwd, 'folder'));
+      await expect(parseArgs(argv, cwd)).rejects.toThrow(error);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('places --subs by the still hold, which a long line extends', async () => {
+    const cwd = await tempDir('stitch-subs-hold-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'line.wav'), 'line');
+      await writeFile(
+        join(cwd, 'lines.srt'),
+        '1\n00:00:04,000 --> 00:00:04,500\nStill talking\n'
+      );
+      const request = await parseArgs(
+        [
+          '--subs',
+          'lines.srt',
+          'board.png',
+          '--seconds',
+          '3',
+          '--audio',
+          'line.wav',
+          'board.png',
+        ],
+        cwd
+      );
+      if (request.kind !== 'play') throw new Error('expected a cut');
+      const served = await serveCut(request);
+      expect(served.clips[0]?.cues).toEqual([
+        { startSeconds: 4, endSeconds: 4.5, text: 'Still talking' },
+      ]);
+      expect(served.clips[1]?.cues).toEqual([]);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('stitch preview', () => {
@@ -214,6 +307,96 @@ describe('stitch preview', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
+  });
+});
+
+describe('stitch preview requests', () => {
+  const body = Buffer.from('012345678');
+
+  async function withPreview(
+    run: (url: string) => Promise<void>
+  ): Promise<void> {
+    const cwd = await tempDir('stitch-range-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'index.html'), '<p>stitch</p>');
+      await mkdir(join(cwd, 'assets'));
+      const request = await parseArgs(['board.png'], cwd);
+      if (request.kind !== 'play') throw new Error('expected a cut');
+      const served = await serveCut(request);
+      // Serve a known 9-byte body as /media/0.
+      await writeFile(join(cwd, 'body.bin'), body);
+      const files = new Map([['0', join(cwd, 'body.bin')]]);
+      const preview = await startPreview({
+        served: { ...served, files },
+        pageDir: cwd,
+        port: 0,
+        stderr: { write: () => {} },
+      });
+      try {
+        await run(preview.url);
+      } finally {
+        await preview.close();
+      }
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  }
+
+  it.each([
+    ['bytes=0-9999', 206, 'bytes 0-8/9', '012345678'],
+    ['bytes=-3', 206, 'bytes 6-8/9', '678'],
+    ['bytes=5-', 206, 'bytes 5-8/9', '5678'],
+    ['bytes=99-', 416, 'bytes */9', ''],
+    ['bytes=0-1,4-5', 416, 'bytes */9', ''],
+    ['bytes=5-2', 416, 'bytes */9', ''],
+  ])('answers Range %s', async (range, status, contentRange, text) => {
+    await withPreview(async (url) => {
+      const response = await fetch(new URL('/media/0', url), {
+        headers: { Range: range },
+      });
+      expect(response.status).toBe(status);
+      expect(response.headers.get('content-range')).toBe(contentRange);
+      expect(await response.text()).toBe(text);
+    });
+  });
+
+  it('sends the whole file without a Range, and no body for HEAD', async () => {
+    await withPreview(async (url) => {
+      const whole = await fetch(new URL('/media/0', url));
+      expect(whole.status).toBe(200);
+      expect(whole.headers.get('accept-ranges')).toBe('bytes');
+      expect(whole.headers.get('content-length')).toBe('9');
+      expect(await whole.text()).toBe('012345678');
+      const head = await fetch(new URL('/media/0', url), { method: 'HEAD' });
+      expect(head.status).toBe(200);
+      expect(await head.text()).toBe('');
+    });
+  });
+
+  it.each([
+    '/../../../etc/passwd',
+    '/..%2f..%2f..%2fetc%2fpasswd',
+    '/%2e%2e/%2e%2e/%2e%2e/etc/passwd',
+    '/media/99',
+    '/assets',
+  ])('does not serve %s', async (path) => {
+    await withPreview(async (url) => {
+      // node:http sends the path as written; fetch would normalise it.
+      const { port } = new URL(url);
+      const status = await new Promise<number>((resolveStatus, reject) => {
+        const req = httpRequest(
+          { host: '127.0.0.1', port, path, method: 'GET' },
+          (response) => {
+            response.resume();
+            resolveStatus(response.statusCode ?? 0);
+          }
+        );
+        req.on('error', reject);
+        req.end();
+      });
+      expect(status).toBe(404);
+    });
   });
 });
 
@@ -259,7 +442,41 @@ describe('stitch skill', () => {
         '.claude/skills/stitch',
         '.claude/skills/stitch-player',
       ]);
-      const stdout: string[] = [];
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces its own trees and leaves other skills alone', async () => {
+    const cwd = await tempDir('stitch-reinstall-');
+    try {
+      await mkdir(join(cwd, '.claude/skills/stitch'), { recursive: true });
+      await mkdir(join(cwd, '.claude/skills/other'), { recursive: true });
+      await writeFile(join(cwd, '.claude/skills/stitch/stale.md'), 'old');
+      await writeFile(join(cwd, '.claude/skills/other/SKILL.md'), 'mine');
+      await installSkill({
+        cwd,
+        home: join(cwd, 'home'),
+        global: false,
+        packageRoot: packageRoot(),
+      });
+      await expect(
+        readFile(join(cwd, '.claude/skills/stitch/stale.md'))
+      ).rejects.toThrow();
+      expect(
+        await readFile(join(cwd, '.claude/skills/other/SKILL.md'), 'utf8')
+      ).toBe('mine');
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('stitch main', () => {
+  it('prints the usage for --help', async () => {
+    const stdout: string[] = [];
+    const before = process.exitCode;
+    try {
       process.exitCode = undefined;
       await main(['--help'], {
         stdout: { write: (text) => stdout.push(text) },
@@ -267,6 +484,39 @@ describe('stitch skill', () => {
       expect(stdout.join('')).toBe(usage);
       expect(process.exitCode).toBeUndefined();
     } finally {
+      process.exitCode = before;
+    }
+  });
+
+  it('writes a parse error to stderr and fails', async () => {
+    const stderr: string[] = [];
+    const before = process.exitCode;
+    try {
+      await main(['--nope'], {
+        stderr: { write: (text) => stderr.push(text) },
+      });
+      expect(stderr.join('')).toContain('Unknown argument: --nope');
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = before;
+    }
+  });
+
+  it('says when the preview page is not built', async () => {
+    const cwd = await tempDir('stitch-unbuilt-');
+    const stderr: string[] = [];
+    const before = process.exitCode;
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await main(['board.png', '--no-open'], {
+        cwd,
+        packageRoot: cwd,
+        stderr: { write: (text) => stderr.push(text) },
+      });
+      expect(stderr.join('')).toContain('The preview page is not built');
+      expect(process.exitCode).toBe(1);
+    } finally {
+      process.exitCode = before;
       await rm(cwd, { recursive: true, force: true });
     }
   });

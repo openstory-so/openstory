@@ -104,14 +104,14 @@ Les fichiers jouent dans l'ordre où vous les nommez.
 npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
-  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
-  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent." \
+  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?"
 ```
 
 - Un `.mp4`, `.webm` ou `.mov` est une vidéo. Elle joue le son contenu dans le fichier.
 - Un `.png`, `.jpg`, `.jpeg` ou `.webp` est une image fixe. La commande lit sa largeur et sa hauteur.
 - `--audio` ajoute une réplique à l'image fixe qui précède. Répétez-le pour une autre réplique. L'image reste affichée pendant le plus long de `--seconds` (4 par défaut) et de ce son.
-- `--poster` est l'image fixe montrée sur la vidéo qui précède pendant l'ouverture de la coupe.
+- `--poster` est l'image fixe montrée pendant l'ouverture de la coupe. Il va sur une vidéo d'ouverture.
 - `--fallback` est l'image essayée quand l'image fixe qui précède ne se charge pas.
 - `--cue START-END TEXT` est un sous-titre sur le clip qui précède. Les temps sont des secondes depuis le début de ce clip. Mettez le texte entre guillemets.
 - `--subs lines.srt` (ou `.vtt`) est un seul fichier de sous-titres pour toute la coupe. Un cue qui traverse une coupe est réparti sur les deux clips.
@@ -165,7 +165,7 @@ import type { PlaybackClip } from '@openstory/stitch';
 
 const clips: PlaybackClip[] = [
   // Un clip rendu. Son son intégré joue avec lui.
-  // `posterUrl` sert à l'hôte pendant l'attente. Ce paquet ne le peint pas.
+  // `posterUrl` sert à l'hôte pendant l'attente. Le lecteur ne le peint pas.
   { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
   // Une image fixe, tenue pendant le plus long de `durationSeconds` et de son son.
   {

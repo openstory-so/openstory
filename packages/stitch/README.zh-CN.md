@@ -104,14 +104,14 @@ npm install react @videojs/react
 npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
-  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
-  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent." \
+  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?"
 ```
 
 - `.mp4`、`.webm`、`.mov` 是视频。它播放文件里的声音。
 - `.png`、`.jpg`、`.jpeg`、`.webp` 是静帧。命令会读取它的宽和高。
 - `--audio` 给它前面那张静帧加一句台词。再写一次就再加一句。静帧停留时间取 `--seconds`（默认 4）和这段声音中较长的一个。
-- `--poster` 是它前面那段视频在成片打开时显示的静帧。
+- `--poster` 是成片打开时显示的静帧，只能放在开头的视频上。
 - `--fallback` 是它前面那张静帧加载失败时改用的图。
 - `--cue START-END TEXT` 是它前面那个 clip 上的一条字幕。时间是从该 clip 起点算起的秒数。文字请加引号。
 - `--subs lines.srt`（或 `.vtt`）是整条成片的一个字幕文件。跨过切点的一条字幕会拆到两边的 clip 上。
@@ -165,7 +165,7 @@ import type { PlaybackClip } from '@openstory/stitch';
 
 const clips: PlaybackClip[] = [
   // 渲染好的 clip。文件里的声音一起播放。
-  // `posterUrl` 给宿主在等待时显示。这个包不绘制它。
+  // `posterUrl` 给宿主在等待时显示。播放器不绘制它。
   { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
   // 静帧。停留时间取 `durationSeconds` 和它的声音中较长的一个。
   {

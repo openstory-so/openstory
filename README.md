@@ -127,7 +127,7 @@ See [`.env.example`](.env.example) for all optional configuration (Google OAuth,
 
 The theatre player lives in [`packages/stitch`](packages/stitch) and publishes as [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch).
 
-Run a local cut with npx. It prints a `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
+Run a local cut with npx. It prints an `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
 
 ```sh
 npx @openstory/stitch --music score.mp3 shot.mp4
@@ -158,7 +158,7 @@ src/
     api/          # Webhooks: workflows and auth only
     _app/         # App shell (anonymous-browsable; actions gated behind login)
 e2e/              # Playwright end-to-end tests
-packages/stitch/  # Theatre player, the stitch command, and the /stitch skill
+packages/stitch/  # Theatre player, the stitch command, and the stitch skills
 scripts/          # CLI utilities and setup
 ```
 

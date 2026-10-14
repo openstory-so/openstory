@@ -104,14 +104,14 @@ Files play in the order you name them.
 npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
-  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
-  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent." \
+  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?"
 ```
 
 - A `.mp4`, `.webm`, or `.mov` is a video. It plays the sound inside the file.
 - A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
 - `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` (default 4) and that sound.
-- `--poster` is the still shown on the video before it while the cut opens.
+- `--poster` is the still shown while the cut opens. It belongs on an opening video.
 - `--fallback` is the picture tried when the still before it fails to load.
 - `--cue START-END TEXT` is a subtitle on the clip before it. Times are seconds from the start of that clip. Quote the text.
 - `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. A cue that crosses a cut is split onto both clips.
@@ -165,7 +165,7 @@ import type { PlaybackClip } from '@openstory/stitch';
 
 const clips: PlaybackClip[] = [
   // A rendered clip. Its embedded sound plays with it.
-  // `posterUrl` is for a host to show while it waits. This package does not paint it.
+  // `posterUrl` is for a host to show while it waits. The player does not paint it.
   { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
   // A still, held for the longer of `durationSeconds` and its sound.
   {

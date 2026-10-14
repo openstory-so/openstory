@@ -17,7 +17,8 @@ export function parseSubtitles(text: string, file: string): TimelineCue[] {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n');
   const cues: TimelineCue[] = [];
-  for (const block of body.split(/\n{2,}/)) {
+  // A separator line may hold spaces, as hand-edited files often do.
+  for (const block of body.split(/\n[ \t]*\n/)) {
     const lines = block.split('\n');
     let start = 0;
     while (start < lines.length && lines[start]?.trim() === '') start += 1;
@@ -30,9 +31,10 @@ export function parseSubtitles(text: string, file: string): TimelineCue[] {
     }
     const timing = cueTiming(content[timingAt] ?? '');
     if (!timing) {
-      throw new Error(
-        `${file}: expected a cue time, got "${content[timingAt]?.trim()}"`
-      );
+      const shown =
+        content.slice(0, 2).find((line) => line.includes('-->')) ??
+        content[timingAt];
+      throw new Error(`${file}: expected a cue time, got "${shown?.trim()}"`);
     }
     const cueText = content
       .slice(timingAt + 1)
@@ -72,6 +74,7 @@ function timestamp(value: string): number | null {
   const hours = match[1] ? Number(match[1]) : 0;
   const minutes = Number(match[2]);
   const seconds = Number(match[3]);
+  if (minutes > 59 || seconds > 59) return null;
   const fraction = (match[4] ?? '0').padEnd(3, '0');
   return hours * 3600 + minutes * 60 + seconds + Number(fraction) / 1000;
 }

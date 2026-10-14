@@ -49,7 +49,7 @@ export type StitchedPlayerSurfaceProps = {
   /** Where the engine reports non-fatal problems. Defaults to `console`. */
   logger?: StitchLogger;
   /**
-   * Show the theatre's Download icon (top right), enabled once the clips are open. It
+   * Show a Download icon button (top right), enabled once the clips are open. It
    * pauses, exports in the browser from the clips the player already opened,
    * and saves the MP4 — plus a `.vtt` sidecar unless `subtitles` says
    * otherwise. See `downloadSequence`.
@@ -111,7 +111,7 @@ const downloadError: CSSProperties = {
   fontSize: '0.75rem',
 };
 
-/** Lucide `download`, the same glyph as the theatre overlay. */
+/** Lucide `download`. */
 function DownloadIcon() {
   return (
     <svg

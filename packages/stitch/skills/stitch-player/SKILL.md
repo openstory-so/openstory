@@ -5,7 +5,7 @@ description: Use when wiring @openstory/stitch, building a PlaybackClip list of 
 
 # stitch-player
 
-Play `PlaybackClip[]` in order with `StitchedPlayer` from `@openstory/stitch/react`. The package README has the install and the component example. This file is the contract that example leaves easy to miss.
+Play `PlaybackClip[]` in order with `StitchedPlayer` from `@openstory/stitch/react`. The package README (`node_modules/@openstory/stitch/README.md`) has the install and the component example. This file is the contract that example leaves easy to miss.
 
 ## Clips
 
@@ -13,7 +13,7 @@ A video clip is `{ videoUrl, posterUrl, cues }`. It plays the audio inside the f
 
 A still is `{ imageUrl, fallbackImageUrl, durationSeconds, audioUrls, width, height, cues }`. `audioUrls` play back to back from the start of the still. The still lasts the longer of that sound and `durationSeconds`. `width` and `height` are the still's pixel size. `durationSeconds` stays positive even when the sound is longer.
 
-`posterUrl` is for a host to show while it waits. This package does not paint it.
+`posterUrl` is for a host to show while it waits. The engine and `StitchedPlayer` do not paint it.
 
 Cue times are seconds from the start of that clip.
 

@@ -8,7 +8,7 @@
 
 Un reproductor pensado para el cine con IA. El README en inglés es el texto de origen.
 
-Las imágenes fijas, el diálogo, la música y los segmentos de vídeo se pueden generar en cualquier orden. Dáselos a stitch y el navegador reproduce esa lista como una sola secuencia. No hace falta montar los clips fuera de línea, ni usar ffmpeg para una vista previa.
+Las imágenes fijas, el diálogo, la música y los segmentos de vídeo se pueden generar en cualquier orden. Déselos a stitch y el navegador reproduce esa lista como una sola secuencia. No hace falta montar los clips fuera de línea, ni usar ffmpeg para una vista previa.
 
 ![Temple Street](https://assets.openstory.so/stitch-player/temple-street.gif)
 
@@ -104,14 +104,14 @@ Los archivos se reproducen en el orden en que los nombra.
 npx @openstory/stitch \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
-  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?" \
-  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent."
+  shot.mp4 --poster board.png --cue 0-1.5 "Love that accent." \
+  board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?"
 ```
 
 - Un `.mp4`, `.webm` o `.mov` es un vídeo. Reproduce el sonido de dentro del archivo.
 - Un `.png`, `.jpg`, `.jpeg` o `.webp` es una imagen fija. El comando lee su ancho y su alto.
 - `--audio` añade una línea a la imagen fija anterior. Repítalo para otra línea. La imagen permanece el mayor entre `--seconds` (4 por defecto) y ese sonido.
-- `--poster` es la imagen fija que se muestra sobre el vídeo anterior mientras se abre el corte.
+- `--poster` es la imagen fija que se muestra mientras se abre el corte. Va en un vídeo de apertura.
 - `--fallback` es la imagen que se prueba cuando la imagen fija anterior no carga.
 - `--cue START-END TEXT` es un subtítulo del clip anterior. Los tiempos son segundos desde el inicio de ese clip. Ponga el texto entre comillas.
 - `--subs lines.srt` (o `.vtt`) es un solo archivo de subtítulos para todo el corte. Un cue que cruza un corte se parte en los dos clips.
@@ -165,7 +165,7 @@ import type { PlaybackClip } from '@openstory/stitch';
 
 const clips: PlaybackClip[] = [
   // Un clip renderizado. Su sonido incrustado suena con él.
-  // `posterUrl` es para que el anfitrión lo muestre mientras espera. Este paquete no lo pinta.
+  // `posterUrl` es para que el anfitrión lo muestre mientras espera. El reproductor no lo pinta.
   { videoUrl: '/shot-1.mp4', posterUrl: '/shot-1.jpg', cues: [] },
   // Una imagen fija, sostenida el mayor entre `durationSeconds` y su sonido.
   {

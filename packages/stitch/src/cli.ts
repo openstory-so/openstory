@@ -14,6 +14,7 @@ import {
 } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, extname, join, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { readImageSize } from './image-size.js';
@@ -36,8 +37,8 @@ export const usage = `Usage: stitch [--music file] [--music-gain db] [--subs fil
 
 Play local stills and videos in the browser. A .mp4, .webm, or .mov is a
 video, and it plays the sound inside the file. A .png, .jpg, .jpeg, or .webp is a
-still. --poster belongs to the video before it. --fallback, --audio, and
---seconds belong to the still before them. --cue belongs to the clip before
+still. --poster belongs to an opening video and shows while the cut opens.
+--fallback, --audio, and --seconds belong to the still before them. --cue belongs to the clip before
 it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
@@ -51,6 +52,8 @@ type Still = {
   file: string;
   seconds: number;
   audio: string[];
+  /** Summed length of the --audio files, read when each was named. */
+  audioSeconds: number;
   fallback: string | null;
   width: number;
   height: number;
@@ -135,7 +138,9 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
       continue;
     }
     if (arg === '--music') {
+      if (music) throw new Error('--music is already set');
       music = await existingFile(take(arg, i), cwd);
+      await readAudioDuration(music);
       i += 1;
       continue;
     }
@@ -167,23 +172,30 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
       if (clip.kind !== 'video') {
         throw new Error('--poster belongs on a video');
       }
+      if (clips.length > 1) {
+        throw new Error(
+          '--poster belongs on the first clip. The page shows it while the cut opens'
+        );
+      }
       if (clip.poster) throw new Error('--poster is already set');
-      clip.poster = await existingFile(take(arg, i), cwd);
+      clip.poster = await imageFile(take(arg, i), cwd);
       i += 1;
       continue;
     }
     if (arg === '--fallback') {
       const clip = previousStill(clips, arg);
       if (clip.fallback) throw new Error('--fallback is already set');
-      clip.fallback = await existingFile(take(arg, i), cwd);
+      clip.fallback = await imageFile(take(arg, i), cwd);
       i += 1;
       continue;
     }
     if (arg === '--audio' || arg === '--seconds') {
       const clip = previousStill(clips, arg);
-      if (arg === '--audio')
-        clip.audio.push(await existingFile(take(arg, i), cwd));
-      else clip.seconds = positive(take(arg, i), arg);
+      if (arg === '--audio') {
+        const file = await existingFile(take(arg, i), cwd);
+        clip.audioSeconds += await readAudioDuration(file);
+        clip.audio.push(file);
+      } else clip.seconds = positive(take(arg, i), arg);
       i += 1;
       continue;
     }
@@ -191,8 +203,7 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
       const clip = previousClip(clips, arg);
       const range = take(arg, i);
       const text = argv[i + 2];
-      if (text === undefined || text.startsWith('-'))
-        throw new Error('--cue needs a range and text');
+      if (text === undefined) throw new Error('--cue needs a range and text');
       clip.cues.push(cue(range, text));
       i += 2;
       continue;
@@ -228,23 +239,13 @@ async function clipFromFile(arg: string, cwd: string): Promise<LocalClip> {
     return { kind: 'video', file, poster: null, cues: [] };
   }
   if (STILL_EXTENSIONS.has(extension)) {
-    const bytes = await readFile(file);
-    let size: { width: number; height: number };
-    try {
-      size = readImageSize(bytes);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'unreadable image';
-      throw new Error(`${arg}: ${message}`);
-    }
-    if (!(size.width > 0 && size.height > 0)) {
-      throw new Error(`${arg}: a still needs a positive width and height`);
-    }
+    const size = await stillSize(file, arg);
     return {
       kind: 'still',
       file,
       seconds: DEFAULT_STILL_SECONDS,
       audio: [],
+      audioSeconds: 0,
       fallback: null,
       width: size.width,
       height: size.height,
@@ -256,13 +257,45 @@ async function clipFromFile(arg: string, cwd: string): Promise<LocalClip> {
   );
 }
 
+async function stillSize(
+  file: string,
+  arg: string
+): Promise<{ width: number; height: number }> {
+  let size: { width: number; height: number };
+  try {
+    size = readImageSize(await readFile(file));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unreadable image';
+    throw new Error(`${arg}: ${message}`);
+  }
+  if (!(size.width > 0 && size.height > 0)) {
+    throw new Error(`${arg}: a still needs a positive width and height`);
+  }
+  return size;
+}
+
+/** A poster or fallback: a png, jpeg, or webp the browser can draw. */
+async function imageFile(arg: string, cwd: string): Promise<string> {
+  const file = await existingFile(arg, cwd);
+  if (!STILL_EXTENSIONS.has(extname(file).toLowerCase())) {
+    throw new Error(`${arg} is not a png, jpg, jpeg, or webp`);
+  }
+  await stillSize(file, arg);
+  return file;
+}
+
 async function existingFile(arg: string, cwd: string): Promise<string> {
   const file = resolve(cwd, arg);
   let info: Awaited<ReturnType<typeof stat>>;
   try {
     info = await stat(file);
-  } catch {
-    throw new Error(`Cannot read ${arg}`);
+  } catch (error) {
+    const code =
+      error instanceof Error && 'code' in error ? error.code : undefined;
+    if (code === 'ENOENT') throw new Error(`${arg} does not exist`);
+    if (code === 'EACCES') throw new Error(`${arg}: permission denied`);
+    const message = error instanceof Error ? error.message : 'unreadable';
+    throw new Error(`Cannot read ${arg}: ${message}`);
   }
   if (!info.isFile()) throw new Error(`${arg} is not a file`);
   return file;
@@ -290,10 +323,8 @@ function portValue(value: string): number {
   return port;
 }
 
-async function stillDuration(clip: Still): Promise<number> {
-  let audio = 0;
-  for (const file of clip.audio) audio += await readAudioDuration(file);
-  return Math.max(clip.seconds, audio);
+function stillDuration(clip: Still): number {
+  return Math.max(clip.seconds, clip.audioSeconds);
 }
 
 function cue(range: string, text: string): PlaybackCue {
@@ -331,7 +362,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
       const size = await readVideoDisplaySize(clip.file);
       videoDimensions.push(size);
       clipDimensions.push(size);
-      if (cut.subs) durations.push(size.durationSeconds);
+      durations.push(size.durationSeconds);
       clips.push({
         videoUrl: await urlFor(clip.file),
         posterUrl: clip.poster ? await urlFor(clip.poster) : null,
@@ -339,7 +370,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
       });
     } else {
       clipDimensions.push({ width: clip.width, height: clip.height });
-      if (cut.subs) durations.push(await stillDuration(clip));
+      durations.push(stillDuration(clip));
       clips.push({
         imageUrl: await urlFor(clip.file),
         fallbackImageUrl: clip.fallback ? await urlFor(clip.fallback) : null,
@@ -396,29 +427,45 @@ export async function installSkill(options: {
   return dests;
 }
 
+type Writer = { write: (text: string) => void };
+
 export async function startPreview(options: {
   served: ServedCut;
   pageDir: string;
   port: number;
+  stderr?: Writer;
 }): Promise<{ url: string; close: () => Promise<void> }> {
   const pageDir = resolve(options.pageDir);
+  const stderr = options.stderr ?? process.stderr;
   const server = createServer((request, response) => {
-    void handleRequest(request, response, options.served, pageDir).catch(
-      (error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : 'preview failed';
-        if (!response.headersSent) {
-          response.writeHead(500, {
-            'Content-Type': 'text/plain; charset=utf-8',
-          });
-        }
-        response.end(message);
+    void handleRequest(
+      request,
+      response,
+      options.served,
+      pageDir,
+      stderr
+    ).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'preview failed';
+      stderr.write(`${request.url ?? '/'}: ${message}\n`);
+      if (response.headersSent) {
+        response.destroy();
+        return;
       }
-    );
+      response.writeHead(500, {
+        'Content-Type': 'text/plain; charset=utf-8',
+      });
+      response.end(message);
+    });
   });
   await new Promise<void>((resolveListen, reject) => {
     server.once('error', reject);
-    server.listen(options.port, '127.0.0.1', () => resolveListen());
+    server.listen(options.port, '127.0.0.1', () => {
+      server.off('error', reject);
+      server.on('error', (error) =>
+        stderr.write(`Preview server: ${error.message}\n`)
+      );
+      resolveListen();
+    });
   });
   const address = server.address();
   if (address === null || typeof address === 'string') {
@@ -438,7 +485,8 @@ async function handleRequest(
   request: IncomingMessage,
   response: ServerResponse,
   served: ServedCut,
-  pageDir: string
+  pageDir: string,
+  stderr: Writer
 ): Promise<void> {
   const url = new URL(request.url ?? '/', 'http://127.0.0.1');
   if (url.pathname === '/cut.json') {
@@ -465,7 +513,7 @@ async function handleRequest(
       response.end('No such media');
       return;
     }
-    await sendFile(request, response, file, mediaType(file));
+    await sendFile(request, response, file, mediaType(file), stderr);
     return;
   }
   const relative =
@@ -476,21 +524,24 @@ async function handleRequest(
     response.end('Outside the preview');
     return;
   }
-  try {
-    await stat(full);
-  } catch {
+  const isFile = await stat(full).then(
+    (info) => info.isFile(),
+    () => false
+  );
+  if (!isFile) {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     response.end('Not found');
     return;
   }
-  await sendFile(request, response, full, mediaType(full));
+  await sendFile(request, response, full, mediaType(full), stderr);
 }
 
 async function sendFile(
   request: IncomingMessage,
   response: ServerResponse,
   file: string,
-  contentType: string
+  contentType: string,
+  stderr: Writer
 ): Promise<void> {
   const info = await stat(file);
   const size = info.size;
@@ -499,7 +550,7 @@ async function sendFile(
   if (range === undefined) {
     response.writeHead(200, { ...common, 'Content-Length': size });
     if (request.method === 'HEAD') response.end();
-    else pipeFile(file, response);
+    else pipeFile(file, response, stderr);
     return;
   }
   const parsed = byteRange(range, size);
@@ -514,17 +565,21 @@ async function sendFile(
     'Content-Range': `bytes ${parsed.start}-${parsed.end}/${size}`,
   });
   if (request.method === 'HEAD') response.end();
-  else pipeFile(file, response, parsed);
+  else pipeFile(file, response, stderr, parsed);
 }
 
+/** pipeline closes the file when the browser cancels a read (every seek). */
 function pipeFile(
   file: string,
   response: ServerResponse,
+  stderr: Writer,
   range?: { start: number; end: number }
 ): void {
-  const stream = createReadStream(file, range);
-  stream.on('error', () => response.destroy());
-  stream.pipe(response);
+  pipeline(createReadStream(file, range), response, (error) => {
+    if (error && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      stderr.write(`${file}: ${error.message}\n`);
+    }
+  });
 }
 
 function byteRange(
@@ -591,7 +646,7 @@ function mediaType(file: string): string {
   }
 }
 
-export function openUrl(url: string): void {
+export function openUrl(url: string, stderr: Writer = process.stderr): void {
   const command =
     process.platform === 'darwin'
       ? 'open'
@@ -600,7 +655,12 @@ export function openUrl(url: string): void {
         : 'xdg-open';
   const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
   const child = spawn(command, args, { stdio: 'ignore', detached: true });
-  child.on('error', () => {});
+  const failed = (reason: string) =>
+    stderr.write(`Could not open a browser (${reason}). Open ${url}\n`);
+  child.on('error', (error) => failed(error.message));
+  child.on('exit', (code) => {
+    if (code !== 0 && code !== null) failed(`${command} exited ${code}`);
+  });
   child.unref();
 }
 
@@ -608,8 +668,8 @@ export async function main(
   argv: string[],
   io: {
     cwd?: string;
-    stdout?: { write: (text: string) => void };
-    stderr?: { write: (text: string) => void };
+    stdout?: Writer;
+    stderr?: Writer;
     home?: string;
     open?: (url: string) => void;
     packageRoot?: string;
@@ -643,12 +703,17 @@ export async function main(
         'The preview page is not built. Run bun run --cwd packages/stitch build'
       );
     }
-    const preview = await startPreview({ served, pageDir, port: request.port });
+    const preview = await startPreview({
+      served,
+      pageDir,
+      port: request.port,
+      stderr,
+    });
     stdout.write(`${preview.url}\n`);
-    if (request.open) (io.open ?? openUrl)(preview.url);
-    await new Promise<void>((resolveStop) => {
+    if (request.open) (io.open ?? ((url) => openUrl(url, stderr)))(preview.url);
+    await new Promise<void>((resolveStop, rejectStop) => {
       const stop = () => {
-        void preview.close().then(resolveStop);
+        preview.close().then(resolveStop, rejectStop);
       };
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
