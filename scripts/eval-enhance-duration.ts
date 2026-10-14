@@ -9,8 +9,11 @@
  * video model.
  *
  * Usage:
- *   bun scripts/eval-enhance-duration.ts
- *   bun scripts/eval-enhance-duration.ts --runs 3
+ *   bun --preload ./scripts/cloudflare-stubs.preload.ts scripts/eval-enhance-duration.ts
+ *   bun --preload ./scripts/cloudflare-stubs.preload.ts scripts/eval-enhance-duration.ts --runs 3
+ *
+ * The preload serves the `cloudflare:*` stubs: `llm-client` imports
+ * `cloudflare:workflows`, which only exists in workerd.
  *
  * Needs OPENROUTER_KEY. Report-only — never writes to the DB.
  */
@@ -58,7 +61,7 @@ if (!openRouterKey) {
   process.exit(1);
 }
 
-const SYSTEM = `${WORKFLOW_TEXT_PROMPTS['script/enhance'] ?? ''}
+const SYSTEM = `${(WORKFLOW_TEXT_PROMPTS['script/enhance'] ?? '').replaceAll('{{userCountry}}', 'AU')}
 
 Return ONLY the enhanced script text. No JSON, no markdown formatting, no explanations.`;
 

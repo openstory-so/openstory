@@ -29,6 +29,7 @@ import {
   runEnhanceScriptTurns,
 } from '@/sequences/enhance-script-turns';
 import { createUserPrompt } from '@/sequences/script-enhancer';
+import { drawEnhanceSeeds } from '@/sequences/server/enhance-seeds';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
@@ -140,12 +141,19 @@ export async function* streamScriptEnhancement(
   }
 
   const sanitized = sanitizeScriptContent(data.script);
+  const userCountry = getRequestCountry();
   const { compiled } = await getPrompt('script/enhance', {
-    userCountry: getRequestCountry() ?? '',
+    userCountry: userCountry ?? '',
   });
   const elements = data.elements ?? [];
   const userPrompt = createUserPrompt(sanitized, {
     invent: data.invent,
+    seeds: drawEnhanceSeeds({
+      script: sanitized,
+      invent: data.invent === true,
+      hasStyle: data.style !== undefined,
+      country: userCountry,
+    }),
     style: data.style,
     aspectRatio: data.aspectRatio,
     targetDuration: targetSeconds,
