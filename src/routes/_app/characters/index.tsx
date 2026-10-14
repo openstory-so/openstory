@@ -7,10 +7,15 @@ import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { PageContainer } from '@/ui/layout/page-container';
 import { EmptyState } from '@/ui/shadcn/empty-state';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/ui/shadcn/input-group';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/shadcn/tabs';
 import { PageIntro } from '@/ui/typography/page-intro';
 import { createFileRoute } from '@tanstack/react-router';
-import { User } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 import { Suspense, useRef } from 'react';
 import { z } from 'zod';
 
@@ -19,6 +24,8 @@ import { z } from 'zod';
 // live in the component.
 const searchParamsSchema = z.object({
   tab: z.enum(['characters', 'talent']).optional(),
+  /** Characters tab: the search box. */
+  q: z.string().optional(),
   /** Talent tab. */
   filter: z.enum(['all', 'favorites']).optional(),
 });
@@ -47,10 +54,7 @@ function CharactersPage() {
             : 'Browse system talent. Sign in to add your own and keep characters consistent across sequences.'}
         </PageIntro>
       ) : (
-        <PageIntro
-          title="Characters"
-          actions={isAuthenticated ? <NewCharacterDialog /> : undefined}
-        >
+        <PageIntro title="Characters">
           Every character your team has. Use one in a script with @.
         </PageIntro>
       )}
@@ -73,9 +77,38 @@ function CharactersPage() {
             </TabsList>
             <TabsContent value="characters" className="flex flex-col gap-6">
               {isAuthenticated ? (
-                <Suspense fallback={<LibraryGridSkeleton />}>
-                  <TeamCharacterList scrollRef={scrollRef} />
-                </Suspense>
+                <>
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-background py-2">
+                    <InputGroup className="sm:max-w-xs">
+                      <InputGroupAddon>
+                        <Search />
+                      </InputGroupAddon>
+                      {/* Uncontrolled: the URL trails the keystrokes. */}
+                      <InputGroupInput
+                        type="search"
+                        placeholder="Search characters"
+                        aria-label="Search characters"
+                        defaultValue={search.q}
+                        onChange={(event) =>
+                          void navigate({
+                            search: (prev) => ({
+                              ...prev,
+                              q: event.target.value || undefined,
+                            }),
+                            replace: true,
+                          })
+                        }
+                      />
+                    </InputGroup>
+                    <NewCharacterDialog />
+                  </div>
+                  <Suspense fallback={<LibraryGridSkeleton />}>
+                    <TeamCharacterList
+                      scrollRef={scrollRef}
+                      query={search.q ?? ''}
+                    />
+                  </Suspense>
+                </>
               ) : isPending ? (
                 <LibraryGridSkeleton />
               ) : (

@@ -29,8 +29,18 @@ const gridColumns = () =>
  */
 export const TeamCharacterList: React.FC<{
   scrollRef: React.RefObject<HTMLDivElement | null>;
-}> = ({ scrollRef }) => {
-  const { data: characters } = useTeamCharacters();
+  /** The search box: matches name or description, any case. */
+  query: string;
+}> = ({ scrollRef, query }) => {
+  const { data: everyCharacter } = useTeamCharacters();
+  const needle = query.trim().toLowerCase();
+  const characters = needle
+    ? everyCharacter.filter(
+        (c) =>
+          c.name.toLowerCase().includes(needle) ||
+          c.physicalDescription?.toLowerCase().includes(needle)
+      )
+    : everyCharacter;
   const columns = useSyncExternalStore(subscribeToResize, gridColumns, () => 2);
   // Where the list starts inside the page's scroller, measured when the
   // list mounts (a ref callback, not a read of a ref during render).
@@ -46,6 +56,16 @@ export const TeamCharacterList: React.FC<{
     overscan: 3,
     scrollMargin,
   });
+
+  if (characters.length === 0 && needle) {
+    return (
+      <EmptyState
+        icon={<User className="h-12 w-12" />}
+        title="No characters match"
+        description={`Nothing matches “${query.trim()}”.`}
+      />
+    );
+  }
 
   if (characters.length === 0) {
     return (
