@@ -21,13 +21,11 @@ try {
   stage.style.setProperty('--ar', String(cut.frameWidth / cut.frameHeight));
   createRoot(stage).render(<Preview cut={cut} />);
 } catch (error) {
-  const notice = document.createElement('div');
-  notice.className = 'error';
-  const text = document.createElement('p');
-  text.textContent =
-    error instanceof Error ? error.message : 'The cut could not load';
-  notice.append(text);
-  stage.replaceChildren(notice);
+  createRoot(stage).render(
+    <div className="error">
+      <p>{error instanceof Error ? error.message : 'The cut could not load'}</p>
+    </div>
+  );
 }
 
 async function fetchCut(): Promise<unknown> {
