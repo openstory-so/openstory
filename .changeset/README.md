@@ -10,7 +10,7 @@ bunx changeset
 
 Write the changelog line, and pick patch, minor, or major.
 
-Merging to `main` opens or updates a version pull request. Merging that pull request publishes to npm. Auth is trusted publishing for `.github/workflows/release.yml`. There is no npm token.
+Once Test passes on `main`, Release opens or updates a version pull request. Merging that pull request publishes to npm. Auth is trusted publishing for `.github/workflows/release.yml`. There is no npm token.
 
 A change that should not release gets an empty changeset:
 
