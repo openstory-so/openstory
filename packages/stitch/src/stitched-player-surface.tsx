@@ -200,7 +200,7 @@ const Download: React.FC<{
         {progress === null ? (
           <DownloadIcon />
         ) : (
-          `${Math.round(progress * 100)}%`
+          <span>{`${Math.round(progress * 100)}%`}</span>
         )}
       </button>
       {error ? (
