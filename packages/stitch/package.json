@@ -27,6 +27,9 @@
     "bin",
     "dist",
     "README.md",
+    "README.zh-CN.md",
+    "README.fr.md",
+    "README.es.md",
     "skills"
   ],
   "type": "module",

@@ -141,7 +141,7 @@ npx skills add openstory-so/skills
 
 Grok, Claude Code, Codex, and the ChatGPT desktop app can add `openstory-so/skills` as a marketplace and install the OpenStory plugin. The per-client commands are in that repo.
 
-The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md).
+The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md). That page is also in [中文](packages/stitch/README.zh-CN.md), [français](packages/stitch/README.fr.md), and [español](packages/stitch/README.es.md).
 
 ## Project Structure
 

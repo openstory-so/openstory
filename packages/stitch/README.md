@@ -4,6 +4,8 @@
 
 # @openstory/stitch
 
+[中文](README.zh-CN.md) · [Français](README.fr.md) · [Español](README.es.md)
+
 A player designed for AI filmmaking.
 
 Stills, dialogue, music and video segments can be generated in any order. Give them to stitch and the browser plays that list as one sequence. It avoids the need to edit clips together offline, or to use ffmpeg for a preview.
