@@ -1,6 +1,6 @@
 # Changesets
 
-`@openstory/stitch-player` is the only package this releases. The app is private and is not versioned.
+`@openstory/stitch` is the only package this releases. The app is private and is not versioned.
 
 When a pull request changes the player in a way that should ship, add a changeset from the repo root:
 

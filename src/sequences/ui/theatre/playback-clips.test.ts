@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { playbackClipsKey } from '@openstory/stitch-player';
+import { playbackClipsKey } from '@openstory/stitch';
 import {
   groupPlaybackShots,
   shotCues,

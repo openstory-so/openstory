@@ -118,7 +118,7 @@
     "@logtape/redaction": "^2.4.0",
     "@modelcontextprotocol/server": "2.3.1",
     "@openrouter/sdk": "0.13.20",
-    "@openstory/stitch-player": "workspace:*",
+    "@openstory/stitch": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-metrics-otlp-http": "^0.223.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.223.0",

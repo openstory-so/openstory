@@ -1,6 +1,6 @@
 name: Release
 
-# Versions and publishes @openstory/stitch-player from main.
+# Versions and publishes @openstory/stitch from main.
 # A changeset in a merged pull request opens a version pull request.
 # Merging that pull request publishes. Auth is npm trusted publishing for
 # this workflow file only. There is no npm token.
@@ -99,13 +99,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test
-        run: bun run test packages/stitch-player
+        run: bun run test packages/stitch
 
       - name: Build
-        run: bun run --cwd packages/stitch-player build
+        run: bun run --cwd packages/stitch build
 
       - name: The built package imports under Node
-        working-directory: packages/stitch-player
+        working-directory: packages/stitch
         run: node --input-type=module -e "await import('./dist/index.js'); await import('./dist/export.js'); await import('./dist/videojs.js'); await import('./dist/react.js')"
 
       - name: Publish

@@ -18,7 +18,7 @@ import {
   playbackClipsKey,
   type PlaybackClip,
   type SequencePlayerMeta,
-} from '@openstory/stitch-player';
+} from '@openstory/stitch';
 import { getLogger } from '@/platform/logger';
 import {
   captureVideoPlay,
@@ -33,7 +33,7 @@ import { playerFrameClassName } from '@/ui/player-frame';
 import { playbackGapMessage } from './playback-gap';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
-import { StitchedPlayer } from '@openstory/stitch-player/react';
+import { StitchedPlayer } from '@openstory/stitch/react';
 import { toast } from 'sonner';
 import { useEffect, useRef, useState } from 'react';
 

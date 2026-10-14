@@ -1,5 +1,5 @@
 {
-  "name": "@openstory/stitch-player",
+  "name": "@openstory/stitch",
   "version": "0.1.0",
   "description": "Plays a list of video clips and timed stills as one sequence in the browser — no server encode. Mediabunny on a canvas, with music, per-clip dialogue and subtitles. Optional Video.js 10 adapter and React surface.",
   "keywords": [
@@ -13,14 +13,18 @@
     "videojs",
     "webcodecs"
   ],
-  "homepage": "https://github.com/openstory-so/openstory/tree/main/packages/stitch-player#readme",
+  "homepage": "https://github.com/openstory-so/openstory/tree/main/packages/stitch#readme",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/openstory-so/openstory.git",
-    "directory": "packages/stitch-player"
+    "directory": "packages/stitch"
+  },
+  "bin": {
+    "stitch": "./bin/stitch.mjs"
   },
   "files": [
+    "bin",
     "dist",
     "README.md",
     "skills"

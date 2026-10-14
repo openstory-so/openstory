@@ -1,9 +1,9 @@
 ---
-name: stitch-player
-description: Use when wiring @openstory/stitch-player, playing a sequence of stills, dialogue, music and video in the browser, or exporting that sequence to an MP4. Covers which sound belongs on a clip, how music is mixed, and which URLs the player can read.
+name: stitch
+description: Use when wiring @openstory/stitch, playing a sequence of stills, dialogue, music and video in the browser, or exporting that sequence to an MP4. Covers which sound belongs on a clip, how music is mixed, and which URLs the player can read. Install with npx @openstory/stitch.
 ---
 
-# stitch-player
+# stitch
 
 Play `PlaybackClip[]` in order. The README in this package has the install and the component example. This file is the contract that example leaves easy to miss.
 

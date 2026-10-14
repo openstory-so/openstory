@@ -1,5 +1,5 @@
 [install]
-# `workspaces` (packages/stitch-player) flips bun's default linker to
+# `workspaces` (packages/stitch) flips bun's default linker to
 # `isolated`, which only links declared dependencies at the root and broke
 # the app's direct imports of transitive tiptap packages. Keep the hoisted
 # layout the app has always run on.

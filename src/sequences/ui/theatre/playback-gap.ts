@@ -1,4 +1,4 @@
-import type { SequencePlayerMeta } from '@openstory/stitch-player';
+import type { SequencePlayerMeta } from '@openstory/stitch';
 
 function clipList(indexes: readonly number[]): string {
   const names = indexes.map((index) => `clip ${index + 1}`);
