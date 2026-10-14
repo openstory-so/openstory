@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/openstory-logo.svg" alt="OpenStory" width="275" />
+  <img src="https://assets.openstory.so/brand/openstory-logo-dark.png" alt="OpenStory" width="275" />
 </p>
 
 <h1 align="center">OpenStory</h1>
