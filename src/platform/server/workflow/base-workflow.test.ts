@@ -79,6 +79,13 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
   captureProductEvent,
 }));
 
+const reportRunStarted = vi.fn(async () => undefined);
+const reportRunEnded = vi.fn(async () => undefined);
+vi.doMock('@/platform/server/realtime/runs', () => ({
+  reportRunStarted,
+  reportRunEnded,
+}));
+
 // Dynamic import so the mocks above apply (vi.doMock is not hoisted).
 const { OpenStoryWorkflowEntrypoint } = await import('./base-workflow');
 
@@ -612,6 +619,107 @@ describe('OpenStoryWorkflowEntrypoint.run', () => {
       );
 
       expect(flushAnalytics).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('sequence run chip (#2113)', () => {
+    test('a sequence run reports start and end once, including its parent', async () => {
+      reportRunStarted.mockClear();
+      reportRunEnded.mockClear();
+      const { workflow } = makeWorkflow(() => Promise.resolve('ok'));
+      const event = makeEvent(true, { sequenceId: 'seq_1' });
+
+      await workflow.run(
+        { ...event, instanceId: 'local_image_shot1' },
+        makeStep()
+      );
+
+      expect(reportRunStarted).toHaveBeenCalledTimes(1);
+      expect(reportRunStarted).toHaveBeenCalledWith('seq_1', {
+        instanceId: 'local_image_shot1',
+        binding: 'IMAGE_WORKFLOW',
+        className: 'TestWorkflow',
+        label: 'Test run',
+        parentInstanceId: 'parent_run_A',
+        startedAt: expect.any(Number),
+      });
+      expect(reportRunEnded).toHaveBeenCalledTimes(1);
+      expect(reportRunEnded).toHaveBeenCalledWith('seq_1', 'local_image_shot1');
+    });
+
+    test('a resumed run does not report again', async () => {
+      reportRunStarted.mockClear();
+      reportRunEnded.mockClear();
+      const seen = new Map<string, unknown>();
+      const step = asStub<WorkflowStep>({
+        do: vi.fn(async (name: string, fn: () => Promise<unknown>) => {
+          if (seen.has(name)) return seen.get(name);
+          const result = await fn();
+          seen.set(name, result);
+          return result;
+        }),
+      });
+      const { workflow } = makeWorkflow(() => Promise.resolve('ok'));
+      const event = makeEvent(false, { sequenceId: 'seq_1' });
+
+      await workflow.run(event, step);
+      await workflow.run(event, step);
+
+      expect(reportRunStarted).toHaveBeenCalledTimes(1);
+      expect(reportRunEnded).toHaveBeenCalledTimes(1);
+    });
+
+    test('an engine abort reports the start and does not end the run', async () => {
+      reportRunStarted.mockClear();
+      reportRunEnded.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error(ENGINE_ABORT))
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toThrow('Grace period complete');
+
+      expect(reportRunStarted).toHaveBeenCalledTimes(1);
+      expect(reportRunEnded).not.toHaveBeenCalled();
+    });
+
+    test('a real failure ends the run', async () => {
+      reportRunStarted.mockClear();
+      reportRunEnded.mockClear();
+      const { workflow } = makeWorkflow(() =>
+        Promise.reject(new Error('fal request failed'))
+      );
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).rejects.toThrow('fal request failed');
+
+      expect(reportRunEnded).toHaveBeenCalledWith('seq_1', 'child_run_A');
+    });
+
+    test('a run with no sequence is not reported', async () => {
+      reportRunStarted.mockClear();
+      reportRunEnded.mockClear();
+      const { workflow } = makeWorkflow(() => Promise.resolve('ok'));
+
+      await workflow.run(makeEvent(false), makeStep());
+
+      expect(reportRunStarted).not.toHaveBeenCalled();
+      expect(reportRunEnded).not.toHaveBeenCalled();
+    });
+
+    test('a failed report does not fail the run', async () => {
+      reportRunStarted.mockClear();
+      reportRunEnded.mockClear();
+      reportRunStarted.mockRejectedValue(new Error('channel down'));
+      const { workflow } = makeWorkflow(() => Promise.resolve('ok'));
+
+      await expect(
+        workflow.run(makeEvent(false, { sequenceId: 'seq_1' }), makeStep())
+      ).resolves.toBe('ok');
+
+      expect(reportRunEnded).toHaveBeenCalledTimes(1);
     });
   });
 });

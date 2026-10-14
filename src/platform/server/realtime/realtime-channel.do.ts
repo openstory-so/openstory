@@ -1,6 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
 
 import { getLogger } from '@/platform/logger';
+import type { WorkflowRun } from '@/platform/realtime/schema';
+import { isInstanceNotFoundError } from '@/platform/server/workflow/errors';
+import { disposeRpcStub } from '@/platform/server/workflow/rpc-dispose';
+import { getCfBindingForRunId } from '@/platform/server/workflow/trigger-bindings';
 
 /**
  * Cloudflare-native realtime broker. One Durable Object instance per channel
@@ -36,6 +40,11 @@ import { getLogger } from '@/platform/logger';
  *   same PK-prefix cap batch; leftovers reschedule in `PRUNE_CATCHUP_MS`.
  *   Every statement is a bounded PK-range op: `ts` is monotonic with `seq`, so
  *   expired rows are a PK prefix and no index is needed (#1332).
+ * - **Open runs (#2113)**: `runs` holds every workflow the base class has
+ *   reported and not yet ended. Start and end are broadcast and not written
+ *   to `events`. While any row is open, the alarm asks that run's Workflows
+ *   binding for its status and drops finished instances, so a crash cannot
+ *   leave the chip's count stuck.
  *
  * The wire format is intentionally simple and fully owned in-repo (see
  * `client.tsx`): each SSE `data:` line is a JSON object — a user event
@@ -69,6 +78,18 @@ export const PRUNE_CATCHUP_MS = 5_000;
 export const PRUNE_BATCH_ROWS = 1_000;
 /** SSE keepalive cadence — keeps intermediaries from dropping an idle stream. */
 const PING_INTERVAL_MS = 25_000;
+/**
+ * How often the alarm re-checks open runs against the Workflows engine.
+ * Short enough that a crashed run does not sit on the chip, long enough
+ * that an idle sequence is not waking its DO every few seconds.
+ */
+export const RUN_RECONCILE_MS = 3 * 60 * 1000;
+
+const FINISHED_RUN_STATUSES: ReadonlySet<string> = new Set([
+  'complete',
+  'errored',
+  'terminated',
+]);
 
 type EmitBody = {
   event: string;
@@ -78,6 +99,15 @@ type EmitBody = {
 };
 
 type HistoryRow = { seq: number; event: string; data: string; ts: number };
+
+type RunRow = {
+  instance_id: string;
+  binding: string;
+  class_name: string;
+  label: string;
+  parent_instance_id: string | null;
+  started_at: number;
+};
 
 /** Shape returned by `/history` — `data` stays a JSON string for the caller to parse. */
 export type ChannelHistoryMessage = {
@@ -114,6 +144,16 @@ export class RealtimeChannel extends DurableObject {
         ts INTEGER NOT NULL
       )`
     );
+    this.ctx.storage.sql.exec(
+      `CREATE TABLE IF NOT EXISTS runs (
+        instance_id TEXT PRIMARY KEY,
+        binding TEXT NOT NULL,
+        class_name TEXT NOT NULL,
+        label TEXT NOT NULL,
+        parent_instance_id TEXT,
+        started_at INTEGER NOT NULL
+      )`
+    );
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -127,9 +167,94 @@ export class RealtimeChannel extends DurableObject {
         return this.handleHistory(channel);
       case '/subscribe':
         return this.handleSubscribe(request, channel);
+      case '/runs':
+        return this.handleRuns(request, channel);
+      case '/runs/started':
+        return this.handleRunStarted(request, channel);
+      case '/runs/ended':
+        return this.handleRunEnded(request, channel);
       default:
         return new Response('not found', { status: 404 });
     }
+  }
+
+  private handleRuns(_request: Request, _channel: string): Response {
+    return Response.json(this.listRuns());
+  }
+
+  private async handleRunStarted(
+    request: Request,
+    channel: string
+  ): Promise<Response> {
+    const run = parseRun(await request.json());
+    if (!run) return new Response('bad request', { status: 400 });
+    this.ctx.storage.sql.exec(
+      `INSERT INTO runs (
+         instance_id, binding, class_name, label, parent_instance_id, started_at
+       ) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(instance_id) DO UPDATE SET
+         binding = excluded.binding,
+         class_name = excluded.class_name,
+         label = excluded.label,
+         parent_instance_id = excluded.parent_instance_id`,
+      run.instanceId,
+      run.binding,
+      run.className,
+      run.label,
+      run.parentInstanceId,
+      run.startedAt
+    );
+    this.broadcast({
+      id: `${run.instanceId}:started`,
+      event: 'generation.run:started',
+      channel,
+      data: run,
+    });
+    await this.armRunReconcile();
+    return new Response(null, { status: 204 });
+  }
+
+  private async handleRunEnded(
+    request: Request,
+    channel: string
+  ): Promise<Response> {
+    const body: unknown = await request.json();
+    const instanceId = readInstanceId(body);
+    if (!instanceId) return new Response('bad request', { status: 400 });
+    this.finishRun(instanceId, channel);
+    return new Response(null, { status: 204 });
+  }
+
+  private listRuns(): WorkflowRun[] {
+    return this.ctx.storage.sql
+      .exec<RunRow>(
+        `SELECT instance_id, binding, class_name, label, parent_instance_id, started_at
+         FROM runs ORDER BY started_at ASC, instance_id ASC`
+      )
+      .toArray()
+      .map((row) => ({
+        instanceId: row.instance_id,
+        binding: row.binding,
+        className: row.class_name,
+        label: row.label,
+        parentInstanceId: row.parent_instance_id,
+        startedAt: row.started_at,
+      }));
+  }
+
+  /** Delete one open run and tell live subscribers. A second end is a no-op. */
+  private finishRun(instanceId: string, channel: string): void {
+    const deleted = this.ctx.storage.sql.exec(
+      'DELETE FROM runs WHERE instance_id = ?',
+      instanceId
+    );
+    if (deleted.rowsWritten === 0) return;
+    this.broadcast({
+      id: `${instanceId}:ended`,
+      event: 'generation.run:ended',
+      channel,
+      data: { instanceId },
+    });
   }
 
   private async handleEmit(
@@ -403,6 +528,56 @@ export class RealtimeChannel extends DurableObject {
     }
   }
 
+  /**
+   * Pull the alarm forward while runs are open. An existing sooner alarm
+   * (a prune catch-up) stays. History-only channels never reach here, so a
+   * later emit still does not move a 30-day prune alarm.
+   */
+  private async armRunReconcile(): Promise<void> {
+    if (this.listRuns().length === 0) return;
+    const when = Date.now() + RUN_RECONCILE_MS;
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing === null || existing > when) {
+      await this.ctx.storage.setAlarm(when);
+    }
+  }
+
+  /**
+   * Drop runs the engine has already finished. A missing instance is
+   * finished (retention, or another dev server). A lookup that fails for
+   * any other reason keeps the row: the next alarm tries again. `unknown`
+   * is not a finish — we have no verdict.
+   */
+  private async reconcileRuns(): Promise<void> {
+    const runs = this.listRuns();
+    if (runs.length === 0) return;
+    const channel = this.ctx.id.name ?? '';
+    for (const run of runs) {
+      const binding = getCfBindingForRunId(run.instanceId, this.env);
+      if (!binding) continue;
+      try {
+        const instance = await binding.get(run.instanceId);
+        try {
+          const { status } = await instance.status();
+          if (FINISHED_RUN_STATUSES.has(status)) {
+            this.finishRun(run.instanceId, channel);
+          }
+        } finally {
+          disposeRpcStub(instance);
+        }
+      } catch (error) {
+        if (isInstanceNotFoundError(error)) {
+          this.finishRun(run.instanceId, channel);
+          continue;
+        }
+        logger.warn('open run status check failed', {
+          instanceId: run.instanceId,
+          err: error,
+        });
+      }
+    }
+  }
+
   override async alarm(): Promise<void> {
     const cutoffTs = Date.now() - HISTORY_EXPIRE_SECS * 1000;
     this.pruneTtlBatch(cutoffTs);
@@ -410,7 +585,13 @@ export class RealtimeChannel extends DurableObject {
     const newest = this.ctx.storage.sql
       .exec<{ seq: number | null }>('SELECT MAX(seq) AS seq FROM events')
       .one().seq;
-    if (newest === null) return;
+    // No history to prune. Open runs still need the crash backstop: a
+    // sequence can be generating without a single stored event.
+    if (newest === null) {
+      await this.reconcileRuns();
+      await this.armRunReconcile();
+      return;
+    }
 
     this.pruneCapBatch(newest);
 
@@ -427,6 +608,43 @@ export class RealtimeChannel extends DurableObject {
       expired,
       overCap,
     });
+    await this.reconcileRuns();
     await this.schedulePrune(expired || overCap);
+    await this.armRunReconcile();
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readInstanceId(value: unknown): string | null {
+  if (!isRecord(value) || typeof value.instanceId !== 'string') return null;
+  return value.instanceId.length > 0 ? value.instanceId : null;
+}
+
+function parseRun(value: unknown): WorkflowRun | null {
+  if (!isRecord(value)) return null;
+  const instanceId = readInstanceId(value);
+  if (
+    !instanceId ||
+    typeof value.binding !== 'string' ||
+    typeof value.className !== 'string' ||
+    typeof value.label !== 'string' ||
+    typeof value.startedAt !== 'number' ||
+    (value.parentInstanceId !== null &&
+      typeof value.parentInstanceId !== 'string')
+  ) {
+    return null;
+  }
+  const parentInstanceId =
+    typeof value.parentInstanceId === 'string' ? value.parentInstanceId : null;
+  return {
+    instanceId,
+    binding: value.binding,
+    className: value.className,
+    label: value.label,
+    parentInstanceId,
+    startedAt: value.startedAt,
+  };
 }

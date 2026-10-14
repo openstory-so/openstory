@@ -119,6 +119,13 @@ export function workflowNameFromRunId(runId: string): string | null {
   return null;
 }
 
+/** Binding name for a run id, or null when the id is not one of ours. */
+export function bindingNameForRunId(runId: string): keyof CloudflareEnv | null {
+  const workflowName = workflowNameFromRunId(runId);
+  if (!workflowName) return null;
+  return TRIGGER_TO_BINDING[workflowName] ?? null;
+}
+
 /**
  * Resolve the CF binding for a stored workflow run id, used by the
  * reconciler to query instance status. Returns null for ids that don't map

@@ -103,6 +103,24 @@ export const realtimeSchema = {
       phase: z.number(),
     }),
 
+    /**
+     * One open workflow on this sequence (#2113). The channel DO is the
+     * source of truth (`runs`); these two events are broadcast and not
+     * written to history. `parentInstanceId` is the parent notify hint, or
+     * null for a run the user started.
+     */
+    'run:started': z.object({
+      instanceId: z.string(),
+      binding: z.string(),
+      className: z.string(),
+      label: z.string(),
+      parentInstanceId: z.string().nullable(),
+      startedAt: z.number(),
+    }),
+    'run:ended': z.object({
+      instanceId: z.string(),
+    }),
+
     // Scene events (progressive display during analysis)
     'scene:new': z.object({
       sceneId: z.string(),
@@ -468,6 +486,11 @@ export const realtimeSchema = {
   },
 };
 
+/** One open workflow run on a sequence channel (#2113). */
+export type WorkflowRun = z.infer<
+  (typeof realtimeSchema.generation)['run:started']
+>;
+
 export const realtimeLeaves = {
   'talent.sheet:progress': realtimeSchema.talent['sheet:progress'],
   'location.sheet:progress': realtimeSchema.location['sheet:progress'],
@@ -477,6 +500,8 @@ export const realtimeLeaves = {
   'shotPrompt.failed': realtimeSchema.shotPrompt.failed,
   'generation.phase:start': realtimeSchema.generation['phase:start'],
   'generation.phase:complete': realtimeSchema.generation['phase:complete'],
+  'generation.run:started': realtimeSchema.generation['run:started'],
+  'generation.run:ended': realtimeSchema.generation['run:ended'],
   'generation.scene:new': realtimeSchema.generation['scene:new'],
   'generation.scene:updated': realtimeSchema.generation['scene:updated'],
   'generation.shot:created': realtimeSchema.generation['shot:created'],
@@ -566,6 +591,10 @@ const leafParsers: LeafParsers = {
     parseWith(realtimeLeaves['generation.phase:start'], data),
   'generation.phase:complete': (data) =>
     parseWith(realtimeLeaves['generation.phase:complete'], data),
+  'generation.run:started': (data) =>
+    parseWith(realtimeLeaves['generation.run:started'], data),
+  'generation.run:ended': (data) =>
+    parseWith(realtimeLeaves['generation.run:ended'], data),
   'generation.scene:new': (data) =>
     parseWith(realtimeLeaves['generation.scene:new'], data),
   'generation.scene:updated': (data) =>

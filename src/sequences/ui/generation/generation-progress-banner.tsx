@@ -1,4 +1,5 @@
 import { type BannerPhase, ProgressBanner } from './progress-banner';
+import { runChipModel, type WorkflowRun } from './sequence-runs';
 import {
   estimateSceneCount,
   estimateTotalSeconds,
@@ -30,6 +31,8 @@ type GenerationProgressBannerProps = {
   musicModel?: string | null;
   /** Show the ready-email promise in the leave hint. */
   willEmail?: boolean;
+  /** Open workflow runs on this sequence. Empty keeps the phase chip. */
+  runs?: WorkflowRun[];
 };
 
 export const GenerationProgressBanner: React.FC<
@@ -45,6 +48,7 @@ export const GenerationProgressBanner: React.FC<
   videoModel,
   musicModel,
   willEmail = false,
+  runs = [],
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -59,8 +63,17 @@ export const GenerationProgressBanner: React.FC<
     return () => clearInterval(interval);
   }, []);
 
-  // Don't render before generation starts or after exit
-  if (!isProcessing && generationState.currentPhase === 0) return null;
+  const chip = runChipModel(runs, isProcessing);
+
+  // Don't render before generation starts or after exit. An open run that
+  // is not the script-to-video pipeline still shows.
+  if (
+    chip.kind === 'hidden' &&
+    !isProcessing &&
+    generationState.currentPhase === 0
+  ) {
+    return null;
+  }
 
   const phase1Completed = generationState.phases[0]?.status === 'completed';
   const sceneCount = phase1Completed ? generationState.scenes.length : 0;
@@ -90,10 +103,13 @@ export const GenerationProgressBanner: React.FC<
     <ProgressBanner
       phases={bannerPhases}
       remaining={remaining}
-      // Parent mounts this only while status is processing. A leftover or
-      // replayed COMPLETE must not self-unmount the chip (#1641).
-      isComplete={generationState.isComplete && !isProcessing}
-      defaultLabel="Generating&#xa0;sequence"
+      // Parent mounts this while the sequence is processing or a run is
+      // open. A leftover COMPLETE must not self-unmount the chip (#1641),
+      // and it must not hide a redraw that is still running (#2113).
+      isComplete={
+        generationState.isComplete && !isProcessing && chip.kind !== 'runs'
+      }
+      defaultLabel="Generating sequence"
       ariaPrefix="Generation"
       exitDelayMs={0}
       isOpen={isOpen}
@@ -103,6 +119,9 @@ export const GenerationProgressBanner: React.FC<
           <>We&rsquo;ll email you when it&rsquo;s ready.</>
         ) : undefined
       }
+      runs={chip.kind === 'runs' ? chip.items : undefined}
+      showRemaining={chip.kind !== 'runs' || chip.showRemaining}
+      closedLabel={chip.kind === 'runs' && chip.label ? chip.label : undefined}
     />
   );
 };

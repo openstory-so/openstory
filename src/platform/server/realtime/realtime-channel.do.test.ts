@@ -16,6 +16,7 @@ import {
   PRUNE_BATCH_ROWS,
   PRUNE_CATCHUP_MS,
   RealtimeChannel,
+  RUN_RECONCILE_MS,
   SSE_MAX_BUFFERED_BYTES,
   SSE_MAX_BUFFERED_CHUNKS,
 } from './realtime-channel.do';
@@ -117,7 +118,9 @@ type Harness = {
   sqlStatements: string[];
 };
 
-function createHarness(): Harness {
+function createHarness(
+  env: Cloudflare.Env = asStub<Cloudflare.Env>({})
+): Harness {
   const db = new DatabaseSync(':memory:');
   let alarm: number | null = null;
   const sqlStatements: string[] = [];
@@ -137,13 +140,13 @@ function createHarness(): Harness {
         alarm = null;
       },
     },
+    id: { name: CHANNEL, toString: () => CHANNEL },
   };
 
   const channel = new RealtimeChannel(
     // Node sqlite stand-in for DO storage
     asStub<DurableObjectState>(ctx),
-    // DO under test does not read env
-    asStub<Cloudflare.Env>({})
+    env
   );
   return {
     channel,
@@ -712,5 +715,145 @@ describe('RealtimeChannel SSE backpressure (#1332)', () => {
       .filter(isUserEvent)
       .map((frame) => frame.data);
     expect(delivered).toContainEqual({ chunk });
+  });
+});
+
+const RUN = {
+  instanceId: 'local_image_shot1',
+  binding: 'IMAGE_WORKFLOW',
+  className: 'ImageWorkflow',
+  label: 'Image generation',
+  parentInstanceId: null,
+  startedAt: 10,
+};
+
+async function postRun(
+  channel: RealtimeChannel,
+  path: 'started' | 'ended',
+  body: unknown
+): Promise<Response> {
+  return channel.fetch(
+    new Request(`https://realtime.do/runs/${path}?channel=${CHANNEL}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+async function listRuns(channel: RealtimeChannel): Promise<unknown[]> {
+  const response = await channel.fetch(
+    new Request(`https://realtime.do/runs?channel=${CHANNEL}`)
+  );
+  return response.json();
+}
+
+describe('RealtimeChannel open runs (#2113)', () => {
+  it('stores a start, broadcasts it, and does not write history', async () => {
+    const harness = createHarness();
+    const ac = new AbortController();
+    const response = await harness.channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const collected = collectWhile(requireBody(response.body), ac.signal);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const started = await postRun(harness.channel, 'started', RUN);
+    expect(started.status).toBe(204);
+    expect(await listRuns(harness.channel)).toEqual([RUN]);
+    expect(await history(harness.channel)).toEqual([]);
+
+    await postRun(harness.channel, 'started', { ...RUN, label: 'again' });
+    const rows = await listRuns(harness.channel);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ label: 'again', startedAt: 10 });
+
+    ac.abort();
+    const frames = (await collected).filter(isUserEvent);
+    expect(frames.map((frame) => frame.event)).toContain(
+      'generation.run:started'
+    );
+  });
+
+  it('ends a run once', async () => {
+    const { channel } = createHarness();
+    await postRun(channel, 'started', RUN);
+    expect(
+      (await postRun(channel, 'ended', { instanceId: RUN.instanceId })).status
+    ).toBe(204);
+    expect(await listRuns(channel)).toEqual([]);
+    expect(
+      (await postRun(channel, 'ended', { instanceId: RUN.instanceId })).status
+    ).toBe(204);
+  });
+
+  it('arms the alarm while runs are open and pulls a later prune alarm forward', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const harness = createHarness();
+    await emit(harness.channel, { n: 1 });
+    expect(harness.getAlarm()).toBe(t0 + THIRTY_DAYS_MS);
+
+    await postRun(harness.channel, 'started', RUN);
+    expect(harness.getAlarm()).toBe(t0 + RUN_RECONCILE_MS);
+  });
+
+  it('drops a finished run and keeps a running one', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const running = vi.fn(async () => ({ status: 'running' }));
+    const finished = vi.fn(async () => ({ status: 'complete' }));
+    const missing = vi.fn(async () => {
+      throw new Error('instance.not_found');
+    });
+    const get = vi.fn(async (id: string) => {
+      if (id === 'local_image_live') return { status: running };
+      if (id === 'local_image_done') return { status: finished };
+      return { status: missing };
+    });
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        IMAGE_WORKFLOW: { create: vi.fn(), get },
+      })
+    );
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId: 'local_image_live',
+    });
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId: 'local_image_done',
+      startedAt: 11,
+    });
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId: 'local_image_gone',
+      startedAt: 12,
+    });
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toEqual([
+      expect.objectContaining({ instanceId: 'local_image_live' }),
+    ]);
+    expect(harness.getAlarm()).toBe(t0 + RUN_RECONCILE_MS);
+  });
+
+  it('keeps a run when the status check fails', async () => {
+    const status = vi.fn(async () => {
+      throw new Error('rpc down');
+    });
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        IMAGE_WORKFLOW: { create: vi.fn(), get: async () => ({ status }) },
+      })
+    );
+    await postRun(harness.channel, 'started', RUN);
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toEqual([RUN]);
   });
 });

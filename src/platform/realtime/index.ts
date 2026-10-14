@@ -66,6 +66,10 @@ type RealtimeChannelApi = {
  */
 const TRANSIENT_EVENTS: ReadonlySet<SchemaEventPath> = new Set([
   'shotPrompt.streaming',
+  // The channel DO broadcasts these itself and keeps the open set in `runs`.
+  // An emit through here must not land in history either (#2113).
+  'generation.run:started',
+  'generation.run:ended',
 ]);
 
 /** Resolve the Durable Object stub for a channel id. */

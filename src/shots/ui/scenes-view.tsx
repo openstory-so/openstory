@@ -1,4 +1,5 @@
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
+import { useSequenceRuns } from '@/sequences/ui/generation/use-sequence-runs';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { RenderWaitCopy } from '@/sequences/ui/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/sequences/ui/generation/motion-progress-banner';
@@ -324,6 +325,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const hasDetail = detail !== null;
   const queryClient = useQueryClient();
   const posthog = usePostHog();
+  const openRuns = useSequenceRuns(sequenceId);
 
   const {
     selection,
@@ -1545,28 +1547,30 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
 
   // Progress rides in the app header (#1427) — no layout shift, and it
   // never sits on top of anything you might want to click.
-  const progressChip = isGenerationActive ? (
-    <GenerationProgressBanner
-      generationState={generationState}
-      isProcessing={isProcessing}
-      startedAt={sequence.updatedAt}
-      script={sequence.script ?? undefined}
-      remainingSeconds={remainingSeconds}
-      analysisModel={sequence.analysisModel}
-      imageModel={sequence.imageModel}
-      videoModel={sequence.videoModel}
-      musicModel={sequence.musicModel}
-      willEmail={willEmail}
-    />
-  ) : motionBannerState !== null && sequence && shots ? (
-    <MotionProgressBanner
-      shots={shots}
-      sequence={sequence}
-      includeMusic={motionBannerState.includeMusic}
-      startedAt={motionBannerState.startedAt}
-      onComplete={resetGenerationStream}
-    />
-  ) : null;
+  const progressChip =
+    isGenerationActive || openRuns.length > 0 ? (
+      <GenerationProgressBanner
+        generationState={generationState}
+        isProcessing={isProcessing}
+        startedAt={sequence?.updatedAt}
+        script={sequence?.script ?? undefined}
+        remainingSeconds={remainingSeconds}
+        analysisModel={sequence?.analysisModel}
+        imageModel={sequence?.imageModel}
+        videoModel={sequence?.videoModel}
+        musicModel={sequence?.musicModel}
+        willEmail={willEmail}
+        runs={openRuns}
+      />
+    ) : motionBannerState !== null && sequence && shots ? (
+      <MotionProgressBanner
+        shots={shots}
+        sequence={sequence}
+        includeMusic={motionBannerState.includeMusic}
+        startedAt={motionBannerState.startedAt}
+        onComplete={resetGenerationStream}
+      />
+    ) : null;
 
   // One prop bag for the desktop sidebar and the phone sheet — same list.
   const sceneListProps: SceneListProps = {
