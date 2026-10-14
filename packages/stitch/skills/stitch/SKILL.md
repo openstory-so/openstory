@@ -39,7 +39,7 @@ Leave that process running and give the user the URL it prints.
 
 Prefer the OpenStory plugin, which includes this skill plus `create-style` and `create-sequence`: `npx skills add openstory-so/skills`. Grok, Claude Code, Codex, and the ChatGPT desktop app install that repo as a marketplace plugin named OpenStory. If `/stitch` is missing, tell the user to install the plugin.
 
-`npx @openstory/stitch skill` copies this skill to `.agents/skills/stitch` and the player contract to `.agents/skills/stitch-player`. `--global` copies both to `~/.agents/skills/`.
+`npx @openstory/stitch skill` copies this skill and the player contract into `.agents/skills/` and `.claude/skills/`. `--global` copies both trees into the home directory.
 
 ## Embedding the player
 

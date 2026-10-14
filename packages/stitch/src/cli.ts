@@ -1,6 +1,7 @@
 /**
  * `stitch` plays local stills and videos in the browser, and `stitch skill`
- * copies the /stitch command and the stitch-player contract into .agents/skills.
+ * copies the /stitch command and the stitch-player contract into
+ * .agents/skills and .claude/skills.
  */
 
 import { spawn } from 'node:child_process';
@@ -39,9 +40,10 @@ still. --poster belongs to the video before it. --fallback, --audio, and
 --seconds belong to the still before them. --cue belongs to the clip before
 it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
 
-stitch skill copies stitch and stitch-player into .agents/skills/.
-Agents load stitch as the /stitch command. stitch-player is the contract
-for embedding the player. --global copies both to ~/.agents/skills/.
+stitch skill copies stitch and stitch-player into .agents/skills/ and
+.claude/skills/. Agents load stitch as the /stitch command. stitch-player
+is the contract for embedding the player. --global copies both trees into
+the home directory.
 `;
 
 type Still = {
@@ -369,6 +371,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
 }
 
 const SKILL_NAMES = ['stitch', 'stitch-player'] as const;
+const SKILL_ROOTS = ['.agents/skills', '.claude/skills'] as const;
 
 export async function installSkill(options: {
   cwd: string;
@@ -376,18 +379,19 @@ export async function installSkill(options: {
   global: boolean;
   packageRoot: string;
 }): Promise<string[]> {
-  const destRoot = options.global
-    ? join(options.home, '.agents', 'skills')
-    : join(options.cwd, '.agents', 'skills');
-  await mkdir(destRoot, { recursive: true });
+  const base = options.global ? options.home : options.cwd;
   const dests: string[] = [];
-  for (const name of SKILL_NAMES) {
-    const dest = join(destRoot, name);
-    await rm(dest, { recursive: true, force: true });
-    await cp(join(options.packageRoot, 'skills', name), dest, {
-      recursive: true,
-    });
-    dests.push(dest);
+  for (const root of SKILL_ROOTS) {
+    const destRoot = join(base, root);
+    await mkdir(destRoot, { recursive: true });
+    for (const name of SKILL_NAMES) {
+      const dest = join(destRoot, name);
+      await rm(dest, { recursive: true, force: true });
+      await cp(join(options.packageRoot, 'skills', name), dest, {
+        recursive: true,
+      });
+      dests.push(dest);
+    }
   }
   return dests;
 }

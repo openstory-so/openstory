@@ -227,16 +227,38 @@ describe('stitch skill', () => {
         global: false,
         packageRoot: packageRoot(),
       });
-      const stitch = await readFile(join(dests[0] ?? '', 'SKILL.md'), 'utf8');
-      const player = await readFile(join(dests[1] ?? '', 'SKILL.md'), 'utf8');
-      expect(dests.map((dest) => dest.split('/').pop())).toEqual([
-        'stitch',
-        'stitch-player',
+      const rel = (dest: string) => dest.slice(cwd.length + 1);
+      expect(dests.map(rel)).toEqual([
+        '.agents/skills/stitch',
+        '.agents/skills/stitch-player',
+        '.claude/skills/stitch',
+        '.claude/skills/stitch-player',
       ]);
+      const stitch = await readFile(
+        join(cwd, '.claude/skills/stitch/SKILL.md'),
+        'utf8'
+      );
+      const player = await readFile(
+        join(cwd, '.agents/skills/stitch-player/SKILL.md'),
+        'utf8'
+      );
       expect(stitch).toContain('name: stitch');
       expect(stitch).toContain('user-invocable: true');
       expect(player).toContain('name: stitch-player');
       expect(player).toContain('@openstory/stitch');
+      const home = join(cwd, 'home');
+      const globalDests = await installSkill({
+        cwd,
+        home,
+        global: true,
+        packageRoot: packageRoot(),
+      });
+      expect(globalDests.map((dest) => dest.slice(home.length + 1))).toEqual([
+        '.agents/skills/stitch',
+        '.agents/skills/stitch-player',
+        '.claude/skills/stitch',
+        '.claude/skills/stitch-player',
+      ]);
       const stdout: string[] = [];
       process.exitCode = undefined;
       await main(['--help'], {
