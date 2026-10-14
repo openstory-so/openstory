@@ -39,14 +39,8 @@ Leave that process running and give the user the URL it prints.
 
 Prefer the OpenStory plugin, which includes this skill plus `create-style` and `create-sequence`: `npx skills add openstory-so/skills`. Grok, Claude Code, Codex, and the ChatGPT desktop app install that repo as a marketplace plugin named OpenStory. If `/stitch` is missing, tell the user to install the plugin.
 
-`npx @openstory/stitch skill` copies only this skill to `.agents/skills/stitch`. `--global` copies it to `~/.agents/skills/stitch`.
+`npx @openstory/stitch skill` copies this skill to `.agents/skills/stitch` and the player contract to `.agents/skills/stitch-player`. `--global` copies both to `~/.agents/skills/`.
 
-## Clips, when embedding the player
+## Embedding the player
 
-A video clip is `{ videoUrl, posterUrl, cues }`. It plays the audio inside the file.
-
-A still is `{ imageUrl, fallbackImageUrl, durationSeconds, audioUrls, width, height, cues }`. `audioUrls` play back to back from the start of the still. The still lasts for the longer of that sound and `durationSeconds`.
-
-`musicUrl` is a bed under the whole sequence. `musicGainDb` changes only that bed. Dialogue stays at its own level.
-
-Video, music, and a still's `audioUrls` need an HTTP URL that answers `Range` with 206, or a `blob:` URL whose `fetch` does. A still's line may be a `data:` URL. The `stitch` command serves local files that way.
+Wiring `StitchedPlayer`, a `PlaybackClip` list, music, or an MP4 export is the `stitch-player` skill. Read that skill before writing a clip list.

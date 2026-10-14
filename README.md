@@ -133,7 +133,7 @@ Run a local cut with npx. It prints a `http://127.0.0.1` URL, opens that page, a
 npx @openstory/stitch --music score.mp3 shot.mp4
 ```
 
-Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills. That install includes `create-style`, `create-sequence`, and `stitch` (`/stitch`).
+Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills. That install includes `create-style`, `create-sequence`, and `stitch` (`/stitch`). `npx @openstory/stitch skill` copies `/stitch` and `stitch-player`, the contract for embedding the React player. The plugin does not include `stitch-player`.
 
 ```sh
 npx skills add openstory-so/skills

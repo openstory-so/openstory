@@ -1,6 +1,6 @@
 /**
  * `stitch` plays local stills and videos in the browser, and `stitch skill`
- * copies the agent skill into the place a /stitch command is loaded from.
+ * copies the /stitch command and the stitch-player contract into .agents/skills.
  */
 
 import { spawn } from 'node:child_process';
@@ -39,8 +39,9 @@ still. --poster belongs to the video before it. --fallback, --audio, and
 --seconds belong to the still before them. --cue belongs to the clip before
 it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
 
-stitch skill copies the skill into .agents/skills/stitch, which agents load
-as the /stitch command. --global copies it to ~/.agents/skills/stitch.
+stitch skill copies stitch and stitch-player into .agents/skills/.
+Agents load stitch as the /stitch command. stitch-player is the contract
+for embedding the player. --global copies both to ~/.agents/skills/.
 `;
 
 type Still = {
@@ -367,22 +368,28 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
   };
 }
 
+const SKILL_NAMES = ['stitch', 'stitch-player'] as const;
+
 export async function installSkill(options: {
   cwd: string;
   home: string;
   global: boolean;
   packageRoot: string;
-}): Promise<string> {
+}): Promise<string[]> {
   const destRoot = options.global
     ? join(options.home, '.agents', 'skills')
     : join(options.cwd, '.agents', 'skills');
-  const dest = join(destRoot, 'stitch');
   await mkdir(destRoot, { recursive: true });
-  await rm(dest, { recursive: true, force: true });
-  await cp(join(options.packageRoot, 'skills', 'stitch'), dest, {
-    recursive: true,
-  });
-  return dest;
+  const dests: string[] = [];
+  for (const name of SKILL_NAMES) {
+    const dest = join(destRoot, name);
+    await rm(dest, { recursive: true, force: true });
+    await cp(join(options.packageRoot, 'skills', name), dest, {
+      recursive: true,
+    });
+    dests.push(dest);
+  }
+  return dests;
 }
 
 export async function startPreview(options: {
@@ -614,13 +621,13 @@ export async function main(
       return;
     }
     if (request.kind === 'skill') {
-      const dest = await installSkill({
+      const dests = await installSkill({
         cwd,
         home: io.home ?? homedir(),
         global: request.global,
         packageRoot: io.packageRoot ?? packageRoot(),
       });
-      stdout.write(`${dest}\n`);
+      stdout.write(dests.map((dest) => `${dest}\n`).join(''));
       return;
     }
     const served = await serveCut(request);

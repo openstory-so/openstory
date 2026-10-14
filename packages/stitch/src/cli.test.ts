@@ -221,15 +221,22 @@ describe('stitch skill', () => {
   it('installs the skill that agents load as /stitch', async () => {
     const cwd = await tempDir('stitch-skill-');
     try {
-      const dest = await installSkill({
+      const dests = await installSkill({
         cwd,
         home: cwd,
         global: false,
         packageRoot: packageRoot(),
       });
-      const skill = await readFile(join(dest, 'SKILL.md'), 'utf8');
-      expect(skill).toContain('name: stitch');
-      expect(skill).toContain('user-invocable: true');
+      const stitch = await readFile(join(dests[0] ?? '', 'SKILL.md'), 'utf8');
+      const player = await readFile(join(dests[1] ?? '', 'SKILL.md'), 'utf8');
+      expect(dests.map((dest) => dest.split('/').pop())).toEqual([
+        'stitch',
+        'stitch-player',
+      ]);
+      expect(stitch).toContain('name: stitch');
+      expect(stitch).toContain('user-invocable: true');
+      expect(player).toContain('name: stitch-player');
+      expect(player).toContain('@openstory/stitch');
       const stdout: string[] = [];
       process.exitCode = undefined;
       await main(['--help'], {

@@ -148,7 +148,7 @@ codex plugin add openstory@openstory
 
 ChatGPT desktop app: open Plugins, choose Add a marketplace, enter `openstory-so/skills`, and install OpenStory. Those skills run in the desktop app.
 
-`npx @openstory/stitch skill` copies only this skill into `.agents/skills/stitch`. `--global` copies it to `~/.agents/skills/stitch`. The instructions are [`skills/stitch/SKILL.md`](skills/stitch/SKILL.md).
+`npx @openstory/stitch skill` copies both skills into `.agents/skills/`: [`stitch`](skills/stitch/SKILL.md) (`/stitch`) and [`stitch-player`](skills/stitch-player/SKILL.md), the contract for embedding the React player. `--global` copies them to `~/.agents/skills/`. The OpenStory plugin includes `/stitch` and does not include `stitch-player`.
 
 `@openstory/stitch-player@0.1.0` was the first publish of this package. Install `@openstory/stitch` from here on.
 
