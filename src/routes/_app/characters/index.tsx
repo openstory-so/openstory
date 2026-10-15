@@ -17,7 +17,6 @@ import { PageIntro } from '@/ui/typography/page-intro';
 import { createFileRoute } from '@tanstack/react-router';
 import { Search, User } from 'lucide-react';
 import { Suspense, useRef } from 'react';
-import type { ReactNode } from 'react';
 import { z } from 'zod';
 
 // No `.default()`: a default makes the router rewrite bare /characters with
@@ -45,12 +44,6 @@ function CharactersPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   // Signed out, the page is the public talent catalogue.
   const tab = search.tab ?? (isAuthenticated ? 'characters' : 'talent');
-  const setQuery = (q: string) =>
-    void navigate({
-      search: (prev) => ({ ...prev, q: q || undefined }),
-      replace: true,
-    });
-
   return (
     <div ref={scrollRef} className="h-full overflow-auto">
       {tab === 'talent' ? (
@@ -75,28 +68,56 @@ function CharactersPage() {
                 search: { tab: next === 'talent' ? 'talent' : 'characters' },
               })
             }
-            className="gap-6"
+            className="gap-4"
           >
-            <TabsList>
-              <TabsTrigger value="characters">Characters</TabsTrigger>
-              <TabsTrigger value="talent">Talent</TabsTrigger>
-            </TabsList>
+            {/* Pinned: the tabs, the open tab's add button and its own
+                search (not the app-wide one). */}
+            <div className="sticky top-0 z-10 flex flex-col gap-3 bg-background py-2">
+              <div className="flex items-center justify-between gap-3">
+                <TabsList>
+                  <TabsTrigger value="characters">Characters</TabsTrigger>
+                  <TabsTrigger value="talent">Talent</TabsTrigger>
+                </TabsList>
+                {tab === 'talent' ? (
+                  <AddTalentDialog />
+                ) : (
+                  isAuthenticated && <NewCharacterDialog />
+                )}
+              </div>
+              {(tab === 'talent' || isAuthenticated) && (
+                <InputGroup className="sm:max-w-xs">
+                  <InputGroupAddon>
+                    <Search />
+                  </InputGroupAddon>
+                  {/* Uncontrolled, so the URL trails the keystrokes; keyed
+                      by tab so switching tabs empties it. */}
+                  <InputGroupInput
+                    key={tab}
+                    type="search"
+                    placeholder={`Search ${tab}`}
+                    aria-label={`Search ${tab}`}
+                    defaultValue={search.q}
+                    onChange={(event) =>
+                      void navigate({
+                        search: (prev) => ({
+                          ...prev,
+                          q: event.target.value || undefined,
+                        }),
+                        replace: true,
+                      })
+                    }
+                  />
+                </InputGroup>
+              )}
+            </div>
             <TabsContent value="characters" className="flex flex-col gap-6">
               {isAuthenticated ? (
-                <>
-                  <LibraryToolbar
-                    noun="characters"
-                    query={search.q}
-                    onQueryChange={setQuery}
-                    action={<NewCharacterDialog />}
+                <Suspense fallback={<LibraryGridSkeleton />}>
+                  <TeamCharacterList
+                    scrollRef={scrollRef}
+                    query={search.q ?? ''}
                   />
-                  <Suspense fallback={<LibraryGridSkeleton />}>
-                    <TeamCharacterList
-                      scrollRef={scrollRef}
-                      query={search.q ?? ''}
-                    />
-                  </Suspense>
-                </>
+                </Suspense>
               ) : isPending ? (
                 <LibraryGridSkeleton />
               ) : (
@@ -108,13 +129,7 @@ function CharactersPage() {
                 />
               )}
             </TabsContent>
-            <TabsContent value="talent" className="flex flex-col gap-6">
-              <LibraryToolbar
-                noun="talent"
-                query={search.q}
-                onQueryChange={setQuery}
-                action={<AddTalentDialog />}
-              />
+            <TabsContent value="talent">
               <TalentLibraryTab
                 query={search.q ?? ''}
                 filter={search.filter ?? 'all'}
@@ -128,41 +143,6 @@ function CharactersPage() {
           </Tabs>
         )}
       </PageContainer>
-    </div>
-  );
-}
-
-/**
- * The bar pinned to the top of either tab: its own search (not the app-wide
- * one) and the tab's add button.
- */
-function LibraryToolbar({
-  noun,
-  query,
-  onQueryChange,
-  action,
-}: {
-  noun: string;
-  query: string | undefined;
-  onQueryChange: (q: string) => void;
-  action: ReactNode;
-}) {
-  return (
-    <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-background py-2">
-      <InputGroup className="sm:max-w-xs">
-        <InputGroupAddon>
-          <Search />
-        </InputGroupAddon>
-        {/* Uncontrolled: the URL trails the keystrokes. */}
-        <InputGroupInput
-          type="search"
-          placeholder={`Search ${noun}`}
-          aria-label={`Search ${noun}`}
-          defaultValue={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-      </InputGroup>
-      {action}
     </div>
   );
 }
