@@ -3,6 +3,7 @@ import { TeamCharacterList } from '@/cast/ui/character-library/team-character-li
 import { AddTalentDialog } from '@/cast/ui/talent-library/add-talent-dialog';
 import { LibraryGridSkeleton } from '@/cast/ui/talent-library/talent-library-list';
 import { TalentLibraryTab } from '@/cast/ui/talent-library/talent-library-tab';
+import { rememberLibrarySearch } from '@/cast/ui/library-search';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { PageContainer } from '@/ui/layout/page-container';
@@ -38,6 +39,8 @@ export const Route = createFileRoute('/_app/characters/')({
 
 function CharactersPage() {
   const search = Route.useSearch();
+  // Not onEnter: the router skips it on the first, server-rendered load.
+  rememberLibrarySearch(search);
   const navigate = Route.useNavigate();
   const { data: session, isPending } = useAuthSession();
   const isAuthenticated = !!session;

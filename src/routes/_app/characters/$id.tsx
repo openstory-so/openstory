@@ -11,6 +11,7 @@ import { routeParams } from '@/ui/layout/breadcrumbs';
 import { Button } from '@/ui/shadcn/button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import { librarySearchFor } from '@/cast/ui/library-search';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeft, User } from 'lucide-react';
 import { Suspense } from 'react';
@@ -29,7 +30,11 @@ export const Route = createFileRoute('/_app/characters/$id')({
     breadcrumb: (match) => {
       const { id } = routeParams<{ id: string }>(match);
       return [
-        { label: 'Characters', to: '/characters' },
+        {
+          label: 'Characters',
+          to: '/characters',
+          search: librarySearchFor('characters'),
+        },
         { label: <CharacterCrumbLabel id={id} /> },
       ];
     },
@@ -68,7 +73,9 @@ function TeamCharacterContent({ id }: { id: string }) {
         description="It was deleted, or it belongs to another team."
         action={
           <Button variant="outline" asChild>
-            <Link to="/characters">Back to Characters</Link>
+            <Link to="/characters" search={librarySearchFor('characters')}>
+              Back to Characters
+            </Link>
           </Button>
         }
       />
@@ -85,7 +92,11 @@ function TeamCharacterContent({ id }: { id: string }) {
       <div className="flex shrink-0 flex-col gap-3 border-b px-4 py-3">
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
-            <Link to="/characters" aria-label="Back to Characters">
+            <Link
+              to="/characters"
+              search={librarySearchFor('characters')}
+              aria-label="Back to Characters"
+            >
               <ArrowLeft />
             </Link>
           </Button>
