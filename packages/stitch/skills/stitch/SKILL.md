@@ -1,6 +1,6 @@
 ---
 name: stitch
-description: Play local stills, dialogue, music, and video as one sequence in the browser with the stitch command. Use when the user runs /stitch, or asks to stitch, preview, or play a cut from local image, audio, and video files.
+description: Play stills, dialogue, music, and video as one sequence in the browser with the stitch command. Use when the user runs /stitch, or asks to stitch, preview, or play a cut from local or remote (http(s) URL) image, audio, and video files.
 user-invocable: true
 argument-hint: '[--music file] [--subs file.srt] <image-or-video> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...'
 metadata:
@@ -13,7 +13,7 @@ metadata:
 
 ## Command
 
-From the directory that holds the files, or with paths that reach them:
+From the directory that holds the files, with paths that reach them, or with `http(s)` URLs anywhere a file goes:
 
 ```sh
 npx @openstory/stitch \
@@ -23,7 +23,7 @@ npx @openstory/stitch \
   board.png --audio line.wav --seconds 3 --cue 0-2 "Coming over?"
 ```
 
-1. Put the stills and videos in play order.
+1. Put the stills and videos in play order. Each is a path or an `http(s)` URL. The command reads a URL itself and serves it to the page from its own origin, so a remote without CORS headers still plays and exports.
 2. A `.mp4`, `.webm`, or `.mov` is a video. Its dialogue is the audio inside the file. Do not pass `--audio` for a video.
 3. A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
 4. `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` and that sound. `--seconds` defaults to 4.

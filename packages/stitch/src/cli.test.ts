@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('./video-size.js', () => ({
+  isHttpUrl: (file: string) => /^https?:\/\//i.test(file),
   readVideoDisplaySize: async () => ({
     width: 480,
     height: 854,
@@ -517,6 +518,70 @@ describe('stitch main', () => {
       expect(process.exitCode).toBe(1);
     } finally {
       process.exitCode = before;
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('stitch remote media', () => {
+  it('takes a URL still and proxies a remote file with its Range', async () => {
+    const cwd = await tempDir('stitch-remote-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'body.mp4'), '012345678');
+      await writeFile(join(cwd, 'index.html'), '<p>remote</p>');
+      // The "remote": a second preview that serves cwd as static files.
+      const remote = await startPreview({
+        served: {
+          clips: [],
+          frameWidth: 1,
+          frameHeight: 1,
+          musicUrl: null,
+          musicGainDb: 0,
+          files: new Map(),
+        },
+        pageDir: cwd,
+        port: 0,
+      });
+      try {
+        const boardUrl = new URL('/board.png?sig=1', remote.url).href;
+        const bodyUrl = new URL('/body.mp4', remote.url).href;
+        const request = await parseArgs([boardUrl, bodyUrl, '--no-open'], cwd);
+        if (request.kind !== 'play') throw new Error('expected a cut');
+        expect(request.clips[0]).toMatchObject({
+          kind: 'still',
+          file: boardUrl,
+          width: 1,
+        });
+        expect(request.clips[1]).toMatchObject({
+          kind: 'video',
+          file: bodyUrl,
+        });
+        const served = await serveCut(request);
+        expect(served.files.get('1')).toBe(bodyUrl);
+        const preview = await startPreview({ served, pageDir: cwd, port: 0 });
+        try {
+          const part = await fetch(new URL('/media/1', preview.url), {
+            headers: { Range: 'bytes=2-4' },
+          });
+          expect(part.status).toBe(206);
+          expect(part.headers.get('content-range')).toBe('bytes 2-4/9');
+          expect(part.headers.get('content-type')).toBe('video/mp4');
+          expect(await part.text()).toBe('234');
+          const whole = await fetch(new URL('/media/1', preview.url));
+          expect(whole.status).toBe(200);
+          expect(whole.headers.get('content-length')).toBe('9');
+          expect(await whole.text()).toBe('012345678');
+        } finally {
+          await preview.close();
+        }
+        await expect(
+          parseArgs([new URL('/missing.png', remote.url).href], cwd)
+        ).rejects.toThrow(/HTTP 404/);
+      } finally {
+        await remote.close();
+      }
+    } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });

@@ -96,7 +96,7 @@ npm install react @videojs/react
 
 ## Comando
 
-`npx @openstory/stitch` reproduce imágenes fijas y vídeos locales en el navegador. Escucha en `127.0.0.1`, imprime la URL y la abre. La página es este reproductor: subtítulos, un interruptor de música, una línea de carga y Download. El marco es la caja del lienzo de los clips, así que un corte vertical llena la ventana en vertical. El proceso sigue hasta Ctrl+C. `--no-open` no abre el navegador. `--port` elige el puerto.
+`npx @openstory/stitch` reproduce imágenes fijas y vídeos en el navegador. Cada archivo es una ruta o una URL `http(s)`, servida a través del servidor local. Escucha en `127.0.0.1`, imprime la URL y la abre. La página es este reproductor: subtítulos, un interruptor de música, una línea de carga y Download. El marco es la caja del lienzo de los clips, así que un corte vertical llena la ventana en vertical. El proceso sigue hasta Ctrl+C. `--no-open` no abre el navegador. `--port` elige el puerto.
 
 Los archivos se reproducen en el orden en que los nombra.
 

@@ -1,4 +1,13 @@
-import { ALL_FORMATS, FilePathSource, Input } from 'mediabunny';
+import { ALL_FORMATS, FilePathSource, Input, UrlSource } from 'mediabunny';
+
+/** True for an http(s) URL. Anything else is a path on disk. */
+export function isHttpUrl(file: string): boolean {
+  return /^https?:\/\//i.test(file);
+}
+
+function sourceFor(file: string): FilePathSource | UrlSource {
+  return isHttpUrl(file) ? new UrlSource(file) : new FilePathSource(file);
+}
 
 /**
  * Display size and duration from the file header. Duration uses container
@@ -11,7 +20,7 @@ export async function readVideoDisplaySize(file: string): Promise<{
 }> {
   const input = new Input({
     formats: ALL_FORMATS,
-    source: new FilePathSource(file),
+    source: sourceFor(file),
   });
   try {
     const track = await input.getPrimaryVideoTrack();
@@ -36,7 +45,7 @@ export async function readVideoDisplaySize(file: string): Promise<{
 export async function readAudioDuration(file: string): Promise<number> {
   const input = new Input({
     formats: ALL_FORMATS,
-    source: new FilePathSource(file),
+    source: sourceFor(file),
   });
   try {
     const track = await input.getPrimaryAudioTrack();

@@ -1,5 +1,5 @@
 /**
- * `stitch` plays local stills and videos in the browser, and `stitch skill`
+ * `stitch` plays local and remote stills and videos in the browser, and `stitch skill`
  * copies the /stitch command and the stitch-player contract into
  * .agents/skills and .claude/skills.
  */
@@ -14,7 +14,7 @@ import {
 } from 'node:http';
 import { homedir } from 'node:os';
 import { dirname, extname, join, resolve, sep } from 'node:path';
-import { pipeline } from 'node:stream';
+import { pipeline, Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { readImageSize } from './image-size.js';
@@ -24,7 +24,11 @@ import { canvasResolution } from './resolution.js';
 import type { ClipDimensions } from './resolution.js';
 import { parseSubtitles } from './subtitles.js';
 import type { TimelineCue } from './subtitles.js';
-import { readAudioDuration, readVideoDisplaySize } from './video-size.js';
+import {
+  isHttpUrl,
+  readAudioDuration,
+  readVideoDisplaySize,
+} from './video-size.js';
 
 const STILL_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
@@ -35,7 +39,8 @@ export const usage = `Usage: stitch [--music file] [--music-gain db] [--subs fil
 
        stitch skill [--global]
 
-Play local stills and videos in the browser. A .mp4, .webm, or .mov is a
+Play stills and videos in the browser. Each file is a path or an http(s) URL;
+the page reads a URL through this server. A .mp4, .webm, or .mov is a
 video, and it plays the sound inside the file. A .png, .jpg, .jpeg, or .webp is a
 still. --poster belongs to an opening video and shows while the cut opens.
 --fallback, --audio, and --seconds belong to the still before them. --cue belongs to the clip before
@@ -159,11 +164,11 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
     if (arg === '--subs') {
       if (subs) throw new Error('--subs is already set');
       const file = await existingFile(take(arg, i), cwd);
-      const extension = extname(file).toLowerCase();
+      const extension = extensionOf(file);
       if (!new Set(['.srt', '.vtt', '.webvtt']).has(extension)) {
         throw new Error('--subs needs an .srt or .vtt file');
       }
-      subs = parseSubtitles(await readFile(file, 'utf8'), file);
+      subs = parseSubtitles((await readBytes(file)).toString('utf8'), file);
       i += 1;
       continue;
     }
@@ -234,7 +239,7 @@ function previousStill(clips: LocalClip[], flag: string): Still {
 
 async function clipFromFile(arg: string, cwd: string): Promise<LocalClip> {
   const file = await existingFile(arg, cwd);
-  const extension = extname(file).toLowerCase();
+  const extension = extensionOf(file);
   if (VIDEO_EXTENSIONS.has(extension)) {
     return { kind: 'video', file, poster: null, cues: [] };
   }
@@ -263,7 +268,7 @@ async function stillSize(
 ): Promise<{ width: number; height: number }> {
   let size: { width: number; height: number };
   try {
-    size = readImageSize(await readFile(file));
+    size = readImageSize(await readBytes(file));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unreadable image';
     throw new Error(`${arg}: ${message}`);
@@ -277,14 +282,29 @@ async function stillSize(
 /** A poster or fallback: a png, jpeg, or webp the browser can draw. */
 async function imageFile(arg: string, cwd: string): Promise<string> {
   const file = await existingFile(arg, cwd);
-  if (!STILL_EXTENSIONS.has(extname(file).toLowerCase())) {
+  if (!STILL_EXTENSIONS.has(extensionOf(file))) {
     throw new Error(`${arg} is not a png, jpg, jpeg, or webp`);
   }
   await stillSize(file, arg);
   return file;
 }
 
+/** The bytes of a path or an http(s) URL. Stills and --subs are read whole. */
+async function readBytes(file: string): Promise<Buffer> {
+  if (!isHttpUrl(file)) return readFile(file);
+  const response = await fetch(file);
+  if (!response.ok) throw new Error(`${file}: HTTP ${response.status}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+/** The extension of a path, or of a URL's path. */
+function extensionOf(file: string): string {
+  const path = isHttpUrl(file) ? new URL(file).pathname : file;
+  return extname(path).toLowerCase();
+}
+
 async function existingFile(arg: string, cwd: string): Promise<string> {
+  if (isHttpUrl(arg)) return arg;
   const file = resolve(cwd, arg);
   let info: Awaited<ReturnType<typeof stat>>;
   try {
@@ -343,7 +363,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
   const files = new Map<string, string>();
   const urls = new Map<string, string>();
   const urlFor = async (file: string): Promise<string> => {
-    const key = await realpath(file);
+    const key = isHttpUrl(file) ? file : await realpath(file);
     const existing = urls.get(key);
     if (existing) return existing;
     const id = String(files.size);
@@ -513,7 +533,8 @@ async function handleRequest(
       response.end('No such media');
       return;
     }
-    await sendFile(request, response, file, mediaType(file), stderr);
+    if (isHttpUrl(file)) await proxyUrl(request, response, file, stderr);
+    else await sendFile(request, response, file, mediaType(file), stderr);
     return;
   }
   const relative =
@@ -568,6 +589,39 @@ async function sendFile(
   else pipeFile(file, response, stderr, parsed);
 }
 
+/**
+ * A remote file, fetched with the browser's Range and streamed back on this
+ * origin, so export and picture-in-picture work without CORS on the remote.
+ */
+async function proxyUrl(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: string,
+  stderr: Writer
+): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (request.headers.range !== undefined)
+    headers.Range = request.headers.range;
+  const upstream = await fetch(url, { method: request.method, headers });
+  const forwarded: Record<string, string> = {
+    'Content-Type': upstream.headers.get('content-type') ?? mediaType(url),
+  };
+  for (const name of ['Accept-Ranges', 'Content-Length', 'Content-Range']) {
+    const value = upstream.headers.get(name);
+    if (value !== null) forwarded[name] = value;
+  }
+  response.writeHead(upstream.status, forwarded);
+  if (request.method === 'HEAD' || upstream.body === null) {
+    response.end();
+    return;
+  }
+  pipeline(Readable.from(upstream.body), response, (error) => {
+    if (error && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      stderr.write(`${url}: ${error.message}\n`);
+    }
+  });
+}
+
 /** pipeline closes the file when the browser cancels a read (every seek). */
 function pipeFile(
   file: string,
@@ -605,7 +659,7 @@ function byteRange(
 }
 
 function mediaType(file: string): string {
-  switch (extname(file).toLowerCase()) {
+  switch (extensionOf(file)) {
     case '.html':
       return 'text/html; charset=utf-8';
     case '.js':
