@@ -603,8 +603,11 @@ async function proxyUrl(
   if (request.headers.range !== undefined)
     headers.Range = request.headers.range;
   const upstream = await fetch(url, { method: request.method, headers });
+  // Our own type from the extension, never the remote's: a remote answering
+  // text/html must not become a page on this origin.
   const forwarded: Record<string, string> = {
-    'Content-Type': upstream.headers.get('content-type') ?? mediaType(url),
+    'Content-Type': mediaType(url),
+    'X-Content-Type-Options': 'nosniff',
   };
   for (const name of ['Accept-Ranges', 'Content-Length', 'Content-Range']) {
     const value = upstream.headers.get(name);
