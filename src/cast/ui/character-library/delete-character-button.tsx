@@ -1,3 +1,4 @@
+import { librarySearchFor } from '@/cast/ui/library-search';
 import type React from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -74,7 +75,10 @@ export const DeleteCharacterButton: React.FC<{
                           ),
                       },
                     });
-                    void navigate({ to: '/characters' });
+                    void navigate({
+                      to: '/characters',
+                      search: librarySearchFor('characters'),
+                    });
                   },
                   onError: (error) =>
                     toast.error(`Could not delete ${name}`, {
