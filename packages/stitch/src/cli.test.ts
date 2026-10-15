@@ -4,13 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
+const readVideoDisplaySize = vi.hoisted(() =>
+  vi.fn(async () => ({ width: 480, height: 854, durationSeconds: 4 }))
+);
 vi.mock('./video-size.js', () => ({
   isHttpUrl: (file: string) => /^https?:\/\//i.test(file),
-  readVideoDisplaySize: async () => ({
-    width: 480,
-    height: 854,
-    durationSeconds: 4,
-  }),
+  readVideoDisplaySize,
   readAudioDuration: async (file: string) => {
     if (file.includes('bad')) throw new Error(`${file} has no audio track`);
     return 5;
@@ -92,8 +91,9 @@ describe('stitch arguments', () => {
         posterUrl: null,
       });
       expect(served.musicUrl).toBe('/media/3');
-      expect(served.frameWidth).toBe(480);
-      expect(served.frameHeight).toBe(854);
+      // The first clip, a still, sets the box. The video is not read.
+      expect(served.frameWidth).toBe(1);
+      expect(served.frameHeight).toBe(1);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -215,6 +215,12 @@ describe('stitch arguments', () => {
     [['board.png', '--seconds', '0'], /positive number/],
     [['board.png', '--port', '70000'], /port number/],
     [['board.png', '--port', 'abc'], /port number/],
+    [['board.png', '--frame', '16x'], /--frame needs a ratio/],
+    [['board.png', '--frame', '0:9'], /--frame needs a ratio/],
+    [
+      ['board.png', '--frame', '9:16', '--frame', '1:1'],
+      /--frame is already set/,
+    ],
     [['board.png', '--subs', 'notes.txt'], /\.srt or \.vtt/],
     [['board.png', '--music', 'bad.mp3'], /bad\.mp3 has no audio track/],
     [['board.png', '--audio', 'bad.wav'], /bad\.wav has no audio track/],
@@ -290,8 +296,8 @@ describe('stitch preview', () => {
           (response) => response.text()
         );
         expect(cut).toContain('"imageUrl":"/media/0"');
-        expect(cut).toContain('"frameWidth":2');
-        expect(cut).toContain('"frameHeight":2');
+        expect(cut).toContain('"frameWidth":1');
+        expect(cut).toContain('"frameHeight":1');
         const media = await fetch(new URL('/media/0', preview.url), {
           headers: { Range: 'bytes=0-3' },
         });
@@ -584,5 +590,55 @@ describe('stitch remote media', () => {
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
+  });
+});
+
+describe('stitch frame', () => {
+  async function cutOf(argv: string[]) {
+    const cwd = await tempDir('stitch-frame-');
+    try {
+      await writeFile(join(cwd, 'board.png'), png);
+      await writeFile(join(cwd, 'shot.mp4'), 'video');
+      await writeFile(join(cwd, 'other.mp4'), 'video');
+      await writeFile(
+        join(cwd, 'lines.srt'),
+        '1\n00:00:01,000 --> 00:00:02,000\nHi\n'
+      );
+      readVideoDisplaySize.mockClear();
+      const request = await parseArgs(argv, cwd);
+      if (request.kind !== 'play') throw new Error('expected a cut');
+      return await serveCut(request);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  }
+
+  it('takes a ratio or a size and reads no video', async () => {
+    const ratio = await cutOf(['--frame', '9:16', 'shot.mp4', 'other.mp4']);
+    expect([ratio.frameWidth, ratio.frameHeight]).toEqual([9, 16]);
+    const size = await cutOf(['--frame', '1080X1920', 'shot.mp4']);
+    expect([size.frameWidth, size.frameHeight]).toEqual([1080, 1920]);
+    expect(readVideoDisplaySize).not.toHaveBeenCalled();
+  });
+
+  it('reads only the first video for the box', async () => {
+    const served = await cutOf(['shot.mp4', 'other.mp4', 'board.png']);
+    expect([served.frameWidth, served.frameHeight]).toEqual([480, 854]);
+    expect(readVideoDisplaySize).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads every video only when --subs needs the lengths', async () => {
+    const served = await cutOf([
+      '--frame',
+      '1:1',
+      '--subs',
+      'lines.srt',
+      'shot.mp4',
+      'other.mp4',
+    ]);
+    expect(readVideoDisplaySize).toHaveBeenCalledTimes(2);
+    expect(served.clips[0]?.cues).toEqual([
+      { startSeconds: 1, endSeconds: 2, text: 'Hi' },
+    ]);
   });
 });

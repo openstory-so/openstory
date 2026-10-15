@@ -96,12 +96,13 @@ npm install react @videojs/react
 
 ## Command
 
-`npx @openstory/stitch` plays stills and videos in the browser. It listens on `127.0.0.1`, prints the URL, and opens it. The page is this player: captions, a music switch, a loading line, and Download. The frame is the canvas box of the clips, so a portrait cut fills the window as portrait. The process runs until Ctrl+C. `--no-open` skips the browser. `--port` chooses the port.
+`npx @openstory/stitch` plays stills and videos in the browser. It listens on `127.0.0.1`, prints the URL, and opens it. The page is this player: captions, a music switch, a loading line, and Download. The page is the shape of `--frame`, or of the first clip, so a portrait cut fills the window as portrait. The process runs until Ctrl+C. `--no-open` skips the browser. `--port` chooses the port.
 
 Files play in the order you name them. Each one is a path or an `http(s)` URL. A URL is read through the local server, so a remote without CORS headers still plays, exports, and opens in picture-in-picture.
 
 ```sh
 npx @openstory/stitch \
+  --frame 9:16 \
   --music score.mp3 --music-gain -3 \
   --subs lines.srt \
   shot.mp4 --poster board.png --cue 0-1.5 "Love that accent." \
@@ -116,6 +117,7 @@ npx @openstory/stitch \
 - `--cue START-END TEXT` is a subtitle on the clip before it. Times are seconds from the start of that clip. Quote the text.
 - `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. A cue that crosses a cut is split onto both clips.
 - `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB, and defaults to 0. The page can turn the bed off. Dialogue stays at its own level.
+- `--frame 9:16` (or `1080x1920`) is the shape of the page. Without it the first clip sets the shape, and nothing else is read before the page opens. Every clip is fitted into that box.
 
 ## Skill
 

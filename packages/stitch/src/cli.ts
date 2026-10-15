@@ -20,8 +20,6 @@ import { fileURLToPath } from 'node:url';
 import { readImageSize } from './image-size.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
 import { placeTimelineCues } from './place-cues.js';
-import { canvasResolution } from './resolution.js';
-import type { ClipDimensions } from './resolution.js';
 import { parseSubtitles } from './subtitles.js';
 import type { TimelineCue } from './subtitles.js';
 import {
@@ -34,7 +32,7 @@ const STILL_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
 const DEFAULT_STILL_SECONDS = 4;
 
-export const usage = `Usage: stitch [--music file] [--music-gain db] [--subs file] [--port n] [--no-open]
+export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-gain db] [--subs file] [--port n] [--no-open]
              <file> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...
 
        stitch skill [--global]
@@ -45,6 +43,8 @@ video, and it plays the sound inside the file. A .png, .jpg, .jpeg, or .webp is 
 still. --poster belongs to an opening video and shows while the cut opens.
 --fallback, --audio, and --seconds belong to the still before them. --cue belongs to the clip before
 it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
+--frame is the shape of the page, as a ratio (9:16) or a size (1080x1920).
+Without it the first clip sets the shape. Every clip is fitted into that box.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -76,6 +76,8 @@ type LocalClip = Still | Video;
 
 export type LocalCut = {
   clips: LocalClip[];
+  /** --frame. Null means the first clip sets the box. */
+  frame: { width: number; height: number } | null;
   music: string | null;
   musicGainDb: number;
   /** Whole-cut subtitles. Null when --subs was omitted. */
@@ -126,6 +128,7 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   let music: string | null = null;
   let musicGainDb = 0;
   let subs: TimelineCue[] | null = null;
+  let frame: { width: number; height: number } | null = null;
   let open = true;
   let port = 0;
 
@@ -146,6 +149,12 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
       if (music) throw new Error('--music is already set');
       music = await existingFile(take(arg, i), cwd);
       await readAudioDuration(music);
+      i += 1;
+      continue;
+    }
+    if (arg === '--frame') {
+      if (frame) throw new Error('--frame is already set');
+      frame = frameValue(take(arg, i));
       i += 1;
       continue;
     }
@@ -218,7 +227,7 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   }
 
   if (clips.length === 0) throw new Error('Name at least one still or video');
-  return { clips, music, musicGainDb, subs, open, port };
+  return { clips, frame, music, musicGainDb, subs, open, port };
 }
 
 function previousClip(clips: LocalClip[], flag: string): LocalClip {
@@ -335,6 +344,19 @@ function positive(value: string, flag: string): number {
   return parsed;
 }
 
+/** 16:9 or 1080x1920. Only the ratio matters: the page is a box of this shape. */
+function frameValue(value: string): { width: number; height: number } {
+  const match = /^(\d+)[x:](\d+)$/i.exec(value);
+  const width = Number(match?.[1]);
+  const height = Number(match?.[2]);
+  if (!(width > 0 && height > 0)) {
+    throw new Error(
+      `--frame needs a ratio like 9:16 or a size like 1080x1920, got ${value}`
+    );
+  }
+  return { width, height };
+}
+
 function portValue(value: string): number {
   if (!/^\d+$/.test(value))
     throw new Error(`--port needs a port number, got ${value}`);
@@ -373,23 +395,27 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
     return url;
   };
 
+  // Only --subs needs every clip's length, and only a first video sets the
+  // box; nothing else is read before the page opens. A remote clip that will
+  // not open fails in the player, with its message.
   const clips: PlaybackClip[] = [];
-  const videoDimensions: ClipDimensions[] = [];
-  const clipDimensions: ClipDimensions[] = [];
   const durations: number[] = [];
-  for (const clip of cut.clips) {
+  let frame = cut.frame;
+  for (const [i, clip] of cut.clips.entries()) {
     if (clip.kind === 'video') {
-      const size = await readVideoDisplaySize(clip.file);
-      videoDimensions.push(size);
-      clipDimensions.push(size);
-      durations.push(size.durationSeconds);
+      const probe =
+        (i === 0 && !frame) || cut.subs
+          ? await readVideoDisplaySize(clip.file)
+          : null;
+      if (i === 0 && !frame && probe) frame = probe;
+      durations.push(probe?.durationSeconds ?? 0);
       clips.push({
         videoUrl: await urlFor(clip.file),
         posterUrl: clip.poster ? await urlFor(clip.poster) : null,
         cues: clip.cues,
       });
     } else {
-      clipDimensions.push({ width: clip.width, height: clip.height });
+      if (i === 0 && !frame) frame = { width: clip.width, height: clip.height };
       durations.push(stillDuration(clip));
       clips.push({
         imageUrl: await urlFor(clip.file),
@@ -410,7 +436,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
       if (clip) clips[i] = { ...clip, cues: [...clip.cues, ...extra] };
     }
   }
-  const frame = canvasResolution(videoDimensions, clipDimensions);
+  if (!frame) throw new Error('Name at least one still or video');
   return {
     clips,
     frameWidth: frame.width,
