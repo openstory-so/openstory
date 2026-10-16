@@ -26,10 +26,7 @@ import { dialogueLinesKey } from '@/shots/shot-dialogue';
 export async function loadLiveShotInputs(
   scopedDb: Pick<
     ScopedDb,
-    | 'shotDialogue'
-    | 'shotPromptVersions'
-    | 'sequenceLocations'
-    | 'sequenceElements'
+    'shotDialogue' | 'shotPromptVersions' | 'locations' | 'sequenceElements'
   >,
   sequenceId: string,
   shots: readonly Shot[],
@@ -50,7 +47,7 @@ export async function loadLiveShotInputs(
       scopedDb.shotPromptVersions.getSelectedMotionByShots(
         shots.map((shot) => shot.id)
       ),
-      scopedDb.sequenceLocations.listWithReferences(sequenceId),
+      scopedDb.locations.listWithReferences(sequenceId),
       scopedDb.sequenceElements.list(sequenceId),
     ]);
   // The SAME answer a render trigger stamps the clip with — a different

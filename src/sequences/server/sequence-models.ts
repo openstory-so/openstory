@@ -387,7 +387,7 @@ export async function addModelToSequence(
         .list(sequence.id)
         .then((rows) => withMeasuredDurations(scopedDb, rows)),
       anyReferenceOnly
-        ? scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        ? scopedDb.locations.listWithReferences(sequence.id)
         : Promise.resolve([]),
       scopedDb.characters.list(sequence.id),
       scopedDb.shotDialogue.getSelectedBySequence(sequence.id),
@@ -611,7 +611,7 @@ export async function addModelToSequence(
   const [characters, locations, elements, imageSceneContext] =
     await Promise.all([
       scopedDb.characters.listWithSheets(sequence.id),
-      scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      scopedDb.locations.listWithReferences(sequence.id),
       scopedDb.sequenceElements.list(sequence.id),
       loadSceneContextBySequence(scopedDb, sequence.id),
     ]);

@@ -9,7 +9,8 @@ import {
   characters,
   sequenceCast,
   locationBibleVersions,
-  sequenceLocations,
+  locations,
+  sequenceLocationLinks,
   sequenceElements,
 } from '@/platform/server/db/schema';
 import { projectRead, readDate } from '@/platform/server/read-projection';
@@ -149,19 +150,26 @@ export const characterReadSchema = createSelectSchema(characters)
     // look's.
     looks: z.array(characterLookReadSchema),
   });
-export const locationReadSchema = createSelectSchema(sequenceLocations)
+/**
+ * A location as a sequence uses it (#1695): the team's location at its
+ * current bible, plus the sequence's link. `locationId` is the script id.
+ */
+export const locationReadSchema = createSelectSchema(locations)
   .pick({
     id: true,
-    sequenceId: true,
-    locationId: true,
-    libraryLocationId: true,
-    firstMentionSceneId: true,
-    firstMentionText: true,
-    firstMentionLine: true,
     referenceStatus: true,
     referenceError: true,
     selectedReferenceVersionId: true,
   })
+  .extend(
+    createSelectSchema(sequenceLocationLinks).pick({
+      sequenceId: true,
+      firstMentionSceneId: true,
+      firstMentionText: true,
+      firstMentionLine: true,
+      attached: true,
+    }).shape
+  )
   .extend(
     createSelectSchema(locationBibleVersions).pick({
       name: true,
@@ -170,10 +178,13 @@ export const locationReadSchema = createSelectSchema(sequenceLocations)
       architecturalStyle: true,
       keyFeatures: true,
       ambiance: true,
+      rendering: true,
       consistencyTag: true,
     }).shape
   )
   .extend({
+    locationId: createSelectSchema(sequenceLocationLinks).shape
+      .scriptLocationId,
     createdAt: readDate,
     updatedAt: readDate,
     selectedReference: referenceSchema.nullable(),
@@ -238,8 +249,7 @@ const locationSheets = (
     rows,
     (l) => l.selectedReferenceVersionId ?? l.id,
     (ids) => scopedDb.locationSheetVariants.getByIds(ids),
-    (sheet, l) =>
-      sheet.parentType === 'sequence_location' && sheet.parentId === l.id
+    (sheet, l) => sheet.locationId === l.id
   );
 
 function inspectCharacter(
@@ -307,7 +317,7 @@ export async function listLocations(
 ) {
   await productionAccess(scopedDb).sequence(input.sequenceId);
   const page = await readPage(input, [input.sequenceId, 'locations'], (next) =>
-    scopedDb.sequenceLocations.list(input.sequenceId, next)
+    scopedDb.locations.list(input.sequenceId, next)
   );
   return {
     locations: (await locationSheets(scopedDb, page.items)).map((read) =>
@@ -396,7 +406,7 @@ export async function listDeletedCast(scopedDb: ScopedDb, sequenceId: string) {
   const sequence = await productionAccess(scopedDb).sequence(sequenceId);
   const [characters, locations, elements] = await Promise.all([
     scopedDb.characters.listDeleted(sequence.id),
-    scopedDb.sequenceLocations.listDeleted(sequence.id),
+    scopedDb.locations.listDeleted(sequence.id),
     scopedDb.sequenceElements.listDeleted(sequence.id),
   ]);
   return {

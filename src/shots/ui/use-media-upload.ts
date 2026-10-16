@@ -19,11 +19,10 @@ import {
   setShotVideoFromUploadFn,
 } from '@/shots/media-upload.fn';
 import { characterSheetVariantKeys } from '@/cast/ui/use-character-sheet-variants';
-import { locationSheetVariantKeys } from '@/cast/ui/use-location-sheet-variants';
+import { invalidateLocations } from '@/cast/ui/location-keys';
 import { promptVariantKeys } from './use-prompt-variants';
 import { segmentKeys } from './use-segments';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
-import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
 import { sequenceKeys } from '@/sequences/ui/use-sequences';
 import { shotStalenessNamespace } from './use-shot-staleness';
 import { shotKeys } from './use-shots';
@@ -262,14 +261,17 @@ export function useUploadCharacterSheet() {
   });
 }
 
-/** Location twin of `useUploadCharacterSheet` (reference image). */
+/**
+ * Location twin of `useUploadCharacterSheet` (reference image). The sheet is
+ * the location's: `sequenceId` null uploads it from the Locations page.
+ */
 export function useUploadLocationReference() {
   const queryClient = useQueryClient();
   const { ensureUploadRights } = useUploadRightsGate();
   return useMutation({
     mutationFn: async (input: {
       file: File;
-      sequenceId: string;
+      sequenceId: string | null;
       locationDbId: string;
       onProgress?: (percent: number) => void;
     }) => {
@@ -293,17 +295,7 @@ export function useUploadLocationReference() {
         },
       });
     },
-    onSuccess: async (_result, { sequenceId }) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: sequenceLocationKeys.list(sequenceId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: locationSheetVariantKeys.all,
-        }),
-        queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
-      ]);
-    },
+    onSuccess: () => invalidateLocations(queryClient),
   });
 }
 

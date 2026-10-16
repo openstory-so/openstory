@@ -9,9 +9,9 @@ import {
   SelectValue,
 } from '@/ui/shadcn/select';
 import { useUpdateSequenceLocation } from '@/cast/ui/use-sequence-locations';
-import type { SequenceLocationWithReference } from '@/platform/server/db/schema';
+import { useUpdateTeamLocation } from '@/cast/ui/use-team-locations';
+import type { LocationWithReference } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
@@ -22,19 +22,24 @@ const locationFormSchema = z.object({
   architecturalStyle: z.string().max(2000),
   keyFeatures: z.string().max(2000),
   ambiance: z.string().max(2000),
+  rendering: z.string().trim().min(1).max(2000),
 });
 
 /**
  * Editable location bible (#1108 Phase 2). Uncontrolled inputs seeded from
  * the row (key the form by location id at the call site); one Save persists
  * every field — an emptied input clears that field server-side. Prompt/sheet
- * staleness follows by hash derivation.
+ * staleness follows by hash derivation, in every sequence that uses the
+ * location. `sequenceId` null is the Locations page: the same edit, made
+ * from no sequence.
  */
 export const LocationBibleForm: React.FC<{
-  sequenceId: string;
-  location: SequenceLocationWithReference;
+  sequenceId: string | null;
+  location: LocationWithReference;
 }> = ({ sequenceId, location }) => {
-  const updateLocation = useUpdateSequenceLocation();
+  const updateInSequence = useUpdateSequenceLocation();
+  const updateForTeam = useUpdateTeamLocation();
+  const isPending = updateInSequence.isPending || updateForTeam.isPending;
 
   const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -49,16 +54,24 @@ export const LocationBibleForm: React.FC<{
       });
       return;
     }
-    updateLocation.mutate(
-      { sequenceId, locationDbId: location.id, ...result.data },
-      {
-        onSuccess: () => toast.success('Location saved'),
-        onError: (error) =>
-          toast.error('Failed to save location', {
-            description: errorMessage(error),
-          }),
-      }
-    );
+    const handlers = {
+      onSuccess: () => toast.success('Location saved'),
+      onError: (error: Error) =>
+        toast.error('Failed to save location', {
+          description: errorMessage(error),
+        }),
+    };
+    if (sequenceId === null) {
+      updateForTeam.mutate(
+        { locationId: location.id, ...result.data },
+        handlers
+      );
+    } else {
+      updateInSequence.mutate(
+        { sequenceId, locationDbId: location.id, ...result.data },
+        handlers
+      );
+    }
   };
 
   return (
@@ -128,12 +141,16 @@ export const LocationBibleForm: React.FC<{
         name="ambiance"
         defaultValue={location.ambiance}
       />
+      <BibleField
+        idPrefix="location"
+        label="Rendered as"
+        name="rendering"
+        defaultValue={location.rendering}
+        required
+      />
       <div className="flex justify-end">
-        <Button type="submit" disabled={updateLocation.isPending}>
-          {updateLocation.isPending && (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          {updateLocation.isPending ? 'Saving…' : 'Save'}
+        <Button type="submit" disabled={isPending}>
+          {isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </form>

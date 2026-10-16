@@ -98,7 +98,7 @@ export function productionAccess(scopedDb: ScopedDb) {
     async location(sequenceId: string, id: string) {
       await sequence(sequenceId);
       return owned(
-        await scopedDb.sequenceLocations.getById(id),
+        await scopedDb.locations.getById(sequenceId, id),
         sequenceId,
         'Location'
       );

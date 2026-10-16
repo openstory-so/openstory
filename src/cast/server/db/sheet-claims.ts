@@ -39,7 +39,7 @@ import {
   characterSheetVariants,
   characters,
   locationSheetVariants,
-  sequenceLocations,
+  locations,
   talent,
 } from '@/platform/server/db/schema';
 import type {
@@ -66,15 +66,6 @@ export const demoteCharacterSheetClaims = (db: Database, where: SQL) =>
       )
     );
 
-/** Clear every sequence-location reference claim matching `where`. */
-export const demoteLocationReferenceClaims = (db: Database, where: SQL) =>
-  db
-    .update(sequenceLocations)
-    .set({ pendingPromoteReferenceVersionId: null })
-    .where(
-      and(where, isNotNull(sequenceLocations.pendingPromoteReferenceVersionId))
-    );
-
 /** Clear a library talent's sheet claim. */
 export const demoteTalentSheetClaim = (db: Database, talentId: string) =>
   db
@@ -83,24 +74,6 @@ export const demoteTalentSheetClaim = (db: Database, talentId: string) =>
     .where(
       and(eq(talent.id, talentId), isNotNull(talent.pendingPromoteSheetId))
     );
-
-/**
- * Every location sheet claim in a sequence: its style is an input to them.
- * Each statement evaluates `styleMoved` itself, so the caller's batch revokes
- * only when its style write changes the snapshot (#1863).
- */
-export const demoteSequenceSheetClaims = (
-  db: Database,
-  sequenceId: string,
-  styleMoved: SQL
-) =>
-  [
-    // A character sheet reads no style since `rendering` (#2017).
-    demoteLocationReferenceClaims(
-      db,
-      sql`${eq(sequenceLocations.sequenceId, sequenceId)} and ${styleMoved}`
-    ),
-  ] as const;
 
 export type SheetLanding = 'promoted' | 'parked';
 
@@ -316,9 +289,10 @@ export function landCharacterSheet(
   );
 }
 
-/** Land a sequence location reference run's result: {@link landSheetVersion}. */
+/** Land a location reference run's result: {@link landSheetVersion}. */
 export function landLocationReference(
   db: Database,
+  teamId: string,
   args: LandArgs<LocationSheetInputHash> & { locationId: string }
 ): Promise<SheetLanding> {
   const { locationId, versionId } = args;
@@ -327,12 +301,12 @@ export function landLocationReference(
   return landSheetVersion(
     db,
     {
-      entity: `SequenceLocation ${locationId}`,
-      parent: sequenceLocations,
-      isParent: eq(sequenceLocations.id, locationId),
-      selected: sequenceLocations.selectedReferenceVersionId,
-      claim: sequenceLocations.pendingPromoteReferenceVersionId,
-      isGenerating: eq(sequenceLocations.referenceStatus, 'generating'),
+      entity: `Location ${locationId}`,
+      parent: locations,
+      isParent: sql`${eq(locations.id, locationId)} and ${eq(locations.teamId, teamId)}`,
+      selected: locations.selectedReferenceVersionId,
+      claim: locations.pendingPromoteReferenceVersionId,
+      isGenerating: eq(locations.referenceStatus, 'generating'),
       promote: {
         selectedReferenceVersionId: versionId,
         pendingPromoteReferenceVersionId: null,
@@ -348,8 +322,7 @@ export function landLocationReference(
       variants: locationSheetVariants,
       version: {
         ...versionRow(args, now),
-        parentType: 'sequence_location',
-        parentId: locationId,
+        locationId,
       },
       versionIdColumn: locationSheetVariants.id,
       divergedAt: locationSheetVariants.divergedAt,
@@ -359,8 +332,7 @@ export function landLocationReference(
         .from(twin)
         .where(
           and(
-            eq(twin.parentType, 'sequence_location'),
-            eq(twin.parentId, locationId),
+            eq(twin.locationId, locationId),
             eq(twin.model, args.model),
             eq(twin.inputHash, sql`${locationSheetVariants.inputHash}`),
             isNotNull(twin.divergedAt)

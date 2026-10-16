@@ -2,7 +2,7 @@ import {
   cuesToWebVTT,
   type PlaybackClip,
   type PlaybackCue,
-} from '@openstory/stitch-player';
+} from '@openstory/stitch';
 
 import { sketchIsNewerThanClip, type ShotView } from '@/shots/shot-view';
 import {

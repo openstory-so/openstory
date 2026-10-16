@@ -72,6 +72,7 @@ const location: LocationBibleEntry = {
   architecturalStyle: 'gothic',
   keyFeatures: 'stone arches',
   ambiance: 'quiet',
+  rendering: 'Photoreal live action',
   consistencyTag: 'hall',
   firstMention: { sceneId: 'analysis-scene', text: 'Hall', lineNumber: 1 },
 };
@@ -284,7 +285,7 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
   expect(plan.promptContext?.characterBible).toHaveLength(1);
   expect(plan.promptContext?.locationBible).toHaveLength(1);
   const cast = await scopedDb.characters.list(sequenceId);
-  const places = await scopedDb.sequenceLocations.list(sequenceId);
+  const places = await scopedDb.locations.list(sequenceId);
   expect(plan.targets[0]?.referenceIds).toHaveLength(2);
   expect(plan.targets[0]?.referenceIds).toEqual(
     expect.arrayContaining([cast[0]?.id, places[0]?.id])

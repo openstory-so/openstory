@@ -22,12 +22,13 @@ import {
   frames,
   shots,
   locationBibleVersions,
-  locationLibrary,
-  locationSheets,
+  locationReferencePhotos,
+  locationSheetVariants,
+  locations,
   renderSegments,
   scenes,
   sequenceCast,
-  sequenceLocations,
+  sequenceLocationLinks,
   sequenceStyleVersions,
   sequences,
   session,
@@ -43,6 +44,7 @@ import {
 } from '@/platform/server/db/schema';
 import { getDb } from '#db-client';
 import { getSequenceByIdUnscoped } from '@/platform/server/db/scoped';
+import { getPublicAssetsDomain } from '@/platform/public-assets';
 import {
   and,
   asc,
@@ -194,6 +196,24 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
   const theirs = sql`(SELECT value FROM json_each(${JSON.stringify(
     cast.map((row) => row.id)
   )}))`;
+  // The sequences' locations (#1695), as `locationsOnlyIn` picks them: one
+  // the writer attached is the team's and stays.
+  const used = await db
+    .select({ id: sequenceLocationLinks.locationId })
+    .from(sequenceLocationLinks)
+    .where(
+      and(
+        inArray(sequenceLocationLinks.sequenceId, ids),
+        eq(sequenceLocationLinks.attached, false),
+        sql`NOT EXISTS (SELECT 1 FROM sequence_location_links o WHERE o.location_id = ${sequenceLocationLinks.locationId} AND o.sequence_id NOT IN ${ids})`
+      )
+    );
+  const theirLocations = inArray(
+    locations.id,
+    sql`(SELECT value FROM json_each(${JSON.stringify(
+      used.map((row) => row.id)
+    )}))`
+  );
   await db.batch([
     db
       .delete(sequenceStyleVersions)
@@ -225,16 +245,43 @@ async function deleteSequenceVersionRows(where: SQL | undefined) {
       .where(inArray(characterVoiceVersions.characterId, theirs)),
     db.delete(characters).where(inArray(characters.id, theirs)),
     db
+      .delete(sequenceLocationLinks)
+      .where(inArray(sequenceLocationLinks.sequenceId, ids)),
+    ...deleteLocationRows(theirLocations),
+  ]);
+}
+
+/**
+ * Delete the locations `where` matches with everything they own: nothing
+ * cascades from a location (#1695). Their links go first, in the caller's
+ * batch or here.
+ */
+function deleteLocationRows(where: SQL | undefined) {
+  const db = getDb();
+  const ids = db.select({ id: locations.id }).from(locations).where(where);
+  return [
+    db
+      .delete(locationReferencePhotos)
+      .where(inArray(locationReferencePhotos.locationId, ids)),
+    db
       .delete(locationBibleVersions)
-      .where(
-        inArray(
-          locationBibleVersions.locationId,
-          db
-            .select({ id: sequenceLocations.id })
-            .from(sequenceLocations)
-            .where(inArray(sequenceLocations.sequenceId, ids))
-        )
-      ),
+      .where(inArray(locationBibleVersions.locationId, ids)),
+    db
+      .delete(locationSheetVariants)
+      .where(inArray(locationSheetVariants.locationId, ids)),
+    db.delete(locations).where(where),
+  ] as const;
+}
+
+/** Delete the team locations `where` matches, links included. */
+async function deleteTestLocations(where: SQL | undefined) {
+  const db = getDb();
+  const ids = db.select({ id: locations.id }).from(locations).where(where);
+  await db.batch([
+    db
+      .delete(sequenceLocationLinks)
+      .where(inArray(sequenceLocationLinks.locationId, ids)),
+    ...deleteLocationRows(where),
   ]);
 }
 
@@ -247,6 +294,8 @@ export async function cleanupTestUser(
   await db.delete(session).where(eq(session.userId, userId));
   await db.delete(teamMembers).where(eq(teamMembers.userId, userId));
   await deleteSequenceVersionRows(eq(sequences.teamId, teamId));
+  // A team delete is refused while it has locations (#1695).
+  await deleteTestLocations(eq(locations.teamId, teamId));
   await db.delete(teams).where(eq(teams.id, teamId));
   await db.delete(user).where(eq(user.id, userId));
   // Credits will cascade or be cleaned via team if we add FKs later
@@ -493,46 +542,78 @@ export async function createTestTalentWithMedia(
 }
 
 /**
- * Create a test location + default sheet.
+ * Create a test location for a team, with a completed sheet. It is in no
+ * sequence: a test picks it, and analysis links it.
  */
 export async function createTestLocation(
   teamId: string,
-  name: string
-): Promise<{ id: string; teamId: string; name: string }> {
+  name: string,
+  options: { description?: string; sheetImageUrl?: string } = {}
+): Promise<{
+  id: string;
+  teamId: string;
+  name: string;
+  referenceImageUrl: string;
+}> {
   const db = getDb();
   const now = new Date();
+  const id = generateId();
+  const {
+    description = null,
+    sheetImageUrl = `http://localhost:3020/api/test/image?w=1024&h=576&label=location`,
+  } = options;
 
-  const [inserted] = await db
-    .insert(locationLibrary)
-    .values({
-      teamId,
-      name,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ id: locationLibrary.id });
-
-  if (!inserted) {
-    throw new Error('Failed to create test location');
-  }
-
-  const sheetId = generateId();
-  await db.insert(locationSheets).values({
-    id: sheetId,
-    locationId: inserted.id,
-    name: 'Default',
-    imageUrl: `http://localhost:3020/api/test/image?w=1024&h=576&label=location`,
-    imagePath: `locations/${name
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')}/sheet.webp`,
-    isDefault: true,
-    source: 'ai_generated',
+  // The bible lives on its version row (#1600) and the sheet on its variant
+  // row (#1419), both keyed to the location's own id like the backfill.
+  await db.insert(locations).values({
+    id,
+    teamId,
+    legacyName: name,
+    selectedBibleVersionId: id,
+    referenceStatus: 'completed',
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(locationBibleVersions).values({
+    id,
+    locationId: id,
+    name,
+    description,
+    rendering: 'Photoreal live action',
+    source: 'backfill',
+    createdAt: now,
+  });
+  await db.insert(locationSheetVariants).values({
+    id,
+    locationId: id,
+    model: 'prior',
+    url: sheetImageUrl,
+    status: 'completed',
+    generatedAt: now,
     createdAt: now,
     updatedAt: now,
   });
 
-  return { id: inserted.id, teamId, name };
+  return { id, teamId, name, referenceImageUrl: sheetImageUrl };
+}
+
+/**
+ * The team location the full-sequence e2e picks. Its name and description
+ * are what the recorded location-match fixture was recorded with (the public
+ * template of that name, removed in #1695), so they must not change. The
+ * sheet is the real one on the public assets domain.
+ */
+const SUNLIT_LOFT_LOCATION = {
+  name: 'Sunlit Loft Studio',
+  description:
+    'Airy industrial loft with exposed brick, massive arched windows flooding warm natural light, a velvet couch, scattered art supplies, and hanging plants. Creative, intimate, and effortlessly photogenic.',
+};
+
+export async function createSunlitLoftTestLocation(teamId: string) {
+  return await createTestLocation(teamId, SUNLIT_LOFT_LOCATION.name, {
+    description: SUNLIT_LOFT_LOCATION.description,
+    sheetImageUrl: `https://${getPublicAssetsDomain()}/locations/sunlit-loft-studio/sheet.webp`,
+  });
 }
 
 /**
@@ -703,19 +784,17 @@ export async function cleanupTalentByName(
 }
 
 /**
- * Clean up test locations for a team (cascades to sheets).
+ * Clean up a team's locations.
  */
 export async function cleanupTestLocations(teamId: string): Promise<void> {
-  const db = getDb();
-  await db.delete(locationLibrary).where(eq(locationLibrary.teamId, teamId));
+  await deleteTestLocations(eq(locations.teamId, teamId));
 }
 
 /**
  * Clean up a specific location by ID.
  */
 export async function cleanupLocationById(locationId: string): Promise<void> {
-  const db = getDb();
-  await db.delete(locationLibrary).where(eq(locationLibrary.id, locationId));
+  await deleteTestLocations(eq(locations.id, locationId));
 }
 
 /**
@@ -726,49 +805,13 @@ export async function cleanupLocationByName(
   name: string
 ): Promise<void> {
   const db = getDb();
-  const [created] = await db
-    .select({ id: locationLibrary.id })
-    .from(locationLibrary)
-    .where(
-      and(eq(locationLibrary.teamId, teamId), eq(locationLibrary.name, name))
-    );
-  if (created) {
-    await db.delete(locationLibrary).where(eq(locationLibrary.id, created.id));
-  }
-}
-
-/**
- * Look up a seeded system location by name (isPublic).
- */
-export async function getSystemLocationByName(name: string): Promise<{
-  id: string;
-  name: string;
-  teamId: string;
-  referenceImageUrl: string;
-}> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(locationLibrary)
-    .where(
-      and(eq(locationLibrary.name, name), eq(locationLibrary.isPublic, true))
-    )
-    .limit(1);
-  if (rows.length === 0) {
-    throw new Error(
-      `System location "${name}" not found in test DB — was \`bun scripts/seed.ts --test\` run during global setup?`
-    );
-  }
-  const found = rows[0];
-  if (!found) {
-    throw new Error('test setup: expected location row');
-  }
-  return {
-    id: found.id,
-    name: found.name,
-    teamId: found.teamId,
-    referenceImageUrl: found.referenceImageUrl ?? '',
-  };
+  const named = db
+    .select({ id: locationBibleVersions.locationId })
+    .from(locationBibleVersions)
+    .where(eq(locationBibleVersions.name, name));
+  await deleteTestLocations(
+    and(eq(locations.teamId, teamId), inArray(locations.id, named))
+  );
 }
 
 /**

@@ -4,15 +4,16 @@ import {
   cleanupLocationById,
   cleanupLocationByName,
   cleanupTestLocations,
+  createSunlitLoftTestLocation,
   createTestLocation,
-  getSystemLocationByName,
 } from '@/platform/server/test/seed';
 import { testOnlyGuard } from './route';
 
-const CreateLocationSchema = z.object({
-  teamId: z.string(),
-  name: z.string(),
-});
+// `preset` makes the team location the full-sequence e2e picks.
+const CreateLocationSchema = z.union([
+  z.object({ teamId: z.string().min(1), name: z.string().min(1) }),
+  z.object({ teamId: z.string().min(1), preset: z.literal('sunlit-loft') }),
+]);
 
 const DeleteLocationSchema = z.object({
   teamId: z.string().optional(),
@@ -26,18 +27,11 @@ export const Route = createFileRoute('/api/test/location')({
     handlers: ({ createHandlers }) =>
       createHandlers({
         POST: async ({ request }) => {
-          const { teamId, name } = CreateLocationSchema.parse(
-            await request.json()
-          );
-
-          if (!teamId || !name) {
-            return Response.json(
-              { error: 'teamId and name are required' },
-              { status: 400 }
-            );
-          }
-
-          const created = await createTestLocation(teamId, name);
+          const body = CreateLocationSchema.parse(await request.json());
+          const created =
+            'preset' in body
+              ? await createSunlitLoftTestLocation(body.teamId)
+              : await createTestLocation(body.teamId, body.name);
           return Response.json(created);
         },
 
@@ -65,30 +59,6 @@ export const Route = createFileRoute('/api/test/location')({
           }
 
           return Response.json({ success: true });
-        },
-
-        /**
-         * GET /api/test/location?name=...
-         * Used for system (public) location lookup by name.
-         */
-        GET: async ({ request }) => {
-          const url = new URL(request.url);
-          const name = url.searchParams.get('name');
-          if (!name) {
-            return Response.json(
-              { error: 'name query param required' },
-              { status: 400 }
-            );
-          }
-          try {
-            const loc = await getSystemLocationByName(name);
-            return Response.json(loc);
-          } catch (err) {
-            return Response.json(
-              { error: err instanceof Error ? err.message : 'not found' },
-              { status: 404 }
-            );
-          }
         },
       }),
   },

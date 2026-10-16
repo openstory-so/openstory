@@ -173,16 +173,6 @@ export function getTalentChannel(talentId?: string): RealtimeChannelApi {
 }
 
 /**
- * Get a channel for location library events.
- * @param locationId - The location ID to use as the channel identifier
- */
-export function getLocationChannel(locationId?: string): RealtimeChannelApi {
-  return locationId
-    ? realtimeChannel(`location:${locationId}`)
-    : noopChannel('location');
-}
-
-/**
  * Get a channel for per-shot prompt regeneration streaming.
  * @param shotId - The shot ID to use as the channel identifier
  */

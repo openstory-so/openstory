@@ -217,7 +217,7 @@ export async function generateShotImageVariants(
   const [allCharacters, allLocations, allElements, selectedPrompt] =
     await Promise.all([
       context.scopedDb.characters.listWithSheets(sequence.id),
-      context.scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      context.scopedDb.locations.listWithReferences(sequence.id),
       context.scopedDb.sequenceElements.list(sequence.id),
       context.scopedDb.framePromptVersions.getSelected(frame.id),
     ]);
@@ -349,8 +349,9 @@ export async function selectShotImageVariant(
     })
   );
 
-  const allLocations =
-    await context.scopedDb.sequenceLocations.listWithReferences(sequence.id);
+  const allLocations = await context.scopedDb.locations.listWithReferences(
+    sequence.id
+  );
   const locationReferences = getSceneLocationReferenceImages(
     allLocations,
     scene?.continuity?.environmentTag ?? '',

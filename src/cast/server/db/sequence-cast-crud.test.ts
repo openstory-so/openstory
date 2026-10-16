@@ -31,7 +31,8 @@ import {
   sequenceCast,
   sequenceElements,
   sequenceEvents,
-  sequenceLocations,
+  locations,
+  sequenceLocationLinks,
   sequenceStyleVersions,
   sequences,
   styles,
@@ -49,7 +50,7 @@ import { createCharacterLooksMethods } from './character-looks';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { createCharactersMethods } from './characters';
 import { createSequenceElementsMethods } from './sequence-elements';
-import { createSequenceLocationsMethods } from './sequence-locations';
+import { createLocationsMethods } from './locations';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
 
 /** A hard delete of characters that hold no saved voice. */
@@ -67,7 +68,7 @@ async function seed() {
   await db.delete(characterVoiceVersions);
   await db.delete(characters);
   await db.delete(sequenceElements);
-  await db.delete(sequenceLocations);
+  await db.delete(locations);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -1246,12 +1247,13 @@ describe('characters bible CRUD + soft-remove', () => {
 
 describe('sequence locations bible CRUD + soft-remove', () => {
   it('updateBible writes the fields and an atomic location.updated event carrying prevState', async () => {
-    const m = createSequenceLocationsMethods(db);
+    const m = createLocationsMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
         locationId: 'loc_001',
         name: 'Beach',
+        rendering: 'Photoreal live action',
         description: 'white sand',
         referenceStatus: 'completed',
       },
@@ -1259,6 +1261,7 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     );
 
     const updated = await m.updateBible(
+      sequenceId,
       created.id,
       { description: 'black volcanic sand', ambiance: 'stormy' },
       { actorId }
@@ -1276,31 +1279,36 @@ describe('sequence locations bible CRUD + soft-remove', () => {
     });
   });
 
-  it('softDelete hides the row from default lists and the team library; restore brings it back', async () => {
-    const m = createSequenceLocationsMethods(db);
-    const [seq] = await db.select().from(sequences);
-    if (!seq) throw new Error('test setup: sequence missing');
+  it('softDelete hides the location from the sequence and leaves it on the team; restore brings it back', async () => {
+    const m = createLocationsMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
         locationId: 'loc_001',
         name: 'Beach',
+        rendering: 'Photoreal live action',
         referenceStatus: 'completed',
       },
       { source: 'analysis', createdBy: null }
     );
 
-    await m.softDelete(created.id, { actorId });
+    await m.softDelete(sequenceId, created.id, { actorId });
     expect(await m.list(sequenceId)).toHaveLength(0);
     expect(await m.listWithReferences(sequenceId)).toHaveLength(0);
-    expect(await m.getNeedingReferences(sequenceId)).toHaveLength(0);
-    expect(await m.getTeamLibrary(seq.teamId)).toHaveLength(0);
-    expect((await m.getById(created.id))?.deletedAt).toBeInstanceOf(Date);
+    // Removed from the sequence, not from the team (#1695).
+    expect(await m.listTeam()).toMatchObject([
+      { id: created.id, sequences: [], usedAnywhere: false },
+    ]);
+    expect((await m.getById(sequenceId, created.id))?.deletedAt).toBeInstanceOf(
+      Date
+    );
 
-    const restored = await m.restore(created.id, { actorId });
+    const restored = await m.restore(sequenceId, created.id, { actorId });
     expect(restored.deletedAt).toBeNull();
     expect(await m.list(sequenceId)).toHaveLength(1);
-    expect(await m.getTeamLibrary(seq.teamId)).toHaveLength(1);
+    expect(await m.listTeam()).toMatchObject([
+      { id: created.id, sequences: [{ id: sequenceId }], usedAnywhere: true },
+    ]);
 
     const kinds = await eventKinds();
     expect(kinds).toContain('location.deleted');
@@ -1308,17 +1316,18 @@ describe('sequence locations bible CRUD + soft-remove', () => {
   });
 
   it('createBulk upsert revives a soft-deleted location', async () => {
-    const m = createSequenceLocationsMethods(db);
+    const m = createLocationsMethods(db, teamId);
     const created = await m.create(
       {
         sequenceId,
         locationId: 'loc_001',
         name: 'Beach',
+        rendering: 'Photoreal live action',
         referenceStatus: 'pending',
       },
       { source: 'analysis', createdBy: null }
     );
-    await m.softDelete(created.id, { actorId });
+    await m.softDelete(sequenceId, created.id, { actorId });
 
     await m.createBulk(
       [
@@ -1326,6 +1335,8 @@ describe('sequence locations bible CRUD + soft-remove', () => {
           sequenceId,
           locationId: 'loc_001',
           name: 'Beach',
+          rendering: 'Photoreal live action',
+          boundTo: null,
           referenceStatus: 'pending',
         },
       ],
@@ -1563,9 +1574,15 @@ describe('bible history (#1600)', () => {
   });
 
   it('locations: create, bulk re-analysis and edits append the same way', async () => {
-    const m = createSequenceLocationsMethods(db);
+    const m = createLocationsMethods(db, teamId);
     const created = await m.create(
-      { sequenceId, locationId: 'loc_001', name: 'Diner', description: 'old' },
+      {
+        sequenceId,
+        locationId: 'loc_001',
+        name: 'Diner',
+        rendering: 'Photoreal live action',
+        description: 'old',
+      },
       analysis
     );
     await m.createBulk(
@@ -1574,6 +1591,8 @@ describe('bible history (#1600)', () => {
           sequenceId,
           locationId: 'loc_001',
           name: 'Diner',
+          rendering: 'Photoreal live action',
+          boundTo: null,
           description: 'old',
         },
       ],
@@ -1582,6 +1601,7 @@ describe('bible history (#1600)', () => {
     expect(await locationVersions(created.id)).toHaveLength(1);
 
     const edited = await m.updateBible(
+      sequenceId,
       created.id,
       { architecturalStyle: 'modern' },
       { actorId }
@@ -1601,7 +1621,7 @@ describe('bible history (#1600)', () => {
 describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
   it('characters, locations and the sequence delete with their versions', async () => {
     const chars = createCharactersMethods(db, teamId);
-    const locs = createSequenceLocationsMethods(db);
+    const locs = createLocationsMethods(db, teamId);
     const opts = { source: 'analysis' as const, createdBy: null };
     const [a, b] = await Promise.all(
       ['Ann', 'Bo'].map((name, i) =>
@@ -1621,6 +1641,8 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
         sequenceId,
         locationId: `loc_${i}`,
         name,
+        rendering: 'Photoreal live action',
+        boundTo: null,
         referenceStatus: 'pending' as const,
       })),
       opts
@@ -1630,7 +1652,6 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     // A character goes only once no sequence casts it (#2065).
     await chars.softDelete(sequenceId, a.id, { actorId });
     expect(await chars.delete(a.id, NO_VOICES)).toBe(true);
-    expect(await locs.delete(x.id)).toBe(true);
 
     const [sequence] = await db
       .select()
@@ -1653,6 +1674,8 @@ describe('hard deletes clear the #1600 version rows they RESTRICT', () => {
     expect(await db.select().from(sequenceCast)).toEqual([]);
     expect(await db.select().from(characters)).toEqual([]);
     expect(await db.select().from(locationBibleVersions)).toEqual([]);
+    expect(await db.select().from(sequenceLocationLinks)).toEqual([]);
+    expect(await db.select().from(locations)).toEqual([]);
     expect(await db.select().from(sequenceStyleVersions)).toEqual([]);
     expect(await db.select().from(sequences)).toEqual([]);
   });

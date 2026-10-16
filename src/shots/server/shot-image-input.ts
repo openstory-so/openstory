@@ -198,7 +198,7 @@ export async function prepareShotImageWorkflowInput(args: {
     ? [refs.characters, refs.locations, refs.elements]
     : await Promise.all([
         scopedDb.characters.listWithSheets(sequence.id),
-        scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        scopedDb.locations.listWithReferences(sequence.id),
         scopedDb.sequenceElements.list(sequence.id),
       ]);
 

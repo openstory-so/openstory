@@ -1,9 +1,10 @@
 import type {
-  LibraryLocation,
   Style,
   Talent,
   TalentWithSheets,
 } from '@/platform/server/db/schema';
+import { ConflictError, NotFoundError } from '@/platform/errors';
+import type { TeamLocation } from '@/cast/server/db/locations';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the runtime side-effecting deps so resolve.ts (and the safe-fetch ingest
@@ -94,23 +95,17 @@ function makeTalent(
   };
 }
 
-function makeLocation(
-  overrides: Partial<LibraryLocation> = {}
-): LibraryLocation {
+function makeLocation(overrides: Partial<TeamLocation> = {}): TeamLocation {
   return {
     id: 'loc-1',
-    teamId: 'team-1',
     name: 'Rooftop Bar',
     description: null,
     referenceImageUrl: null,
-    referenceImagePath: null,
-    isPublic: false,
-    isTemplate: false,
-    referenceInputHash: null,
-    pendingReferenceClaimId: null,
-    createdBy: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    referencePortraitUrl: null,
+    referenceStatus: 'pending',
+    lastUsedAt: null,
+    usedAnywhere: false,
+    sequences: [],
     ...overrides,
   };
 }
@@ -251,27 +246,72 @@ describe('resolveTalentIds', () => {
 });
 
 describe('resolveLocationIds', () => {
+  // `listTeam` is the team's own locations: another team's never appear.
+  const team = [
+    makeLocation({ id: 'l-roof', name: 'Rooftop Bar' }),
+    makeLocation({ id: 'l-pier-1', name: 'Pier' }),
+    makeLocation({ id: 'l-pier-2', name: 'pier' }),
+  ];
+  const deps = (createLocation = vi.fn()) => ({
+    locations: { listTeam: async () => team },
+    createLocation,
+  });
+
+  it('names a team location by id', async () => {
+    expect(await resolveLocationIds(deps(), ['l-roof'])).toEqual(['l-roof']);
+  });
+
+  it('names a team location by name, forgivingly, and dedupes', async () => {
+    expect(
+      await resolveLocationIds(deps(), ['rooftop-bar', 'Rooftop Bar', 'l-roof'])
+    ).toEqual(['l-roof']);
+  });
+
+  it('asks for the id when two team locations share the name', async () => {
+    await expect(resolveLocationIds(deps(), ['Pier'])).rejects.toSatisfy(
+      (error: unknown) => {
+        expect(error).toBeInstanceOf(ConflictError);
+        expect(String(error)).toContain('l-pier-1, l-pier-2');
+        return true;
+      }
+    );
+    // The id still names one of them.
+    expect(await resolveLocationIds(deps(), ['l-pier-2'])).toEqual([
+      'l-pier-2',
+    ]);
+  });
+
+  it('does not find another team\u2019s id, or a name nothing has', async () => {
+    await expect(
+      resolveLocationIds(deps(), ['l-other-team'])
+    ).rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveLocationIds(deps(), ['Beach'])).rejects.toThrow(
+      'No location found matching "Beach".'
+    );
+  });
+
   it('resolves existing and delegates inline-create to createLocation', async () => {
-    const locations = [makeLocation({ id: 'l-roof', name: 'Rooftop Bar' })];
     const createLocation = vi.fn(async (input: { name: string }) => ({
       id: `new-${input.name}`,
     }));
-    const ids = await resolveLocationIds(
-      { locations: { list: async () => locations }, createLocation },
-      ['Rooftop Bar', { name: 'Beach' }]
-    );
+    const ids = await resolveLocationIds(deps(createLocation), [
+      'Rooftop Bar',
+      { name: 'Beach' },
+      { name: 'beach' },
+    ]);
     expect(ids).toEqual(['l-roof', 'new-Beach']);
+    expect(createLocation).toHaveBeenCalledTimes(1);
     expect(createLocation).toHaveBeenCalledWith({ name: 'Beach' });
   });
 
-  it('reuses an existing location by name instead of creating a duplicate', async () => {
-    const locations = [makeLocation({ id: 'l-roof', name: 'Rooftop Bar' })];
+  it('reuses the team location of that name instead of creating a duplicate', async () => {
     const createLocation = vi.fn();
-    const ids = await resolveLocationIds(
-      { locations: { list: async () => locations }, createLocation },
-      [{ name: 'Rooftop Bar' }]
-    );
-    expect(ids).toEqual(['l-roof']);
+    expect(
+      await resolveLocationIds(deps(createLocation), [{ name: 'Rooftop Bar' }])
+    ).toEqual(['l-roof']);
+    await expect(
+      resolveLocationIds(deps(createLocation), [{ name: 'Pier' }])
+    ).rejects.toBeInstanceOf(ConflictError);
     expect(createLocation).not.toHaveBeenCalled();
   });
 });

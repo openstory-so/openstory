@@ -281,6 +281,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
     },
   ],
+  'location-matching-workflow.ts': [
+    {
+      read: 'locations.getCurrentByIds',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'The team locations the writer picked (#1695). A location deleted from the team since the pick is left out of the read; name and description come from the trigger snapshot.',
+    },
+  ],
   'element-vision-workflow.ts': [
     {
       read: 'resolveLlmKey',
@@ -402,7 +409,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'buildRecastRegenerateSnapshots runs in the recast SERVER FNs, not a workflow — these reads ARE the trigger-time snapshot. The workflow-side export from this module is pure.',
     },
     {
-      read: 'sequenceLocations.listWithReferences',
+      read: 'locations.listWithReferences',
       bucket: 'TRIGGER-SNAPSHOT',
       why: 'Same server-fn snapshot builder.',
     },
@@ -556,11 +563,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'talent.getByIds',
       bucket: 'WAIT-GATE',
       why: "Polls for /library-talent-sheet's write. NOTE defaultSheet's identity: the isDefault sheet, else a newest-first (createdAt DESC) scan of non-diverged sheets (src/cast/server/db/talent.ts:234) — so the gate opens on the newest convergent sheet, not necessarily the one the user will see as default later.",
-    },
-    {
-      read: 'locations.getByIds',
-      bucket: 'WAIT-GATE',
-      why: "Polls for /library-location-sheet's referenceImageUrl.",
     },
     {
       read: 'sequenceElements.listByIds',

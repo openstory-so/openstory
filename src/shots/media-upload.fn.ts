@@ -221,30 +221,34 @@ export const setCharacterSheetFromUploadFn = createServerFn({ method: 'POST' })
     })
   );
 
+// `sequenceId` null is the Locations page (#1695): the same upload, stored
+// under the team, with no sequence event or channel.
 const locationSheetPresignInput = z.object({
-  sequenceId: ulidSchema,
+  sequenceId: ulidSchema.nullable(),
   locationDbId: ulidSchema,
   filename: z.string().min(1),
 });
 
 export const presignLocationSheetUploadFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(locationSheetPresignInput))
   .handler(async ({ context, data }) => {
     return signedUpload(
       STORAGE_BUCKETS.LOCATIONS,
-      `teams/${context.teamId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`,
+      context.sequence
+        ? `teams/${context.teamId}/sequences/${context.sequence.id}/locations/${data.locationDbId}/${generateId()}`
+        : `teams/${context.teamId}/locations/${data.locationDbId}/${generateId()}`,
       data.filename,
       'image'
     );
   });
 
 const setLocationSheetInput = z.object({
-  sequenceId: ulidSchema,
+  sequenceId: ulidSchema.nullable(),
   locationDbId: ulidSchema,
   publicUrl: mediaUrlSchema,
 });
 export const setLocationSheetFromUploadFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(setLocationSheetInput))
   .handler(({ context, data }) => setLocationSheetFromUpload(context, data));

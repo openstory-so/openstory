@@ -50,18 +50,12 @@ import { createShotVariantsMethods } from '@/shots/server/db/shot-variants';
 import { createShotsMethods } from '@/shots/server/db/shots';
 import { createVideoVariantsMethods } from '@/motion/server/db/video-variants';
 import { createLibraryMethods } from '@/look/server/db/library';
-import {
-  createLocationSheetsMethods,
-  createLocationSheetsReadMethods,
-  createLocationsMethods,
-  createPublicLocationsReadMethods,
-} from '@/cast/server/db/location-library';
+import { createLocationsMethods } from '@/cast/server/db/locations';
 import { createLocationSheetVariantsMethods } from '@/cast/server/db/location-sheet-variants';
 import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets';
 import { createModelUsageMethods } from '@/billing/server/db/model-usage';
 import { createSequenceElementsMethods } from '@/cast/server/db/sequence-elements';
 import { createSequenceExportsMethods } from '@/sequences/server/db/sequence-exports';
-import { createSequenceLocationsMethods } from '@/cast/server/db/sequence-locations';
 import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequence-music-prompt-versions';
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
 import {
@@ -267,33 +261,12 @@ export async function listPublicTalent(options?: { favoritesOnly?: boolean }) {
 }
 
 /**
- * List public ("system") library locations without team scoping or auth.
- */
-export async function listPublicLibraryLocations() {
-  return createPublicLocationsReadMethods(getDb()).list();
-}
-
-/**
  * Fetch a public ("system") talent with its sheets and media, no auth.
  * Returns undefined if the talent isn't public. Lets anonymous visitors open a
  * talent detail page read-only.
  */
 export async function getPublicTalentWithRelations(talentId: string) {
   return createPublicTalentReadMethods(getDb()).getWithRelations(talentId);
-}
-
-/**
- * Fetch a public ("system") library location with its sheets, no auth.
- * Returns null if the location isn't public. Mirrors getLibraryLocationByIdFn's
- * shape so the same detail page renders for anonymous visitors.
- */
-export async function getPublicLibraryLocationById(locationId: string) {
-  const db = getDb();
-  const location =
-    await createPublicLocationsReadMethods(db).getById(locationId);
-  if (!location) return null;
-  const sheets = await createLocationSheetsReadMethods(db).list(locationId);
-  return { ...location, sequenceTitle: 'Library' as const, sheets };
 }
 
 /**
@@ -438,8 +411,7 @@ export function createScopedDb(teamId: string, userId: string) {
 
     talent: createTalentMethods(db, teamId, userId),
     styles: createStylesMethods(db, teamId, userId),
-    locations: createLocationsMethods(db, teamId, userId),
-    locationSheets: createLocationSheetsMethods(db),
+    locations: createLocationsMethods(db, teamId),
     library: createLibraryMethods(db, teamId),
 
     scenes: { ...createScenesMethods(db), ...reads.scenes },
@@ -463,14 +435,13 @@ export function createScopedDb(teamId: string, userId: string) {
     sequenceEvents: createSequenceEventsMethods(db),
     characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
     characterLooks: createCharacterLooksMethods(db, teamId),
-    locationSheetVariants: createLocationSheetVariantsMethods(db),
+    locationSheetVariants: createLocationSheetVariantsMethods(db, teamId),
     talentSheetVariants: createTalentSheetVariantsMethods(db, teamId),
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
 
     characters: createCharactersMethods(db, teamId),
-    sequenceLocations: createSequenceLocationsMethods(db),
     sequenceElements: createSequenceElementsMethods(db),
 
     // Direct model access (#458) — flat team-scoped runs of arbitrary fal

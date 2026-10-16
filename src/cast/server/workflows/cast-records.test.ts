@@ -1,7 +1,11 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { ElementBibleEntry } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { createCastRecords, findMissingElementEntries } from './cast-records';
+import {
+  buildLocationInsert,
+  createCastRecords,
+  findMissingElementEntries,
+} from './cast-records';
 import { asStub } from '@/test/as-stub';
 
 const entry = (token: string): ElementBibleEntry => ({
@@ -81,7 +85,7 @@ describe('createCastRecords', () => {
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       characterLooks: { syncFromAnalysis },
-      sequenceLocations: { createBulk: locationCreateBulk },
+      locations: { createBulk: locationCreateBulk },
       sequenceElements: { create: elementCreate },
       liveRead: { sequenceElements: { getByToken } },
     });
@@ -119,6 +123,7 @@ describe('createCastRecords', () => {
           architecturalStyle: '',
           keyFeatures: '',
           ambiance: '',
+          rendering: 'Photoreal live action',
           consistencyTag: 'cafe',
           firstMention: {
             sceneId: 'scene_1',
@@ -144,6 +149,9 @@ describe('createCastRecords', () => {
       expect.objectContaining({
         locationId: 'loc_1',
         referenceStatus: 'pending',
+        rendering: 'Photoreal live action',
+        // Not matched to a team location: analysis makes it here.
+        boundTo: null,
       }),
     ]);
     // LOGO already has an image; only BOTTLE gets a placeholder row.
@@ -170,7 +178,7 @@ describe('createCastRecords', () => {
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: vi.fn() },
-      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      locations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: elementCreate },
       liveRead: {
         sequenceElements: { getByToken: vi.fn(async () => existing) },
@@ -233,7 +241,7 @@ describe('createCastRecords (attached cast, #2050)', () => {
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       characterLooks: { syncFromAnalysis, linkFromAnalysis },
-      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      locations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
     });
@@ -305,7 +313,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       characterLooks: { syncFromAnalysis },
-      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      locations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
     });
@@ -343,7 +351,7 @@ describe('createCastRecords (talent match, #1561)', () => {
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       characterLooks: { syncFromAnalysis },
-      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      locations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
     });
@@ -373,7 +381,7 @@ describe('createCastRecords (voice only, #1585)', () => {
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       characterLooks: { syncFromAnalysis },
-      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      locations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
     });
@@ -422,7 +430,7 @@ describe('createCastRecords (voice only, #1585)', () => {
     const scopedDb = asStub<WorkflowScopedDb>({
       characters: { create: characterCreate },
       characterLooks: { syncFromAnalysis },
-      sequenceLocations: { createBulk: vi.fn(async () => []) },
+      locations: { createBulk: vi.fn(async () => []) },
       sequenceElements: { create: vi.fn() },
       liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
     });
@@ -458,6 +466,59 @@ describe('createCastRecords (voice only, #1585)', () => {
     expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
       voiceDescription:
         'Native English. Male, 50s. Excellent quality. Persona: dry narrator. Emotion: unhurried, amused. Warm low timbre, conversational pace.',
+    });
+  });
+});
+
+describe('buildLocationInsert (#1695)', () => {
+  const location = {
+    locationId: 'loc_1',
+    name: 'INT. CAFE - DAY',
+    type: 'interior' as const,
+    description: 'a cafe',
+    architecturalStyle: '',
+    keyFeatures: '',
+    ambiance: '',
+    rendering: '3D animated, Pixar-like',
+    consistencyTag: 'cafe',
+    firstMention: { sceneId: 'scene_1', text: 'INT. CAFE', lineNumber: 4 },
+  };
+
+  test('a script location matching bound to a team location is linked to it', () => {
+    expect(
+      buildLocationInsert({
+        sequenceId: 'seq_1',
+        location,
+        libraryMatch: {
+          locationId: 'loc_1',
+          libraryLocationId: 'team-loc-9',
+          libraryLocationName: 'Team Cafe',
+          referenceImageUrl: '/r2/team/cafe.png',
+        },
+        referenceStatus: 'pending',
+      })
+    ).toMatchObject({
+      sequenceId: 'seq_1',
+      locationId: 'loc_1',
+      boundTo: 'team-loc-9',
+      firstMentionSceneId: 'scene_1',
+      firstMentionLine: 4,
+    });
+  });
+
+  test('an unmatched one carries its bible, rendering included, and binds nothing', () => {
+    expect(
+      buildLocationInsert({
+        sequenceId: 'seq_1',
+        location,
+        libraryMatch: undefined,
+        referenceStatus: 'generating',
+      })
+    ).toMatchObject({
+      name: 'INT. CAFE - DAY',
+      rendering: '3D animated, Pixar-like',
+      referenceStatus: 'generating',
+      boundTo: null,
     });
   });
 });

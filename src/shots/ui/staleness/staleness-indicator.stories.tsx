@@ -26,14 +26,7 @@ const meta: Meta<typeof StalenessIndicator> = {
     },
     entityType: {
       control: 'select',
-      options: [
-        'shot',
-        'character',
-        'location',
-        'library-location',
-        'talent',
-        'sequence',
-      ],
+      options: ['shot', 'character', 'location', 'talent', 'sequence'],
     },
     density: {
       control: 'radio',

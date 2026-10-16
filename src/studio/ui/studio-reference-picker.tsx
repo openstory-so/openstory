@@ -25,10 +25,9 @@ import {
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
-import {
-  useLibraryLocations,
-  useSequenceLocations,
-} from '@/cast/ui/use-sequence-locations';
+import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
+import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import { useAuthSession } from '@/platform/ui/auth/session-query';
 import {
   useSequencesWithShots,
   type SequenceWithShots,
@@ -144,7 +143,9 @@ function shotReferences(sequence: SequenceWithShots): StudioReference[] {
 /** The team's pickable media, as flat `{ url, label, kind }` rows per source. */
 export function useStudioLibrary(): StudioLibrary {
   const { data: talent } = useTalent();
-  const { data: locations } = useLibraryLocations();
+  // The team's locations (#1695); the ones with a sheet are offered below.
+  const { data: session } = useAuthSession();
+  const { data: locations } = useTeamLocationList(!!session);
   const { data: sequences } = useSequencesWithShots();
   const images = useStudioAssets({ activity: 'image' });
   const videos = useStudioAssets({ activity: 'video' });

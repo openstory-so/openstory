@@ -38,3 +38,19 @@ export function renderingFor(bible: {
   }
   return text;
 }
+
+/**
+ * The rendering a location's bible version stores (#1695): required text.
+ * Every location bible writer passes through here.
+ */
+export function renderingForLocation(
+  rendering: string | null | undefined
+): string {
+  const text = rendering?.trim();
+  if (!text) {
+    throw new ValidationError(
+      'Rendering is required: say what the place is rendered as, such as "Photoreal live action" or "3D animated, Pixar-like".'
+    );
+  }
+  return text;
+}

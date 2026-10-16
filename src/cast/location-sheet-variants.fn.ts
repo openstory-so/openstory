@@ -2,43 +2,43 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 
-import { getGenerationChannel } from '@/platform/realtime';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 
-import { sequenceAccessMiddleware } from '@/platform/middleware.fn';
+import {
+  castAccessMiddleware,
+  sequenceAccessMiddleware,
+} from '@/platform/middleware.fn';
 import {
   discardLocationSheetVersion,
+  requireLocation,
   selectLocationSheetVersion,
   undiscardLocationSheetVersion,
 } from '@/cast/server/cast-edit';
 
-import { getLogger } from '@/platform/logger';
-
-const logger = getLogger(['openstory', 'serverFn', 'location-sheet-variants']);
-
+// `sequenceId` null is the Locations page (#1695): the same sheets, which
+// are the location's, with no sequence event or channel.
 const variantInputSchema = z.object({
-  sequenceId: ulidSchema,
+  sequenceId: ulidSchema.nullable(),
   variantId: ulidSchema,
 });
 
 const locationVersionsInput = z.object({
-  sequenceId: ulidSchema,
+  sequenceId: ulidSchema.nullable(),
   locationDbId: ulidSchema,
 });
 
+/** Completed, non-discarded sheet versions for the history list. */
 export const listLocationSheetVersionsFn = createServerFn({ method: 'GET' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(locationVersionsInput))
   .handler(async ({ context, data }) => {
-    const location = await context.scopedDb.sequenceLocations.getById(
+    const location = await requireLocation(
+      context.scopedDb,
+      context.sequence?.id ?? null,
       data.locationDbId
     );
-    if (!location || location.sequenceId !== context.sequence.id) {
-      throw new Error('Location not found in this sequence');
-    }
     const rows =
-      await context.scopedDb.locationSheetVariants.listHistoryByParent(
-        'sequence_location',
+      await context.scopedDb.locationSheetVariants.listHistoryByLocation(
         location.id
       );
     return {
@@ -48,7 +48,7 @@ export const listLocationSheetVersionsFn = createServerFn({ method: 'GET' })
   });
 
 export const selectLocationSheetVersionFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
     zodValidator(locationVersionsInput.extend({ versionId: ulidSchema }))
   )
@@ -57,103 +57,94 @@ export const selectLocationSheetVersionFn = createServerFn({ method: 'POST' })
       await selectLocationSheetVersion(
         context.scopedDb,
         { userId: context.user.id },
-        context.sequence.id,
+        context.sequence?.id ?? null,
         data.locationDbId,
         data.versionId
       )
   );
 
 /**
- * List active divergent location-sheet alternates across all sequence
- * locations in this sequence. Drives the corner-dot indicator on location
- * cards and the banner on the location detail view.
+ * Active divergent location-sheet alternates across every location this
+ * sequence uses. Drives the corner-dot indicator on location cards.
  */
 export const getSequenceLocationDivergentVariantsFn = createServerFn({
   method: 'GET',
 })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
-    const locations = await context.scopedDb.sequenceLocations.list(
+    const locations = await context.scopedDb.locations.list(
       context.sequence.id
     );
-    if (locations.length === 0) return [];
-    return context.scopedDb.locationSheetVariants.listDivergentActiveByParents(
-      'sequence_location',
+    return await context.scopedDb.locationSheetVariants.listDivergentActiveByLocations(
       locations.map((l) => l.id)
     );
   });
 
-export const promoteSequenceLocationSheetVariantFn = createServerFn({
-  method: 'POST',
-})
-  .middleware([sequenceAccessMiddleware])
+/** One location's live divergent alternates: the detail view's banner. */
+export const getLocationDivergentVariantsFn = createServerFn({ method: 'GET' })
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(locationVersionsInput))
+  .handler(async ({ context, data }) => {
+    const location = await requireLocation(
+      context.scopedDb,
+      context.sequence?.id ?? null,
+      data.locationDbId
+    );
+    return await context.scopedDb.locationSheetVariants.listDivergentActiveByLocation(
+      location.id
+    );
+  });
+
+/**
+ * Make a divergent alternate the location's live sheet. Emits
+ * `location-sheet:progress` (`completed`) on the location's channel so the
+ * existing realtime listeners refresh.
+ */
+export const promoteLocationSheetVariantFn = createServerFn({ method: 'POST' })
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(variantInputSchema))
   .handler(async ({ data, context }) => {
     const variant = await context.scopedDb.locationSheetVariants.getById(
       data.variantId
     );
-    if (!variant || variant.parentType !== 'sequence_location') {
-      throw new Error('Sequence-location variant not found');
+    if (!variant) {
+      throw new Error('Location sheet variant not found');
     }
     if (variant.divergedAt === null || variant.discardedAt !== null) {
       throw new Error('Variant is not a live divergent alternate');
     }
-    if (!variant.url) {
-      throw new Error('Variant has no asset to promote');
-    }
-
-    const location = await context.scopedDb.sequenceLocations.getById(
-      variant.parentId
+    await selectLocationSheetVersion(
+      context.scopedDb,
+      { userId: context.user.id },
+      context.sequence?.id ?? null,
+      variant.locationId,
+      variant.id
     );
-    if (!location || location.sequenceId !== context.sequence.id) {
-      throw new Error('Sequence location not found in this sequence');
-    }
-
-    await context.scopedDb.locationSheetVariants.select(
-      variant.parentId,
-      variant.id,
-      { actorId: context.user.id }
-    );
-
-    try {
-      await getGenerationChannel(context.sequence.id).emit(
-        'generation.location-sheet:progress',
-        {
-          locationId: variant.parentId,
-          status: 'completed',
-        }
-      );
-    } catch (error) {
-      logger.error('realtime emit failed', { err: error });
-    }
-
-    return { variantId: variant.id, locationId: variant.parentId };
+    return { variantId: variant.id, locationId: variant.locationId };
   });
 
-export const discardSequenceLocationSheetVariantFn = createServerFn({
-  method: 'POST',
-})
-  .middleware([sequenceAccessMiddleware])
+export const discardLocationSheetVariantFn = createServerFn({ method: 'POST' })
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(variantInputSchema))
   .handler(
     async ({ data, context }) =>
       await discardLocationSheetVersion(
         context.scopedDb,
-        context.sequence.id,
+        context.sequence?.id ?? null,
         data.variantId
       )
   );
 
-export const undiscardSequenceLocationSheetVariantFn = createServerFn({
+export const undiscardLocationSheetVariantFn = createServerFn({
   method: 'POST',
 })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(zodValidator(variantInputSchema))
   .handler(
     async ({ data, context }) =>
       await undiscardLocationSheetVersion(
         context.scopedDb,
-        context.sequence.id,
+        context.sequence?.id ?? null,
         data.variantId
       )
   );

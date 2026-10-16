@@ -360,7 +360,10 @@ the first still therefore does not invalidate it or add a still prerequisite.
 Scene and style changes still invalidate it. A current motion digest does not include the still URL, so rendering the first still does not stale the motion prompt. Restore copies the source and spec of the row being restored. An element rename writes `renamed` on the prompt and `rename` on a new spec version. A content-checker rescue writes `softened` or `shortened`. A user edit uses the ordinary current-input provenance and Update all does not overwrite it.
 
 Planning and prompt staleness load every active character/location bible, even
-before its first sheet exists. The selected sheet fields on these rows remain
+before its first sheet exists. A location is the team's (#1695,
+`team-locations.md`): a `sheet:location` unit's id is the location's, its sheet
+is shared by every sequence that uses it, and a sequence style change does not
+stale it. The selected sheet fields on these rows remain
 optional. Filtering these inputs to completed sheets changes a derived prompt's
 hash during the fresh handoff and loses the reference IDs needed to attach the
 executor's newly generated sheets. Sheet-only readers keep their narrower APIs;

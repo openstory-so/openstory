@@ -58,7 +58,7 @@ export const relations = defineRelations(schema, (r) => ({
     videoVariants: r.many.videoVariants(),
     events: r.many.sequenceEvents(),
     cast: r.many.sequenceCast(),
-    locations: r.many.sequenceLocations(),
+    locationLinks: r.many.sequenceLocationLinks(),
     elements: r.many.sequenceElements(),
     musicPromptVariants: r.many.sequenceMusicPromptVersions(),
     dialogueSpeeches: r.many.dialogueSpeeches(),
@@ -298,35 +298,29 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
-  // ---- Location Library ----
-  locationLibrary: {
+  // ---- Locations ----
+  locations: {
     team: r.one.teams({
-      from: r.locationLibrary.teamId,
+      from: r.locations.teamId,
       to: r.teams.id,
     }),
-    createdByUser: r.one.user({
-      from: r.locationLibrary.createdBy,
-      to: r.user.id,
-    }),
   },
 
-  // ---- Sequence Locations ----
-  sequenceLocations: {
+  sequenceLocationLinks: {
     sequence: r.one.sequences({
-      from: r.sequenceLocations.sequenceId,
+      from: r.sequenceLocationLinks.sequenceId,
       to: r.sequences.id,
     }),
-    libraryLocation: r.one.locationLibrary({
-      from: r.sequenceLocations.libraryLocationId,
-      to: r.locationLibrary.id,
+    location: r.one.locations({
+      from: r.sequenceLocationLinks.locationId,
+      to: r.locations.id,
     }),
   },
 
-  // ---- Location Sheets ----
-  locationSheets: {
-    location: r.one.locationLibrary({
-      from: r.locationSheets.locationId,
-      to: r.locationLibrary.id,
+  locationReferencePhotos: {
+    location: r.one.locations({
+      from: r.locationReferencePhotos.locationId,
+      to: r.locations.id,
     }),
   },
 

@@ -177,7 +177,7 @@ function makeScopedDb(): WorkflowScopedDb {
       createPendingVoiceClaim,
       markVoiceClaimTerminal: vi.fn(),
     },
-    sequenceLocations: { claimReference },
+    locations: { claimReference },
     sequenceVariants: { claimMusic, failMusicClaim },
     frameVariants: {
       markTerminal: vi.fn(),
@@ -218,7 +218,7 @@ function makeScopedDb(): WorkflowScopedDb {
       apiKeys: { hasUsableKey: vi.fn(async () => false) },
       billing: { hasEnoughCredits: vi.fn(async () => true) },
       characters: { listWithSheets: vi.fn(async () => []) },
-      sequenceLocations: { listWithReferences: vi.fn(async () => []) },
+      locations: { listWithReferences: vi.fn(async () => []) },
       sequenceElements: { list: vi.fn(async () => []) },
       shots: {
         getById: vi.fn(async (id: string) => ({

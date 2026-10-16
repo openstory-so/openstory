@@ -215,7 +215,7 @@ export const productionReadTools = [
   ),
   productionRead(
     'list_versions',
-    'Page production history by version ID, oldest ID first. entityId is a frame for image/visual_prompt, segment for video, character for character_sheet, sequence location for location_sheet, shot for motion_prompt, scene for scene_script, or sequenceId for music/music_prompt. Discarded versions are opt-in. get_version reads full content.',
+    'Page production history by version ID, oldest ID first. entityId is a frame for image/visual_prompt, segment for video, character for character_sheet, location for location_sheet (the team’s history, the same from every sequence that uses it), shot for motion_prompt, scene for scene_script, or sequenceId for music/music_prompt. Discarded versions are opt-in. get_version reads full content.',
     collectionInput.extend({
       kind: versionKindSchema,
       entityId: ulidSchema,

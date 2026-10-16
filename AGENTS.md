@@ -276,6 +276,30 @@ changing the area, and update it in the same PR.**
   included, casts it (`getCastInAnySequenceOrArchive`). Nothing cascades
   from `characters`: a hard delete goes through `deleteCharactersStatements`
   and is refused while it would strand a saved voice.
+- **Team locations (#1695)** — `docs/architecture/team-locations.md`. A
+  location belongs to the team; a sequence uses it through a
+  `sequence_location_links` row that holds only the script id, the first
+  mention, the soft remove and the `attached` flag. There is no location
+  library, no per-sequence sheet and no public template: every sequence
+  reads the location's current bible and sheet, and an edit from any
+  sequence stales the others by derivation. A sheet reads no sequence
+  style: the bible's required `rendering` (`renderingForLocation`) is what
+  it takes from one, and its hash reads the bible, the uploaded reference
+  photos and the image model. A method takes a `sequenceId` only for the
+  link's own fields or the event it writes; a write made from no sequence
+  (the Locations page) passes `null` there and writes no event. A sheet run
+  started from no sequence stores under the team and reports on the
+  location's own channel (`locationChannelId`). A match is a link, never a
+  copy: analysis binds a script location to one the writer picked
+  (`boundTo`), and Replace re-points the link (`locations.replace`); neither
+  draws a sheet. Analysis never rewrites a location the writer attached or
+  another sequence has used: ask `analysisMayNotRewrite`, the one place that
+  rule lives. A read through a link answers with the script's tag
+  (`scriptConsistencyTag`) when it has one, so do not read the bible's tag
+  to match a scene. A delete is soft (`deleted_at` on the location) and
+  refused while any sequence, archived ones included, uses it. Nothing
+  cascades from a location: a hard delete goes through
+  `deleteLocationsStatements`. The SQL table is still `sequence_locations`.
 - **Generation plan, stop-at and continue (#1408, #1816)** —
   `docs/architecture/generation-plan.md`. What a sequence still owes is the
   generation plan, derived from live D1 — never a stored stage. `stopAt` is the
@@ -300,7 +324,7 @@ changing the area, and update it in the same PR.**
   gone — a whole clip must never sit in Worker memory, and a fragmented MP4
   cannot be written without holding it. Download only hands over a render of
   the current cut; "Render MP4 on server" makes one. The player itself is
-  `packages/stitch-player` (#1853): it knows clips and cues, never shots —
+  `packages/stitch` (#1853, published as `@openstory/stitch`): it knows clips and cues, never shots —
   the shot mapping and subtitles (`shotCues`) live in
   `src/sequences/ui/theatre/playback-clips.ts`.
 

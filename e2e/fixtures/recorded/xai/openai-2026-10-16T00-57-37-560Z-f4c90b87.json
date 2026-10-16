@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nINT. DOWNTOWN APARTMENT HALLWAY AND ELEVATOR — MORNING\nType: Interior\n\n[VISUAL DESCRIPTION]:\nA narrow apartment hallway feeding directly into a compact elevator. The elevator is a mirrored metal box, crowded with commuters and objects, while changing bands of sunlight enter as it descends through the building. The confined space emphasizes proximity, reflections, and the bright coral package against Scarlett's dark clothing.\n\n[ARCHITECTURAL STYLE]:\nDense contemporary downtown apartment circulation space with a utilitarian hallway and polished, stainless-steel elevator interior.\n\n[KEY FEATURES]:\nNarrow hallway, closing elevator doors, mirrored walls, elevator controls, crowded passengers, flower bucket, parcel stack, and sliding reflections.\n\n[LIGHTING]:\nNeutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.\n\n[ATMOSPHERE]:\nCompressed, kinetic, urban, and slightly comedic, with the elevator acting as a fast-moving social cross-section of the city.\n\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High resolution with rich detail\n- No people or characters in any frame\n- Clean grid layout with thin dividing lines\n\nStyle: Professional film location reference sheet, production design documentation.\nOutput: Single image containing 3×3 grid of location views.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/b5031a020391d0d62b3faab377f63167a134c0f6e61e8435e4eb7d373a4d1483.png"
+        }
+      }
+    }
+  ]
+}

@@ -30,16 +30,10 @@
     "paths": {
       "@/*": ["./src/*"],
       // The workspace package, from source — no build step in dev.
-      "@openstory/stitch-player": ["./packages/stitch-player/src/index.ts"],
-      "@openstory/stitch-player/videojs": [
-        "./packages/stitch-player/src/videojs.ts"
-      ],
-      "@openstory/stitch-player/react": [
-        "./packages/stitch-player/src/react.tsx"
-      ],
-      "@openstory/stitch-player/export": [
-        "./packages/stitch-player/src/export.ts"
-      ]
+      "@openstory/stitch": ["./packages/stitch/src/index.ts"],
+      "@openstory/stitch/videojs": ["./packages/stitch/src/videojs.ts"],
+      "@openstory/stitch/react": ["./packages/stitch/src/react.tsx"],
+      "@openstory/stitch/export": ["./packages/stitch/src/export.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

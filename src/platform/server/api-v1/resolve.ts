@@ -3,11 +3,12 @@
  * concrete ids / uploads `createSequences` expects:
  *   - style:   id | name | slug  → styleId (auto-pick a default when omitted)
  *   - character: id | name     → castCharacterIds (a team character, #2050), else suggestedTalentIds (talent)
- *   - location:id | name         → suggestedLocationIds
+ *   - location:id | name         → suggestedLocationIds (a team location, #1695)
  *   - element: hosted URL        → ingested DraftElementUploadInput
  *
- * Every lookup goes through the team-scoped `list()` (team-owned + public), so
- * a caller can never resolve another team's private library entry.
+ * Every lookup goes through a team-scoped read (styles and talent: team-owned
+ * + public; characters and locations: the team's only), so a caller can never
+ * resolve another team's private entry.
  */
 
 import type { Style } from '@/platform/server/db/schema';
@@ -59,7 +60,7 @@ type TalentResolveDeps = {
   createTalent: (input: TalentCreate) => Promise<{ id: string }>;
 };
 type LocationResolveDeps = {
-  locations: Pick<ScopedDb['locations'], 'list'>;
+  locations: Pick<ScopedDb['locations'], 'listTeam'>;
   createLocation: (input: LocationCreate) => Promise<{ id: string }>;
 };
 
@@ -183,8 +184,11 @@ export async function resolveTalentIds(
 
 /**
  * Resolve a mixed list of location items — reference strings (id|name) and
- * inline create objects — into a deduped list of ids for `suggestedLocationIds`.
- * Inline-create is delegated to `deps.createLocation`.
+ * inline create objects — into a deduped list of team location ids for
+ * `suggestedLocationIds`. A string names one of the team's locations, by id
+ * then by name; two of that name is a conflict that asks for the id. An inline
+ * create whose name a team location (or an earlier create in this list) has
+ * reuses it. New names are delegated to `deps.createLocation`.
  */
 export async function resolveLocationIds(
   deps: LocationResolveDeps,
@@ -194,31 +198,45 @@ export async function resolveLocationIds(
   const { refs, creates } = partition(items);
   const ids: string[] = [];
 
-  const all = await deps.locations.list();
-  const seen = new Map<string, string>();
-  for (const location of all) {
-    seen.set(location.id, location.id);
-    seen.set(slugify(location.name), location.id);
-  }
+  const team = await deps.locations.listTeam();
+  /** The one team location `ref` names, or null; several is a conflict. */
+  const named = (ref: string, matches: typeof team): string | null => {
+    if (matches.length > 1) {
+      throw new ConflictError(
+        `"${ref}" names ${matches.length} locations. Use the id: ${matches.map((l) => l.id).join(', ')}.`
+      );
+    }
+    return matches[0]?.id ?? null;
+  };
 
   for (const ref of refs) {
-    const match = all.find((l) => matchesRef(ref, l));
-    if (!match) {
-      throw new NotFoundError(`No location found matching "${ref}".`);
-    }
-    ids.push(match.id);
-    seen.set(slugify(match.name), match.id);
+    const byId = team.find((l) => l.id === ref);
+    const id =
+      byId?.id ??
+      named(
+        ref,
+        team.filter((l) => matchesRef(ref, l))
+      );
+    if (!id) throw new NotFoundError(`No location found matching "${ref}".`);
+    ids.push(id);
   }
 
+  const created = new Map<string, string>();
   for (const create of creates) {
-    const existingId = seen.get(slugify(create.name));
+    const slug = slugify(create.name);
+    const existingId =
+      created.get(slug) ??
+      named(
+        create.name,
+        team.filter((l) => slugify(l.name) === slug)
+      );
     if (existingId) {
       ids.push(existingId);
       continue;
     }
-    const created = await deps.createLocation(create);
-    ids.push(created.id);
-    seen.set(slugify(create.name), created.id);
+    const location = await deps.createLocation(create);
+    ids.push(location.id);
+    created.set(slug, location.id);
   }
 
   return [...new Set(ids)];

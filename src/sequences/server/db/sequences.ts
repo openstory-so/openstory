@@ -14,11 +14,10 @@ import {
   framePromptVersions,
   frames,
   frameVariants,
-  locationBibleVersions,
   renderSegments,
   scenes,
   sequenceCast,
-  sequenceLocations,
+  sequenceLocationLinks,
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceStyleVersions,
@@ -64,7 +63,11 @@ import {
 } from './sequence-events';
 import type { RecordEventInput } from './sequence-events';
 import { ValidationError } from '@/platform/errors';
-import { demoteSequenceSheetClaims } from '@/cast/server/db/sheet-claims';
+import {
+  deleteLocationLinksStatements,
+  deleteLocationsStatements,
+  locationsOnlyIn,
+} from '@/cast/server/db/locations';
 import {
   assertVoicesReleased,
   deleteCharactersStatements,
@@ -99,13 +102,11 @@ import {
   asc,
   desc,
   eq,
-  exists,
   getTableColumns,
   inArray,
   isNull,
   lt,
   not,
-  notExists,
   or,
   sql,
 } from 'drizzle-orm';
@@ -604,34 +605,6 @@ export function createSequencesMethods(
   teamId: string,
   userId: string
 ) {
-  /**
-   * True while writing this style and recipe would change the sequence's
-   * live snapshot (#1863): a different style id, a different recipe, or no
-   * snapshot yet. For `demoteSequenceSheetClaims`, evaluated inside each
-   * demote before the pointer moves.
-   */
-  const styleMovesTo = (
-    sequenceId: string,
-    styleId: string,
-    styleConfig: StoredStyleConfig
-  ) =>
-    notExists(
-      db
-        .select({ one: sql`1` })
-        .from(sequences)
-        .innerJoin(
-          sequenceStyleVersions,
-          eq(sequenceStyleVersions.id, sequences.selectedStyleVersionId)
-        )
-        .where(
-          and(
-            eq(sequences.id, sequenceId),
-            eq(sequences.styleId, styleId),
-            eq(sequenceStyleVersions.config, styleConfig)
-          )
-        )
-    );
-
   return {
     ...createSequencesReadMethods(db, teamId),
 
@@ -886,14 +859,10 @@ export function createSequencesMethods(
         if (!owned) {
           throw new ValidationError('Sequence not found');
         }
-        // A style switch is a new snapshot (#1600): its version row, the
-        // pointer, and — since the style feeds every sheet in the sequence —
-        // the revoked sheet claims (#1113), in one batch. The claims go only
-        // when the style moved (#1863): a save that re-sends the same style
-        // with the same recipe leaves runs in flight alone. The demotes run
-        // before the pointer moves, so they compare against the live snapshot.
+        // A style switch is a new snapshot (#1600): its version row and the
+        // pointer, in one batch. No sheet claim is revoked: a character or
+        // location sheet reads no style, only its bible's `rendering`.
         const styleVersionId = generateId();
-        const styleMoved = styleMovesTo(id, params.styleId, styleConfig);
         await db.batch([
           insertStyleVersion(db, {
             id: styleVersionId,
@@ -903,7 +872,6 @@ export function createSequencesMethods(
             source: 'switched',
             createdBy: userId,
           }),
-          ...demoteSequenceSheetClaims(db, id, styleMoved),
           db
             .update(sequences)
             .set({ ...values, selectedStyleVersionId: styleVersionId })
@@ -963,20 +931,9 @@ export function createSequencesMethods(
       // The derived recipe is a snapshot like any other (#1600). The pointer
       // moves only while the sequence still points at this style; a pick that
       // lands between the read and the batch leaves the row as history.
-      //
-      // It revokes sheet claims like a style switch (#1863). A sheet run can
-      // be in flight here: a character or location added by hand before the
-      // first analysis can have its sheet generated against the placeholder
-      // recipe while this run derives the real one. The demotes run before
-      // the pointer moves, and only while it is going to move.
+      // Like a style switch, it revokes no sheet claim: a sheet reads no style.
       const styleVersionId = generateId();
-      const lands = sql`${exists(
-        db
-          .select({ one: sql`1` })
-          .from(sequences)
-          .where(still)
-      )} and ${styleMovesTo(params.id, params.styleId, styleConfig)}`;
-      const [, , rows] = await db.batch([
+      const [, rows] = await db.batch([
         insertStyleVersion(db, {
           id: styleVersionId,
           sequenceId: params.id,
@@ -985,7 +942,6 @@ export function createSequencesMethods(
           source: 'derived',
           createdBy: null,
         }),
-        ...demoteSequenceSheetClaims(db, params.id, lands),
         db
           .update(sequences)
           .set({
@@ -1034,6 +990,10 @@ export function createSequencesMethods(
       const theirs = own
         ? await charactersOnlyIn(db, teamId, sequenceId)
         : sql`0`;
+      // A location is the team's too (#1695), by the same rule.
+      const theirLocations = own
+        ? await locationsOnlyIn(db, teamId, sequenceId)
+        : sql`0`;
       await assertVoicesReleased(db, theirs, opts.releasedVoiceIds);
       await db.batch([
         db
@@ -1041,17 +1001,11 @@ export function createSequencesMethods(
           .where(inArray(sequenceStyleVersions.sequenceId, mine)),
         ...deleteCastStatements(db, inArray(sequenceCast.sequenceId, mine)),
         ...deleteCharactersStatements(db, theirs),
-        db
-          .delete(locationBibleVersions)
-          .where(
-            inArray(
-              locationBibleVersions.locationId,
-              db
-                .select({ id: sequenceLocations.id })
-                .from(sequenceLocations)
-                .where(inArray(sequenceLocations.sequenceId, mine))
-            )
-          ),
+        ...deleteLocationLinksStatements(
+          db,
+          inArray(sequenceLocationLinks.sequenceId, mine)
+        ),
+        ...deleteLocationsStatements(db, theirLocations),
         db.delete(sequences).where(inArray(sequences.id, mine)),
       ]);
       // An automatic style has no FK to its sequence (#1213); drop it here.

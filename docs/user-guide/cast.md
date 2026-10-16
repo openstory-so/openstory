@@ -107,3 +107,7 @@ Character sheet regeneration happens asynchronously. The UI subscribes to real-t
 - Generation starts (shows loading state)
 - Generation completes (refreshes the character data)
 - Generation fails (restores previous state)
+
+## Locations
+
+Locations work the same way: every location belongs to your team, and a sequence uses it rather than copying it. See [Locations](/docs/user-guide/locations).

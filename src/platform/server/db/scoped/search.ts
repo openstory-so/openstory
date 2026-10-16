@@ -19,6 +19,7 @@ import {
   eq,
   isNull,
   ne,
+  notExists,
   or,
   sql,
   type AnyColumn,
@@ -34,10 +35,10 @@ import {
   frames,
   generatedAssets,
   locationBibleVersions,
-  locationLibrary,
+  locations,
   scenes,
   sceneScriptVersions,
-  sequenceLocations,
+  sequenceLocationLinks,
   sequences,
   shotDialogueVersions,
   shotPromptVersions,
@@ -232,71 +233,95 @@ export function createSearchMethods(db: Database, teamId: string) {
         .orderBy(desc(characters.updatedAt))
         .limit(limit);
 
-      // A location with no bible version yet reads its own columns, the
-      // same fallback `sequence-locations` reads through.
+      // A location with no bible version yet reads its own columns.
       const bible = (version: AnyColumn, own: AnyColumn) =>
         sql<
           string | null
         >`CASE WHEN ${locationBibleVersions.id} IS NULL THEN ${own} ELSE ${version} END`;
-      const sequenceLocationTexts = {
-        name: bible(locationBibleVersions.name, sequenceLocations.legacyName),
-        type: bible(locationBibleVersions.type, sequenceLocations.legacyType),
+      const locationTexts = {
+        name: bible(locationBibleVersions.name, locations.legacyName),
+        type: bible(locationBibleVersions.type, locations.legacyType),
         description: bible(
           locationBibleVersions.description,
-          sequenceLocations.legacyDescription
+          locations.legacyDescription
         ),
         architecturalStyle: bible(
           locationBibleVersions.architecturalStyle,
-          sequenceLocations.legacyArchitecturalStyle
+          locations.legacyArchitecturalStyle
         ),
         keyFeatures: bible(
           locationBibleVersions.keyFeatures,
-          sequenceLocations.legacyKeyFeatures
+          locations.legacyKeyFeatures
         ),
         ambiance: bible(
           locationBibleVersions.ambiance,
-          sequenceLocations.legacyAmbiance
+          locations.legacyAmbiance
         ),
       };
+      const locationBibleJoin = and(
+        eq(locationBibleVersions.id, locations.selectedBibleVersionId),
+        eq(locationBibleVersions.locationId, locations.id)
+      );
+      // One hit per live link, so the result opens that sequence's location.
       const findSequenceLocations = db
         .select({
-          id: sequenceLocations.id,
+          id: locations.id,
           ...sequenceRef,
-          ...sequenceLocationTexts,
+          ...locationTexts,
         })
-        .from(sequenceLocations)
-        .innerJoin(sequences, eq(sequences.id, sequenceLocations.sequenceId))
-        .leftJoin(
-          locationBibleVersions,
+        .from(locations)
+        .innerJoin(
+          sequenceLocationLinks,
           and(
-            eq(
-              locationBibleVersions.id,
-              sequenceLocations.selectedBibleVersionId
-            ),
-            eq(locationBibleVersions.locationId, sequenceLocations.id)
+            eq(sequenceLocationLinks.locationId, locations.id),
+            isNull(sequenceLocationLinks.removedAt)
           )
         )
+        .innerJoin(
+          sequences,
+          eq(sequences.id, sequenceLocationLinks.sequenceId)
+        )
+        .leftJoin(locationBibleVersions, locationBibleJoin)
         .where(
           and(
+            eq(locations.teamId, teamId),
             liveSequence,
-            isNull(sequenceLocations.deletedAt),
-            any(sequenceLocationTexts)
+            isNull(locations.deletedAt),
+            any(locationTexts)
           )
         )
-        .orderBy(desc(sequenceLocations.updatedAt))
+        .orderBy(desc(locations.updatedAt))
         .limit(limit);
 
-      const libraryLocationTexts = {
-        name: locationLibrary.name,
-        description: locationLibrary.description,
-      };
+      // A team location no sequence is using. A link to an archived sequence
+      // still counts as in use, so that place stays out of this list.
       const findLibraryLocations = db
-        .select({ id: locationLibrary.id, ...libraryLocationTexts })
-        .from(locationLibrary)
+        .select({
+          id: locations.id,
+          name: sql<string>`coalesce(${locationBibleVersions.name}, ${locations.legacyName})`,
+          description: locationTexts.description,
+        })
+        .from(locations)
+        .leftJoin(locationBibleVersions, locationBibleJoin)
         .where(
-          and(eq(locationLibrary.teamId, teamId), any(libraryLocationTexts))
+          and(
+            eq(locations.teamId, teamId),
+            isNull(locations.deletedAt),
+            any(locationTexts),
+            notExists(
+              db
+                .select({ one: sql`1` })
+                .from(sequenceLocationLinks)
+                .where(
+                  and(
+                    eq(sequenceLocationLinks.locationId, locations.id),
+                    isNull(sequenceLocationLinks.removedAt)
+                  )
+                )
+            )
+          )
         )
-        .orderBy(desc(locationLibrary.updatedAt))
+        .orderBy(desc(locations.updatedAt))
         .limit(limit);
 
       const prompt = sql<

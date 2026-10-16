@@ -29,7 +29,12 @@ import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { landSheetRun } from './sheet-divergence';
 import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
 import type { SheetRunOutcome } from './sheet-divergence';
-import { locationSheetHashMatchesStored } from './sheet-snapshots';
+import {
+  assertQueuedWithLocationRendering,
+  locationSheetHashMatchesStored,
+  NO_LEGACY_LOCATION_SHEET,
+} from './sheet-snapshots';
+import { locationChannelId } from '@/cast/cast-channel';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'location-sheet']);
@@ -46,10 +51,13 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     const workflowRunId = event.instanceId;
 
     await step.do('validate-snapshot', async () => {
-      // Accepts the pre-#1785 shape too, so a run queued before the
-      // hash grew a channel does not read as tampered.
+      assertQueuedWithLocationRendering(input);
       if (
-        !(await locationSheetHashMatchesStored(input.snapshotInputHash, input))
+        !(await locationSheetHashMatchesStored(
+          input.snapshotInputHash,
+          input,
+          NO_LEGACY_LOCATION_SHEET
+        ))
       ) {
         throw new WorkflowValidationError(
           'snapshotInputHash does not match the inlined DTO; payload was tampered with or serialized inconsistently'
@@ -59,15 +67,12 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     // Emit realtime event that generation has started
     await step.do('emit-start-event', async () => {
-      if (input.sequenceId) {
-        await getGenerationChannel(input.sequenceId).emit(
-          'generation.location-sheet:progress',
-          {
-            locationId: input.locationDbId,
-            status: 'generating',
-          }
-        );
-      }
+      await getGenerationChannel(
+        locationChannelId(input.sequenceId, input.locationDbId)
+      ).emit('generation.location-sheet:progress', {
+        locationId: input.locationDbId,
+        status: 'generating',
+      });
     });
 
     // Step 1: Validate and build prompt
@@ -79,26 +84,14 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
           throw new WorkflowValidationError('locationMetadata is required');
         }
 
-        const hasLibraryLocation = !!(
-          input.referenceImageUrl || input.libraryLocationDescription
-        );
         logger.info(
-          `[LocationSheetWorkflow:cf] Starting reference generation for location ${input.locationName}${hasLibraryLocation ? ' with library location reference' : ''}`
+          `[LocationSheetWorkflow:cf] Starting reference generation for location ${input.locationName}${input.referencePhotoUrls.length > 0 ? ` from ${input.referencePhotoUrls.length} photos` : ''}`
         );
 
-        // Build library location overrides if data is provided
-        const libraryOverrides = hasLibraryLocation
-          ? {
-              description: input.libraryLocationDescription,
-              referenceImageUrl: input.referenceImageUrl,
-            }
-          : undefined;
-
-        // Build prompt with location identity + library reference + sequence style
+        // The location's bible and rendering, drawn from its photos when it has any.
         const { prompt, referenceUrls } = buildLocationSheetPrompt(
           input.locationMetadata,
-          libraryOverrides,
-          input.styleConfig
+          input.referencePhotoUrls
         );
         const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
@@ -108,7 +101,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
           // Location reference images use landscape aspect ratio for establishing shots
           imageSize: 'landscape_16_9' as const,
           numImages: 1,
-          // Use library reference image(s) for visual consistency
+          // The uploaded photos, when the location has any
           referenceImageUrls:
             referenceUrls.length > 0 ? referenceUrls : undefined,
         } satisfies ImageGenerationParams;
@@ -116,16 +109,13 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
     );
 
     // Destination is resolved BEFORE generating, because the image is stored
-    // inside the generating step (#1645). `locationDbId` and `teamId` are
-    // required on the payload; `sequenceId` is optional on the shared context
-    // but the trigger always sets it, and the run cannot write its row or
-    // emit progress without it.
+    // inside the generating step (#1645). A run from no sequence (#1695)
+    // stores under the team and reports on the location's own channel.
     const locationDbId = input.locationDbId;
     const teamId = input.teamId;
     const sequenceId = input.sequenceId;
-    if (!sequenceId) {
-      throw new WorkflowValidationError('sequenceId is required');
-    }
+    const channelId = locationChannelId(sequenceId, locationDbId);
+    const storageDir = `${teamId}/${sequenceId ?? 'team'}/${locationDbId}`;
 
     // Step 2: Generate the location reference image — reseeds on a content
     // flag, then one softened prompt (#1293). The upload rides the same step:
@@ -136,7 +126,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       scopedDb,
       workflowRunId: event.instanceId,
       userId: input.userId,
-      sequenceId: input.sequenceId,
+      sequenceId: sequenceId ?? undefined,
       reservationId: input.reservationId,
       kind: 'location-sheet',
       logTag: '[LocationSheetWorkflow:cf]',
@@ -148,10 +138,10 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         storeGeneratedPng(
           result.imageUrls[0],
           STORAGE_BUCKETS.LOCATIONS,
-          `${teamId}/${sequenceId}/${locationDbId}/${generateId()}.png`
+          `${storageDir}/${generateId()}.png`
         ),
       onRetry: async (retry) => {
-        await getGenerationChannel(sequenceId).emit(
+        await getGenerationChannel(channelId).emit(
           'generation.location-sheet:progress',
           {
             locationId: locationDbId,
@@ -204,7 +194,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         providerRequestId: falUsage.requestId ?? null,
         workflowRunId,
         prompt: generationParams.prompt,
-        sequenceId,
+        sequenceId: sequenceId ?? undefined,
         referenceImageCount: generationParams.referenceImageUrls?.length ?? 0,
       });
     });
@@ -232,20 +222,22 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
               bibleVersionId: input.bibleVersionId ?? null,
               model: generationParams.model,
               workflowRunId,
-              activity: {
-                sequenceId,
-                actorId: input.userId,
-                targetType: 'location',
-                targetId: locationDbId,
-                summary: sheetGeneratedSummary(
-                  input.locationName,
-                  generationParams.model
-                ),
-              },
+              activity: sequenceId
+                ? {
+                    sequenceId,
+                    actorId: input.userId,
+                    targetType: 'location',
+                    targetId: locationDbId,
+                    summary: sheetGeneratedSummary(
+                      input.locationName,
+                      generationParams.model
+                    ),
+                  }
+                : null,
             }),
           logger,
           logTag: '[LocationSheetWorkflow:cf]',
-          channelId: sequenceId,
+          channelId,
           entityType: 'location',
           entityId: locationDbId,
           versionId,
@@ -265,11 +257,11 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
         {
           userId: input.userId,
           teamId,
-          sequenceId,
+          sequenceId: sequenceId ?? undefined,
           subject: { kind: 'location', locationId: locationDbId },
           versionId: reconcileOutcome.versionId,
           sheetUrl: storageResult.url,
-          storageDir: `${teamId}/${sequenceId}/${locationDbId}`,
+          storageDir,
         },
         await scopedDb.liveRead.compliance.listEnforcementFor(
           input.userId,
@@ -282,7 +274,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       // `stale:detected` is out and the land batch settled the status
       // unless a newer run holds the claim — see the character twin.
       await step.do('settle-divergent-status', async () => {
-        await getGenerationChannel(sequenceId).emit(
+        await getGenerationChannel(channelId).emit(
           'generation.location-sheet:progress',
           {
             locationId: locationDbId,
@@ -303,7 +295,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     // Emit realtime event that generation is complete
     await step.do('emit-complete-event', async () => {
-      await getGenerationChannel(sequenceId).emit(
+      await getGenerationChannel(channelId).emit(
         'generation.location-sheet:progress',
         {
           locationId: locationDbId,
@@ -340,7 +332,7 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
 
     // Mark location reference as failed — through the claim (#1113).
     if (input.locationDbId && input.teamId) {
-      await scopedDb.sequenceLocations.failReferenceClaim(
+      await scopedDb.locations.failReferenceClaim(
         input.locationDbId,
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a run queued before #1113 has no claim
         input.referenceVersionId ?? null,
@@ -348,19 +340,18 @@ export class LocationSheetWorkflow extends OpenStoryWorkflowEntrypoint<LocationS
       );
 
       // Emit failure event for realtime UI update
-      if (input.sequenceId) {
+      {
         try {
-          await getGenerationChannel(input.sequenceId).emit(
-            'generation.location-sheet:progress',
-            {
-              locationId: input.locationDbId,
-              status: 'failed',
-              error,
-            }
-          );
+          await getGenerationChannel(
+            locationChannelId(input.sequenceId, input.locationDbId)
+          ).emit('generation.location-sheet:progress', {
+            locationId: input.locationDbId,
+            status: 'failed',
+            error,
+          });
         } catch (emitError) {
           logger.error(
-            `[LocationSheetWorkflow:cf] Failed to emit failure event for sequence ${input.sequenceId} location ${input.locationDbId}:`,
+            `[LocationSheetWorkflow:cf] Failed to emit failure event for location ${input.locationDbId}:`,
             {
               err: emitError,
             }

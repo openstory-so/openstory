@@ -1,6 +1,6 @@
 /**
  * Trigger-time regenerate-shots snapshot for the two recast flows, plus the
- * in-workflow merge of the sheet its awaited child produces.
+ * in-workflow merge of the sheet a character recast's awaited child produces.
  *
  * Both recast workflows used to rebuild this payload inside a `step.do`,
  * minutes after the trigger and after a full child image generation — eight
@@ -20,10 +20,7 @@ import { withLookSheet } from '@/cast/character-looks';
 import type { TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type {
-  CastCharacterWithSheet,
-  SequenceLocationWithReference,
-} from '@/platform/server/db/schema';
+import type { CastCharacterWithSheet } from '@/platform/server/db/schema';
 import { getLogger } from '@/platform/logger';
 import {
   loadSceneContextBySequence,
@@ -44,10 +41,15 @@ const logger = getLogger(['openstory', 'workflows', 'recast-snapshot']);
 export const PENDING_SHEET_URL = 'recast://pending-sheet-url';
 export const PENDING_SHEET_HASH = 'recast://pending-sheet-hash';
 
-/** The entity whose sheet the awaited child regenerates. */
-export type RecastSubject =
-  | { kind: 'character'; character: CastCharacterWithSheet }
-  | { kind: 'location'; location: SequenceLocationWithReference };
+/**
+ * The character whose sheet the awaited child regenerates. A location recast
+ * draws no sheet (#1695): it passes no subject and its shots read the new
+ * location's sheet as it is.
+ */
+export type RecastSubject = {
+  kind: 'character';
+  character: CastCharacterWithSheet;
+};
 
 export type RecastRegenerateSnapshot = {
   shotSnapshots: RegenerateShotSnapshot[];
@@ -69,7 +71,7 @@ export async function buildRecastRegenerateSnapshots(params: {
   shotIds: string[];
   imageModel: TextToImageModel;
   aspectRatio: AspectRatio;
-  subject: RecastSubject;
+  subject: RecastSubject | null;
 }): Promise<RecastRegenerateSnapshot> {
   const { scopedDb, sequenceId, shotIds, imageModel, aspectRatio, subject } =
     params;
@@ -89,16 +91,16 @@ export async function buildRecastRegenerateSnapshots(params: {
   const [characters, locations, elements, shots, sceneContext] =
     await Promise.all([
       scopedDb.characters.listWithSheets(sequenceId),
-      scopedDb.sequenceLocations.listWithReferences(sequenceId),
+      scopedDb.locations.listWithReferences(sequenceId),
       scopedDb.sequenceElements.list(sequenceId),
       scopedDb.shots.getByIds(shotIds),
       loadSceneContextBySequence(scopedDb, sequenceId),
     ]);
 
-  // Both list reads are completed-only, and the recast already flipped the
-  // subject to `generating` — so splice it back in behind the sentinels.
+  // The character list is completed-only, and the recast already flipped
+  // the subject to `generating` — so splice it back in behind the sentinels.
   const resolvedCharacters =
-    subject.kind === 'character'
+    subject !== null
       ? [
           ...characters.filter((c) => c.id !== subject.character.id),
           // The recast redraws the default look's sheet (#2015).
@@ -109,18 +111,6 @@ export async function buildRecastRegenerateSnapshots(params: {
           }),
         ]
       : characters;
-  const resolvedLocations =
-    subject.kind === 'location'
-      ? [
-          ...locations.filter((l) => l.id !== subject.location.id),
-          {
-            ...subject.location,
-            referenceImageUrl: PENDING_SHEET_URL,
-            referenceInputHash: PENDING_SHEET_HASH,
-            selectedReferenceVersionId: null,
-          },
-        ]
-      : locations;
 
   const framesByShot = await scopedDb.frames.getAnchorsByShots(
     shots.map((s) => s.id)
@@ -148,7 +138,7 @@ export async function buildRecastRegenerateSnapshots(params: {
         imagePromptVersionId: promptVersion.id,
         frameId: frame?.id,
         characters: resolvedCharacters,
-        locations: resolvedLocations,
+        locations,
         elements,
         imageModel,
         aspectRatio,

@@ -1,5 +1,8 @@
 /**
- * Hook for fetching sequence locations
+ * Locations as a sequence uses them (#1695): the sequence's list, the one
+ * location a detail view shows (through a sequence or from none), and the
+ * writes made through a sequence. The team's own list and writes are in
+ * `use-team-locations.ts`.
  */
 
 import {
@@ -9,10 +12,11 @@ import {
   type QueryClient,
 } from '@tanstack/react-query';
 import {
+  attachLocationFn,
   createSequenceLocationFn,
+  getLocationFn,
   getShotIdsForLocationFn,
   getSequenceLocationsFn,
-  getTeamLocationsLibraryFn,
   getLocationSheetStalenessFn,
   recastLocationFn,
   regenerateLocationSheetFn,
@@ -21,47 +25,14 @@ import {
   updateSequenceLocationFn,
 } from '@/cast/sequence-locations.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
-import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import {
-  getPublicLibraryLocationsFn,
-  getTeamLibraryLocationsFn,
-} from '@/cast/location-library.fn';
-import { usePublicOrTeamQuery } from '@/ui/use-public-or-team-query';
-import type {
-  LibraryLocation,
-  SequenceLocationWithReference,
-} from '@/platform/server/db/schema';
+  invalidateLocations,
+  sequenceLocationKeys,
+} from '@/cast/ui/location-keys';
+import type { SequenceLocationWithReference } from '@/platform/server/db/schema';
 
-// Re-export for backwards compatibility
+export { sequenceLocationKeys };
 export type { SequenceLocationWithReference };
-export type { LibraryLocation };
-
-// Extended type for team library locations (sequence locations with title)
-export type TeamLibraryLocation = SequenceLocationWithReference & {
-  sequenceTitle: string;
-};
-
-export const sequenceLocationKeys = {
-  all: ['sequence-locations'] as const,
-  list: (sequenceId: string) =>
-    [...sequenceLocationKeys.all, 'list', sequenceId] as const,
-  shotsForLocation: (sequenceId: string, locationId: string) =>
-    [...sequenceLocationKeys.all, 'shots', sequenceId, locationId] as const,
-  teamLibrary: ['team-locations-library'] as const,
-  sheetStaleness: (sequenceId: string, locationDbId: string) =>
-    [
-      ...sequenceLocationKeys.all,
-      'sheet-staleness',
-      sequenceId,
-      locationDbId,
-    ] as const,
-};
-
-export const libraryLocationKeys = {
-  all: ['library-locations'] as const,
-  list: ['library-locations', 'list'] as const,
-  publicList: ['library-locations', 'list', 'public'] as const,
-};
 
 export function useSequenceLocations(sequenceId: string) {
   return useQuery<SequenceLocationWithReference[]>({
@@ -75,78 +46,83 @@ export function useSequenceLocations(sequenceId: string) {
 }
 
 /**
- * Hook to get all sequence locations with completed references across the team
- * Used for recasting locations
+ * One location at its current version, read from no sequence (the Locations
+ * page). Null when it is gone or another team's. Through a sequence the
+ * detail view uses the sequence list's row instead.
  */
-export function useTeamLocationsLibrary() {
-  return useQuery<TeamLibraryLocation[]>({
-    queryKey: sequenceLocationKeys.teamLibrary,
-    queryFn: async () => {
-      return getTeamLocationsLibraryFn();
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-}
-
-/**
- * Hook to get all library locations for the team
- * These are user-created location templates
- */
-export function useLibraryLocations() {
-  // Authenticated users get their team's locations plus public ("system")
-  // ones; anonymous visitors get the public catalogue so they can browse and
-  // pick system locations on the public new-sequence screen and locations page.
-  return usePublicOrTeamQuery<LibraryLocation[]>({
-    teamKey: libraryLocationKeys.list,
-    publicKey: libraryLocationKeys.publicList,
-    teamFn: () => getTeamLibraryLocationsFn(),
-    publicFn: () => getPublicLibraryLocationsFn(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-}
-
-/**
- * Hook to get the count of shots at a location
- * Used to show affected shots before recasting
- */
-export function useShotIdsForLocation(sequenceId: string, locationId: string) {
+export function useTeamLocationCurrent(locationDbId: string, enabled: boolean) {
   return useQuery({
-    queryKey: sequenceLocationKeys.shotsForLocation(sequenceId, locationId),
+    queryKey: sequenceLocationKeys.detail(null, locationDbId),
+    queryFn: () => getLocationFn({ data: { sequenceId: null, locationDbId } }),
+    staleTime: 30_000,
+    enabled,
+  });
+}
+
+/**
+ * Shots set at a location in one sequence: the count on its page and the
+ * shots a Replace re-renders. Asks nothing from no sequence.
+ */
+export function useShotIdsForLocation(
+  sequenceId: string | null,
+  locationId: string
+) {
+  return useQuery({
+    queryKey: sequenceLocationKeys.shotsForLocation(
+      sequenceId ?? '',
+      locationId
+    ),
     queryFn: () =>
-      getShotIdsForLocationFn({ data: { sequenceId, locationId } }),
+      getShotIdsForLocationFn({
+        data: { sequenceId: sequenceId ?? '', locationId },
+      }),
     enabled: !!sequenceId && !!locationId,
     staleTime: 60 * 1000, // 1 minute
   });
 }
 
 /** Editable bible fields; `''` clears a nullable field server-side. */
-type LocationBibleInput = {
+export type LocationBibleInput = {
   type?: 'interior' | 'exterior' | 'both';
   description?: string;
   architecturalStyle?: string;
   keyFeatures?: string;
   ambiance?: string;
+  rendering?: string;
 };
 
-/** Manual location create (#1108 Phase 2) — reference-less until recast. */
+/** Manual location create (#1108 Phase 2): no sheet until Generate. */
 export function useCreateSequenceLocation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
       data: { sequenceId: string; name: string } & LocationBibleInput
     ) => createSequenceLocationFn({ data }),
-    onSuccess: (_location, { sequenceId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.list(sequenceId),
-      });
+    onSuccess: () => {
+      void invalidateLocations(queryClient);
     },
   });
 }
 
 /**
- * Bible field edit (#1108 Phase 2). Prompts and the location reference that
- * project the edited fields re-stale by hash derivation, so the staleness
- * namespace refetches for the dots to appear.
+ * Use one of the team's locations in a sequence (#1695). The sequence's
+ * locations and the team list (sort and sequence counts) both move.
+ */
+export function useAttachLocation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sequenceId: string; locationId: string }) =>
+      attachLocationFn({ data }),
+    onSuccess: () => {
+      void invalidateLocations(queryClient);
+    },
+  });
+}
+
+/**
+ * Bible field edit made through a sequence (#1108 Phase 2). The location is
+ * the team's, so every sequence's sheet and prompts re-stale by hash
+ * derivation.
  */
 export function useUpdateSequenceLocation() {
   const queryClient = useQueryClient();
@@ -158,27 +134,21 @@ export function useUpdateSequenceLocation() {
         name?: string;
       } & LocationBibleInput
     ) => updateSequenceLocationFn({ data }),
-    onSuccess: (_location, { sequenceId }) => {
-      void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.list(sequenceId),
-      });
-      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
-      void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.all,
-      });
+    onSuccess: () => {
+      void invalidateLocations(queryClient);
     },
   });
 }
 
 export function useLocationSheetStaleness(
-  sequenceId: string,
+  sequenceId: string | null,
   locationDbId: string
 ) {
   return useQuery<SheetStaleness>({
     queryKey: sequenceLocationKeys.sheetStaleness(sequenceId, locationDbId),
     queryFn: () =>
       getLocationSheetStalenessFn({ data: { sequenceId, locationDbId } }),
-    enabled: !!sequenceId && !!locationDbId,
+    enabled: !!locationDbId,
     staleTime: 15_000,
   });
 }
@@ -187,20 +157,12 @@ export function useRegenerateLocationSheet() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: {
-      sequenceId: string;
+      sequenceId: string | null;
       locationDbId: string;
       imageModel?: string;
     }) => regenerateLocationSheetFn({ data }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ['location-sheet-variants'],
-      });
-      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
-      // Returned: pending until the location is re-read as `generating`.
-      return queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.all,
-      });
-    },
+    // Returned: pending until the location is re-read as `generating`.
+    onSuccess: () => invalidateLocations(queryClient),
   });
 }
 
@@ -210,8 +172,7 @@ export function useSoftDeleteSequenceLocation() {
   return useMutation({
     mutationFn: (data: { sequenceId: string; locationDbId: string }) =>
       softDeleteSequenceLocationFn({ data }),
-    onSuccess: (_result, { sequenceId }) =>
-      invalidateLocationMembership(queryClient, sequenceId),
+    onSuccess: () => invalidateLocationMembership(queryClient),
   });
 }
 
@@ -224,36 +185,31 @@ export async function restoreSequenceLocation(
   data: { sequenceId: string; locationDbId: string }
 ): Promise<void> {
   await restoreSequenceLocationFn({ data });
-  invalidateLocationMembership(queryClient, data.sequenceId);
+  invalidateLocationMembership(queryClient);
 }
 
-function invalidateLocationMembership(
-  queryClient: QueryClient,
-  sequenceId: string
-): void {
-  void queryClient.invalidateQueries({
-    queryKey: sequenceLocationKeys.list(sequenceId),
-  });
+function invalidateLocationMembership(queryClient: QueryClient): void {
+  void invalidateLocations(queryClient);
   void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
-  void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
 }
 
 /**
- * Hook for recasting a location with a library location reference
+ * Replace a sequence's location with another of the team's (#1695): the link
+ * is re-pointed and the shots set there re-render. No sheet is drawn.
  */
 export function useRecastLocation() {
   const queryClient = useQueryClient();
 
   return useMutation({
     meta: { globalError: true },
-    mutationFn: (data: { locationId: string; libraryLocationId: string }) =>
-      recastLocationFn({ data }),
+    mutationFn: (data: {
+      sequenceId: string;
+      locationId: string;
+      withLocationId: string;
+    }) => recastLocationFn({ data }),
     onSuccess: () => {
-      // Invalidate sequence locations to refresh the list
-      void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.all,
-      });
-      // Invalidate shots that are at this location
+      void invalidateLocations(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
       void queryClient.invalidateQueries({ queryKey: ['shots'] });
     },
   });

@@ -74,13 +74,12 @@ import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
 
-// Location Library (team-level templates)
-import { locationLibrary } from './location-library';
-
-// Sequence Locations (script-extracted)
-import { sequenceLocations } from './sequence-locations';
-
-import { locationSheets } from './location-sheets';
+// Locations (the team's places) and the links sequences hold to them
+import {
+  locationReferencePhotos,
+  locations,
+  sequenceLocationLinks,
+} from './locations';
 
 // Sequence Elements (user-uploaded reference images)
 import { sequenceElements } from './sequence-elements';
@@ -281,7 +280,6 @@ export { locationSheetVariants };
 
 export type {
   LocationSheetVariant,
-  LocationSheetVariantParentType,
   NewLocationSheetVariant,
 } from './location-sheet-variants';
 
@@ -394,28 +392,24 @@ export type {
   SheetStatus,
 } from './characters';
 
-// Location Library (team-level templates)
-export { locationLibrary };
-
-export type { LibraryLocation, NewLibraryLocation } from './location-library';
-
-// Sequence Locations (extracted from script)
-export { sequenceLocations };
+// Locations (the team's places) and the links sequences hold to them
+export { locations, sequenceLocationLinks, locationReferencePhotos };
 
 export type {
-  NewSequenceLocation,
-  ReferenceStatus,
-  SequenceLocationWithReference,
-  SequenceLocation,
-  SequenceLocationRow,
   LegacyLocationBibleColumn,
+  Location,
+  LocationLink,
+  LocationReferencePhoto,
+  LocationRow,
+  LocationWithReference,
+  NewSequenceLocation,
+  NewTeamLocation,
+  ReferenceStatus,
+  SequenceLocation,
+  SequenceLocationLinkRow,
   SequenceLocationMinimal,
-} from './sequence-locations';
-
-// Location Sheets (location-specific variations for library locations)
-export { locationSheets };
-
-export type { LocationSheet, NewLocationSheet } from './location-sheets';
+  SequenceLocationWithReference,
+} from './locations';
 
 // Sequence Elements (per-sequence uploaded reference images)
 export { sequenceElements };
@@ -587,14 +581,10 @@ export const schema = {
   characterLookVersions,
   sequenceCast,
 
-  // Location Library (team-level templates)
-  locationLibrary,
-
-  // Sequence Locations (extracted from script)
-  sequenceLocations,
-
-  // Location Sheets (location-specific variations for library locations)
-  locationSheets,
+  // Locations and the links sequences hold to them
+  locations,
+  sequenceLocationLinks,
+  locationReferencePhotos,
 
   // Sequence Elements (user-uploaded reference images)
   sequenceElements,

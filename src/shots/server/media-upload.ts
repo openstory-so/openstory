@@ -16,7 +16,6 @@ import {
   hashVisualPromptInput,
 } from '@/shots/input-hash';
 import { isPersonFromUploadLedger } from '@/cast/likeness';
-import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import {
   attestUploads,
   classifyUpload,
@@ -24,7 +23,6 @@ import {
   requireUploadRights,
   type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
-import { StyleConfigSchema } from '@/look/style-config';
 import {
   AttestationRequiredError,
   NotFoundError,
@@ -32,7 +30,6 @@ import {
 } from '@/platform/errors';
 import {
   characterSheetTalentHashFields,
-  computeStyleConfigHash,
   locationSheetBibleFields,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { resolveCastTalent } from '@/cast/server/sheets/character-sheet-trigger';
@@ -50,9 +47,9 @@ import type { AspectRatio } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { buildVideoManifest } from '@/motion/server/render-segments';
 import { getGenerationChannel } from '@/platform/realtime';
-import { castChannelId } from '@/cast/cast-channel';
+import { castChannelId, locationChannelId } from '@/cast/cast-channel';
 import { triggerSheetPortrait } from '@/cast/server/sheets/sheet-portrait-trigger';
-import { requireCharacter } from '@/cast/server/cast-edit';
+import { requireCharacter, requireLocation } from '@/cast/server/cast-edit';
 import { getFrameImageUrl } from '@/shots/server/frame-image';
 import {
   computeUploadedStillInputHash,
@@ -88,7 +85,10 @@ type SequenceUploadContext = {
   sequence: Sequence;
 };
 
-/** A character upload: through a sequence, or from the Characters page (#2017). */
+/**
+ * A character or location sheet upload: through a sequence, or from the
+ * Characters or Locations page (#2017, #1695).
+ */
 type CastUploadContext = Omit<SequenceUploadContext, 'sequence'> & {
   sequence: Sequence | null;
 };
@@ -181,7 +181,7 @@ async function appendUploadedStill(args: {
   );
   const [characters, locations, elements] = await Promise.all([
     scopedDb.characters.listWithSheets(args.sequenceId),
-    scopedDb.sequenceLocations.listWithReferences(args.sequenceId),
+    scopedDb.locations.listWithReferences(args.sequenceId),
     scopedDb.sequenceElements.list(args.sequenceId),
   ]);
   const inputHash = await computeUploadedStillInputHash({
@@ -283,7 +283,7 @@ export async function replaceFrameContent(
 
   const [characters, locations, elements] = await Promise.all([
     scopedDb.characters.listWithSheets(sequence.id),
-    scopedDb.sequenceLocations.listWithReferences(sequence.id),
+    scopedDb.locations.listWithReferences(sequence.id),
     scopedDb.sequenceElements.list(sequence.id),
   ]);
 
@@ -532,33 +532,6 @@ export async function setSequenceMusicFromUpload(
 }
 
 /**
- * Style-config hash + image model resolved the way sheet verify does after
- * this upload is selected. The new version's `model` is `user-upload` (not a
- * t2i id), so verify skips it and falls through to the sequence default —
- * hashing the upload against a prior generated model would look stale the
- * moment the pointer moved. Stills re-stale because `applyConvergent`
- * selects a new version id.
- */
-async function resolveSheetHashContext(
-  scopedDb: ScopedDb,
-  sequence: {
-    styleId: string | null;
-    imageModel: string | null;
-  }
-): Promise<{ styleConfigHash: string; imageModel: string }> {
-  const style = sequence.styleId
-    ? await scopedDb.styles.getById(sequence.styleId)
-    : null;
-  const styleConfig = style ? StyleConfigSchema.parse(style.config) : null;
-  return {
-    styleConfigHash: await computeStyleConfigHash(styleConfig),
-    imageModel: resolveSheetImageModel({
-      sequenceImageModel: sequence.imageModel,
-    }),
-  };
-}
-
-/**
  * Finalize an uploaded character sheet: append a completed version, select it,
  * stamp parent + version with the CURRENT bible + talent sheet + style + model
  * hash, and log a `sheet.uploaded` event. No generation is triggered. Stills
@@ -695,42 +668,37 @@ export async function setCharacterSheetFromUpload(
 }
 
 /**
- * Finalize an uploaded location reference: append a completed version, select
- * it, stamp parent + version with the current bible + library ref + style +
- * model hash. Stills re-stale via the new selected version id.
+ * Finalize an uploaded location sheet: append a completed version, select
+ * it, and stamp it with the current bible + photos and the upload marker in
+ * place of an image model (the sheet is shared by sequences with different
+ * ones; `uploadedLocationSheetHashMatchesStored` verifies it). Stills
+ * re-stale via the new selected version id. From no sequence (the Locations
+ * page, #1695) the same write records no event.
  */
 export async function setLocationSheetFromUpload(
-  context: SequenceUploadContext,
+  context: CastUploadContext,
   data: { locationDbId: string; publicUrl: string }
 ) {
   const { scopedDb, sequence, user } = context;
+  const sequenceId = sequence?.id ?? null;
   const storagePath = requireUploadedStoragePath(
     data.publicUrl,
     STORAGE_BUCKETS.LOCATIONS,
     context.teamId
   );
   await requireUploadRights(scopedDb, [data.publicUrl]);
-  const location = await scopedDb.sequenceLocations.getById(data.locationDbId);
-  if (!location || location.sequenceId !== sequence.id) {
-    throw new NotFoundError('Location not found');
-  }
-
-  let libraryLocationReferenceHash: string | null = null;
-  if (location.libraryLocationId) {
-    const libraryLocation = await scopedDb.locations.getById(
-      location.libraryLocationId
-    );
-    libraryLocationReferenceHash = libraryLocation?.referenceInputHash ?? null;
-  }
-  const { styleConfigHash, imageModel } = await resolveSheetHashContext(
+  const location = await requireLocation(
     scopedDb,
-    sequence
+    sequenceId,
+    data.locationDbId
   );
+
+  const photos = await scopedDb.locations.listPhotos(location.id);
   const inputHash = await computeLocationSheetInputHash({
     locationBible: locationSheetBibleFields(toLocationMetadata(location)),
-    libraryLocationReferenceHash,
-    styleConfigHash,
-    imageModel,
+    // As the trigger snapshots them (`buildRegenerateLocationSheetPayload`).
+    referencePhotoHashes: photos.map((photo) => photo.url).sort(),
+    imageModel: USER_UPLOAD_MODEL,
   });
 
   const { version: variant } =
@@ -741,19 +709,21 @@ export async function setLocationSheetFromUpload(
       inputHash,
       model: USER_UPLOAD_MODEL,
     });
-  const updated = await scopedDb.sequenceLocations.getById(location.id);
-  if (!updated) throw new NotFoundError('Location not found');
-  await scopedDb.sequenceEvents.record({
-    sequenceId: sequence.id,
-    actorId: user.id,
-    kind: 'sheet.uploaded',
-    targetType: 'location',
-    targetId: location.id,
-    summary: `Uploaded reference for ${location.name}`,
-    data: { locationDbId: location.id, variantId: variant.id },
-  });
+  const updated = await requireLocation(scopedDb, sequenceId, location.id);
+  // A write from no sequence writes no event.
+  if (sequence) {
+    await scopedDb.sequenceEvents.record({
+      sequenceId: sequence.id,
+      actorId: user.id,
+      kind: 'sheet.uploaded',
+      targetType: 'location',
+      targetId: location.id,
+      summary: `Uploaded reference for ${location.name}`,
+      data: { locationDbId: location.id, variantId: variant.id },
+    });
+  }
   try {
-    await getGenerationChannel(sequence.id).emit(
+    await getGenerationChannel(locationChannelId(sequenceId, location.id)).emit(
       'generation.location-sheet:progress',
       {
         locationId: location.id,
@@ -767,11 +737,11 @@ export async function setLocationSheetFromUpload(
   await triggerSheetPortrait({
     userId: user.id,
     teamId: context.teamId,
-    sequenceId: sequence.id,
+    sequenceId: sequenceId ?? undefined,
     subject: { kind: 'location', locationId: location.id },
     versionId: variant.id,
     sheetUrl: data.publicUrl,
-    storageDir: `${context.teamId}/${sequence.id}/${location.id}`,
+    storageDir: `${context.teamId}/${sequenceId ?? 'team'}/${location.id}`,
   });
   return updated;
 }
@@ -860,6 +830,13 @@ function uploadTarget(
     };
   }
   if (!sequenceId) {
+    // A location is the team's (#1695): its sheet upload needs no sequence.
+    if (use === 'location_sheet') {
+      return {
+        bucket: STORAGE_BUCKETS.LOCATIONS,
+        path: `teams/${teamId}/locations/uploads/${id}.${ext}`,
+      };
+    }
     throw new ValidationError(`A ${use} upload needs sequenceId.`);
   }
   const inSequence = `teams/${teamId}/sequences/${sequenceId}`;
@@ -920,7 +897,10 @@ export type UploadSource = { url: string } | { data: string; mimeType: string };
 export async function storeUpload(args: {
   scopedDb: ScopedDb;
   userId: string;
-  /** Null only for a Studio upload, which belongs to the team. */
+  /**
+   * Null for a Studio upload, which belongs to the team, and for the sheet
+   * of a location worked on from no sequence.
+   */
   sequenceId: string | null;
   use: UploadUse;
   source: UploadSource;

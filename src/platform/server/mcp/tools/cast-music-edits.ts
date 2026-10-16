@@ -16,6 +16,7 @@ import {
 import { lookFieldsSchema } from '@/cast/look-field';
 import {
   attachLibraryCharacter,
+  attachLocation,
   createCharacter,
   createCharacterLook,
   removeCharacterLook,
@@ -72,7 +73,7 @@ const characterId = ulidSchema.describe(
   'Database character ID (list_characters / get_character), not the char_* token.'
 );
 const locationId = ulidSchema.describe(
-  'Database location ID (list_locations / get_location), not the loc_* token.'
+  'Database location ID (list_locations / get_location; the same id list_library_locations gives), not the loc_* token.'
 );
 const elementId = ulidSchema.describe(
   'Database element ID (list_elements / get_element).'
@@ -592,7 +593,7 @@ const undiscardCharacterSheetVersionTool = openstoryTool({
 const createLocationTool = openstoryTool({
   name: 'create_location',
   description:
-    'Add a location to a sequence by hand, with its bible (type, description, architecture, key features, ambiance). It starts without a reference image; no generation starts. Its script token (loc_*) is derived from the name.',
+    'Make a new location by hand and use it in a sequence, with its bible (type, description, architecture, key features, ambiance, rendering). The location is the team’s (list_library_locations) and other sequences can use it with add_location_to_sequence. It starts without a reference sheet; no generation starts. Its script token (loc_*) is derived from the name. To use a location the team already has, call add_location_to_sequence instead.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: locationBibleFieldsSchema.extend({ sequenceId, name }).strict(),
@@ -620,6 +621,37 @@ const createLocationTool = openstoryTool({
   },
 });
 
+const addLocationToSequenceTool = openstoryTool({
+  name: 'add_location_to_sequence',
+  description:
+    'Use one of the team’s locations (list_library_locations) in a sequence (#1695): one link, nothing copied, no generation. The sequence reads the location’s bible and sheet as they are now and after every later edit. Refused while a live location of the sequence already has that name (CONFLICT). A deleted location is NOT_FOUND. Idempotent for a location the sequence already uses; one removed with delete_location is put back.',
+  scope: 'sequences:write',
+  annotations: idempotent,
+  inputSchema: locationInput,
+  outputSchema: z.object({
+    locationId: z.string(),
+    token: z.string(),
+    name: z.string(),
+  }),
+  run: async ({ sequenceId: id, locationId: locId }, { scopedDb, userId }) => {
+    const sequence = await productionAccess(scopedDb).sequence(id);
+    const location = await attachLocation(
+      scopedDb,
+      { userId },
+      sequence.id,
+      locId
+    );
+    return {
+      data: {
+        locationId: location.id,
+        token: location.locationId,
+        name: location.name,
+      },
+      summary: `Added ${location.name}.`,
+    };
+  },
+});
+
 const LOCATION_FIELDS = [
   'name',
   ...locationBibleFieldsSchema.keyof().options,
@@ -628,7 +660,7 @@ const LOCATION_FIELDS = [
 const updateLocationTool = openstoryTool({
   name: 'update_location',
   description:
-    'Edit a location’s bible (read it with get_location). An unsent field keeps its value; an empty string clears a text field; type (an enum) cannot be cleared, only set. Its reference image and the prompts that use it become stale; no generation starts.',
+    'Edit a location’s bible (read it with get_location). The location is the team’s: the edit changes it in every sequence that uses it (get_library_location lists them). An unsent field keeps its value; an empty string clears a text field; type (an enum) cannot be cleared, only set, and rendering cannot be cleared. Its reference sheet and the prompts that use it become stale in each of those sequences; no generation starts.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: locationBibleFieldsSchema
@@ -660,7 +692,7 @@ const updateLocationTool = openstoryTool({
 const deleteLocationTool = openstoryTool({
   name: 'delete_location',
   description:
-    'Delete a location. Its bible, references and scene tags are kept; restore_location undoes it. Prompts that used it become stale.',
+    'Remove a location from a sequence. Only this sequence’s link is removed: the location stays the team’s, with its bible and sheet, and other sequences that use it are not touched. Scene tags are kept; restore_location undoes it. Prompts that used it become stale.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: locationInput,
@@ -684,7 +716,8 @@ const deleteLocationTool = openstoryTool({
 
 const restoreLocationTool = openstoryTool({
   name: 'restore_location',
-  description: 'Undo delete_location (list_deleted_cast gives the ids).',
+  description:
+    'Undo delete_location: the sequence uses the location again (list_deleted_cast gives the ids).',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: locationInput,
@@ -709,7 +742,7 @@ const restoreLocationTool = openstoryTool({
 const selectLocationSheetVersionTool = openstoryTool({
   name: 'select_location_sheet_version',
   description:
-    'Use an earlier reference image for a location (list_versions kind location_sheet). Must be completed and not discarded. Stills of shots at the location become stale.',
+    'Use an earlier reference sheet for a location (list_versions kind location_sheet). Must be completed and not discarded. The sheet is the team’s: every sequence that uses the location reads the selected one, and stills of shots at the location become stale in each.',
   scope: 'sequences:write',
   annotations: idempotent,
   inputSchema: locationInput.extend({ versionId: ulidSchema }),
@@ -738,7 +771,7 @@ const selectLocationSheetVersionTool = openstoryTool({
 const discardLocationSheetVersionTool = openstoryTool({
   name: 'discard_location_sheet_version',
   description:
-    'Hide a location reference version from its history (list_versions with includeDiscarded shows it). Refused for the selected version. undiscard_location_sheet_version brings it back.',
+    'Hide a location reference version from its history, in every sequence that uses the location (list_versions with includeDiscarded shows it). Refused for the selected version. undiscard_location_sheet_version brings it back.',
   scope: 'sequences:write',
   annotations: destructive,
   inputSchema: sheetVersionInput,
@@ -1047,6 +1080,7 @@ export const castMusicTools = [
   restoreCharacterLookTool,
   selectCharacterLookVersionTool,
   createLocationTool,
+  addLocationToSequenceTool,
   updateLocationTool,
   deleteLocationTool,
   restoreLocationTool,

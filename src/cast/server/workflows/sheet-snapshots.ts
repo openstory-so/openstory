@@ -15,7 +15,6 @@ import {
   characterSheetInputHashMatches,
   computeCharacterSheetInputHashLegacy,
   computeCharacterSheetInputHash,
-  computeLibraryLocationReferenceInputHash,
   computeShotImageInputHash,
   computeLocationSheetInputHash,
   computeTalentSheetInputHash,
@@ -25,7 +24,6 @@ import {
   type CharacterSheetInputHash,
   type CharacterSheetTalentHashFields,
   type LegacyStylingParts,
-  type LibraryLocationReferenceInputHash,
   type LocationSheetBibleHashFields,
   type LocationSheetInputHash,
   type ShotImageHashInput,
@@ -45,7 +43,6 @@ import type {
   CharacterSheetWorkflowInput,
   ShotImageSceneSnapshot,
   ShotImagesWorkflowInput,
-  LibraryLocationSheetWorkflowInput,
   LibraryTalentSheetWorkflowInput,
   LocationSheetWorkflowInput,
   StillHashInput,
@@ -318,7 +315,7 @@ export const queuedLegacyStyling = (
     styling: input.lookStyling,
   };
 
-/** Every bible field the location-sheet prompt reads (#1785). */
+/** Every bible field the location-sheet prompt reads (#1785, #1695). */
 export function locationSheetBibleFields(
   metadata: LocationSheetWorkflowInput['locationMetadata']
 ): LocationSheetBibleHashFields {
@@ -329,48 +326,108 @@ export function locationSheetBibleFields(
     architecturalStyle: metadata.architecturalStyle,
     keyFeatures: metadata.keyFeatures,
     ambiance: metadata.ambiance,
+    rendering: metadata.rendering,
   };
 }
 
 /**
- * Hash the location-sheet workflow payload. `libraryLocationReferenceHash`
- * inlines the parent library location's `reference_input_hash` if the sheet
- * was triggered with a library reference; otherwise `null`.
+ * A sheet payload queued before the location's bible carried `rendering`
+ * (#1695): the sheet would read the sequence's style, which is no longer on
+ * the payload. Failed once, at the top of the run.
  */
-function locationSheetHashInput(
-  input: SheetPayload<LocationSheetWorkflowInput> & {
-    libraryLocationReferenceHash?: string | null;
+export function assertQueuedWithLocationRendering(input: {
+  locationMetadata: object;
+}): void {
+  if (
+    !('rendering' in input.locationMetadata) ||
+    !('referencePhotoUrls' in input)
+  ) {
+    throw new WorkflowValidationError(
+      'Queued before team locations shipped. Run it again.'
+    );
   }
+}
+
+/** What the location-sheet hash reads off the workflow payload. */
+function locationSheetHashInput(
+  input: SheetPayload<LocationSheetWorkflowInput>
 ) {
   return {
     locationBible: locationSheetBibleFields(input.locationMetadata),
-    libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
+    referencePhotoHashes: input.referencePhotoUrls,
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
   };
 }
 
 export async function computeLocationSheetHashFromDto(
-  input: SheetPayload<LocationSheetWorkflowInput> & {
-    libraryLocationReferenceHash?: string | null;
-  }
+  input: SheetPayload<LocationSheetWorkflowInput>
 ): Promise<LocationSheetInputHash> {
-  return computeLocationSheetInputHash({
-    ...locationSheetHashInput(input),
-    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-  });
+  return computeLocationSheetInputHash(locationSheetHashInput(input));
 }
 
-/** Dual-hash verify against a stored location-sheet digest. */
+/**
+ * What a location's sheet may have been stamped with before #1695: the
+ * library reference it was drawn from and, when the check is made from a
+ * sequence, that sequence's style. A run's own snapshot check passes
+ * {@link NO_LEGACY_LOCATION_SHEET} and verifies the current shape alone.
+ */
+export type LegacyLocationSheet = {
+  libraryLocationReferenceHash: string | null;
+  /** The style of the sequence the check is made from; null from none. */
+  styleConfig: StyleConfig | null;
+};
+
+/** A run's own snapshot: stamped in the current shape, nothing legacy to read. */
+export const NO_LEGACY_LOCATION_SHEET: LegacyLocationSheet = {
+  libraryLocationReferenceHash: null,
+  styleConfig: null,
+};
+
+const legacyLocationSheetParts = async (legacy: LegacyLocationSheet) => ({
+  libraryLocationReferenceHash: legacy.libraryLocationReferenceHash,
+  styleConfigHash:
+    legacy.styleConfig === null
+      ? null
+      : await computeStyleConfigHash(legacy.styleConfig),
+  unstyledConfigHash: await computeStyleConfigHash(null),
+});
+
+/**
+ * Verify a stored location-sheet digest against the DTO, in the current
+ * shape or one stamped before #1695 (accepted until `LEGACY_HASH_UNTIL`).
+ */
 export async function locationSheetHashMatchesStored(
   stored: string | null,
-  input: SheetPayload<LocationSheetWorkflowInput> & {
-    libraryLocationReferenceHash?: string | null;
-  }
+  input: SheetPayload<LocationSheetWorkflowInput>,
+  legacy: LegacyLocationSheet
 ): Promise<boolean> {
-  return locationSheetInputHashMatches(stored, {
-    ...locationSheetHashInput(input),
-    styleConfigHash: await computeStyleConfigHash(input.styleConfig),
-  });
+  return locationSheetInputHashMatches(
+    stored,
+    locationSheetHashInput(input),
+    await legacyLocationSheetParts(legacy)
+  );
+}
+
+/**
+ * The check for a sheet the user uploaded: stamped with the upload marker in
+ * place of an image model, so it verifies alike from every sequence that
+ * uses the location. The second arm is an upload stamped with its own
+ * sequence's image model, as they were before #1695.
+ */
+export async function uploadedLocationSheetHashMatchesStored(
+  stored: string | null,
+  input: SheetPayload<LocationSheetWorkflowInput>,
+  legacy: LegacyLocationSheet
+): Promise<boolean> {
+  const body = locationSheetHashInput(input);
+  const parts = await legacyLocationSheetParts(legacy);
+  return (
+    (await locationSheetInputHashMatches(
+      stored,
+      { ...body, imageModel: USER_UPLOAD_MODEL },
+      parts
+    )) || (await locationSheetInputHashMatches(stored, body, parts))
+  );
 }
 
 /**
@@ -395,27 +452,6 @@ export async function computeLibraryTalentSheetHashFromDto(
     },
     referenceMediaHashes,
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
-  });
-}
-
-/**
- * Library location references are content-addressed the same way the talent
- * twin is: the name/description the sheet was generated for, the inlined
- * reference URLs, and the model.
- */
-export async function computeLibraryLocationSheetHashFromDto(
-  input: SheetPayload<LibraryLocationSheetWorkflowInput>
-): Promise<LibraryLocationReferenceInputHash> {
-  return computeLibraryLocationReferenceInputHash({
-    locationBible: {
-      name: input.locationName,
-      description: input.locationDescription ?? null,
-    },
-    // No style config on the library sheet payload — library references are
-    // style-agnostic; the per-sequence location sheet applies the style.
-    styleConfigHash: await computeStyleConfigHash(null),
-    imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
-    referenceMediaHashes: [...input.referenceImageUrls].sort(),
   });
 }
 

@@ -30,7 +30,6 @@ import type { musicDesignResultSchema } from '@/sequences/response-schemas';
 import type {
   CharacterSheetInputHash,
   LegacyStylingParts,
-  LibraryLocationReferenceInputHash,
   LocationSheetInputHash,
   ShotImageInputHash,
   TalentSheetInputHash,
@@ -1418,36 +1417,34 @@ export interface LibraryTalentSheetWorkflowResult {
 }
 
 /**
- * Location sheet generation workflow input
+ * Location sheet generation workflow input. `sequenceId` is null for a run
+ * started from the Locations page (#1695): it stores under the team and
+ * reports on the location's own channel.
  */
-export interface LocationSheetWorkflowInput extends SequenceWorkflowContext {
+export interface LocationSheetWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  sequenceId: string | null;
   /** locations.id */
   locationDbId: string;
   /** Location name for logging */
   locationName: string;
-  /** Location metadata from script analysis */
+  /** The location's bible, `rendering` included. */
   locationMetadata: LocationBibleEntry;
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Reference image URL (e.g., from library location) for overrides */
-  referenceImageUrl?: string;
-  /** Library location description for overrides */
-  libraryLocationDescription?: string;
-  /** Sequence style config to apply to the location sheet */
-  styleConfig?: StyleConfig;
   /**
-   * Snapshot of the parent library location's `reference_input_hash` at
-   * trigger time. `null` when the sheet has no library-location reference,
-   * or when the library row predates hash tracking.
+   * The photos uploaded as input for this location, snapshotted at the
+   * trigger. `[]` when it has none and the sheet is drawn from the bible.
    */
-  libraryLocationReferenceHash?: string | null;
+  referencePhotoUrls: string[];
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: LocationSheetInputHash;
   /**
    * The reference claim (#1113): the id this run's version row will carry, taken at the trigger
-   * (`sequenceLocations.claimReference`). The run lands only while the claim still names it,
-   * else it parks as divergent. Absent only on a run queued before #1113,
-   * which lands unconditionally.
+   * (`locations.claimReference`). The run lands only while the claim still names it,
+   * else it parks as divergent.
    */
   referenceVersionId: string;
   /**
@@ -1472,51 +1469,6 @@ export interface LocationSheetWorkflowResult {
 }
 
 /**
- * Library location sheet generation workflow input
- * Generates a 3x3 grid reference sheet from user-uploaded reference images
- */
-export interface LibraryLocationSheetWorkflowInput extends UserWorkflowContext {
-  /** locations.id */
-  locationDbId: string;
-  /** Location name for prompt */
-  locationName: string;
-  /** Location description for prompt */
-  locationDescription?: string;
-  /** Reference image URLs (user uploads) */
-  referenceImageUrls: string[];
-  /** Sequence ID (library sequence) for storage path */
-  sequenceId: string;
-  /** Image model to use */
-  imageModel?: TextToImageModel;
-  /**
-   * Hash over the inlined DTO at trigger time. The final reference write is
-   * gated on it: if the location was renamed/re-described mid-run the sheet is
-   * parked as a divergent variant instead of becoming the live reference.
-   */
-  snapshotInputHash: LibraryLocationReferenceInputHash;
-  /**
-   * The reference claim (#1113): the id this run holds until it publishes, taken at the trigger
-   * (`locations.claimReference`). The run lands only while the claim still names it,
-   * else it parks as divergent. Absent only on a run queued before #1113,
-   * which lands unconditionally.
-   */
-  referenceClaimId: string;
-}
-
-export interface LibraryLocationSheetWorkflowResult {
-  /** Generated sheet image URL */
-  sheetImageUrl: string;
-  /** Storage path */
-  sheetImagePath?: string;
-  /** Generated preview image URL */
-  previewImageUrl?: string;
-  /** Preview storage path */
-  previewImagePath?: string;
-  /** Location ID */
-  locationDbId: string;
-}
-
-/**
  * Location bible generation workflow input
  * Generates reference sheets for all locations in a sequence
  */
@@ -1526,32 +1478,26 @@ export interface LocationBibleWorkflowInput extends UserWorkflowContext {
   locationBible: LocationBibleEntry[];
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Library location matches for locations that should use library references */
-  libraryLocationMatches?: LibraryLocationMatch[];
-  /** Sequence style config to apply to location sheets */
-  styleConfig?: StyleConfig;
+  /**
+   * Script locations matching bound to a team location: the sequence links
+   * to that location and no sheet is drawn here (#1695).
+   */
+  libraryLocationMatches: LibraryLocationMatch[];
 }
 
 /**
- * Library location match result
+ * A script location matching bound to one of the team's locations the writer
+ * picked (#1695). The sequence links to that location: nothing is copied and
+ * no sheet is drawn.
  */
 export type LibraryLocationMatch = {
   /** Location ID from LocationBibleEntry.locationId */
   locationId: string;
-  /** Library location database ID */
+  /** The team location's id (`locations.id`). */
   libraryLocationId: string;
-  /** Library location name */
   libraryLocationName: string;
-  /** Library location reference image URL */
-  referenceImageUrl: string;
-  /** Library location description for prompt enhancement */
-  description?: string;
-  /**
-   * The library location's `reference_input_hash`, so a pipeline location
-   * sheet is stamped with the same hash a regenerate would (#1113). Absent on
-   * pre-#1113 checkpoints.
-   */
-  referenceInputHash?: string | null;
+  /** That location's sheet, for the progress stream; null while none has landed. */
+  referenceImageUrl: string | null;
 };
 
 /**
@@ -1574,45 +1520,24 @@ export interface LocationMatchingWorkflowOutput {
   matches: LibraryLocationMatch[];
 }
 /**
- * Recast location workflow input
- * Orchestrates location sheet generation + shot regeneration for recast
+ * Recast location workflow input. A recast re-points the sequence's link at
+ * another of the team's locations (done at the trigger, #1695); this run
+ * re-renders the shots set there. No sheet is drawn.
  */
 export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
-  /** Location database ID */
+  /** The location the sequence now uses (`locations.id`). */
   locationDbId: string;
   /** Location name for logging */
   locationName: string;
-  /** Location metadata from script analysis */
-  locationMetadata: LocationBibleEntry;
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Reference image URL from library location */
-  referenceImageUrl?: string;
-  /** Library location description */
-  libraryLocationDescription?: string;
-  /** The library location this recast binds the sequence location to. */
-  libraryLocationId: string;
-  /**
-   * That library location's `reference_input_hash`, resolved at trigger time.
-   * The workflow used to re-derive it two DB reads deep, minutes later.
-   */
-  libraryLocationReferenceHash: string | null;
-  /** The reference claim for the child; see `LocationSheetWorkflowInput`. */
-  referenceVersionId: string;
-  /** See `LocationSheetWorkflowInput.bibleVersionId`. */
-  bibleVersionId: string | null;
-  /** Sequence style config to apply to the location sheet */
-  styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
   resolution?: Resolution;
   /**
    * Per-shot regenerate-shots snapshots for the shots this location appears
-   * in, resolved at trigger time. The scope of the regeneration IS this list —
-   * there is no separate `affectedShotIds`. The recast location's own
-   * reference enters as a sentinel (see `recast-snapshot.ts`) because the
-   * awaited child has not generated it yet; the workflow substitutes it in
-   * memory.
+   * in, resolved at trigger time, after the link moved. The scope of the
+   * regeneration IS this list — there is no separate `affectedShotIds`.
    */
   shotSnapshots: RegenerateShotSnapshot[];
   /** Batch hash over `shotSnapshots` as sent (payload tamper check). */

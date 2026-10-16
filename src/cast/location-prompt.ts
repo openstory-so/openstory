@@ -8,10 +8,8 @@
  */
 
 import type { LocationBibleEntry } from '@/shots/scene-analysis.schema';
-import type {
-  SequenceLocationMinimal,
-  StyleConfig,
-} from '@/platform/server/db/schema';
+import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import {
   type PromptWithReferenceImages,
   type ReferenceImageDescription,
@@ -89,25 +87,18 @@ export const buildPromptWithLocationReferences = (
 };
 
 /**
- * Format a style direction section for location reference sheets.
- * Overlays the sequence's visual style on top of the location-specific attributes.
+ * What the place is rendered as (#1695), the one thing a sheet takes from a
+ * style. Photoreal says nothing, so the prompt reads as it always has; the
+ * sequence's palette, grade and mood never reach a sheet: they apply at the
+ * shot.
  */
-const formatStyleDirectionForLocation = (styleConfig: StyleConfig): string => {
-  const { look, motion, references } = styleConfig;
-  const colorPaletteStr = look.colorPalette.join(', ');
-  const referencesStr =
-    references.length > 0 ? `\nReference look: ${references.join(', ')}.` : '';
-  return `
-[STYLE DIRECTION]:
-Render this location in the following visual style:
-Art style: ${look.artStyle}
-Mood: ${look.mood}
-Lighting direction: neutral, even light; no time-of-day treatment
-Color palette: ${colorPaletteStr}
-Color grading: ${look.colorGrading}
-Camera approach: ${motion.camera}${referencesStr}
-All 9 panels must consistently reflect this style direction.`;
-};
+const renderingSection = (rendering: string): string =>
+  rendering === PHOTOREAL_RENDERING
+    ? ''
+    : `
+[RENDERING]:
+Render this location as ${rendering}. All 9 panels must be rendered the same way.
+`;
 
 /**
  * Build a location reference sheet prompt structure
@@ -117,27 +108,16 @@ All 9 panels must consistently reflect this style direction.`;
  * - Row 2: Medium shots (key areas and features)
  * - Row 3: Detail shots (architectural details, textures, atmosphere)
  *
- * @param entry - The location bible entry from script analysis
- * @param libraryLocationOverrides - Optional library location data for overrides
- * @param styleConfig - Optional sequence style to apply to the location sheet
+ * @param entry - The location's bible
+ * @param referencePhotoUrls - The photos uploaded as input; `[]` draws the
+ *   place from the bible alone
  * @returns Complete prompt string and reference URLs
  */
 export const buildLocationSheetPrompt = (
   entry: LocationBibleEntry,
-  libraryLocationOverrides?: {
-    description?: string;
-    referenceImageUrl?: string;
-  },
-  styleConfig?: StyleConfig
+  referencePhotoUrls: readonly string[]
 ): { prompt: string; referenceUrls: string[] } => {
-  const referenceUrls: string[] = [];
-  if (libraryLocationOverrides?.referenceImageUrl) {
-    referenceUrls.push(libraryLocationOverrides.referenceImageUrl);
-  }
-
-  // Use override description if provided, otherwise use entry description
-  const description =
-    libraryLocationOverrides?.description || entry.description || '';
+  const referenceUrls = [...referencePhotoUrls];
 
   // Build the prompt sections
   const typeLabel =
@@ -147,16 +127,15 @@ export const buildLocationSheetPrompt = (
         ? 'Exterior'
         : 'Interior/Exterior';
 
-  // Build reference instruction if we have library images
-  let referenceInstruction = '';
-  if (referenceUrls.length > 0) {
-    referenceInstruction = `
+  const referenceInstruction =
+    referenceUrls.length > 0
+      ? `
 IMPORTANT - Reference Images:
 Use the provided reference images as the definitive source for this location's appearance.
 Match all visual details exactly: architecture, materials, surface colors, and distinctive features. Use neutral, even lighting.
 Every panel must be visually consistent with the references while showing different angles and areas.
-`;
-  }
+`
+      : '';
 
   const prompt =
     `A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.
@@ -166,7 +145,7 @@ ${entry.name}
 Type: ${typeLabel}
 
 [VISUAL DESCRIPTION]:
-${description}
+${entry.description || (referenceUrls.length > 0 ? 'Derive from the references' : '')}
 
 [ARCHITECTURAL STYLE]:
 ${entry.architecturalStyle || 'Derive from description and references'}
@@ -179,7 +158,7 @@ Neutral, even light across all panels. Show the place independently of time of d
 
 [ATMOSPHERE]:
 ${entry.ambiance || 'Derive from description and setting'}
-${referenceInstruction}${styleConfig ? formatStyleDirectionForLocation(styleConfig) : ''}
+${referenceInstruction}${renderingSection(entry.rendering)}
 [GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:
 
 Row 1 - ESTABLISHING SHOTS:
@@ -210,115 +189,4 @@ Style: Professional film location reference sheet, production design documentati
 Output: Single image containing 3×3 grid of location views.`.trim();
 
   return { prompt, referenceUrls };
-};
-
-/**
- * Build a library location sheet prompt from user-provided reference images
- *
- * Similar to buildLocationSheetPrompt but designed for library locations
- * where the reference images ARE the source of truth (not script analysis).
- *
- * @param name - Location name
- * @param description - Optional location description
- * @param referenceImageUrls - Array of reference image URLs
- * @returns Complete prompt string and reference URLs
- */
-export const buildLibraryLocationSheetPrompt = (
-  name: string,
-  description?: string,
-  referenceImageUrls?: string[]
-): { prompt: string; referenceUrls: string[] } => {
-  const referenceUrls = referenceImageUrls ?? [];
-
-  const descSection = description
-    ? `\n[LOCATION DESCRIPTION]:\n${description}`
-    : '';
-
-  const referenceInstruction =
-    referenceUrls.length > 0
-      ? `
-IMPORTANT - Reference Images:
-The provided reference images are the DEFINITIVE source for this location's appearance.
-Analyze the references to understand:
-- Architectural style and design elements
-- Color palette and materials
-- Lighting conditions and atmosphere
-- Key distinctive features
-Generate 9 different views that all clearly depict the SAME location shown in the references.
-`
-      : `
-Generate a realistic, detailed location based on the name and description.
-Create 9 consistent views showing different angles of this location.
-`;
-
-  const prompt =
-    `A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.
-
-[LOCATION]:
-${name}
-${descSection}
-${referenceInstruction}
-[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:
-
-Row 1 - ESTABLISHING SHOTS:
-- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context
-- Panel 2 (Top-Center): Main establishing shot - the primary view of the location
-- Panel 3 (Top-Right): Alternate angle establishing shot
-
-Row 2 - MEDIUM SHOTS:
-- Panel 4 (Middle-Left): Key interior/exterior area view
-- Panel 5 (Middle-Center): Central focal point of the location
-- Panel 6 (Middle-Right): Secondary important area
-
-Row 3 - DETAIL & ATMOSPHERE:
-- Panel 7 (Bottom-Left): Architectural or design details close-up
-- Panel 8 (Bottom-Center): Texture and material details
-- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence
-
-[TECHNICAL SPECIFICATIONS]:
-- All 9 panels must show the SAME location from different angles
-- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)
-- Each panel is 16:9 landscape format
-- Cinematic film production quality
-- High resolution with rich detail
-- No people or characters in any frame
-- Clean grid layout with thin dividing lines
-
-Style: Professional film location reference sheet, production design documentation.
-Output: Single image containing 3×3 grid of location views.`.trim();
-
-  return { prompt, referenceUrls };
-};
-
-/**
- * Build a prompt for generating a location thumbnail/preview.
- * Used as the location's library preview image.
- */
-export const buildLocationPreviewPrompt = (
-  name: string,
-  description?: string,
-  hasReferenceImages?: boolean
-): string => {
-  const descSection = description ? `\nLocation notes: ${description}` : '';
-  const referenceSection = hasReferenceImages
-    ? `IMPORTANT: Use the provided reference images as the definitive source for this location's appearance.
-Match all visual details exactly: architecture, colors, lighting, and atmosphere.`
-    : `IMPORTANT: Generate a realistic location based on the name and description provided.
-Create a detailed, consistent environment that matches the description.`;
-
-  return `Cinematic establishing shot of ${name}, photorealistic, film production quality.
-
-${referenceSection}
-
-Requirements:
-- Wide establishing shot showing the full environment
-- Cinematic 16:9 composition
-- Rich detail and depth
-- Film-like lighting and color grading
-- No people in frame
-- Clear architectural/environmental features
-${descSection}
-
-Style: Cinematic location photography, film production reference.
-Aspect ratio: 16:9 landscape format.`;
 };

@@ -87,6 +87,8 @@ function makeScopedDb(opts: {
     movement: string | null;
   }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
+  /** The sequence's live location links (#1695). */
+  linkedLocations?: Array<{ id: string; attached: boolean }>;
   musicPrompt?: string | null;
   generationStopAt?: GenerationStage;
   cast?: never[];
@@ -124,7 +126,10 @@ function makeScopedDb(opts: {
     (opts.elementIds ?? ['el_1', 'el_2']).map((id) => ({ id }))
   );
   const getTalentByIds = vi.fn(async () => opts.talent ?? []);
-  const getLocationsByIds = vi.fn(async () => opts.locations ?? []);
+  const getLocationsByIds = vi.fn(
+    async (_ids: readonly string[]) => opts.locations ?? []
+  );
+  const listLocations = vi.fn(async () => opts.linkedLocations ?? []);
   const listCharacters = vi.fn(async () => opts.cast ?? []);
   const getHeldElsewhere = vi.fn(async () => false);
   const getMemberEmail = vi.fn(async () => 'owner@example.com');
@@ -134,7 +139,7 @@ function makeScopedDb(opts: {
     sequenceElements: { list: listElements },
     characters: { list: listCharacters, getHeldElsewhere },
     talent: { getByIds: getTalentByIds },
-    locations: { getByIds: getLocationsByIds },
+    locations: { list: listLocations, getCurrentByIds: getLocationsByIds },
     teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
     sequenceEvents: { record: recordSequenceEvent },
@@ -152,6 +157,7 @@ function makeScopedDb(opts: {
     listElements,
     getTalentByIds,
     getLocationsByIds,
+    listLocations,
   };
 }
 
@@ -275,6 +281,8 @@ describe('triggerStoryboard', () => {
       musicPromptSource: 'ai-generated',
       // Casting identity is snapshotted here too; INPUT suggests neither.
       suggestedTalent: [],
+      // The picked ids plus the attached ones (#1695): none here.
+      suggestedLocationIds: [],
       suggestedLocations: [],
       ownerEmail: 'owner@example.com',
       sequenceUrl: expect.stringMatching(/\/sequences\/seq_1\/scenes$/),
@@ -468,7 +476,47 @@ describe('triggerStoryboard', () => {
     await triggerStoryboard(scopedDb, INPUT);
 
     expect(getTalentByIds).not.toHaveBeenCalled();
-    expect(getLocationsByIds).not.toHaveBeenCalled();
+    // The read is always made (the attached locations join the set, #1695);
+    // with no ids it asks for none.
+    expect(getLocationsByIds).toHaveBeenCalledWith([]);
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+      suggestedLocationIds: [],
+      suggestedLocations: [],
+    });
+  });
+
+  test('the locations the writer attached join the picked ones for matching; analysis-made ones do not (#1695)', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb, getLocationsByIds, listLocations } = makeScopedDb({
+      workflowRunId: null,
+      linkedLocations: [
+        { id: 'loc_attached', attached: true },
+        { id: 'loc_1', attached: true },
+        { id: 'loc_made_here', attached: false },
+      ],
+      locations: [
+        { id: 'loc_1', name: 'Docks', description: null },
+        { id: 'loc_attached', name: 'Diner', description: 'chrome' },
+      ],
+    });
+
+    await triggerStoryboard(scopedDb, {
+      ...INPUT,
+      suggestedLocationIds: ['loc_1'],
+    });
+
+    expect(listLocations).toHaveBeenCalledWith('seq_1');
+    // Picked first, then attached; each once.
+    expect(getLocationsByIds).toHaveBeenCalledWith(['loc_1', 'loc_attached']);
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+      suggestedLocationIds: ['loc_1', 'loc_attached'],
+      suggestedLocations: [
+        { locationId: 'loc_1', name: 'Docks', description: null },
+        { locationId: 'loc_attached', name: 'Diner', description: 'chrome' },
+      ],
+    });
   });
 
   test('sequence with no script → throws synchronously, nothing claimed or triggered', async () => {

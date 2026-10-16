@@ -680,7 +680,7 @@ export async function computePlan(args: {
       scopedDb.frames.listAnchorsBySequence(sequenceId),
       loadSceneContextBySequence(scopedDb, sequenceId),
       scopedDb.characters.list(sequenceId),
-      scopedDb.sequenceLocations.list(sequenceId),
+      scopedDb.locations.list(sequenceId),
       scopedDb.sequenceElements.list(sequenceId),
       sequence.styleId
         ? scopedDb.styles.getById(sequence.styleId)

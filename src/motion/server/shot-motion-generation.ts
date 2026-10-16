@@ -335,7 +335,7 @@ export async function generateShotMotion(
     // Reference-only additionally needs the location sheet: with no still,
     // it is the only thing establishing the set.
     anyReferenceOnly
-      ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+      ? context.scopedDb.locations.listWithReferences(sequence.id)
       : Promise.resolve([]),
   ]);
   const referenceImages = buildMotionReferenceImages({

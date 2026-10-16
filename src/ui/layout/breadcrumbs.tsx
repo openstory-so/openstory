@@ -14,6 +14,8 @@ import { Fragment } from 'react';
 export type BreadcrumbCrumb = {
   label: React.ReactNode;
   to?: string;
+  /** Search params for `to`, e.g. a list's filter to return to. */
+  search?: Record<string, unknown>;
   /**
    * A phone shows one crumb. That is the current page unless an ancestor
    * names the thing better than the page does ("Scenes" says less than the
@@ -112,7 +114,7 @@ export const Breadcrumbs: React.FC = () => {
                   </BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild className="line-clamp-1">
-                    <Link to={crumb.to} title={labelText}>
+                    <Link to={crumb.to} search={crumb.search} title={labelText}>
                       {crumb.label}
                     </Link>
                   </BreadcrumbLink>

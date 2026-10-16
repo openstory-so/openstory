@@ -437,7 +437,7 @@ function makeContext(
     },
     characters: { listWithSheets, list: listCharacters },
     sequenceElements: { list: vi.fn(async () => []) },
-    sequenceLocations: { listWithReferences: vi.fn(async () => []) },
+    locations: { listWithReferences: vi.fn(async () => []) },
     // No shot dialogue rows: the retry reads the motion row's mirror (#1657).
     shotDialogue: { getSelectedBySequence: vi.fn(async () => []) },
     shotPromptVersions: { getSelectedMotionByShots },

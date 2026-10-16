@@ -156,8 +156,7 @@ const locationSheetVariantsReadSchema = createSelectSchema(
 )
   .pick({
     id: true,
-    parentType: true,
-    parentId: true,
+    locationId: true,
     model: true,
     url: true,
     status: true,
@@ -410,17 +409,10 @@ const VERSION_KINDS = {
   location_sheet: versionKind({
     parent: (access, i) => access.location(i.sequenceId, i.entityId),
     list: (db, location, options) =>
-      db.locationSheetVariants.listByParent(
-        'sequence_location',
-        location.id,
-        options
-      ),
+      db.locationSheetVariants.listByLocation(location.id, options),
     get: async (db, location, id) => {
       const row = await db.locationSheetVariants.getById(id);
-      return row?.parentType === 'sequence_location' &&
-        row.parentId === location.id
-        ? row
-        : null;
+      return row?.locationId === location.id ? row : null;
     },
     selected: (row, location) =>
       row.id === (location.selectedReferenceVersionId ?? location.id),

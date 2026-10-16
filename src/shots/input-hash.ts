@@ -94,9 +94,6 @@ export type CharacterSheetInputHash = string & {
 export type LocationSheetInputHash = string & {
   readonly __brand: 'LocationSheetInputHash';
 };
-export type LibraryLocationReferenceInputHash = string & {
-  readonly __brand: 'LibraryLocationReferenceInputHash';
-};
 export type TalentSheetInputHash = string & {
   readonly __brand: 'TalentSheetInputHash';
 };
@@ -116,10 +113,6 @@ export const characterSheetInputHash = (hex: string): CharacterSheetInputHash =>
   hex as CharacterSheetInputHash;
 export const locationSheetInputHash = (hex: string): LocationSheetInputHash =>
   hex as LocationSheetInputHash;
-export const libraryLocationReferenceInputHash = (
-  hex: string
-): LibraryLocationReferenceInputHash =>
-  hex as LibraryLocationReferenceInputHash;
 export const talentSheetInputHash = (hex: string): TalentSheetInputHash =>
   hex as TalentSheetInputHash;
 export const musicPromptInputHash = (hex: string): MusicPromptInputHash =>
@@ -352,7 +345,6 @@ export type CharacterSheetHashInput = {
  */
 type SheetHashKind = 'current' | 'pre-2065' | 'pre-1785' | 'named';
 const LEGACY_SHEET_HASH_KINDS = ['pre-2065', 'pre-1785', 'named'] as const;
-type LocationSheetHashKind = Exclude<SheetHashKind, 'pre-2065'>;
 
 /** `legacy` is required for every kind but `current`, which never reads it. */
 function characterSheetHashBody(
@@ -500,11 +492,11 @@ const locationBibleHashFieldsSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
 });
-type LocationBibleHashFields = z.infer<typeof locationBibleHashFieldsSchema>;
 
 /**
  * Every bible field the location-sheet prompt reads (#1785). `name` is a
- * label, hashed only by the pre-#1108 digest.
+ * label, hashed only by the pre-#1108 digest. `rendering` is what the sheet
+ * takes from a style (#1695).
  */
 const locationSheetBibleHashFieldsSchema = locationBibleHashFieldsSchema.extend(
   {
@@ -512,6 +504,7 @@ const locationSheetBibleHashFieldsSchema = locationBibleHashFieldsSchema.extend(
     architecturalStyle: z.string(),
     keyFeatures: z.string(),
     ambiance: z.string(),
+    rendering: z.string(),
   }
 );
 /** The location bible fields the sheet hash reads; an edit to one revokes a sheet claim. */
@@ -523,37 +516,98 @@ export type LocationSheetBibleHashFields = z.infer<
 
 export type LocationSheetHashInput = {
   locationBible: LocationSheetBibleHashFields;
-  /** Required; `null` is "no library reference". */
-  libraryLocationReferenceHash: string | null;
-  styleConfigHash: string;
+  /** The uploaded photos the sheet is drawn from. Required; `[]` is none. */
+  referencePhotoHashes: readonly string[];
   imageModel: string;
 };
 
-function locationSheetHashBody(
+/**
+ * What only the digests stamped before #1695 read. Verify/tests only —
+ * delete after {@link LEGACY_HASH_UNTIL}.
+ */
+export type LegacyLocationSheetParts = {
+  /** The library reference the sheet was drawn from; null when none. */
+  libraryLocationReferenceHash: string | null;
+  /**
+   * The sequence style's digest. Null from no sequence: a sheet stamped with
+   * a sequence's style then reads stale, as a character's does.
+   */
+  styleConfigHash: string | null;
+  /** The digest of no style, which a library location's sheet was stamped with. */
+  unstyledConfigHash: string;
+};
+
+/**
+ * Location sheet digest shapes. `current` hashes the bible's `rendering` and
+ * the uploaded photos, and no style (#1695). The rest are legacy, accepted
+ * until {@link LEGACY_HASH_UNTIL}: `pre-1695` has the sequence style's digest
+ * and the library reference's hash instead; `pre-1785` is that with the
+ * description alone; `named` is the pre-#1108 digest; `library` is what a
+ * library location's sheet was stamped with.
+ */
+type LocationSheetHashKind = (typeof LEGACY_LOCATION_SHEET_HASH_KINDS)[number];
+const LEGACY_LOCATION_SHEET_HASH_KINDS = [
+  'pre-1695',
+  'pre-1785',
+  'named',
+] as const;
+
+function locationSheetHashBody(input: LocationSheetHashInput): unknown {
+  const lb = input.locationBible;
+  return {
+    artifact: 'location:sheet',
+    version: 3, // #1695: the place is the team's; no sequence style.
+    locationBible: {
+      ...projectLocationForPrompt(lb),
+      rendering: trim(lb.rendering),
+    },
+    referencePhotoHashes: sortedRefs(input.referencePhotoHashes),
+    imageModel: input.imageModel,
+  };
+}
+
+function legacyLocationSheetHashBody(
   input: LocationSheetHashInput,
-  kind: LocationSheetHashKind
+  kind: LocationSheetHashKind,
+  legacy: {
+    libraryLocationReferenceHash: string | null;
+    styleConfigHash: string;
+  }
 ): unknown {
   const lb = input.locationBible;
   return {
     artifact: 'location:sheet',
     version: 2, // #1889: neutral place; scene light and style palette have new owners.
     locationBible:
-      kind === 'current'
+      kind === 'pre-1695'
         ? projectLocationForPrompt(lb)
         : {
             ...(kind === 'named' ? { name: trim(lb.name) } : {}),
             description: trim(lb.description),
           },
-    libraryLocationReferenceHash: input.libraryLocationReferenceHash ?? null,
-    styleConfigHash: input.styleConfigHash,
+    libraryLocationReferenceHash: legacy.libraryLocationReferenceHash,
+    styleConfigHash: legacy.styleConfigHash,
+    imageModel: input.imageModel,
+  };
+}
+
+/** What a library location's sheet was stamped with before #1695. */
+function libraryLocationSheetHashBody(
+  input: LocationSheetHashInput,
+  unstyledConfigHash: string
+): unknown {
+  return {
+    artifact: 'library-location:reference',
+    locationBible: { description: trim(input.locationBible.description) },
+    referenceMediaHashes: sortedRefs(input.referencePhotoHashes),
+    styleConfigHash: unstyledConfigHash,
     imageModel: input.imageModel,
   };
 }
 
 const locationSheetHashInputSchema = z.object({
   locationBible: locationSheetBibleHashFieldsSchema,
-  libraryLocationReferenceHash: z.string().nullable(),
-  styleConfigHash: z.string(),
+  referencePhotoHashes: z.array(z.string()),
   imageModel: z.string(),
 });
 
@@ -561,60 +615,54 @@ export function computeLocationSheetInputHash(
   raw: LocationSheetHashInput
 ): Promise<LocationSheetInputHash> {
   const input = locationSheetHashInputSchema.parse(raw);
-  return sha256Hex(locationSheetHashBody(input, 'current')).then(
-    locationSheetInputHash
+  return sha256Hex(locationSheetHashBody(input)).then(locationSheetInputHash);
+}
+
+/**
+ * A digest in one of the shapes stamped before #1695. Verify/tests only —
+ * delete after {@link LEGACY_HASH_UNTIL}.
+ */
+export function computeLocationSheetInputHashLegacy(
+  raw: LocationSheetHashInput,
+  kind: LocationSheetHashKind | 'library',
+  legacy: LegacyLocationSheetParts & { styleConfigHash: string }
+): Promise<string> {
+  const input = locationSheetHashInputSchema.parse(raw);
+  return sha256Hex(
+    kind === 'library'
+      ? libraryLocationSheetHashBody(input, legacy.unstyledConfigHash)
+      : legacyLocationSheetHashBody(input, kind, legacy)
   );
 }
 
-/** Verify: the current digest, or a pre-#1785 / pre-#1108 one. */
+/**
+ * Verify: the current digest, or one stamped before #1695. With no sequence
+ * style (`legacy.styleConfigHash` null) the shapes that read one are not
+ * checked.
+ */
 export async function locationSheetInputHashMatches(
   stored: string | null,
-  raw: LocationSheetHashInput
+  raw: LocationSheetHashInput,
+  legacy: LegacyLocationSheetParts
 ): Promise<boolean> {
   if (!stored) return false;
   const input = locationSheetHashInputSchema.parse(raw);
-  const digests = await Promise.all(
-    (['current', 'pre-1785', 'named'] as const).map((kind) =>
-      sha256Hex(locationSheetHashBody(input, kind))
-    )
-  );
+  const { styleConfigHash } = legacy;
+  const digests = await Promise.all([
+    sha256Hex(locationSheetHashBody(input)),
+    sha256Hex(libraryLocationSheetHashBody(input, legacy.unstyledConfigHash)),
+    ...(styleConfigHash === null
+      ? []
+      : LEGACY_LOCATION_SHEET_HASH_KINDS.map((kind) =>
+          sha256Hex(
+            legacyLocationSheetHashBody(input, kind, {
+              libraryLocationReferenceHash: legacy.libraryLocationReferenceHash,
+              styleConfigHash,
+            })
+          )
+        )),
+  ]);
   return digests.includes(stored);
-}
-
-export type LibraryLocationReferenceHashInput = {
-  locationBible: LocationBibleHashFields;
-  styleConfigHash: string;
-  imageModel: string;
-  /** Required; `[]` is "no reference media". */
-  referenceMediaHashes: readonly string[];
-};
-
-function libraryLocationReferenceHashBody(
-  input: LibraryLocationReferenceHashInput
-): unknown {
-  return {
-    artifact: 'library-location:reference',
-    locationBible: { description: trim(input.locationBible.description) },
-    referenceMediaHashes: sortedRefs(input.referenceMediaHashes),
-    styleConfigHash: input.styleConfigHash,
-    imageModel: input.imageModel,
-  };
-}
-
-const libraryLocationReferenceHashInputSchema = z.object({
-  locationBible: locationBibleHashFieldsSchema,
-  styleConfigHash: z.string(),
-  imageModel: z.string(),
-  referenceMediaHashes: z.array(z.string()),
-});
-
-export function computeLibraryLocationReferenceInputHash(
-  raw: LibraryLocationReferenceHashInput
-): Promise<LibraryLocationReferenceInputHash> {
-  const input = libraryLocationReferenceHashInputSchema.parse(raw);
-  return sha256Hex(libraryLocationReferenceHashBody(input)).then(
-    libraryLocationReferenceInputHash
-  );
 }
 
 export type TalentSheetHashInput = {
@@ -1014,7 +1062,7 @@ function projectCharacterPerformance(c: CharacterBibleEntry) {
 }
 
 function projectLocationForPrompt(
-  l: Omit<LocationSheetBibleHashFields, 'name'>
+  l: Omit<LocationSheetBibleHashFields, 'name' | 'rendering'>
 ) {
   return {
     type: l.type,

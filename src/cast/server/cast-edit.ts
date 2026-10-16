@@ -6,8 +6,9 @@
  *
  * Every function takes the sequence id the caller authorised and refuses a
  * row of another sequence (live or soft-deleted rows both pass, so restore
- * can reach them). The `…TeamCharacter…` ones are the Characters page's
- * (#2065): no sequence, scoped to the team.
+ * can reach them). The `…TeamCharacter…` and `…TeamLocation…` ones are the
+ * Characters and Locations pages' (#2065, #1695): no sequence, scoped to the
+ * team.
  */
 import { renderingOfStyle } from '@/cast/rendering';
 import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
@@ -18,19 +19,21 @@ import {
   ValidationError,
 } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
-import { castChannelId } from '@/cast/cast-channel';
+import { castChannelId, locationChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type {
   CastCharacterWithSheet,
   CharacterWithSheet,
+  LocationWithReference,
+  SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
 import {
   requireCharacterLook,
   requireLiveLook,
 } from '@/cast/server/character-look';
 import type { CharacterBibleUpdate } from '@/cast/server/db/characters';
-import type { LocationBibleUpdate } from '@/cast/server/db/sequence-locations';
+import type { LocationBibleUpdate } from '@/cast/server/db/locations';
 import {
   identityToken,
   nextIdentityToken,
@@ -805,23 +808,38 @@ export async function restoreTeamCharacterLook(
 
 // ── Locations ───────────────────────────────────────────────────────────────
 
-/** The location, when it belongs to this sequence (live or soft-deleted). */
-async function requireLocation(
-  scopedDb: Pick<ScopedDb, 'sequenceLocations'>,
+/**
+ * The location, when this sequence uses it (live or removed), or, from no
+ * sequence (null), one of the team's at its current version (#1695). Only a
+ * read through a sequence carries the link.
+ */
+export async function requireLocation(
+  scopedDb: Pick<ScopedDb, 'locations'>,
   sequenceId: string,
   locationDbId: string
-) {
-  const location = await scopedDb.sequenceLocations.getById(locationDbId);
-  if (!location || location.sequenceId !== sequenceId) {
-    throw new NotFoundError('Location not found');
-  }
+): Promise<SequenceLocationWithReference>;
+export async function requireLocation(
+  scopedDb: Pick<ScopedDb, 'locations'>,
+  sequenceId: string | null,
+  locationDbId: string
+): Promise<LocationWithReference>;
+export async function requireLocation(
+  scopedDb: Pick<ScopedDb, 'locations'>,
+  sequenceId: string | null,
+  locationDbId: string
+): Promise<LocationWithReference> {
+  const location =
+    sequenceId === null
+      ? await scopedDb.locations.getCurrent(locationDbId)
+      : await scopedDb.locations.getById(sequenceId, locationDbId);
+  if (!location) throw new NotFoundError('Location not found');
   return location;
 }
 
 /**
- * Create a location by hand — starts reference-less (`referenceStatus:
- * 'pending'`). `locationId` is a shortened name (`loc_office`) uniqued on the
- * `(sequenceId, locationId)` index.
+ * Create a location by hand in a sequence — starts reference-less
+ * (`referenceStatus: 'pending'`). `locationId` is a shortened name
+ * (`loc_office`) uniqued among the sequence's script ids.
  */
 export async function createLocation(
   scopedDb: ScopedDb,
@@ -832,18 +850,23 @@ export async function createLocation(
   const base = identityToken('loc', name);
   const taken = new Set<string>();
   let locationId = base;
-  while (
-    await scopedDb.sequenceLocations.getByLocationId(sequenceId, locationId)
-  ) {
+  while (await scopedDb.locations.getByLocationId(sequenceId, locationId)) {
     taken.add(locationId);
     locationId = nextIdentityToken(base, taken);
   }
-  const location = await scopedDb.sequenceLocations.create(
+  // Rendered as the sequence's style says, unless the caller said (#1695).
+  const sequence = await scopedDb.sequences.getById(sequenceId);
+  if (!sequence) throw new NotFoundError('Sequence not found');
+  const rendering =
+    bible.rendering ??
+    renderingOfStyle(await resolveSequenceStyle(scopedDb, sequence));
+  const location = await scopedDb.locations.create(
     {
       sequenceId,
       locationId,
       name,
       ...bible,
+      rendering,
       consistencyTag:
         bible.consistencyTag ?? `${locationId}: ${slugifyTag(name)}`,
       referenceStatus: 'pending',
@@ -862,21 +885,46 @@ export async function createLocation(
   return location;
 }
 
-/** Edit a location's bible fields; only the sent fields change. */
-export async function updateLocation(
+/**
+ * Use one of the team's locations in a sequence (#1695): one link, nothing
+ * copied and no generation started. Refused while a live location of the
+ * sequence has its name (`locations.attach`).
+ */
+export async function attachLocation(
   scopedDb: ScopedDb,
   actor: Actor,
   sequenceId: string,
-  locationDbId: string,
-  update: LocationBibleUpdate
+  locationDbId: string
 ) {
-  await requireLocation(scopedDb, sequenceId, locationDbId);
-  return await scopedDb.sequenceLocations.updateBible(locationDbId, update, {
+  return await scopedDb.locations.attach(sequenceId, locationDbId, {
     actorId: actor.userId,
   });
 }
 
-/** Soft-remove a location (undoable; continuity tags are kept). */
+/**
+ * Edit a location's bible fields; only the sent fields change. The location
+ * is the team's: every sequence that uses it reads the edit. From no
+ * sequence (null) the same write records no event.
+ */
+export async function updateLocation(
+  scopedDb: ScopedDb,
+  actor: Actor,
+  sequenceId: string | null,
+  locationDbId: string,
+  update: LocationBibleUpdate
+) {
+  return await scopedDb.locations.updateBible(
+    sequenceId,
+    locationDbId,
+    update,
+    { actorId: actor.userId }
+  );
+}
+
+/**
+ * Soft-remove a location from the sequence (undoable; continuity tags are
+ * kept). The location stays the team's.
+ */
 export async function deleteLocation(
   scopedDb: ScopedDb,
   actor: Actor,
@@ -884,9 +932,11 @@ export async function deleteLocation(
   locationDbId: string
 ) {
   const location = await requireLocation(scopedDb, sequenceId, locationDbId);
-  const deletedAt = await scopedDb.sequenceLocations.softDelete(locationDbId, {
-    actorId: actor.userId,
-  });
+  const deletedAt = await scopedDb.locations.softDelete(
+    sequenceId,
+    locationDbId,
+    { actorId: actor.userId }
+  );
   return { locationDbId, name: location.name, deletedAt };
 }
 
@@ -896,27 +946,56 @@ export async function restoreLocation(
   sequenceId: string,
   locationDbId: string
 ) {
-  await requireLocation(scopedDb, sequenceId, locationDbId);
-  return await scopedDb.sequenceLocations.restore(locationDbId, {
+  return await scopedDb.locations.restore(sequenceId, locationDbId, {
     actorId: actor.userId,
   });
+}
+
+/**
+ * Delete one of the team's locations (#1695). Soft: it leaves the Locations
+ * page and the pickers, and `restoreTeamLocation` brings it back. Refused
+ * while a sequence, archived ones included, still uses it: the db write
+ * carries the condition.
+ */
+export async function deleteTeamLocation(
+  scopedDb: ScopedDb,
+  locationDbId: string
+) {
+  await requireLocation(scopedDb, null, locationDbId);
+  if (!(await scopedDb.locations.softDeleteForTeam(locationDbId))) {
+    throw new ConflictError(
+      'A sequence still uses this location. Remove it from its sequences first.'
+    );
+  }
+  return { locationDbId };
+}
+
+export async function restoreTeamLocation(
+  scopedDb: ScopedDb,
+  locationDbId: string
+) {
+  await scopedDb.locations.restoreForTeam(locationDbId);
+  // Another team's id, or one that never existed, restored nothing.
+  await requireLocation(scopedDb, null, locationDbId);
+  return { locationDbId };
 }
 
 export async function selectLocationSheetVersion(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequenceId: string,
+  sequenceId: string | null,
   locationDbId: string,
   versionId: string
 ) {
   const location = await requireLocation(scopedDb, sequenceId, locationDbId);
   const version = await scopedDb.locationSheetVariants.select(
+    sequenceId,
     location.id,
     versionId,
     { actorId: actor.userId }
   );
   await emitQuietly(() =>
-    getGenerationChannel(sequenceId).emit(
+    getGenerationChannel(locationChannelId(sequenceId, location.id)).emit(
       'generation.location-sheet:progress',
       { locationId: location.id, status: 'completed' }
     )
@@ -928,23 +1007,24 @@ export async function selectLocationSheetVersion(
   };
 }
 
-/** A reference version of a location of this sequence. */
+/**
+ * A sheet version of a location this sequence uses or, from no sequence, of
+ * one of the team's.
+ */
 async function requireLocationSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await scopedDb.locationSheetVariants.getById(versionId);
-  if (!variant || variant.parentType !== 'sequence_location') {
-    throw new NotFoundError('Sequence-location variant not found');
-  }
-  await requireLocation(scopedDb, sequenceId, variant.parentId);
+  if (!variant) throw new NotFoundError('Location sheet version not found');
+  await requireLocation(scopedDb, sequenceId, variant.locationId);
   return variant;
 }
 
 export async function discardLocationSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await requireLocationSheetVersion(
@@ -958,7 +1038,7 @@ export async function discardLocationSheetVersion(
 
 export async function undiscardLocationSheetVersion(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  sequenceId: string | null,
   versionId: string
 ) {
   const variant = await requireLocationSheetVersion(

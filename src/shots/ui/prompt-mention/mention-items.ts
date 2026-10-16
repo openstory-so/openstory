@@ -74,9 +74,9 @@ export type MentionItem = {
   haystack: string;
   thumbnailUrl?: string | null;
   /**
-   * Offered by the `@` dropdown only (#2050): a team character not yet
-   * cast here. Picking it attaches her; until then her name in the text is
-   * plain prose and must not pill as if she were.
+   * Offered by the `@` dropdown only (#2050, #1695): a team character or
+   * location the sequence does not use yet. Picking it attaches it; until
+   * then its name in the text is plain prose and must not pill.
    */
   pickOnly?: true;
 };
@@ -115,6 +115,44 @@ export function libraryMentionItems(
 /** The team character a picked row names, or null for any other row. */
 export function libraryCharacterIdOf(item: MentionItem): string | null {
   const prefix = 'library-character:';
+  return item.pickOnly && item.id.startsWith(prefix)
+    ? item.id.slice(prefix.length)
+    : null;
+}
+
+/** What the `@` picker needs of a team location (#1695). */
+export type LibraryLocationMentionInput = {
+  id: string;
+  name: string;
+  referenceImageUrl: string | null;
+};
+
+/**
+ * The team's locations the sequence does not use yet, as `@` rows that
+ * attach on pick (#1695). The inserted text is the name in capitals, as a
+ * scene heading reads. In the team list's order: most recently used first.
+ */
+export function libraryLocationMentionItems(
+  library: readonly LibraryLocationMentionInput[],
+  usedLocationIds: ReadonlySet<string>
+): MentionItem[] {
+  return library
+    .filter((l) => !usedLocationIds.has(l.id))
+    .map((l) => ({
+      id: `library-location:${l.id}`,
+      section: 'locations' as const,
+      label: l.name,
+      sublabel: 'Add to this sequence',
+      tag: l.name.toUpperCase(),
+      haystack: l.name.toLowerCase(),
+      thumbnailUrl: l.referenceImageUrl,
+      pickOnly: true as const,
+    }));
+}
+
+/** The team location a picked row names, or null for any other row. */
+export function libraryLocationIdOf(item: MentionItem): string | null {
+  const prefix = 'library-location:';
   return item.pickOnly && item.id.startsWith(prefix)
     ? item.id.slice(prefix.length)
     : null;

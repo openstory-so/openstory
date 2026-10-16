@@ -202,11 +202,6 @@
       "class_name": "LibraryTalentSheetWorkflow",
     },
     {
-      "name": "library-location-sheet-workflow",
-      "binding": "LIBRARY_LOCATION_SHEET_WORKFLOW",
-      "class_name": "LibraryLocationSheetWorkflow",
-    },
-    {
       "name": "shot-variant-workflow",
       "binding": "SHOT_VARIANT_WORKFLOW",
       "class_name": "ShotVariantWorkflow",
@@ -501,11 +496,6 @@
           "name": "library-talent-sheet-workflow",
           "binding": "LIBRARY_TALENT_SHEET_WORKFLOW",
           "class_name": "LibraryTalentSheetWorkflow",
-        },
-        {
-          "name": "library-location-sheet-workflow",
-          "binding": "LIBRARY_LOCATION_SHEET_WORKFLOW",
-          "class_name": "LibraryLocationSheetWorkflow",
         },
         {
           "name": "shot-variant-workflow",
@@ -817,11 +807,6 @@
           "name": "library-talent-sheet-workflow",
           "binding": "LIBRARY_TALENT_SHEET_WORKFLOW",
           "class_name": "LibraryTalentSheetWorkflow",
-        },
-        {
-          "name": "library-location-sheet-workflow",
-          "binding": "LIBRARY_LOCATION_SHEET_WORKFLOW",
-          "class_name": "LibraryLocationSheetWorkflow",
         },
         {
           "name": "shot-variant-workflow",

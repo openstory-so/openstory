@@ -5,65 +5,53 @@ import {
 } from '@/platform/errors';
 /**
  * Scoped Location Sheet Variants Sub-module
- * CRUD for divergent location-sheet outputs (Stage 2 of workflow snapshots).
- *
- * The variants table is parent-type-tagged: rows can belong to either a
- * `sequence_locations` row or a `location_library` row. Callers pass the
- * matching `parentType` to scope queries.
+ * Every sheet a location has had: its history and the outputs a run parked
+ * as divergent (Stage 2 of workflow snapshots). A sheet is the location's,
+ * whichever sequence drew it (#1695), so nothing here takes a sequence except
+ * the one write that records a sequence event. Every statement is scoped to
+ * the team through the location.
  */
 
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import type {
   LocationSheetVariant,
-  LocationSheetVariantParentType,
   NewLocationSheetVariant,
 } from '@/platform/server/db/schema';
 import {
   locationBibleVersions,
-  locationLibrary,
+  locations,
   locationSheetVariants,
-  sequenceLocations,
 } from '@/platform/server/db/schema';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
-import type {
-  LibraryLocationReferenceInputHash,
-  LocationSheetInputHash,
-} from '@/shots/input-hash';
-import {
-  demoteLocationReferenceClaims,
-  landLocationReference,
-} from './sheet-claims';
+import type { LocationSheetInputHash } from '@/shots/input-hash';
+import { landLocationReference } from './sheet-claims';
 import { locationBibleColumns } from './bible-versions';
 
-/** Sequence location sheets and library location references share this table. */
-type LocationSheetVariantInputHash =
-  | LocationSheetInputHash
-  | LibraryLocationReferenceInputHash;
+export function createLocationSheetVariantsMethods(
+  db: Database,
+  teamId: string
+) {
+  /** The row belongs to one of this team's locations. */
+  const ofTeam = sql`EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND l.team_id = ${teamId})`;
+  const ofLocation = (locationId: string) =>
+    and(eq(locationSheetVariants.locationId, locationId), ofTeam);
+  const inTeam = eq(locations.teamId, teamId);
 
-type PromoteLocationUpdate = {
-  referenceImageUrl: string | null;
-  referenceImagePath: string | null;
-  referenceInputHash: string | null;
-};
-
-export function createLocationSheetVariantsMethods(db: Database) {
   return {
     /** Every attempt (any status), oldest-first; discarded rows on request. */
-    listByParent: async (
-      parentType: LocationSheetVariantParentType,
-      parentId: string,
+    listByLocation: async (
+      locationId: string,
       options?: VersionListOptions
     ): Promise<LocationSheetVariant[]> => {
       return await pageOf(
         db.select().from(locationSheetVariants).$dynamic(),
         and(
-          eq(locationSheetVariants.parentType, parentType),
-          eq(locationSheetVariants.parentId, parentId),
+          ofLocation(locationId),
           options?.includeDiscarded
             ? undefined
             : isNull(locationSheetVariants.discardedAt)
@@ -74,38 +62,20 @@ export function createLocationSheetVariantsMethods(db: Database) {
       );
     },
 
-    listDivergentByParent: async (
-      parentType: LocationSheetVariantParentType,
-      parentId: string
-    ): Promise<LocationSheetVariant[]> => {
-      return db
-        .select()
-        .from(locationSheetVariants)
-        .where(
-          and(
-            eq(locationSheetVariants.parentType, parentType),
-            eq(locationSheetVariants.parentId, parentId),
-            sql`${locationSheetVariants.divergedAt} IS NOT NULL`
-          )
-        );
-    },
-
     /**
-     * Active (non-discarded) divergent alternates for a parent. UI banner /
+     * Active (non-discarded) divergent alternates for a location. UI banner /
      * corner-dot read through this so the surfaces clear once the user
      * promotes or discards.
      */
-    listDivergentActiveByParent: async (
-      parentType: LocationSheetVariantParentType,
-      parentId: string
+    listDivergentActiveByLocation: async (
+      locationId: string
     ): Promise<LocationSheetVariant[]> => {
       return db
         .select()
         .from(locationSheetVariants)
         .where(
           and(
-            eq(locationSheetVariants.parentType, parentType),
-            eq(locationSheetVariants.parentId, parentId),
+            ofLocation(locationId),
             sql`${locationSheetVariants.divergedAt} IS NOT NULL`,
             sql`${locationSheetVariants.discardedAt} IS NULL`
           )
@@ -113,18 +83,17 @@ export function createLocationSheetVariantsMethods(db: Database) {
         .orderBy(locationSheetVariants.divergedAt);
     },
 
-    listDivergentActiveByParents: async (
-      parentType: LocationSheetVariantParentType,
-      parentIds: string[]
+    listDivergentActiveByLocations: async (
+      locationIds: string[]
     ): Promise<LocationSheetVariant[]> => {
-      if (parentIds.length === 0) return [];
+      if (locationIds.length === 0) return [];
       return db
         .select()
         .from(locationSheetVariants)
         .where(
           and(
-            eq(locationSheetVariants.parentType, parentType),
-            inArray(locationSheetVariants.parentId, parentIds),
+            inArray(locationSheetVariants.locationId, locationIds),
+            ofTeam,
             sql`${locationSheetVariants.divergedAt} IS NOT NULL`,
             sql`${locationSheetVariants.discardedAt} IS NULL`
           )
@@ -141,7 +110,10 @@ export function createLocationSheetVariantsMethods(db: Database) {
             .select()
             .from(locationSheetVariants)
             .where(
-              inArray(locationSheetVariants.id, variantIds.slice(i, i + 80))
+              and(
+                inArray(locationSheetVariants.id, variantIds.slice(i, i + 80)),
+                ofTeam
+              )
             ))
         );
       return rows;
@@ -153,22 +125,20 @@ export function createLocationSheetVariantsMethods(db: Database) {
       const result = await db
         .select()
         .from(locationSheetVariants)
-        .where(eq(locationSheetVariants.id, variantId));
+        .where(and(eq(locationSheetVariants.id, variantId), ofTeam));
       return result[0] ?? null;
     },
 
     /** Completed, not discarded, oldest-first (left-to-right v1, v2, …). */
-    listHistoryByParent: async (
-      parentType: LocationSheetVariantParentType,
-      parentId: string
+    listHistoryByLocation: async (
+      locationId: string
     ): Promise<LocationSheetVariant[]> => {
       return db
         .select()
         .from(locationSheetVariants)
         .where(
           and(
-            eq(locationSheetVariants.parentType, parentType),
-            eq(locationSheetVariants.parentId, parentId),
+            ofLocation(locationId),
             eq(locationSheetVariants.status, 'completed'),
             isNull(locationSheetVariants.discardedAt)
           )
@@ -180,14 +150,11 @@ export function createLocationSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Sequence-location only: append a completed version and select it.
-     * Library locations keep the overwrite `locationLibrary.updateReference`
-     * path — they are not in this versioning surface.
+     * Append a completed version and select it: an unclaimed write (an
+     * upload), which picks the reference and so demotes a run's claim.
      *
-     * No longer mirrors url / path / generatedAt / inputHash onto the parent —
-     * reads resolve those from the pointer (#1419). The old pre-versioning
-     * snapshot branch went with them: it captured an image that lived only in
-     * the mirror columns, and the #1419 backfill gave every such row a version.
+     * Reads resolve url / path / generatedAt / inputHash from the pointer
+     * (#1419); nothing is mirrored onto the location.
      */
     applyConvergent: async (args: {
       locationDbId: string;
@@ -206,49 +173,43 @@ export function createLocationSheetVariantsMethods(db: Database) {
         workflowRunId,
       } = args;
       const [existing] = await db
-        .select()
-        .from(sequenceLocations)
-        .where(eq(sequenceLocations.id, locationDbId));
-      if (!existing) {
-        throw new Error(`SequenceLocation ${locationDbId} not found`);
-      }
+        .select({ id: locations.id })
+        .from(locations)
+        .where(and(eq(locations.id, locationDbId), inTeam));
+      if (!existing) throw new NotFoundError('Location not found');
 
       const now = new Date();
-      const [version] = await db
-        .insert(locationSheetVariants)
-        .values({
-          id: generateId(),
-          parentType: 'sequence_location',
-          parentId: locationDbId,
-          model,
-          url,
-          storagePath,
-          status: 'completed',
-          workflowRunId: workflowRunId ?? null,
-          generatedAt: now,
-          inputHash,
-        })
-        .returning();
+      const versionId = generateId();
+      const [versions] = await db.batch([
+        db
+          .insert(locationSheetVariants)
+          .values({
+            id: versionId,
+            locationId: locationDbId,
+            model,
+            url,
+            storagePath,
+            status: 'completed',
+            workflowRunId: workflowRunId ?? null,
+            generatedAt: now,
+            inputHash,
+          })
+          .returning(),
+        db
+          .update(locations)
+          .set({
+            referenceStatus: 'completed',
+            referenceError: null,
+            selectedReferenceVersionId: versionId,
+            // An unclaimed write picks the reference: it demotes a run's claim.
+            pendingPromoteReferenceVersionId: null,
+            updatedAt: now,
+          })
+          .where(and(eq(locations.id, locationDbId), inTeam)),
+      ]);
+      const [version] = versions;
       if (!version) {
         throw new Error('Failed to insert location sheet version');
-      }
-
-      const [location] = await db
-        .update(sequenceLocations)
-        .set({
-          referenceStatus: 'completed',
-          referenceError: null,
-          selectedReferenceVersionId: version.id,
-          // An unclaimed write picks the reference: it demotes a run's claim.
-          pendingPromoteReferenceVersionId: null,
-          updatedAt: now,
-        })
-        .where(eq(sequenceLocations.id, locationDbId))
-        .returning({ id: sequenceLocations.id });
-      if (!location) {
-        throw new Error(
-          `SequenceLocation ${locationDbId} disappeared during apply`
-        );
       }
       return { version };
     },
@@ -256,10 +217,12 @@ export function createLocationSheetVariantsMethods(db: Database) {
     /**
      * Repoint the live reference at an existing completed version. Only moves
      * the pointer — reads resolve url / path / hash from the version it names
-     * (#1419). A divergent row is unmarked so the banner clears. Previous
-     * pointer is recorded on the event for undo.
+     * (#1419). A divergent row is unmarked so the banner clears. Through a
+     * sequence the previous pointer is recorded on an event for undo; from no
+     * sequence (null) the same write records none.
      */
     select: async (
+      sequenceId: string | null,
       locationDbId: string,
       versionId: string,
       opts: { actorId: string | null }
@@ -268,11 +231,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
         .select()
         .from(locationSheetVariants)
         .where(
-          and(
-            eq(locationSheetVariants.id, versionId),
-            eq(locationSheetVariants.parentType, 'sequence_location'),
-            eq(locationSheetVariants.parentId, locationDbId)
-          )
+          and(eq(locationSheetVariants.id, versionId), ofLocation(locationDbId))
         );
       if (!version) {
         throw new NotFoundError(
@@ -292,25 +251,21 @@ export function createLocationSheetVariantsMethods(db: Database) {
 
       const [existing] = await db
         .select({
-          sequenceId: sequenceLocations.sequenceId,
-          selectedReferenceVersionId:
-            sequenceLocations.selectedReferenceVersionId,
+          selectedReferenceVersionId: locations.selectedReferenceVersionId,
           name: locationBibleColumns.name,
         })
-        .from(sequenceLocations)
+        .from(locations)
         .leftJoin(
           locationBibleVersions,
-          eq(locationBibleVersions.id, sequenceLocations.selectedBibleVersionId)
+          eq(locationBibleVersions.id, locations.selectedBibleVersionId)
         )
-        .where(eq(sequenceLocations.id, locationDbId));
-      if (!existing) {
-        throw new Error(`SequenceLocation ${locationDbId} not found`);
-      }
+        .where(and(eq(locations.id, locationDbId), inTeam));
+      if (!existing) throw new NotFoundError('Location not found');
 
       const now = new Date();
       await db.batch([
         db
-          .update(sequenceLocations)
+          .update(locations)
           .set({
             referenceStatus: 'completed',
             referenceError: null,
@@ -319,25 +274,30 @@ export function createLocationSheetVariantsMethods(db: Database) {
             pendingPromoteReferenceVersionId: null,
             updatedAt: now,
           })
-          .where(eq(sequenceLocations.id, locationDbId)),
+          .where(and(eq(locations.id, locationDbId), inTeam)),
         db
           .update(locationSheetVariants)
           .set({ divergedAt: null, updatedAt: now })
           .where(eq(locationSheetVariants.id, versionId)),
-        buildEventInsert(db, {
-          sequenceId: existing.sequenceId,
-          actorId: opts.actorId,
-          kind: 'sheet.selected',
-          targetType: 'location',
-          targetId: locationDbId,
-          summary: `Selected reference version for ${existing.name}`,
-          data: {
-            prevState: {
-              selectedReferenceVersionId: existing.selectedReferenceVersionId,
-            },
-            versionId,
-          },
-        }),
+        ...(sequenceId === null
+          ? []
+          : [
+              buildEventInsert(db, {
+                sequenceId,
+                actorId: opts.actorId,
+                kind: 'sheet.selected',
+                targetType: 'location',
+                targetId: locationDbId,
+                summary: `Selected reference version for ${existing.name}`,
+                data: {
+                  prevState: {
+                    selectedReferenceVersionId:
+                      existing.selectedReferenceVersionId,
+                  },
+                  versionId,
+                },
+              }),
+            ]),
       ]);
       return { ...version, divergedAt: null };
     },
@@ -346,31 +306,17 @@ export function createLocationSheetVariantsMethods(db: Database) {
      * A location sheet run's completion (#1113). See
      * {@link landLocationReference}.
      */
-    promoteIfPending: (args: Parameters<typeof landLocationReference>[1]) =>
-      landLocationReference(db, args),
-
-    insert: async (
-      values: NewLocationSheetVariant
-    ): Promise<LocationSheetVariant> => {
-      const [row] = await db
-        .insert(locationSheetVariants)
-        .values(values)
-        .returning();
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      if (!row) {
-        throw new Error('Failed to insert location sheet variant');
-      }
-      return row;
-    },
+    promoteIfPending: (args: Parameters<typeof landLocationReference>[2]) =>
+      landLocationReference(db, teamId, args),
 
     /**
-     * Idempotent on (parentType, parentId, model, inputHash) within the
-     * divergent partial unique index. Tolerant to step retry and
-     * cross-run race; see `divergent-insert.ts` for the rationale.
+     * Idempotent on (location, model, inputHash) within the divergent partial
+     * unique index. Tolerant to step retry and cross-run race; see
+     * `divergent-insert.ts` for the rationale.
      */
     insertDivergent: async (
       values: NewLocationSheetVariant & {
-        inputHash: LocationSheetVariantInputHash;
+        inputHash: LocationSheetInputHash;
         divergedAt: Date;
       }
     ): Promise<LocationSheetVariant> => {
@@ -380,8 +326,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
           .from(locationSheetVariants)
           .where(
             and(
-              eq(locationSheetVariants.parentType, values.parentType),
-              eq(locationSheetVariants.parentId, values.parentId),
+              eq(locationSheetVariants.locationId, values.locationId),
               eq(locationSheetVariants.model, values.model),
               eq(locationSheetVariants.inputHash, values.inputHash),
               sql`${locationSheetVariants.divergedAt} IS NOT NULL`
@@ -396,47 +341,34 @@ export function createLocationSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Soft-delete a divergent alternate; preserves the row for the toast Undo.
-     * A sequence location's live reference (the pointer, or the pre-#1419 row
-     * keyed to the location's own id) is refused: select another first. A
-     * library location keeps mirror columns, so it has no pointer to guard.
+     * Soft-delete a version; preserves the row for the toast Undo. The
+     * location's live reference (the pointer, or the pre-#1419 row keyed to
+     * the location's own id) is refused: select another first. The refusal
+     * is in the write's own condition, so a select that lands between a
+     * check and this write still stops it.
      */
     discard: async (variantId: string): Promise<Date> => {
-      const [owner] = await db
-        .select({
-          id: sequenceLocations.id,
-          selectedReferenceVersionId:
-            sequenceLocations.selectedReferenceVersionId,
-        })
-        .from(locationSheetVariants)
-        .innerJoin(
-          sequenceLocations,
-          eq(sequenceLocations.id, locationSheetVariants.parentId)
-        )
-        .where(
-          and(
-            eq(locationSheetVariants.id, variantId),
-            eq(locationSheetVariants.parentType, 'sequence_location')
-          )
-        );
-      if (
-        owner &&
-        (owner.selectedReferenceVersionId ?? owner.id) === variantId
-      ) {
-        throw new ConflictError(
-          'Cannot discard the selected reference version; select another first.'
-        );
-      }
       const discardedAt = new Date();
       const result = await db
         .update(locationSheetVariants)
         .set({ discardedAt, updatedAt: discardedAt })
-        .where(eq(locationSheetVariants.id, variantId))
-        .returning();
-      if (result.length === 0) {
-        throw new Error(`LocationSheetVariant ${variantId} not found`);
-      }
-      return discardedAt;
+        .where(
+          and(
+            eq(locationSheetVariants.id, variantId),
+            ofTeam,
+            sql`NOT EXISTS (SELECT 1 FROM sequence_locations l WHERE l.id = ${locationSheetVariants.locationId} AND COALESCE(l.selected_reference_version_id, l.id) = ${variantId})`
+          )
+        )
+        .returning({ id: locationSheetVariants.id });
+      if (result.length > 0) return discardedAt;
+      const [row] = await db
+        .select({ id: locationSheetVariants.id })
+        .from(locationSheetVariants)
+        .where(and(eq(locationSheetVariants.id, variantId), ofTeam));
+      if (!row) throw new NotFoundError('Location sheet version not found');
+      throw new ConflictError(
+        'Cannot discard the selected reference version; select another first.'
+      );
     },
 
     /**
@@ -453,6 +385,7 @@ export function createLocationSheetVariantsMethods(db: Database) {
         .where(
           and(
             eq(locationSheetVariants.id, variantId),
+            ofTeam,
             isNull(locationSheetVariants.portraitUrl)
           )
         );
@@ -462,90 +395,11 @@ export function createLocationSheetVariantsMethods(db: Database) {
       const result = await db
         .update(locationSheetVariants)
         .set({ discardedAt: null, updatedAt: new Date() })
-        .where(eq(locationSheetVariants.id, variantId))
-        .returning();
-      if (result.length === 0) {
-        throw new Error(`LocationSheetVariant ${variantId} not found`);
-      }
-    },
-
-    /**
-     * Atomically copy variant fields onto the live parent (`sequence_locations`
-     * or `location_library`) and soft-delete the variant. Single batch so a
-     * partial failure cannot leave the live primary updated with the variant
-     * still appearing as divergent.
-     *
-     * `library_location` ONLY. `location_library` keeps its mirror columns;
-     * `sequence_locations` lost theirs in #1419, and its promote goes through
-     * `select()`, which moves the pointer instead of copying the image.
-     */
-    promoteAtomically: async (
-      libraryLocationId: string,
-      parentUpdate: PromoteLocationUpdate,
-      variantId: string
-    ): Promise<{ discardedAt: Date }> => {
-      const [existingVariant] = await db
-        .select({
-          id: locationSheetVariants.id,
-          parentType: locationSheetVariants.parentType,
-          parentId: locationSheetVariants.parentId,
-        })
-        .from(locationSheetVariants)
-        .where(eq(locationSheetVariants.id, variantId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      if (!existingVariant) {
-        throw new Error(`LocationSheetVariant ${variantId} not found`);
-      }
-      if (
-        existingVariant.parentType !== 'library_location' ||
-        existingVariant.parentId !== libraryLocationId
-      ) {
-        throw new Error(
-          `LocationSheetVariant ${variantId} parent (${existingVariant.parentType}:${existingVariant.parentId}) does not match promote target (library_location:${libraryLocationId})`
-        );
-      }
-
-      const [existingParent] = await db
-        .select({ id: locationLibrary.id })
-        .from(locationLibrary)
-        .where(eq(locationLibrary.id, libraryLocationId));
-      // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-      if (!existingParent) {
-        throw new Error(`library_location ${libraryLocationId} not found`);
-      }
-
-      const now = new Date();
-      // The user's pick wins over an in-flight library run, and the new
-      // reference revokes the linked sequence locations' claims (#1113).
-      const updateParent = db
-        .update(locationLibrary)
-        .set({ ...parentUpdate, pendingReferenceClaimId: null, updatedAt: now })
-        .where(eq(locationLibrary.id, libraryLocationId))
-        .returning({ id: locationLibrary.id });
-      const discardVariant = db
-        .update(locationSheetVariants)
-        .set({ discardedAt: now, updatedAt: now })
-        .where(eq(locationSheetVariants.id, variantId))
+        .where(and(eq(locationSheetVariants.id, variantId), ofTeam))
         .returning({ id: locationSheetVariants.id });
-      const [parentRows, variantRows] = await db.batch([
-        updateParent,
-        discardVariant,
-        demoteLocationReferenceClaims(
-          db,
-          eq(sequenceLocations.libraryLocationId, libraryLocationId)
-        ),
-      ]);
-      if (parentRows.length === 0) {
-        throw new Error(
-          `library_location ${libraryLocationId} disappeared during promote`
-        );
+      if (result.length === 0) {
+        throw new NotFoundError('Location sheet version not found');
       }
-      if (variantRows.length === 0) {
-        throw new Error(
-          `LocationSheetVariant ${variantId} disappeared during promote`
-        );
-      }
-      return { discardedAt: now };
     },
   };
 }

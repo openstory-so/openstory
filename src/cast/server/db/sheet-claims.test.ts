@@ -7,7 +7,7 @@ import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { type Client, createClient } from '@libsql/client';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
@@ -21,9 +21,8 @@ import {
   sceneScriptVersions,
   scenes,
   sequenceEvents,
-  locationLibrary,
   locationSheetVariants,
-  sequenceLocations,
+  locations,
   sequences,
   styles,
   talent,
@@ -36,17 +35,15 @@ import type { NewCharacter } from '@/platform/server/db/schema';
 import type { Database } from '@/platform/server/db/client';
 import {
   characterSheetInputHash,
-  libraryLocationReferenceInputHash,
   locationSheetInputHash,
   talentSheetInputHash,
 } from '@/shots/input-hash';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { createCharacterLooksMethods } from './character-looks';
 import { createCharactersMethods } from './characters';
-import { createLocationsMethods } from './location-library';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
-import { createSequenceLocationsMethods } from './sequence-locations';
-import { demoteSequenceSheetClaims } from './sheet-claims';
+import { createLocationsMethods } from './locations';
+import { createSequencesMethods } from '@/sequences/server/db/sequences';
 import { createTalentMethods } from './talent';
 
 let client: Client;
@@ -56,7 +53,7 @@ let userId = '';
 let sequenceId = '';
 let characterId = '';
 let locationId = '';
-let libraryId = '';
+let otherStyleId = '';
 let talentId = '';
 
 const HASH = characterSheetInputHash('a'.repeat(64));
@@ -79,8 +76,7 @@ beforeEach(async () => {
     locationSheetVariants,
     talentSheets,
     characters,
-    sequenceLocations,
-    locationLibrary,
+    locations,
     talent,
     sequences,
     styles,
@@ -114,16 +110,20 @@ beforeEach(async () => {
   await db
     .insert(sequences)
     .values({ id: sequenceId, teamId, title: 'S', styleId: style.id });
-  const [lib] = await db
-    .insert(locationLibrary)
-    .values({ teamId, name: 'Diner' })
+  const [otherStyle] = await db
+    .insert(styles)
+    .values({
+      teamId,
+      name: 'other',
+      config: { ...style.config, mood: 'tense' },
+    })
     .returning();
   const [tal] = await db
     .insert(talent)
     .values({ teamId, name: 'Ada' })
     .returning();
-  if (!lib || !tal) throw new Error('setup');
-  libraryId = lib.id;
+  if (!otherStyle || !tal) throw new Error('setup');
+  otherStyleId = otherStyle.id;
   talentId = tal.id;
   const ch = await createCharactersMethods(db, teamId).create(
     {
@@ -138,12 +138,12 @@ beforeEach(async () => {
     },
     { source: 'analysis', createdBy: null }
   );
-  const loc = await createSequenceLocationsMethods(db).create(
+  const loc = await createLocationsMethods(db, teamId).create(
     {
       sequenceId,
       locationId: 'loc_001',
       name: 'Diner',
-      libraryLocationId: libraryId,
+      rendering: 'Photoreal live action',
     },
     { source: 'analysis', createdBy: null }
   );
@@ -161,9 +161,14 @@ const castWith = (to: string | null) =>
   );
 const looks = () => createCharacterLooksMethods(db, teamId);
 const charVersions = () => createCharacterSheetVariantsMethods(db, teamId);
-const locs = () => createSequenceLocationsMethods(db);
-const locVersions = () => createLocationSheetVariantsMethods(db);
-const library = () => createLocationsMethods(db, teamId, userId);
+const locs = () => createLocationsMethods(db, teamId);
+const locVersions = () => createLocationSheetVariantsMethods(db, teamId);
+/** A style change on the sequence, as the app makes it. */
+const changeStyle = () =>
+  createSequencesMethods(db, teamId, userId).update({
+    id: sequenceId,
+    styleId: otherStyleId,
+  });
 const talents = () => createTalentMethods(db, teamId, userId);
 
 async function character() {
@@ -386,7 +391,7 @@ describe('character sheet claims', () => {
 
   it('is not revoked by a style change on the sequence (#2017): a sheet reads no style', async () => {
     const versionId = await claim();
-    await db.batch(demoteSequenceSheetClaims(db, sequenceId, sql`1`));
+    await changeStyle();
     expect(await landCharacter(versionId)).toBe('promoted');
   });
 });
@@ -913,7 +918,7 @@ describe('look sheet claims (#2015)', () => {
   });
 });
 
-describe('sequence location claims', () => {
+describe('location claims', () => {
   const landLocation = (versionId: string) =>
     locVersions().promoteIfPending({
       activity: null,
@@ -940,6 +945,7 @@ describe('sequence location claims', () => {
       activity: null,
     });
     await locs().updateBible(
+      sequenceId,
       locationId,
       { keyFeatures: 'neon sign' },
       { actorId: userId }
@@ -947,40 +953,42 @@ describe('sequence location claims', () => {
     expect(await landLocation(second)).toBe('parked');
   });
 
-  it('is revoked by a relink and by the library reference moving', async () => {
+  it('is revoked by a photo added or removed (#1695)', async () => {
     let versionId = await locs().claimReference(locationId, {
       markGenerating: true,
       activity: null,
     });
-    await locs().update(locationId, { libraryLocationId: libraryId });
+    await locs().addPhotos(locationId, [
+      { url: '/r2/photo.png', path: 'photo.png' },
+    ]);
     expect(await landLocation(versionId)).toBe('parked');
 
     versionId = await locs().claimReference(locationId, {
       markGenerating: true,
       activity: null,
     });
-    const claimId = await library().claimReference(libraryId);
-    await library().updateReferenceIfClaimed(
-      libraryId,
-      claimId,
-      '/r2/preview.png',
-      'preview.png',
-      libraryLocationReferenceInputHash('c'.repeat(64))
-    );
+    const [photo] = await locs().listPhotos(locationId);
+    if (!photo) throw new Error('photo gone');
+    await locs().removePhoto(locationId, photo.id);
     expect(await landLocation(versionId)).toBe('parked');
+  });
+
+  it('is not revoked by a style change on the sequence (#1695): a sheet reads no style', async () => {
+    const versionId = await locs().claimReference(locationId, {
+      markGenerating: true,
+    });
+    await changeStyle();
+    expect(await landLocation(versionId)).toBe('promoted');
   });
 
   // The bible parent's claim (#1863): taken only while the snapshot is live.
   const snapshot = async () => {
-    const row = await locs().getById(locationId);
+    const row = await locs().getById(sequenceId, locationId);
     if (!row?.selectedBibleVersionId) throw new Error('no bible version');
-    return {
-      bibleVersionId: row.selectedBibleVersionId,
-      libraryLocationId: row.libraryLocationId,
-    };
+    return { bibleVersionId: row.selectedBibleVersionId };
   };
 
-  it('a conditional claim is held while the bible and link are live', async () => {
+  it('a conditional claim is held while the bible is live', async () => {
     const claim = await locs().claimReferenceIfUnmoved(
       locationId,
       await snapshot(),
@@ -993,6 +1001,7 @@ describe('sequence location claims', () => {
   it('a conditional claim is not taken after a bible edit, and the run parks', async () => {
     const before = await snapshot();
     await locs().updateBible(
+      sequenceId,
       locationId,
       { keyFeatures: 'neon sign' },
       { actorId: userId }
@@ -1006,86 +1015,44 @@ describe('sequence location claims', () => {
     expect(await landLocation(claim.versionId)).toBe('parked');
   });
 
-  it('a conditional claim is not taken after a relink', async () => {
+  it('logs the start when the claim is held, and nothing when it is not', async () => {
+    const start = {
+      sequenceId,
+      actorId: userId,
+      summary: 'Started a sheet for Diner',
+    };
+    const held = await locs().claimReferenceIfUnmoved(
+      locationId,
+      await snapshot(),
+      start
+    );
+    expect(held.held).toBe(true);
+    const started = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'sheet.started'));
+    expect(started).toMatchObject([
+      { targetType: 'location', targetId: locationId, summary: start.summary },
+    ]);
+
     const before = await snapshot();
-    await locs().update(locationId, { libraryLocationId: null });
-    const claim = await locs().claimReferenceIfUnmoved(
+    await locs().updateBible(
+      sequenceId,
+      locationId,
+      { keyFeatures: 'neon sign' },
+      { actorId: userId }
+    );
+    const missed = await locs().claimReferenceIfUnmoved(
       locationId,
       before,
-      null
+      start
     );
-    expect(claim.held).toBe(false);
-  });
-});
-
-describe('library location claims', () => {
-  const HASH_L = libraryLocationReferenceInputHash('d'.repeat(64));
-
-  it('publishes while held, idempotently', async () => {
-    const claimId = await library().claimReference(libraryId);
-    const publish = () =>
-      library().updateReferenceIfClaimed(
-        libraryId,
-        claimId,
-        '/r2/p1.png',
-        'p1.png',
-        HASH_L
-      );
-    expect(await publish()).toBe(true);
-    expect(await publish()).toBe(true);
-    const row = await library().getById(libraryId);
-    expect(row?.referenceImageUrl).toBe('/r2/p1.png');
-    expect(row?.pendingReferenceClaimId).toBeNull();
-  });
-
-  it('does not publish after a description edit, but survives a rename', async () => {
-    const kept = await library().claimReference(libraryId);
-    await library().update(libraryId, { name: 'Cafe' });
-    expect((await library().getById(libraryId))?.pendingReferenceClaimId).toBe(
-      kept
-    );
-
-    const claimId = await library().claimReference(libraryId);
-    await library().update(libraryId, { description: 'greasy' });
-    expect(
-      await library().updateReferenceIfClaimed(
-        libraryId,
-        claimId,
-        '/r2/p2.png',
-        'p2.png',
-        HASH_L
-      )
-    ).toBe(false);
-    expect((await library().getById(libraryId))?.referenceImageUrl).toBeNull();
-  });
-
-  it('does not overwrite a reference the user set mid-run', async () => {
-    const claimId = await library().claimReference(libraryId);
-    await library().update(libraryId, {
-      referenceImageUrl: '/r2/mine.png',
-      referenceImagePath: 'mine.png',
-    });
-    expect(
-      await library().updateReferenceIfClaimed(
-        libraryId,
-        claimId,
-        '/r2/p3.png',
-        'p3.png',
-        HASH_L
-      )
-    ).toBe(false);
-    expect((await library().getById(libraryId))?.referenceImageUrl).toBe(
-      '/r2/mine.png'
-    );
-  });
-
-  it('keeps a newer claim when an older run fails', async () => {
-    const older = await library().claimReference(libraryId);
-    const newer = await library().claimReference(libraryId);
-    await library().clearReferenceClaimIf(libraryId, older);
-    expect((await library().getById(libraryId))?.pendingReferenceClaimId).toBe(
-      newer
-    );
+    expect(missed.held).toBe(false);
+    const startedAfter = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'sheet.started'));
+    expect(startedAfter).toHaveLength(1);
   });
 });
 
@@ -1172,7 +1139,7 @@ describe('re-analysis upserts (#1113)', () => {
       { source: 'analysis', createdBy: null }
     );
   const location = async () => {
-    const row = await locs().getById(locationId);
+    const row = await locs().getById(sequenceId, locationId);
     if (!row) throw new Error('location gone');
     return row;
   };
@@ -1195,7 +1162,14 @@ describe('re-analysis upserts (#1113)', () => {
       activity: null,
     });
     await locs().createBulk(
-      [{ ...(await location()), id: generateId(), description: 'moved' }],
+      [
+        {
+          ...(await location()),
+          id: generateId(),
+          description: 'moved',
+          boundTo: null,
+        },
+      ],
       { source: 'analysis', createdBy: null }
     );
     expect((await location()).pendingPromoteReferenceVersionId).toBeNull();
@@ -1206,10 +1180,13 @@ describe('re-analysis upserts (#1113)', () => {
       markGenerating: true,
       activity: null,
     });
-    await locs().createBulk([{ ...(await location()), id: generateId() }], {
-      source: 'analysis',
-      createdBy: null,
-    });
+    await locs().createBulk(
+      [{ ...(await location()), id: generateId(), boundTo: null }],
+      {
+        source: 'analysis',
+        createdBy: null,
+      }
+    );
     expect((await location()).pendingPromoteReferenceVersionId).toBe(claim);
   });
 

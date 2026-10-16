@@ -519,7 +519,7 @@ export async function executeSmartRetry(
           .list(sequence.id)
           .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
         anyReferenceOnly
-          ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+          ? context.scopedDb.locations.listWithReferences(sequence.id)
           : Promise.resolve([]),
         context.scopedDb.characters.list(sequence.id),
       ]);

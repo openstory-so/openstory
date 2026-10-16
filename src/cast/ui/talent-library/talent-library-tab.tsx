@@ -22,15 +22,25 @@ const TALENT_FILTERS = [
  * AddTalentDialog).
  */
 export const TalentLibraryTab: React.FC<{
+  /** The search box: matches name or description, any case. */
+  query: string;
   filter: TalentFilter;
   onFilterChange: (filter: TalentFilter) => void;
-}> = ({ filter, onFilterChange }) => {
+}> = ({ query, filter, onFilterChange }) => {
   const { isAuthenticated } = useAuthGate();
   const {
-    data: talent,
+    data: everyTalent,
     isLoading,
     error,
   } = useTalent({ favoritesOnly: filter === 'favorites' });
+  const needle = query.trim().toLowerCase();
+  const talent = needle
+    ? everyTalent?.filter(
+        (t) =>
+          t.name.toLowerCase().includes(needle) ||
+          t.description?.toLowerCase().includes(needle)
+      )
+    : everyTalent;
 
   return (
     <div className="flex flex-col gap-6">
@@ -42,7 +52,13 @@ export const TalentLibraryTab: React.FC<{
         />
       )}
 
-      {!isLoading && talent && talent.length === 0 ? (
+      {!isLoading && talent?.length === 0 && needle ? (
+        <EmptyState
+          icon={<User className="h-12 w-12" />}
+          title="No talent matches"
+          description={`Nothing matches “${query.trim()}”.`}
+        />
+      ) : !isLoading && talent && talent.length === 0 ? (
         <EmptyState
           icon={<User className="h-12 w-12" />}
           title={isAuthenticated ? 'No talent yet' : 'No system talent yet'}

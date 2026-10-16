@@ -27,16 +27,6 @@ export const realtimeSchema = {
     }),
   },
 
-  // Location library events
-  location: {
-    'sheet:progress': z.object({
-      locationId: z.string(),
-      status: z.enum(['generating', 'completed', 'failed']),
-      sheetImageUrl: z.string().optional(),
-      error: z.string().optional(),
-    }),
-  },
-
   // Team billing ledger updates (#1090). Channel `billing:${teamId}`; the
   // credit-balance pill subscribes only while visible so idle sessions pay no
   // SSE cost. Payload is enough to patch the balance query; clients refetch it
@@ -365,7 +355,7 @@ export const realtimeSchema = {
           locationId: z.string(),
           libraryLocationId: z.string(),
           libraryLocationName: z.string(),
-          referenceImageUrl: z.string(),
+          referenceImageUrl: z.string().nullable(),
           description: z.string().optional(),
         })
       ),
@@ -434,13 +424,6 @@ export const realtimeSchema = {
         divergedVariantId: z.string(),
       }),
       z.object({
-        entityType: z.literal('library-location'),
-        entityId: z.string(),
-        artifact: z.literal('sheet'),
-        snapshotInputHash: z.string(),
-        divergedVariantId: z.string(),
-      }),
-      z.object({
         entityType: z.literal('talent'),
         entityId: z.string(),
         artifact: z.literal('sheet'),
@@ -493,7 +476,6 @@ export type WorkflowRun = z.infer<
 
 export const realtimeLeaves = {
   'talent.sheet:progress': realtimeSchema.talent['sheet:progress'],
-  'location.sheet:progress': realtimeSchema.location['sheet:progress'],
   'billing.balance:updated': realtimeSchema.billing['balance:updated'],
   'shotPrompt.streaming': realtimeSchema.shotPrompt.streaming,
   'shotPrompt.completed': realtimeSchema.shotPrompt.completed,
@@ -577,8 +559,6 @@ type LeafParsers = {
 const leafParsers: LeafParsers = {
   'talent.sheet:progress': (data) =>
     parseWith(realtimeLeaves['talent.sheet:progress'], data),
-  'location.sheet:progress': (data) =>
-    parseWith(realtimeLeaves['location.sheet:progress'], data),
   'billing.balance:updated': (data) =>
     parseWith(realtimeLeaves['billing.balance:updated'], data),
   'shotPrompt.streaming': (data) =>

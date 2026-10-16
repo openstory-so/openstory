@@ -170,6 +170,7 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
         text: entry.firstMention.text,
         lineNumber: entry.firstMention.lineNumber,
       },
+      rendering: PHOTOREAL_RENDERING,
     })
   );
   const elementBible: ElementBibleEntry[] = bibles.elementBible.map(

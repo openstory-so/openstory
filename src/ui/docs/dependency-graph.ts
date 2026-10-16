@@ -187,23 +187,24 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, linked to a library location when one matches, then yours to edit. Every change is a version, so a stale shot names the field that moved.',
+      "Extracted from the script at the Script stage, or one of the team's locations picked for the sequence, then yours to edit. Every change is a version. The location belongs to the team (#1695): every sequence that uses it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved.",
     counts: [
       'Description',
-      'Type, time of day, architectural style, key features, colour palette, lighting, ambiance',
+      'Type, architectural style, key features, ambiance',
+      'Rendering (the sheet only)',
     ],
     ignored: ['Name'],
   },
   {
-    id: 'libraryLocation',
-    optional: 'when a location is linked to the library',
-    label: 'Library location',
+    id: 'locationPhotos',
+    optional: 'when photos are uploaded for a location',
+    label: 'Location photos',
     kind: 'input',
     band: 'library',
     summary:
-      'A reusable location from the team library, matched onto a sequence location automatically or by hand. Its fields only reach a sequence through a regenerated reference image.',
-    counts: ['Description', 'Reference photos'],
-    ignored: ['Name'],
+      "Photos uploaded as input for a location's sheet (#1695). Any number; the sheet is drawn from all of them. Adding or removing one revokes a sheet run in flight.",
+    counts: ['The set of photos'],
+    ignored: ['Their order'],
   },
   {
     id: 'element',
@@ -289,7 +290,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'settings',
     summary: 'The model that renders sheets and stills.',
     counts: [
-      'Model id, for a talent sheet, a library location reference, and an uploaded sheet (which has no model of its own)',
+      'Model id, for a talent sheet and an uploaded sheet (which has no model of its own)',
     ],
     ignored: [
       'Switching model: a still or generated sheet is checked against the model that rendered it, so the switch applies to the next render',
@@ -507,45 +508,21 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     storedAs: 'shot_dialogue_sections.sourceKey → shots.audioClips',
   },
   {
-    id: 'libraryLocationReference',
-    versionedIn: 'location_sheet_variants',
-    optional: 'when a location is linked to the library',
-    label: 'Library location ref',
-    kind: 'artifact',
-    band: 'references',
-    summary:
-      'The library location as a sequence sees it: the location sheet draws from it and folds its hash in.',
-    counts: [
-      'Library location description',
-      'Reference photo hashes',
-      'Style config',
-      'Image model',
-    ],
-    ignored: [
-      'Name',
-      'Nothing reports it stale: its hash reaches a sequence only through the location sheet',
-    ],
-    storedAs: 'location_library.referenceInputHash',
-  },
-  {
     id: 'locationSheet',
     versionedIn: 'location_sheet_variants',
     label: 'Location sheet',
     kind: 'artifact',
     band: 'references',
     summary:
-      'Reference image for a location in this sequence. A run holds a claim: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.',
+      'Reference image for a location. One sheet, whichever sequence drew it, or none (#1695). A run holds a claim: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.',
     counts: [
-      'Location bible (type, time of day, description, architectural style, key features, colour palette, lighting, ambiance)',
-      'Library location reference hash, when linked',
-      'Style config',
+      'Location bible (type, description, architectural style, key features, ambiance, rendering)',
+      'The uploaded reference photos, as an unordered set',
       'Image model it was rendered with',
     ],
     ignored: [
+      "The sequence's style (#1695): a sheet is the location's, drawn as the bible's rendering says; the palette, grade and mood apply at the shot",
       'Name',
-      {
-        gap: "The linked library location's description and reference image, read live: they reach the sheet only through a regenerated library reference",
-      },
     ],
     storedAs:
       'location_sheet_variants.inputHash of the selected version, plus the bible version it read',
@@ -765,10 +742,10 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the bibles call extracts locations at the Script stage',
   },
   {
-    from: 'libraryLocation',
+    from: 'style',
     to: 'location',
     tracking: 'seeded',
-    note: 'matching links the sequence location to the library one',
+    note: "analysis fills the bible's rendering from the style's medium, once",
   },
   {
     from: 'script',
@@ -860,17 +837,18 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     tracking: 'pointer',
     note: 'a section is a time range of one speech; a regeneration appends a speech and re-points only the shots it was made for',
   },
-  { from: 'libraryLocation', to: 'libraryLocationReference', tracking: 'hash' },
-  { from: 'style', to: 'libraryLocationReference', tracking: 'hash' },
-  { from: 'imageModel', to: 'libraryLocationReference', tracking: 'hash' },
   {
     from: 'location',
     to: 'locationSheet',
     tracking: 'hash',
-    note: 'every bible field the sheet prompt reads',
+    note: 'every bible field the sheet prompt reads, rendering included',
   },
-  { from: 'libraryLocationReference', to: 'locationSheet', tracking: 'hash' },
-  { from: 'style', to: 'locationSheet', tracking: 'hash' },
+  {
+    from: 'locationPhotos',
+    to: 'locationSheet',
+    tracking: 'hash',
+    note: 'the set of uploaded photos; order does not count',
+  },
   {
     from: 'imageModel',
     to: 'locationSheet',

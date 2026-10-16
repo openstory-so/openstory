@@ -21,7 +21,6 @@ import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
 import {
   characterSheetInputHash,
-  libraryLocationReferenceInputHash,
   locationSheetInputHash,
   talentSheetInputHash,
 } from '@/shots/input-hash';
@@ -29,9 +28,8 @@ import {
   characterLooks,
   characterSheetVariants,
   characters,
-  locationLibrary,
   locationSheetVariants,
-  sequenceLocations,
+  locations,
   sequences,
   styles,
   talent,
@@ -47,6 +45,7 @@ import { createCharacterLooksMethods } from './character-looks';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { createCharactersMethods } from './characters';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
+import { createLocationsMethods } from './locations';
 import { createTalentSheetVariantsMethods } from './talent-sheet-variants';
 
 let client: Client;
@@ -66,8 +65,7 @@ async function seed() {
   await db.delete(talentSheetVariants);
   await db.delete(talentSheets);
   await db.delete(characters);
-  await db.delete(sequenceLocations);
-  await db.delete(locationLibrary);
+  await db.delete(locations);
   await db.delete(talent);
   await db.delete(sequences);
   await db.delete(styles);
@@ -130,6 +128,13 @@ async function seed() {
     throw new Error('test setup: talentSheets insert returned nothing');
   talentSheetId = sheet.id;
 }
+
+/** One of the team's locations, in no sequence. */
+const seedLocation = async (name: string) =>
+  await createLocationsMethods(db, team.id).createForTeam(
+    { name, rendering: 'Photoreal live action' },
+    { createdBy: userRow.id }
+  );
 
 beforeAll(async () => {
   client = createClient({ url: ':memory:' });
@@ -242,29 +247,25 @@ describe('character-sheet-variants insertDivergent', () => {
 });
 
 describe('location-sheet-variants insertDivergent', () => {
-  it('is idempotent on (parentType, parentId, model, inputHash)', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
+  it('is idempotent on (locationId, model, inputHash)', async () => {
+    const methods = createLocationSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
-    // Library locations have no FK to a parent table at the schema level
-    // (parentId is a free string), so any id will satisfy the constraint.
-    const parentId = generateId();
+    const location = await seedLocation('Harbour');
 
     const first = await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId,
+      locationId: location.id,
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('hash-snap'),
+      inputHash: locationSheetInputHash('hash-snap'),
       divergedAt,
     });
     const second = await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId,
+      locationId: location.id,
       model: 'flux-pro',
       url: 'https://example.com/divergent.png',
       status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('hash-snap'),
+      inputHash: locationSheetInputHash('hash-snap'),
       divergedAt,
     });
 
@@ -273,29 +274,22 @@ describe('location-sheet-variants insertDivergent', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('treats the same id under a different parentType as a separate row', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
+  it('keeps the same model and hash on two locations as two rows', async () => {
+    const methods = createLocationSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
-    const parentId = generateId();
+    const harbour = await seedLocation('Harbour');
+    const depot = await seedLocation('Depot');
 
-    await methods.insertDivergent({
-      parentType: 'sequence_location',
-      parentId,
-      model: 'flux-pro',
-      url: 'https://example.com/seq.png',
-      status: 'completed',
-      inputHash: locationSheetInputHash('hash'),
-      divergedAt,
-    });
-    await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId,
-      model: 'flux-pro',
-      url: 'https://example.com/lib.png',
-      status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('hash'),
-      divergedAt,
-    });
+    for (const location of [harbour, depot]) {
+      await methods.insertDivergent({
+        locationId: location.id,
+        model: 'flux-pro',
+        url: 'https://example.com/sheet.png',
+        status: 'completed',
+        inputHash: locationSheetInputHash('hash'),
+        divergedAt,
+      });
+    }
 
     const rows = await db.select().from(locationSheetVariants);
     expect(rows).toHaveLength(2);
@@ -409,39 +403,30 @@ describe('character-sheet-variants discard / undiscard / promote', () => {
   });
 });
 
-describe('location-sheet-variants discard / promote', () => {
+describe('location-sheet-variants discard', () => {
   it('discard then list excludes the discarded row', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
+    const methods = createLocationSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
-    const parentId = generateId();
+    const location = await seedLocation('Harbour');
     const variant = await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId,
+      locationId: location.id,
       model: 'flux-pro',
       url: 'https://example.com/x.png',
       status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('hash'),
+      inputHash: locationSheetInputHash('hash'),
       divergedAt,
     });
 
     await methods.discard(variant.id);
-    const active = await methods.listDivergentActiveByParent(
-      'library_location',
-      parentId
-    );
+    const active = await methods.listDivergentActiveByLocation(location.id);
     expect(active).toHaveLength(0);
   });
 
-  it('refuses to discard a sequence location’s selected reference', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
-    const [location] = await db
-      .insert(sequenceLocations)
-      .values({ sequenceId, locationId: 'loc_001', legacyName: 'Harbour' })
-      .returning();
-    if (!location) throw new Error('location insert returned nothing');
+  it('refuses to discard a location’s selected reference', async () => {
+    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const location = await seedLocation('Harbour');
     const variant = await methods.insertDivergent({
-      parentType: 'sequence_location',
-      parentId: location.id,
+      locationId: location.id,
       model: 'flux-pro',
       url: 'https://example.com/live.png',
       status: 'completed',
@@ -449,9 +434,9 @@ describe('location-sheet-variants discard / promote', () => {
       divergedAt: new Date('2026-04-29T00:00:00Z'),
     });
     await db
-      .update(sequenceLocations)
+      .update(locations)
       .set({ selectedReferenceVersionId: variant.id })
-      .where(eq(sequenceLocations.id, location.id));
+      .where(eq(locations.id, location.id));
 
     await expect(methods.discard(variant.id)).rejects.toThrow(
       /Cannot discard the selected/
@@ -498,158 +483,6 @@ describe('talent-sheet-variants discard / promote', () => {
   });
 });
 
-// Negative-case coverage for promoteAtomically. The contract is that a
-// failed pre-check must throw before the batch runs, so the live primary is
-// not updated and the variant is not soft-deleted. These pin that contract.
-
-describe('location-sheet-variants promoteAtomically (library only)', () => {
-  // `sequence_locations` lost its mirror columns in #1419, so promote for that
-  // parent type is gone — it goes through `select()`, which moves the pointer.
-  // `location_library` keeps its columns and keeps this overwrite path.
-  async function seedSequenceLocation() {
-    const [loc] = await db
-      .insert(sequenceLocations)
-      .values({
-        sequenceId,
-        locationId: `loc_${generateId()}`,
-        legacyName: 'L',
-      })
-      .returning();
-    if (!loc)
-      throw new Error('test setup: sequenceLocations insert returned nothing');
-    return loc;
-  }
-  async function seedLibraryLocation() {
-    const [loc] = await db
-      .insert(locationLibrary)
-      .values({ teamId: team.id, name: 'L' })
-      .returning();
-    if (!loc)
-      throw new Error('test setup: locationLibrary insert returned nothing');
-    return loc;
-  }
-
-  it('promotes a library parent and discards the variant', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
-    const loc = await seedLibraryLocation();
-    const variant = await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId: loc.id,
-      model: 'flux-pro',
-      url: 'https://example.com/lib.png',
-      storagePath: '/r2/lib.png',
-      status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('h'),
-      divergedAt: new Date('2026-04-29T00:00:00Z'),
-    });
-
-    await methods.promoteAtomically(
-      loc.id,
-      {
-        referenceImageUrl: variant.url,
-        referenceImagePath: variant.storagePath,
-        referenceInputHash: variant.inputHash,
-      },
-      variant.id
-    );
-
-    const [updated] = await db
-      .select()
-      .from(locationLibrary)
-      .where(eq(locationLibrary.id, loc.id));
-    if (!updated)
-      throw new Error('test setup: locationLibrary select returned nothing');
-    expect(updated.referenceImageUrl).toBe('https://example.com/lib.png');
-    expect(updated.referenceInputHash).toBe('h');
-
-    const after = await methods.getById(variant.id);
-    expect(after?.discardedAt).not.toBeNull();
-  });
-
-  it('rejects a sequence_location variant — that parent type has no promote', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
-    const loc = await seedSequenceLocation();
-    const variant = await methods.insertDivergent({
-      parentType: 'sequence_location',
-      parentId: loc.id,
-      model: 'flux-pro',
-      url: 'https://example.com/x.png',
-      status: 'completed',
-      inputHash: locationSheetInputHash('h'),
-      divergedAt: new Date('2026-04-29T00:00:00Z'),
-    });
-
-    await expect(
-      methods.promoteAtomically(
-        loc.id,
-        {
-          referenceImageUrl: variant.url,
-          referenceImagePath: null,
-          referenceInputHash: variant.inputHash,
-        },
-        variant.id
-      )
-    ).rejects.toThrow(/does not match promote target/);
-
-    const after = await methods.getById(variant.id);
-    expect(after?.discardedAt).toBeNull();
-  });
-
-  it('throws when the library parent does not exist', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
-    const ghostId = generateId();
-    const variant = await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId: ghostId,
-      model: 'flux-pro',
-      url: 'https://example.com/x.png',
-      status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('h'),
-      divergedAt: new Date('2026-04-29T00:00:00Z'),
-    });
-
-    await expect(
-      methods.promoteAtomically(
-        ghostId,
-        {
-          referenceImageUrl: variant.url,
-          referenceImagePath: null,
-          referenceInputHash: variant.inputHash,
-        },
-        variant.id
-      )
-    ).rejects.toThrow(/not found/);
-
-    const after = await methods.getById(variant.id);
-    expect(after?.discardedAt).toBeNull();
-  });
-
-  it('throws when the variant does not exist; library parent is not updated', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
-    const loc = await seedLibraryLocation();
-    await expect(
-      methods.promoteAtomically(
-        loc.id,
-        {
-          referenceImageUrl: 'https://example.com/x.png',
-          referenceImagePath: null,
-          referenceInputHash: 'h',
-        },
-        generateId()
-      )
-    ).rejects.toThrow(/not found/);
-
-    const [refreshed] = await db
-      .select()
-      .from(locationLibrary)
-      .where(eq(locationLibrary.id, loc.id));
-    if (!refreshed)
-      throw new Error('test setup: locationLibrary select returned nothing');
-    expect(refreshed.referenceImageUrl).toBeNull();
-    expect(refreshed.referenceInputHash).toBeNull();
-  });
-});
-
 describe('sheet-variants list filters and empty-input short-circuits', () => {
   it('character listDivergentActiveByCharacters returns [] for empty input (no SQL roundtrip)', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
@@ -666,53 +499,86 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     expect(await methods.listDivergentActiveByTalentSheets([])).toEqual([]);
   });
 
-  it('location listDivergentActiveByParents filters by parentType (sequence vs library)', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
+  it('location listDivergentActiveByLocations lists only the locations asked for', async () => {
+    const methods = createLocationSheetVariantsMethods(db, team.id);
     const divergedAt = new Date('2026-04-29T00:00:00Z');
-    const sharedId = generateId();
+    const harbour = await seedLocation('Harbour');
+    const depot = await seedLocation('Depot');
 
-    const seqVariant = await methods.insertDivergent({
-      parentType: 'sequence_location',
-      parentId: sharedId,
+    const harbourVariant = await methods.insertDivergent({
+      locationId: harbour.id,
       model: 'flux-pro',
-      url: 'https://example.com/seq.png',
+      url: 'https://example.com/harbour.png',
       status: 'completed',
       inputHash: locationSheetInputHash('hs'),
       divergedAt,
     });
-    const libVariant = await methods.insertDivergent({
-      parentType: 'library_location',
-      parentId: sharedId,
+    const depotVariant = await methods.insertDivergent({
+      locationId: depot.id,
       model: 'flux-pro',
-      url: 'https://example.com/lib.png',
+      url: 'https://example.com/depot.png',
       status: 'completed',
-      inputHash: libraryLocationReferenceInputHash('hl'),
+      inputHash: locationSheetInputHash('hs'),
       divergedAt,
     });
 
-    const seqOnly = await methods.listDivergentActiveByParents(
-      'sequence_location',
-      [sharedId]
+    const one = await methods.listDivergentActiveByLocations([harbour.id]);
+    expect(one.map((v) => v.id)).toEqual([harbourVariant.id]);
+    const both = await methods.listDivergentActiveByLocations([
+      harbour.id,
+      depot.id,
+    ]);
+    expect(both.map((v) => v.id).sort()).toEqual(
+      [harbourVariant.id, depotVariant.id].sort()
     );
-    expect(seqOnly.map((v) => v.id)).toEqual([seqVariant.id]);
-    expect(seqOnly.map((v) => v.id)).not.toContain(libVariant.id);
-
-    const libOnly = await methods.listDivergentActiveByParents(
-      'library_location',
-      [sharedId]
-    );
-    expect(libOnly.map((v) => v.id)).toEqual([libVariant.id]);
-    expect(libOnly.map((v) => v.id)).not.toContain(seqVariant.id);
   });
 
-  it('location listDivergentActiveByParents returns [] for empty input', async () => {
-    const methods = createLocationSheetVariantsMethods(db);
-    expect(
-      await methods.listDivergentActiveByParents('sequence_location', [])
-    ).toEqual([]);
-    expect(
-      await methods.listDivergentActiveByParents('library_location', [])
-    ).toEqual([]);
+  it('another team reads and writes none of a location’s sheet versions', async () => {
+    const methods = createLocationSheetVariantsMethods(db, team.id);
+    const harbour = await seedLocation('Harbour');
+    const variant = await methods.insertDivergent({
+      locationId: harbour.id,
+      model: 'flux-pro',
+      url: 'https://example.com/harbour.png',
+      status: 'completed',
+      inputHash: locationSheetInputHash('hs'),
+      divergedAt: new Date('2026-04-29T00:00:00Z'),
+    });
+
+    const other = createLocationSheetVariantsMethods(db, generateId());
+    expect(await other.getById(variant.id)).toBeNull();
+    expect(await other.getByIds([variant.id])).toEqual([]);
+    expect(await other.listByLocation(harbour.id)).toEqual([]);
+    expect(await other.listHistoryByLocation(harbour.id)).toEqual([]);
+    expect(await other.listDivergentActiveByLocation(harbour.id)).toEqual([]);
+    expect(await other.listDivergentActiveByLocations([harbour.id])).toEqual(
+      []
+    );
+    await expect(other.discard(variant.id)).rejects.toThrow(/not found/);
+    await expect(other.undiscard(variant.id)).rejects.toThrow(/not found/);
+    await expect(
+      other.select(null, harbour.id, variant.id, { actorId: null })
+    ).rejects.toThrow(/not found/);
+    await expect(
+      other.applyConvergent({
+        locationDbId: harbour.id,
+        url: 'https://example.com/theirs.png',
+        storagePath: '/r2/theirs.png',
+        inputHash: null,
+        model: 'upload',
+      })
+    ).rejects.toThrow(/not found/);
+    await other.setPortrait(variant.id, 'https://example.com/portrait.png');
+
+    const after = await methods.getById(variant.id);
+    expect(after?.discardedAt).toBeNull();
+    expect(after?.portraitUrl).toBeNull();
+    expect(await methods.listByLocation(harbour.id)).toHaveLength(1);
+  });
+
+  it('location listDivergentActiveByLocations returns [] for empty input', async () => {
+    const methods = createLocationSheetVariantsMethods(db, team.id);
+    expect(await methods.listDivergentActiveByLocations([])).toEqual([]);
   });
 
   it('character listDivergentActiveByCharacter excludes discarded rows but keeps all-divergent on listDivergentByCharacter', async () => {
@@ -745,6 +611,10 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
     expect(allDivergent).toHaveLength(2);
   });
 });
+
+// Negative-case coverage for promoteAtomically. The contract is that a
+// failed pre-check must throw before the batch runs, so the live primary is
+// not updated and the variant is not soft-deleted. These pin that contract.
 
 describe('talent-sheet-variants promoteAtomically negative cases', () => {
   it('throws when the talent sheet does not exist; variant is not soft-deleted', async () => {

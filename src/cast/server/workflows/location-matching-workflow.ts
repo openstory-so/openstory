@@ -12,10 +12,8 @@ import { buildLocationMatchingPromptVariables } from '@/cast/server/location-mat
 import { locationMatchResponseSchema } from '@/sequences/response-schemas';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { getGenerationChannel } from '@/platform/realtime';
-import { GENERATION_STAGE_META } from '@/sequences/pipeline';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { durableLLMCallCf } from '@/models/server/llm-call-helper';
-import { waitForLocationReferences } from './wait-for-sheets';
 import type {
   LibraryLocationMatch,
   LocationMatchingWorkflowInput,
@@ -45,42 +43,19 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
 
     const locationBible = input.locationBible;
 
-    // Location matching drops any library location without a `referenceImageUrl`
-    // (see build-location-matches below). A location the user just added while
-    // creating this sequence — especially one created from name/description with
-    // no uploaded image — only gets its reference once the fire-and-forget
-    // `/library-location-sheet` workflow finishes. Wait (bounded) for those
-    // references first so pre-selected locations aren't silently skipped.
+    // The team locations the writer picked. A match is a link and draws no
+    // sheet (#1695), so a pick whose sheet is still drawing (or failed) is
+    // matched like any other: nothing waits for it. A location deleted from
+    // the team is left out of the read.
     const referenceRows =
       suggestedLocationIds?.length && input.teamId
-        ? (
-            await waitForLocationReferences(
-              step,
-              scopedDb.liveRead,
-              suggestedLocationIds,
-              {
-                // Surface the wait in the generation progress dialog (casting runs
-                // inside the Script phase). Only emitted
-                // when we actually have to wait, so a ready library never
-                // flashes a spurious status.
-                onWaitNeeded: async () => {
-                  if (!sequenceId) return;
-                  await getGenerationChannel(sequenceId).emit(
-                    'generation.phase:start',
-                    {
-                      phase: GENERATION_STAGE_META.script.phase,
-                      phaseName: 'Waiting for location references…',
-                    }
-                  );
-                },
-              }
-            )
-          ).rows
+        ? await step.do('read-picked-locations', async () =>
+            scopedDb.liveRead.locations.getCurrentByIds(suggestedLocationIds)
+          )
         : [];
 
-    // The wait's final poll IS the read. Name/description come from the
-    // trigger-time snapshot; only `referenceImageUrl` legitimately arrives
-    // late (fire-and-forget `/library-location-sheet`).
+    // Name/description come from the trigger-time snapshot; only the sheet
+    // can have moved since the trigger.
     const snapshotById = new Map(
       (input.suggestedLocations ?? []).map((l) => [l.locationId, l])
     );
@@ -135,7 +110,7 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
           const libraryLoc = libraryLocationList.find(
             (lib) => lib.id === match.libraryLocationId
           );
-          if (!libraryLoc?.referenceImageUrl) continue;
+          if (!libraryLoc) continue;
 
           const location = locationBible.find(
             (loc) => loc.locationId === match.locationId
@@ -149,8 +124,6 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
             libraryLocationId: match.libraryLocationId,
             libraryLocationName: libraryLoc.name,
             referenceImageUrl: libraryLoc.referenceImageUrl,
-            description: libraryLoc.description ?? undefined,
-            referenceInputHash: libraryLoc.referenceInputHash,
           });
         }
 
@@ -168,7 +141,6 @@ export class LocationMatchingWorkflow extends OpenStoryWorkflowEntrypoint<Locati
                   libraryLocationId: m.libraryLocationId,
                   libraryLocationName: m.libraryLocationName,
                   referenceImageUrl: m.referenceImageUrl,
-                  description: m.description ?? undefined,
                 };
               }),
             }

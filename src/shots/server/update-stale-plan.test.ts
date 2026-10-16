@@ -241,7 +241,7 @@ function buildScopedDb(
     characters: {
       list: () => Promise.resolve([]),
     },
-    sequenceLocations: {
+    locations: {
       list: () => Promise.resolve([]),
       listWithReferences: () => Promise.resolve([]),
     },

@@ -28,11 +28,12 @@ import {
   frames,
   videoVariants,
   locationBibleVersions,
+  locations,
   scenes,
   sequenceCast,
   sequenceElements,
   sequenceEvents,
-  sequenceLocations,
+  sequenceLocationLinks,
   shotDialogueClaims,
   shots,
   styles,
@@ -603,24 +604,25 @@ export function createSequenceEventsMethods(db: Database) {
           ? []
           : db
               .select({
-                id: sequenceLocations.id,
-                deletedAt: sequenceLocations.deletedAt,
+                id: locations.id,
+                deletedAt: locations.deletedAt,
                 name: locationBibleVersions.name,
+                linkId: sequenceLocationLinks.id,
+                removedAt: sequenceLocationLinks.removedAt,
               })
-              .from(sequenceLocations)
+              .from(locations)
               .leftJoin(
                 locationBibleVersions,
-                eq(
-                  locationBibleVersions.id,
-                  sequenceLocations.selectedBibleVersionId
+                eq(locationBibleVersions.id, locations.selectedBibleVersionId)
+              )
+              .leftJoin(
+                sequenceLocationLinks,
+                and(
+                  eq(sequenceLocationLinks.locationId, locations.id),
+                  eq(sequenceLocationLinks.sequenceId, sequenceId)
                 )
               )
-              .where(
-                and(
-                  eq(sequenceLocations.sequenceId, sequenceId),
-                  inArray(sequenceLocations.id, ids('location'))
-                )
-              ),
+              .where(inArray(locations.id, ids('location'))),
         ids('element').length === 0
           ? []
           : db
@@ -895,7 +897,10 @@ export function createSequenceEventsMethods(db: Database) {
           const location = locationById.get(targetId);
           targetLabel = location?.name || 'Location';
           link =
-            location && isNullDate(location.deletedAt)
+            location &&
+            isNullDate(location.deletedAt) &&
+            location.linkId != null &&
+            isNullDate(location.removedAt)
               ? {
                   to: '/sequences/$id/locations/$locationId',
                   params: { id: sequenceId, locationId: location.id },

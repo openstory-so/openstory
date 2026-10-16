@@ -64,7 +64,7 @@ export type ShotPromptContextSequence = {
  */
 export type ShotPromptContextRefs = {
   characters: Awaited<ReturnType<ScopedDb['characters']['list']>>;
-  locations: Awaited<ReturnType<ScopedDb['sequenceLocations']['list']>>;
+  locations: Awaited<ReturnType<ScopedDb['locations']['list']>>;
   elements: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>;
   style: Awaited<ReturnType<ScopedDb['styles']['getById']>> | null;
 };
@@ -72,7 +72,7 @@ export type ShotPromptContextRefs = {
 export async function loadShotPromptContext(args: {
   scopedDb: Pick<
     ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    'characters' | 'locations' | 'sequenceElements' | 'styles'
   >;
   sequence: ShotPromptContextSequence;
   scene: Scene;
@@ -108,7 +108,7 @@ export async function loadShotPromptContext(args: {
     ? [refs.characters, refs.locations, refs.elements, refs.style]
     : await Promise.all([
         scopedDb.characters.list(sequence.id),
-        scopedDb.sequenceLocations.list(sequence.id),
+        scopedDb.locations.list(sequence.id),
         scopedDb.sequenceElements.list(sequence.id),
         hasSnapshot || !sequence.styleId
           ? Promise.resolve(null)
@@ -154,7 +154,7 @@ export async function loadShotPromptContext(args: {
 export async function loadNarrowShotPromptContext(args: {
   scopedDb: Pick<
     ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    'characters' | 'locations' | 'sequenceElements' | 'styles'
   >;
   sequence: ShotPromptContextSequence;
   scene: Scene;

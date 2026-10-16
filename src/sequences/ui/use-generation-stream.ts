@@ -229,7 +229,10 @@ function mapEventToAction(
               locationId: asString(m.locationId),
               libraryLocationId: asString(m.libraryLocationId),
               libraryLocationName: asString(m.libraryLocationName),
-              referenceImageUrl: asString(m.referenceImageUrl),
+              referenceImageUrl:
+                typeof m.referenceImageUrl === 'string'
+                  ? m.referenceImageUrl
+                  : null,
               description: asOptionalString(m.description),
             })
           ),

@@ -15,10 +15,6 @@
 import { and, eq } from 'drizzle-orm';
 import type { drizzle as drizzleD1 } from 'drizzle-orm/d1';
 import type { Database } from './client';
-import {
-  DEFAULT_SYSTEM_LOCATIONS,
-  getLocationSheetUrl,
-} from '@/cast/server/location/location-templates';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
 import {
   DEFAULT_SYSTEM_TALENT,
@@ -28,8 +24,6 @@ import type { createD1HttpClient } from './client-d1-http';
 import { generateId } from '@/platform/id';
 import {
   appMetadata,
-  locationLibrary,
-  locationSheets,
   styles,
   talent,
   talentSheets,
@@ -68,7 +62,6 @@ async function computeSeedHash(): Promise<string> {
     {
       styles: DEFAULT_SYSTEM_STYLES,
       talent: DEFAULT_SYSTEM_TALENT,
-      locations: DEFAULT_SYSTEM_LOCATIONS,
       renames: RENAMES,
       assetsDomain: import.meta.env.VITE_R2_PUBLIC_ASSETS_DOMAIN ?? '',
     },
@@ -372,93 +365,4 @@ async function syncSystemTemplates(
   }
 
   log(`Synced talent sheets: ${talentSheetsInserted} inserted`);
-
-  // 5. Sync system locations
-  const existingLocations = await db
-    .select()
-    .from(locationLibrary)
-    .where(eq(locationLibrary.teamId, systemTeam.id));
-
-  const existingLocationsByName = new Map(
-    existingLocations.map((l) => [l.name, l])
-  );
-  let locationsInserted = 0;
-  let locationsUpdated = 0;
-
-  for (const template of DEFAULT_SYSTEM_LOCATIONS) {
-    const existing = existingLocationsByName.get(template.name);
-
-    if (existing) {
-      await db
-        .update(locationLibrary)
-        .set({
-          description: template.description,
-          isPublic: template.isPublic,
-          isTemplate: template.isTemplate,
-          referenceImageUrl: template.referenceImageUrl,
-          updatedAt: new Date(),
-        })
-        .where(eq(locationLibrary.id, existing.id));
-      locationsUpdated++;
-    } else {
-      await db.insert(locationLibrary).values({
-        ...template,
-        teamId: systemTeam.id,
-        createdBy: null,
-      });
-      locationsInserted++;
-      log(`+ location ${template.name}`);
-    }
-  }
-
-  log(
-    `Synced locations: ${locationsUpdated} updated, ${locationsInserted} inserted`
-  );
-
-  // 5b. Sync system location sheets
-  const allSystemLocations = await db
-    .select()
-    .from(locationLibrary)
-    .where(eq(locationLibrary.teamId, systemTeam.id));
-
-  let locationSheetsInserted = 0;
-
-  for (const template of DEFAULT_SYSTEM_LOCATIONS) {
-    const locationRecord = allSystemLocations.find(
-      (l) => l.name === template.name
-    );
-    if (!locationRecord) continue;
-
-    // Check if a default sheet already exists
-    const existingSheets = await db
-      .select()
-      .from(locationSheets)
-      .where(
-        and(
-          eq(locationSheets.locationId, locationRecord.id),
-          eq(locationSheets.isDefault, true)
-        )
-      );
-
-    if (existingSheets.length > 0) continue;
-
-    await db.insert(locationSheets).values({
-      id: generateId(),
-      locationId: locationRecord.id,
-      name: 'Default',
-      imageUrl: getLocationSheetUrl(template.name),
-      imagePath: `locations/${template.name
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')}/sheet.webp`,
-      isDefault: true,
-      source: 'ai_generated',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    locationSheetsInserted++;
-    log(`+ location sheet ${template.name}`);
-  }
-
-  log(`Synced location sheets: ${locationSheetsInserted} inserted`);
 }

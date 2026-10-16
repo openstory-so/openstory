@@ -77,7 +77,7 @@ export const characterBibleFieldsSchema = z.object({
   }),
 });
 
-/** The user-editable location bible fields (#1108); the library link stays on recast. */
+/** The user-editable location bible fields (#1108). */
 export const locationBibleFieldsSchema = z.object({
   type: z.enum(['interior', 'exterior', 'both']).optional(),
   description: bibleField.optional(),
@@ -85,4 +85,8 @@ export const locationBibleFieldsSchema = z.object({
   keyFeatures: bibleField.optional(),
   ambiance: bibleField.optional(),
   consistencyTag: bibleField.optional(),
+  rendering: bibleField.optional().meta({
+    description:
+      'What the place is rendered as, e.g. "Photoreal live action" or "3D animated, Pixar-like". A new location in a sequence takes the sequence style’s when left out.',
+  }),
 });

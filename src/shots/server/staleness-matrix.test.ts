@@ -34,6 +34,7 @@ import type {
 } from '@/platform/server/db/schema';
 import type { MotionDialogue, Scene } from '@/shots/scene-analysis.schema';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { liveReferenceIdentity } from '@/motion/reference-provenance';
 import { assembleSequenceSegments } from '@/shots/scene-segments';
 import { dialogueLinesKey } from '@/shots/shot-dialogue';
@@ -54,10 +55,12 @@ import {
   computeCharacterSheetHashFromDtoBefore2065,
   computeLocationSheetHashFromDto,
   computeStyleConfigHash,
+  locationSheetBibleFields,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
 import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import {
+  computeLocationSheetInputHashLegacy,
   computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
   computeSequenceMusicInputHash,
@@ -163,6 +166,10 @@ const BOB = character({
 
 const BEACH = asStub<SequenceLocationWithReference>({
   id: 'l-beach',
+  // The team's (#1695); `seq` reads it through its link.
+  teamId: 'team-1',
+  linkId: 'link-beach-seq',
+  attached: false,
   sequenceId: 'seq',
   locationId: 'beach',
   name: 'Beach',
@@ -171,11 +178,12 @@ const BEACH = asStub<SequenceLocationWithReference>({
   architecturalStyle: null,
   keyFeatures: null,
   ambiance: null,
+  rendering: PHOTOREAL_RENDERING,
   consistencyTag: 'beach_tag',
   firstMentionSceneId: 'scene-1',
   firstMentionText: 'BEACH',
   firstMentionLine: 1,
-  libraryLocationId: null,
+  legacyLibraryReferenceHash: null,
   referenceStatus: 'completed',
   selectedReferenceVersionId: 'lsv-beach-1',
   selectedBibleVersionId: null,
@@ -326,7 +334,7 @@ function shotDb(
       listBibleVersionsBySequence: () => Promise.resolve(characterVersions),
     },
     characterLooks: { listVersionsBySequence: empty },
-    sequenceLocations: { listBibleVersionsBySequence: empty },
+    locations: { listBibleVersionsBySequence: empty },
     sceneScriptVersions: { listBySequence: empty, getSelected: none },
     scenes: { getById: none },
     sequences: { listStyleVersions: empty },
@@ -910,6 +918,92 @@ describe('staleness matrix — a shot and its clip', () => {
 });
 
 // ---------------------------------------------------------------------------
+// One location, two sequences (#1695) — the location is the team's. Each
+// sequence reads the same row through its own link, so an edit made from one
+// stales the other's shots by derivation, with no write to the other.
+// ---------------------------------------------------------------------------
+
+describe('staleness matrix — a location two sequences use (#1695)', () => {
+  /** The other sequence: its own style, and its own link to the beach. */
+  const OTHER: World = {
+    ...BASE,
+    sequence: {
+      ...BASE.sequence,
+      id: 'seq-2',
+      styleConfig: {
+        ...STYLE,
+        look: { ...STYLE.look, mood: 'bleak' },
+      },
+    },
+    locations: [{ ...BEACH, sequenceId: 'seq-2', linkId: 'link-beach-seq-2' }],
+  };
+  const both = async (edit: Partial<SequenceLocationWithReference>) => {
+    const stamps = {
+      here: await stampShot(BASE),
+      there: await stampShot(OTHER),
+    };
+    // One edit of the team's location; both sequences read it.
+    const verdictsOf = async (world: World, stamped: Stamps) => {
+      const v = await shotVerdicts(withLocation(world, edit), stamped);
+      return {
+        still: v.thumbnail,
+        visualPrompt: v.visualPrompt,
+        motionPrompt: v.motionPrompt,
+      };
+    };
+    return {
+      here: await verdictsOf(BASE, stamps.here),
+      there: await verdictsOf(OTHER, stamps.there),
+    };
+  };
+
+  it('each sequence reads fresh against its own stamp', async () => {
+    const fresh = {
+      still: 'fresh',
+      visualPrompt: 'fresh',
+      motionPrompt: 'fresh',
+    };
+    expect(await both({})).toEqual({ here: fresh, there: fresh });
+  });
+
+  it("a bible edit made from one sequence stales the other's prompts", async () => {
+    const stale = {
+      still: 'fresh',
+      visualPrompt: 'stale',
+      motionPrompt: 'stale',
+    };
+    expect(await both({ description: 'black volcanic sand' })).toEqual({
+      here: stale,
+      there: stale,
+    });
+  });
+
+  it("a sheet drawn from one sequence stales the other's stills", async () => {
+    const stale = {
+      still: 'stale',
+      visualPrompt: 'fresh',
+      motionPrompt: 'fresh',
+    };
+    expect(await both({ selectedReferenceVersionId: 'lsv-2' })).toEqual({
+      here: stale,
+      there: stale,
+    });
+  });
+
+  it('a rename stales neither', async () => {
+    const fresh = {
+      still: 'fresh',
+      visualPrompt: 'fresh',
+      motionPrompt: 'fresh',
+    };
+    expect(await both({ name: 'The Shore' })).toEqual({
+      here: fresh,
+      there: fresh,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Looks (#2015) — a scene dresses each character in one look. The still
 // follows that look's sheet and the prompts its clothing, so a look edit
 // reaches only the scenes that wear it.
@@ -1193,12 +1287,11 @@ const TALENT = {
     },
   ],
 };
-const LIBRARY = {
-  id: 'lib-1',
-  description: 'a real beach',
-  referenceImageUrl: '/r2/library-1.png',
-  referenceInputHash: 'library-ref-1',
-};
+/** The photos uploaded as input for the beach's sheet (#1695). */
+const PHOTOS = [
+  { url: '/r2/beach-photo-a.png' },
+  { url: '/r2/beach-photo-b.png' },
+];
 
 type CastWorld = {
   sequence: {
@@ -1211,7 +1304,7 @@ type CastWorld = {
   alice: CharacterRow;
   beach: SequenceLocationWithReference;
   talent: typeof TALENT;
-  library: typeof LIBRARY;
+  photos: { url: string }[];
 };
 
 const CAST_BASE: CastWorld = {
@@ -1223,9 +1316,9 @@ const CAST_BASE: CastWorld = {
     imageModel: DEFAULT_IMAGE_MODEL,
   },
   alice: { ...ALICE, talentId: 't-1' },
-  beach: { ...BEACH, libraryLocationId: 'lib-1' },
+  beach: BEACH,
   talent: TALENT,
-  library: LIBRARY,
+  photos: PHOTOS,
 };
 
 function castDb(world: CastWorld) {
@@ -1234,9 +1327,13 @@ function castDb(world: CastWorld) {
     teamId: 'team-1',
     sequences: { getById: () => Promise.resolve(world.sequence) },
     characters: { getById: () => Promise.resolve(withLooks(world.alice)) },
-    sequenceLocations: { getById: () => Promise.resolve(world.beach) },
+    // The same location through any sequence's link, or from none.
+    locations: {
+      getById: () => Promise.resolve(world.beach),
+      getCurrent: () => Promise.resolve(world.beach),
+      listPhotos: () => Promise.resolve(world.photos),
+    },
     talent: { getWithRelations: () => Promise.resolve(world.talent) },
-    locations: { getById: () => Promise.resolve(world.library) },
     // The live sheet pins the model it was drawn with.
     characterSheetVariants: {
       getById: () => Promise.resolve({ model: DEFAULT_IMAGE_MODEL }),
@@ -1387,9 +1484,10 @@ const SHEET_MATRIX: SheetRow[] = [
         },
       },
     }),
-    // A character sheet reads no style since `rendering` (#2017).
+    // A character sheet reads no style since `rendering` (#2017), and a
+    // location sheet none since its own (#1695).
     character: 'fresh',
-    location: 'stale',
+    location: 'fresh',
   },
   {
     mutation: 'sequence image model switched (sheets pin their own, #1785)',
@@ -1428,17 +1526,42 @@ const SHEET_MATRIX: SheetRow[] = [
     location: 'fresh',
   },
   {
-    mutation: 'library location reference regenerated',
+    mutation: "the beach's rendering edited (#1695)",
     apply: (w) => ({
       ...w,
-      library: {
-        ...w.library,
-        referenceImageUrl: '/r2/library-2.png',
-        referenceInputHash: 'library-ref-2',
-      },
+      beach: { ...w.beach, rendering: '3D animated, Pixar-like' },
     }),
     character: 'fresh',
     location: 'stale',
+  },
+  // The reference photos are an input to the sheet (#1695; this edge replaces
+  // the library description that never reached the hash, #1835).
+  {
+    mutation: 'a reference photo added',
+    apply: (w) => ({
+      ...w,
+      photos: [...w.photos, { url: '/r2/beach-photo-c.png' }],
+    }),
+    character: 'fresh',
+    location: 'stale',
+  },
+  {
+    mutation: 'a reference photo removed',
+    apply: (w) => ({ ...w, photos: w.photos.slice(1) }),
+    character: 'fresh',
+    location: 'stale',
+  },
+  {
+    mutation: 'every reference photo removed',
+    apply: (w) => ({ ...w, photos: [] }),
+    character: 'fresh',
+    location: 'stale',
+  },
+  {
+    mutation: 'the reference photos listed in another order',
+    apply: (w) => ({ ...w, photos: [...w.photos].reverse() }),
+    character: 'fresh',
+    location: 'fresh',
   },
 ];
 
@@ -1634,14 +1757,132 @@ describe('staleness matrix — reference sheets', () => {
     }
   );
 
-  // The location sheet prompt reads the library location's description and
-  // image from the library row, but the hash only sees the library
-  // reference's own hash, which moves when that reference is regenerated and
-  // not when the description is edited. `recastLocationFn` takes those values
-  // from the client, so hashing them needs care (#1823).
-  it.todo(
-    'library location description edited, reference not regenerated → location sheet stale'
-  );
+  describe("a location is the team's (#1695)", () => {
+    /** Another sequence that uses the beach: its own style and image model. */
+    const elsewhere = (world: CastWorld): CastWorld => ({
+      ...world,
+      sequence: {
+        ...world.sequence,
+        id: 'seq-2',
+        imageModel: 'flux_2_pro',
+        styleConfig: {
+          ...STYLE,
+          look: { ...STYLE.look, mood: 'bleak', lighting: 'hard noon sun' },
+        },
+      },
+      beach: {
+        ...world.beach,
+        sequenceId: 'seq-2',
+        linkId: 'link-beach-seq-2',
+      },
+    });
+    const from = async (world: CastWorld, sequenceId: string | null) =>
+      (
+        await readReferenceStaleness(
+          castDb(world),
+          sequenceId,
+          'location',
+          'l-beach'
+        )
+      ).status;
+
+    it('a sheet stamped from one sequence reads fresh from another and from none', async () => {
+      const stamped = await stampSheets();
+      expect(await from(stamped, 'seq')).toBe('fresh');
+      expect(await from(elsewhere(stamped), 'seq-2')).toBe('fresh');
+      expect(await from(stamped, null)).toBe('fresh');
+    });
+
+    it('an edit made from one sequence stales the sheet in every sequence and from none', async () => {
+      const stamped = await stampSheets();
+      const edited = {
+        ...stamped,
+        beach: { ...stamped.beach, description: 'black volcanic sand' },
+      };
+      expect(await from(edited, 'seq')).toBe('stale');
+      expect(await from(elsewhere(edited), 'seq-2')).toBe('stale');
+      expect(await from(edited, null)).toBe('stale');
+    });
+
+    // A digest stamped before this change read the sequence's style and the
+    // library reference the sheet was drawn from. It is verified with the
+    // style of the sequence the check is made from and the hash the migration
+    // kept on the row, until `LEGACY_HASH_UNTIL`.
+    const stampedBefore1695 = async (
+      kind: 'pre-1695' | 'pre-1785' | 'named'
+    ): Promise<CastWorld> => {
+      const beach = {
+        ...CAST_BASE.beach,
+        legacyLibraryReferenceHash: 'library-ref-1',
+      };
+      return {
+        ...CAST_BASE,
+        beach: {
+          ...beach,
+          referenceInputHash: await computeLocationSheetInputHashLegacy(
+            {
+              locationBible: locationSheetBibleFields(
+                toLocationMetadata(beach)
+              ),
+              referencePhotoHashes: PHOTOS.map((photo) => photo.url),
+              imageModel: DEFAULT_IMAGE_MODEL,
+            },
+            kind,
+            {
+              libraryLocationReferenceHash: 'library-ref-1',
+              styleConfigHash: await computeStyleConfigHash(STYLE),
+              unstyledConfigHash: await computeStyleConfigHash(null),
+            }
+          ),
+        },
+      };
+    };
+
+    it.each(['pre-1695', 'pre-1785', 'named'] as const)(
+      'a %s sheet still reads fresh from its own sequence',
+      async (kind) => {
+        expect(await from(await stampedBefore1695(kind), 'seq')).toBe('fresh');
+      }
+    );
+
+    it('a sheet stamped before reads stale from a sequence of another style, and from none', async () => {
+      const stamped = await stampedBefore1695('pre-1695');
+      expect(await from(elsewhere(stamped), 'seq-2')).toBe('stale');
+      expect(await from(stamped, null)).toBe('stale');
+    });
+
+    it('a sheet stamped before still reads stale after a style change in its own sequence', async () => {
+      const stamped = await stampedBefore1695('pre-1695');
+      expect(
+        await from(
+          {
+            ...stamped,
+            sequence: {
+              ...stamped.sequence,
+              styleConfig: {
+                ...STYLE,
+                look: { ...STYLE.look, lighting: 'hard noon sun' },
+              },
+            },
+          },
+          'seq'
+        )
+      ).toBe('stale');
+    });
+
+    it('a sheet stamped before reads stale once the row no longer names its library reference', async () => {
+      const stamped = await stampedBefore1695('pre-1695');
+      expect(
+        await from(
+          {
+            ...stamped,
+            beach: { ...stamped.beach, legacyLibraryReferenceHash: null },
+          },
+          'seq'
+        )
+      ).toBe('stale');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1856,17 +2097,12 @@ describe('stamp == verify', () => {
       architecturalStyle: '',
       keyFeatures: 'driftwood',
       ambiance: '',
+      rendering: '3D animated, Pixar-like',
       consistencyTag: 'beach_tag',
       firstMention: { sceneId: 'scene-1', text: 'BEACH', lineNumber: 1 },
     };
-    const libraryMatch = {
-      locationId: 'beach',
-      libraryLocationId: 'lib-1',
-      referenceImageUrl: LIBRARY.referenceImageUrl,
-      description: LIBRARY.description,
-      referenceInputHash: LIBRARY.referenceInputHash,
-    };
-    // `LocationBibleWorkflow`'s child payload, as it stamps it.
+    // `LocationBibleWorkflow`'s child payload, as it stamps it: no style,
+    // and no photos (analysis made the place here, #1695).
     const stamp = await computeLocationSheetHashFromDto({
       userId: 'user-1',
       teamId: 'team-1',
@@ -1876,21 +2112,23 @@ describe('stamp == verify', () => {
       locationName: entry.name,
       locationMetadata: entry,
       imageModel: DEFAULT_IMAGE_MODEL,
-      referenceImageUrl: libraryMatch.referenceImageUrl,
-      libraryLocationDescription: libraryMatch.description,
-      styleConfig: STYLE,
-      libraryLocationReferenceHash: libraryMatch.referenceInputHash,
+      referencePhotoUrls: [],
     });
 
     // What D1 holds after `create-location-records`, read back.
+    const { boundTo, ...insert } = buildLocationInsert({
+      sequenceId: 'seq',
+      location: entry,
+      libraryMatch: undefined,
+      referenceStatus: 'completed',
+    });
+    expect(boundTo).toBeNull();
     const row = asStub<SequenceLocationWithReference>({
-      ...buildLocationInsert({
-        sequenceId: 'seq',
-        location: entry,
-        libraryMatch: asStub(libraryMatch),
-        referenceStatus: 'completed',
-      }),
+      ...insert,
       id: 'l-beach',
+      linkId: 'link-beach-seq',
+      attached: false,
+      legacyLibraryReferenceHash: null,
       selectedReferenceVersionId: 'lsv-1',
       selectedBibleVersionId: null,
       referenceInputHash: stamp,
@@ -1898,12 +2136,15 @@ describe('stamp == verify', () => {
       deletedAt: null,
     });
     expect(toLocationMetadata(row)).toEqual(entry);
-    const status = await readReferenceStaleness(
-      castDb({ ...CAST_BASE, beach: row }),
-      'seq',
-      'location',
-      row.id
-    );
-    expect(status.status).toBe('fresh');
+    const world = { ...CAST_BASE, beach: row, photos: [] };
+    for (const sequenceId of ['seq', null]) {
+      const status = await readReferenceStaleness(
+        castDb(world),
+        sequenceId,
+        'location',
+        row.id
+      );
+      expect(status.status).toBe('fresh');
+    }
   });
 });

@@ -4,7 +4,7 @@ import { wearLook } from '@/cast/character-looks';
 import { resolveSequenceStyle } from '@/cast/server/sheets/sequence-style';
 import { legacyStylingParts } from '@/cast/server/bibles-from-scoped';
 import { requireCharacterLook } from '@/cast/server/character-look';
-import { requireCharacter } from '@/cast/server/cast-edit';
+import { requireCharacter, requireLocation } from '@/cast/server/cast-edit';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { productionAccess } from '@/sequences/server/production-access';
 import { buildCharacterSheetDraft } from './sheets/character-sheet-trigger';
@@ -15,6 +15,7 @@ import {
   uploadedCharacterSheetHashMatchesStored,
   finishCharacterSheetPayload,
   locationSheetHashMatchesStored,
+  uploadedLocationSheetHashMatchesStored,
 } from './workflows/sheet-snapshots';
 
 /**
@@ -25,7 +26,8 @@ import {
  */
 export async function readReferenceStaleness(
   scopedDb: ScopedDb,
-  sequenceId: string,
+  /** Null from the Characters or Locations page: no sequence model or style. */
+  sequenceId: string | null,
   kind: 'character' | 'location',
   entityId: string
 ): Promise<{ status: SheetStaleness; applicable: boolean }> {
@@ -34,27 +36,46 @@ export async function readReferenceStaleness(
   if (kind === 'character') {
     return readLookSheetStaleness(scopedDb, sequenceId, entityId, entityId);
   }
-  const access = productionAccess(scopedDb);
-  const context = {
-    scopedDb,
-    sequence: await access.sequence(sequenceId),
-    userId: scopedDb.userId,
-    teamId: scopedDb.teamId,
-  };
-
-  const location = await access.location(sequenceId, entityId);
+  const sequence =
+    sequenceId === null
+      ? null
+      : await productionAccess(scopedDb).sequence(sequenceId);
+  const location = await requireLocation(scopedDb, sequenceId, entityId);
   const stored = location.referenceInputHash;
   if (location.referenceStatus === 'generating')
     return { status: 'generating', applicable: true };
   if (!stored) return { status: 'untracked', applicable: true };
-  const payload = await buildRegenerateLocationSheetPayload({
-    ...context,
-    location,
-  });
+  const [payload, liveVersion] = await Promise.all([
+    buildRegenerateLocationSheetPayload({
+      scopedDb,
+      sequence,
+      userId: scopedDb.userId,
+      teamId: scopedDb.teamId,
+      location,
+    }),
+    location.selectedReferenceVersionId
+      ? scopedDb.locationSheetVariants.getById(
+          location.selectedReferenceVersionId
+        )
+      : null,
+  ]);
   if (!payload.snapshotInputHash)
     return { status: 'untracked', applicable: true };
   return {
-    status: (await locationSheetHashMatchesStored(stored, payload))
+    status: (await (
+      liveVersion?.model === USER_UPLOAD_MODEL
+        ? uploadedLocationSheetHashMatchesStored
+        : locationSheetHashMatchesStored
+    )(stored, payload, {
+      // What a digest stamped before #1695 read: the library reference it
+      // was drawn from and the sequence's style. None from no sequence, so
+      // such a digest reads stale there.
+      libraryLocationReferenceHash: location.legacyLibraryReferenceHash,
+      styleConfig:
+        sequence === null
+          ? null
+          : ((await resolveSequenceStyle(scopedDb, sequence)) ?? null),
+    }))
       ? 'fresh'
       : 'stale',
     applicable: true,

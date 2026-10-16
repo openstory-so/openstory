@@ -182,8 +182,15 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   frameVariants: Pick<ScopedDb['frameVariants'], 'getSelected'>;
   /** Existence guards, plus the anchor fallback for triggers that carry no `frameId`. */
   frames: Pick<ScopedDb['frames'], 'getAnchorByShot' | 'getById'>;
-  /** `getByIds`: wait-for-sheets polling. */
-  locations: Pick<ScopedDb['locations'], 'getByIds'>;
+  /**
+   * `getCurrentByIds`: the team locations a matching run's writer picked.
+   * `listWithReferences`: live
+   * bibles for a re-render.
+   */
+  locations: Pick<
+    ScopedDb['locations'],
+    'getCurrentByIds' | 'listWithReferences'
+  >;
   /** Existence guard on the segment a motion render promotes into. */
   renderSegments: Pick<ScopedDb['renderSegments'], 'getById'>;
   /** Idempotency guards, live bibles, and element-vision polling. */
@@ -191,8 +198,6 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     ScopedDb['sequenceElements'],
     'getById' | 'getByToken' | 'list' | 'listByIds'
   >;
-  /** `listWithReferences`: live bibles for a re-render. */
-  sequenceLocations: Pick<ScopedDb['sequenceLocations'], 'listWithReferences'>;
   /**
    * The ready-email title (#1453) — scene-split writes it mid-run, so the
    * trigger snapshot only ever holds the placeholder.

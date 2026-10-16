@@ -83,7 +83,7 @@ export async function buildPlanReferences(args: {
       ? scopedDb.characters.list(sequence.id)
       : Promise.resolve([]),
     locationIds.size > 0
-      ? scopedDb.sequenceLocations.list(sequence.id)
+      ? scopedDb.locations.list(sequence.id)
       : Promise.resolve([]),
     elementIds.size > 0
       ? scopedDb.sequenceElements.list(sequence.id)

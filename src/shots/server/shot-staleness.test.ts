@@ -106,7 +106,7 @@ function makeScopedDb(overrides: {
         .fn()
         .mockResolvedValue(overrides.characterLookVersions ?? []),
     },
-    sequenceLocations: {
+    locations: {
       list: vi.fn().mockResolvedValue([]),
       listBibleVersionsBySequence: vi
         .fn()
@@ -1609,6 +1609,7 @@ describe('a two-person, two-room scene, one of each per shot (#2012)', () => {
     architecturalStyle: '',
     keyFeatures: '',
     ambiance: '',
+    rendering: 'Photoreal live action',
   };
   const person = (id: string, edited: Record<string, string> = {}) =>
     asStub<ShotStalenessRefs['characters'][number]>({

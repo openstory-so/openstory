@@ -4,6 +4,7 @@ import type {
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
+import { renderingForLocation } from '@/cast/rendering';
 import type {
   LegacyStylingByCharacter,
   LegacyStylingParts,
@@ -118,6 +119,7 @@ export function locationToBible(
     architecturalStyle: l.architecturalStyle ?? '',
     keyFeatures: l.keyFeatures ?? '',
     ambiance: l.ambiance ?? '',
+    rendering: renderingForLocation(l.rendering),
     consistencyTag: l.consistencyTag ?? '',
     firstMention: {
       sceneId: l.firstMentionSceneId ?? '',

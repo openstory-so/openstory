@@ -1,13 +1,18 @@
 import type { LocationBibleEntry } from '@/shots/scene-analysis.schema';
-import type { LibraryLocation } from '@/platform/server/db/schema';
+import type { LocationWithReference } from '@/platform/server/db/schema';
 
 /**
  * Build prompt variables for the location matching prompt.
- * Used by the analyze-script workflow with durableLLMCall.
+ * Used by the analyze-script workflow with durableLLMCall. The candidates
+ * are the team locations the writer picked (#1695); the wording still says
+ * "library" because recorded fixtures match on this text.
  */
 export function buildLocationMatchingPromptVariables(
   locations: LocationBibleEntry[],
-  libraryLocations: LibraryLocation[]
+  libraryLocations: Pick<
+    LocationWithReference,
+    'id' | 'name' | 'description' | 'referenceImageUrl'
+  >[]
 ) {
   const locationsDescription = locations
     .map(

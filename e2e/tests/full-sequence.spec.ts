@@ -21,8 +21,9 @@ import { resolve } from 'node:path';
 import { expect, type Locator } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import {
-  getSystemLocationByName,
-  type TestLibraryLocation,
+  cleanupLocationById,
+  createSunlitLoftLocation,
+  type TestLocation,
 } from '../fixtures/location.fixture';
 import {
   cleanupSequenceById,
@@ -128,20 +129,22 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   testWithUser.setTimeout(1_800_000);
 
   let testTalents: TestTalent[] = [];
-  let testLocation: TestLibraryLocation | null = null;
+  let testLocation: TestLocation | null = null;
   let styleId: string | null = null;
   let createdSequenceId: string | null = null;
 
   testWithUser.beforeEach(async ({ testUser }) => {
-    // Pull seeded system talent + locations rather than fabricating ones
-    // with placeholder URLs — workflows need real R2 reference images for
-    // character/location matching and sheet rendering. The seed runs in
+    // Pull seeded system talent rather than fabricating ones with
+    // placeholder URLs — workflows need real R2 reference images for
+    // character matching and sheet rendering. The seed runs in
     // e2e/start-webserver.ts before Workerd starts.
     testTalents = [
       await getSystemTalentByName('Sienna Blake'),
       await getSystemTalentByName('Jude Calloway'),
     ];
-    testLocation = await getSystemLocationByName('Sunlit Loft Studio');
+    // Locations belong to the team (#1695), so the one the recorded
+    // location match names is made for this test's own team.
+    testLocation = await createSunlitLoftLocation(testUser.teamId);
     styleId = await createTestStyle(testUser.teamId);
   });
 
@@ -149,7 +152,9 @@ testWithUser.describe('Full Sequence Pipeline', () => {
     if (createdSequenceId && styleId) {
       await cleanupSequenceById(createdSequenceId, styleId);
     }
-    // System talent and locations are shared and seeded — never delete them.
+    // After the sequence: a location a sequence links to cannot be deleted.
+    if (testLocation) await cleanupLocationById(testLocation.id);
+    // System talent is shared and seeded — never delete it.
     testTalents = [];
     testLocation = null;
     styleId = null;
@@ -280,7 +285,7 @@ SUPER:  CORAL.  OUT NOW.
       await expect(locationDialog).toBeVisible({ timeout: 10_000 });
       if (!testLocation) throw new Error('testLocation not initialised');
       await page.getByText(testLocation.name).click();
-      await page.getByRole('button', { name: 'Use 1 location' }).click();
+      await page.getByRole('button', { name: 'Use 1', exact: true }).click();
       await expect(locationDialog).not.toBeVisible();
 
       // 7. Upload an element image directly to the file input on the page.

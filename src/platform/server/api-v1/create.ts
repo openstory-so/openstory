@@ -6,8 +6,8 @@
  *   ingest hosted refs (no DB) → enhance (optional) →
  *   insert talents/locations without billed sheets →
  *   validate via createSequenceSchema → createSequences →
- *   enqueue sheets → response. On failure after insert, inline library
- *   rows are deleted so a hung fetch cannot leave charged sheets.
+ *   enqueue sheets → response. On failure after insert, the inline talent
+ *   and team locations are deleted so a hung fetch cannot leave charged sheets.
  *
  * Returns the created sequence ids + workflow run ids (generation is async) and
  * the enhanced script when enhancement ran.
@@ -23,9 +23,11 @@ import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import {
-  createLibraryLocation,
-  enqueueLibraryLocationSheet,
-} from '@/cast/server/locations/create-library-location';
+  createTeamLocation,
+  triggerTeamLocationSheet,
+} from '@/cast/server/locations/team-locations';
+import { renderingOfStyle } from '@/cast/rendering';
+import { parseStyleConfig } from '@/look/style-config';
 import { getLogger } from '@/platform/logger';
 import { createSequenceSchema } from '@/sequences/server/sequence.schemas';
 import { createSequences } from '@/sequences/server/create-sequences';
@@ -38,8 +40,6 @@ import {
   enqueueLibraryTalentSheet,
   type EnqueueLibraryTalentSheetParams,
 } from '@/cast/server/talent/enqueue-library-talent-sheet';
-import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
-import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { SEQUENCE_STATUSES } from '@/platform/server/db/schema/sequences';
 import { createSequenceLink } from './discovery';
 import {
@@ -247,12 +247,13 @@ async function rollbackInlineCreates(
 ): Promise<void> {
   const results = await Promise.allSettled([
     ...talentIds.map((id) => ctx.scopedDb.talent.delete(id)),
-    ...locationIds.map((id) => ctx.scopedDb.locations.delete(id)),
+    // Nothing uses a location this request made, so the team delete holds.
+    ...locationIds.map((id) => ctx.scopedDb.locations.softDeleteForTeam(id)),
   ]);
   for (const result of results) {
     if (result.status === 'rejected') {
       logger.warn(
-        'Failed to roll back inline library row after create failure',
+        'Failed to roll back an inline talent or location after create failure',
         {
           err: result.reason,
         }
@@ -335,10 +336,6 @@ export async function runOneShotCreate(
   const createdTalentIds: string[] = [];
   const createdLocationIds: string[] = [];
   const deferredTalentSheets: EnqueueLibraryTalentSheetParams[] = [];
-  const deferredLocationSheets: Array<{
-    locationId: string;
-    workflowInput: SheetPayload<LibraryLocationSheetWorkflowInput>;
-  }> = [];
 
   try {
     const [
@@ -371,21 +368,21 @@ export async function runOneShotCreate(
         {
           locations: ctx.scopedDb.locations,
           createLocation: async (item) => {
-            const { location, sheetWorkflowInput } =
-              await createLibraryLocation(
-                {
-                  name: item.name,
-                  description: item.description,
-                  referenceImageUrls: ingestedLocations.get(item) ?? [],
-                },
-                ctx,
-                { enqueueSheet: false }
-              );
+            // A team location (#1695). Rendered as the sequence's style
+            // says, unless the caller said.
+            const location = await createTeamLocation(
+              ctx.scopedDb,
+              {
+                name: item.name,
+                description: item.description ?? null,
+                rendering:
+                  item.rendering ??
+                  renderingOfStyle(style && parseStyleConfig(style.config)),
+                photoUrls: ingestedLocations.get(item) ?? [],
+              },
+              { userId: ctx.user.id, teamId: ctx.teamId, triggerSheet: false }
+            );
             createdLocationIds.push(location.id);
-            deferredLocationSheets.push({
-              locationId: location.id,
-              workflowInput: sheetWorkflowInput,
-            });
             return location;
           },
         },
@@ -443,8 +440,17 @@ export async function runOneShotCreate(
       ...deferredTalentSheets.map((sheet) =>
         enqueueLibraryTalentSheet(ctx.scopedDb, sheet)
       ),
-      ...deferredLocationSheets.map(({ workflowInput }) =>
-        enqueueLibraryLocationSheet(ctx.scopedDb, workflowInput)
+      ...createdLocationIds.map((locationId) =>
+        triggerTeamLocationSheet(ctx.scopedDb, {
+          userId: ctx.user.id,
+          teamId: ctx.teamId,
+          locationId,
+        }).catch((error: unknown) => {
+          logger.error('Failed to start the location sheet run', {
+            err: error,
+            locationId,
+          });
+        })
       ),
     ]);
 

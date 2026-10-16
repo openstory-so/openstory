@@ -3,7 +3,10 @@
  *
  * Mid-tier orchestrator: rather than generating each location reference image
  * inline, it fans out to child `LocationSheetWorkflow` instances via Pattern 3
- * (`spawnAndAwaitChild`).
+ * (`spawnAndAwaitChild`). A script location matching bound to one of the
+ * team's is linked to it and gets no sheet run (#1695). A location analysis
+ * held (`createBulk`'s `held`: attached here, or used by another sequence)
+ * keeps the sheet it already has.
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
@@ -11,6 +14,7 @@ import { sheetStartedSummary } from '@/sequences/model-label';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
+import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
 import { buildLocationInsert } from './cast-records';
 import { computeLocationSheetHashFromDto } from './sheet-snapshots';
 import type { SheetPayload } from './sheet-snapshots';
@@ -39,7 +43,6 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
   ): Promise<SequenceLocationMinimal[]> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
-    const { libraryLocationMatches = [] } = input;
 
     // Validation throws happen at the top of runImpl so the base class can
     // re-wrap them as CF `NonRetryableError`s (see `WorkflowValidationError`
@@ -58,20 +61,21 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     const sequenceId = input.sequenceId;
     const teamId = input.teamId;
 
-    // Create lookup map for library location matches
+    // Create lookup map for the script locations matching bound (#1695)
     const matchMap = new Map<string, LibraryLocationMatch>(
-      libraryLocationMatches.map((m) => [m.locationId, m])
+      input.libraryLocationMatches.map((m) => [m.locationId, m])
     );
 
     // Step 1: Insert locations into database
     const createdLocations = await step.do(
       'create-location-records',
       async () => {
-        // Upsert on (sequenceId, locationId): the Script stage already
-        // created these rows sheet-less, so this keeps their ids. The status
-        // is NOT refreshed on conflict (a step replay must not clobber the
-        // child's `completed`), so a placeholder reads `pending` until the
-        // sheet child writes its terminal status.
+        // Upsert on the sequence's script ids: the Script stage already
+        // created these rows sheet-less, so this keeps their ids. An entry
+        // matching bound to a team location is linked to it, not created.
+        // The status is NOT refreshed on conflict (a step replay must not
+        // clobber the child's `completed`), so a placeholder reads `pending`
+        // until the sheet child writes its terminal status.
         const locationInserts = input.locationBible.map((location) =>
           buildLocationInsert({
             sequenceId,
@@ -81,13 +85,10 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
           })
         );
 
-        const created = await scopedDb.sequenceLocations.createBulk(
-          locationInserts,
-          {
-            source: 'analysis',
-            createdBy: null,
-          }
-        );
+        const created = await scopedDb.locations.createBulk(locationInserts, {
+          source: 'analysis',
+          createdBy: null,
+        });
         if (created.length !== input.locationBible.length) {
           throw new NonRetryableError(
             `[LocationBibleWorkflow:cf] expected ${input.locationBible.length} location records, created ${created.length}`
@@ -97,147 +98,189 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
       }
     );
 
-    // Create a mapping from locationId (from bible) to database id
-    const locationIdToDbId = new Map<string, string>(
-      createdLocations.map((loc) => [loc.locationId, loc.id])
+    // `createBulk` returns one row per entry, in order.
+    const rowByScriptId = new Map(
+      input.locationBible.map((location, index) => {
+        const row = createdLocations[index];
+        if (!row) {
+          throw new NonRetryableError(
+            `[LocationBibleWorkflow:cf] could not resolve dbId for location ${location.locationId}`
+          );
+        }
+        return [location.locationId, row] as const;
+      })
     );
-    // What each row's upsert landed on: the bible version (#1600) and the
-    // library link. The sheet claim is taken against both (#1863). A step
-    // result cached before #1600 names no bible version; it is failed here,
-    // once, rather than claimed unguarded further down.
-    const snapshotByDbId = new Map<
-      string,
-      { bibleVersionId: string; libraryLocationId: string | null }
-    >();
-    for (const loc of createdLocations) {
-      if (!loc.selectedBibleVersionId) {
+
+    // A step result cached before #1600 names no bible version; the run is
+    // failed here, once. Inside the fan-out below the throw would be settled
+    // into one failed sheet and the run would pass.
+    for (const [scriptId, row] of rowByScriptId) {
+      if (
+        !matchMap.has(scriptId) &&
+        !row.attached &&
+        !row.selectedBibleVersionId
+      ) {
         throw new WorkflowValidationError(
           'Queued before bible versions shipped. Run it again.'
         );
       }
-      snapshotByDbId.set(loc.id, {
-        bibleVersionId: loc.selectedBibleVersionId,
-        libraryLocationId: loc.libraryLocationId,
-      });
     }
 
     const childBinding = this.env.LOCATION_SHEET_WORKFLOW;
 
     const model = input.imageModel ?? DEFAULT_IMAGE_MODEL;
 
-    // Step 2: Spawn one LocationSheetWorkflow per location in parallel.
+    // Step 2: Spawn one LocationSheetWorkflow per location this run made, in
+    // parallel. A location the sequence only links to (matching bound it, the
+    // writer attached it, or another sequence has used it) is the team's as
+    // it is: no sheet is drawn. `held` is the upsert's decision, taken in
+    // that step, so this fan-out does not ask again.
     // `Promise.all` for the spawn fan-out so a single spawn error fails fast;
     // `Promise.allSettled` for the await so one slow/failed sibling does not
     // hide outcomes for the others.
     const spawnAwaitPromises = input.locationBible.map(
-      async (location, index) => {
-        const locationDbId = locationIdToDbId.get(location.locationId);
-        const snapshot = locationDbId && snapshotByDbId.get(locationDbId);
-        if (!locationDbId || !snapshot) {
+      async (location, index): Promise<LocationSheetWorkflowResult | null> => {
+        const row = rowByScriptId.get(location.locationId);
+        if (!row) {
           throw new NonRetryableError(
             `[LocationBibleWorkflow:cf] could not resolve dbId for location ${location.locationId}`
           );
         }
+        if (matchMap.has(location.locationId) || row.attached || row.held)
+          return null;
+        // Checked before the fan-out; this narrows the type.
+        if (!row.selectedBibleVersionId) {
+          throw new WorkflowValidationError(
+            'Queued before bible versions shipped. Run it again.'
+          );
+        }
+        const locationDbId = row.id;
+        const bibleVersionId = row.selectedBibleVersionId;
+        // Set once the claim step returns, so a spawn that never starts can
+        // clear that claim. Null means the claim step itself did not finish.
+        let claimed: { versionId: string; held: boolean } | null = null;
 
-        const libraryMatch = matchMap.get(location.locationId);
-
-        const unclaimedFields: SheetPayload<LocationSheetWorkflowInput> = {
-          userId: input.userId,
-          teamId,
-          sequenceId,
-          reservationId: input.reservationId,
-          locationDbId,
-          bibleVersionId: snapshot.bibleVersionId,
-          locationName: location.name,
-          locationMetadata: location,
-          imageModel: model,
-          referenceImageUrl: libraryMatch?.referenceImageUrl,
-          libraryLocationDescription: libraryMatch?.description,
-          styleConfig: input.styleConfig,
-          libraryLocationReferenceHash:
-            libraryMatch?.referenceInputHash ?? null,
-        };
-        // Tracked like any other sheet (#1113): hashed, and landed through a
-        // claim a bible edit revokes. The claim is taken only while the bible
-        // and library link the upsert returned are still live (#1863): an edit
-        // that landed since had no claim to revoke, so the child parks.
-        const unclaimed = {
-          ...unclaimedFields,
-          snapshotInputHash:
-            await computeLocationSheetHashFromDto(unclaimedFields),
-        };
-        const referenceVersionId = await step.do(
-          `claim-location-sheet-${index}`,
-          async () => {
-            const claim =
-              await scopedDb.sequenceLocations.claimReferenceIfUnmoved(
-                locationDbId,
-                snapshot,
-                input.sequenceId
-                  ? {
-                      sequenceId: input.sequenceId,
-                      actorId: input.userId,
-                      summary: sheetStartedSummary(location.name, model),
-                    }
-                  : null
-              );
+        try {
+          const unclaimedFields: SheetPayload<LocationSheetWorkflowInput> = {
+            userId: input.userId,
+            teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            locationDbId,
+            bibleVersionId,
+            locationName: row.name,
+            // The bible the row holds, which is the version the claim guards:
+            // analysis does not rewrite a location another sequence has used.
+            locationMetadata: toLocationMetadata(row),
+            imageModel: model,
+            // ponytail: photos are not snapshotted (this workflow has no
+            // trigger). A location with photos reads stale after this run;
+            // snapshot them on the payload when a trigger is added.
+            referencePhotoUrls: [],
+          };
+          // Tracked like any other sheet (#1113): hashed, and landed through a
+          // claim a bible edit revokes. The claim is taken only while the bible
+          // version the upsert returned is still live (#1863): an edit that
+          // landed since had no claim to revoke, so the child parks.
+          const unclaimed = {
+            ...unclaimedFields,
+            snapshotInputHash:
+              await computeLocationSheetHashFromDto(unclaimedFields),
+          };
+          claimed = await step.do(`claim-location-sheet-${index}`, async () => {
+            const claim = await scopedDb.locations.claimReferenceIfUnmoved(
+              locationDbId,
+              { bibleVersionId },
+              {
+                sequenceId,
+                actorId: input.userId,
+                summary: sheetStartedSummary(row.name, model),
+              }
+            );
             if (!claim.held) {
               logger.warn(
                 `[LocationBibleWorkflow:cf] Location ${locationDbId} moved before the claim; its sheet parks`
               );
             }
-            return claim.versionId;
-          }
-        );
-        const childPayload: LocationSheetWorkflowInput = {
-          ...unclaimed,
-          referenceVersionId,
-        };
+            return claim;
+          });
+          const childPayload: LocationSheetWorkflowInput = {
+            ...unclaimed,
+            referenceVersionId: claimed.versionId,
+          };
 
-        return await spawnAndAwaitChild<
-          LocationSheetWorkflowInput,
-          LocationSheetWorkflowResult
-        >(step, {
-          binding: childBinding,
-          parentBindingName: 'LOCATION_BIBLE_WORKFLOW',
-          parentInstanceId,
-          childId: `location-sheet:${locationDbId}`,
-          childPayload,
-          spawnStepName: `spawn-location-sheet-${index}`,
-          awaitStepName: `await-location-sheet-${index}`,
-          timeout: '30 minutes',
-        });
+          return await spawnAndAwaitChild<
+            LocationSheetWorkflowInput,
+            LocationSheetWorkflowResult
+          >(step, {
+            binding: childBinding,
+            parentBindingName: 'LOCATION_BIBLE_WORKFLOW',
+            parentInstanceId,
+            childId: `location-sheet:${locationDbId}`,
+            childPayload,
+            spawnStepName: `spawn-location-sheet-${index}`,
+            awaitStepName: `await-location-sheet-${index}`,
+            timeout: '30 minutes',
+          });
+        } catch (error) {
+          // The child's onFailure does not run when the spawn never starts,
+          // or the await times out while the child is still queued.
+          // createBulk already left the row `generating`, and a taken claim
+          // keeps the generation plan waiting.
+          if (claimed === null || claimed.held) {
+            const reason =
+              error instanceof Error ? error.message : String(error);
+            await scopedDb.locations.failReferenceClaim(
+              locationDbId,
+              claimed?.versionId ?? null,
+              reason
+            );
+          }
+          throw error;
+        }
       }
     );
 
     const settled = await Promise.allSettled(spawnAwaitPromises);
 
-    // Re-assemble the SequenceLocationMinimal[] result in input order. For any
-    // child that failed, fall back to the inserted DB row (the child workflow's
-    // `onFailure` already marked the row `failed` and emitted the realtime
-    // event, so the UI is up to date — we just need a non-throwing return so
-    // the rest of the bible succeeds).
+    // Re-assemble the SequenceLocationMinimal[] result in input order. A failed
+    // child falls back to the inserted row. The row is already `failed`: the
+    // child's `onFailure` when the child started, or `failReferenceClaim` in
+    // the catch above when the spawn never started. Either path has emitted
+    // the realtime event, so this return only lets the rest of the bible finish.
     const seqLocations: SequenceLocationMinimal[] = input.locationBible.map(
       (location, index) => {
         // Promise.allSettled returns one entry per input promise, so `outcome`
         // is always defined for `index < input.locationBible.length`.
         const outcome = settled[index];
-        const dbId = locationIdToDbId.get(location.locationId);
+        const row = rowByScriptId.get(location.locationId);
+        const base = {
+          id: row?.id ?? generateId(),
+          locationId: location.locationId,
+          name: row?.name ?? location.name,
+          referenceInputHash: null,
+          description: row?.description ?? null,
+          consistencyTag: row?.consistencyTag ?? null,
+        };
 
         if (outcome?.status === 'fulfilled') {
           const childResult = outcome.value;
+          // Linked, not drawn: the team location's sheet as it is.
+          if (childResult === null) {
+            return {
+              ...base,
+              referenceImageUrl: row?.referenceImageUrl ?? null,
+              referenceStatus: row?.referenceStatus ?? 'pending',
+              referenceInputHash: row?.referenceInputHash ?? null,
+              selectedReferenceVersionId:
+                row?.selectedReferenceVersionId ?? null,
+            };
+          }
           return {
-            id: dbId ?? childResult.locationDbId ?? generateId(),
-            locationId: location.locationId,
-            name: location.name,
+            ...base,
             referenceImageUrl: childResult.referenceImageUrl,
             referenceStatus: 'completed' as const,
-            referenceInputHash: null,
             selectedReferenceVersionId: childResult.sheetVersionId ?? null,
-            // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-            description: location.description ?? null,
-            // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-            consistencyTag: location.consistencyTag ?? null,
           };
         }
 
@@ -253,17 +296,10 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
         );
 
         return {
-          id: dbId ?? generateId(),
-          locationId: location.locationId,
-          name: location.name,
+          ...base,
           referenceImageUrl: null,
           referenceStatus: 'failed' as const,
-          referenceInputHash: null,
           selectedReferenceVersionId: null,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-          description: location.description ?? null,
-          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
-          consistencyTag: location.consistencyTag ?? null,
         };
       }
     );
@@ -282,7 +318,7 @@ export class LocationBibleWorkflow extends OpenStoryWorkflowEntrypoint<LocationB
     error: string;
     scopedDb: WorkflowScopedDb;
   }): void {
-    // Log only, no DB writes: the inserted `sequence_locations` rows stay in
+    // Log only, no DB writes: the inserted location rows stay in
     // `generating` and each child's own `onFailure` writes the per-row
     // failure. Log and let the base class rethrow.
     logger.error(

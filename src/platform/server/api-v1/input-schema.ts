@@ -78,19 +78,24 @@ const createCharacterSchema = z
   })
   .meta({ id: 'CreateCharacter' });
 
-/** Inline request to create a new library location. */
+/** Inline request to create a new team location (#1695). */
 const createLocationSchema = z
   .object({
     name: entityName,
     description: entityDescription,
+    rendering: z.string().trim().min(1).max(2000).optional().meta({
+      description:
+        'What the place is rendered as, e.g. "Photoreal live action" or "3D animated, Pixar-like". Left out, it takes the sequence style’s.',
+    }),
     referenceImageUrls,
     portraitAttestation,
   })
   .meta({ id: 'CreateLocation' });
 
 /**
- * One cast member / location: a **reference** to an existing library entry
- * (string = id or name), or an inline **create** request (object). A single
+ * One cast member / location: a **reference** to an existing team character,
+ * talent or team location (string = id or name), or an inline **create**
+ * request (object). A single
  * list per kind keeps the "some exist, some are new" mental model.
  */
 const characterRefSchema = z
@@ -105,7 +110,7 @@ const locationRefSchema = z
   .meta({
     id: 'LocationRef',
     description:
-      'Existing location by id or name (string), or an inline create object.',
+      'One of the team’s locations by id or name (string), or an inline create object, which makes a new team location (or reuses the team location of that name). A name two team locations share is a conflict that asks for the id.',
   });
 
 export const apiCreateSequenceSchema = z
@@ -220,7 +225,7 @@ export const apiCreateSequenceSchema = z
     }),
     locations: z.array(locationRefSchema).optional().meta({
       description:
-        'Locations: each item is an existing ref (id/name) or an inline create object.',
+        'Locations the script may be set in: each item is one of the team’s locations (id/name) or an inline create object. Script analysis links the sequence to the ones the script uses.',
     }),
 
     elements: z

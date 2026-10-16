@@ -680,7 +680,7 @@ const setCharacterSheetFromUploadTool = openstoryTool({
 const setLocationSheetFromUploadTool = openstoryTool({
   name: 'set_location_sheet_from_upload',
   description:
-    'Make an uploaded image (upload_media use location_sheet) the location’s selected reference. Stills of shots at the location become stale. Starts no generation.',
+    'Make an uploaded image (upload_media use location_sheet) the location’s selected reference sheet. The location is the team’s: every sequence that uses it reads this sheet, and stills of shots at the location become stale in each. Starts no generation.',
   scope: 'sequences:write',
   annotations: writeAnnotations,
   inputSchema: z.strictObject({

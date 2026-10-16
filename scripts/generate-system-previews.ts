@@ -1,27 +1,20 @@
 /**
- * Generate Preview Images for System Talent and Locations
+ * Generate Preview Images for System Talent
  *
- * Generates headshots for system talent and establishing shots for system locations
- * using the same AI image generation pipeline as style previews.
+ * Generates headshots and sheets for system talent using the same AI image
+ * generation pipeline as style previews.
  *
  * Usage:
- *   FAL_KEY=your_key bun scripts/generate-system-previews.ts           # Generate all
- *   FAL_KEY=your_key bun scripts/generate-system-previews.ts talent    # Talent only
- *   FAL_KEY=your_key bun scripts/generate-system-previews.ts locations # Locations only
- *   bun scripts/generate-system-previews.ts                            # Dry-run (no FAL_KEY)
+ *   FAL_KEY=your_key bun scripts/generate-system-previews.ts # Generate all
+ *   bun scripts/generate-system-previews.ts                  # Dry-run (no FAL_KEY)
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { generateImageWithProvider } from '@/stills/server/image-generation';
-import { DEFAULT_LOCATION_TEMPLATES } from '@/cast/server/location/location-templates';
 import {
   buildLibraryTalentSheetPrompt,
   buildTalentHeadshotPrompt,
 } from '@/cast/character-prompt';
-import {
-  buildLibraryLocationSheetPrompt,
-  buildLocationPreviewPrompt,
-} from '@/cast/location-prompt';
 import { DEFAULT_TALENT_TEMPLATES } from '@/cast/server/talent/talent-templates';
 import { PhotonImage } from '@cf-wasm/photon';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -73,11 +66,7 @@ async function downloadAndConvertToWebP(
 
 type Task = {
   name: string;
-  type:
-    | 'talent-headshot'
-    | 'talent-sheet'
-    | 'location-preview'
-    | 'location-sheet';
+  type: 'talent-headshot' | 'talent-sheet';
   prompt: string;
   imageSize: 'square_hd' | 'landscape_16_9';
   outputPath: string;
@@ -139,10 +128,6 @@ async function processWithConcurrency(tasks: Task[]): Promise<number> {
 }
 
 async function main() {
-  const filter = process.argv[2]?.toLowerCase();
-  const doTalent = !filter || filter === 'talent';
-  const doLocations = !filter || filter === 'locations';
-
   console.log('🎨 Generating System Previews\n');
 
   await mkdir(OUTPUT_DIR, { recursive: true });
@@ -150,79 +135,39 @@ async function main() {
   const tasks: Task[] = [];
 
   // Talent tasks: headshot + sheet per talent
-  if (doTalent) {
-    console.log(`👤 Talent: ${DEFAULT_TALENT_TEMPLATES.length} templates`);
+  console.log(`👤 Talent: ${DEFAULT_TALENT_TEMPLATES.length} templates`);
 
-    for (const talent of DEFAULT_TALENT_TEMPLATES) {
-      const dir = path.join(
-        OUTPUT_DIR,
-        'talent',
-        sanitizeFolderName(talent.name)
-      );
-      await mkdir(dir, { recursive: true });
+  for (const talent of DEFAULT_TALENT_TEMPLATES) {
+    const dir = path.join(
+      OUTPUT_DIR,
+      'talent',
+      sanitizeFolderName(talent.name)
+    );
+    await mkdir(dir, { recursive: true });
 
-      tasks.push({
-        name: talent.name,
-        type: 'talent-headshot',
-        prompt: buildTalentHeadshotPrompt(
-          talent.name,
-          talent.description ?? undefined,
-          false
-        ),
-        imageSize: 'square_hd',
-        outputPath: path.join(dir, 'headshot.webp'),
-      });
+    tasks.push({
+      name: talent.name,
+      type: 'talent-headshot',
+      prompt: buildTalentHeadshotPrompt(
+        talent.name,
+        talent.description ?? undefined,
+        false
+      ),
+      imageSize: 'square_hd',
+      outputPath: path.join(dir, 'headshot.webp'),
+    });
 
-      tasks.push({
-        name: talent.name,
-        type: 'talent-sheet',
-        prompt: buildLibraryTalentSheetPrompt(
-          talent.name,
-          talent.description ?? undefined,
-          false
-        ),
-        imageSize: 'landscape_16_9',
-        outputPath: path.join(dir, 'sheet.webp'),
-      });
-    }
-  }
-
-  // Location tasks: preview + sheet per location
-  if (doLocations) {
-    console.log(`📍 Locations: ${DEFAULT_LOCATION_TEMPLATES.length} templates`);
-
-    for (const location of DEFAULT_LOCATION_TEMPLATES) {
-      const dir = path.join(
-        OUTPUT_DIR,
-        'locations',
-        sanitizeFolderName(location.name)
-      );
-      await mkdir(dir, { recursive: true });
-
-      tasks.push({
-        name: location.name,
-        type: 'location-preview',
-        prompt: buildLocationPreviewPrompt(
-          location.name,
-          location.description ?? undefined,
-          false
-        ),
-        imageSize: 'landscape_16_9',
-        outputPath: path.join(dir, 'preview.webp'),
-      });
-
-      const sheetResult = buildLibraryLocationSheetPrompt(
-        location.name,
-        location.description ?? undefined
-      );
-      tasks.push({
-        name: location.name,
-        type: 'location-sheet',
-        prompt: sheetResult.prompt,
-        imageSize: 'landscape_16_9',
-        outputPath: path.join(dir, 'sheet.webp'),
-      });
-    }
+    tasks.push({
+      name: talent.name,
+      type: 'talent-sheet',
+      prompt: buildLibraryTalentSheetPrompt(
+        talent.name,
+        talent.description ?? undefined,
+        false
+      ),
+      imageSize: 'landscape_16_9',
+      outputPath: path.join(dir, 'sheet.webp'),
+    });
   }
 
   console.log(`\n📋 Total tasks: ${tasks.length}\n`);
@@ -231,9 +176,7 @@ async function main() {
 
   console.log(`\n🎉 Done: ${completed}/${tasks.length} generated successfully`);
   if (completed > 0 && hasFalKey) {
-    console.log(
-      `\n📂 Output: ${OUTPUT_DIR}/talent/ and ${OUTPUT_DIR}/locations/`
-    );
+    console.log(`\n📂 Output: ${OUTPUT_DIR}/talent/`);
     console.log('   Next: bun scripts/upload-system-previews-to-r2.ts');
   }
 }

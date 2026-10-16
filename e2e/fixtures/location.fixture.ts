@@ -1,72 +1,53 @@
 /**
  * Location Fixture for E2E Tests
- * Creates test library locations for testing location library flows
+ * Creates team locations (#1695) for the Locations page and the pipeline.
  */
 
 import { z } from 'zod';
 
-export type TestLibraryLocation = {
+export type TestLocation = {
   id: string;
   name: string;
   teamId: string;
   referenceImageUrl: string;
 };
 
-/**
- * Create test library location with reference image
- */
-export async function createTestLibraryLocation(
-  teamId: string,
-  name: string
-): Promise<TestLibraryLocation> {
+const createdSchema = z.object({
+  id: z.string(),
+  teamId: z.string(),
+  name: z.string(),
+  referenceImageUrl: z.string(),
+});
+
+async function postLocation(body: Record<string, string>) {
   const res = await fetch('http://localhost:3020/api/test/location', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId, name }),
+    body: JSON.stringify(body),
   });
-
   if (!res.ok) {
     throw new Error(`Failed to create test location via API: ${res.status}`);
   }
-
-  const created = z
-    .object({
-      id: z.string(),
-      teamId: z.string(),
-      name: z.string(),
-    })
-    .parse(await res.json());
-
-  return {
-    ...created,
-    referenceImageUrl: `http://localhost:3020/api/test/image?w=1024&h=576&label=location`,
-  };
+  return createdSchema.parse(await res.json());
 }
 
-/**
- * Create multiple test library locations for a team
- */
-export async function createTestLibraryLocationSet(
+/** A team location with a placeholder sheet. */
+export async function createTestLocation(
   teamId: string,
-  names: string[]
-): Promise<TestLibraryLocation[]> {
-  const locations: TestLibraryLocation[] = [];
-  for (const name of names) {
-    const location = await createTestLibraryLocation(teamId, name);
-    locations.push(location);
-  }
-  return locations;
+  name: string
+): Promise<TestLocation> {
+  return await postLocation({ teamId, name });
 }
 
 /**
- * Clean up test library locations by team ID (use only when test isolation isn't needed)
+ * The team location the full-pipeline run picks: named and described like
+ * the "Sunlit Loft Studio" the location-match fixture was recorded against,
+ * with a real R2 sheet the workflows can read.
  */
-export async function cleanupTestLocations(teamId: string): Promise<void> {
-  await fetch('http://localhost:3020/api/test/location', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId }),
-  });
+export async function createSunlitLoftLocation(
+  teamId: string
+): Promise<TestLocation> {
+  return await postLocation({ teamId, preset: 'sunlit-loft' });
 }
 
 /**
@@ -78,32 +59,4 @@ export async function cleanupLocationById(locationId: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ locationId }),
   });
-}
-
-/**
- * Look up a seeded system location by name. System locations are inserted by
- * `scripts/seed.ts --test` during global setup; they have real R2 reference
- * images so workflows can use them for location matching and sheet rendering.
- * Tests should prefer these over fabricated locations with placeholder URLs.
- */
-export async function getSystemLocationByName(
-  name: string
-): Promise<TestLibraryLocation> {
-  const res = await fetch(
-    `http://localhost:3020/api/test/location?name=${encodeURIComponent(name)}`
-  );
-  if (!res.ok) {
-    throw new Error(
-      `System location "${name}" not found via test API — was \`bun scripts/seed.ts --test\` run during global setup?`
-    );
-  }
-  const loc = z
-    .object({
-      id: z.string(),
-      name: z.string(),
-      teamId: z.string(),
-      referenceImageUrl: z.string(),
-    })
-    .parse(await res.json());
-  return loc;
 }

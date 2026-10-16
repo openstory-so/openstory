@@ -17,11 +17,11 @@ import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type {
   NewCharacter,
-  NewSequenceLocation,
+  ReferenceStatus,
   SequenceElementMinimal,
   SheetStatus,
 } from '@/platform/server/db/schema';
-import type { ReferenceStatus } from '@/platform/server/db/schema/sequence-locations';
+import type { AnalysedLocation } from '@/cast/server/db/locations';
 import { withBibleLooks } from '@/cast/bible-looks';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { isPersonFromTalentCast } from '@/cast/likeness';
@@ -84,12 +84,17 @@ export function buildCharacterInsert(args: {
   };
 }
 
+/**
+ * One analysed location. A script location matching bound to one of the
+ * team's (`libraryMatch`, #1695) is linked to it (`boundTo`): no location is
+ * made and the bible analysis wrote for it is dropped.
+ */
 export function buildLocationInsert(args: {
   sequenceId: string;
   location: LocationBibleEntry;
   libraryMatch: LibraryLocationMatch | undefined;
   referenceStatus: ReferenceStatus;
-}): NewSequenceLocation {
+}): AnalysedLocation {
   const { sequenceId, location, libraryMatch, referenceStatus } = args;
   return {
     id: generateId(),
@@ -106,6 +111,7 @@ export function buildLocationInsert(args: {
     keyFeatures: location.keyFeatures ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     ambiance: location.ambiance ?? null,
+    rendering: location.rendering,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     consistencyTag: location.consistencyTag ?? null,
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
@@ -115,7 +121,7 @@ export function buildLocationInsert(args: {
     // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard
     firstMentionLine: location.firstMention?.lineNumber ?? null,
     referenceStatus,
-    libraryLocationId: libraryMatch?.libraryLocationId ?? null,
+    boundTo: libraryMatch?.libraryLocationId ?? null,
   };
 }
 
@@ -226,7 +232,7 @@ export async function createCastRecords(
   const libraryByLocation = new Map(
     args.locationMatches.map((m) => [m.locationId, m])
   );
-  await scopedDb.sequenceLocations.createBulk(
+  await scopedDb.locations.createBulk(
     args.locationBible.map((location) =>
       buildLocationInsert({
         sequenceId,

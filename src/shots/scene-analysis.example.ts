@@ -34,6 +34,7 @@ export const sceneAnalysisExample: SceneAnalysis = {
       architecturalStyle: 'Modern minimalist',
       keyFeatures: 'Large windows, exposed brick, vintage furniture',
       ambiance: 'Tense corporate',
+      rendering: 'Photoreal live action',
       consistencyTag: 'office_modern_steel',
       firstMention: {
         text: 'INT. OFFICE - DAY',

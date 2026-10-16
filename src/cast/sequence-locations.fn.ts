@@ -2,6 +2,7 @@ import { isValidTextToImageModel } from '@/models/models';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 import { locationBibleFieldsSchema } from './bible-field';
 import {
+  attachLocation,
   createLocation,
   deleteLocation,
   restoreLocation,
@@ -17,14 +18,14 @@ import {
   regenerateLocationSheet,
 } from '@/cast/server/cast-generation';
 import {
-  authWithTeamMiddleware,
+  castAccessMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 
 export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
-    return context.scopedDb.sequenceLocations.list(context.sequence.id);
+    return context.scopedDb.locations.list(context.sequence.id);
   });
 
 // ============================================================================
@@ -33,10 +34,10 @@ export const getSequenceLocationsFn = createServerFn({ method: 'GET' })
 
 /**
  * Create a location by hand (no storyboard run) — starts reference-less
- * (`referenceStatus: 'pending'`); the reference image comes later via the
- * existing recast / sheet workflows. `locationId` is a shortened name
- * (`loc_office`) like script-extracted `loc_001`, uniqued against existing
- * rows on the `(sequenceId, locationId)` index.
+ * (`referenceStatus: 'pending'`); the sheet comes later from Generate. It
+ * is the team's from the start. `locationId` is a shortened name
+ * (`loc_office`) like script-extracted `loc_001`, uniqued among the
+ * sequence's script ids. `rendering` left out takes the sequence style's.
  */
 export const createSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -60,8 +61,8 @@ export const createSequenceLocationFn = createServerFn({ method: 'POST' })
 
 /**
  * Edit a location's bible fields. Only provided fields change; the location
- * sheet and the prompts that project them re-stale purely by hash derivation.
- * Library binding stays on `recastLocationFn`.
+ * sheet and the prompts that project them re-stale purely by hash derivation,
+ * in every sequence that uses the location.
  */
 export const updateSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -91,8 +92,9 @@ const locationIdInput = z.object({
 });
 
 /**
- * Soft-remove a location (undoable; toast Undo calls the restore fn). Scene
- * continuity tags are NOT stripped — undo is lossless.
+ * Soft-remove a location from the sequence (undoable; toast Undo calls the
+ * restore fn). Scene continuity tags are NOT stripped — undo is lossless. The
+ * location stays the team's.
  */
 export const softDeleteSequenceLocationFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
@@ -121,13 +123,25 @@ export const restoreSequenceLocationFn = createServerFn({ method: 'POST' })
       )
   );
 
-export const getTeamLocationsLibraryFn = createServerFn({ method: 'GET' })
-  .middleware([authWithTeamMiddleware])
-  .handler(async ({ context }) => {
-    return context.scopedDb.sequenceLocations.getTeamLibrary(context.teamId, {
-      completedOnly: false,
-    });
-  });
+/**
+ * Use one of the team's locations in this sequence (#1695): one link, nothing
+ * copied, no generation started. Idempotent for a location the sequence
+ * already uses; refused while a live location here has the same name.
+ */
+export const attachLocationFn = createServerFn({ method: 'POST' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(z.object({ sequenceId: ulidSchema, locationId: ulidSchema }))
+  )
+  .handler(
+    async ({ context, data }) =>
+      await attachLocation(
+        context.scopedDb,
+        { userId: context.user.id },
+        data.sequenceId,
+        data.locationId
+      )
+  );
 
 const getShotIdsForLocationInputSchema = z.object({
   locationId: z.string().min(1),
@@ -137,24 +151,40 @@ export const getShotIdsForLocationFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(getShotIdsForLocationInputSchema))
   .handler(async ({ context, data }) => {
-    const shotIds =
-      await context.scopedDb.sequenceLocations.getShotIdsForLocation(
-        context.sequence.id,
-        data.locationId
-      );
+    const shotIds = await context.scopedDb.locations.getShotIdsForLocation(
+      context.sequence.id,
+      data.locationId
+    );
     return { shotIds, count: shotIds.length };
   });
 
-const recastLocationInputSchema = z.object({
-  locationId: z.string().min(1),
-  libraryLocationId: z.string().min(1),
+// `sequenceId` null is the Locations page (#1695): the location is the
+// team's, so its sheet is read and drawn the same from no sequence.
+const castLocationInput = z.object({
+  sequenceId: ulidSchema.nullable(),
+  locationDbId: ulidSchema,
 });
 
+/**
+ * One location as the sequence uses it or, from no sequence, at its current
+ * version. Null, not an error, when it is gone or another team's.
+ */
+export const getLocationFn = createServerFn({ method: 'GET' })
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castLocationInput))
+  .handler(
+    async ({ context, data }) =>
+      await context.scopedDb.locations.get(
+        context.sequence?.id ?? null,
+        data.locationDbId
+      )
+  );
+
 export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
-  .middleware([sequenceAccessMiddleware])
+  .middleware([castAccessMiddleware])
   .validator(
     zodValidator(
-      locationIdInput.extend({
+      castLocationInput.extend({
         imageModel: z
           .string()
           .refine(isValidTextToImageModel, {
@@ -175,14 +205,14 @@ export const regenerateLocationSheetFn = createServerFn({ method: 'POST' })
 
 /** Live sheet staleness for the location detail banner. */
 export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(locationIdInput))
+  .middleware([castAccessMiddleware])
+  .validator(zodValidator(castLocationInput))
   .handler(
     async ({ context, data }): Promise<SheetStaleness> =>
       (
         await readReferenceStaleness(
           context.scopedDb,
-          data.sequenceId,
+          context.sequence?.id ?? null,
           'location',
           data.locationDbId
         )
@@ -190,12 +220,20 @@ export const getLocationSheetStalenessFn = createServerFn({ method: 'GET' })
   );
 
 /**
- * Recast a location with a library location reference.
- * Triggers location reference regeneration and shot regeneration.
+ * Replace a location of this sequence with another of the team's: the link
+ * is re-pointed and the shots set there are re-rendered. No sheet is drawn.
  */
 export const recastLocationFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
-  .validator(zodValidator(recastLocationInputSchema))
+  .middleware([sequenceAccessMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        sequenceId: ulidSchema,
+        locationId: ulidSchema,
+        withLocationId: ulidSchema,
+      })
+    )
+  )
   .handler(({ context, data }) =>
     recastLocation(context.scopedDb, { userId: context.user.id }, data)
   );

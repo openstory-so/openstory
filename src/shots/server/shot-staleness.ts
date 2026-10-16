@@ -188,7 +188,7 @@ export async function loadShotStalenessBatch(
       scopedDb.frames.listAnchorsBySequence(sequence.id),
       loadSceneContextBySequence(scopedDb, sequence.id),
       scopedDb.characters.list(sequence.id),
-      scopedDb.sequenceLocations.list(sequence.id),
+      scopedDb.locations.list(sequence.id),
       scopedDb.sequenceElements.list(sequence.id),
       sequence.styleId
         ? scopedDb.styles.getById(sequence.styleId)
@@ -250,10 +250,7 @@ type InputHistory = {
 type InputHistoryDb = {
   characters: Pick<ScopedDb['characters'], 'listBibleVersionsBySequence'>;
   characterLooks: Pick<ScopedDb['characterLooks'], 'listVersionsBySequence'>;
-  sequenceLocations: Pick<
-    ScopedDb['sequenceLocations'],
-    'listBibleVersionsBySequence'
-  >;
+  locations: Pick<ScopedDb['locations'], 'listBibleVersionsBySequence'>;
   sceneScriptVersions: Pick<ScopedDb['sceneScriptVersions'], 'listBySequence'>;
   sequences: Pick<ScopedDb['sequences'], 'listStyleVersions'>;
   shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSelectedBySequence'>;
@@ -277,7 +274,7 @@ async function loadInputHistory(
     await Promise.all([
       scopedDb.characters.listBibleVersionsBySequence(sequenceId),
       scopedDb.characterLooks.listVersionsBySequence(sequenceId),
-      scopedDb.sequenceLocations.listBibleVersionsBySequence(sequenceId),
+      scopedDb.locations.listBibleVersionsBySequence(sequenceId),
       scopedDb.sceneScriptVersions.listBySequence(sequenceId),
       scopedDb.sequences.listStyleVersions(sequenceId),
       scopedDb.shotDialogue.getSelectedBySequence(sequenceId),
@@ -531,7 +528,7 @@ export async function computeShotStaleness(args: {
           ? [refs.characters, refs.locations, refs.elements]
           : await Promise.all([
               scopedDb.characters.list(sequence.id),
-              scopedDb.sequenceLocations.list(sequence.id),
+              scopedDb.locations.list(sequence.id),
               scopedDb.sequenceElements.list(sequence.id),
             ]);
 
@@ -609,7 +606,7 @@ export async function computeShotStaleness(args: {
     );
     const [characters, locations, history] = await Promise.all([
       refs?.characters ?? scopedDb.characters.list(sequence.id),
-      refs?.locations ?? scopedDb.sequenceLocations.list(sequence.id),
+      refs?.locations ?? scopedDb.locations.list(sequence.id),
       reads ? reads.inputHistory() : loadInputHistory(scopedDb, sequence.id),
     ]);
     // What a legacy digest hashed for each rebuilt entry (#2065): the
@@ -932,7 +929,7 @@ export async function computeShotStaleness(args: {
     try {
       const resolvedRefs: ShotStalenessRefs = refs ?? {
         characters: await scopedDb.characters.list(sequence.id),
-        locations: await scopedDb.sequenceLocations.list(sequence.id),
+        locations: await scopedDb.locations.list(sequence.id),
         elements: await scopedDb.sequenceElements.list(sequence.id),
         style: sequence.styleId
           ? await scopedDb.styles.getById(sequence.styleId)
@@ -1026,6 +1023,7 @@ const LOCATION_LABELS: Record<keyof LocationBible, string> = {
   architecturalStyle: 'architecture',
   keyFeatures: 'features',
   ambiance: 'ambiance',
+  rendering: 'rendering',
   consistencyTag: 'tag',
 };
 

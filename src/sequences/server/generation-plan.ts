@@ -118,7 +118,7 @@ async function loadPlanInput(
     primaryImageByFrame,
   ] = await Promise.all([
     scopedDb.characters.list(sequence.id),
-    scopedDb.sequenceLocations.list(sequence.id),
+    scopedDb.locations.list(sequence.id),
     loadShotStalenessReads(
       scopedDb,
       sequence.id,

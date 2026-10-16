@@ -13,6 +13,9 @@ link, the Characters page, attaching a team character to a sequence and
 what analysis does with the attached cast (#2050), and making and editing a
 character with no sequence (#2065).
 
+Locations work the same way since #1695: a location belongs to the team and
+a sequence holds a link to it. See `team-locations.md`.
+
 ## Data
 
 - **`characters`** — identity: `teamId`, the current bible version

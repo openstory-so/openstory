@@ -924,6 +924,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           text: entry.firstMention.text,
           lineNumber: entry.firstMention.lineNumber,
         },
+        // What every place is rendered as (#1695): the sequence style's.
+        rendering: renderingOfStyle(input.styleConfig),
       })
     );
     const elementBible: ElementBibleEntry[] = biblesResult.elementBible.map(

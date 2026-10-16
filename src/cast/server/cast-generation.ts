@@ -1,19 +1,18 @@
 /**
  * Cast generation shared by the editor's server fns and the MCP tools
  * (#1979): regenerate a character or location sheet, recast a character
- * with library talent or a location with a library location, design a
- * character's voice and cancel that design. Each spends credits through the
+ * with library talent, replace a sequence's location with another of the
+ * team's, design a character's voice and cancel that design. Each spends credits through the
  * workflow it triggers.
  */
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { sheetStartedSummary } from '@/sequences/model-label';
-import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { buildCastingAttributes } from '@/cast/character-prompt';
 import { personLocksOf } from '@/cast/server/person-lock';
 import { shouldReuseTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
-import { castChannelId } from '@/cast/cast-channel';
+import { castChannelId, locationChannelId } from '@/cast/cast-channel';
 import { getGenerationChannel } from '@/platform/realtime';
-import { requireCharacter } from '@/cast/server/cast-edit';
+import { requireCharacter, requireLocation } from '@/cast/server/cast-edit';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type {
@@ -33,10 +32,7 @@ import {
   requireCharacterLook,
   requireLiveLook,
 } from '@/cast/server/character-look';
-import {
-  buildRegenerateLocationSheetPayload,
-  toLocationMetadata,
-} from '@/cast/server/sheets/location-sheet-trigger';
+import { buildRegenerateLocationSheetPayload } from '@/cast/server/sheets/location-sheet-trigger';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -544,17 +540,22 @@ export async function cancelCharacterVoice(
   return { cancelled: true };
 }
 
-/** Regenerate a location's reference sheet from its current bible. */
+/**
+ * Regenerate a location's sheet from its current bible and photos. The
+ * location is the team's: the new sheet is every sequence's.
+ */
 export async function regenerateLocationSheet(
   scopedDb: ScopedDb,
   actor: Actor,
-  sequence: Sequence,
+  /** Null from the Locations page (#1695): no sequence model. */
+  sequence: Sequence | null,
   data: { locationDbId: string; imageModel?: string }
 ): Promise<{ locationDbId: string; workflowRunId: string }> {
-  const location = await scopedDb.sequenceLocations.getById(data.locationDbId);
-  if (!location || location.sequenceId !== sequence.id) {
-    throw new NotFoundError('Location not found');
-  }
+  const location = await requireLocation(
+    scopedDb,
+    sequence?.id ?? null,
+    data.locationDbId
+  );
 
   const payload = await buildRegenerateLocationSheetPayload({
     scopedDb,
@@ -567,25 +568,29 @@ export async function regenerateLocationSheet(
 
   // The claim (#1113): last kickoff wins, and any edit to the location's
   // inputs before this run lands revokes it.
-  const referenceVersionId = await scopedDb.sequenceLocations.claimReference(
+  const referenceVersionId = await scopedDb.locations.claimReference(
     location.id,
     {
       markGenerating: true,
-      activity: {
-        sequenceId: sequence.id,
-        actorId: actor.userId,
-        summary: sheetStartedSummary(
-          location.name,
-          payload.imageModel ?? DEFAULT_IMAGE_MODEL
-        ),
-      },
+      activity: sequence
+        ? {
+            sequenceId: sequence.id,
+            actorId: actor.userId,
+            summary: sheetStartedSummary(
+              location.name,
+              payload.imageModel ?? DEFAULT_IMAGE_MODEL
+            ),
+          }
+        : null,
     }
   );
-  await emitProgress(location.sequenceId, (channel) =>
-    channel.emit('generation.location-sheet:progress', {
-      locationId: location.id,
-      status: 'generating',
-    })
+  await emitProgress(
+    locationChannelId(payload.sequenceId, location.id),
+    (channel) =>
+      channel.emit('generation.location-sheet:progress', {
+        locationId: location.id,
+        status: 'generating',
+      })
   );
 
   let workflowRunId: string;
@@ -600,137 +605,88 @@ export async function regenerateLocationSheet(
       // would no-op a second Generate. Same pattern as generateTalentSheetFn.
     });
   } catch (error) {
-    await scopedDb.sequenceLocations.failReferenceClaim(
+    await scopedDb.locations.failReferenceClaim(
       location.id,
       referenceVersionId,
       error instanceof Error ? error.message : String(error)
     );
-    await recordTriggerFailure(scopedDb.sequenceEvents, {
-      sequenceId: sequence.id,
-      actorId: actor.userId,
-      kind: 'run.failed',
-      targetType: 'sequence',
-      targetId: sequence.id,
-      summary: 'Location sheet failed',
-    });
+    if (payload.sequenceId) {
+      await recordTriggerFailure(scopedDb.sequenceEvents, {
+        sequenceId: payload.sequenceId,
+        actorId: actor.userId,
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: payload.sequenceId,
+        summary: 'Location sheet failed',
+      });
+    }
     throw error;
   }
   return { locationDbId: location.id, workflowRunId };
 }
 
 /**
- * Recast a location with a library location: its reference image and
- * description drive the new sheet (read from the library row, never sent by
- * the caller). Triggers location reference regeneration and shot
- * regeneration.
+ * Replace the location a sequence uses with another of the team's (#1695):
+ * the link is re-pointed, then the shots now set at the new location are
+ * re-rendered. No sheet is drawn and no claim is taken: the sequence reads
+ * the other location's sheet as it is.
+ *
+ * The link moves before the run starts. If the trigger throws, the error
+ * surfaces and the shots read stale against the new location.
  */
 export async function recastLocation(
   scopedDb: ScopedDb,
   actor: Actor,
-  data: { locationId: string; libraryLocationId: string }
+  data: { sequenceId: string; locationId: string; withLocationId: string }
 ) {
-  const location = await scopedDb.sequenceLocations.getById(data.locationId);
-  if (!location) {
-    throw new NotFoundError('Location not found');
-  }
-
-  // Fetch the sequence's style for location sheet generation
   const sequence = await scopedDb.sequences.getForUser({
-    sequenceId: location.sequenceId,
+    sequenceId: data.sequenceId,
   });
-  const style =
-    sequence.styleConfig == null && sequence.styleId
-      ? await scopedDb.styles.getById(sequence.styleId)
-      : null;
-  const styleConfig =
-    sequence.styleConfig != null || style
-      ? resolveSequenceStyleConfig({
-          snapshot: sequence.styleConfig,
-          live: style?.config,
-        })
-      : undefined;
-
-  // Bind the sequence location to the library location it was recast from.
-  // Without this the downstream divergence check resolves the OLD (usually
-  // null) link and compares against a hash from the new one.
-  const libraryLocation = await scopedDb.locations.getById(
-    data.libraryLocationId
+  const replacement = await requireLocation(
+    scopedDb,
+    null,
+    data.withLocationId
   );
-  if (!libraryLocation) {
-    throw new NotFoundError('Library location not found');
-  }
-  if (!libraryLocation.referenceImageUrl) {
+  if (
+    replacement.referenceStatus !== 'completed' ||
+    !replacement.referenceImageUrl
+  ) {
     throw new ValidationError(
-      'That library location has no reference image to cast from.'
+      `${replacement.name} has no reference image to cast from.`
     );
   }
-  await scopedDb.sequenceLocations.update(data.locationId, {
-    libraryLocationId: data.libraryLocationId,
-  });
-  // Re-read rather than use the write's row: the recast snapshot needs the
-  // live reference, which resolves from the version pointer (#1419).
-  const updatedLocation = await scopedDb.sequenceLocations.getById(
-    data.locationId
-  );
-  if (!updatedLocation) {
-    throw new NotFoundError('Location not found');
-  }
-
-  // Claimed after the relink above, which revokes older claims (#1113).
-  const imageModel = safeTextToImageModel(sequence.imageModel);
-  const referenceVersionId = await scopedDb.sequenceLocations.claimReference(
+  const location = await scopedDb.locations.replace(
+    sequence.id,
     data.locationId,
-    {
-      markGenerating: true,
-      activity: {
-        sequenceId: location.sequenceId,
-        actorId: actor.userId,
-        summary: sheetStartedSummary(location.name, imageModel),
-      },
-    }
+    data.withLocationId,
+    { actorId: actor.userId }
   );
 
-  await emitProgress(location.sequenceId, (channel) =>
-    channel.emit('generation.location-sheet:progress', {
-      locationId: data.locationId,
-      status: 'generating',
-    })
+  const affectedShotIds = await scopedDb.locations.getShotIdsForLocation(
+    sequence.id,
+    location.id
   );
 
-  const affectedShotIds =
-    await scopedDb.sequenceLocations.getShotIdsForLocation(
-      location.sequenceId,
-      data.locationId
-    );
-
-  // Freeze every regenerate-shots input here, at the trigger. The workflow
-  // used to rebuild this after its sheet child finished — eight live reads
-  // against state the user never authorised.
+  // Freeze every regenerate-shots input here, at the trigger, after the link
+  // moved: the snapshots read the new location's sheet.
+  const imageModel = safeTextToImageModel(sequence.imageModel);
   const { shotSnapshots, snapshotInputHash } =
     await buildRecastRegenerateSnapshots({
       scopedDb,
-      sequenceId: location.sequenceId,
+      sequenceId: sequence.id,
       shotIds: affectedShotIds,
       imageModel,
       aspectRatio: sequence.aspectRatio,
-      subject: { kind: 'location', location: updatedLocation },
+      subject: null,
     });
 
   const workflowRunId = await triggerWorkflow('/recast-location', {
-    locationDbId: data.locationId,
+    locationDbId: location.id,
     locationName: location.name,
-    locationMetadata: toLocationMetadata(location),
-    sequenceId: location.sequenceId,
+    sequenceId: sequence.id,
     teamId: scopedDb.teamId,
     userId: actor.userId,
-    referenceImageUrl: libraryLocation.referenceImageUrl,
-    libraryLocationDescription: libraryLocation.description ?? undefined,
-    libraryLocationId: data.libraryLocationId,
-    libraryLocationReferenceHash: libraryLocation.referenceInputHash,
-    referenceVersionId,
-    bibleVersionId: updatedLocation.selectedBibleVersionId,
     imageModel,
-    styleConfig,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     shotSnapshots,
@@ -738,8 +694,9 @@ export async function recastLocation(
   } satisfies RecastLocationWorkflowInput);
 
   return {
-    locationId: data.locationId,
-    referenceWorkflowRunId: workflowRunId,
+    /** The location the sequence now uses (`locations.id`). */
+    locationId: location.id,
+    workflowRunId,
     // The shots actually queued — a shot with no selected image prompt is
     // dropped by the snapshot builder rather than failing the recast.
     affectedShotIds: shotSnapshots.map((s) => s.shotId),

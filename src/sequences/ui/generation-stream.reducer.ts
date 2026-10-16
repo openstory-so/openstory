@@ -50,7 +50,7 @@ type LocationMatch = {
   locationId: string;
   libraryLocationId: string;
   libraryLocationName: string;
-  referenceImageUrl: string;
+  referenceImageUrl: string | null;
   description?: string;
 };
 

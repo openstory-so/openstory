@@ -3,8 +3,9 @@ import {
   talentSheets,
   talentMedia,
   talentSheetVariants,
-  locationLibrary,
-  locationSheets,
+  locationReferencePhotos,
+  locations,
+  sequenceLocationLinks,
   generatedAssets,
   audio,
   vfx,
@@ -30,7 +31,6 @@ import {
   sequenceCast,
   characterSheetVariants,
   characterVoiceVersions,
-  sequenceLocations,
   locationSheetVariants,
   sequenceElements,
   sequenceMusicVariants,
@@ -814,18 +814,22 @@ describe('complete production reads', () => {
       status: 'completed',
       url: '/r2/ada.png',
     });
-    await db.insert(sequenceLocations).values({
+    await db.insert(locations).values({
       id: locationId,
-      sequenceId,
-      locationId: 'loc_001',
+      teamId,
       legacyName: 'Office',
       legacyDescription: 'Bright office',
       legacyConsistencyTag: 'office',
     });
+    await db.insert(sequenceLocationLinks).values({
+      sequenceId,
+      locationId,
+      scriptLocationId: 'loc_001',
+      attached: false,
+    });
     await db.insert(locationSheetVariants).values({
       id: locationId,
-      parentId: locationId,
-      parentType: 'sequence_location',
+      locationId,
       model: 'nano_banana_2',
       status: 'completed',
       url: '/r2/office.png',
@@ -1285,20 +1289,28 @@ describe('complete production reads', () => {
     expect(firstDoc.document.text).toHaveLength(4000);
     expect(firstDoc.document.nextOffset).toBe(4000);
   });
-  it('validates location sheet parent types and excludes deleted entities and deleted parents', async () => {
+  it('reads a location only through a sequence that uses it, and excludes deleted entities and deleted parents', async () => {
+    // One of the team's locations that this sequence has no link to (#1695).
+    const unlinked = generateId();
     await db
-      .update(locationSheetVariants)
-      .set({ parentType: 'library_location' })
-      .where(eq(locationSheetVariants.id, locationId));
+      .insert(locations)
+      .values({ id: unlinked, teamId, legacyName: 'Pier' });
+    await db.insert(locationSheetVariants).values({
+      id: unlinked,
+      locationId: unlinked,
+      model: 'nano_banana_2',
+      status: 'completed',
+      url: '/r2/pier.png',
+    });
     expect(
-      await data('get_location', { sequenceId, locationId })
-    ).toMatchObject({ location: { selectedReference: null } });
+      await call('get_location', { sequenceId, locationId: unlinked })
+    ).toMatchObject({ isError: true });
     expect(
       await call('get_version', {
         sequenceId,
         kind: 'location_sheet',
-        entityId: locationId,
-        versionId: locationId,
+        entityId: unlinked,
+        versionId: unlinked,
       })
     ).toMatchObject({ isError: true });
     await db
@@ -1599,12 +1611,11 @@ describe('Studio, Gallery and library reads', () => {
       imagePath: 'private',
       imageUrl: '/r2/actor.jpg',
     });
-    await db.insert(locationLibrary).values({
+    // One of the team's locations, used by no sequence (#1695).
+    await db.insert(locations).values({
       id: libraryLocationId,
       teamId,
-      name: 'Office',
-      referenceImagePath: 'private',
-      referenceImageUrl: '/r2/office.jpg',
+      legacyName: 'Studio lot',
     });
     await db.insert(talentSheets).values({
       id: sheetId,
@@ -1630,18 +1641,20 @@ describe('Studio, Gallery and library reads', () => {
       divergedAt: new Date(),
       storagePath: 'private',
     });
-    await db.insert(locationSheets).values({
+    // An uploaded photo: what the `location_sheet` kind reads.
+    await db.insert(locationReferencePhotos).values({
       id: locationSheetId,
       locationId: libraryLocationId,
-      name: 'Night',
-      imageUrl: '/r2/night.jpg',
+      url: '/r2/night.jpg',
+      path: 'private',
     });
     await db.insert(locationSheetVariants).values({
       id: locationVersionId,
-      parentId: libraryLocationId,
-      parentType: 'library_location',
+      locationId: libraryLocationId,
       model: 'test',
+      status: 'completed',
       url: '/r2/location.jpg',
+      storagePath: 'private',
     });
     const userId = generateId();
     await db
@@ -1756,7 +1769,7 @@ describe('Studio, Gallery and library reads', () => {
     expect(asset).not.toHaveProperty('userId');
     expect(queries.some((q) => /^(insert|update|delete)/i.test(q))).toBe(false);
   });
-  it('rejects private foreign parents and every descendant, while allowing public library records', async () => {
+  it('rejects private foreign parents and every descendant, while allowing public talent; a location is never public', async () => {
     scopedDb = createScopedDb(foreignTeamId, generateId());
     for (const [name, id] of [
       ['get_talent', talentId],
@@ -1780,16 +1793,80 @@ describe('Studio, Gallery and library reads', () => {
       .update(talent)
       .set({ isPublic: true })
       .where(eq(talent.id, talentId));
-    await db
-      .update(locationLibrary)
-      .set({ isPublic: true })
-      .where(eq(locationLibrary.id, libraryLocationId));
     expect((await document('get_talent', { id: talentId })).name).toBe('Actor');
     for (const args of resourceCases().filter((args) => args.parentId))
-      expect(await document('get_library_resource', args)).toHaveProperty(
-        'id',
-        args.id
-      );
+      if (args.kind.startsWith('talent'))
+        expect(await document('get_library_resource', args)).toHaveProperty(
+          'id',
+          args.id
+        );
+      else
+        expect((await call('get_library_resource', args)).isError).toBe(true);
+    expect(
+      listResult.parse(await data('list_library_locations', {})).items
+    ).toEqual([]);
+  });
+  it('lists every location of the team, used or not, with the sequences using them (#1695)', async () => {
+    const used = await scopedDb.locations.create(
+      {
+        sequenceId,
+        locationId: 'loc_harbour',
+        name: 'Harbour',
+        rendering: '3D animated, Pixar-like',
+      },
+      { source: 'edit', createdBy: null }
+    );
+    const page = z.object({
+      items: z.array(z.record(z.string(), z.unknown())),
+      nextCursor: z.string().nullable(),
+    });
+    const all = page.parse(await data('list_library_locations', {}));
+    // Ascending id, the one no sequence uses included.
+    expect(all.items.map((item) => item.id)).toEqual(
+      [libraryLocationId, used.id].sort()
+    );
+    expect(all.items.find((item) => item.id === libraryLocationId)).toEqual({
+      id: libraryLocationId,
+      name: 'Studio lot',
+      description: null,
+      referenceImageUrl: null,
+      referenceStatus: 'pending',
+      lastUsedAt: null,
+      sequences: [],
+    });
+    expect(all.items.find((item) => item.id === used.id)).toMatchObject({
+      name: 'Harbour',
+      lastUsedAt: expect.any(String),
+      sequences: [{ id: sequenceId, title: expect.any(String) }],
+    });
+    const first = page.parse(
+      await data('list_library_locations', { limit: 1 })
+    );
+    expect(first.nextCursor).not.toBeNull();
+    expect(
+      page.parse(
+        await data('list_library_locations', { cursor: first.nextCursor })
+      ).items
+    ).toHaveLength(1);
+
+    const detail = await document('get_library_location', { id: used.id });
+    expect(detail).toMatchObject({
+      id: used.id,
+      name: 'Harbour',
+      rendering: '3D animated, Pixar-like',
+      sequences: [{ id: sequenceId }],
+    });
+    expect(detail).not.toHaveProperty('teamId');
+    // Deleted from the team: gone from both reads.
+    await scopedDb.locations.softDeleteForTeam(libraryLocationId);
+    expect(
+      page
+        .parse(await data('list_library_locations', {}))
+        .items.map((item) => item.id)
+    ).toEqual([used.id]);
+    expect(
+      (await call('get_library_location', { id: libraryLocationId })).isError
+    ).toBe(true);
   });
   it('does not expose private or sequence-bound styles through Gallery or direct IDs', async () => {
     const ownStyleId = (await scopedDb.sequences.getById(sequenceId))?.styleId;
@@ -2013,7 +2090,7 @@ describe('Studio, Gallery and library reads', () => {
       ).isError
     ).toBe(true);
   });
-  it('rejects wrong child parents and location variant parent types', async () => {
+  it('rejects wrong child parents, a location’s among them', async () => {
     const otherTalent = generateId();
     await db.insert(talent).values({ id: otherTalent, teamId, name: 'Other' });
     expect(
@@ -2025,19 +2102,23 @@ describe('Studio, Gallery and library reads', () => {
         })
       ).isError
     ).toBe(true);
+    const otherLocation = generateId();
     await db
-      .update(locationSheetVariants)
-      .set({ parentType: 'sequence_location' })
-      .where(eq(locationSheetVariants.id, locationVersionId));
-    expect(
-      (
-        await call('get_library_resource', {
-          kind: 'location_sheet_version',
-          parentId: libraryLocationId,
-          id: locationVersionId,
-        })
-      ).isError
-    ).toBe(true);
+      .insert(locations)
+      .values({ id: otherLocation, teamId, legacyName: 'Other' });
+    for (const [kind, id] of [
+      ['location_sheet', locationSheetId],
+      ['location_sheet_version', locationVersionId],
+    ] as const)
+      expect(
+        (
+          await call('get_library_resource', {
+            kind,
+            parentId: otherLocation,
+            id,
+          })
+        ).isError
+      ).toBe(true);
   });
   it('continues past filtered upload pages and binds storage cursors to team', async () => {
     vi.mocked(listFilesPage).mockResolvedValueOnce({
@@ -2963,6 +3044,89 @@ describe('cast and music edits (#1979)', () => {
     ).toMatchObject(refusal('CONFLICT'));
   });
 
+  it('add_location_to_sequence links a team location into another sequence, once (#1695)', async () => {
+    const pier = await scopedDb.locations.create(
+      {
+        sequenceId,
+        locationId: 'loc_001',
+        name: 'Pier',
+        rendering: 'Photoreal live action',
+        ambiance: 'Windy',
+      },
+      { source: 'edit', createdBy: null }
+    );
+    const otherSequence = generateId();
+    await db.insert(sequences).values({
+      id: otherSequence,
+      teamId,
+      title: 'Other',
+      styleId: (await db.select().from(sequences))[0]?.styleId ?? '',
+    });
+    expect(
+      await data('add_location_to_sequence', {
+        sequenceId: otherSequence,
+        locationId: pier.id,
+      })
+    ).toEqual({ locationId: pier.id, token: 'loc_pier', name: 'Pier' });
+    // Idempotent, and the same location: an edit from one sequence is read
+    // from the other.
+    expect(
+      await data('add_location_to_sequence', {
+        sequenceId: otherSequence,
+        locationId: pier.id,
+      })
+    ).toMatchObject({ token: 'loc_pier' });
+    await data('update_location', {
+      sequenceId: otherSequence,
+      locationId: pier.id,
+      ambiance: 'Still',
+    });
+    expect(
+      await data('get_location', { sequenceId, locationId: pier.id })
+    ).toMatchObject({ location: { name: 'Pier', ambiance: 'Still' } });
+    // Removing it from one sequence leaves the other using it.
+    await data('delete_location', {
+      sequenceId: otherSequence,
+      locationId: pier.id,
+    });
+    expect(
+      await data('get_location', { sequenceId, locationId: pier.id })
+    ).toMatchObject({ location: { name: 'Pier' } });
+    // A location whose name a live location here already has.
+    const twin = await scopedDb.locations.create(
+      {
+        sequenceId: otherSequence,
+        locationId: 'loc_twin',
+        name: 'Quay',
+        rendering: 'Photoreal live action',
+      },
+      { source: 'edit', createdBy: null }
+    );
+    const quay = await scopedDb.locations.create(
+      {
+        sequenceId,
+        locationId: 'loc_quay',
+        name: 'quay',
+        rendering: 'Photoreal live action',
+      },
+      { source: 'edit', createdBy: null }
+    );
+    expect(twin.name).toBe('Quay');
+    expect(
+      await call('add_location_to_sequence', {
+        sequenceId: otherSequence,
+        locationId: quay.id,
+      })
+    ).toMatchObject(refusal('CONFLICT'));
+    // Another team's location, or one that does not exist.
+    expect(
+      await call('add_location_to_sequence', {
+        sequenceId,
+        locationId: generateId(),
+      })
+    ).toMatchObject(refusal('NOT_FOUND'));
+  });
+
   it('the deprecated character fields still work: clothing goes to the default look, features into its styling (#2065)', async () => {
     const { characterId } = z.object({ characterId: z.string() }).parse(
       await data('create_character', {
@@ -3607,8 +3771,7 @@ describe('cast and music edits (#1979)', () => {
     const reference = generateId();
     await db.insert(locationSheetVariants).values({
       id: reference,
-      parentId: created.locationId,
-      parentType: 'sequence_location',
+      locationId: created.locationId,
       model: 'nano_banana_2',
       status: 'completed',
       url: '/r2/harbour.png',
@@ -3631,8 +3794,7 @@ describe('cast and music edits (#1979)', () => {
     const spare = generateId();
     await db.insert(locationSheetVariants).values({
       id: spare,
-      parentId: created.locationId,
-      parentType: 'sequence_location',
+      locationId: created.locationId,
       model: 'nano_banana_2',
       status: 'completed',
       url: '/r2/harbour-2.png',

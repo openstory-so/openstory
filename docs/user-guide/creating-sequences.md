@@ -127,7 +127,7 @@ Click the talent icon to attach characters from your **Talent Library**. The AI 
 
 ### Location Suggestions
 
-Click the location icon to attach locations from your **Location Library**. The AI will reference these when generating scenes set in matching environments.
+Click the location icon to pick from your team's **Locations**. When the script has a matching place, the sequence uses the location you picked, as it is. See [Locations](/docs/user-guide/locations).
 
 Both are marked as "optional" in the UI — sequences work fine without them.
 

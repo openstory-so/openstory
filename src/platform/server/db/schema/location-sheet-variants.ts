@@ -1,13 +1,9 @@
 /**
  * Location Sheet Variants Schema
- * Stores divergent location reference outputs (Stage 2 of workflow snapshots).
- *
- * Covers both sequence-scoped locations (`sequence_locations.referenceImageUrl`,
- * written by `locationSheetWorkflow`) and team-level library locations
- * (`location_library.referenceImageUrl`, written by
- * `libraryLocationSheetWorkflow`). The parent is type-tagged via
- * `parent_type` + `parent_id` so a single variants table services both
- * surfaces without duplicating columns.
+ * Every sheet a location has had: its history, and the outputs a run parked
+ * as divergent (Stage 2 of workflow snapshots). Keyed by the location, with
+ * no sequence on the row: a sheet is the location's, whichever sequence drew
+ * it (#1695).
  */
 
 import { sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';
@@ -19,13 +15,6 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
-
-const LOCATION_SHEET_VARIANT_PARENT_TYPES = [
-  'sequence_location',
-  'library_location',
-] as const;
-export type LocationSheetVariantParentType =
-  (typeof LOCATION_SHEET_VARIANT_PARENT_TYPES)[number];
 
 const LOCATION_SHEET_VARIANT_STATUSES = [
   'pending',
@@ -43,8 +32,9 @@ export const locationSheetVariants = snakeCase.table(
       .$defaultFn(() => generateId())
       .primaryKey()
       .notNull(),
-    parentType: text().$type<LocationSheetVariantParentType>().notNull(),
-    parentId: text().notNull(),
+    // No FK: adding one to an existing table is a rebuild. Deletes are done
+    // in app code (`deleteLocationsStatements`).
+    locationId: text().notNull(),
 
     model: text({ length: 100 }).notNull(),
 
@@ -64,8 +54,8 @@ export const locationSheetVariants = snakeCase.table(
     error: text(),
 
     inputHash: text(),
-    // The `location_bible_versions` row a sequence-location run read (#1600).
-    // Null on library-location rows, uploads, and rows from before history.
+    // The `location_bible_versions` row the run read (#1600). Null on
+    // uploads and rows from before history.
     bibleVersionId: text(),
     divergedAt: integer({ mode: 'timestamp' }),
     // Soft-delete marker; preserves the artifact for the toast Undo.
@@ -79,14 +69,11 @@ export const locationSheetVariants = snakeCase.table(
       .notNull(),
   },
   (table) => [
-    index('idx_location_sheet_variants_parent').on(
-      table.parentType,
-      table.parentId
-    ),
-    // One parked divergent per (parent, model, input hash). History rows
+    index('idx_location_sheet_variants_location').on(table.locationId),
+    // One parked divergent per (location, model, input hash). History rows
     // (divergedAt IS NULL) are unrestricted so same-input re-rolls accumulate.
     uniqueIndex('location_sheet_variants_divergent_key')
-      .on(table.parentType, table.parentId, table.model, table.inputHash)
+      .on(table.locationId, table.model, table.inputHash)
       .where(sql`${table.divergedAt} IS NOT NULL`),
   ]
 );

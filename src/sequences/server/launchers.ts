@@ -188,13 +188,24 @@ async function resolveStoryboardPayload(
   // Casting identity is snapshotted here, alongside every other frozen field:
   // the matching workflows only re-read these rows for the late-arriving sheet
   // image, never for the name/description they match on.
+  //
+  // The locations matching may bind a script location to (#1695) are the
+  // team's: the ones the writer picked for this run, then the ones already
+  // attached to the sequence.
+  const attachedLocations = (await scopedDb.locations.list(sequenceId)).filter(
+    (l) => l.attached
+  );
+  const suggestedLocationIds = [
+    ...new Set([
+      ...(input.suggestedLocationIds ?? []),
+      ...attachedLocations.map((l) => l.id),
+    ]),
+  ];
   const [suggestedTalentRows, suggestedLocationRows] = await Promise.all([
     input.suggestedTalentIds?.length
       ? scopedDb.talent.getByIds(input.suggestedTalentIds)
       : Promise.resolve([]),
-    input.suggestedLocationIds?.length
-      ? scopedDb.locations.getByIds(input.suggestedLocationIds)
-      : Promise.resolve([]),
+    scopedDb.locations.getCurrentByIds(suggestedLocationIds),
   ]);
 
   // The live cast, frozen for the run (#2050): analysis reads only these,
@@ -228,6 +239,7 @@ async function resolveStoryboardPayload(
       voiceId: t.voiceId,
       voiceDescription: t.voiceDescription,
     })),
+    suggestedLocationIds,
     suggestedLocations: suggestedLocationRows.map((l) => ({
       locationId: l.id,
       name: l.name,

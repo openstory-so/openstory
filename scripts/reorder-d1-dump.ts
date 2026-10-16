@@ -72,9 +72,7 @@ const EDGES: Array<[string, string]> = [
   ['gift_tokens', 'user'],
   ['location_bible_versions', 'sequence_locations'],
   ['location_bible_versions', 'user'],
-  ['location_library', 'teams'],
-  ['location_library', 'user'],
-  ['location_sheets', 'location_library'],
+  ['location_reference_photos', 'sequence_locations'],
   ['oauth_access_token', 'oauth_client'],
   ['oauth_access_token', 'oauth_refresh_token'],
   ['oauth_client_resource', 'oauth_client'],
@@ -95,8 +93,9 @@ const EDGES: Array<[string, string]> = [
   ['sequence_events', 'sequences'],
   ['sequence_events', 'user'],
   ['sequence_exports', 'sequences'],
-  ['sequence_locations', 'location_library'],
-  ['sequence_locations', 'sequences'],
+  ['sequence_location_links', 'sequence_locations'],
+  ['sequence_location_links', 'sequences'],
+  ['sequence_locations', 'teams'],
   ['sequence_music_prompt_versions', 'sequences'],
   ['sequence_music_prompt_versions', 'user'],
   ['sequence_music_variants', 'sequences'],
@@ -145,8 +144,8 @@ const EDGES: Array<[string, string]> = [
 ];
 
 // Tables that genuinely carry no FK constraints in the schema snapshot.
-// `location_sheet_variants` is polymorphic (`parent_type` + `parent_id`, no FK),
-// so it carries no insert-ordering constraint.
+// `location_sheet_variants.location_id` has no FK, so it carries no
+// insert-ordering constraint.
 const KNOWN_FK_FREE = new Set([
   'apikey',
   'app_metadata',

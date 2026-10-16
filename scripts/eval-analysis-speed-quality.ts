@@ -36,7 +36,6 @@ import { buildLocationMatchingPromptVariables } from '@/cast/server/location-mat
 import { musicSceneSummariesFromAnalysis } from '@/audio/server/workflows/music-scene-summaries';
 import { STYLE_CATEGORIES } from '@/look/auto-style';
 import { STYLE_PACE_VALUES } from '@/look/style-config';
-import type { LibraryLocation } from '@/platform/server/db/schema/location-library';
 import {
   LOCATION_CASE,
   PROSE_GOLD_BEATS,
@@ -526,9 +525,7 @@ async function runCall(
   if (job.call === 'location') {
     const vars = buildLocationMatchingPromptVariables(
       LOCATION_CASE.scriptLocations,
-      // Prompt builder only reads id/name/description/referenceImageUrl.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-      LOCATION_CASE.library as unknown as LibraryLocation[]
+      LOCATION_CASE.library
     );
     const { messages } = await getChatPrompt(
       'phase/location-matching-chat',

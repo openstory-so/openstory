@@ -185,7 +185,7 @@ describe('computeGenerationPlan', () => {
               character('ravi', 'Ravi', null),
             ]),
         },
-        sequenceLocations: { list: () => Promise.resolve([]) },
+        locations: { list: () => Promise.resolve([]) },
         frameVariants: {
           getPrimaryByFrameIds: () =>
             Promise.resolve(

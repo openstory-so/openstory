@@ -22,6 +22,7 @@ import { listAssets, readAsset } from '@/models/server/asset-inspection';
 import { listStudioUploadReads } from '@/studio/server/upload-reads';
 import { buildSampleEntries } from '@/look/ui/sample-entries';
 import { pageRows, readPage } from '@/platform/server/read-page';
+import { NotFoundError } from '@/platform/errors';
 import { productionRead, readToolDefinition } from '../tool-context';
 
 const pageInput = z.strictObject({
@@ -87,12 +88,6 @@ const libraryEntryTools = (
       list: 'list_talent',
       get: 'get_talent',
       label: 'library talent, including public talent',
-    },
-    {
-      kind: 'location',
-      list: 'list_library_locations',
-      get: 'get_library_location',
-      label: 'library locations, including public locations',
     },
     {
       kind: 'style',
@@ -163,12 +158,68 @@ const listLibraryCharacters = productionRead(
       origin
     )
 );
+const libraryLocationUse = {
+  lastUsedAt: z.string().nullable(),
+  sequences: z.array(z.object({ id: z.string(), title: z.string() })),
+};
+const libraryLocationsSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      referenceImageUrl: z.string().nullable(),
+      referenceStatus: z.string(),
+      ...libraryLocationUse,
+    })
+  ),
+  nextCursor: z.string().nullable(),
+});
+const listLibraryLocations = productionRead(
+  'list_library_locations',
+  "List the team's locations, every one of them, used by a sequence or not (#1695). There are no public or template locations. Any of them can be used in a sequence with add_location_to_sequence, or named in create_sequence. Ascending ID pagination. Each carries its reference sheet (referenceImageUrl, null until one is drawn), the live sequences that use it (the most recently changed first) and lastUsedAt (null when no sequence uses it). Read one whole with get_library_location, or as a sequence uses it with get_location.",
+  pageInput,
+  libraryLocationsSchema,
+  async (input, { scopedDb, origin }) =>
+    projectRead(
+      libraryLocationsSchema,
+      await readPage(
+        input,
+        // Bound to the team, like the other library cursors.
+        ['library_locations', scopedDb.teamId],
+        pageRows(await scopedDb.locations.listTeam())
+      ),
+      origin
+    )
+);
+const libraryLocationUseSchema = z.object(libraryLocationUse);
+const getLibraryLocation = productionRead(
+  'get_library_location',
+  "Read one of the team's locations by id as a complete JSON document: its current bible (with rendering), reference sheet and status, and the live sequences that use it. It needs no sequence. An edit made from any sequence changes this one location. Continue with nextOffset and revision. Its uploaded photos and sheet versions are paginated by list_library_resources.",
+  z.strictObject({ id: ulidSchema, ...documentInput.shape }),
+  documentSchema,
+  async (input, { scopedDb, origin }) => {
+    const data = await readCast(scopedDb, 'location', input.id, '', origin);
+    const use = await scopedDb.locations.getTeamLocation(input.id);
+    if (!use) throw new NotFoundError('Library resource not found.');
+    return {
+      document: await readDocument(
+        JSON.stringify({
+          ...data,
+          ...projectRead(libraryLocationUseSchema, use, origin),
+        }),
+        input,
+        'json'
+      ),
+    };
+  }
+);
 const listLibraryResourcesInput = z.discriminatedUnion('kind', [
   childLibraryInput.extend(pageInput.shape),
   rootLibraryInput.extend(pageInput.shape),
 ]);
 const listLibraryResourcesDescription =
-  'List talent sheets, reference media and sheet versions, library location sheets and versions, audio or VFX. parentId is required: talent id for talent_sheet/media, sheet id for talent_sheet_version, and library location id for location_sheet/version. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
+  'List talent sheets, reference media and sheet versions, a team location’s uploaded photos and sheet versions, audio or VFX. parentId is required: talent id for talent_sheet/media, sheet id for talent_sheet_version, and location id (list_library_locations) for location_sheet/location_sheet_version. location_sheet is the photos uploaded as input for the location’s sheet, not the sheet; location_sheet_version is the drawn sheets. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
 const listLibraryResources = readToolDefinition({
   name: 'list_library_resources',
   description: listLibraryResourcesDescription,
@@ -323,6 +374,8 @@ const listStudioUploads = productionRead(
 
 export const libraryReadTools = [
   ...libraryEntryTools,
+  listLibraryLocations,
+  getLibraryLocation,
   listLibraryCharacters,
   listLibraryResources,
   getLibraryResource,

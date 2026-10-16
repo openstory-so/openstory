@@ -30,9 +30,10 @@ import {
   characterBibleVersions,
   frames,
   frameVariants,
-  locationLibrary,
+  locations,
+  locationSheetVariants,
   scenes,
-  sequenceLocations,
+  sequenceLocationLinks,
   sequenceMusicVariants,
   sequences,
   shots,
@@ -328,18 +329,37 @@ describe('cast', () => {
     ).toMatchObject(refused('VALIDATION_ERROR'));
   });
 
-  it('refuses a library location with no reference image', async () => {
-    const locationId = generateId();
-    const libraryLocationId = generateId();
-    await db.insert(sequenceLocations).values({
-      id: locationId,
-      sequenceId,
-      locationId: 'loc_001',
-      legacyName: 'Office',
+  /** One of the team's locations, with a completed sheet when `sheet`. */
+  async function teamLocation(name: string, sheet: boolean) {
+    const id = generateId();
+    await db.insert(locations).values({
+      id,
+      teamId,
+      legacyName: name,
+      referenceStatus: sheet ? 'completed' : 'pending',
     });
-    await db
-      .insert(locationLibrary)
-      .values({ id: libraryLocationId, teamId, name: 'Office' });
+    if (sheet)
+      await db.insert(locationSheetVariants).values({
+        id,
+        locationId: id,
+        model: 'nano_banana_2',
+        status: 'completed',
+        url: `/r2/${id}.png`,
+      });
+    return id;
+  }
+  const use = (locationId: string, scriptLocationId: string) =>
+    db.insert(sequenceLocationLinks).values({
+      sequenceId,
+      locationId,
+      scriptLocationId,
+      attached: false,
+    });
+
+  it('refuses to switch to a team location with no reference image', async () => {
+    const locationId = await teamLocation('Office', true);
+    await use(locationId, 'loc_001');
+    const libraryLocationId = await teamLocation('Bare office', false);
     expect(
       await call('recast_location', {
         sequenceId,
@@ -347,6 +367,63 @@ describe('cast', () => {
         libraryLocationId,
       })
     ).toMatchObject(refused('VALIDATION_ERROR'));
+    expect(triggerWorkflow).not.toHaveBeenCalled();
+    expect(await scopedDb.locations.getById(sequenceId, locationId)).not.toBe(
+      null
+    );
+  });
+
+  it('recast_location re-points the sequence at another team location and draws no sheet (#1695)', async () => {
+    const locationId = await teamLocation('Office', true);
+    await use(locationId, 'loc_001');
+    const libraryLocationId = await teamLocation('Loft', true);
+    expect(
+      await data('recast_location', {
+        sequenceId,
+        locationId,
+        libraryLocationId,
+      })
+    ).toEqual({
+      locationId: libraryLocationId,
+      workflowRunId: 'run-1',
+      affectedShotIds: [],
+    });
+    // Only the shots re-render: no sheet run, and no claim on either sheet.
+    expect(vi.mocked(triggerWorkflow).mock.calls.map(([path]) => path)).toEqual(
+      ['/recast-location']
+    );
+    // The link moved and kept its script id; the old location is the team's.
+    expect(
+      await scopedDb.locations.getById(sequenceId, libraryLocationId)
+    ).toMatchObject({ name: 'Loft', locationId: 'loc_001', attached: true });
+    expect(await scopedDb.locations.getById(sequenceId, locationId)).toBe(null);
+    expect(
+      (await scopedDb.locations.listTeam()).map((location) => location.id)
+    ).toEqual(expect.arrayContaining([locationId, libraryLocationId]));
+    expect(await scopedDb.locations.getCurrent(locationId)).toMatchObject({
+      referenceStatus: 'completed',
+      selectedReferenceVersionId: null,
+    });
+  });
+
+  it('does not switch to another team\u2019s location', async () => {
+    const locationId = await teamLocation('Office', true);
+    await use(locationId, 'loc_001');
+    const foreignTeam = generateId();
+    await db
+      .insert(teams)
+      .values({ id: foreignTeam, name: 'Foreign', slug: foreignTeam });
+    const foreign = generateId();
+    await db
+      .insert(locations)
+      .values({ id: foreign, teamId: foreignTeam, legacyName: 'Vault' });
+    expect(
+      await call('recast_location', {
+        sequenceId,
+        locationId,
+        libraryLocationId: foreign,
+      })
+    ).toMatchObject(refused('NOT_FOUND'));
     expect(triggerWorkflow).not.toHaveBeenCalled();
   });
 

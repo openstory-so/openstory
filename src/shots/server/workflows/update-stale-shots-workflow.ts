@@ -538,7 +538,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             referenceVersionId = await step.do(
               `claim-location-sheet-${id}`,
               () =>
-                scopedDb.sequenceLocations.claimReference(id, {
+                scopedDb.locations.claimReference(id, {
                   markGenerating: true,
                   activity: {
                     sequenceId,
@@ -579,7 +579,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           } catch (error) {
             failReference(id, 'reference', error);
             await step.do(`fail-location-sheet-claim-${id}`, () =>
-              scopedDb.sequenceLocations.failReferenceClaim(
+              scopedDb.locations.failReferenceClaim(
                 id,
                 referenceVersionId,
                 sanitizeFailResponse(error)

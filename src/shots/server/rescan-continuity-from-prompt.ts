@@ -26,10 +26,7 @@ export type ContinuityRescanResult = {
 };
 
 export async function rescanContinuityFromPrompt(args: {
-  scopedDb: Pick<
-    ScopedDb,
-    'characters' | 'sequenceElements' | 'sequenceLocations'
-  >;
+  scopedDb: Pick<ScopedDb, 'characters' | 'sequenceElements' | 'locations'>;
   sequenceId: string;
   existing: Continuity;
   promptText: string;
@@ -43,7 +40,7 @@ export async function rescanContinuityFromPrompt(args: {
   const [characters, elements, locations] = await Promise.all([
     scopedDb.characters.list(sequenceId),
     scopedDb.sequenceElements.list(sequenceId),
-    scopedDb.sequenceLocations.list(sequenceId),
+    scopedDb.locations.list(sequenceId),
   ]);
 
   const additions = extractContinuityFromPrompt({

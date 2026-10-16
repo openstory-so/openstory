@@ -16,7 +16,7 @@ import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { characters } from './characters';
-import { sequenceLocations } from './sequence-locations';
+import { locations } from './locations';
 import { talent } from './talent';
 
 /**
@@ -101,13 +101,17 @@ export const locationBibleVersions = snakeCase.table(
       .notNull(),
     locationId: text()
       .notNull()
-      .references(() => sequenceLocations.id, { onDelete: 'restrict' }),
+      .references(() => locations.id, { onDelete: 'restrict' }),
     name: text({ length: 255 }).notNull(),
     type: text(),
     description: text(),
     architecturalStyle: text(),
     keyFeatures: text(),
     ambiance: text(),
+    // What the place is rendered as (#1695): the character twin's `rendering`.
+    // The one thing a sheet takes from a style. Every writer sets it
+    // (`renderingForLocation`); a NOT NULL would need a table rebuild.
+    rendering: text(),
     consistencyTag: text(),
     source: text({ enum: BIBLE_VERSION_SOURCES }).notNull(),
     createdAt: integer({ mode: 'timestamp' })
@@ -153,6 +157,7 @@ export const LOCATION_BIBLE_FIELDS = [
   'architecturalStyle',
   'keyFeatures',
   'ambiance',
+  'rendering',
   'consistencyTag',
 ] as const satisfies readonly (keyof LocationBibleVersion)[];
 

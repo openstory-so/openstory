@@ -12,8 +12,9 @@ import {
   computeCharacterSheetInputHash,
   computeCharacterSheetInputHashLegacy,
   computeShotImageInputHash,
-  computeLibraryLocationReferenceInputHash,
   computeLocationSheetInputHash,
+  computeLocationSheetInputHashLegacy,
+  locationSheetInputHashMatches,
   hashMotionPromptInput,
   computeMotionPromptInputHashV4,
   computeMusicPromptInputHash,
@@ -34,7 +35,6 @@ import {
   type MotionPromptHashInput,
   type MotionPromptInputHash,
   type ShotImageHashInput,
-  type LibraryLocationReferenceHashInput,
   type LocationSheetHashInput,
   type TalentSheetHashInput,
 } from './input-hash';
@@ -600,13 +600,13 @@ describe('computeLocationSheetInputHash', () => {
       architecturalStyle: 'modernist',
       keyFeatures: 'standing desks',
       ambiance: 'busy',
+      rendering: 'Photoreal live action',
     },
-    libraryLocationReferenceHash: 'lib-sha',
-    styleConfigHash: 'style-sha',
+    referencePhotoHashes: ['photo-a', 'photo-b'],
     imageModel: 'flux-pro-v1.1',
   };
 
-  it('reacts to bible, library ref, style, and model', async () => {
+  it('reacts to bible, rendering, the photo set, and model', async () => {
     const a = await computeLocationSheetInputHash(base);
     const variants = await Promise.all([
       computeLocationSheetInputHash({
@@ -618,15 +618,43 @@ describe('computeLocationSheetInputHash', () => {
       }),
       computeLocationSheetInputHash({
         ...base,
-        libraryLocationReferenceHash: 'lib-sha-v2',
+        locationBible: {
+          ...base.locationBible,
+          rendering: '3D animated, Pixar-like',
+        },
       }),
       computeLocationSheetInputHash({
         ...base,
-        styleConfigHash: 'style-sha-v2',
+        referencePhotoHashes: ['photo-a', 'photo-b', 'photo-c'],
       }),
+      computeLocationSheetInputHash({
+        ...base,
+        referencePhotoHashes: ['photo-a'],
+      }),
+      computeLocationSheetInputHash({ ...base, referencePhotoHashes: [] }),
       computeLocationSheetInputHash({ ...base, imageModel: 'sdxl-v1' }),
     ]);
-    expect(new Set([a, ...variants]).size).toBe(5);
+    expect(new Set([a, ...variants]).size).toBe(7);
+  });
+
+  it('photo order does not move the hash', async () => {
+    expect(
+      await computeLocationSheetInputHash({
+        ...base,
+        referencePhotoHashes: ['photo-b', 'photo-a'],
+      })
+    ).toBe(await computeLocationSheetInputHash(base));
+  });
+
+  it('the photo set is required', () => {
+    expect(() =>
+      computeLocationSheetInputHash(
+        incomplete<LocationSheetHashInput>({
+          locationBible: base.locationBible,
+          imageModel: base.imageModel,
+        })
+      )
+    ).toThrow();
   });
 
   it('every bible field the sheet prompt reads re-stales it (#1785)', async () => {
@@ -657,46 +685,129 @@ describe('computeLocationSheetInputHash', () => {
     });
     expect(renamed).toBe(a);
   });
-});
 
-describe('computeLibraryLocationReferenceInputHash', () => {
-  const base: LibraryLocationReferenceHashInput = {
-    locationBible: { name: 'Office', description: 'Modern open-plan, glass' },
-    styleConfigHash: 'style-sha',
-    imageModel: 'flux-pro-v1.1',
-    referenceMediaHashes: [],
-  };
+  describe('digests stamped before #1695', () => {
+    // What the old rows read: the sequence style's digest and the library
+    // reference the sheet was drawn from.
+    const stamped = {
+      libraryLocationReferenceHash: 'lib-sha',
+      styleConfigHash: 'style-sha',
+      unstyledConfigHash: 'no-style-sha',
+    };
+    const styled = ['pre-1695', 'pre-1785', 'named'] as const;
 
-  it('is stable, distinct from sheet hash, and reacts to model', async () => {
-    const ref = await computeLibraryLocationReferenceInputHash(base);
-    const refSame = await computeLibraryLocationReferenceInputHash({ ...base });
-    const sheetEquivalent = await computeLocationSheetInputHash({
-      ...base,
-      locationBible: {
-        ...base.locationBible,
-        type: 'interior',
-        architecturalStyle: '',
-        keyFeatures: '',
-        ambiance: '',
-      },
-      libraryLocationReferenceHash: null,
+    it('the current digest verifies with no legacy parts', async () => {
+      expect(
+        await locationSheetInputHashMatches(
+          await computeLocationSheetInputHash(base),
+          base,
+          {
+            libraryLocationReferenceHash: null,
+            styleConfigHash: null,
+            unstyledConfigHash: 'no-style-sha',
+          }
+        )
+      ).toBe(true);
     });
-    const refModel = await computeLibraryLocationReferenceInputHash({
-      ...base,
-      imageModel: 'sdxl-v1',
-    });
-    expect(ref).toBe(refSame);
-    expect(ref).not.toBe(sheetEquivalent);
-    expect(ref).not.toBe(refModel);
-    expect(() =>
-      computeLibraryLocationReferenceInputHash(
-        incomplete<LibraryLocationReferenceHashInput>({
-          locationBible: base.locationBible,
-          styleConfigHash: base.styleConfigHash,
-          imageModel: base.imageModel,
+
+    it.each([...styled, 'library'] as const)(
+      'a %s digest still verifies when the legacy parts are supplied',
+      async (kind) => {
+        const stored = await computeLocationSheetInputHashLegacy(
+          base,
+          kind,
+          stamped
+        );
+        expect(stored).not.toBe(await computeLocationSheetInputHash(base));
+        expect(await locationSheetInputHashMatches(stored, base, stamped)).toBe(
+          true
+        );
+      }
+    );
+
+    it.each(styled)(
+      'a %s digest does not verify from no sequence (styleConfigHash null)',
+      async (kind) => {
+        const stored = await computeLocationSheetInputHashLegacy(
+          base,
+          kind,
+          stamped
+        );
+        expect(
+          await locationSheetInputHashMatches(stored, base, {
+            ...stamped,
+            styleConfigHash: null,
+          })
+        ).toBe(false);
+      }
+    );
+
+    it.each(styled)(
+      'a %s digest reads stale once the style or library reference it was stamped with moved',
+      async (kind) => {
+        const stored = await computeLocationSheetInputHashLegacy(
+          base,
+          kind,
+          stamped
+        );
+        expect(
+          await locationSheetInputHashMatches(stored, base, {
+            ...stamped,
+            styleConfigHash: 'style-sha-v2',
+          })
+        ).toBe(false);
+        expect(
+          await locationSheetInputHashMatches(stored, base, {
+            ...stamped,
+            libraryLocationReferenceHash: 'lib-sha-v2',
+          })
+        ).toBe(false);
+      }
+    );
+
+    it('a library digest reads no sequence style, and moves with its photos', async () => {
+      const stored = await computeLocationSheetInputHashLegacy(
+        base,
+        'library',
+        stamped
+      );
+      expect(
+        await locationSheetInputHashMatches(stored, base, {
+          ...stamped,
+          styleConfigHash: null,
         })
-      )
-    ).toThrow();
+      ).toBe(true);
+      expect(
+        await locationSheetInputHashMatches(
+          stored,
+          { ...base, referencePhotoHashes: ['photo-a'] },
+          stamped
+        )
+      ).toBe(false);
+    });
+
+    it('a legacy digest still reads stale after a bible edit', async () => {
+      const edited = {
+        ...base,
+        locationBible: { ...base.locationBible, description: 'Bare concrete' },
+      };
+      for (const kind of [...styled, 'library'] as const) {
+        const stored = await computeLocationSheetInputHashLegacy(
+          base,
+          kind,
+          stamped
+        );
+        expect(
+          await locationSheetInputHashMatches(stored, edited, stamped)
+        ).toBe(false);
+      }
+    });
+
+    it('no stored digest never matches', async () => {
+      expect(await locationSheetInputHashMatches(null, base, stamped)).toBe(
+        false
+      );
+    });
   });
 });
 
@@ -877,6 +988,7 @@ describe('prompt input hashes', () => {
     architecturalStyle: '',
     keyFeatures: '',
     ambiance: '',
+    rendering: 'Photoreal live action',
     consistencyTag: '',
     firstMention: { sceneId: '', text: '', lineNumber: 0 },
   };

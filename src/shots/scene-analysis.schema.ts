@@ -127,6 +127,9 @@ export const locationBibleEntrySchema = z.object({
   architecturalStyle: z.string(),
   keyFeatures: z.string(),
   ambiance: z.string(),
+  // What the place is rendered as (#1695). Never asked of the model: the
+  // wire schema omits it and the analysis fills it from the sequence style.
+  rendering: z.string(),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
   firstMention: firstMentionSchema,
 });

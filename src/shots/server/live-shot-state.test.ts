@@ -32,7 +32,7 @@ const load = (rows: { shotId: string; lines: ReturnType<typeof line>[] }[]) =>
       shotPromptVersions: {
         getSelectedMotionByShots: () => Promise.resolve(new Map()),
       },
-      sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
+      locations: { listWithReferences: () => Promise.resolve([]) },
       sequenceElements: { list: () => Promise.resolve([]) },
     }),
     'seq-1',

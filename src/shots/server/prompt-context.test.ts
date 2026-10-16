@@ -67,6 +67,7 @@ const beach: LocationBibleEntry = {
   architecturalStyle: '',
   keyFeatures: '',
   ambiance: '',
+  rendering: 'Photoreal live action',
   consistencyTag: '',
   firstMention: { sceneId: '', text: '', lineNumber: 0 },
 };
@@ -621,8 +622,11 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     l: LocationBibleEntry
   ): SequenceLocationWithReference => ({
     id: `row_${l.locationId}`,
+    teamId: 'team_1',
+    legacyLibraryReferenceHash: null,
+    linkId: `link_${l.locationId}`,
+    attached: false,
     sequenceId: 'seq_1',
-    libraryLocationId: null,
     locationId: l.locationId,
     name: l.name,
     type: l.type,
@@ -630,6 +634,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     architecturalStyle: l.architecturalStyle,
     keyFeatures: l.keyFeatures,
     ambiance: l.ambiance,
+    rendering: l.rendering,
     consistencyTag: l.consistencyTag,
     firstMentionSceneId: l.firstMention.sceneId || null,
     firstMentionText: l.firstMention.text || null,

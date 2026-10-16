@@ -56,7 +56,13 @@ export class ShotSpecRewriteWorkflow extends OpenStoryWorkflowEntrypoint<ShotSpe
           // Each character in the outfit this shot's scene dresses it in,
           // not its whole wardrobe (#2015).
           characterBible: JSON.stringify(wornLookOnly(input.characterBible)),
-          locationBible: JSON.stringify(input.locationBible),
+          // Without `rendering`: it is the sheet's, and the text the model reads
+          // stays what it was (#1695).
+          locationBible: JSON.stringify(
+            input.locationBible.map(
+              ({ rendering: _rendering, ...entry }) => entry
+            )
+          ),
           elementBible: JSON.stringify(input.elementBible),
         },
         modelId: input.analysisModelId,

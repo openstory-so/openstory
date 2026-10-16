@@ -142,6 +142,7 @@ export const LOCATION_CASE = {
       architecturalStyle: 'Contemporary glass-and-steel corporate',
       keyFeatures: 'Glass walls, white desks, skyline view',
       ambiance: 'Bright, professional, hushed',
+      rendering: 'Photoreal live action',
       consistencyTag: 'office_modern_glass',
       firstMention: {
         text: 'INT. MODERN OFFICE - DAY',
@@ -158,6 +159,7 @@ export const LOCATION_CASE = {
       architecturalStyle: 'Municipal park landscape',
       keyFeatures: 'Gravel paths, plane trees, stone fountain',
       ambiance: 'Open, warm, public',
+      rendering: 'Photoreal live action',
       consistencyTag: 'park_city_afternoon',
       firstMention: {
         text: 'EXT. CITY PARK - LATE AFTERNOON',
@@ -174,6 +176,7 @@ export const LOCATION_CASE = {
       architecturalStyle: 'Early 20th-century mass-transit',
       keyFeatures: 'Tiled columns, yellow platform edge, tunnel mouth',
       ambiance: 'Loud, rushing, subterranean',
+      rendering: 'Photoreal live action',
       consistencyTag: 'subway_platform_night',
       firstMention: {
         text: 'INT. SUBWAY PLATFORM - NIGHT',

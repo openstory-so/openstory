@@ -10,3 +10,14 @@ export function castChannelId(
 ): string {
   return sequenceId ?? `character:${characterId}`;
 }
+
+/**
+ * The same for a location's sheet run (#1695): the sequence's channel, or
+ * the location's own when the run was started from the Locations page.
+ */
+export function locationChannelId(
+  sequenceId: string | null,
+  locationId: string
+): string {
+  return sequenceId ?? `location:${locationId}`;
+}

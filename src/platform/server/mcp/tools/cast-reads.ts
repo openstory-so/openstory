@@ -44,7 +44,7 @@ export const castReadTools = [
   ),
   productionRead(
     'list_locations',
-    'Page sequence locations by database ID with design details and selected references. Continue using nextCursor.',
+    'Page the locations a sequence uses by database ID with design details and selected references. Each is one of the team’s locations (list_library_locations), read at its current bible and sheet; locationId is the sequence’s script token (loc_*) and attached says the writer picked it. Continue using nextCursor.',
     collectionInput,
     z.object({
       locations: z.array(locationReadSchema),
@@ -54,7 +54,7 @@ export const castReadTools = [
   ),
   productionRead(
     'get_location',
-    'Inspect a sequence location by database locationId, including lighting, environment, first mention and selected reference. This is not a library location ID or analysis label.',
+    'Inspect a location a sequence uses by database locationId (the same id list_library_locations gives, not the loc_* token), including its bible, rendering, first mention in this sequence and selected reference. The bible and sheet are the team’s, shared by every sequence that uses it.',
     sequenceInput.extend({ locationId: ulidSchema }),
     z.object({ location: locationReadSchema }),
     async (input, { scopedDb, origin }) => ({

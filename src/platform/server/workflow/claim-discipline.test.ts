@@ -32,8 +32,9 @@ type ScopedMethod = {
 type ClaimDomain = {
   /** Tables whose rows this domain generates or whose pointer it moves. */
   tables: readonly string[];
-  /** Takes the claim at the trigger (last kickoff wins). */
-  claim: ScopedMethod;
+  /** Takes the claim at the trigger (last kickoff wins). A domain with a
+   * conditional twin names both. */
+  claim: ScopedMethod | readonly [ScopedMethod, ...ScopedMethod[]];
   /** Clears the claim on failure ONLY if this run still holds it. */
   clear: ScopedMethod;
   /** Moves the pointer and consumes the claim in one guarded UPDATE. A domain
@@ -75,24 +76,16 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'characterSheetVariants.promoteIfPending',
     userSelect: 'characterSheetVariants.select',
   },
-  // The bible parent claims through the conditional twin,
-  // `sequenceLocations.claimReferenceIfUnmoved` (#1863): taken only while
-  // the bible version and library link its upsert returned still hold.
+  // A location is the team's (#1695): the pointer and the claim are on its
+  // own row, whichever sequence (or none) started the run. The bible parent
+  // claims through the conditional twin (#1863): taken only while the bible
+  // version its upsert returned still holds.
   'location sheets': {
     tables: ['location_sheet_variants'],
-    claim: 'sequenceLocations.claimReference',
-    clear: 'sequenceLocations.failReferenceClaim',
+    claim: ['locations.claimReference', 'locations.claimReferenceIfUnmoved'],
+    clear: 'locations.failReferenceClaim',
     promote: 'locationSheetVariants.promoteIfPending',
     userSelect: 'locationSheetVariants.select',
-  },
-  // The library location keeps its reference on the row; its parked results
-  // share `location_sheet_variants` with the sequence locations above.
-  'library location references': {
-    tables: ['location_library'],
-    claim: 'locations.claimReference',
-    clear: 'locations.clearReferenceClaimIf',
-    promote: 'locations.updateReferenceIfClaimed',
-    userSelect: 'locationSheetVariants.promoteAtomically',
   },
   'talent sheets': {
     tables: ['talent_sheets', 'talent_sheet_variants'],
@@ -210,7 +203,6 @@ const UNCLAIMED_WRITERS: readonly ScopedMethod[] = [
   'shotPromptVersions.writeAiVersion',
   'shotSpecVersions.write',
   'characters.updateVoice',
-  'locations.updateReference',
   'sequenceMusicPromptVersions.write',
 ];
 const UNCLAIMED_CALL_SITES: Record<string, string> = {
@@ -229,12 +221,6 @@ const UNCLAIMED_CALL_SITES: Record<string, string> = {
     'pre-#1786 user edit; the rescue write is select: false',
   'src/stills/server/workflows/soften-image-prompt.ts: framePromptVersions.write':
     'select: false, lands unselected (#1786)',
-  // A library sheet payload queued before #1113 carries no claim (drain path;
-  // character and sequence-location runs land through the claim batch in its
-  // unclaimed mode). The library talent twin is `talent.sheets.create`,
-  // nested past this scan.
-  'src/cast/server/workflows/library-location-sheet-workflow.ts: locations.updateReference':
-    'pre-#1113 payload, no claim',
   // The music prompt pass selects its output with no claim (#1115); a track
   // regeneration claims the track, not the prompt.
   'src/audio/server/workflows/music-prompt-workflow.ts: sequenceMusicPromptVersions.write':

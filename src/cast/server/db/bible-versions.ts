@@ -18,7 +18,7 @@ import {
   characterBibleVersions as cbv,
   characters,
   locationBibleVersions as lbv,
-  sequenceLocations,
+  locations,
 } from '@/platform/server/db/schema';
 import type {
   CharacterBible,
@@ -88,25 +88,25 @@ export const legacyBibleFeatures = sql<
 
 /** Select fields: a sequence location's bible, resolved. */
 export const locationBibleColumns = {
-  name: sql<string>`${live(lbv.id, lbv.name, sequenceLocations.legacyName)}`,
-  type: sql<
-    string | null
-  >`${live(lbv.id, lbv.type, sequenceLocations.legacyType)}`,
+  name: sql<string>`${live(lbv.id, lbv.name, locations.legacyName)}`,
+  type: sql<string | null>`${live(lbv.id, lbv.type, locations.legacyType)}`,
   description: sql<
     string | null
-  >`${live(lbv.id, lbv.description, sequenceLocations.legacyDescription)}`,
+  >`${live(lbv.id, lbv.description, locations.legacyDescription)}`,
   architecturalStyle: sql<
     string | null
-  >`${live(lbv.id, lbv.architecturalStyle, sequenceLocations.legacyArchitecturalStyle)}`,
+  >`${live(lbv.id, lbv.architecturalStyle, locations.legacyArchitecturalStyle)}`,
   keyFeatures: sql<
     string | null
-  >`${live(lbv.id, lbv.keyFeatures, sequenceLocations.legacyKeyFeatures)}`,
+  >`${live(lbv.id, lbv.keyFeatures, locations.legacyKeyFeatures)}`,
   ambiance: sql<
     string | null
-  >`${live(lbv.id, lbv.ambiance, sequenceLocations.legacyAmbiance)}`,
+  >`${live(lbv.id, lbv.ambiance, locations.legacyAmbiance)}`,
+  // No legacy column: every version has one since #1695.
+  rendering: lbv.rendering,
   consistencyTag: sql<
     string | null
-  >`${live(lbv.id, lbv.consistencyTag, sequenceLocations.legacyConsistencyTag)}`,
+  >`${live(lbv.id, lbv.consistencyTag, locations.legacyConsistencyTag)}`,
 };
 
 /** The character bible fields of any object that carries them. */
@@ -132,6 +132,7 @@ export const pickLocationBible = (l: LocationBible): LocationBible => ({
   architecturalStyle: l.architecturalStyle,
   keyFeatures: l.keyFeatures,
   ambiance: l.ambiance,
+  rendering: l.rendering,
   consistencyTag: l.consistencyTag,
 });
 

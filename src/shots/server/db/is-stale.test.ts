@@ -15,9 +15,8 @@ import {
   characters,
   shotVariants,
   shots,
-  locationLibrary,
-  locationSheets,
-  sequenceLocations,
+  locationSheetVariants,
+  locations,
   sequences,
   styles,
   talent,
@@ -39,9 +38,8 @@ async function seed() {
   await db.delete(shotVariants);
   await db.delete(shots);
   await db.delete(characters);
-  await db.delete(sequenceLocations);
-  await db.delete(locationSheets);
-  await db.delete(locationLibrary);
+  await db.delete(locationSheetVariants);
+  await db.delete(locations);
   await db.delete(talentSheets);
   await db.delete(talent);
   await db.delete(sequences);
@@ -135,50 +133,30 @@ describe('shot_variants input-hash + diverged_at columns', () => {
   });
 });
 
-describe('locationLibrary.reference_input_hash', () => {
+describe('location_sheet_variants.input_hash', () => {
   it('defaults to null and persists when set', async () => {
     const [loc] = await db
-      .insert(locationLibrary)
-      .values({ teamId: team.id, name: 'L' })
-      .returning();
-    if (!loc) throw new Error('test setup: location insert returned nothing');
-    expect(loc.referenceInputHash).toBeNull();
-
-    await db
-      .update(locationLibrary)
-      .set({ referenceInputHash: 'h' })
-      .where(eq(locationLibrary.id, loc.id));
-    const [refreshed] = await db
-      .select()
-      .from(locationLibrary)
-      .where(eq(locationLibrary.id, loc.id));
-    if (!refreshed) throw new Error('test setup: refresh failed');
-    expect(refreshed.referenceInputHash).toBe('h');
-  });
-});
-
-describe('locationSheets.input_hash', () => {
-  it('defaults to null and persists when set', async () => {
-    const [loc] = await db
-      .insert(locationLibrary)
-      .values({ teamId: team.id, name: 'L' })
+      .insert(locations)
+      .values({ teamId: team.id, legacyName: 'L' })
       .returning();
     if (!loc) throw new Error('test setup: location insert returned nothing');
     const [sheet] = await db
-      .insert(locationSheets)
-      .values({ locationId: loc.id, name: 'night' })
+      .insert(locationSheetVariants)
+      .values({ locationId: loc.id, model: 'm1', url: '/r2/l.png' })
       .returning();
     if (!sheet) throw new Error('test setup: sheet insert returned nothing');
     expect(sheet.inputHash).toBeNull();
+    // What a row carried over from the old library keeps for verify (#1695).
+    expect(loc.legacyLibraryReferenceHash).toBeNull();
 
     await db
-      .update(locationSheets)
+      .update(locationSheetVariants)
       .set({ inputHash: 'h' })
-      .where(eq(locationSheets.id, sheet.id));
+      .where(eq(locationSheetVariants.id, sheet.id));
     const [refreshed] = await db
       .select()
-      .from(locationSheets)
-      .where(eq(locationSheets.id, sheet.id));
+      .from(locationSheetVariants)
+      .where(eq(locationSheetVariants.id, sheet.id));
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.inputHash).toBe('h');
   });

@@ -18,6 +18,8 @@ import { LocationSuggestionSelector } from '@/cast/ui/location-library/location-
 import {
   buildMentionItems,
   libraryCharacterIdOf,
+  libraryLocationIdOf,
+  libraryLocationMentionItems,
   libraryMentionItems,
   type MentionItem,
 } from '@/shots/ui/prompt-mention/mention-items';
@@ -78,7 +80,11 @@ import {
   useSequenceElements,
   type DraftElementUpload,
 } from '@/cast/ui/use-sequence-elements';
-import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
+import {
+  useAttachLocation,
+  useSequenceLocations,
+} from '@/cast/ui/use-sequence-locations';
+import { useTeamLocationList } from '@/cast/ui/use-team-locations';
 import { TARGET_DURATION_PRESETS } from '@/sequences/ui/target-duration-chip';
 import {
   useRecommendedStyles,
@@ -660,6 +666,11 @@ export const ScriptView: FC<{
   const { data: libraryCharacters, isError: libraryCharactersFailed } =
     useLibraryCharacters(isAuthenticated);
   const attachLibraryCharacter = useAttachLibraryCharacter();
+  // The team's locations, the same way (#1695): a pick links the sequence
+  // to one, or goes onto the draft's suggested locations.
+  const { data: teamLocations, isError: teamLocationsFailed } =
+    useTeamLocationList(isAuthenticated);
+  const attachLocation = useAttachLocation();
   const { data: mentionElements } = useSequenceElements(mentionSequenceId);
   const { data: mentionCharacters } = useSequenceCharacters(
     mentionSequenceId ?? ''
@@ -701,6 +712,12 @@ export const ScriptView: FC<{
     return [
       ...items,
       ...libraryMentionItems(libraryRows, new Set(cast.map((c) => c.id))),
+      // A draft has no locations of its own yet, so every team location is
+      // offered; picking one twice is the same pick.
+      ...libraryLocationMentionItems(
+        teamLocations ?? [],
+        new Set((mentionLocations ?? []).map((l) => l.id))
+      ),
     ];
   }, [
     mentionSequenceId,
@@ -710,12 +727,36 @@ export const ScriptView: FC<{
     draftElements,
     libraryCharacters,
     castCharacterIds,
+    teamLocations,
   ]);
 
   // A picked library row inserts her name as a cast row would; the attach
   // runs beside it. A refused attach (a live cast member already has the
   // name) leaves the name as prose and says why.
   const onMentionSelect = (item: MentionItem): MentionItem => {
+    const locationId = libraryLocationIdOf(item);
+    if (locationId) {
+      if (mentionSequenceId) {
+        attachLocation.mutate(
+          { sequenceId: mentionSequenceId, locationId },
+          {
+            onError: (error) =>
+              toast.error(`Could not add ${item.label}`, {
+                description: errorMessage(error),
+              }),
+          }
+        );
+      } else {
+        setSelections((s) =>
+          s.locationIds.includes(locationId)
+            ? s
+            : { ...s, locationIds: [...s.locationIds, locationId] }
+        );
+      }
+      // Its name in capitals, as a scene heading reads.
+      const { pickOnly: _pickOnly, ...picked } = item;
+      return picked;
+    }
     const characterId = libraryCharacterIdOf(item);
     if (!characterId) return item;
     if (mentionSequenceId) {
@@ -1308,6 +1349,9 @@ export const ScriptView: FC<{
         />
       )}
       <LocationSuggestionSelector
+        locations={isAuthenticated ? teamLocations : []}
+        signedOut={!isAuthenticated}
+        failed={teamLocationsFailed}
         selectedLocationIds={selectedLocationIds}
         onSelectionChange={(v) =>
           setSelections((s) => ({ ...s, locationIds: v }))

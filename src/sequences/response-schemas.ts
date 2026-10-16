@@ -167,7 +167,8 @@ export type CharacterBibleWireEntry = z.infer<
 
 export const sceneSplitBiblesResultSchema = z.object({
   characterBible: z.array(characterBibleWireEntrySchema),
-  locationBible: z.array(locationBibleEntrySchema),
+  // The model is not asked what a place is rendered as either (#1695).
+  locationBible: z.array(locationBibleEntrySchema.omit({ rendering: true })),
   elementBible: z.array(elementBibleEntrySchema),
 });
 

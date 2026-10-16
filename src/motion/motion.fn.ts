@@ -224,7 +224,7 @@ export const batchGenerateMotionFn = createServerFn({ method: 'POST' })
         .then((rows) => withMeasuredDurations(context.scopedDb, rows)),
       // Reference-only only: with no still, the location sheet is the set.
       anyReferenceOnly
-        ? context.scopedDb.sequenceLocations.listWithReferences(sequence.id)
+        ? context.scopedDb.locations.listWithReferences(sequence.id)
         : Promise.resolve([]),
     ]);
 

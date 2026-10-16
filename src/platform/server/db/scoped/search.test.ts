@@ -16,10 +16,10 @@ import {
   frames,
   generatedAssets,
   locationBibleVersions,
-  locationLibrary,
+  locations,
   scenes,
   sceneScriptVersions,
-  sequenceLocations,
+  sequenceLocationLinks,
   sequences,
   shotDialogueVersions,
   shotPromptVersions,
@@ -134,12 +134,17 @@ async function seedSequence(teamId: string, styleId: string, word: string) {
     source: 'prompt',
     selectedAt: new Date(),
   });
-  await db.insert(sequenceLocations).values({
+  await db.insert(locations).values({
     id: ids.sequenceLocation,
-    sequenceId: ids.sequence,
-    locationId: 'loc_001',
+    teamId,
     legacyName: 'unused',
     selectedBibleVersionId: ids.locationVersion,
+  });
+  await db.insert(sequenceLocationLinks).values({
+    sequenceId: ids.sequence,
+    locationId: ids.sequenceLocation,
+    scriptLocationId: 'loc_001',
+    attached: false,
   });
   await db.insert(locationBibleVersions).values({
     id: ids.locationVersion,
@@ -236,9 +241,11 @@ async function seedTeam(word: string) {
   const sequence = await seedSequence(teamId, style.id, word);
   const character = await seedCharacter(teamId, word);
   const libraryLocation = generateId();
-  await db
-    .insert(locationLibrary)
-    .values({ id: libraryLocation, teamId, name: `${word} house` });
+  await db.insert(locations).values({
+    id: libraryLocation,
+    teamId,
+    legacyName: `${word} house`,
+  });
   return {
     teamId,
     userId,
@@ -308,9 +315,9 @@ describe('search', () => {
       .set({ selectedBibleVersionId: theirs.bibleVersion })
       .where(eq(characters.id, mine.character));
     await db
-      .update(sequenceLocations)
+      .update(locations)
       .set({ selectedBibleVersionId: theirs.locationVersion })
-      .where(eq(sequenceLocations.id, mine.sequenceLocation));
+      .where(eq(locations.id, mine.sequenceLocation));
 
     expect(await find(mine.teamId, 'giraffe')).toEqual([]);
   });
@@ -333,9 +340,9 @@ describe('search', () => {
       .set({ deletedAt })
       .where(eq(characters.id, mine.character));
     await db
-      .update(sequenceLocations)
+      .update(locations)
       .set({ deletedAt })
-      .where(eq(sequenceLocations.id, mine.sequenceLocation));
+      .where(eq(locations.id, mine.sequenceLocation));
 
     expect((await find(mine.teamId, 'otter')).map((hit) => hit.kind)).toEqual([
       'sequence',

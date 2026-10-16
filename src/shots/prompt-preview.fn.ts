@@ -80,7 +80,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       scopedDb.sequenceElements
         .list(sequence.id)
         .then((rows) => withMeasuredDurations(scopedDb, rows)),
-      scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      scopedDb.locations.listWithReferences(sequence.id),
       usesFrame
         ? scopedDb.frameVariants.getSelected(frame.id)
         : Promise.resolve(null),

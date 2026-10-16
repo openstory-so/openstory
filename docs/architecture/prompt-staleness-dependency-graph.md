@@ -128,10 +128,10 @@ flowchart TD
     script --> split["scene-split-workflow<br/>LLM → scenes + continuity<br/>+ characterBible + locationBible + elementBible"]
 
     split --> talent["talent-matching-workflow<br/>character ↔ library talent"]
-    split --> locmatch["location-matching-workflow<br/>location ↔ library location"]
+    split --> locmatch["location-matching-workflow<br/>script location ↔ team location<br/>a match is a link (#1695)"]
 
     talent --> cbib["character-bible-workflow ⊟<br/>persists characters (CAST)<br/>→ character-sheet ⊟"]
-    locmatch --> lbib["location-bible-workflow<br/>persists locations<br/>→ location-sheet ⊟"]
+    locmatch --> lbib["location-bible-workflow<br/>persists locations, links the matched<br/>→ location-sheet ⊟ for the ones made here"]
     split --> elem["element-sheet-workflow ⊟<br/>auto-detected elements"]
 
     split --> dvprompt["persist-shot-specs ⊟<br/>every shot's spec v1 + derived prompts (#1915, #1923)<br/>assembled, no prompt LLM"]
@@ -184,7 +184,7 @@ flowchart LR
         style{{"styleConfig"}}
         cbible{{"character bible<br/>(age, physicalDescription, …)<br/>name is a display label"}}
         look{{"character look (#2015)<br/>clothing · styling<br/>the one the scene picks"}}
-        lbible{{"location bible"}}
+        lbible{{"location bible<br/>rendering reaches the sheet only"}}
         ebible{{"element bible"}}
         eimage{{"element image"}}
         ar{{"aspectRatio"}}
@@ -194,7 +194,7 @@ flowchart LR
         dur{{"shot durations"}}
         tags{{"music tags"}}
         voice{{"character voiceId<br/>(ElevenLabs or Seed voice)"}}
-        libref{{"library location<br/>reference hash"}}
+        lphotos{{"location reference photos<br/>(#1695)"}}
     end
 
     scene --> VP(["visual prompt hash"])
@@ -232,8 +232,7 @@ flowchart LR
     talentrow{{"talent description<br/>+ default sheet image/look"}} --> CS
 
     lbible --> LS
-    style --> LS
-    libref --> LS
+    lphotos --> LS
 
     TH -. "still version id" .-> VID(["clip manifest"])
     MP -. "prompt version id" .-> VID
@@ -393,7 +392,7 @@ Listed in generation order (matching §4.1):
 | ----------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Talent sheet** (library)                | `library-talent-sheet-workflow`                                                         | none (no talent staleness check)                         | talent description, referenceMediaHashes (sorted set), imageModel                                                                                                                                                                                                                                                                                                         |
 | **Character sheet** (one per look, #2015) | `character-sheet-workflow`                                                              | `readReferenceStaleness`                                 | character bible fields, the look's clothing (as `standardClothing`) and styling (only when set), the default look's sheet version on every other look (the selected version, or that look's id when the pointer is still null; only when set, in every digest shape), talentSheetHash, cast talent (description, default sheet image + look), styleConfigHash, imageModel |
-| **Location sheet**                        | `location-sheet-workflow`                                                               | `readReferenceStaleness`                                 | every location bible field the sheet prompt reads, libraryLocationReferenceHash, styleConfigHash, imageModel                                                                                                                                                                                                                                                              |
+| **Location sheet**                        | `location-sheet-workflow`                                                               | `readReferenceStaleness`                                 | every location bible field the sheet prompt reads (`rendering` included), referencePhotoHashes (sorted set), imageModel. No style (#1695)                                                                                                                                                                                                                                 |
 | **Visual prompt**                         | `persist-shot-specs` · Rebuild (`rebuild-shot-prompts.ts`, `regenerate-shot-prompt.ts`) | `computeShotStaleness`                                   | scene input surface, styleConfig, narrowed cast bibles, aspectRatio, analysisModel, canonical spec content (`current` only), `PROMPT_INPUT_HASH_VERSION`                                                                                                                                                                                                                  |
 | **Motion prompt**                         | `persist-shot-specs` · Rebuild                                                          | `computeShotStaleness`                                   | _same as visual_, plus `referenceOnly`. A `current` digest omits the starting-frame URL. Voice ids are **not** a prompt channel.                                                                                                                                                                                                                                          |
 | **Sequence music prompt**                 | `music-prompt-workflow`                                                                 | `readMusicPromptStaleness`                               | sceneSummaries, analysisModel                                                                                                                                                                                                                                                                                                                                             |
@@ -442,9 +441,11 @@ The hashed artifacts, ordered by when they are produced in the pipeline (§2):
 
 #### Library assets — generated outside this sequence; feed the cascade
 
-These pre-exist a given sequence (a talent or library-location is created once in
-the team library) and flow downstream as a single **hash**, not their full
-contents, so regenerating them with identical inputs doesn't churn dependents.
+These pre-exist a given sequence (a talent is created once in the team
+library) and flow downstream as a single **hash**, not their full contents, so
+regenerating them with identical inputs doesn't churn dependents. There is no
+library location (#1695): a location is the team's and has one sheet, hashed
+in § 2 below.
 
 **Talent sheet — `computeTalentSheetInputHash`**
 
@@ -453,18 +454,6 @@ sha256Hex({
   artifact: 'talent:sheet',
   talent: { description: trim(description) }, // the name is a label
   referenceMediaHashes: sortedRefs(referenceMediaHashes), // unordered set of talent_media rows
-  imageModel,
-});
-```
-
-**Library-location reference — `computeLibraryLocationReferenceInputHash`**
-
-```ts
-sha256Hex({
-  artifact: 'library-location:reference',
-  locationBible: { description: trim(description) }, // the name is a label
-  referenceMediaHashes: sortedRefs(referenceMediaHashes),
-  styleConfigHash,
   imageModel,
 });
 ```
@@ -525,30 +514,50 @@ the look's stored parts (`legacyStylingParts`) as a required argument.
 ```ts
 sha256Hex({
   artifact: 'location:sheet',
-  // #1785: every field `buildLocationSheetPrompt` reads — the same projection
-  // as the prompt hashes (`projectLocationForPrompt`). `name` is a label.
+  version: 3, // #1695: the place is the team's; no sequence style.
+  // Every field `buildLocationSheetPrompt` reads (#1785): the projection the
+  // prompt hashes use (`projectLocationForPrompt`) plus `rendering`, which
+  // only the sheet reads. `name` is a label.
   locationBible: {
-    (type,
-      timeOfDay,
-      description,
-      architecturalStyle,
-      keyFeatures,
-      colorPalette,
-      lightingSetup,
-      ambiance);
+    type,
+    description: trim(description),
+    architecturalStyle: trim(architecturalStyle),
+    keyFeatures: trim(keyFeatures),
+    ambiance: trim(ambiance),
+    rendering: trim(rendering),
   },
-  libraryLocationReferenceHash: libraryLocationReferenceHash ?? null, // ← cascade from library loc
-  styleConfigHash,
+  referencePhotoHashes: sortedRefs(referencePhotoHashes), // unordered set of the uploaded photos
   imageModel,
 });
 ```
 
-Pre-#1785 digests (description only) still verify until
-`LEGACY_HASH_UNTIL` (2026-12-31, #1371).
-**Known gap:** the linked library location's `description` and
-`referenceImageUrl` are read live into the prompt but reach this hash only
-through `libraryLocationReferenceHash`, i.e. after the library reference is
-regenerated — the location twin of the talent channel above.
+A location belongs to the team (#1695, `team-locations.md`), so this digest
+reads nothing of a sequence:
+
+- **No style.** The bible's required `rendering` is the only thing the sheet
+  takes from one. A sequence style change does not stale a location sheet.
+- **No library hash.** The library is gone. The photos uploaded for the
+  location are hashed as a set: adding or removing one stales the sheet,
+  reordering does not. Today the hash of a photo is its URL
+  (`buildRegenerateLocationSheetPayload`).
+- **One digest for every sequence.** A bible edit made from one sequence
+  stales the sheet, and the shots set there, in every sequence that uses the
+  location.
+
+Digests stamped before #1695 still verify until `LEGACY_HASH_UNTIL`
+(2026-12-31, #1371), through `locationSheetInputHashMatches`: `pre-1695`
+(the sequence style's digest and the library reference's hash, no
+`rendering`), `pre-1785` (that with the description alone), `named` (the
+pre-#1108 digest) and `library` (what a library location's own sheet was
+stamped with). The verify takes the legacy parts as a required argument:
+the library reference hash kept on the location
+(`legacyLibraryReferenceHash`) and the style of the sequence the check is
+made from. From no sequence there is no style, so the three shapes that read
+one are not checked and such a sheet reads stale there.
+
+The gap that stood here (#1835: a library location's description and image
+reached the sheet only through a regenerated library reference) is resolved
+by removal.
 
 #### 3. Visual prompt — `computeVisualPromptInputHash`
 
@@ -902,7 +911,8 @@ team with a populated talent library hits this on _every_ sequence, which reads
 as "always stale."
 
 The same shape (stamp = raw payload, verify = transformed DB row) is latent for
-any future bible enrichment, and partially present for library-location matches.
+any future bible enrichment. It does not arise for a matched location (#1695):
+a match links the script location to the team's and no bible is rewritten.
 
 > **Fixed by computing the cast bible once, before any stamp site is reached**
 > (`analyze-script-workflow.ts`, `buildCastCharacterBible`). Every prompt

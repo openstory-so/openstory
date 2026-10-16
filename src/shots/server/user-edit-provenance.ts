@@ -29,7 +29,7 @@ export async function buildUserEditProvenance(
   args: {
     scopedDb: Pick<
       ScopedDb,
-      'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+      'characters' | 'locations' | 'sequenceElements' | 'styles'
     >;
     sequence: ShotPromptContextSequence;
     scene: Scene | null;
