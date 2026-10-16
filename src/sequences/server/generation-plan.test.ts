@@ -20,8 +20,8 @@ let primaryImageStatus: string | null = null;
 
 vi.doMock('@/shots/server/shot-staleness', () => ({
   UNTRACKED_STALENESS: {},
-  loadShotStalenessBatch: vi.fn(() =>
-    Promise.resolve({
+  loadShotStalenessBatch: vi.fn(
+    async (scopedDb: ScopedDb, sequence: { id: string }) => ({
       anchorsByShot: new Map([['s1', frame]]),
       sceneContext: new Map(
         sceneLooks
@@ -37,7 +37,12 @@ vi.doMock('@/shots/server/shot-staleness', () => ({
           : []
       ),
       selectedByFrame: new Map(selectedStill ? [['f1', selectedStill]] : []),
-      refs: { characters: [], locations: [], elements: [], style: null },
+      refs: {
+        characters: await scopedDb.characters.list(sequence.id),
+        locations: await scopedDb.locations.list(sequence.id),
+        elements: [],
+        style: null,
+      },
     })
   ),
   loadShotStalenessReads: vi.fn(() =>
@@ -97,8 +102,8 @@ vi.doMock('@/shots/server/update-stale-references', () => ({
   buildPlanReferences,
 }));
 vi.doMock('@/cast/server/production-staleness', () => ({
-  readReferenceStaleness: () => Promise.resolve({ status: 'fresh' }),
-  readLookSheetStaleness: () => Promise.resolve({ status: 'fresh' }),
+  locationSheetStaleness: () => Promise.resolve({ status: 'fresh' }),
+  lookSheetStaleness: () => Promise.resolve({ status: 'fresh' }),
 }));
 
 const { computeGenerationPlan } = await import('./generation-plan');
@@ -185,7 +190,13 @@ describe('computeGenerationPlan', () => {
               character('ravi', 'Ravi', null),
             ]),
         },
-        locations: { list: () => Promise.resolve([]) },
+        locations: {
+          list: () => Promise.resolve([]),
+          listPhotosByLocationIds: () => Promise.resolve([]),
+        },
+        talent: { getWithSheetsByIds: () => Promise.resolve([]) },
+        characterSheetVariants: { getByIds: () => Promise.resolve([]) },
+        locationSheetVariants: { getByIds: () => Promise.resolve([]) },
         frameVariants: {
           getPrimaryByFrameIds: () =>
             Promise.resolve(

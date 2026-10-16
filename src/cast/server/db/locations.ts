@@ -974,6 +974,25 @@ export function createLocationsMethods(db: Database, teamId: string) {
           asc(locationReferencePhotos.id)
         ),
 
+    /** `listPhotos` for many locations in one read (#2082), same order. */
+    listPhotosByLocationIds: async (
+      ids: string[]
+    ): Promise<LocationReferencePhoto[]> =>
+      ids.length === 0
+        ? []
+        : await db
+            .select(getTableColumns(locationReferencePhotos))
+            .from(locationReferencePhotos)
+            .innerJoin(
+              locations,
+              eq(locations.id, locationReferencePhotos.locationId)
+            )
+            .where(and(inArray(locations.id, ids), inTeam))
+            .orderBy(
+              asc(locationReferencePhotos.createdAt),
+              asc(locationReferencePhotos.id)
+            ),
+
     /**
      * Add photos to a location. They are an input to its sheet, so a sheet
      * run in flight loses its claim (#1113).

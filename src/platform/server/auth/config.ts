@@ -178,6 +178,12 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
     session: {
       expiresIn: 60 * 60 * 24 * 90, // 90 days
       updateAge: 60 * 60 * 24, // Update session daily
+      // The session rides a signed cookie for five minutes (#2082): a
+      // sequence page fires ~40 server fns, and each read `session` then
+      // `user` from the primary before doing anything. A revoked session or
+      // a changed `user.status` is seen within `maxAge`; compliance
+      // enforcement is read per request regardless.
+      cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
 
     // Account linking configuration

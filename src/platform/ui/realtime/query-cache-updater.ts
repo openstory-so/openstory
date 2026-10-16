@@ -193,6 +193,11 @@ export function updateQueryCacheFromEvent(
             shotKeys.dialogueSections(shotId),
             `dialogue-sections:${shotId}`
           );
+          debouncedInvalidate(
+            queryClient,
+            shotKeys.dialogueClaimsBySequence(sequenceId),
+            `dialogue-claims:${sequenceId}`
+          );
           // A new reading is a new clip: the video rendered with the old one
           // now reads stale, and that verdict rides the segments list.
           debouncedInvalidate(

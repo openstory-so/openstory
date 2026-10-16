@@ -303,6 +303,19 @@ function createTalentReadMethodsScoped(db: Database, teamId: string | null) {
       });
     },
 
+    /** `getWithRelations` for many, in one read (#2082): what a plan's sheet verdicts take of the cast talent. */
+    getWithSheetsByIds: async (talentIds: string[]) => {
+      if (talentIds.length === 0) return [];
+      return db.query.talent.findMany({
+        where: { id: { in: talentIds }, ...queryScope },
+        with: {
+          sheets: {
+            orderBy: { isDefault: 'desc', createdAt: 'desc' },
+          },
+        },
+      });
+    },
+
     sheets: {
       getById: async (sheetId: string): Promise<TalentSheet | undefined> => {
         return db.query.talentSheets.findFirst({

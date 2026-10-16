@@ -10,6 +10,12 @@ columns are gone (#1819).
 - Pure half (units, requires graph, cascade, Update all's filter, footer
   copy): `src/sequences/generation-plan.ts`.
 - Loader (rows + verdicts, one read per table): `src/sequences/server/generation-plan.ts`.
+  Every read is per sequence, never per shot, look or location (#2082): the
+  sheet verdicts take their rows (cast talent, live sheet versions, location
+  photos, style) from one batch and call the detail page's compare
+  (`lookSheetStaleness`, `locationSheetStaleness`) in memory.
+  `generation-plan-queries.test.ts` pins the count against a sequence of 2
+  and of 8 shots, characters and locations.
 - Wire: `getGenerationPlanFn` (`src/sequences/generation-plan.fn.ts`).
 
 ## Stops: how far a run goes

@@ -446,6 +446,23 @@ export function createShotDialogueMethods(db: Database) {
         )
         .orderBy(desc(shotDialogueClaims.createdAt)),
 
+    /** `listLiveClaims` for many shots in one read (#2082), newest first. */
+    listLiveClaimsByShotIds: async (
+      shotIds: readonly string[]
+    ): Promise<ShotDialogueClaim[]> =>
+      shotIds.length === 0
+        ? []
+        : await db
+            .select()
+            .from(shotDialogueClaims)
+            .where(
+              and(
+                inArray(shotDialogueClaims.shotId, [...shotIds]),
+                eq(shotDialogueClaims.status, 'generating')
+              )
+            )
+            .orderBy(desc(shotDialogueClaims.createdAt)),
+
     /**
      * The shots with a speech in flight that will become their audio —
      * the unique-index predicate, so a demoted claim does not count (#1816).

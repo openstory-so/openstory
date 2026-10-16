@@ -38,6 +38,7 @@ import { storedMotionDialogueSchema } from '@/shots/scene-analysis.schema';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
 import {
   cancelShotDialogueClaim,
+  listSequenceDialogueClaims,
   listShotDialogueClaims,
   regenerateShotDialogue,
   currentSourceKeys,
@@ -320,6 +321,12 @@ export const listShotDialogueClaimsFn = createServerFn({ method: 'GET' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(shotInput))
   .handler(({ context }) => listShotDialogueClaims(context));
+
+/** Every shot's speeches in flight, by shot id, in one call (#2082). */
+export const listSequenceDialogueClaimsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .handler(({ context }) => listSequenceDialogueClaims(context));
 
 /**
  * Stop a speech in flight from becoming this shot's audio. The run is not

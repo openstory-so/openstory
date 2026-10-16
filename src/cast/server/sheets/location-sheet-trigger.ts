@@ -3,6 +3,8 @@
  */
 
 import type {
+  LocationReferencePhoto,
+  LocationSheetVariant,
   LocationWithReference,
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
@@ -50,6 +52,27 @@ export function toLocationMetadata(
   };
 }
 
+/** The rows a location sheet payload reads besides the location. */
+export type LocationSheetPayloadRows = {
+  liveVersion: Pick<LocationSheetVariant, 'model'> | null;
+  photos: readonly Pick<LocationReferencePhoto, 'url'>[];
+};
+
+export async function loadLocationSheetPayloadRows(
+  scopedDb: Pick<ScopedDb, 'locationSheetVariants' | 'locations'>,
+  location: Pick<LocationWithReference, 'id' | 'selectedReferenceVersionId'>
+): Promise<LocationSheetPayloadRows> {
+  const [liveVersion, photos] = await Promise.all([
+    location.selectedReferenceVersionId
+      ? scopedDb.locationSheetVariants.getById(
+          location.selectedReferenceVersionId
+        )
+      : null,
+    scopedDb.locations.listPhotos(location.id),
+  ]);
+  return { liveVersion: liveVersion ?? null, photos };
+}
+
 /**
  * The payload a regenerate of this location's sheet would send, hash
  * included: what a trigger sends and what staleness compares a stored digest
@@ -64,17 +87,14 @@ export async function buildRegenerateLocationSheetPayload(params: {
   location: LocationWithReference | SequenceLocationWithReference;
   /** Generate-time pick; omit to reuse the live version's model or the sequence default. */
   imageModel?: string | null;
+  /** Already read for this location; omitted, they are read here (#2082). */
+  preloaded?: LocationSheetPayloadRows;
 }): Promise<Omit<LocationSheetWorkflowInput, 'referenceVersionId'>> {
   const { scopedDb, userId, teamId, sequence, location } = params;
 
-  const [liveVersion, photos] = await Promise.all([
-    location.selectedReferenceVersionId
-      ? scopedDb.locationSheetVariants.getById(
-          location.selectedReferenceVersionId
-        )
-      : null,
-    scopedDb.locations.listPhotos(location.id),
-  ]);
+  const { liveVersion, photos } =
+    params.preloaded ??
+    (await loadLocationSheetPayloadRows(scopedDb, location));
 
   const partialFields: SheetPayload<LocationSheetWorkflowInput> = {
     userId,

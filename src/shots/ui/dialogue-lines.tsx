@@ -17,6 +17,7 @@ import { bytesToBase64 } from '@/platform/base64';
 import type { MotionAudioClip } from '@/platform/server/db/schema';
 import type { DialogueLine } from '@/shots/scene-analysis.schema';
 import {
+  listSequenceDialogueClaimsFn,
   listShotDialogueClaimsFn,
   recordShotDialogueLineFn,
   regenerateShotDialogueFn,
@@ -40,7 +41,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import {
   queryOptions,
   useMutation,
-  useQueries,
+  useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import { AlertTriangle, Pencil, Play, Square } from 'lucide-react';
@@ -251,6 +252,9 @@ export const invalidateRecordingStarted = (
         queryKey: shotKeys.dialogueClaims(shotId),
       })
     ),
+    queryClient.invalidateQueries({
+      queryKey: shotKeys.dialogueClaimsBySequence(sequenceId),
+    }),
     queryClient.invalidateQueries({ queryKey: shotStalenessNamespace }),
     queryClient.invalidateQueries({
       queryKey: generationPlanKeys.bySequence(sequenceId),
@@ -262,6 +266,13 @@ export const dialogueClaimsQuery = (sequenceId: string, shotId: string) =>
   queryOptions({
     queryKey: shotKeys.dialogueClaims(shotId),
     queryFn: () => listShotDialogueClaimsFn({ data: { sequenceId, shotId } }),
+  });
+
+/** Every shot's speeches in flight, by shot id; one call per sequence (#2082). */
+const sequenceDialogueClaimsQuery = (sequenceId: string) =>
+  queryOptions({
+    queryKey: shotKeys.dialogueClaimsBySequence(sequenceId),
+    queryFn: () => listSequenceDialogueClaimsFn({ data: { sequenceId } }),
   });
 
 /**
@@ -289,12 +300,13 @@ export const RegenerateSceneDialogueButton: React.FC<{
       toast.error('Dialogue not generated', { description: error.message }),
   });
   // Generating until every shot's new reading has landed: the claim is the
-  // only record of a speech in flight.
-  const generating = useQueries({
-    queries: shotIds.map((shotId) => dialogueClaimsQuery(sequenceId, shotId)),
-    combine: (results) =>
-      results.some((result) =>
-        result.data?.some((claim) => claim.willBecomeCurrent)
+  // only record of a speech in flight. One read for the sequence, not one
+  // per shot (#2082).
+  const { data: generating = false } = useQuery({
+    ...sequenceDialogueClaimsQuery(sequenceId),
+    select: (byShot) =>
+      shotIds.some((shotId) =>
+        byShot[shotId]?.some((claim) => claim.willBecomeCurrent)
       ),
   });
   const busy = regenerate.isPending || generating;

@@ -8,7 +8,10 @@ import { wearLook } from '@/cast/character-looks';
 import { defaultLookFace, lookSheetFaceRefusal } from '@/cast/look-sheet-face';
 import { ValidationError } from '@/platform/errors';
 import { requireCharacterLook } from '@/cast/server/character-look';
-import type { CharacterWithSheet } from '@/platform/server/db/schema';
+import type {
+  CharacterSheetVariant,
+  CharacterWithSheet,
+} from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
@@ -37,7 +40,18 @@ export async function resolveCastTalent(
   talentId: string | null
 ): Promise<CastTalentFields> {
   if (!talentId) return NOT_CAST;
-  const talent = await scopedDb.talent.getWithRelations(talentId);
+  return castTalentFields(await scopedDb.talent.getWithRelations(talentId));
+}
+
+/** The same fields from a talent row already read (#2082). */
+export function castTalentFields(
+  talent:
+    | Pick<
+        Awaited<ReturnType<ScopedDb['talent']['getWithSheetsByIds']>>[number],
+        'description' | 'sheets'
+      >
+    | undefined
+): CastTalentFields {
   if (!talent) return NOT_CAST;
   // Exclude divergent sheets from the fallback identity. A divergent row's
   // `inputHash` represents the parked workflow's snapshot, not the talent's
@@ -72,12 +86,39 @@ type SheetPayloadParams = {
 };
 
 /**
+ * The rows a draft reads besides the character: its cast talent and the
+ * live sheet version. Read once per sheet by `loadCharacterSheetDraftRows`,
+ * or once per sequence by the generation plan (#2082).
+ */
+export type CharacterSheetDraftRows = {
+  cast: CastTalentFields;
+  liveVersion: Pick<CharacterSheetVariant, 'model'> | null;
+};
+
+export async function loadCharacterSheetDraftRows(
+  scopedDb: Pick<ScopedDb, 'talent' | 'characterSheetVariants'>,
+  character: Pick<CharacterWithSheet, 'talentId' | 'selectedSheetVersionId'>
+): Promise<CharacterSheetDraftRows> {
+  const [cast, liveVersion] = await Promise.all([
+    resolveCastTalent(scopedDb, character.talentId),
+    character.selectedSheetVersionId
+      ? scopedDb.characterSheetVariants.getById(
+          character.selectedSheetVersionId
+        )
+      : null,
+  ]);
+  return { cast, liveVersion: liveVersion ?? null };
+}
+
+/**
  * Everything a sheet payload snapshots from the live rows except the face,
  * plus what the face would be now: the default look's selected sheet, or
  * null when this look is the default or that sheet does not exist yet.
  */
 export async function buildCharacterSheetDraft(
-  params: SheetPayloadParams
+  params: SheetPayloadParams,
+  /** Already read for this worn look; omitted, they are read here. */
+  preloaded?: CharacterSheetDraftRows
 ): Promise<{
   draft: CharacterSheetDraft;
   isDefault: boolean;
@@ -106,13 +147,8 @@ export async function buildCharacterSheetDraft(
       `${character.name} is voice-only (#1585): heard, never seen, no sheet to generate`
     );
   }
-  const cast = await resolveCastTalent(scopedDb, character.talentId);
-
-  const liveVersion = character.selectedSheetVersionId
-    ? await scopedDb.characterSheetVariants.getById(
-        character.selectedSheetVersionId
-      )
-    : null;
+  const { cast, liveVersion } =
+    preloaded ?? (await loadCharacterSheetDraftRows(scopedDb, character));
 
   const draft: CharacterSheetDraft = {
     userId,

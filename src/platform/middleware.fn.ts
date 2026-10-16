@@ -182,6 +182,45 @@ export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
 // ============================================================================
 
 /**
+ * The team a user acts as and their compliance state, memoised per isolate
+ * for a few seconds (#2082). A sequence page fires ~40 server fns within a
+ * second or two, and each resolved both from the primary — two round trips,
+ * 350–450 ms apiece from Europe — before any work. Concurrent calls share one
+ * in-flight read; a change to membership or enforcement is seen within
+ * `TEAM_MEMO_TTL_MS` on an isolate that already answered for the user.
+ */
+const TEAM_MEMO_TTL_MS = 5_000;
+type ResolvedTeam = {
+  team: Awaited<ReturnType<typeof resolveUserTeam>>;
+  compliance: Awaited<ReturnType<typeof loadComplianceState>> | null;
+};
+const teamMemo = new Map<
+  string,
+  { until: number; value: Promise<ResolvedTeam> }
+>();
+
+async function resolveTeamAndCompliance(userId: string): Promise<ResolvedTeam> {
+  const now = Date.now();
+  const hit = teamMemo.get(userId);
+  if (hit && hit.until > now) return hit.value;
+  // ponytail: prune on insert; a per-user entry for the whole isolate life
+  // would otherwise grow with every user it ever answered.
+  for (const [key, entry] of teamMemo)
+    if (entry.until <= now) teamMemo.delete(key);
+  const value = (async () => {
+    const team = await resolveUserTeam(userId);
+    return {
+      team,
+      compliance: team ? await loadComplianceState(userId, team.teamId) : null,
+    };
+  })();
+  teamMemo.set(userId, { until: now + TEAM_MEMO_TTL_MS, value });
+  // A failed read is not kept: the next call reads again.
+  value.catch(() => teamMemo.delete(userId));
+  return value;
+}
+
+/**
  * Request auth middleware — for use with server routes (server.middleware).
  * Unlike authMiddleware (type: 'function'), this is request-scoped and
  * receives the request object directly from the middleware params.
@@ -252,9 +291,12 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         }
       }
 
+      const resolved = oauth?.teamId
+        ? null
+        : await resolveTeamAndCompliance(principal.user.id);
       const team = oauth?.teamId
         ? await getUserTeamMembership(principal.user.id, oauth.teamId)
-        : await resolveUserTeam(principal.user.id);
+        : resolved?.team;
 
       if (!team) {
         throw authErrorResponse(
@@ -266,10 +308,9 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         );
       }
 
-      const compliance = await loadComplianceState(
-        principal.user.id,
-        team.teamId
-      );
+      const compliance =
+        resolved?.compliance ??
+        (await loadComplianceState(principal.user.id, team.teamId));
       if (!compliance.enforcement.canAccess) {
         throw authErrorResponse(
           403,
@@ -350,13 +391,14 @@ const analyticsFlushMiddleware = createMiddleware({ type: 'function' })
 export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
-    const team = await resolveUserTeam(context.user.id);
+    const { team, compliance } = await resolveTeamAndCompliance(
+      context.user.id
+    );
 
-    if (!team) {
+    if (!team || !compliance) {
       throw new Error('No team found for user');
     }
 
-    const compliance = await loadComplianceState(context.user.id, team.teamId);
     if (!compliance.enforcement.canAccess) {
       throw new AccountRestrictedError(
         restrictionNotice(compliance.enforcement) ??

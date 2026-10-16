@@ -18,6 +18,7 @@ import { cutAudioSection } from '@/motion/server/cut-audio-section';
 import { safeImageToVideoModel } from '@/models/models';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { Sequence, ShotDialogueClaim } from '@/platform/server/db/schema';
 import {
   castVoiceIds,
   speechVoicesMoved,
@@ -398,16 +399,37 @@ export async function regenerateShotDialogue(
 export async function listShotDialogueClaims(
   context: Pick<ShotEditContext, 'scopedDb' | 'shot'>
 ) {
-  const claims = await context.scopedDb.shotDialogue.listLiveClaims(
-    context.shot.id
-  );
-  return claims.map((claim) => ({
-    id: claim.id,
-    createdAt: claim.createdAt,
-    // Demoted: it still records, but it will not become the shot's audio.
-    willBecomeCurrent: claim.pendingSourceKey !== null,
-  }));
+  return (
+    await context.scopedDb.shotDialogue.listLiveClaims(context.shot.id)
+  ).map(wireClaim);
 }
+
+/**
+ * Every shot's speeches in flight, by shot id, in one read (#2082): what a
+ * scene's Regenerate button asks, instead of one call per shot.
+ */
+export async function listSequenceDialogueClaims(context: {
+  scopedDb: ScopedDb;
+  sequence: Pick<Sequence, 'id'>;
+}): Promise<Record<string, ReturnType<typeof wireClaim>[]>> {
+  const shots = await context.scopedDb.shots.listBySequence(
+    context.sequence.id
+  );
+  const claims = await context.scopedDb.shotDialogue.listLiveClaimsByShotIds(
+    shots.map((shot) => shot.id)
+  );
+  const byShot: Record<string, ReturnType<typeof wireClaim>[]> = {};
+  for (const claim of claims)
+    (byShot[claim.shotId] ??= []).push(wireClaim(claim));
+  return byShot;
+}
+
+const wireClaim = (claim: ShotDialogueClaim) => ({
+  id: claim.id,
+  createdAt: claim.createdAt,
+  // Demoted: it still records, but it will not become the shot's audio.
+  willBecomeCurrent: claim.pendingSourceKey !== null,
+});
 
 /**
  * Stop a speech in flight from becoming this shot's audio. The run is not

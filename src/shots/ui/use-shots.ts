@@ -78,6 +78,17 @@ export const shotKeys = {
    */
   dialogueClaims: (shotId: string) =>
     [...shotKeys.dialogueSections(shotId), 'claims'] as const,
+  /**
+   * Every shot's recordings in flight, by shot (#2082): one call for a
+   * scene's Regenerate button. Under `dialogueSectionsAll` for the same
+   * reason as `dialogueClaims`.
+   */
+  dialogueClaimsBySequence: (sequenceId: string) =>
+    [
+      ...shotKeys.dialogueSectionsAll(),
+      'claims-by-sequence',
+      sequenceId,
+    ] as const,
   /** One shot's authored dialogue versions (#1657). */
   dialogueVersions: (shotId: string) =>
     [...shotKeys.all, 'dialogue-versions', shotId] as const,
