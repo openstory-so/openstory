@@ -176,6 +176,23 @@ async function storeKey(
   });
 }
 
+/**
+ * The sign-in page must be on the server we are talking to: the string goes
+ * to the OS launcher, so no other origin or scheme is passed through.
+ */
+function sameOriginUrl(value: string, origin: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('OpenStory answered with an unreadable sign-in page');
+  }
+  if (url.origin !== origin) {
+    throw new Error(`The sign-in page is not on ${origin}`);
+  }
+  return url.href;
+}
+
 /** Device-code sign-in (RFC 8628 shape); stores and returns the API key. */
 async function signIn(
   options: Pick<ShareOptions, 'origin' | 'home' | 'stderr' | 'open'> & {
@@ -195,7 +212,10 @@ async function signIn(
   const code = {
     deviceCode: stringOf(answer.device_code, 'a device code'),
     userCode: stringOf(answer.user_code, 'a user code'),
-    verifyUrl: stringOf(answer.verification_url_complete, 'a sign-in page'),
+    verifyUrl: sameOriginUrl(
+      stringOf(answer.verification_url_complete, 'a sign-in page'),
+      origin
+    ),
     interval: typeof answer.interval === 'number' ? answer.interval : 5,
   };
   options.stderr.write(

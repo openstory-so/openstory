@@ -119,6 +119,24 @@ npx @openstory/stitch \
 - `--music` is the bed under the whole cut, a `.wav`, `.mp3`, `.m4a`, or `.ogg`. `--music-gain` changes only that bed, in dB, and defaults to 0. The page can turn the bed off. Dialogue stays at its own level.
 - `--frame 9:16` (or `1080x1920`) is the shape of the page. Without it the first clip sets the shape, and nothing else is read before the page opens. Every clip is fitted into that box.
 
+## Sharing a cut
+
+A stitch is two things the other person does not have: the cut and the files. `stitch bundle` writes both into a folder that plays from any static host. `stitch share` uploads that folder to OpenStory and prints a link.
+
+```sh
+npx @openstory/stitch bundle ./cut --music score.mp3 shot.mp4 board.png --audio line.wav
+```
+
+The folder holds the player page, `cut.json`, and every file under `media/`. A URL is downloaded, so a signed URL that expires tomorrow is kept today. Open `index.html` from any web server; the page reads `cut.json` and `media/…` relative to itself, so a sub-path works too.
+
+```sh
+npx @openstory/stitch share --music score.mp3 shot.mp4 board.png --audio line.wav
+```
+
+The first share signs you in: the command prints a short code and opens the approval page in your browser. The key it gets is kept in `~/.openstory/stitch.json`. Every file is uploaded to your team's storage and the command prints `https://openstory.so/stitch/<id>`, a page anyone with the link can watch: the same player, captions, music switch and Download. `--origin` points at another OpenStory server.
+
+Both take every cut option of the play command. Neither opens a browser on the cut itself.
+
 ## Skill
 
 Run the command with npx, as above. `/stitch` does the same thing and leaves the page running.

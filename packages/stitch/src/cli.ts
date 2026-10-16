@@ -831,13 +831,16 @@ function proxiedMediaType(url: string): string {
 }
 
 export function openUrl(url: string, stderr: Writer = process.stderr): void {
+  // Windows goes through rundll32, not `cmd /c start`: cmd parses & and ^
+  // in a URL, and the sign-in URL comes from the server.
   const command =
     process.platform === 'darwin'
       ? 'open'
       : process.platform === 'win32'
-        ? 'cmd'
+        ? 'rundll32'
         : 'xdg-open';
-  const args = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+  const args =
+    process.platform === 'win32' ? ['url.dll,FileProtocolHandler', url] : [url];
   const child = spawn(command, args, { stdio: 'ignore', detached: true });
   const failed = (reason: string) =>
     stderr.write(`Could not open a browser (${reason}). Open ${url}\n`);

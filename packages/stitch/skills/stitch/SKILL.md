@@ -35,6 +35,12 @@ npx @openstory/stitch@latest \
 9. `--frame 9:16` (or `1080x1920`) is the shape of the page. Give it when the shape is known: without it the command reads the first clip to find out. Every clip is fitted into that box.
 10. Run that `npx` command and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
 
+## Sharing
+
+`npx @openstory/stitch@latest bundle <dir> …` takes the same cut options and writes a folder: the player page, `cut.json`, and every file (a URL is downloaded) under `media/`. The folder plays from any static host, at any sub-path.
+
+`npx @openstory/stitch@latest share …` uploads that bundle to OpenStory and prints a link anyone can open. The first share prints a short code and opens the approval page; let the user approve it. The key is kept in `~/.openstory/stitch.json`. Use `share` when the user wants to send the cut to someone, and `bundle` when they want the files themselves.
+
 ## Installing this command
 
 Prefer the OpenStory plugin, which includes this skill plus `create-style` and `create-sequence`: `npx skills add openstory-so/skills`. Grok, Claude Code, Codex, and the ChatGPT desktop app install that repo as a marketplace plugin named OpenStory. If `/stitch` is missing, tell the user to install the plugin.

@@ -15,6 +15,8 @@ export const STORAGE_BUCKETS = {
   TALENT: 'talent',
   VFX: 'vfx',
   ELEMENTS: 'elements',
+  /** Cuts shared from the stitch CLI (#2127): `<teamId>/<stitchId>/<n>.<ext>`. */
+  STITCHES: 'stitches',
 } as const;
 
 export type StorageBucket =

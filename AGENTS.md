@@ -326,7 +326,10 @@ changing the area, and update it in the same PR.**
   the current cut; "Render MP4 on server" makes one. The player itself is
   `packages/stitch` (#1853, published as `@openstory/stitch`): it knows clips and cues, never shots —
   the shot mapping and subtitles (`shotCues`) live in
-  `src/sequences/ui/theatre/playback-clips.ts`.
+  `src/sequences/ui/theatre/playback-clips.ts`. A CLI cut is shared without
+  the CLI (#2127): `stitch bundle` writes a static folder, `stitch share`
+  uploads it (`POST /api/v1/stitches`, media names only, rewritten to
+  `/r2/stitches/<team>/<id>/…`) and `/stitch/$id` plays it with no auth.
 
 ## Frame System
 
