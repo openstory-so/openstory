@@ -292,6 +292,7 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.retry_failed_work',
       'openstory.plan_export',
       'openstory.start_export',
+      'openstory.create_stitch',
     ]);
   });
 

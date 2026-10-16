@@ -86,6 +86,7 @@ import {
   videoVariants,
   sequenceExports,
   credits,
+  stitches,
 } from '@/platform/server/db/schema';
 import { dbSceneId } from '@/shots/scene-id';
 import {
@@ -4150,6 +4151,62 @@ describe('generation and uploads (#1979)', () => {
       );
     expect(set.promptChanged).toBe(false);
     expect(await selectedImageVersionId()).toBe(set.versionId);
+  });
+
+  it('create_stitch stores each file once under the stitch and writes the cut (#2127)', async () => {
+    const wav = Buffer.from('RIFFwav').toString('base64');
+    const still = { data: png, mimeType: 'image/png' };
+    const line = { data: wav, mimeType: 'audio/wav' };
+    const result = z
+      .object({ id: z.string(), url: z.string(), files: z.number() })
+      .parse(
+        await data('create_stitch', {
+          cut: {
+            clips: [
+              {
+                imageUrl: still,
+                fallbackImageUrl: null,
+                durationSeconds: 3,
+                audioUrls: [line],
+                width: 1,
+                height: 1,
+                cues: [{ startSeconds: 0, endSeconds: 2, text: 'Hi' }],
+              },
+            ],
+            frameWidth: 16,
+            frameHeight: 9,
+            // The line again as the bed: stored once.
+            musicUrl: line,
+            musicGainDb: -3,
+          },
+        })
+      );
+    expect(result.url).toBe(`https://openstory.test/stitch/${result.id}`);
+    expect(result.files).toBe(2);
+    const [row] = await db
+      .select()
+      .from(stitches)
+      .where(eq(stitches.id, result.id));
+    const prefix = `/r2/stitches/${teamId}/${result.id}/`;
+    const clip = row?.cut.clips[0];
+    if (!clip || !('imageUrl' in clip)) throw new Error('expected a still');
+    expect(clip.imageUrl).toMatch(new RegExp(`^${prefix}\\w+\\.png$`));
+    expect(clip.audioUrls[0]).toMatch(new RegExp(`^${prefix}\\w+\\.wav$`));
+    expect(row?.cut.musicUrl).toBe(clip.audioUrls[0]);
+    expect(row?.cut.musicGainDb).toBe(-3);
+
+    // A picture in a sound slot is refused.
+    expect(
+      await call('create_stitch', {
+        cut: {
+          clips: [{ videoUrl: still, posterUrl: null, cues: [] }],
+          frameWidth: 16,
+          frameHeight: 9,
+          musicUrl: null,
+          musicGainDb: 0,
+        },
+      })
+    ).toMatchObject(refusal('VALIDATION_ERROR'));
   });
 
   it('needs the portrait sign-off for a real person', async () => {

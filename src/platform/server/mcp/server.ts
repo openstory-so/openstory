@@ -38,6 +38,7 @@ import { castMusicTools } from './tools/cast-music-edits';
 import { generationUploadTools } from './tools/generation-uploads';
 import { castAudioGenerationTools } from './tools/cast-audio-generation';
 import { studioTools } from './tools/studio';
+import { stitchTools } from './tools/stitch';
 import {
   executeGenerationTool,
   getOperationStatusTool,
@@ -118,6 +119,7 @@ export const mcpServer = createMCPServer({
     retryFailedWorkTool,
     planExportTool,
     startExportTool,
+    ...stitchTools,
   ],
   // Advertises the resources capability; `resources/*` requests never reach
   // these reads (see resources.ts).

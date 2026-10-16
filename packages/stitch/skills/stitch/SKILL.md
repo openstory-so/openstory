@@ -41,6 +41,8 @@ npx @openstory/stitch@latest \
 
 `npx @openstory/stitch@latest share …` uploads that bundle to OpenStory and prints a link anyone can open. The first share prints a short code and opens the approval page; let the user approve it. The key is kept in `~/.openstory/stitch.json`. Use `share` when the user wants to send the cut to someone, and `bundle` when they want the files themselves.
 
+Without a shell, or when the files are not on disk, call `create_stitch` on the OpenStory MCP server instead (the OpenStory plugin connects it). It takes the same cut: each media slot is `{ url }` for a file the server can fetch, or `{ data, mimeType }` with base64 for a small file. Base64 travels through the model, so send stills and short lines inline and give clips as URLs. It returns the same kind of link. Prefer the command when the files are on disk: it streams any size.
+
 ## Installing this command
 
 Prefer the OpenStory plugin, which includes this skill plus `create-style` and `create-sequence`: `npx skills add openstory-so/skills`. Grok, Claude Code, Codex, and the ChatGPT desktop app install that repo as a marketplace plugin named OpenStory. If `/stitch` is missing, tell the user to install the plugin.

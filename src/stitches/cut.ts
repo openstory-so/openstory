@@ -1,9 +1,10 @@
 /**
- * A shared stitch (#2127): the cut `stitch share` uploads, as the player page
- * reads it. It is the stitch CLI's `cut.json`. On the wire every media URL is
- * a bundle name, `media/<n>.<ext>`; the server rewrites each to the stored
- * `/r2/...` URL before the row is written, so a stored cut never points at a
- * file the team did not upload.
+ * A shared stitch (#2127): the cut the player page reads, as the stitch CLI's
+ * `cut.json`. The media slots are generic: on the API wire each is a bundle
+ * name (`media/<n>.<ext>`), to the MCP tool each is a URL or inline bytes,
+ * and in the row each is the stored `/r2/...` URL. The server rewrites names
+ * and sources to stored URLs before the row is written, so a stored cut never
+ * points at a file the team did not upload.
  */
 
 import { z } from 'zod';
@@ -21,60 +22,86 @@ const cueSchema = z.object({
   text: z.string().max(2_000),
 });
 
-const videoClipSchema = z.object({
-  videoUrl: mediaName,
-  posterUrl: mediaName.nullable(),
-  cues: z.array(cueSchema).max(500),
-});
+/** The cut with every media slot of type `media`. */
+export function cutSchemaOf<M extends z.ZodType>(media: M) {
+  const videoClip = z.object({
+    videoUrl: media,
+    posterUrl: media.nullable(),
+    cues: z.array(cueSchema).max(500),
+  });
+  const stillClip = z.object({
+    imageUrl: media.nullable(),
+    fallbackImageUrl: media.nullable(),
+    durationSeconds: z.number().positive(),
+    audioUrls: z.array(media).max(50),
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+    cues: z.array(cueSchema).max(500),
+  });
+  return z.object({
+    clips: z
+      .array(z.union([videoClip, stillClip]))
+      .min(1)
+      .max(500),
+    frameWidth: z.number().positive(),
+    frameHeight: z.number().positive(),
+    musicUrl: media.nullable(),
+    musicGainDb: z.number().finite(),
+  });
+}
 
-const stillClipSchema = z.object({
-  imageUrl: mediaName.nullable(),
-  fallbackImageUrl: mediaName.nullable(),
-  durationSeconds: z.number().positive(),
-  audioUrls: z.array(mediaName).max(50),
-  width: z.number().int().positive(),
-  height: z.number().int().positive(),
-  cues: z.array(cueSchema).max(500),
-});
-
-export const stitchCutSchema = z.object({
-  clips: z
-    .array(z.union([videoClipSchema, stillClipSchema]))
-    .min(1)
-    .max(500),
-  frameWidth: z.number().positive(),
-  frameHeight: z.number().positive(),
-  musicUrl: mediaName.nullable(),
-  musicGainDb: z.number().finite(),
-});
+export const stitchCutSchema = cutSchemaOf(mediaName);
 
 export type StitchCut = z.infer<typeof stitchCutSchema>;
 
-/**
- * The same cut with every media name replaced through `url`. The stored form
- * passes the storage URL for that name; `mediaNames` lists what has to be
- * uploaded.
- */
-export function mapCutMedia(
-  cut: StitchCut,
-  url: (name: string) => string
-): StitchCut {
-  const maybe = (name: string | null) => (name === null ? null : url(name));
+/** What a slot holds: a video, a picture, or sound. */
+export type MediaRole = 'video' | 'image' | 'audio';
+
+type Cut<M> = {
+  clips: (
+    | {
+        videoUrl: M;
+        posterUrl: M | null;
+        cues: StitchCut['clips'][number]['cues'];
+      }
+    | {
+        imageUrl: M | null;
+        fallbackImageUrl: M | null;
+        durationSeconds: number;
+        audioUrls: M[];
+        width: number;
+        height: number;
+        cues: StitchCut['clips'][number]['cues'];
+      }
+  )[];
+  frameWidth: number;
+  frameHeight: number;
+  musicUrl: M | null;
+  musicGainDb: number;
+};
+
+/** The same cut with every media slot replaced through `url`, told its role. */
+export function mapCutMedia<A, B>(
+  cut: Cut<A>,
+  url: (media: A, role: MediaRole) => B
+): Cut<B> {
+  const maybe = (media: A | null, role: MediaRole) =>
+    media === null ? null : url(media, role);
   return {
     ...cut,
-    musicUrl: maybe(cut.musicUrl),
+    musicUrl: maybe(cut.musicUrl, 'audio'),
     clips: cut.clips.map((clip) =>
       'videoUrl' in clip
         ? {
             ...clip,
-            videoUrl: url(clip.videoUrl),
-            posterUrl: maybe(clip.posterUrl),
+            videoUrl: url(clip.videoUrl, 'video'),
+            posterUrl: maybe(clip.posterUrl, 'image'),
           }
         : {
             ...clip,
-            imageUrl: maybe(clip.imageUrl),
-            fallbackImageUrl: maybe(clip.fallbackImageUrl),
-            audioUrls: clip.audioUrls.map(url),
+            imageUrl: maybe(clip.imageUrl, 'image'),
+            fallbackImageUrl: maybe(clip.fallbackImageUrl, 'image'),
+            audioUrls: clip.audioUrls.map((a) => url(a, 'audio')),
           }
     ),
   };

@@ -290,6 +290,7 @@ describe('tools/list and whoami', () => {
       'openstory.retry_failed_work',
       'openstory.plan_export',
       'openstory.start_export',
+      'openstory.create_stitch',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
     const batch = tools.find(
@@ -397,6 +398,7 @@ describe('tools/list and whoami', () => {
       'openstory.execute_generation',
       'openstory.retry_failed_work',
       'openstory.start_export',
+      'openstory.create_stitch',
     ]);
     const destructive = new Set([
       'openstory.archive_sequence',

@@ -5,7 +5,6 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
-import { generateId } from '@/platform/id';
 import { stitches, type Stitch } from '@/platform/server/db/schema';
 import type { StitchCut } from '@/stitches/cut';
 import { eq } from 'drizzle-orm';
@@ -17,14 +16,13 @@ export function createStitchesMethods(
 ) {
   return {
     /**
-     * Insert a cut whose media URLs are already the stored form. The id is
-     * minted here and handed to `storedCut` first, so the URLs can carry it.
+     * Insert a cut whose media URLs are already the stored form. The caller
+     * mints the id first (`generateId`), since the stored URLs carry it.
      */
-    create: async (storedCut: (id: string) => StitchCut): Promise<Stitch> => {
-      const id = generateId();
+    create: async (input: { id: string; cut: StitchCut }): Promise<Stitch> => {
       const rows = await db
         .insert(stitches)
-        .values({ id, teamId, userId, cut: storedCut(id) })
+        .values({ id: input.id, teamId, userId, cut: input.cut })
         .returning();
       const row = rows[0];
       if (!row) throw new Error('stitch insert returned no row');

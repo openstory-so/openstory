@@ -137,6 +137,8 @@ The first share signs you in: the command prints a short code and opens the appr
 
 Both take every cut option of the play command. Neither opens a browser on the cut itself.
 
+An agent with no shell can share the same cut through the OpenStory MCP server's `create_stitch` tool: each media slot is a URL the server fetches or a small file as base64.
+
 ## Skill
 
 Run the command with npx, as above. `/stitch` does the same thing and leaves the page running.

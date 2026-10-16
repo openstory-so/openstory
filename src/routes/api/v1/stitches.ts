@@ -17,6 +17,7 @@ import {
   stitchUploadHref,
   storedStitchCut,
 } from '@/stitches/server/stitch-storage';
+import { generateId } from '@/platform/id';
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
@@ -40,9 +41,11 @@ export const Route = createFileRoute('/api/v1/stitches')({
           }
           const { cut } = bodySchema.parse(body);
           const { teamId } = context;
-          const stitch = await context.scopedDb.stitches.create((id) =>
-            storedStitchCut(cut, teamId, id)
-          );
+          const id = generateId();
+          const stitch = await context.scopedDb.stitches.create({
+            id,
+            cut: storedStitchCut(cut, teamId, id),
+          });
           const url = new URL(`/stitch/${stitch.id}`, request.url).href;
           return Response.json(
             withLinks(
