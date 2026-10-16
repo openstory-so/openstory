@@ -6,18 +6,28 @@
 
 import { spawn } from 'node:child_process';
 import { createReadStream } from 'node:fs';
-import { cp, mkdir, readFile, realpath, rm, stat } from 'node:fs/promises';
+import {
+  copyFile,
+  cp,
+  mkdir,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
 import { homedir } from 'node:os';
-import { dirname, extname, join, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { pipeline, Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { readImageSize } from './image-size.js';
+import { extensionOf, mediaType, readBytes } from './media-file.js';
+import { shareCut } from './share.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
 import { placeTimelineCues } from './place-cues.js';
 import { parseSubtitles } from './subtitles.js';
@@ -36,6 +46,8 @@ const DEFAULT_STILL_SECONDS = 4;
 export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-gain db] [--subs file] [--port n] [--no-open]
              <file> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...
 
+       stitch bundle <dir> [cut options] <file>...
+       stitch share [--origin url] [cut options] <file>...
        stitch skill [--global]
 
 Play stills and videos in the browser. Each file is a path or an http(s) URL;
@@ -46,6 +58,12 @@ still. A .wav, .mp3, .m4a, or .ogg is a line or the music. --poster belongs to a
 it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
 --frame is the shape of the page, as a ratio (9:16) or a size (1080x1920).
 Without it the first clip sets the shape. Every clip is fitted into that box.
+
+stitch bundle writes the player page, cut.json, and a copy of every file
+(a URL is downloaded) into <dir>. Put that folder on any static host.
+stitch share uploads the same bundle to OpenStory and prints a link anyone
+can open. The first share signs in with a device code and keeps the key in
+~/.openstory/stitch.json. --origin picks the OpenStory server.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -100,7 +118,16 @@ export type ServedCut = {
 type SkillRequest = { kind: 'skill'; global: boolean };
 type HelpRequest = { kind: 'help' };
 type PlayRequest = { kind: 'play' } & LocalCut;
-export type CliRequest = SkillRequest | HelpRequest | PlayRequest;
+type BundleRequest = { kind: 'bundle'; dir: string } & LocalCut;
+type ShareRequest = { kind: 'share'; origin: string } & LocalCut;
+export type CliRequest =
+  | SkillRequest
+  | HelpRequest
+  | PlayRequest
+  | BundleRequest
+  | ShareRequest;
+
+export const DEFAULT_ORIGIN = 'https://openstory.so';
 
 export function packageRoot(): string {
   return dirname(dirname(fileURLToPath(import.meta.url)));
@@ -112,6 +139,34 @@ export async function parseArgs(
 ): Promise<CliRequest> {
   if (argv.includes('--help') || argv.includes('-h')) return { kind: 'help' };
   if (argv[0] === 'skill') return parseSkill(argv.slice(1));
+  if (argv[0] === 'bundle') {
+    const dir = argv[1];
+    if (dir === undefined || dir.startsWith('-')) {
+      throw new Error('stitch bundle needs a directory to write');
+    }
+    return {
+      kind: 'bundle',
+      dir: resolve(cwd, dir),
+      ...(await parseCut(argv.slice(2), cwd)),
+    };
+  }
+  if (argv[0] === 'share') {
+    let origin = DEFAULT_ORIGIN;
+    const rest: string[] = [];
+    const args = argv.slice(1);
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i] ?? '';
+      if (arg === '--origin') {
+        const value = args[i + 1];
+        if (value === undefined || !isHttpUrl(value)) {
+          throw new Error('--origin needs an http(s) URL');
+        }
+        origin = new URL(value).origin;
+        i += 1;
+      } else rest.push(arg);
+    }
+    return { kind: 'share', origin, ...(await parseCut(rest, cwd)) };
+  }
   return { kind: 'play', ...(await parseCut(argv, cwd)) };
 }
 
@@ -323,20 +378,6 @@ async function audioFile(
   return { file, seconds: await readAudioDuration(file) };
 }
 
-/** The bytes of a path or an http(s) URL. Stills and --subs are read whole. */
-async function readBytes(file: string): Promise<Buffer> {
-  if (!isHttpUrl(file)) return readFile(file);
-  const response = await fetch(file);
-  if (!response.ok) throw new Error(`${file}: HTTP ${response.status}`);
-  return Buffer.from(await response.arrayBuffer());
-}
-
-/** The extension of a path, or of a URL's path. */
-function extensionOf(file: string): string {
-  const path = isHttpUrl(file) ? new URL(file).pathname : file;
-  return extname(path).toLowerCase();
-}
-
 async function existingFile(arg: string, cwd: string): Promise<string> {
   if (isHttpUrl(arg)) return arg;
   const file = resolve(cwd, arg);
@@ -406,7 +447,24 @@ function cue(range: string, text: string): PlaybackCue {
   return { startSeconds, endSeconds, text };
 }
 
-export async function serveCut(cut: LocalCut): Promise<ServedCut> {
+/** The URL a clip holds for the file served or copied as `id`. */
+type MediaUrl = (id: string, file: string) => string;
+
+/** The local server's media route: `/media/<id>`. */
+export const servedMediaUrl: MediaUrl = (id) => `/media/${id}`;
+
+/** A file in a bundle: `media/<id>.<ext>`, so a static host types it. */
+export const bundledMediaUrl: MediaUrl = (id, file) =>
+  `media/${id}${extensionOf(file)}`;
+
+export function serveCut(cut: LocalCut): Promise<ServedCut> {
+  return buildCut(cut, servedMediaUrl);
+}
+
+export async function buildCut(
+  cut: LocalCut,
+  mediaUrl: MediaUrl
+): Promise<ServedCut> {
   const files = new Map<string, string>();
   const urls = new Map<string, string>();
   const urlFor = async (file: string): Promise<string> => {
@@ -415,7 +473,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
     if (existing) return existing;
     const id = String(files.size);
     files.set(id, key);
-    const url = `/media/${id}`;
+    const url = mediaUrl(id, key);
     urls.set(key, url);
     return url;
   };
@@ -470,6 +528,40 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
     musicGainDb: cut.musicGainDb,
     files,
   };
+}
+
+/** The page's cut.json: the clips and the box, without the file map. */
+export function cutJson(cut: ServedCut): string {
+  return JSON.stringify({
+    clips: cut.clips,
+    frameWidth: cut.frameWidth,
+    frameHeight: cut.frameHeight,
+    musicUrl: cut.musicUrl,
+    musicGainDb: cut.musicGainDb,
+  });
+}
+
+/**
+ * Write a self-contained copy of the cut into `dir`: the player page,
+ * `cut.json`, and every file under `media/`. A URL is downloaded whole, so a
+ * signed URL is snapshotted while it still works. The page reads `cut.json`
+ * and `media/…` relative to itself, so the folder plays from any static host
+ * and from any sub-path.
+ */
+export async function writeBundle(options: {
+  cut: ServedCut;
+  dir: string;
+  pageDir: string;
+}): Promise<void> {
+  const { cut, dir } = options;
+  await mkdir(join(dir, 'media'), { recursive: true });
+  await cp(options.pageDir, dir, { recursive: true });
+  for (const [id, file] of cut.files) {
+    const dest = join(dir, bundledMediaUrl(id, file));
+    if (isHttpUrl(file)) await writeFile(dest, await readBytes(file));
+    else await copyFile(file, dest);
+  }
+  await writeFile(join(dir, 'cut.json'), cutJson(cut));
 }
 
 const SKILL_NAMES = ['stitch', 'stitch-player'] as const;
@@ -582,13 +674,7 @@ async function handleRequest(
   }
   const url = new URL(request.url ?? '/', 'http://127.0.0.1');
   if (url.pathname === '/cut.json') {
-    const body = JSON.stringify({
-      clips: served.clips,
-      frameWidth: served.frameWidth,
-      frameHeight: served.frameHeight,
-      musicUrl: served.musicUrl,
-      musicGainDb: served.musicGainDb,
-    });
+    const body = cutJson(served);
     response.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',
       'Content-Length': Buffer.byteLength(body),
@@ -744,48 +830,6 @@ function proxiedMediaType(url: string): string {
     : 'application/octet-stream';
 }
 
-function mediaType(file: string): string {
-  switch (extensionOf(file)) {
-    case '.html':
-      return 'text/html; charset=utf-8';
-    case '.js':
-    case '.mjs':
-      return 'text/javascript; charset=utf-8';
-    case '.css':
-      return 'text/css; charset=utf-8';
-    case '.json':
-      return 'application/json; charset=utf-8';
-    case '.png':
-      return 'image/png';
-    case '.jpg':
-    case '.jpeg':
-      return 'image/jpeg';
-    case '.webp':
-      return 'image/webp';
-    case '.mp4':
-    case '.m4v':
-      return 'video/mp4';
-    case '.webm':
-      return 'video/webm';
-    case '.mov':
-      return 'video/quicktime';
-    case '.wav':
-      return 'audio/wav';
-    case '.mp3':
-      return 'audio/mpeg';
-    case '.m4a':
-      return 'audio/mp4';
-    case '.ogg':
-      return 'audio/ogg';
-    case '.svg':
-      return 'image/svg+xml';
-    case '.woff2':
-      return 'font/woff2';
-    default:
-      return 'application/octet-stream';
-  }
-}
-
 export function openUrl(url: string, stderr: Writer = process.stderr): void {
   const command =
     process.platform === 'darwin'
@@ -834,15 +878,35 @@ export async function main(
       stdout.write(dests.map((dest) => `${dest}\n`).join(''));
       return;
     }
-    const served = await serveCut(request);
     const pageDir = join(io.packageRoot ?? packageRoot(), 'dist', 'page');
-    try {
-      await stat(join(pageDir, 'index.html'));
-    } catch {
-      throw new Error(
-        'The preview page is not built. Run bun run --cwd packages/stitch build'
-      );
+    if (request.kind !== 'share') {
+      try {
+        await stat(join(pageDir, 'index.html'));
+      } catch {
+        throw new Error(
+          'The preview page is not built. Run bun run --cwd packages/stitch build'
+        );
+      }
     }
+    if (request.kind === 'bundle') {
+      const cut = await buildCut(request, bundledMediaUrl);
+      await writeBundle({ cut, dir: request.dir, pageDir });
+      stdout.write(`${request.dir}\n`);
+      return;
+    }
+    if (request.kind === 'share') {
+      const cut = await buildCut(request, bundledMediaUrl);
+      const url = await shareCut({
+        cut,
+        origin: request.origin,
+        home: io.home ?? homedir(),
+        stderr,
+        open: io.open ?? ((target) => openUrl(target, stderr)),
+      });
+      stdout.write(`${url}\n`);
+      return;
+    }
+    const served = await serveCut(request);
     const preview = await startPreview({
       served,
       pageDir,
