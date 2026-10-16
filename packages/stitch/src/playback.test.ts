@@ -21,11 +21,11 @@ const fake = vi.hoisted(() => ({
   clipCount: 1,
   downloaded: true,
   downloading: false,
-  download: { promise: Promise.resolve() },
+  download: { promise: Promise.resolve(), open: () => {} },
   downloads: [] as number[],
   dropped: [] as number[],
   frames: [] as WrappedCanvas[],
-  frameGate: { promise: Promise.resolve() },
+  frameGate: { promise: Promise.resolve(), open: () => {} },
 }));
 
 vi.mock('./concatenated-video-source.js', () => {
@@ -115,7 +115,8 @@ async function setup(clipCount = 1) {
   const buffering: boolean[] = [];
   fake.frames = [frame(0), frame(0.04), frame(0.08), frame(5)];
   fake.frameGate = gate();
-  fake.download = { promise: Promise.resolve() };
+  fake.download = gate();
+  fake.download.open();
   fake.downloaded = true;
   fake.downloading = false;
   fake.downloads = [];
@@ -162,7 +163,10 @@ describe('SequencePlayerEngine whole-clip download (#2124)', () => {
   it('play() clears buffering when the download fails', async () => {
     const { engine, buffering } = await setup();
     fake.downloaded = false;
-    fake.download = { promise: Promise.reject(new Error('HTTP 404')) };
+    fake.download = {
+      promise: Promise.reject(new Error('HTTP 404')),
+      open: () => {},
+    };
     await expect(engine.play()).rejects.toThrow('HTTP 404');
     expect(engine.isPlaying()).toBe(false);
     expect(buffering).toEqual([true, false]);
