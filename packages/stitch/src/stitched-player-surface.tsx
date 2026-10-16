@@ -29,7 +29,6 @@ import { downloadSequence, type ExportSequenceSettings } from './export.js';
 import type { StitchLogger } from './logger.js';
 import type { PlaybackClip } from './playback-clip.js';
 import type { SequencePlayerMeta } from './playback.js';
-import { DEFAULT_READ_AHEAD_SECONDS } from './read-ahead.js';
 import { StitchedSequenceMedia } from './stitched-media.js';
 
 export type StitchedPlayerSurfaceProps = {
@@ -38,12 +37,6 @@ export type StitchedPlayerSurfaceProps = {
   /** Gain in dB on the music only; 0 for none. */
   musicGainDb: number;
   musicEnabled: boolean;
-  /**
-   * Seconds of media fetched ahead of the playhead before play starts and
-   * after a stall. Defaults to `DEFAULT_READ_AHEAD_SECONDS`; raise it for a
-   * slow link, at the cost of a longer first wait.
-   */
-  readAheadSeconds?: number;
   /**
    * Whether subtitles show when a clip has cues. Defaults to true. A change
    * applies live; a re-render with the same value leaves the viewer's own
@@ -282,7 +275,6 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
   musicUrl,
   musicGainDb,
   musicEnabled,
-  readAheadSeconds = DEFAULT_READ_AHEAD_SECONDS,
   subtitles = true,
   autoPlay = false,
   className,
@@ -355,7 +347,6 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
       musicUrl,
       musicGainDb,
       musicEnabled,
-      readAheadSeconds,
       subtitles,
     });
     // musicEnabled is in the payload but must not rebuild: setMusicEnabled
@@ -364,7 +355,7 @@ const StitchedPlayerInner: React.FC<StitchedPlayerSurfaceProps> = ({
     // new array of the same clips — or new cues — never rebuilds the engine.
     // `subtitles` is here because setSource applies a change to it live too.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [media, clips, musicUrl, musicGainDb, readAheadSeconds, subtitles]);
+  }, [media, clips, musicUrl, musicGainDb, subtitles]);
 
   useEffect(() => {
     media.setMusicEnabled(musicEnabled);

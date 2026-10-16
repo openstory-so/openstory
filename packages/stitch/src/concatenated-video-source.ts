@@ -107,8 +107,8 @@ type StillFrame = HTMLImageElement | ImageBitmap;
 type OpenedClip = {
   inputs: Input[];
   videoTrack: InputVideoTrack | null;
-  /** The video file's bytes and reader; null for a still. */
-  video: { reader: RangedReader; bytesPerSecond: number } | null;
+  /** The video file's reader; null for a still. */
+  reader: RangedReader | null;
   image: StillFrame | null;
   /** A rendered clip whose sound could not be decoded. */
   silent: boolean;
@@ -125,7 +125,7 @@ export class ConcatenatedVideoSource {
   #clips: readonly PlaybackClip[];
   private inputs: Input[] = [];
   private videoTracks: Array<InputVideoTrack | null> = [];
-  private videos: OpenedClip['video'][] = [];
+  private readers: Array<RangedReader | null> = [];
   private images: Array<StillFrame | null> = [];
   private readonly abort = new AbortController();
   private audioTracks: OpenedClip['audioTracks'][] = [];
@@ -222,7 +222,7 @@ export class ConcatenatedVideoSource {
     this.inputs = inputs;
     this.images = opened.map((o) => o.image);
     this.videoTracks = videoTracks;
-    this.videos = opened.map((o) => o.video);
+    this.readers = opened.map((o) => o.reader);
     this.audioTracks = audioTracks;
     this.meta = {
       totalDurationSeconds: acc,
@@ -309,7 +309,7 @@ export class ConcatenatedVideoSource {
         inputs,
         image,
         videoTrack: null,
-        video: null,
+        reader: null,
         silent: false,
         audioTracks,
         // A short recording must not rush the shot. A longer one still
@@ -405,10 +405,7 @@ export class ConcatenatedVideoSource {
       inputs: [input],
       image: null,
       videoTrack,
-      // Byte position is taken as linear in time (#2124): a faststart MP4
-      // is a small header then interleaved samples, so this is off only by
-      // the bitrate's swing, and the lead is a target, not a frame count.
-      video: { reader, bytesPerSecond: (await reader.getSize()) / duration },
+      reader,
       silent,
       audioTracks: usableAudio ? [{ track: usableAudio, offset: 0 }] : [],
       duration,
@@ -443,32 +440,21 @@ export class ConcatenatedVideoSource {
   }
 
   /**
-   * Fetch `seconds` of clip `clipIndex`'s video from local time `from`, so
-   * the bytes are cached before the playhead needs them (#2124). Resolves
-   * when they are. Stills have nothing to read.
+   * Fetch the whole of clip `clipIndex`'s video and hold it in memory
+   * (#2124). Resolves when it is all here. A still has nothing to fetch.
    */
-  async bank(clipIndex: number, from: number, seconds: number): Promise<void> {
-    const video = this.videos[clipIndex];
-    if (!video) return;
-    const { reader, bytesPerSecond } = video;
-    await reader.ensureRange(
-      from * bytesPerSecond,
-      (from + seconds) * bytesPerSecond
-    );
+  async download(clipIndex: number): Promise<void> {
+    await this.readers[clipIndex]?.fetchAll();
   }
 
-  /**
-   * Seconds of clip `clipIndex`'s video cached from local time `from`.
-   * Infinity when the cache runs to the clip's end (or its 8 MiB window),
-   * and for a still.
-   */
-  bankedSeconds(clipIndex: number, from: number): number {
-    const video = this.videos[clipIndex];
-    if (!video) return Infinity;
-    return (
-      video.reader.cachedFrom(from * video.bytesPerSecond) /
-      video.bytesPerSecond
-    );
+  /** True once clip `clipIndex`'s video is all in memory; always for a still. */
+  isDownloaded(clipIndex: number): boolean {
+    return this.readers[clipIndex]?.isComplete() ?? true;
+  }
+
+  /** Let go of clip `clipIndex`'s bytes; a read fetches them again. */
+  drop(clipIndex: number): void {
+    this.readers[clipIndex]?.drop();
   }
 
   /**
@@ -609,7 +595,7 @@ export class ConcatenatedVideoSource {
     for (const input of this.inputs) input.dispose();
     this.inputs = [];
     this.videoTracks = [];
-    this.videos = [];
+    this.readers = [];
     this.audioTracks = [];
     this.meta = null;
   }

@@ -1,6 +1,6 @@
 /**
- * The engine's read-ahead (#2124): play() holds for the lead, and a stall
- * clears only once the lead is back. The clip source, canvas, AudioContext
+ * The engine's whole-clip download (#2124): play() holds until the clip is
+ * here, and a stall clears only once it is. The clip source, canvas, AudioContext
  * and rAF are fakes; mediabunny is not touched.
  */
 import { describe, expect, it, vi } from 'vitest';
@@ -17,8 +17,10 @@ function gate(): Gate {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const fake = vi.hoisted(() => ({
-  bankedSeconds: Infinity,
-  bank: { promise: Promise.resolve() },
+  downloaded: true,
+  download: { promise: Promise.resolve() },
+  downloads: [] as number[],
+  dropped: [] as number[],
   frames: [] as WrappedCanvas[],
   frameGate: { promise: Promise.resolve() },
 }));
@@ -39,8 +41,14 @@ vi.mock('./concatenated-video-source.js', () => {
       resolutionsLabel: '',
     });
     locate = (time: number) => ({ clipIndex: 0, localTime: time });
-    bank = () => fake.bank.promise;
-    bankedSeconds = () => fake.bankedSeconds;
+    download = (clip: number) => {
+      fake.downloads.push(clip);
+      return fake.download.promise;
+    };
+    isDownloaded = () => fake.downloaded;
+    drop = (clip: number) => {
+      fake.dropped.push(clip);
+    };
     getClipAudioTracks = () => [];
     dispose = () => {};
     async *canvases(): AsyncGenerator<WrappedCanvas, void, unknown> {
@@ -99,7 +107,9 @@ async function setup() {
   const buffering: boolean[] = [];
   fake.frames = [frame(0), frame(0.04), frame(0.08), frame(5)];
   fake.frameGate = gate();
-  fake.bank = { promise: Promise.resolve() };
+  fake.download = { promise: Promise.resolve() };
+  fake.downloads = [];
+  fake.dropped = [];
   const engine = new SequencePlayerEngine({
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the single test-double cast
     canvas: canvas as HTMLCanvasElement,
@@ -107,19 +117,23 @@ async function setup() {
     musicUrl: null,
     musicGainDb: 0,
     musicEnabled: false,
-    readAheadSeconds: 6,
     onBuffering: (value) => buffering.push(value),
   });
   await engine.prepare();
   return { engine, context, buffering, now, tick: () => tick() };
 }
 
-describe('SequencePlayerEngine read-ahead (#2124)', () => {
-  it('play() resolves only once the lead is banked', async () => {
+describe('SequencePlayerEngine whole-clip download (#2124)', () => {
+  it('starts downloading from the first clip after prepare()', async () => {
+    await setup();
+    expect(fake.downloads).toEqual([0]);
+  });
+
+  it('play() resolves only once the clip is downloaded', async () => {
     const { engine, context, buffering } = await setup();
-    fake.bankedSeconds = 2;
+    fake.downloaded = false;
     const lead = gate();
-    fake.bank = lead;
+    fake.download = lead;
     let result: string | null = null;
     void engine.play().then((value) => {
       result = value;
@@ -138,9 +152,9 @@ describe('SequencePlayerEngine read-ahead (#2124)', () => {
 
   it('pause() during the wait cancels it', async () => {
     const { engine, buffering } = await setup();
-    fake.bankedSeconds = 0;
+    fake.downloaded = false;
     const lead = gate();
-    fake.bank = lead;
+    fake.download = lead;
     const play = engine.play();
     await settle();
     engine.pause();
@@ -150,27 +164,27 @@ describe('SequencePlayerEngine read-ahead (#2124)', () => {
     expect(buffering).toEqual([true, false]);
   });
 
-  it('a stall clears only once the lead is banked again', async () => {
+  it('a stall clears only once the clip is downloaded', async () => {
     const { engine, context, buffering, now, tick } = await setup();
-    fake.bankedSeconds = Infinity;
+    fake.downloaded = true;
     expect(await engine.play()).toBe('playing');
     expect(buffering).toEqual([]);
     // Past the drawn frame with the next one not decoded: a stall.
     context.currentTime = 0.05;
     tick();
     await settle();
-    fake.bankedSeconds = 0;
+    fake.downloaded = false;
     now.mockReturnValue(400);
     context.currentTime = 0.1;
     tick();
     expect(buffering).toEqual([true]);
     expect(context.state).toBe('suspended');
-    // The frame lands, but the lead is not back: still buffering.
+    // The frame lands, but the clip is not all here: still buffering.
     fake.frameGate.open();
     await settle();
     tick();
     expect(buffering).toEqual([true]);
-    fake.bankedSeconds = 6;
+    fake.downloaded = true;
     tick();
     expect(buffering).toEqual([true, false]);
     expect(context.state).toBe('running');

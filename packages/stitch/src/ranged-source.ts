@@ -6,8 +6,9 @@
  * frame, where their headers are ~20 KB (faststart). Here reads come in
  * 64 KiB blocks, one request for a clip's header, and the read-ahead only
  * doubles while reads stay sequential (a clip being played), up to 2 MiB.
- * `ensureRange` banks a window ahead of the playhead in 2 MiB requests so a
- * slow link waits once for a lead instead of once per block (#2124).
+ * `fetchAll` pulls the whole file in 2 MiB requests and holds it, so the
+ * player can download a clip ahead of the playhead and know when it is all
+ * here (#2124).
  */
 
 import { CustomSource } from 'mediabunny';
@@ -16,8 +17,6 @@ const BLOCK = 64 * 1024;
 const MAX_AHEAD_BLOCKS = 32; // 2 MiB
 /** Per source. Only the clip under the playhead holds more than its header. */
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
-/** A read-ahead window never holds more than half the cache, so the blocks under the playhead stay. */
-const MAX_BANK_BYTES = (MAX_CACHED_BLOCKS / 2) * BLOCK; // 8 MiB
 const RETRY_DELAYS_MS = [500, 1500, 4000];
 
 type FetchFn = typeof fetch;
@@ -35,6 +34,8 @@ export function createRangedReader(
   let size: number | null = null;
   let nextSequentialBlock = -1;
   let ahead = 1;
+  /** Set by `fetchAll`: the whole file stays until `drop()`. */
+  let held = false;
 
   async function fetchRange(first: number, last: number): Promise<void> {
     const start = first * BLOCK;
@@ -68,7 +69,7 @@ export function createRangedReader(
         bytes.subarray(from, Math.min(from + BLOCK, bytes.byteLength))
       );
     }
-    while (blocks.size > MAX_CACHED_BLOCKS) {
+    while (!held && blocks.size > MAX_CACHED_BLOCKS) {
       const oldest = blocks.keys().next().value;
       if (oldest === undefined) break;
       blocks.delete(oldest);
@@ -154,34 +155,27 @@ export function createRangedReader(
       return out;
     },
     /**
-     * Fetch the blocks under [start, end) without reading them out, in
-     * 2 MiB requests, so a read inside the window unblocks as its request
-     * lands rather than when the whole window has. The window is capped at
-     * 8 MiB past `start`; `cachedFrom` reports that cap as the file's end.
+     * Fetch every missing block, first to last, in 2 MiB requests, so a read
+     * inside the file unblocks as its request lands rather than when the
+     * whole file has. The file is held past the cache limit until `drop()`.
      */
-    ensureRange: async (start: number, end: number): Promise<void> => {
+    fetchAll: async (): Promise<void> => {
+      held = true;
       if (size === null) await ensure(0, 0);
-      const first = Math.floor(start / BLOCK);
-      const last = Math.floor(
-        (Math.min(end, start + MAX_BANK_BYTES) - 1) / BLOCK
-      );
-      for (let s = first; s <= last; s += MAX_AHEAD_BLOCKS) {
+      if (size === null) throw new Error(`No size for ${url}`);
+      const last = Math.ceil(size / BLOCK) - 1;
+      for (let s = 0; s <= last; s += MAX_AHEAD_BLOCKS) {
         await ensure(s, Math.min(s + MAX_AHEAD_BLOCKS - 1, last));
       }
     },
-    /**
-     * Contiguous cached bytes from `start`: Infinity once the run reaches the
-     * end of the file or the 8 MiB window cap, 0 before the size is known.
-     */
-    cachedFrom: (start: number): number => {
-      if (size === null) return 0;
-      const lastBlock = Math.ceil(size / BLOCK) - 1;
-      let b = Math.floor(start / BLOCK);
-      while (b <= lastBlock && blocks.has(b)) b++;
-      const cached = b * BLOCK - start;
-      return b > lastBlock || cached >= MAX_BANK_BYTES
-        ? Infinity
-        : Math.max(0, cached);
+    /** True once every block of the file is cached. */
+    isComplete: (): boolean =>
+      size !== null && blocks.size >= Math.ceil(size / BLOCK),
+    /** Forget the bytes (a read fetches again) and stop holding the file. */
+    drop: (): void => {
+      held = false;
+      blocks.clear();
+      ahead = 1;
     },
     dispose: () => {
       abort.abort();

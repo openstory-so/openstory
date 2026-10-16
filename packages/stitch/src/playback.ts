@@ -16,11 +16,11 @@
  *   `AudioContext` is suspended — the clock and every queued node stop
  *   together — and `onBuffering` fires, instead of dropping frames or
  *   playing the clip silent.
- * - Read-ahead by time (#2124): `play()` holds until `readAheadSeconds` of
- *   the clip under the playhead are fetched (or the clip ends), the lead is
- *   topped up while playing, a stall clears only once it is met again, and
- *   the next clip's opening is fetched to the same lead before the cut. A
- *   slow link waits once, not once per block.
+ * - Whole-clip download (#2124): clips are fetched whole, in order, one at a
+ *   time, from the clip under the playhead up to `CLIPS_AHEAD` past it.
+ *   `play()` holds until the current clip is all here, and a stall clears
+ *   only once it is. So a slow link waits once per clip at most, never once
+ *   per block. Clips behind the playhead are let go of.
  * - Codec gating up front via `prepare()`. A video track or a still's
  *   dialogue that cannot be decoded throws, so the host can show its own
  *   fallback. Embedded clip audio and music that cannot be decoded are
@@ -72,13 +72,6 @@ export type SequencePlayerOptions = {
    * `setMusicEnabled` without re-preparing the engine (#834).
    */
   musicEnabled: boolean;
-  /**
-   * Seconds of media fetched ahead of the playhead before play starts and
-   * after a stall, and kept fetched while playing. `DEFAULT_READ_AHEAD_SECONDS`
-   * suits a clip of a few seconds; raise it for a slow link, at the cost of
-   * a longer first wait. Capped by the 8 MiB read-ahead window per clip.
-   */
-  readAheadSeconds: number;
   /** Where non-fatal problems are reported. Defaults to `console`. */
   logger?: StitchLogger;
   /** Clip-open progress during `prepare()` — drives the loading label (#1253). */
@@ -129,8 +122,11 @@ export type SequencePlayerMeta = {
  */
 const STALL_SLACK_SECONDS = 0.25;
 
-/** How long before a cut the next clip's opening is fetched. */
-const PREFETCH_LEAD_SECONDS = 3;
+/**
+ * How many clips past the one under the playhead are downloaded and held.
+ * One at a time, in order, so the next clip never starves the current one.
+ */
+const CLIPS_AHEAD = 2;
 
 export class SequencePlayerEngine {
   private readonly opts: SequencePlayerOptions;
@@ -155,10 +151,10 @@ export class SequencePlayerEngine {
    * it (plus slack) is a stall.
    */
   private laneHead = 0;
-  /** Clips whose opening lead has been asked for. */
-  private readonly prefetchedClips = new Set<number>();
-  /** The top-up of the clip under the playhead in flight, if any. */
-  private topUp: Promise<void> | null = null;
+  /** Bumped when the downloader restarts (a seek), so the old loop stops. */
+  private downloadGeneration = 0;
+  /** The first clip still held in memory; earlier ones have been dropped. */
+  private heldFrom = 0;
   /** End (timestamp + duration) of the frame on the canvas. */
   private lastFrameEnd = 0;
   /** `performance.now()` since the next frame has been awaited, or null. */
@@ -279,60 +275,48 @@ export class SequencePlayerEngine {
     };
 
     await this.primeFirstFrame();
+    this.startDownloader(0);
     this.startRenderLoop();
     return this.meta;
   }
 
-  /** Whether `readAheadSeconds` of the clip under `time` are fetched. */
-  private leadMet(time: number): boolean {
-    const { clipIndex, localTime } = this.videoSource.locate(time);
-    return (
-      this.videoSource.bankedSeconds(clipIndex, localTime) >=
-      this.opts.readAheadSeconds
-    );
-  }
-
-  /** Fetch the lead of the clip under `time`; resolves when it is cached. */
-  private bankLead(time: number): Promise<void> {
-    const { clipIndex, localTime } = this.videoSource.locate(time);
-    return this.videoSource.bank(
-      clipIndex,
-      localTime,
-      this.opts.readAheadSeconds
-    );
+  /** The clip under the playhead. */
+  private currentClip(): number {
+    return this.videoSource.locate(this.getPlaybackTime()).clipIndex;
   }
 
   /**
-   * Keep the lead topped up while playing (one top-up in flight at a time;
-   * a cached window resolves at once), and fetch the next clip's opening to
-   * the same lead in the last seconds of the current one. Not earlier: on a
-   * slow link it would take bandwidth from the clip that is playing.
+   * Download clips whole, one at a time, from `fromClip` on, never more than
+   * `CLIPS_AHEAD` past the playhead. A failed download is reported; the
+   * decoder's own read of that clip surfaces the error if it persists.
    */
-  private bankAhead(time: number): void {
-    const warn = (what: string) => (err: unknown) => {
-      if (this.disposed) return;
-      this.logger.warn(`SequencePlayerEngine: ${what} failed`, { err });
-    };
-    this.topUp ??= this.bankLead(time)
-      .catch(warn('read-ahead'))
-      .finally(() => {
-        this.topUp = null;
-      });
-    const offsets = this.meta?.clipOffsetsSeconds;
-    if (!offsets) return;
-    const next = this.videoSource.locate(time).clipIndex + 1;
-    const cut = offsets[next];
-    if (
-      cut === undefined ||
-      cut - time > PREFETCH_LEAD_SECONDS ||
-      this.prefetchedClips.has(next)
-    ) {
-      return;
-    }
-    this.prefetchedClips.add(next);
-    void this.videoSource
-      .bank(next, 0, this.opts.readAheadSeconds)
-      .catch(warn(`prefetch for clip ${next}`));
+  private startDownloader(fromClip: number): void {
+    const generation = ++this.downloadGeneration;
+    const stale = () => this.disposed || generation !== this.downloadGeneration;
+    this.heldFrom = Math.min(this.heldFrom, fromClip);
+    void (async () => {
+      for (let clip = fromClip; clip < this.opts.clips.length; clip++) {
+        await this.waitUntil(
+          () => clip <= this.currentClip() + CLIPS_AHEAD,
+          stale
+        );
+        if (stale()) return;
+        try {
+          await this.videoSource.download(clip);
+        } catch (err) {
+          if (stale()) return;
+          this.logger.warn(
+            `SequencePlayerEngine: download failed for clip ${clip}`,
+            { err }
+          );
+        }
+      }
+    })();
+  }
+
+  /** Let go of clips behind the playhead. */
+  private dropBehind(clip: number): void {
+    while (this.heldFrom < clip) this.videoSource.drop(this.heldFrom++);
   }
 
   getMeta(): SequencePlayerMeta {
@@ -378,9 +362,10 @@ export class SequencePlayerEngine {
       }
       // One wait up front, reported as buffering, instead of a stall per
       // block once the clock runs (#2124). pause() during it cancels below.
-      if (!this.leadMet(this.playbackTimeAtStart)) {
+      const clip = this.videoSource.locate(this.playbackTimeAtStart).clipIndex;
+      if (!this.videoSource.isDownloaded(clip)) {
         this.setBuffering(true);
-        await this.bankLead(this.playbackTimeAtStart);
+        await this.videoSource.download(clip);
       }
     } catch (err) {
       if (generation === this.playGeneration) this.playRequested = false;
@@ -466,6 +451,9 @@ export class SequencePlayerEngine {
     await this.restartVideoIterator();
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
     if (this.disposed) return 'disposed';
+    this.startDownloader(
+      this.videoSource.locate(this.playbackTimeAtStart).clipIndex
+    );
 
     if (wasPlaying && this.playbackTimeAtStart < this.meta.durationSeconds) {
       return this.play();
@@ -614,10 +602,15 @@ export class SequencePlayerEngine {
 
   /** Resolve once `time` is within a second of the playhead, or on `stale`. */
   private waitUntilNear(time: number, stale: () => boolean): Promise<void> {
-    if (time - this.getPlaybackTime() < 1) return Promise.resolve();
+    return this.waitUntil(() => time - this.getPlaybackTime() < 1, stale);
+  }
+
+  /** Resolve once `ready()` holds, polled, or on `stale`. */
+  private waitUntil(ready: () => boolean, stale: () => boolean): Promise<void> {
+    if (ready()) return Promise.resolve();
     return new Promise((resolve) => {
-      const id = window.setInterval(() => {
-        if (stale() || time - this.getPlaybackTime() < 1) {
+      const id = setInterval(() => {
+        if (stale() || ready()) {
           clearInterval(id);
           resolve();
         }
@@ -699,12 +692,14 @@ export class SequencePlayerEngine {
           });
         }
         if (this.playing) {
-          this.bankAhead(playbackTime);
-          // A stall clears only once the lead is back, so a slow link gives
-          // one wait, not a wait per block.
+          const clip = this.videoSource.locate(playbackTime).clipIndex;
+          this.dropBehind(clip);
+          // A stall clears only once the clip is all here, so a slow link
+          // gives one wait per clip at most, not a wait per block.
           const stalled = this.isStalled(playbackTime);
           if (stalled) this.setBuffering(true);
-          else if (this.leadMet(playbackTime)) this.setBuffering(false);
+          else if (this.videoSource.isDownloaded(clip))
+            this.setBuffering(false);
           this.opts.onTimeUpdate?.(playbackTime);
         }
       }

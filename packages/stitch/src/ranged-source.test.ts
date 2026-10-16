@@ -102,18 +102,19 @@ function throttledServer(size: number) {
   return { ...server, fetchFn, release };
 }
 
-describe('createRangedReader read-ahead (#2124)', () => {
-  it('banks a window in 2 MiB requests and never fetches a block twice', async () => {
-    const { ranges, sizes, fetchFn, release } = throttledServer(24 * MB);
+describe('createRangedReader whole-file download (#2124)', () => {
+  it('fetches the file in 2 MiB requests and never fetches a block twice', async () => {
+    const { ranges, sizes, fetchFn, release } = throttledServer(6 * MB);
     const reader = createRangedReader('/clip.mp4', fetchFn);
     const sized = reader.getSize();
     release();
-    expect(await sized).toBe(24 * MB);
-    const banked = reader.ensureRange(0, 6 * MB);
-    // A read inside the window while it is in flight waits on it.
+    expect(await sized).toBe(6 * MB);
+    expect(reader.isComplete()).toBe(false);
+    const all = reader.fetchAll();
+    // A read inside the file while it is in flight waits on the download.
     const read = reader.read(100 * KB, 120 * KB);
     const pending = { count: 1 };
-    void banked.then(() => {
+    void all.then(() => {
       pending.count = 0;
     });
     while (pending.count > 0) {
@@ -123,26 +124,22 @@ describe('createRangedReader read-ahead (#2124)', () => {
     expect(isRange(await read, 100 * KB)).toBe(true);
     expect(sizes()).toEqual([64, 2048 - 64, 2048, 2048]);
     expect(ranges.length).toBe(4);
-    expect(reader.cachedFrom(0)).toBe(6 * MB);
-    expect(reader.cachedFrom(5 * MB)).toBe(1 * MB);
-    expect(reader.cachedFrom(6 * MB)).toBe(0);
+    expect(reader.isComplete()).toBe(true);
   });
 
-  it('reports the end of the file and the 8 MiB cap as fully banked', async () => {
+  it('holds a file past the cache limit until dropped', async () => {
     const size = 24 * MB;
-    const { sizes, fetchFn } = fakeServer(size);
+    const { ranges, fetchFn } = fakeServer(size);
     const reader = createRangedReader('/clip.mp4', fetchFn);
-    await reader.getSize();
-    await reader.ensureRange(size - 100 * KB, size + 5 * MB);
-    expect(reader.cachedFrom(size - 100 * KB)).toBe(Infinity);
-    await reader.ensureRange(4 * MB, 20 * MB);
-    expect(Math.max(...sizes())).toBe(2048);
-    expect(
-      sizes()
-        .slice(2)
-        .reduce((a, b) => a + b, 0)
-    ).toBe(8 * 1024);
-    expect(reader.cachedFrom(4 * MB)).toBe(Infinity);
-    expect(reader.cachedFrom(12 * MB)).toBe(0);
+    await reader.fetchAll();
+    expect(reader.isComplete()).toBe(true);
+    const before = ranges.length;
+    expect(isRange(await reader.read(0, 40), 0)).toBe(true);
+    expect(isRange(await reader.read(size - 40, size), size - 40)).toBe(true);
+    expect(ranges.length).toBe(before);
+    reader.drop();
+    expect(reader.isComplete()).toBe(false);
+    await reader.read(0, 40);
+    expect(ranges.length).toBe(before + 1);
   });
 });

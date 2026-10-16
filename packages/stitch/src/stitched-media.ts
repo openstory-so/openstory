@@ -41,8 +41,6 @@ export type StitchedSequenceSource = {
   /** Gain in dB on the music only; 0 for none. */
   musicGainDb: number;
   musicEnabled: boolean;
-  /** Seconds fetched ahead of the playhead before play and after a stall; see `SequencePlayerOptions`. */
-  readAheadSeconds: number;
   /**
    * Whether the subtitle track is showing. Only matters when a clip has cues.
    * Applied when it changes between `setSource` calls; the viewer's captions
@@ -126,7 +124,7 @@ class StitchedTextTrackList extends EventTarget {
 }
 
 function stitchedSourceIdentity(source: StitchedSequenceSource): string {
-  return `${playbackClipsKey(source.clips)}\0${source.musicUrl ?? ''}\0${source.musicGainDb}\0${source.readAheadSeconds}`;
+  return `${playbackClipsKey(source.clips)}\0${source.musicUrl ?? ''}\0${source.musicGainDb}`;
 }
 
 export class StitchedSequenceMedia
@@ -563,7 +561,6 @@ export class StitchedSequenceMedia
       musicUrl: source.musicUrl,
       musicGainDb: source.musicGainDb,
       musicEnabled: source.musicEnabled,
-      readAheadSeconds: source.readAheadSeconds,
       logger: this.#listeners.logger,
       onLoadProgress: (loaded, total) => {
         this.#listeners.onLoadProgress?.(loaded, total);
