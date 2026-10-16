@@ -412,11 +412,8 @@ export async function listSequenceDialogueClaims(context: {
   scopedDb: ScopedDb;
   sequence: Pick<Sequence, 'id'>;
 }): Promise<Record<string, ReturnType<typeof wireClaim>[]>> {
-  const shots = await context.scopedDb.shots.listBySequence(
+  const claims = await context.scopedDb.shotDialogue.listLiveClaimsBySequence(
     context.sequence.id
-  );
-  const claims = await context.scopedDb.shotDialogue.listLiveClaimsByShotIds(
-    shots.map((shot) => shot.id)
   );
   const byShot: Record<string, ReturnType<typeof wireClaim>[]> = {};
   for (const claim of claims)

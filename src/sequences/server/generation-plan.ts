@@ -18,6 +18,7 @@ import {
   resolveSceneShotImageReferences,
 } from '@/cast/server/workflows/sheet-snapshots';
 import { readMusicPromptStaleness } from '@/audio/server/music-staleness';
+import type { StyleConfig } from '@/look/style-config';
 import { NotFoundError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -44,7 +45,7 @@ import { usesStartFrame } from '@/shots/use-start-frame';
 
 const logger = getLogger(['openstory', 'sequences', 'generation-plan']);
 
-/** A sheet's verdict: `readReferenceStaleness` only runs on a sheet that exists. */
+/** A sheet's verdict: the compare (`lookSheetStaleness`, `locationSheetStaleness`) only runs on a sheet that exists. */
 async function sheetVerdict(
   exists: boolean,
   inFlight: boolean,
@@ -282,7 +283,9 @@ async function loadPlanInput(
   // Every sheet's verdict from rows read once per sequence (#2082): the
   // cast talent, the live sheet versions, the location photos and the style.
   // The compare is the detail page's (`lookSheetStaleness`,
-  // `locationSheetStaleness`), which reads nothing.
+  // `locationSheetStaleness`), which reads nothing — except a character
+  // with no default look row yet, where `requireCharacterLook` backfills
+  // it (one read and one write per such character).
   // One sheet per look some scene uses (#2015): a character's default look
   // always, any other only once a live scene picks it. A look nobody wears
   // gets a sheet when someone asks for one, not from the plan.
@@ -327,8 +330,15 @@ async function loadPlanInput(
   const talentById = new Map(talents.map((t) => [t.id, t]));
   const sheetVersionById = new Map(sheetVersions.map((v) => [v.id, v]));
   const locationVersionById = new Map(locationVersions.map((v) => [v.id, v]));
-  const styleConfig = sequenceStyleFromRow(sequence, refs.style) ?? null;
-  const styleConfigHash = await computeStyleConfigHash(styleConfig);
+  // Parsed once, inside the first verdict's read: a snapshot that fails to
+  // parse makes every sheet `unknown` through `sheetVerdict`'s catch, as a
+  // per-row read did, instead of failing the plan.
+  let style: Promise<{ config: StyleConfig | null; hash: string }> | undefined;
+  const sequenceStyle = () =>
+    (style ??= (async () => {
+      const config = sequenceStyleFromRow(sequence, refs.style) ?? null;
+      return { config, hash: await computeStyleConfigHash(config) };
+    })());
   const [characterSheets, locationSheets] = await Promise.all([
     Promise.all(
       wornLooks.map(async ({ owner, look }) => {
@@ -342,13 +352,13 @@ async function loadPlanInput(
             !!worn.sheetImageUrl,
             worn.sheetStatus === 'generating' ||
               worn.pendingPromoteSheetVersionId != null,
-            () =>
+            async () =>
               lookSheetStaleness({
                 scopedDb,
                 sequence,
                 owner,
                 lookId: look ? look.id : owner.lookId,
-                styleConfigHash,
+                styleConfigHash: (await sequenceStyle()).hash,
                 rows: {
                   cast: castTalentFields(
                     owner.talentId ? talentById.get(owner.talentId) : undefined
@@ -370,12 +380,12 @@ async function loadPlanInput(
           !!l.referenceImageUrl,
           l.referenceStatus === 'generating' ||
             l.pendingPromoteReferenceVersionId != null,
-          () =>
+          async () =>
             locationSheetStaleness({
               scopedDb,
               sequence,
               location: l,
-              styleConfig,
+              styleConfig: (await sequenceStyle()).config,
               rows: {
                 liveVersion: l.selectedReferenceVersionId
                   ? (locationVersionById.get(l.selectedReferenceVersionId) ??

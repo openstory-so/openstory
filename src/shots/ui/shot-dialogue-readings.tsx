@@ -169,10 +169,17 @@ const Readings: React.FC<ReadingsProps> = ({ sequenceId, shotId, lines }) => {
   const cancelClaim = useMutation({
     mutationFn: (claimId: string) =>
       cancelShotDialogueClaimFn({ data: { sequenceId, shotId, claimId } }),
+    // The scene's Regenerate button reads the per-sequence list (#2082);
+    // a cancel sends no realtime event, so refresh both here.
     onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: shotKeys.dialogueClaims(shotId),
-      }),
+      Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueClaims(shotId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueClaimsBySequence(sequenceId),
+        }),
+      ]),
     onError: (error: Error) =>
       toast.error('Generation not cancelled', { description: error.message }),
   });

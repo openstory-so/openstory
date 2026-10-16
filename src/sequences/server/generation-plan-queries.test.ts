@@ -29,6 +29,13 @@ import {
   createTestUser,
 } from '@/platform/server/test/seed';
 import { personLocksOf } from '@/cast/server/person-lock';
+import {
+  readLookSheetStaleness,
+  readReferenceStaleness,
+} from '@/cast/server/production-staleness';
+import { buildCharacterSheetDraft } from '@/cast/server/sheets/character-sheet-trigger';
+import { buildRegenerateLocationSheetPayload } from '@/cast/server/sheets/location-sheet-trigger';
+import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import { loadSceneFacets } from '@/shots/server/scene-facets';
 import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import { loadSequenceSegments } from '@/shots/server/sequence-segments';
@@ -164,5 +171,96 @@ describe('sequence page query counts (#2082)', () => {
         .join('\n')
     );
     expect(large).toEqual(small);
+  });
+});
+
+describe('sheet verdicts (#2082)', () => {
+  it('the batched plan agrees with the per-row reader, fresh and stale', async () => {
+    const { scopedDb, sequence: created } = await seed(1);
+    const sequence = await scopedDb.sequences.getById(created.id);
+    if (!sequence) throw new Error('seeded sequence not found');
+    const [character] = await scopedDb.characters.list(sequence.id);
+    const [location] = await scopedDb.locations.list(sequence.id);
+    if (!character || !location) throw new Error('seed is empty');
+    const actor = { userId: scopedDb.userId, teamId: scopedDb.teamId };
+
+    // Stamp both sheets with the hash a regenerate would write now.
+    const { draft, isDefault, liveFace } = await buildCharacterSheetDraft({
+      scopedDb,
+      sequence,
+      ...actor,
+      character,
+      lookId: character.lookId,
+    });
+    const characterHash = (
+      await finishCharacterSheetPayload(draft, isDefault ? null : liveFace)
+    ).snapshotInputHash;
+    const locationHash = (
+      await buildRegenerateLocationSheetPayload({
+        scopedDb,
+        sequence,
+        ...actor,
+        location,
+      })
+    ).snapshotInputHash;
+    await db
+      .update(characterSheetVariants)
+      .set({ inputHash: characterHash })
+      .where(eq(characterSheetVariants.id, character.id));
+    await db
+      .update(locationSheetVariants)
+      .set({ inputHash: locationHash })
+      .where(eq(locationSheetVariants.id, location.id));
+
+    const verdicts = async () => {
+      const plan = await computeGenerationPlan(scopedDb, sequence.id);
+      const unit = (kind: string, id: string) =>
+        plan.find((u) => u.kind === kind && u.id === id)?.state;
+      return {
+        character: {
+          plan: unit('sheet:character', character.lookId),
+          row: (
+            await readLookSheetStaleness(
+              scopedDb,
+              sequence.id,
+              character.id,
+              character.lookId
+            )
+          ).status,
+        },
+        location: {
+          plan: unit('sheet:location', location.id),
+          row: (
+            await readReferenceStaleness(
+              scopedDb,
+              sequence.id,
+              'location',
+              location.id
+            )
+          ).status,
+        },
+      };
+    };
+    expect(await verdicts()).toEqual({
+      character: { plan: 'done', row: 'fresh' },
+      location: { plan: 'done', row: 'fresh' },
+    });
+
+    await scopedDb.characters.updateBible(
+      sequence.id,
+      character.id,
+      { physicalDescription: 'a new face' },
+      { actorId: scopedDb.userId, source: 'edit' }
+    );
+    await scopedDb.locations.updateBible(
+      sequence.id,
+      location.id,
+      { description: 'a new place' },
+      { actorId: scopedDb.userId }
+    );
+    expect(await verdicts()).toEqual({
+      character: { plan: 'stale', row: 'stale' },
+      location: { plan: 'stale', row: 'stale' },
+    });
   });
 });

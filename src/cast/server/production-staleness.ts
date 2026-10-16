@@ -45,9 +45,9 @@ type SheetSequence = Pick<
  * detail-page banners and the MCP read. A voice-only character has no sheet
  * to be stale (#1585).
  *
- * Reads the rows by id, then compares in `locationSheetStaleness`. The
- * generation plan reads every sheet's rows in one batch and calls the
- * compare directly (#2082).
+ * Reads the rows by id, then compares in `lookSheetStaleness` /
+ * `locationSheetStaleness`. The generation plan reads every sheet's rows in
+ * one batch and calls the compares directly (#2082).
  */
 export async function readReferenceStaleness(
   scopedDb: ScopedDb,

@@ -114,9 +114,14 @@ export function useLineTake(sequenceId: string): MicTake {
           sampleRate: MIC_TAKE_SAMPLE_RATE,
         },
       });
-      await queryClient.invalidateQueries({
-        queryKey: shotKeys.dialogueClaims(shotId),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueClaims(shotId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: shotKeys.dialogueClaimsBySequence(sequenceId),
+        }),
+      ]);
     } catch (error) {
       toast.error('Line not recorded', {
         description: error instanceof Error ? error.message : String(error),

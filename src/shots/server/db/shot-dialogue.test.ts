@@ -549,6 +549,30 @@ describe('recordings and sections', () => {
     const shotRow = async () =>
       (await db.select().from(shots).where(eq(shots.id, shotId)))[0];
 
+    it("lists every shot's live claims by sequence, as the per-shot read does (#2082)", async () => {
+      const methods = createShotDialogueMethods(db);
+      await methods.claimSpeech({
+        shots: [
+          { shotId, sourceKey: 'k' },
+          { shotId: otherShotId, sourceKey: 'k' },
+        ],
+        workflowRunId: 'run-seq',
+        actorId: null,
+      });
+      const bySequence = await methods.listLiveClaimsBySequence(sequenceId);
+      expect(bySequence.map((c) => c.shotId).sort()).toEqual(
+        [shotId, otherShotId].sort()
+      );
+      expect(bySequence).toEqual(
+        expect.arrayContaining([
+          ...(await methods.listLiveClaims(shotId)),
+          ...(await methods.listLiveClaims(otherShotId)),
+        ])
+      );
+      // Another sequence's shots are not listed.
+      expect(await methods.listLiveClaimsBySequence(generateId())).toEqual([]);
+    });
+
     it("promotes a live claim: the pointer AND the shot's clip, together", async () => {
       const methods = createShotDialogueMethods(db);
       const mine = section(shotId, true);

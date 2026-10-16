@@ -181,8 +181,9 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       // The session rides a signed cookie for five minutes (#2082): a
       // sequence page fires ~40 server fns, and each read `session` then
       // `user` from the primary before doing anything. A revoked session or
-      // a changed `user.status` is seen within `maxAge`; compliance
-      // enforcement is read per request regardless.
+      // a changed `user.status` is seen within `maxAge`. Compliance
+      // enforcement is read fresh on every write and at most
+      // `TEAM_MEMO_TTL_MS` stale on a GET (`team-memo.ts`).
       cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
 

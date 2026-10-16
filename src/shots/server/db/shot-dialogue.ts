@@ -51,6 +51,7 @@ import {
   desc,
   eq,
   exists,
+  getTableColumns,
   inArray,
   isNotNull,
   isNull,
@@ -446,22 +447,25 @@ export function createShotDialogueMethods(db: Database) {
         )
         .orderBy(desc(shotDialogueClaims.createdAt)),
 
-    /** `listLiveClaims` for many shots in one read (#2082), newest first. */
-    listLiveClaimsByShotIds: async (
-      shotIds: readonly string[]
+    /**
+     * `listLiveClaims` for every shot of a sequence in one read (#2082),
+     * newest first. Joined, not `inArray`: a sequence can have more shots
+     * than D1 allows bound parameters (#1019).
+     */
+    listLiveClaimsBySequence: async (
+      sequenceId: string
     ): Promise<ShotDialogueClaim[]> =>
-      shotIds.length === 0
-        ? []
-        : await db
-            .select()
-            .from(shotDialogueClaims)
-            .where(
-              and(
-                inArray(shotDialogueClaims.shotId, [...shotIds]),
-                eq(shotDialogueClaims.status, 'generating')
-              )
-            )
-            .orderBy(desc(shotDialogueClaims.createdAt)),
+      await db
+        .select(getTableColumns(shotDialogueClaims))
+        .from(shotDialogueClaims)
+        .innerJoin(shots, eq(shots.id, shotDialogueClaims.shotId))
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            eq(shotDialogueClaims.status, 'generating')
+          )
+        )
+        .orderBy(desc(shotDialogueClaims.createdAt)),
 
     /**
      * The shots with a speech in flight that will become their audio —
