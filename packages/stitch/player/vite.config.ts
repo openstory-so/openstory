@@ -4,7 +4,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
-  base: '/',
+  // Relative, so a bundle plays from any sub-path (stitch bundle / share).
+  base: './',
   plugins: [react()],
   build: {
     outDir: fileURLToPath(new URL('../dist/page', import.meta.url)),

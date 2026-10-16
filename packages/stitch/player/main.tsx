@@ -31,7 +31,7 @@ try {
 async function fetchCut(): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch('/cut.json');
+    response = await fetch('cut.json');
   } catch {
     throw new Error('The stitch server is not running. Run stitch again.');
   }

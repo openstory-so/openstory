@@ -60,6 +60,7 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
+import { stitches } from './stitches';
 import { sequenceStyleVersions } from './sequence-style-versions';
 
 import { characters } from './characters';
@@ -321,6 +322,10 @@ export type {
 // Sequence exports (container-rendered MP4 snapshots)
 export { sequenceExports };
 
+// Shared stitches from the stitch CLI (#2127)
+export { stitches };
+export type { Stitch } from './stitches';
+
 // Sequence style history (#1600)
 export { sequenceStyleVersions };
 
@@ -571,6 +576,7 @@ export const schema = {
   sequenceMusicVariants,
   sequenceExports,
   sequenceStyleVersions,
+  stitches,
 
   // Characters (scripted roles extracted from script)
   characters,

@@ -117,6 +117,10 @@ npx @openstory/stitch \
 - `--subs lines.srt` (o `.vtt`) es un solo archivo de subtítulos para todo el corte. Un cue que cruza un corte se parte en los dos clips.
 - `--music` es la cama bajo todo el corte. `--music-gain` cambia solo esa cama, en dB, y vale 0 por defecto. La página puede apagar esa cama. El diálogo se queda en su nivel.
 
+## Compartir un corte
+
+`npx @openstory/stitch bundle <dir> …` escribe la página del reproductor, `cut.json` y cada archivo (una URL se descarga) en una carpeta que se reproduce desde cualquier alojamiento estático. `npx @openstory/stitch share …` sube esa misma carpeta a OpenStory e imprime un enlace que cualquiera puede abrir; el primer uso inicia sesión con un código de dispositivo y guarda la clave en `~/.openstory/stitch.json`. Ambos aceptan todas las opciones de corte del comando de reproducción.
+
 ## Skill
 
 Ejecute el comando con npx, como arriba. `/stitch` hace lo mismo y deja la página en marcha.

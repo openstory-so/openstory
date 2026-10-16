@@ -327,7 +327,7 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   );
 };
 
-const MusicToggle: React.FC<{
+export const MusicToggle: React.FC<{
   enabled: boolean;
   onToggle: () => void;
   className?: string;

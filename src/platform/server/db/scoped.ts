@@ -56,6 +56,10 @@ import { createBytePlusAssetsMethods } from '@/models/server/db/byteplus-assets'
 import { createModelUsageMethods } from '@/billing/server/db/model-usage';
 import { createSequenceElementsMethods } from '@/cast/server/db/sequence-elements';
 import { createSequenceExportsMethods } from '@/sequences/server/db/sequence-exports';
+import {
+  createPublicStitchReads,
+  createStitchesMethods,
+} from '@/stitches/server/db/stitches';
 import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequence-music-prompt-versions';
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
 import {
@@ -440,6 +444,7 @@ export function createScopedDb(teamId: string, userId: string) {
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
+    stitches: createStitchesMethods(db, teamId, userId),
 
     characters: createCharactersMethods(db, teamId),
     sequenceElements: createSequenceElementsMethods(db),
@@ -513,4 +518,14 @@ export async function submitPublicContentReport(
   input: Parameters<ReturnType<typeof createPublicReportIntake>['submit']>[0]
 ) {
   return createPublicReportIntake(getDb()).submit(input);
+}
+
+/**
+ * One shared stitch by id (#2127), for the public page at /stitch/<id>.
+ *
+ * Module-level and unscoped, like `submitPublicContentReport`: the viewer has
+ * no team, and the ULID is the only credential, as it is for a stored media URL.
+ */
+export async function getPublicStitch(id: string) {
+  return createPublicStitchReads(getDb()).getById(id);
 }

@@ -90,3 +90,13 @@ describe('enhanceScriptLink', () => {
     expect(() => apiEnhanceScriptSchema.parse(example)).not.toThrow();
   });
 });
+
+describe('create-stitch (#2127)', () => {
+  it('is advertised in the root document', () => {
+    const { _links } = buildRootDocument();
+    expect(_links['create-stitch']).toMatchObject({
+      href: '/api/v1/stitches',
+      method: 'POST',
+    });
+  });
+});

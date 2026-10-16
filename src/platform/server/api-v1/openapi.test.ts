@@ -38,6 +38,7 @@ describe('buildOpenApiDocument', () => {
     expect(doc.paths['/api/v1/styles'].get).toBeDefined();
     expect(doc.paths['/api/v1/styles'].post).toBeDefined();
     expect(doc.paths['/api/v1/styles/{id}'].get).toBeDefined();
+    expect(doc.paths['/api/v1/stitches'].post).toBeDefined();
   });
 
   it('documents the create-style endpoint with a valid example and a 409', () => {

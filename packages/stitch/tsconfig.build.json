@@ -22,6 +22,8 @@
     "src/**/*.test.tsx",
     "src/cli.ts",
     "src/image-size.ts",
+    "src/media-file.ts",
+    "src/share.ts",
     "src/video-size.ts"
   ]
 }
