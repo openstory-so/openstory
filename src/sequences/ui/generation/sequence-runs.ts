@@ -161,6 +161,17 @@ export function beginRunSnapshot(state: SequenceRunState): SequenceRunState {
   return { ...state, snapshotReady: false };
 }
 
+/**
+ * Apply a `/runs` read. `null` is a failed read: keep the runs already
+ * on screen and still replay events that arrived during the fetch.
+ */
+export function applyRunRead(
+  state: SequenceRunState,
+  read: WorkflowRun[] | null
+): SequenceRunState {
+  return applyRunSnapshot(state, read ?? state.runs);
+}
+
 export function applyRunSnapshot(
   state: SequenceRunState,
   runs: WorkflowRun[]

@@ -4,7 +4,7 @@ import { getLogger } from '@/platform/logger';
 import type { WorkflowRun } from '@/platform/realtime/schema';
 import { isInstanceNotFoundError } from '@/platform/server/workflow/errors';
 import { disposeRpcStub } from '@/platform/server/workflow/rpc-dispose';
-import { getCfBindingForRunId } from '@/platform/server/workflow/trigger-bindings';
+import { workflowBindingForRun } from '@/platform/server/workflow/trigger-bindings';
 
 /**
  * Cloudflare-native realtime broker. One Durable Object instance per channel
@@ -85,7 +85,7 @@ const PING_INTERVAL_MS = 25_000;
  */
 export const RUN_RECONCILE_MS = 3 * 60 * 1000;
 
-const FINISHED_RUN_STATUSES: ReadonlySet<string> = new Set([
+const FINISHED_RUN_STATUSES: ReadonlySet<InstanceStatus['status']> = new Set([
   'complete',
   'errored',
   'terminated',
@@ -553,8 +553,14 @@ export class RealtimeChannel extends DurableObject {
     if (runs.length === 0) return;
     const channel = this.ctx.id.name ?? '';
     for (const run of runs) {
-      const binding = getCfBindingForRunId(run.instanceId, this.env);
-      if (!binding) continue;
+      const binding = workflowBindingForRun(this.env, run);
+      if (!binding) {
+        logger.warn('open run has no workflow binding', {
+          instanceId: run.instanceId,
+          binding: run.binding,
+        });
+        continue;
+      }
       try {
         const instance = await binding.get(run.instanceId);
         try {

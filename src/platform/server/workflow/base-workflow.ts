@@ -54,7 +54,7 @@ import {
   reportRunStarted,
 } from '@/platform/server/realtime/runs';
 import { isContentRejectionError } from '@/models/content-rejection';
-import { bindingNameForRunId } from './trigger-bindings';
+import { bindingNameForReportedRun } from './trigger-bindings';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
 
@@ -62,10 +62,10 @@ const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
 const RUN_REPORT_ATTEMPTS = 3;
 
 /**
- * Checkpointed so a resumed run does not count twice. An engine abort is
- * rethrown so the step is not stored as "reported". Any other failure is
- * swallowed after a few tries: the chip is a hint, and the DO alarm drops
- * a run the engine has already finished.
+ * A few tries inside one step. The step result is checkpointed, including
+ * `{ ok: false }`, so a resume does not retry. An engine abort is rethrown
+ * so the step is not stored. The alarm can only drop a row that this start
+ * actually inserted.
  */
 async function reportRunOnce(report: () => Promise<void>): Promise<{
   ok: boolean;
@@ -229,7 +229,10 @@ export abstract class OpenStoryWorkflowEntrypoint<
         reportRunOnce(() =>
           reportRunStarted(reportedSequenceId, {
             instanceId: event.instanceId,
-            binding: bindingNameForRunId(event.instanceId) ?? '',
+            binding: bindingNameForReportedRun(
+              this.constructor.name,
+              event.instanceId
+            ),
             className: this.constructor.name,
             label: this.failureLabel,
             parentInstanceId: parentHint?.parentInstanceId ?? null,

@@ -132,8 +132,10 @@
     // All durable async work runs on Cloudflare Workflows. Each class is
     // re-exported from src/server.ts (so it lands in the Worker bundle) and
     // its binding is resolved by `triggerWorkflow()` via TRIGGER_TO_BINDING in
-    // src/platform/server/workflow/trigger-bindings.ts. Keep these three in sync — the
-    // wiring-consistency test enforces it.
+    // src/platform/server/workflow/trigger-bindings.ts. The class also belongs
+    // in WORKFLOW_CLASS_TO_BINDING so the sequence chip can status a child
+    // id with no trigger key. Keep these in sync — the wiring-consistency
+    // test enforces it.
     {
       "name": "image-workflow",
       "binding": "IMAGE_WORKFLOW",

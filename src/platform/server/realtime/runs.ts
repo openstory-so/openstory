@@ -3,9 +3,10 @@
  *
  * The Durable Object keeps the rows. These helpers are the only callers:
  * the workflow base reports start and end, and the chip reads the list
- * after the stream connects. A failed report throws so the caller's
- * `step.do` can retry it; a failed read returns nothing so a page load
- * still renders.
+ * after the stream connects. A report throws; the base retries inside the
+ * step and then swallows, so the generation still finishes. A failed read
+ * returns null so the chip keeps the list it already has. An empty array
+ * means no open runs.
  */
 
 import { getEnv } from '#env';
@@ -55,7 +56,9 @@ export async function reportRunEnded(
   await postRun(channel, 'ended', { instanceId });
 }
 
-export async function getChannelRuns(channel: string): Promise<WorkflowRun[]> {
+export async function getChannelRuns(
+  channel: string
+): Promise<WorkflowRun[] | null> {
   try {
     const response = await channelStub(channel).fetch(
       `https://realtime.do/runs?channel=${encodeURIComponent(channel)}`
@@ -64,14 +67,17 @@ export async function getChannelRuns(channel: string): Promise<WorkflowRun[]> {
       logger.warn(`realtime runs fetch failed for "${channel}"`, {
         status: response.status,
       });
-      return [];
+      return null;
     }
     const body: unknown = await response.json();
-    if (!Array.isArray(body)) return [];
+    if (!Array.isArray(body)) {
+      logger.warn(`realtime runs fetch returned a non-array for "${channel}"`);
+      return null;
+    }
     return body.flatMap((row) => (isWorkflowRun(row) ? [row] : []));
   } catch (error) {
     logger.warn(`realtime runs fetch threw for "${channel}"`, { err: error });
-    return [];
+    return null;
   }
 }
 

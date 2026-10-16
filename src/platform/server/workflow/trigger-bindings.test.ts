@@ -19,7 +19,11 @@
  */
 
 import { describe, expect, test, vi } from 'vitest';
-import { triggerCfWorkflow, workflowNameFromRunId } from './trigger-bindings';
+import {
+  bindingNameForReportedRun,
+  triggerCfWorkflow,
+  workflowNameFromRunId,
+} from './trigger-bindings';
 import { buildInstanceId } from './instance-id';
 import type { CloudflareEnv } from './types';
 import { asStub } from '@/test/as-stub';
@@ -120,6 +124,23 @@ describe('workflowNameFromRunId', () => {
     expect(workflowNameFromRunId('qstash-run-abc123')).toBeNull();
     expect(workflowNameFromRunId('mock_e2e_run')).toBeNull();
     expect(workflowNameFromRunId('')).toBeNull();
+  });
+
+  test('a continue child id has no trigger key, so the class names the binding', () => {
+    const continueId =
+      'continue_01ARZ3NDEKTSV4RRFFQ69G5FAV_local_storyboard_parent_rabc123';
+    expect(workflowNameFromRunId(continueId)).toBeNull();
+    expect(
+      bindingNameForReportedRun('UpdateStaleShotsWorkflow', continueId)
+    ).toBe('UPDATE_STALE_SHOTS_WORKFLOW');
+  });
+
+  test('an element-sheets child id is not the element-sheet trigger key', () => {
+    const sheetId = 'element-sheets_01ARZ3NDEKTSV4RRFFQ69G5FAV_parent_rhash';
+    expect(workflowNameFromRunId(sheetId)).toBeNull();
+    expect(bindingNameForReportedRun('ElementSheetWorkflow', sheetId)).toBe(
+      'ELEMENT_SHEET_WORKFLOW'
+    );
   });
 });
 

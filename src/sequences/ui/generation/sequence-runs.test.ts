@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   applyRunEvent,
+  applyRunRead,
   applyRunSnapshot,
   beginRunSnapshot,
   EMPTY_RUN_STATE,
@@ -169,6 +170,46 @@ describe('run snapshot', () => {
     ]);
     const next = applyRunEvent(ready, { type: 'ended', instanceId: 'image' });
     expect(next.runs).toEqual([]);
+  });
+
+  it('drops a run whose end arrived while the snapshot still lists it', () => {
+    const queued = applyRunEvent(beginRunSnapshot(EMPTY_RUN_STATE), {
+      type: 'ended',
+      instanceId: 'image',
+    });
+    const next = applyRunSnapshot(queued, [run({ instanceId: 'image' })]);
+    expect(next.runs).toEqual([]);
+  });
+
+  it('keeps the open runs when the read fails', () => {
+    const open = applyRunSnapshot(EMPTY_RUN_STATE, [
+      run({ instanceId: 'image' }),
+    ]);
+    const next = applyRunRead(beginRunSnapshot(open), null);
+    expect(next.runs.map((row) => row.instanceId)).toEqual(['image']);
+    expect(next.snapshotReady).toBe(true);
+  });
+
+  it('still applies a queued end when the read fails', () => {
+    const open = applyRunSnapshot(EMPTY_RUN_STATE, [
+      run({ instanceId: 'image' }),
+    ]);
+    const reading = applyRunEvent(beginRunSnapshot(open), {
+      type: 'ended',
+      instanceId: 'image',
+    });
+    const next = applyRunRead(reading, null);
+    expect(next.runs).toEqual([]);
+  });
+
+  it('replaces the list when the read succeeds', () => {
+    const open = applyRunSnapshot(EMPTY_RUN_STATE, [
+      run({ instanceId: 'image' }),
+    ]);
+    const next = applyRunRead(beginRunSnapshot(open), [
+      run({ instanceId: 'motion' }),
+    ]);
+    expect(next.runs.map((row) => row.instanceId)).toEqual(['motion']);
   });
 
   it('does not add a run back when the snapshot already includes a queued start', () => {

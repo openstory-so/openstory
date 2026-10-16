@@ -1,7 +1,7 @@
 /**
  * Wiring consistency checks for Cloudflare Workflows.
  *
- * Every workflow needs entries in three places:
+ * Every workflow needs entries in four places:
  *
  *   1. `wrangler.jsonc` workflows[]   — declares the runtime binding so
  *                                       miniflare/CF actually creates it
@@ -10,6 +10,9 @@
  *                                     — maps the trigger path that
  *                                       `triggerWorkflow('/foo', ...)` uses
  *                                       to the env binding name
+ *   4. `WORKFLOW_CLASS_TO_BINDING`    — maps the class to that binding so
+ *                                       the sequence chip can status a child
+ *                                       whose instance id has no trigger key
  *
  * Missing any one of these silently breaks the workflow:
  *   - wrangler.jsonc missing → "env binding is missing or not a Workflow"
@@ -107,6 +110,24 @@ function extractTriggerMapValues(): Set<string> {
   return new Set(captureAll(inner, /'([A-Z][A-Z0-9_]+)'/g));
 }
 
+function extractClassBindingMap(): Map<string, string> {
+  const text = readFileSync(TRIGGER_BINDINGS_PATH, 'utf8');
+  const block = text.match(/WORKFLOW_CLASS_TO_BINDING[^=]*=\s*\{([\s\S]*?)\};/);
+  const inner = block?.[1];
+  if (!inner) {
+    throw new Error(
+      'Could not find WORKFLOW_CLASS_TO_BINDING block in trigger-bindings.ts'
+    );
+  }
+  const map = new Map<string, string>();
+  for (const match of inner.matchAll(
+    /([A-Z][A-Za-z0-9]+):\s*'([A-Z][A-Z0-9_]+)'/g
+  )) {
+    if (match[1] && match[2]) map.set(match[1], match[2]);
+  }
+  return map;
+}
+
 function extractServerExports(): Set<string> {
   const text = readFileSync(SERVER_PATH, 'utf8');
   // `export { ClassName } from '@/<domain>/server/workflows/...';`
@@ -118,7 +139,7 @@ function extractServerExports(): Set<string> {
   );
 }
 
-describe('CF workflow wiring is consistent across all three declaration sites', () => {
+describe('CF workflow wiring is consistent across declaration sites', () => {
   const wranglerWorkflows = parseWranglerWorkflows();
   const wranglerBindings = new Set(wranglerWorkflows.map((w) => w.binding));
   const wranglerClasses = new Set(wranglerWorkflows.map((w) => w.class_name));
@@ -149,6 +170,21 @@ describe('CF workflow wiring is consistent across all three declaration sites', 
       (b) => !triggerMapBindings.has(b)
     );
     expect(unrouted).toEqual([]);
+  });
+
+  test('every wrangler class maps to its own binding', () => {
+    const classBindings = extractClassBindingMap();
+    const mismatched = wranglerWorkflows
+      .filter(
+        (workflow) =>
+          classBindings.get(workflow.class_name) !== workflow.binding
+      )
+      .map((workflow) => workflow.class_name);
+    expect(mismatched).toEqual([]);
+    const extra = [...classBindings.keys()].filter(
+      (className) => !wranglerClasses.has(className)
+    );
+    expect(extra).toEqual([]);
   });
 
   test('every server.ts CF re-export has a matching wrangler workflow entry', () => {

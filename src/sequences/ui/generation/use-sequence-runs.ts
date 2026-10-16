@@ -3,7 +3,7 @@ import { useRealtime } from '@/platform/ui/realtime/client';
 import { useEffect, useRef, useState } from 'react';
 import {
   applyRunEvent,
-  applyRunSnapshot,
+  applyRunRead,
   beginRunSnapshot,
   EMPTY_RUN_STATE,
   type SequenceRunState,
@@ -69,11 +69,11 @@ export function useSequenceRuns(sequenceId: string | undefined): WorkflowRun[] {
     void getChannelRunsFn({ data: { channel: sequenceId } })
       .then((runs) => {
         if (cancelled) return;
-        publish(applyRunSnapshot(stateRef.current, runs));
+        publish(applyRunRead(stateRef.current, runs));
       })
       .catch(() => {
         if (cancelled) return;
-        publish(applyRunSnapshot(stateRef.current, stateRef.current.runs));
+        publish(applyRunRead(stateRef.current, null));
       });
     return () => {
       cancelled = true;

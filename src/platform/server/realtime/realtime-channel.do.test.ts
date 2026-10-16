@@ -841,6 +841,81 @@ describe('RealtimeChannel open runs (#2113)', () => {
     expect(harness.getAlarm()).toBe(t0 + RUN_RECONCILE_MS);
   });
 
+  it('drops errored and terminated runs and keeps paused and waiting', async () => {
+    const statusFor = (id: string) => {
+      if (id.endsWith('errored')) return 'errored';
+      if (id.endsWith('terminated')) return 'terminated';
+      if (id.endsWith('paused')) return 'paused';
+      return 'waiting';
+    };
+    const get = vi.fn(async (id: string) => ({
+      status: async () => ({ status: statusFor(id) }),
+    }));
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        IMAGE_WORKFLOW: { create: vi.fn(), get },
+      })
+    );
+    for (const [instanceId, startedAt] of [
+      ['local_image_errored', 10],
+      ['local_image_terminated', 11],
+      ['local_image_paused', 12],
+      ['local_image_waiting', 13],
+    ] as const) {
+      await postRun(harness.channel, 'started', {
+        ...RUN,
+        instanceId,
+        startedAt,
+      });
+    }
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toEqual([
+      expect.objectContaining({ instanceId: 'local_image_paused' }),
+      expect.objectContaining({ instanceId: 'local_image_waiting' }),
+    ]);
+  });
+
+  it('drops a finished continue child by the stored binding', async () => {
+    const instanceId =
+      'continue_01ARZ3NDEKTSV4RRFFQ69G5FAV_local_storyboard_parent_rabc123';
+    const get = vi.fn(async () => ({
+      status: async () => ({ status: 'complete' }),
+    }));
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        UPDATE_STALE_SHOTS_WORKFLOW: { create: vi.fn(), get },
+      })
+    );
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId,
+      binding: 'UPDATE_STALE_SHOTS_WORKFLOW',
+      className: 'UpdateStaleShotsWorkflow',
+      label: 'Update',
+    });
+
+    await triggerAlarm(harness);
+
+    expect(get).toHaveBeenCalledWith(instanceId);
+    expect(await listRuns(harness.channel)).toEqual([]);
+  });
+
+  it('keeps a run when neither the stored binding nor the instance id resolves', async () => {
+    const harness = createHarness(asStub<Cloudflare.Env>({}));
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId:
+        'continue_01ARZ3NDEKTSV4RRFFQ69G5FAV_local_storyboard_parent_rabc123',
+      binding: '',
+    });
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toHaveLength(1);
+  });
+
   it('keeps a run when the status check fails', async () => {
     const status = vi.fn(async () => {
       throw new Error('rpc down');

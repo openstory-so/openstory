@@ -156,13 +156,16 @@ Pass a stable `deduplicationId` in the options to make a trigger idempotent.
 
 **Defining workflows** — each lives in `src/<domain>/server/workflows/<name>-workflow.ts`,
 extends `OpenStoryWorkflowEntrypoint` (`src/platform/server/workflow/base-workflow.ts`),
-and must be wired in three places (a test in
+and must be wired in four places (a test in
 `src/platform/server/workflow/wiring-consistency.test.ts` enforces this):
 
 1. `wrangler.jsonc` `workflows[]` — declares the binding + `class_name`.
 2. `src/server.ts` — re-exports the class so it lands in the Worker bundle.
 3. `TRIGGER_TO_BINDING` in `src/platform/server/workflow/trigger-bindings.ts` — maps the
    trigger path to the binding name.
+4. `WORKFLOW_CLASS_TO_BINDING` in the same file — maps the class to that
+   binding so the sequence chip can status a child whose instance id has no
+   trigger key (`continue:…`, `element-sheets:…`).
 
 The base class validates `userId`/`teamId` on the payload, builds a
 `ScopedDb`, and sanitizes/handles failures. Subclasses implement

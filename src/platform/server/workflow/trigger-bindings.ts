@@ -8,7 +8,9 @@
  *   1. Add the `class_name` + `binding` to `wrangler.jsonc` under `workflows[]`
  *   2. Re-export the entrypoint class from `src/server.ts` so the bundler
  *      includes it.
- *   3. Add an entry here.
+ *   3. Add an entry to `TRIGGER_TO_BINDING`.
+ *   4. Add the class to `WORKFLOW_CLASS_TO_BINDING`, so the sequence chip
+ *      can status a child whose instance id has no trigger key (#2113).
  */
 
 import type { CloudflareEnv } from './types';
@@ -56,6 +58,70 @@ const TRIGGER_TO_BINDING: Record<string, keyof CloudflareEnv> = {
   asset: 'ASSET_WORKFLOW',
   studio: 'STUDIO_WORKFLOW',
 };
+
+/**
+ * Class name → wrangler binding. Child instance ids are a semantic label
+ * (`continue:…`, `element-sheets:…`), so the trigger key is not in the id.
+ * The chip alarm reads this binding off the run row.
+ */
+const WORKFLOW_CLASS_TO_BINDING = {
+  ImageWorkflow: 'IMAGE_WORKFLOW',
+  ElementVisionWorkflow: 'ELEMENT_VISION_WORKFLOW',
+  SheetPortraitWorkflow: 'SHEET_PORTRAIT_WORKFLOW',
+  ElementSheetWorkflow: 'ELEMENT_SHEET_WORKFLOW',
+  MusicWorkflow: 'MUSIC_WORKFLOW',
+  MotionWorkflow: 'MOTION_WORKFLOW',
+  MotionBatchWorkflow: 'MOTION_BATCH_WORKFLOW',
+  CharacterSheetWorkflow: 'CHARACTER_SHEET_WORKFLOW',
+  CharacterVoiceWorkflow: 'CHARACTER_VOICE_WORKFLOW',
+  DialogueAudioWorkflow: 'DIALOGUE_AUDIO_WORKFLOW',
+  DialogueTakeWorkflow: 'DIALOGUE_TAKE_WORKFLOW',
+  LocationSheetWorkflow: 'LOCATION_SHEET_WORKFLOW',
+  LibraryTalentSheetWorkflow: 'LIBRARY_TALENT_SHEET_WORKFLOW',
+  LibraryLocationSheetWorkflow: 'LIBRARY_LOCATION_SHEET_WORKFLOW',
+  ShotVariantWorkflow: 'SHOT_VARIANT_WORKFLOW',
+  UpscaleShotVariantWorkflow: 'UPSCALE_SHOT_VARIANT_WORKFLOW',
+  ShotSpecRewriteWorkflow: 'SHOT_SPEC_REWRITE_WORKFLOW',
+  MusicPromptWorkflow: 'MUSIC_PROMPT_WORKFLOW',
+  RecastCharacterWorkflow: 'RECAST_CHARACTER_WORKFLOW',
+  LocationMatchingWorkflow: 'LOCATION_MATCHING_WORKFLOW',
+  ShotImagesWorkflow: 'SHOT_IMAGES_WORKFLOW',
+  TalentMatchingWorkflow: 'TALENT_MATCHING_WORKFLOW',
+  CharacterBibleWorkflow: 'CHARACTER_BIBLE_WORKFLOW',
+  LocationBibleWorkflow: 'LOCATION_BIBLE_WORKFLOW',
+  MotionMusicPromptsWorkflow: 'MOTION_MUSIC_PROMPTS_WORKFLOW',
+  RegenerateShotsWorkflow: 'REGENERATE_SHOTS_WORKFLOW',
+  UpdateStaleShotsWorkflow: 'UPDATE_STALE_SHOTS_WORKFLOW',
+  RecastLocationWorkflow: 'RECAST_LOCATION_WORKFLOW',
+  ReplaceElementWorkflow: 'REPLACE_ELEMENT_WORKFLOW',
+  SceneSplitWorkflow: 'SCENE_SPLIT_WORKFLOW',
+  StoryboardWorkflow: 'STORYBOARD_WORKFLOW',
+  AnalyzeScriptWorkflow: 'ANALYZE_SCRIPT_WORKFLOW',
+  SequenceExportWorkflow: 'SEQUENCE_EXPORT_WORKFLOW',
+  AssetGenerationWorkflow: 'ASSET_WORKFLOW',
+  StudioGenerationWorkflow: 'STUDIO_WORKFLOW',
+} as const satisfies Record<string, keyof CloudflareEnv>;
+
+/** Binding for a workflow class, or null for a test double or unknown class. */
+function bindingNameForClass(className: string): keyof CloudflareEnv | null {
+  for (const [name, binding] of Object.entries(WORKFLOW_CLASS_TO_BINDING)) {
+    if (name === className) return binding;
+  }
+  return null;
+}
+
+/**
+ * Binding stored on a sequence-chip run. The class wins. The instance id
+ * is the fallback for a class the map does not name.
+ */
+export function bindingNameForReportedRun(
+  className: string,
+  instanceId: string
+): keyof CloudflareEnv | '' {
+  return (
+    bindingNameForClass(className) ?? bindingNameForRunId(instanceId) ?? ''
+  );
+}
 
 /** `reused`: a deduplicated trigger landed on an existing instance. */
 export type CfTriggerResult = { workflowRunId: string; reused: boolean };
@@ -120,7 +186,7 @@ export function workflowNameFromRunId(runId: string): string | null {
 }
 
 /** Binding name for a run id, or null when the id is not one of ours. */
-export function bindingNameForRunId(runId: string): keyof CloudflareEnv | null {
+function bindingNameForRunId(runId: string): keyof CloudflareEnv | null {
   const workflowName = workflowNameFromRunId(runId);
   if (!workflowName) return null;
   return TRIGGER_TO_BINDING[workflowName] ?? null;
@@ -140,8 +206,39 @@ export function getCfBindingForRunId(
   if (!workflowName) return null;
   const bindingName = TRIGGER_TO_BINDING[workflowName];
   if (!bindingName) return null;
+  return workflowBindingOnEnv(env, bindingName);
+}
+
+/**
+ * Binding for one open chip run. The row's stored name wins, because a
+ * child id such as `continue_…` does not contain a trigger key. The
+ * instance id is the fallback for a row written before that name existed.
+ */
+export function workflowBindingForRun(
+  env: CloudflareEnv,
+  run: { binding: string; instanceId: string }
+): Workflow<unknown> | null {
+  return (
+    workflowBindingOnEnv(env, run.binding) ??
+    getCfBindingForRunId(run.instanceId, env)
+  );
+}
+
+function workflowBindingOnEnv(
+  env: CloudflareEnv,
+  name: string
+): Workflow<unknown> | null {
+  const bindingName = storedBindingName(name);
+  if (!bindingName) return null;
   const binding = env[bindingName];
   return isWorkflowBinding(binding) ? binding : null;
+}
+
+function storedBindingName(name: string): keyof CloudflareEnv | null {
+  for (const binding of Object.values(WORKFLOW_CLASS_TO_BINDING)) {
+    if (binding === name) return binding;
+  }
+  return null;
 }
 
 /**
