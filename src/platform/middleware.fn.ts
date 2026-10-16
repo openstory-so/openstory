@@ -187,7 +187,9 @@ export const loggerMiddleware = createMiddleware({ type: 'function' }).server(
  * second or two, and each resolved both from the primary — two round trips,
  * 350–450 ms apiece from Europe — before any work. Concurrent calls share one
  * in-flight read; a change to membership or enforcement is seen within
- * `TEAM_MEMO_TTL_MS` on an isolate that already answered for the user.
+ * `TEAM_MEMO_TTL_MS` on an isolate that already answered for the user. Only
+ * a GET is answered from the memo: a write reads both fresh, so a removed
+ * member or a new enforcement bites on the next write.
  */
 const TEAM_MEMO_TTL_MS = 5_000;
 type ResolvedTeam = {
@@ -199,9 +201,12 @@ const teamMemo = new Map<
   { until: number; value: Promise<ResolvedTeam> }
 >();
 
-async function resolveTeamAndCompliance(userId: string): Promise<ResolvedTeam> {
+async function resolveTeamAndCompliance(
+  userId: string,
+  method: string
+): Promise<ResolvedTeam> {
   const now = Date.now();
-  const hit = teamMemo.get(userId);
+  const hit = method === 'GET' ? teamMemo.get(userId) : undefined;
   if (hit && hit.until > now) return hit.value;
   // ponytail: prune on insert; a per-user entry for the whole isolate life
   // would otherwise grow with every user it ever answered.
@@ -293,7 +298,7 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
 
       const resolved = oauth?.teamId
         ? null
-        : await resolveTeamAndCompliance(principal.user.id);
+        : await resolveTeamAndCompliance(principal.user.id, request.method);
       const team = oauth?.teamId
         ? await getUserTeamMembership(principal.user.id, oauth.teamId)
         : resolved?.team;
@@ -391,8 +396,10 @@ const analyticsFlushMiddleware = createMiddleware({ type: 'function' })
 export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
+    const request = getRequest();
     const { team, compliance } = await resolveTeamAndCompliance(
-      context.user.id
+      context.user.id,
+      request.method
     );
 
     if (!team || !compliance) {
@@ -414,7 +421,6 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
     // Server fns: GET stays readable under account_suspended; POST/PUT/etc.
     // are writes. `getComplianceStatusFn` uses authMiddleware only so a
     // terminated account can still see the restriction banner.
-    const request = getRequest();
     if (request.method !== 'GET') {
       assertCanWrite(compliance.enforcement);
     }
