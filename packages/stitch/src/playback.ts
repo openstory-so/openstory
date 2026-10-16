@@ -295,9 +295,15 @@ export class SequencePlayerEngine {
     const generation = ++this.downloadGeneration;
     const stale = () => this.disposed || generation !== this.downloadGeneration;
     // A seek back: let go of what is held past the new window.
-    while (this.heldTo > fromClip + CLIPS_AHEAD) {
+    while (
+      this.heldTo > fromClip + CLIPS_AHEAD &&
+      this.heldTo >= this.heldFrom
+    ) {
       this.videoSource.drop(this.heldTo--);
     }
+    // A seek forward: let go of what is behind the new window now, not on
+    // the next playing tick.
+    this.dropBehind(fromClip);
     this.heldFrom = Math.min(this.heldFrom, fromClip);
     void (async () => {
       for (let clip = fromClip; clip < this.opts.clips.length; clip++) {
@@ -322,8 +328,9 @@ export class SequencePlayerEngine {
 
   /**
    * Let go of clips behind the playhead. ponytail: a clip is held whole
-   * whatever its size (generated shots are tens of MB, three held at most);
-   * add a per-clip byte ceiling if a cut ever carries long clips.
+   * whatever its size (generated shots are tens of MB, three held at most
+   * while playing); add a per-clip byte ceiling if a cut ever carries long
+   * clips.
    */
   private dropBehind(clip: number): void {
     while (this.heldFrom < clip) this.videoSource.drop(this.heldFrom++);
@@ -372,13 +379,21 @@ export class SequencePlayerEngine {
       }
       // One wait up front, reported as buffering, instead of a stall per
       // block once the clock runs (#2124). pause() during it cancels below.
-      const clip = this.videoSource.locate(this.playbackTimeAtStart).clipIndex;
+      // Past the end the clip is the first one again, and its download is
+      // started again here since the downloader finished long ago.
+      const from =
+        this.playbackTimeAtStart >= this.meta.durationSeconds
+          ? 0
+          : this.playbackTimeAtStart;
+      const clip = this.videoSource.locate(from).clipIndex;
       if (!this.videoSource.isDownloaded(clip)) {
         this.setBuffering(true);
+        if (from === 0) this.startDownloader(0);
         await this.videoSource.download(clip);
       }
     } catch (err) {
       if (generation === this.playGeneration) this.playRequested = false;
+      this.setBuffering(false);
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- flips during the await
       if (this.disposed) return 'disposed';
       throw err;
@@ -430,10 +445,12 @@ export class SequencePlayerEngine {
 
   pause(): void {
     this.playRequested = false;
+    // A play() waiting on its download is cancelled: its spinner goes now,
+    // not when the clip lands.
+    this.setBuffering(false);
     if (!this.playing) return;
     this.playbackTimeAtStart = this.getPlaybackTime();
     this.playing = false;
-    this.setBuffering(false);
     this.laneGeneration++;
     void this.audioBufferIterator?.return();
     this.audioBufferIterator = null;
@@ -705,11 +722,15 @@ export class SequencePlayerEngine {
           const clip = this.videoSource.locate(playbackTime).clipIndex;
           this.dropBehind(clip);
           // A stall clears only once the clip is all here, so a slow link
-          // gives one wait per clip at most, not a wait per block.
+          // gives one wait per clip at most, not a wait per block. A clip
+          // whose download is over (failed, or never in the window) clears
+          // on the frame alone, so the clock is never held for a download
+          // that is not coming.
           const stalled = this.isStalled(playbackTime);
           if (stalled) this.setBuffering(true);
-          else if (this.videoSource.isDownloaded(clip))
+          else if (!this.videoSource.isDownloading(clip)) {
             this.setBuffering(false);
+          }
           this.opts.onTimeUpdate?.(playbackTime);
         }
       }

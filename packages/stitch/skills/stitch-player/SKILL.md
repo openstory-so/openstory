@@ -23,7 +23,7 @@ Pass the new array through when the list changes. Identity is order plus the med
 
 `musicUrl` is a bed under the whole sequence. `musicGainDb` changes only that bed. `0` leaves it as recorded. `musicEnabled: false` mutes the bed. Dialogue stays at its own level.
 
-The player downloads clips whole, in order, up to two past the one playing. Play starts when the current clip is all here, and a stall at a cut lasts until the next clip is. There is nothing to tune.
+The player downloads clips whole, in order, up to two past the one playing. Play starts when the current clip is all here, and a stall at a cut lasts until the next clip is. Music still streams. There is nothing to tune.
 
 ## Bytes
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createRangedReader } from './ranged-source.js';
 
 const KB = 1024;
@@ -124,6 +124,82 @@ describe('createRangedReader whole-file download (#2124)', () => {
     expect(isRange(await read, 100 * KB)).toBe(true);
     expect(sizes()).toEqual([64, 6 * 1024 - 64]);
     expect(reader.isComplete()).toBe(true);
+  });
+
+  it('joins a download already running instead of opening a second stream', async () => {
+    const { ranges, fetchFn, release } = throttledServer(6 * MB);
+    const reader = createRangedReader('/clip.mp4', fetchFn);
+    const sized = reader.getSize();
+    release();
+    await sized;
+    const first = reader.fetchAll();
+    const second = reader.fetchAll();
+    expect(reader.isDownloading()).toBe(true);
+    const pending = { count: 1 };
+    void Promise.all([first, second]).then(() => {
+      pending.count = 0;
+    });
+    while (pending.count > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release();
+    }
+    expect(ranges.length).toBe(2);
+    expect(reader.isDownloading()).toBe(false);
+  });
+
+  it('drop() stops a stream in flight', async () => {
+    const { fetchFn, release } = throttledServer(6 * MB);
+    const reader = createRangedReader('/clip.mp4', fetchFn);
+    const sized = reader.getSize();
+    release();
+    await sized;
+    const all = reader.fetchAll();
+    reader.drop();
+    release();
+    await expect(all).rejects.toThrow();
+    expect(reader.isComplete()).toBe(false);
+    expect(reader.isDownloading()).toBe(false);
+  });
+
+  it('a read waiting on the stream survives a dropped connection; the retry resumes', async () => {
+    vi.useFakeTimers();
+    try {
+      const size = 1 * MB;
+      const server = fakeServer(size);
+      let failures = 1;
+      const fetchFn: typeof server.fetchFn = async (url, init) => {
+        const whole = await server.fetchFn(url, init);
+        // Only the stream drops; the header read before it is fine.
+        const range = new Headers(init?.headers).get('range') ?? '';
+        if (failures === 0 || !range.endsWith(`-${size - 1}`)) return whole;
+        failures--;
+        // Deliver four blocks, then the connection drops.
+        const body = new Uint8Array(await whole.arrayBuffer());
+        let pulls = 0;
+        const stream = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (pulls++ === 0)
+              controller.enqueue(body.subarray(0, 4 * 64 * KB));
+            else controller.error(new TypeError('Failed to fetch'));
+          },
+        });
+        return new Response(stream, {
+          status: 206,
+          headers: whole.headers,
+        });
+      };
+      const reader = createRangedReader('/clip.mp4', fetchFn);
+      await reader.getSize();
+      const all = reader.fetchAll();
+      const read = reader.read(600 * KB, 601 * KB);
+      await vi.advanceTimersByTimeAsync(5000);
+      await all;
+      expect(isRange(await read, 600 * KB)).toBe(true);
+      expect(server.ranges.at(-1)).toBe(`bytes=${5 * 64 * KB}-${size - 1}`);
+      expect(reader.isComplete()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('holds a file past the cache limit until dropped', async () => {

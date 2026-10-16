@@ -20,6 +20,7 @@ const fake = vi.hoisted(() => ({
   /** Clips of one second each. */
   clipCount: 1,
   downloaded: true,
+  downloading: false,
   download: { promise: Promise.resolve() },
   downloads: [] as number[],
   dropped: [] as number[],
@@ -51,6 +52,7 @@ vi.mock('./concatenated-video-source.js', () => {
       return fake.download.promise;
     };
     isDownloaded = () => fake.downloaded;
+    isDownloading = () => fake.downloading;
     drop = (clip: number) => {
       fake.dropped.push(clip);
     };
@@ -114,6 +116,8 @@ async function setup(clipCount = 1) {
   fake.frames = [frame(0), frame(0.04), frame(0.08), frame(5)];
   fake.frameGate = gate();
   fake.download = { promise: Promise.resolve() };
+  fake.downloaded = true;
+  fake.downloading = false;
   fake.downloads = [];
   fake.dropped = [];
   const engine = new SequencePlayerEngine({
@@ -139,16 +143,45 @@ describe('SequencePlayerEngine whole-clip download (#2124)', () => {
     expect(fake.downloads).toEqual([0]);
   });
 
-  it('downloads two clips ahead, and a seek back drops what is past the window', async () => {
+  it('downloads two clips ahead, and a seek drops what is outside the new window', async () => {
     const { engine } = await setup(20);
     await settle();
     expect(fake.downloads).toEqual([0, 1, 2]);
     await engine.seek(10);
     await settle();
-    expect(fake.dropped).toEqual([]);
+    // Forward: what was behind goes at once, not on the next playing tick.
+    expect(fake.dropped).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(fake.downloads).toEqual([0, 1, 2, 10, 11, 12]);
+    fake.dropped = [];
     await engine.seek(0);
-    expect(fake.dropped).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+    // Back: what is past the new window goes.
+    expect(fake.dropped).toEqual([12, 11, 10]);
+    engine.dispose();
+  });
+
+  it('play() clears buffering when the download fails', async () => {
+    const { engine, buffering } = await setup();
+    fake.downloaded = false;
+    fake.download = { promise: Promise.reject(new Error('HTTP 404')) };
+    await expect(engine.play()).rejects.toThrow('HTTP 404');
+    expect(engine.isPlaying()).toBe(false);
+    expect(buffering).toEqual([true, false]);
+  });
+
+  it('play() from the end starts the first clip downloading again', async () => {
+    const { engine } = await setup(20);
+    await settle();
+    await engine.seek(20);
+    await settle();
+    fake.downloads = [];
+    fake.downloaded = false;
+    const lead = gate();
+    fake.download = lead;
+    const play = engine.play();
+    await settle();
+    expect(fake.downloads).toEqual([0, 0]); // the downloader, then the wait on it
+    lead.open();
+    expect(await play).toBe('playing');
     engine.dispose();
   });
 
@@ -187,6 +220,26 @@ describe('SequencePlayerEngine whole-clip download (#2124)', () => {
     expect(buffering).toEqual([true, false]);
   });
 
+  it('a stall clears on the frame when no download is coming', async () => {
+    const { engine, context, buffering, now, tick } = await setup();
+    expect(await engine.play()).toBe('playing');
+    context.currentTime = 0.05;
+    tick();
+    await settle();
+    // The clip's download failed earlier: not complete, not streaming.
+    fake.downloaded = false;
+    fake.downloading = false;
+    now.mockReturnValue(400);
+    context.currentTime = 0.1;
+    tick();
+    expect(buffering).toEqual([true]);
+    fake.frameGate.open();
+    await settle();
+    tick();
+    expect(buffering).toEqual([true, false]);
+    engine.dispose();
+  });
+
   it('a stall clears only once the clip is downloaded', async () => {
     const { engine, context, buffering, now, tick } = await setup();
     fake.downloaded = true;
@@ -202,12 +255,13 @@ describe('SequencePlayerEngine whole-clip download (#2124)', () => {
     tick();
     expect(buffering).toEqual([true]);
     expect(context.state).toBe('suspended');
-    // The frame lands, but the clip is not all here: still buffering.
+    // The frame lands, but the clip is still streaming in: still buffering.
+    fake.downloading = true;
     fake.frameGate.open();
     await settle();
     tick();
     expect(buffering).toEqual([true]);
-    fake.downloaded = true;
+    fake.downloading = false;
     tick();
     expect(buffering).toEqual([true, false]);
     expect(context.state).toBe('running');

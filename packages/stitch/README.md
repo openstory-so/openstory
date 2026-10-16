@@ -111,12 +111,12 @@ npx @openstory/stitch \
 
 - A `.mp4`, `.webm`, or `.mov` is a video. It plays the sound inside the file.
 - A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
-- `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` (default 4) and that sound.
+- `--audio` adds a line (a `.wav`, `.mp3`, `.m4a`, or `.ogg`) to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` (default 4) and that sound.
 - `--poster` is the still shown while the cut opens. It belongs on an opening video.
 - `--fallback` is the picture tried when the still before it fails to load.
 - `--cue START-END TEXT` is a subtitle on the clip before it. Times are seconds from the start of that clip. Quote the text.
 - `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. A cue that crosses a cut is split onto both clips.
-- `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB, and defaults to 0. The page can turn the bed off. Dialogue stays at its own level.
+- `--music` is the bed under the whole cut, a `.wav`, `.mp3`, `.m4a`, or `.ogg`. `--music-gain` changes only that bed, in dB, and defaults to 0. The page can turn the bed off. Dialogue stays at its own level.
 - `--frame 9:16` (or `1080x1920`) is the shape of the page. Without it the first clip sets the shape, and nothing else is read before the page opens. Every clip is fitted into that box.
 
 ## Skill
@@ -253,7 +253,7 @@ button.onclick = () =>
   });
 ```
 
-The export runs the same stitching code, so the file matches the preview: same frames, same letterboxing, same mix. Video is H.264 and audio is AAC, in an MP4. A codec the browser cannot encode is an error; nothing is quietly swapped. Undecodable embedded audio and a still with no loaded picture also throw, even though playback continues (silent, or on a dark frame). Pass a player's `engine.source` as `source` to skip a second `prepare()` of video clips it has already opened (the Download button does this), with the player paused. Music is opened again. Clip bytes may be reread if they were evicted from the 16 MiB range cache.
+The export runs the same stitching code, so the file matches the preview: same frames, same letterboxing, same mix. Video is H.264 and audio is AAC, in an MP4. A codec the browser cannot encode is an error; nothing is quietly swapped. Undecodable embedded audio and a still with no loaded picture also throw, even though playback continues (silent, or on a dark frame). Pass a player's `engine.source` as `source` to skip a second `prepare()` of video clips it has already opened (the Download button does this), with the player paused. Music is opened again. Clip bytes behind or more than two clips ahead of the player's playhead have been let go of and are read again.
 
 ## Video.js 10 only
 
@@ -308,8 +308,8 @@ engine.dispose();
 
 - **Opening is concurrent.** Every clip is opened at once for its duration and size, then the first frame is read, so a twenty-clip cut is one round of header reads plus that frame, not twenty sequential opens. Stills decode their images during `prepare()`.
 - **Reads are bounded range requests.** 64 KiB blocks. A faststart header is one request. `locate()` walks the offset table, O(N) in the clip count.
-- **Clips are downloaded whole, in order.** From the clip under the playhead, each clip is streamed whole in one request, one clip at a time, up to two clips past the playhead, and held in memory. `play()` resolves once the current clip is all here; a stall at a cut clears once the next clip is. So a slow link waits once per clip at most, never once per block. Clips behind the playhead are let go of, so a long cut never sits in memory whole. Other sources (music, a still's lines) keep a 16 MiB cache.
-- **Sound streams too.** Each clip's audio is decoded a second ahead of the playhead and dropped once played; the next clip's opening is fetched three seconds before the cut.
+- **Clips are downloaded whole, in order.** From the clip under the playhead, each clip is streamed whole in one request, one clip at a time, up to two clips past the playhead, and held in memory. `play()` resolves once the current clip is all here; a stall at a cut clears once the next clip is. So a slow link waits once per clip for the clip's bytes, never once per block; music still streams. Clips outside that window are let go of, so a long cut never sits in memory whole. Music and dialogue lines served over HTTP keep a 16 MiB cache.
+- **Sound streams too.** Each clip's audio is decoded a second ahead of the playhead and dropped once played.
 - **A stall holds everything together.** The audio clock is the playback clock, so a network stall suspends it, and the picture, the music and every queued line of dialogue pause and resume as one.
 
 ## Requirements

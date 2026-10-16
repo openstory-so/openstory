@@ -605,6 +605,12 @@ describe('stitch remote media', () => {
           expect(whole.status).toBe(200);
           expect(whole.headers.get('content-length')).toBe('9');
           expect(await whole.text()).toBe('012345678');
+          const head = await fetch(new URL('/media/1', preview.url), {
+            method: 'HEAD',
+          });
+          expect(head.status).toBe(200);
+          expect(head.headers.get('content-length')).toBe('9');
+          expect(await head.text()).toBe('');
         } finally {
           await preview.close();
         }

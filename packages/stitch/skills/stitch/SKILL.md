@@ -27,11 +27,11 @@ npx @openstory/stitch@latest \
 1. Put the stills and videos in play order. Each is a path or an `http(s)` URL. The command reads a URL itself and serves it to the page from its own origin, so a remote without CORS headers still plays and exports.
 2. A `.mp4`, `.webm`, or `.mov` is a video. Its dialogue is the audio inside the file. Do not pass `--audio` for a video.
 3. A `.png`, `.jpg`, `.jpeg`, or `.webp` is a still. The command reads its width and height.
-4. `--audio` adds a line to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` and that sound. `--seconds` defaults to 4.
+4. `--audio` adds a line (a `.wav`, `.mp3`, `.m4a`, or `.ogg`) to the still before it. Repeat it for another line. The still stays up for the longer of `--seconds` and that sound. `--seconds` defaults to 4.
 5. `--cue START-END TEXT` is a subtitle on the clip before it. Quote the text. Times are seconds from the start of that clip.
 6. `--subs lines.srt` (or `.vtt`) is one subtitle file for the whole cut. Times in the file are from the start of the first clip. A cue that crosses a cut is split onto both clips. Use this instead of one `--cue` per line when a file already exists.
 7. `--poster` is the still shown while the cut opens. It belongs on an opening video. `--fallback` is the picture tried when the still before it fails to load.
-8. `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB. It defaults to 0. The page can turn that bed off; dialogue stays.
+8. `--music` is the bed under the whole cut, a `.wav`, `.mp3`, `.m4a`, or `.ogg`. `--music-gain` changes only that bed, in dB. It defaults to 0. The page can turn that bed off; dialogue stays.
 9. `--frame 9:16` (or `1080x1920`) is the shape of the page. Give it when the shape is known: without it the command reads the first clip to find out. Every clip is fitted into that box.
 10. Run that `npx` command and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
 

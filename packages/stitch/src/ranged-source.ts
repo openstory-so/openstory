@@ -8,14 +8,19 @@
  * doubles while reads stay sequential (a clip being played), up to 2 MiB.
  * `fetchAll` streams the whole file in one request and holds it, so the
  * player can download a clip ahead of the playhead and know when it is all
- * here (#2124).
+ * here (#2124). A video clip's header still comes through `ensure`; its
+ * body comes through `fetchAll`, so the doubling read-ahead now serves
+ * music and a still's lines.
  */
 
 import { CustomSource } from 'mediabunny';
 
 const BLOCK = 64 * 1024;
 const MAX_AHEAD_BLOCKS = 32; // 2 MiB
-/** Per source. Only the clip under the playhead holds more than its header. */
+/**
+ * Per source, while `fetchAll` is not holding it: music, a still's lines
+ * over HTTP, a dropped clip. A held video clip is exempt.
+ */
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
 const RETRY_DELAYS_MS = [500, 1500, 4000];
 
@@ -36,6 +41,10 @@ export function createRangedReader(
   let ahead = 1;
   /** Set by `fetchAll`: the whole file stays until `drop()`. */
   let held = false;
+  /** The `fetchAll` in flight, handed to a second caller instead of a second stream. */
+  let running: Promise<void> | null = null;
+  /** Aborts the `fetchAll` in flight; `drop()` fires it. */
+  let downloadAbort = new AbortController();
 
   async function fetchRange(first: number, last: number): Promise<void> {
     const start = first * BLOCK;
@@ -76,68 +85,102 @@ export function createRangedReader(
     }
   }
 
+  type Waiter = { resolve: () => void; reject: (error: unknown) => void };
+
   /**
    * Stream the file from block `first` to its end in one request, storing
-   * each block as it lands so a read waiting on it goes on at once.
+   * each block as it lands and settling its waiter, so a read waiting on
+   * it goes on at once. Waiters survive a failed attempt: the caller
+   * retries and rejects them only when it gives up.
    */
-  async function streamFrom(first: number, total: number): Promise<void> {
+  async function streamFrom(
+    first: number,
+    total: number,
+    waiters: Map<number, Waiter>,
+    signal: AbortSignal
+  ): Promise<void> {
     const last = Math.ceil(total / BLOCK) - 1;
-    const pending = new Map<
-      number,
-      { resolve: () => void; reject: (error: unknown) => void }
-    >();
-    for (let b = first; b <= last; b++) {
-      if (inFlight.has(b)) continue;
-      const landed = new Promise<void>((resolve, reject) => {
-        pending.set(b, { resolve, reject });
-      });
-      landed.catch(() => {}); // the waiting read reports it
-      inFlight.set(
-        b,
-        landed.finally(() => inFlight.delete(b))
-      );
+    const response = await fetchFn(url, {
+      headers: { Range: `bytes=${first * BLOCK}-${total - 1}` },
+      signal,
+    });
+    if (response.status !== 206 || response.body === null) {
+      throw new Error(`HTTP ${response.status} for ${url}`);
     }
-    try {
-      const response = await fetchFn(url, {
-        headers: { Range: `bytes=${first * BLOCK}-${total - 1}` },
-        signal: abort.signal,
-      });
-      if (response.status !== 206 || response.body === null) {
-        throw new Error(`HTTP ${response.status} for ${url}`);
-      }
-      const reader = response.body.getReader();
-      let b = first;
-      let block = new Uint8Array(BLOCK);
-      let fill = 0;
-      const blockSize = (index: number) =>
-        Math.min(BLOCK, total - index * BLOCK);
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        let from = 0;
-        while (from < value.byteLength && b <= last) {
-          const take = Math.min(blockSize(b) - fill, value.byteLength - from);
-          block.set(value.subarray(from, from + take), fill);
-          fill += take;
-          from += take;
-          if (fill === blockSize(b)) {
-            blocks.set(b, block.subarray(0, fill));
-            pending.get(b)?.resolve();
-            pending.delete(b);
-            b++;
-            block = new Uint8Array(BLOCK);
-            fill = 0;
-          }
+    const reader = response.body.getReader();
+    const dropped = () => {
+      if (signal.aborted) throw signal.reason ?? new Error(`${url} dropped`);
+    };
+    dropped();
+    let b = first;
+    let block = new Uint8Array(BLOCK);
+    let fill = 0;
+    const blockSize = (index: number) => Math.min(BLOCK, total - index * BLOCK);
+    for (;;) {
+      const { done, value } = await reader.read();
+      dropped();
+      if (done) break;
+      let from = 0;
+      while (from < value.byteLength && b <= last) {
+        const take = Math.min(blockSize(b) - fill, value.byteLength - from);
+        block.set(value.subarray(from, from + take), fill);
+        fill += take;
+        from += take;
+        if (fill === blockSize(b)) {
+          blocks.set(b, block.subarray(0, fill));
+          waiters.get(b)?.resolve();
+          waiters.delete(b);
+          b++;
+          block = new Uint8Array(BLOCK);
+          fill = 0;
         }
       }
-      if (b <= last) throw new Error(`${url} ended at block ${b} of ${last}`);
+    }
+    if (b <= last) throw new Error(`${url} ended at block ${b} of ${last}`);
+  }
+
+  /**
+   * Stream the whole file, from the first block not yet cached, retrying a
+   * dropped connection from the last block that landed. A read waiting on
+   * a block fails only once the retries are spent or the download is
+   * dropped, the same three tries `fetchRange` gives it.
+   */
+  async function download(signal: AbortSignal): Promise<void> {
+    if (size === null) await ensure(0, 0);
+    if (size === null) throw new Error(`No size for ${url}`);
+    const total = size;
+    const last = Math.ceil(total / BLOCK) - 1;
+    const waiters = new Map<number, Waiter>();
+    for (let b = 0; b <= last; b++) {
+      if (blocks.has(b) || inFlight.has(b)) continue;
+      const landed = new Promise<void>((resolve, reject) => {
+        waiters.set(b, { resolve, reject });
+      });
+      const tracked = landed.finally(() => inFlight.delete(b));
+      tracked.catch(() => {}); // the waiting read reports it
+      inFlight.set(b, tracked);
+    }
+    try {
+      for (let attempt = 0; ; attempt++) {
+        let first = 0;
+        while (first <= last && blocks.has(first)) first++;
+        if (first > last) return;
+        try {
+          await streamFrom(first, total, waiters, signal);
+          return;
+        } catch (error) {
+          const delay = RETRY_DELAYS_MS[attempt];
+          if (signal.aborted || delay === undefined) throw error;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
     } catch (error) {
-      for (const waiter of pending.values()) waiter.reject(error);
+      for (const waiter of waiters.values()) waiter.reject(error);
       throw error;
     }
   }
 
-  /** The bytes [start, end) from cached blocks, or null if one is missing. */
+  /** The bytes [start, end) from cached blocks, or null if one is missing. */ /** The bytes [start, end) from cached blocks, or null if one is missing. */
   function copyOut(
     start: number,
     end: number,
@@ -217,35 +260,34 @@ export function createRangedReader(
     },
     /**
      * Stream the whole file in one request, from the first block not yet
-     * cached, storing blocks as they land. A dropped connection picks up
-     * from the last block that landed. The file is held past the cache
-     * limit until `drop()`.
+     * cached, storing blocks as they land. A second call while one runs
+     * joins it. The file is held past the cache limit until `drop()`.
      */
-    fetchAll: async (): Promise<void> => {
+    fetchAll: (): Promise<void> => {
       held = true;
-      if (size === null) await ensure(0, 0);
-      if (size === null) throw new Error(`No size for ${url}`);
-      const last = Math.ceil(size / BLOCK) - 1;
-      for (let attempt = 0; ; attempt++) {
-        let first = 0;
-        while (first <= last && blocks.has(first)) first++;
-        if (first > last) return;
-        try {
-          await streamFrom(first, size);
-          return;
-        } catch (error) {
-          const delay = RETRY_DELAYS_MS[attempt];
-          if (abort.signal.aborted || delay === undefined) throw error;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        }
-      }
+      if (running) return running;
+      const signal = AbortSignal.any([abort.signal, downloadAbort.signal]);
+      running = download(signal).finally(() => {
+        running = null;
+      });
+      return running;
     },
-    /** True once every block of the file is cached. */
+    /** True while a `fetchAll` is streaming. */
+    isDownloading: (): boolean => running !== null,
+    /**
+     * True once every block of the file is cached. Keys are distinct and
+     * never past the end, so a count is enough.
+     */
     isComplete: (): boolean =>
       size !== null && blocks.size >= Math.ceil(size / BLOCK),
-    /** Forget the bytes (a read fetches again) and stop holding the file. */
+    /**
+     * Forget the bytes (a read fetches again), stop a `fetchAll` in flight,
+     * and stop holding the file.
+     */
     drop: (): void => {
       held = false;
+      downloadAbort.abort();
+      downloadAbort = new AbortController();
       blocks.clear();
       ahead = 1;
     },

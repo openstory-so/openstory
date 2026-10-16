@@ -444,17 +444,31 @@ export class ConcatenatedVideoSource {
    * (#2124). Resolves when it is all here. A still has nothing to fetch.
    */
   async download(clipIndex: number): Promise<void> {
-    await this.readers[clipIndex]?.fetchAll();
+    await this.reader(clipIndex)?.fetchAll();
+  }
+
+  /** True while clip `clipIndex`'s video is streaming in. */
+  isDownloading(clipIndex: number): boolean {
+    return this.reader(clipIndex)?.isDownloading() ?? false;
+  }
+
+  /** The clip's video reader, null for a still; throws for no such clip. */
+  private reader(clipIndex: number): RangedReader | null {
+    const reader = this.readers[clipIndex];
+    if (reader === undefined) {
+      throw new Error(`ConcatenatedVideoSource: no clip ${clipIndex}`);
+    }
+    return reader;
   }
 
   /** True once clip `clipIndex`'s video is all in memory; always for a still. */
   isDownloaded(clipIndex: number): boolean {
-    return this.readers[clipIndex]?.isComplete() ?? true;
+    return this.reader(clipIndex)?.isComplete() ?? true;
   }
 
   /** Let go of clip `clipIndex`'s bytes; a read fetches them again. */
   drop(clipIndex: number): void {
-    this.readers[clipIndex]?.drop();
+    this.reader(clipIndex)?.drop();
   }
 
   /**
