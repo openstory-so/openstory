@@ -17,6 +17,8 @@ function gate(): Gate {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const fake = vi.hoisted(() => ({
+  /** Clips of one second each. */
+  clipCount: 1,
   downloaded: true,
   download: { promise: Promise.resolve() },
   downloads: [] as number[],
@@ -40,7 +42,10 @@ vi.mock('./concatenated-video-source.js', () => {
       hasMixedAspectRatios: false,
       resolutionsLabel: '',
     });
-    locate = (time: number) => ({ clipIndex: 0, localTime: time });
+    locate = (time: number) => {
+      const clipIndex = Math.min(Math.floor(time), fake.clipCount - 1);
+      return { clipIndex, localTime: time - clipIndex };
+    };
     download = (clip: number) => {
       fake.downloads.push(clip);
       return fake.download.promise;
@@ -87,7 +92,8 @@ function fakeAudioContext() {
   return context;
 }
 
-async function setup() {
+async function setup(clipCount = 1) {
+  fake.clipCount = clipCount;
   const context = fakeAudioContext();
   vi.stubGlobal('AudioContext', function () {
     return context;
@@ -113,7 +119,11 @@ async function setup() {
   const engine = new SequencePlayerEngine({
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the single test-double cast
     canvas: canvas as HTMLCanvasElement,
-    clips: [{ videoUrl: '/a.mp4', posterUrl: null, cues: [] }],
+    clips: Array.from({ length: clipCount }, (_, i) => ({
+      videoUrl: `/${i}.mp4`,
+      posterUrl: null,
+      cues: [],
+    })),
     musicUrl: null,
     musicGainDb: 0,
     musicEnabled: false,
@@ -127,6 +137,19 @@ describe('SequencePlayerEngine whole-clip download (#2124)', () => {
   it('starts downloading from the first clip after prepare()', async () => {
     await setup();
     expect(fake.downloads).toEqual([0]);
+  });
+
+  it('downloads two clips ahead, and a seek back drops what is past the window', async () => {
+    const { engine } = await setup(20);
+    await settle();
+    expect(fake.downloads).toEqual([0, 1, 2]);
+    await engine.seek(10);
+    await settle();
+    expect(fake.dropped).toEqual([]);
+    expect(fake.downloads).toEqual([0, 1, 2, 10, 11, 12]);
+    await engine.seek(0);
+    expect(fake.dropped).toEqual([12, 11, 10, 9, 8, 7, 6, 5, 4, 3]);
+    engine.dispose();
   });
 
   it('play() resolves only once the clip is downloaded', async () => {

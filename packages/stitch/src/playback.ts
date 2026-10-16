@@ -153,8 +153,9 @@ export class SequencePlayerEngine {
   private laneHead = 0;
   /** Bumped when the downloader restarts (a seek), so the old loop stops. */
   private downloadGeneration = 0;
-  /** The first clip still held in memory; earlier ones have been dropped. */
+  /** The clips held in memory, `heldFrom` to `heldTo`; the rest are dropped. */
   private heldFrom = 0;
+  private heldTo = -1;
   /** End (timestamp + duration) of the frame on the canvas. */
   private lastFrameEnd = 0;
   /** `performance.now()` since the next frame has been awaited, or null. */
@@ -293,6 +294,10 @@ export class SequencePlayerEngine {
   private startDownloader(fromClip: number): void {
     const generation = ++this.downloadGeneration;
     const stale = () => this.disposed || generation !== this.downloadGeneration;
+    // A seek back: let go of what is held past the new window.
+    while (this.heldTo > fromClip + CLIPS_AHEAD) {
+      this.videoSource.drop(this.heldTo--);
+    }
     this.heldFrom = Math.min(this.heldFrom, fromClip);
     void (async () => {
       for (let clip = fromClip; clip < this.opts.clips.length; clip++) {
@@ -301,6 +306,7 @@ export class SequencePlayerEngine {
           stale
         );
         if (stale()) return;
+        this.heldTo = Math.max(this.heldTo, clip);
         try {
           await this.videoSource.download(clip);
         } catch (err) {
@@ -314,7 +320,11 @@ export class SequencePlayerEngine {
     })();
   }
 
-  /** Let go of clips behind the playhead. */
+  /**
+   * Let go of clips behind the playhead. ponytail: a clip is held whole
+   * whatever its size (generated shots are tens of MB, three held at most);
+   * add a per-clip byte ceiling if a cut ever carries long clips.
+   */
   private dropBehind(clip: number): void {
     while (this.heldFrom < clip) this.videoSource.drop(this.heldFrom++);
   }
