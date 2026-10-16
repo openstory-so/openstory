@@ -159,16 +159,13 @@ type TalentAppearanceData = {
   talentName: string;
   /** Talent description/notes */
   talentDescription?: string;
-  // Talent performance (#1561): the talent's own when non-blank, else the
-  // role's. `''` = library has none.
-  personality: string;
-  movement: string;
 };
 
 /**
  * Result of merging talent appearance with character role attributes.
  * Physical attributes come from the talent, costume from the role. The
- * role's styling is its looks', which the entry keeps (#2065).
+ * role's styling is its looks', which the entry keeps (#2065). Performance
+ * (personality, movement) stays the role's: a talent is a likeness (#2018).
  */
 type CastingAttributes = {
   age: string;
@@ -176,8 +173,6 @@ type CastingAttributes = {
   ethnicity: string;
   physicalDescription: string;
   standardClothing: string;
-  personality: string;
-  movement: string;
   consistencyTag: string;
 };
 
@@ -198,8 +193,8 @@ export const REFERENCE_LIKENESS_INSTRUCTION =
  * Merge talent appearance with character role attributes for casting.
  *
  * Physical appearance (age, gender, ethnicity, physicalDescription) comes from the TALENT.
- * Costume (standardClothing) comes from the CHARACTER role, and so does the styling, which its looks carry.
- * Performance (personality, movement) is the talent's when non-blank, else the role's.
+ * Costume (standardClothing) comes from the CHARACTER role. Styling is its looks', not a casting attribute (#2065).
+ * Performance (personality, movement) stays the role's (#2018).
  * ConsistencyTag is regenerated from the character ID + talent name.
  *
  * @param scriptEntry - The character's script-derived attributes
@@ -224,11 +219,9 @@ export const buildCastingAttributes = (
     physicalDescription:
       meta?.physicalDescription ||
       `${REFERENCE_LIKENESS_INSTRUCTION}${talent.talentDescription ? ` ${talent.talentDescription}` : ''}`,
-    // Costume: always from the character role
+    // Costume: always from the character role. Performance is not copied:
+    // personality and movement stay on the role (#2018).
     standardClothing: scriptEntry.standardClothing,
-    // Performance: the talent's own where the library has it, else the role's
-    personality: talent.personality.trim() || scriptEntry.personality,
-    movement: talent.movement.trim() || scriptEntry.movement,
     // Regenerate tag from talent identity
     consistencyTag: `${scriptEntry.characterId}_${slugify(talent.talentName)}`,
   };
@@ -254,8 +247,6 @@ export const buildCastCharacterBible = (
     characterId: string;
     talentName: string;
     sheetMetadata?: TalentSheetMetadata;
-    personality: string;
-    movement: string;
   }[]
 ): CharacterBibleEntry[] => {
   const byCharacterId = new Map(talentMatches.map((m) => [m.characterId, m]));
@@ -265,8 +256,6 @@ export const buildCastCharacterBible = (
     const cast = buildCastingAttributes(character, {
       sheetMetadata: match.sheetMetadata,
       talentName: match.talentName,
-      personality: match.personality,
-      movement: match.movement,
     });
     return { ...character, ...cast };
   });

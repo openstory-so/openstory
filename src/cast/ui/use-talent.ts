@@ -11,7 +11,9 @@ import {
   getTalentFn,
   presignTalentUploadFn,
   finalizeTalentUploadFn,
-  setDefaultSheetFn,
+  selectTalentSheetFn,
+  discardTalentSheetFn,
+  undiscardTalentSheetFn,
   toggleTalentFavoriteFn,
   updateTalentFn,
   deleteTalentMediaFn,
@@ -265,8 +267,7 @@ export function useGenerateTalentSheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { talentId: string; sheetName?: string }) =>
-      generateTalentSheetFn({ data }),
+    mutationFn: (data: { talentId: string }) => generateTalentSheetFn({ data }),
     onSuccess: (_, variables) => {
       // Optimistically update the query - the realtime hook will handle the actual update
       void queryClient.invalidateQueries({
@@ -281,16 +282,16 @@ export function useGenerateTalentSheet() {
   });
 }
 
-/**
- * Hook to set a talent sheet as the default
- */
-export function useSetDefaultSheet() {
-  const queryClient = useQueryClient();
+type SheetInput = { sheetId: string; talentId: string };
 
+/** One hook shape for the three history actions (#2018): refetch the talent. */
+function useTalentSheetMutation(
+  mutationFn: (data: SheetInput) => Promise<unknown>
+) {
+  const queryClient = useQueryClient();
   return useMutation({
     meta: { globalError: true },
-    mutationFn: (data: { sheetId: string; talentId: string }) =>
-      setDefaultSheetFn({ data: { sheetId: data.sheetId } }),
+    mutationFn,
     onSuccess: (_, variables) => {
       void queryClient.invalidateQueries({
         queryKey: talentKeys.detail(variables.talentId),
@@ -298,4 +299,17 @@ export function useSetDefaultSheet() {
       void queryClient.invalidateQueries({ queryKey: talentKeys.lists() });
     },
   });
+}
+
+/** Pick a sheet from the history as the reference sheet. */
+export function useSelectTalentSheet() {
+  return useTalentSheetMutation((data) => selectTalentSheetFn({ data }));
+}
+
+export function useDiscardTalentSheet() {
+  return useTalentSheetMutation((data) => discardTalentSheetFn({ data }));
+}
+
+export function useUndiscardTalentSheet() {
+  return useTalentSheetMutation((data) => undiscardTalentSheetFn({ data }));
 }

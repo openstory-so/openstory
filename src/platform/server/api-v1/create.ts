@@ -351,7 +351,6 @@ export async function runOneShotCreate(
               {
                 name: item.name,
                 description: item.description,
-                isHuman: item.isHuman,
                 referenceImageUrls: ingestedCharacters.get(item) ?? [],
                 enqueueSheet: false,
               },

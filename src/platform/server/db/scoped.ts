@@ -71,7 +71,6 @@ import {
   createPublicTalentReadMethods,
   createTalentMethods,
 } from '@/cast/server/db/talent';
-import { createTalentSheetVariantsMethods } from '@/cast/server/db/talent-sheet-variants';
 import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
 import { and, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 
@@ -436,7 +435,6 @@ export function createScopedDb(teamId: string, userId: string) {
     characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
     characterLooks: createCharacterLooksMethods(db, teamId),
     locationSheetVariants: createLocationSheetVariantsMethods(db, teamId),
-    talentSheetVariants: createTalentSheetVariantsMethods(db, teamId),
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),

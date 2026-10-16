@@ -7,7 +7,6 @@ import {
   locationReferencePhotos,
   talentSheets,
   talentMedia,
-  talentSheetVariants,
   locationSheetVariants,
 } from '@/platform/server/db/schema';
 import { projectRead } from '@/platform/server/read-projection';
@@ -21,14 +20,13 @@ const schemas = {
     createdAt: z.string(),
     updatedAt: z.string(),
   }).pick({
+    // A likeness (#2018): name, description, headshot, the reference sheet
+    // pointer and the rights flag. No personality, movement or voice.
     id: true,
     name: true,
     description: true,
-    personality: true,
-    movement: true,
-    voiceId: true,
-    voiceDescription: true,
     imageUrl: true,
+    selectedSheetId: true,
     isFavorite: true,
     isHuman: true,
     isInTeamLibrary: true,
@@ -67,21 +65,24 @@ const schemas = {
       referenceImageUrl: z.string().nullable(),
       referenceInputHash: z.string().nullable(),
     }),
+  // The sheet history (#2018): the reference sheet is the row the talent's
+  // `selectedSheetId` names; `divergedAt` marks a parked run, `discardedAt`
+  // a discarded row. A face still being made is not a sheet yet.
   talent_sheet: createSelectSchema(talentSheets, {
     metadata: z.json(),
     divergedAt: z.string().nullable(),
+    discardedAt: z.string().nullable(),
     createdAt: z.string(),
     updatedAt: z.string(),
   }).pick({
     id: true,
     talentId: true,
-    name: true,
     imageUrl: true,
     metadata: true,
-    isDefault: true,
     source: true,
     inputHash: true,
     divergedAt: true,
+    discardedAt: true,
     createdAt: true,
     updatedAt: true,
   }),
@@ -95,27 +96,6 @@ const schemas = {
     type: true,
     url: true,
     metadata: true,
-    createdAt: true,
-    updatedAt: true,
-  }),
-  talent_sheet_version: createSelectSchema(talentSheetVariants, {
-    generatedAt: z.string().nullable(),
-    divergedAt: z.string().nullable(),
-    discardedAt: z.string().nullable(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-  }).pick({
-    id: true,
-    talentSheetId: true,
-    model: true,
-    url: true,
-    status: true,
-    workflowRunId: true,
-    generatedAt: true,
-    error: true,
-    inputHash: true,
-    divergedAt: true,
-    discardedAt: true,
     createdAt: true,
     updatedAt: true,
   }),
@@ -155,18 +135,17 @@ export type LibraryReadKind = keyof typeof schemas;
 
 /** What a list row carries; the detail read returns the whole resource. */
 const LIST_FIELDS = {
-  talent: ['id', 'name', 'imageUrl', 'isFavorite', 'isPublic'],
-  location: ['id', 'name', 'referenceImageUrl'],
-  talent_sheet: ['id', 'name', 'imageUrl', 'isDefault', 'divergedAt'],
-  talent_media: ['id', 'type', 'url'],
-  talent_sheet_version: [
+  talent: [
     'id',
-    'model',
-    'url',
-    'status',
-    'divergedAt',
-    'discardedAt',
+    'name',
+    'imageUrl',
+    'selectedSheetId',
+    'isFavorite',
+    'isPublic',
   ],
+  location: ['id', 'name', 'referenceImageUrl'],
+  talent_sheet: ['id', 'imageUrl', 'source', 'divergedAt', 'discardedAt'],
+  talent_media: ['id', 'type', 'url'],
   location_sheet: ['id', 'url'],
   location_sheet_version: [
     'id',
@@ -204,12 +183,6 @@ async function libraryRows(
       return (await talent(parentId)).sheets;
     case 'talent_media':
       return (await talent(parentId)).media;
-    case 'talent_sheet_version': {
-      const sheet = await scopedDb.talent.sheets.getById(parentId);
-      if (!sheet) throw new NotFoundError('Talent sheet not found.');
-      await talent(sheet.talentId);
-      return scopedDb.talentSheetVariants.listByTalentSheet(sheet.id);
-    }
     case 'location_sheet':
       return scopedDb.locations.listPhotos((await location(parentId)).id);
     case 'location_sheet_version':

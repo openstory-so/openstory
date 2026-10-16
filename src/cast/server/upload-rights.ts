@@ -12,8 +12,8 @@
  *    asks before a row, a move, a credit hold or a model call: the latest row
  *    must be cleared or signed. Nothing else counts, so a direct server-fn
  *    call cannot skip the check or the checkbox;
- *  - {@link carryUploadRights} re-keys the row when a finalize moves the
- *    object, so the library URL is covered by the same evidence.
+ *  - {@link carryUploadRights} copies the source row's evidence onto a new
+ *    URL (original signer kept), so the library copy passes the gate.
  *
  * `depictsRealPerson` on a talent row is derived from this ledger, never taken
  * off the client.
@@ -254,27 +254,38 @@ export async function realPersonUrls(
 }
 
 /**
- * After a finalize moves an object, cover the new URL with the same row so
- * the library copy passes the gate without a second look.
+ * Cover a copy of an object at a new URL with the evidence its source URL
+ * has: a NEW row under the new URL that names the source row
+ * (`carriedFromId`, the first row in a chain of carries), same statement,
+ * same answer, the ORIGINAL signer and moment (`userId`, `attestedAt`), and
+ * the person doing the carry as `carriedByUserId` — never as the signer. The
+ * source row is never moved or changed — the original upload, its character
+ * and its shots keep relying on it. Used after a finalize moves an object
+ * and by Save face as talent (#2018). Refuses when the source has no row.
  */
 export async function carryUploadRights(
   scopedDb: ScopedDb,
   fromUrl: string,
   toUrl: string
-): Promise<void> {
+): Promise<UploadAttestation> {
   const row = await latestRow(scopedDb, fromUrl);
   if (!row) {
     throw new AttestationRequiredError(
       'This image has not been checked for a real person yet'
     );
   }
-  await scopedDb.compliance.attestations.record({
+  return scopedDb.compliance.attestations.record({
     subjectType: 'uploaded_image',
     subjectId: await sha256Hex(toUrl),
     statementVersion: row.statementVersion,
     statementSha256: row.statementSha256,
     depictsRealPerson: row.depictsRealPerson,
     authorizationBasis: row.authorizationBasis,
+    carried: {
+      fromId: row.carriedFromId ?? row.id,
+      signerUserId: row.userId,
+      attestedAt: row.attestedAt,
+    },
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
   });

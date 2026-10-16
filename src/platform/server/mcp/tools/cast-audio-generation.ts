@@ -109,7 +109,7 @@ const regenerateCharacterSheetTool = openstoryTool({
 const recastCharacterTool = openstoryTool({
   name: 'recast_character',
   description:
-    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and the shots that wear the default look are regenerated (spends credits). Other looks a scene wears are not redrawn now: they and their shots go stale once the new sheet lands (looksLeftStale), and plan_generation / execute_generation redraws them. The character is the team’s, so every other sequence that casts it reads the recast too and redraws through its own plan_generation / execute_generation; nothing is generated for them here. Refused for a voice-only character.',
+    'Cast library talent (list_talent / get_talent: team or public) as a character: its face (reference sheet and face fields) replaces the character’s; personality, movement and voice stay the character’s. One talent may play several characters. A new sheet is generated for the default look, and the shots that wear the default look are regenerated (spends credits). Other looks a scene wears are not redrawn now: they and their shots go stale once the new sheet lands (looksLeftStale), and plan_generation / execute_generation redraws them. The character is the team’s, so every other sequence that casts it reads the recast too and redraws through its own plan_generation / execute_generation; nothing is generated for them here. Refused for a voice-only character, and while the talent’s face is still being prepared.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: characterInput.extend({

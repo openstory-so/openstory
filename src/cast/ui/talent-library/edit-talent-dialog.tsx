@@ -1,6 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
-import { BibleField } from '@/cast/ui/bible-field';
 import { SheetComparisonDialog } from '@/cast/ui/sheets/sheet-comparison-dialog';
 import { SheetStalenessBanners } from '@/cast/ui/sheets/sheet-staleness-banners';
 import { Button } from '@/ui/shadcn/button';
@@ -18,14 +17,11 @@ import { Input } from '@/ui/shadcn/input';
 import { Label } from '@/ui/shadcn/label';
 import { Textarea } from '@/ui/shadcn/textarea';
 import {
-  talentSheetVariantKeys,
-  useDiscardTalentSheetVariant,
-  usePromoteTalentSheetVariant,
-  useTalentDivergentVariants,
-  useUndiscardTalentSheetVariant,
-} from '@/cast/ui/use-talent-sheet-variants';
-import {
+  talentKeys,
   useAnalyzeTalentMedia,
+  useDiscardTalentSheet,
+  useSelectTalentSheet,
+  useUndiscardTalentSheet,
   useUpdateTalent,
   useDeleteTalentMedia,
 } from '@/cast/ui/use-talent';
@@ -35,7 +31,6 @@ import type {
   Talent,
   TalentMediaRecord,
   TalentSheet,
-  TalentSheetVariant,
 } from '@/platform/server/db/schema';
 import { Pencil, Plus, Sparkles, X } from 'lucide-react';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -50,6 +45,10 @@ type EditTalentDialogProps = {
   trigger?: React.ReactNode;
 };
 
+/** A run that landed after its claim moved, not yet looked at (#2018). */
+export const isParkedSheet = (sheet: TalentSheet): boolean =>
+  sheet.divergedAt !== null && sheet.discardedAt === null;
+
 export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
   talent,
   trigger,
@@ -61,97 +60,62 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
   const deleteMedia = useDeleteTalentMedia();
   const analyzeMedia = useAnalyzeTalentMedia();
 
-  const { data: divergentVariants } = useTalentDivergentVariants(
-    open ? talent.id : undefined
-  );
-  const invalidateDivergentKeys = useCallback(
-    () => [talentSheetVariantKeys.divergentByTalent(talent.id)],
+  const invalidateTalent = useCallback(
+    () => [talentKeys.detail(talent.id)],
     [talent.id]
   );
   useSheetStaleDetected({
     channelId: open ? `talent:${talent.id}` : undefined,
     entityTypes: ['talent'],
-    invalidateKeys: invalidateDivergentKeys,
+    invalidateKeys: invalidateTalent,
   });
-  const promoteVariant = usePromoteTalentSheetVariant();
-  const discardVariant = useDiscardTalentSheetVariant();
-  const undiscardVariant = useUndiscardTalentSheetVariant();
-  const [compareVariant, setCompareVariant] =
-    useState<TalentSheetVariant | null>(null);
+  const selectSheet = useSelectTalentSheet();
+  const discardSheet = useDiscardTalentSheet();
+  const undiscardSheet = useUndiscardTalentSheet();
+  const [compareSheet, setCompareSheet] = useState<TalentSheet | null>(null);
 
-  // Pick the most relevant divergent variant for the banner: oldest active
-  // entry across this talent's sheets (matches the listing order).
-  const focusVariant = useMemo(
-    () => divergentVariants?.[0],
-    [divergentVariants]
-  );
-
-  // Live primary url for the focused variant — `talent_sheets.imageUrl` of
-  // the parent sheet. Match by id rather than picking the default sheet so
-  // the dialog compares against the correct primary slot.
-  const focusVariantLiveUrl = useMemo(() => {
-    if (!compareVariant) return null;
-    const sheet = talent.sheets.find(
-      (s) => s.id === compareVariant.talentSheetId
-    );
-    return sheet?.imageUrl ?? null;
-  }, [compareVariant, talent.sheets]);
+  // The banner offers the oldest parked sheet; the history is on the page.
+  const parked = talent.sheets.filter(isParkedSheet);
+  const focusSheet = parked.at(-1);
+  const referenceUrl =
+    talent.sheets.find((s) => s.id === talent.selectedSheetId)?.imageUrl ??
+    null;
 
   const handleDiscardWithUndo = useCallback(
-    (variant: TalentSheetVariant) => {
+    (sheet: TalentSheet) => {
       const restore = () =>
-        undiscardVariant.mutate(
-          { variantId: variant.id, talentId: talent.id },
-          {
-            onSuccess: () => toast.success('Alternate restored'),
-            onError: (error) => {
-              toast.error('Failed to restore alternate', {
-                description:
-                  error instanceof Error ? error.message : 'Unknown error',
-              });
-            },
-          }
+        undiscardSheet.mutate(
+          { sheetId: sheet.id, talentId: talent.id },
+          { onSuccess: () => toast.success('Sheet restored') }
         );
-      discardVariant.mutate(
-        { variantId: variant.id, talentId: talent.id },
+      discardSheet.mutate(
+        { sheetId: sheet.id, talentId: talent.id },
         {
           onSuccess: () => {
-            setCompareVariant(null);
-            toast('Alternate discarded', {
+            setCompareSheet(null);
+            toast('Sheet discarded', {
               action: { label: 'Undo', onClick: restore },
             });
           },
-          onError: (error) => {
-            toast.error('Failed to discard alternate', {
-              description:
-                error instanceof Error ? error.message : 'Unknown error',
-            });
-          },
         }
       );
     },
-    [discardVariant, undiscardVariant, talent.id]
+    [discardSheet, undiscardSheet, talent.id]
   );
 
-  const handlePromote = useCallback(
-    (variant: TalentSheetVariant) => {
-      promoteVariant.mutate(
-        { variantId: variant.id, talentId: talent.id },
+  const handleSelect = useCallback(
+    (sheet: TalentSheet) => {
+      selectSheet.mutate(
+        { sheetId: sheet.id, talentId: talent.id },
         {
           onSuccess: () => {
-            setCompareVariant(null);
-            toast.success('Alternate promoted');
-          },
-          onError: (error) => {
-            toast.error('Failed to promote alternate', {
-              description:
-                error instanceof Error ? error.message : 'Unknown error',
-            });
+            setCompareSheet(null);
+            toast.success('Reference sheet changed');
           },
         }
       );
     },
-    [promoteVariant, talent.id]
+    [selectSheet, talent.id]
   );
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -170,9 +134,6 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
         talentId: talent.id,
         name,
         description: text('description') || undefined,
-        // null clears the column; `''` would store an empty string.
-        personality: text('personality') || null,
-        movement: text('movement') || null,
       },
       {
         onSuccess: () => setOpen(false),
@@ -210,17 +171,19 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
           <DialogHeader>
             <DialogTitle>Edit Talent</DialogTitle>
             <DialogDescription>
-              Update talent details and reference media.
+              A talent is a face: its name, description and reference photos.
+              Personality, movement and outfits belong to the characters it
+              plays.
             </DialogDescription>
           </DialogHeader>
 
-          {focusVariant && (
+          {focusSheet && (
             <SheetStalenessBanners
               entityType="talent"
-              divergentVariantId={focusVariant.id}
-              onCompareDivergent={() => setCompareVariant(focusVariant)}
-              onPromoteDivergent={() => handlePromote(focusVariant)}
-              onDiscardDivergent={() => handleDiscardWithUndo(focusVariant)}
+              divergentVariantId={focusSheet.id}
+              onCompareDivergent={() => setCompareSheet(focusSheet)}
+              onPromoteDivergent={() => handleSelect(focusSheet)}
+              onDiscardDivergent={() => handleDiscardWithUndo(focusSheet)}
             />
           )}
 
@@ -288,21 +251,6 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
               />
             </div>
 
-            <BibleField
-              idPrefix="talent"
-              label="Personality"
-              name="personality"
-              defaultValue={talent.personality}
-              textarea
-            />
-            <BibleField
-              idPrefix="talent"
-              label="Body movement"
-              name="movement"
-              defaultValue={talent.movement}
-              textarea
-            />
-
             <div className="flex flex-col gap-2">
               <Label>Reference Media</Label>
               {talent.media.length > 0 ? (
@@ -331,7 +279,8 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
                         type="button"
                         variant="destructive"
                         size="icon"
-                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove reference"
+                        className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                         onClick={() => void handleDeleteMedia(media.id)}
                         disabled={deleteMedia.isPending}
                       >
@@ -367,20 +316,20 @@ export const EditTalentDialog: React.FC<EditTalentDialogProps> = ({
           </DialogFooter>
         </form>
 
-        {compareVariant && (
+        {compareSheet && (
           <SheetComparisonDialog
             open={true}
             onOpenChange={(o) => {
-              if (!o) setCompareVariant(null);
+              if (!o) setCompareSheet(null);
             }}
             entityType="talent"
-            livePrimaryUrl={focusVariantLiveUrl}
-            variantUrl={compareVariant.url}
-            variantId={compareVariant.id}
-            onPromote={() => handlePromote(compareVariant)}
-            onDiscard={() => handleDiscardWithUndo(compareVariant)}
-            isPromoting={promoteVariant.isPending}
-            isDiscarding={discardVariant.isPending}
+            livePrimaryUrl={referenceUrl}
+            variantUrl={compareSheet.imageUrl}
+            variantId={compareSheet.id}
+            onPromote={() => handleSelect(compareSheet)}
+            onDiscard={() => handleDiscardWithUndo(compareSheet)}
+            isPromoting={selectSheet.isPending}
+            isDiscarding={discardSheet.isPending}
           />
         )}
       </DialogContent>

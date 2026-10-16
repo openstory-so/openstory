@@ -1,8 +1,8 @@
 /**
- * Stores divergent talent-sheet outputs. Parent FK is `talent_sheets.id` so
- * each variant is scoped to a specific sheet — a talent may have many sheets
- * (e.g. "casual outfit", "formal wear"), each with its own divergent
- * alternates per model.
+ * UNWRITTEN since #2018: a talent's sheet history is `talent_sheets` itself
+ * (a parked run is a `talent_sheets` row with `divergedAt` set). The #2018
+ * backfill copied every live row here into `talent_sheets`. Kept exported
+ * only until the table is dropped (schema-drift trap, #898).
  */
 
 import { sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm';

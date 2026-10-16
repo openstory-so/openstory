@@ -5,7 +5,7 @@
  * (`TalentSuggestionSelector` → `createTalentFn`), the sheet generation runs in
  * a *separate*, fire-and-forget workflow (`/library-talent-sheet`). The
  * sequence's `analyze-script-workflow` then spawns `talent-matching`, which uses
- * `talent.defaultSheet?.imageUrl` as the casting reference image.
+ * `talent.referenceSheet?.imageUrl` as the casting reference image.
  *
  * If the sheet workflow hasn't finished by the time matching reads the row, the
  * pre-cast talent gets an empty reference image (so the character no longer
@@ -135,7 +135,7 @@ async function pollUntilReady<TRow extends Rpc.Serializable<TRow>>(
 }
 
 /**
- * Block until every requested talent has a usable default sheet image, or the
+ * Block until every requested talent has a reference sheet image, or the
  * timeout expires. Talent without a sheet (newly created, generation still in
  * flight) are polled; talent that already have one short-circuit on the first
  * read so existing/library talent add no latency.
@@ -156,7 +156,7 @@ export async function waitForTalentSheets(
       return {
         rows,
         pendingIds: rows
-          .filter((t) => !t.defaultSheet?.imageUrl)
+          .filter((t) => !t.referenceSheet?.imageUrl)
           .map((t) => t.id),
       };
     },

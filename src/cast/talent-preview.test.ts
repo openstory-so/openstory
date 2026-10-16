@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isTalentPreparing,
   talentSheetUrl,
   talentSquareImageClassName,
   talentSquarePreview,
@@ -9,26 +10,10 @@ const SHEET = '/r2/talent/sheet.png';
 const HEADSHOT = '/r2/talent/headshot.png';
 
 describe('talentSheetUrl', () => {
-  it('prefers the default convergent sheet over other sheets', () => {
-    expect(
-      talentSheetUrl({
-        sheets: [
-          { imageUrl: '/r2/other.png', isDefault: false, divergedAt: null },
-          { imageUrl: SHEET, isDefault: true, divergedAt: null },
-        ],
-      })
-    ).toBe(SHEET);
-  });
-
-  it('skips a divergent default sheet', () => {
-    expect(
-      talentSheetUrl({
-        defaultSheet: { imageUrl: SHEET, divergedAt: new Date() },
-        sheets: [
-          { imageUrl: '/r2/ok.png', isDefault: false, divergedAt: null },
-        ],
-      })
-    ).toBe('/r2/ok.png');
+  it('is the reference sheet, and nothing when there is none (#2018)', () => {
+    expect(talentSheetUrl({ referenceSheet: { imageUrl: SHEET } })).toBe(SHEET);
+    expect(talentSheetUrl({ referenceSheet: null })).toBeNull();
+    expect(talentSheetUrl({})).toBeNull();
   });
 });
 
@@ -37,7 +22,7 @@ describe('talentSquarePreview', () => {
     expect(
       talentSquarePreview({
         imageUrl: HEADSHOT,
-        defaultSheet: { imageUrl: SHEET, divergedAt: null },
+        referenceSheet: { imageUrl: SHEET },
       })
     ).toEqual({ url: HEADSHOT, isSheet: false });
   });
@@ -46,7 +31,7 @@ describe('talentSquarePreview', () => {
     expect(
       talentSquarePreview({
         imageUrl: SHEET,
-        defaultSheet: { imageUrl: SHEET, divergedAt: null },
+        referenceSheet: { imageUrl: SHEET },
       })
     ).toEqual({ url: SHEET, isSheet: true });
   });
@@ -55,7 +40,7 @@ describe('talentSquarePreview', () => {
     expect(
       talentSquarePreview({
         imageUrl: null,
-        defaultSheet: { imageUrl: SHEET, divergedAt: null },
+        referenceSheet: { imageUrl: SHEET },
       })
     ).toEqual({ url: SHEET, isSheet: true });
   });
@@ -78,5 +63,22 @@ describe('talentSquareImageClassName', () => {
     const headshot = talentSquareImageClassName(false).split(' ');
     expect(headshot).toEqual(expect.arrayContaining(['w-full', 'object-top']));
     expect(headshot).not.toContain('w-[400%]');
+  });
+});
+
+describe('isTalentPreparing', () => {
+  it('is preparing only with no reference sheet AND a held sheet claim (#2018)', () => {
+    expect(
+      isTalentPreparing({ referenceSheet: null, pendingPromoteSheetId: 'run' })
+    ).toBe(true);
+    expect(
+      isTalentPreparing({ referenceSheet: null, pendingPromoteSheetId: null })
+    ).toBe(false);
+    expect(
+      isTalentPreparing({
+        referenceSheet: { imageUrl: SHEET },
+        pendingPromoteSheetId: 'run',
+      })
+    ).toBe(false);
   });
 });

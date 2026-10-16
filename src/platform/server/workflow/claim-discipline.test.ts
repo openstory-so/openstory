@@ -87,12 +87,15 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     promote: 'locationSheetVariants.promoteIfPending',
     userSelect: 'locationSheetVariants.select',
   },
+  // The talent's reference sheet is a pointer on the talent row (#2018);
+  // `talent_sheets` is its history and a parked run is a row of it.
+  // `talent_sheet_variants` is unwritten since #2018, kept until dropped.
   'talent sheets': {
     tables: ['talent_sheets', 'talent_sheet_variants'],
     claim: 'talent.claimSheet',
     clear: 'talent.clearSheetClaimIf',
     promote: 'talent.landSheet',
-    userSelect: 'talentSheetVariants.promoteAtomically',
+    userSelect: 'talent.selectSheet',
   },
   // Pointer claim, taken together with the generating husk (#1715).
   voices: {

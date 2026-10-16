@@ -1277,15 +1277,11 @@ describe('staleness matrix — the default look owns the features (#2065)', () =
 const TALENT = {
   id: 't-1',
   description: 'Headshot reference',
-  sheets: [
-    {
-      isDefault: true,
-      divergedAt: null,
-      imageUrl: '/r2/talent-1.png',
-      metadata: null,
-      inputHash: 'talent-sheet-1',
-    },
-  ],
+  referenceSheet: {
+    imageUrl: '/r2/talent-1.png',
+    metadata: null,
+    inputHash: 'talent-sheet-1',
+  },
 };
 /** The photos uploaded as input for the beach's sheet (#1695). */
 const PHOTOS = [
@@ -1333,7 +1329,7 @@ function castDb(world: CastWorld) {
       getCurrent: () => Promise.resolve(world.beach),
       listPhotos: () => Promise.resolve(world.photos),
     },
-    talent: { getWithRelations: () => Promise.resolve(world.talent) },
+    talent: { getByIds: () => Promise.resolve([world.talent]) },
     // The live sheet pins the model it was drawn with.
     characterSheetVariants: {
       getById: () => Promise.resolve({ model: DEFAULT_IMAGE_MODEL }),
@@ -1449,15 +1445,11 @@ const SHEET_MATRIX: SheetRow[] = [
       ...w,
       talent: {
         ...w.talent,
-        sheets: [
-          {
-            isDefault: true,
-            divergedAt: null,
-            imageUrl: '/r2/talent-2.png',
-            metadata: null,
-            inputHash: 'talent-sheet-2',
-          },
-        ],
+        referenceSheet: {
+          imageUrl: '/r2/talent-2.png',
+          metadata: null,
+          inputHash: 'talent-sheet-2',
+        },
       },
     }),
     character: 'stale',

@@ -1,7 +1,7 @@
 /**
  * Shared core for creating a library talent: inserts the row, points media
  * at the already-uploaded `uploads/` keys (#1634), and triggers the
- * `/library-talent-sheet` workflow (which writes `talent.defaultSheet`).
+ * `/library-talent-sheet` workflow (which lands the reference sheet).
  * Used by `createTalentFn` (the dashboard serverFn) and the public API's
  * one-shot resolver, so on-the-fly talent created via the API gets a sheet
  * generated — and the storyboard workflow's `waitForTalentSheets` gate
@@ -36,8 +36,11 @@ export type CreateLibraryTalentInput = {
   // Nullable to accept the drizzle-zod `createTalentSchema` shape directly.
   isFavorite?: boolean | null;
   /**
-   * Only read when there are no reference images. With images, the likeness
-   * ledger decides (#1581): a signed portrait row makes the talent human.
+   * Ignored (#2018). Whether a talent is a real person comes only from the
+   * likeness ledger over its reference images; with no images there is no
+   * person on record, so the row is not human. The field stays so the
+   * drizzle-zod `createTalentSchema` and the public API's `CreateCharacter`
+   * still parse.
    */
   isHuman?: boolean | null;
   /**
@@ -81,9 +84,9 @@ export async function createLibraryTalent(
   // the likeness ledger, and that ledger — not the client — says whether the
   // talent is a real person.
   const rights = await requireUploadRights(ctx.scopedDb, uploadUrls);
-  const depictsRealPerson = uploadUrls.length
-    ? [...rights.values()].some((r) => r.depictsRealPerson)
-    : input.isHuman === true;
+  const depictsRealPerson = [...rights.values()].some(
+    (r) => r.depictsRealPerson
+  );
 
   const attached: Array<{ url: string; path: string }> = [];
   for (const url of uploadUrls) {
@@ -187,7 +190,6 @@ export async function createLibraryTalent(
     talentName: newTalent.name,
     talentDescription: newTalent.description ?? undefined,
     referenceImageUrls: [...attachedUrls].sort(),
-    sheetName: uploadedSheetUrl ? 'Uploaded Sheet' : 'Default Sheet',
     uploadedSheetUrl,
     uploadedSheetMetadata,
   };

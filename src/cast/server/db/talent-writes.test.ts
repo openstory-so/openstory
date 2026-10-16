@@ -8,11 +8,9 @@ import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { generateId } from '@/platform/id';
-import { talentSheetInputHash } from '@/shots/input-hash';
 import {
   talent,
   talentMedia,
-  talentSheetVariants,
   talentSheets,
   teams,
   user,
@@ -20,7 +18,6 @@ import {
 import { relations } from '@/platform/server/db/schema/relations';
 import type { Database } from '@/platform/server/db/client';
 import { createTalentMethods, isTeamWritableTalent } from './talent';
-import { createTalentSheetVariantsMethods } from './talent-sheet-variants';
 
 let client: Client;
 let db: Database;
@@ -34,7 +31,6 @@ let publicSheetId = '';
 let publicMediaId = '';
 
 async function seedFixtures() {
-  await db.delete(talentSheetVariants);
   await db.delete(talentMedia);
   await db.delete(talentSheets);
   await db.delete(talent);
@@ -61,7 +57,7 @@ async function seedFixtures() {
     .insert(talentSheets)
     .values({
       talentId: publicTalentId,
-      name: 'Default',
+      legacyName: 'Default',
       imageUrl: 'https://example.com/sheet.png',
     })
     .returning();
@@ -117,18 +113,38 @@ describe('scoped talent write ACL', () => {
     expect(await teamAMethods().delete(publicTalentId)).toBe(false);
   });
 
-  it('blocks sheet create on public talent visible to another team', async () => {
+  it('blocks the sheet claim and the land on public talent', async () => {
     await expect(
-      teamAMethods().sheets.create({
+      teamAMethods().claimSheet(
+        publicTalentId,
+        generateId(),
+        { description: null, referenceImageUrls: [] },
+        { onlyIfFree: false }
+      )
+    ).rejects.toThrow(/permission to modify/);
+    await expect(
+      teamAMethods().landSheet({
+        sheetId: generateId(),
         talentId: publicTalentId,
-        name: 'Injected',
         imageUrl: 'https://example.com/injected.png',
+        imagePath: 'injected.png',
+        metadata: undefined,
+        source: 'manual_upload',
+        inputHash: null,
       })
     ).rejects.toThrow(/permission to modify/);
   });
 
-  it('blocks sheet delete on public talent sheets', async () => {
-    expect(await teamAMethods().sheets.delete(publicSheetId)).toBe(false);
+  it('blocks selecting, discarding and restoring a public talent sheet', async () => {
+    await expect(
+      teamAMethods().selectSheet(publicTalentId, publicSheetId)
+    ).rejects.toThrow(/permission to modify/);
+    await expect(teamAMethods().sheets.discard(publicSheetId)).rejects.toThrow(
+      /permission to modify/
+    );
+    await expect(
+      teamAMethods().sheets.undiscard(publicSheetId)
+    ).rejects.toThrow(/permission to modify/);
   });
 
   it('blocks media create on public talent', async () => {
@@ -152,51 +168,5 @@ describe('scoped talent write ACL', () => {
       name: 'Renamed Template',
     });
     expect(result).toBeUndefined();
-  });
-});
-
-describe('scoped talent sheet variant write ACL', () => {
-  const teamAVariants = () => createTalentSheetVariantsMethods(db, teamA.id);
-
-  it('blocks insertDivergent on a public talent sheet', async () => {
-    await expect(
-      teamAVariants().insertDivergent({
-        talentSheetId: publicSheetId,
-        model: 'flux-pro',
-        url: 'https://example.com/divergent.png',
-        status: 'completed',
-        inputHash: talentSheetInputHash('hash-1'),
-        divergedAt: new Date(),
-      })
-    ).rejects.toThrow(/permission to modify/);
-  });
-
-  it('blocks promoteAtomically on a public talent sheet', async () => {
-    const variants = teamAVariants();
-    const variant = await db
-      .insert(talentSheetVariants)
-      .values({
-        talentSheetId: publicSheetId,
-        model: 'flux-pro',
-        url: 'https://example.com/divergent.png',
-        status: 'completed',
-        inputHash: 'hash-promote',
-        divergedAt: new Date(),
-      })
-      .returning();
-    const row = variant[0];
-    if (!row) throw new Error('Failed to seed variant');
-
-    await expect(
-      variants.promoteAtomically(
-        publicSheetId,
-        {
-          imageUrl: row.url,
-          imagePath: row.storagePath,
-          inputHash: row.inputHash,
-        },
-        row.id
-      )
-    ).rejects.toThrow(/permission to modify/);
   });
 });

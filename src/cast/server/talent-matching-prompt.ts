@@ -8,7 +8,8 @@ type TalentMatchPromptRow = {
   id: string;
   name: string;
   description: string | null;
-  defaultSheet: {
+  /** The one reference sheet (#2018), not a role and not a variant list. */
+  referenceSheet: {
     metadata?: TalentSheetMetadata | null;
   } | null;
 };
@@ -16,6 +17,11 @@ type TalentMatchPromptRow = {
 /**
  * Build prompt variables for the talent matching prompt.
  * Used by the analyze-script workflow with durableLLMCall.
+ *
+ * One talent may play several characters (twins, a one-person skit, #2018);
+ * each character gets at most one talent. So at most one match per
+ * character is expected, and a talent is left out only when no character
+ * suits it.
  */
 export function buildMatchingPromptVariables(
   characters: CharacterBibleEntry[],
@@ -36,7 +42,7 @@ export function buildMatchingPromptVariables(
 
   const talentDescription = talentList
     .map((t) => {
-      const metadata = t.defaultSheet?.metadata;
+      const metadata = t.referenceSheet?.metadata;
       // Use metadata if available, otherwise use basic talent info
       // For famous actors, their name alone is enough for the AI to know them
       return `- Talent ID: ${t.id}
@@ -57,10 +63,10 @@ export function buildMatchingPromptVariables(
     talentDescription,
     numTalent: `${numTalent}`,
     numCharacters: `${numCharacters}`,
-    expectedMatches: `${numTalent}`,
+    expectedMatches: `${Math.min(numTalent, numCharacters)}`,
     additionalRequirements:
       numTalent > numCharacters
-        ? `- There are more talent (${numTalent}) than characters (${numCharacters}). You MUST still match every talent. Assign remaining talent to the best-fitting characters (multiple talent can share a character if needed).`
+        ? `- There are more talent (${numTalent}) than characters (${numCharacters}). Each character still takes ONE talent, so some talent will go unmatched: pick the best fit for each character.`
         : '',
   };
 }

@@ -27,7 +27,7 @@ vi.doMock('./wait-for-sheets', () => ({
         description: 'A ranch hand',
         personality: '',
         movement: '',
-        defaultSheet: { imageUrl: '/r2/talent/ada.png', metadata: null },
+        referenceSheet: { imageUrl: '/r2/talent/ada.png', metadata: null },
       },
     ],
   })),
@@ -136,5 +136,36 @@ describe('TalentMatchingWorkflow voice-only characters', () => {
 
     expect(result.matches).toEqual([]);
     expect(mockEmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('TalentMatchingWorkflow one talent, several roles (#2018)', () => {
+  it('keeps a match per character and drops a second talent for the same character', async () => {
+    mockDurableLLMCallCf.mockResolvedValue({
+      matches: [
+        { characterId: 'sam', talentId: 'tal-1' },
+        { characterId: 'twin', talentId: 'tal-1' },
+        { characterId: 'sam', talentId: 'tal-2' },
+      ],
+    });
+    const event = makeEvent();
+    event.payload.characterBible.push(
+      entry({ characterId: 'twin', name: 'Twin', physicalDescription: 'wiry' })
+    );
+
+    const result = await makeWorkflow().runBody(
+      event,
+      makeStep(),
+      asStub<WorkflowScopedDb>({ liveRead: {} })
+    );
+
+    expect(result.matches.map((m) => [m.characterId, m.talentId])).toEqual([
+      ['sam', 'tal-1'],
+      ['twin', 'tal-1'],
+    ]);
+    expect(result.matches[0]?.sheetImageUrl).toBe('/r2/talent/ada.png');
+    expect(mockDurableLLMCallCf.mock.calls[0]?.[1]).toMatchObject({
+      promptVariables: { expectedMatches: '1', numCharacters: '2' },
+    });
   });
 });

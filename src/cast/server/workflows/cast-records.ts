@@ -43,8 +43,6 @@ export function buildCharacterInsert(args: {
     ? buildCastingAttributes(character, {
         sheetMetadata: talentMatch.sheetMetadata,
         talentName: talentMatch.talentName,
-        personality: talentMatch.personality,
-        movement: talentMatch.movement,
       })
     : null;
   return {
@@ -58,8 +56,9 @@ export function buildCharacterInsert(args: {
     physicalDescription:
       castingAttrs?.physicalDescription ?? character.physicalDescription,
     standardClothing: character.standardClothing,
-    personality: castingAttrs?.personality ?? character.personality,
-    movement: castingAttrs?.movement ?? character.movement,
+    // Performance and voice are the role's: a talent is a likeness (#2018).
+    personality: character.personality,
+    movement: character.movement,
     voiceOnly: character.voiceOnly,
     rendering: character.voiceOnly ? null : character.rendering,
     // What the script says, or a person when cast with a signed portrait.
@@ -70,12 +69,8 @@ export function buildCharacterInsert(args: {
       talentMatch?.hasSignedRelease
     ),
     consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
-    // Cast copies the talent's voice (#1553); the upsert keeps a voice the
-    // row already holds.
-    voiceId: talentMatch?.voiceId ?? null,
-    voiceDescription:
-      talentMatch?.voiceDescription ??
-      (character.voiceDescription.trim() || null),
+    voiceId: null,
+    voiceDescription: character.voiceDescription.trim() || null,
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,

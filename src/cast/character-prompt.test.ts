@@ -11,9 +11,6 @@ import {
   buildCharacterSheetPrompt,
 } from './character-prompt';
 
-/** #1561: the talent library carries no performance, so the role's stands. */
-const noTalentPerformance = { personality: '', movement: '' };
-
 const scriptEntry: CharacterBibleEntry = {
   characterId: 'char_001',
   name: 'Detective Sarah',
@@ -107,7 +104,6 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
 
     expect(result.age).toBe('25');
@@ -118,44 +114,10 @@ describe('buildCastingAttributes', () => {
     );
   });
 
-  test("performance: the talent's own wins, else the role's (#1561)", () => {
-    const role = {
-      ...scriptEntry,
-      personality: 'anxious',
-      movement: 'restless hands',
-    };
-    const fromTalent = buildCastingAttributes(role, {
-      sheetMetadata: talentMetadata,
-      talentName: 'Elvis Presley',
-      personality: 'swaggering',
-      movement: 'hip swivel',
-    });
-    expect(fromTalent.personality).toBe('swaggering');
-    expect(fromTalent.movement).toBe('hip swivel');
-
-    const fromRole = buildCastingAttributes(role, {
-      sheetMetadata: talentMetadata,
-      talentName: 'Elvis Presley',
-      ...noTalentPerformance,
-    });
-    expect(fromRole.personality).toBe('anxious');
-    expect(fromRole.movement).toBe('restless hands');
-
-    const blank = buildCastingAttributes(role, {
-      sheetMetadata: talentMetadata,
-      talentName: 'Elvis Presley',
-      personality: '  ',
-      movement: '\n',
-    });
-    expect(blank.personality).toBe('anxious');
-    expect(blank.movement).toBe('restless hands');
-  });
-
   test('keeps the costume from the script; the styling is its looks, not a casting attribute (#2065)', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
 
     expect(result.standardClothing).toBe('Dark trench coat, badge on belt');
@@ -166,7 +128,6 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
 
     expect(result.consistencyTag).toBe('char_001_elvis_presley');
@@ -175,7 +136,6 @@ describe('buildCastingAttributes', () => {
   test('falls back to script attributes when talent metadata is missing', () => {
     const result = buildCastingAttributes(scriptEntry, {
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
 
     expect(result.age).toBe('30s');
@@ -192,7 +152,6 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: sparseMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
 
     // Naming a person + "match exactly" trips OpenAI's likeness moderation —
@@ -205,12 +164,10 @@ describe('buildCastingAttributes', () => {
     const result1 = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
     const result2 = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
 
     expect(result1.consistencyTag).toBe(result2.consistencyTag);
@@ -228,7 +185,6 @@ describe('buildCastingAttributes', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: partialMeta,
       talentName: 'Test Actor',
-      ...noTalentPerformance,
     });
 
     expect(result.age).toBe('40');
@@ -264,7 +220,6 @@ describe('buildCastCharacterBible', () => {
         {
           characterId: 'char_001',
           talentName: 'Elvis Presley',
-          ...noTalentPerformance,
           sheetMetadata: talentMetadata,
         },
       ]
@@ -277,7 +232,6 @@ describe('buildCastCharacterBible', () => {
     const expected = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
-      ...noTalentPerformance,
     });
     expect(cast).toEqual({
       characterId: 'char_001',
@@ -286,8 +240,11 @@ describe('buildCastCharacterBible', () => {
       voiceOnly: false,
       isPerson: true,
       rendering: 'Photoreal live action',
-      // The role's looks ride through a cast untouched (#2015).
+      // The role's looks and performance ride through a cast untouched
+      // (#2015, #2018): a talent is a likeness, and styling is the looks'.
       looks: [],
+      personality: '',
+      movement: '',
       ...expected,
     });
     expect(cast.physicalDescription).toBe(
@@ -302,7 +259,6 @@ describe('buildCastCharacterBible', () => {
       {
         characterId: 'char_001',
         talentName: 'Elvis Presley',
-        ...noTalentPerformance,
         sheetMetadata: talentMetadata,
       },
     ]);
@@ -323,7 +279,6 @@ describe('buildCastCharacterBible', () => {
         {
           characterId: 'char_001',
           talentName: 'Elvis Presley',
-          ...noTalentPerformance,
         },
       ]
     );

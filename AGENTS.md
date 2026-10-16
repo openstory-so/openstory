@@ -250,6 +250,16 @@ changing the area, and update it in the same PR.**
   (#2065): a look's `styling` is already resolved (`effectiveStyling`), so
   never read `legacyDistinguishingFeatures` or a look's `storedStyling` to
   show or prompt with, and copy a look version forward from `storedStyling`.
+- **Talent is a likeness (#2018)** — `docs/architecture/team-characters.md`
+  § Talent is a likeness. A talent is a face, photos, ONE reference sheet
+  (`talent.selectedSheetId`; `talent_sheets` is its history, never
+  `talent_sheet_variants`), a recorded voice (#1631) and rights. Casting
+  copies the face fields only; nothing copies personality, movement or a
+  voice between talent and characters. The pointer moves only through
+  `talent.landSheet` (claim held) or `talent.selectSheet`; the claim is taken
+  BEFORE the trigger. One talent may play several characters. Deleting a
+  talent is refused while any bible version names it. Never read the
+  `legacy*` talent columns.
 - **Team characters (#2017)** — `docs/architecture/team-characters.md`. A
   character belongs to the team; a sequence uses it through a `sequence_cast`
   link that holds only the script id, the soft remove and the `attached`

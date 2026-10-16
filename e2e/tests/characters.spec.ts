@@ -140,7 +140,7 @@ test.describe('Characters page', () => {
     ).toHaveCount(0);
     // The sequence's own detail view is what shows below.
     await expect(
-      page.getByRole('button', { name: 'Save as talent' })
+      page.getByRole('button', { name: 'Save face as talent' })
     ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   });
 

@@ -581,7 +581,7 @@ export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
  * TALENT, with the talent's own distinguishing features. Not a character's
  * (#2065 moved those to the default look); this one stays.
  */
-export const talentSheetMetadataSchema = characterBibleEntrySchema
+const talentSheetMetadataSchema = characterBibleEntrySchema
   .omit({ rendering: true })
   .extend({
     distinguishingFeatures: z.string(),

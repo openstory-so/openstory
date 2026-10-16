@@ -78,7 +78,7 @@ Click **New character** to make one before there is a script: give it a name. It
 
 A character stays in the team when a sequence removes it. To take one off the list, open it from **Characters** and click **Delete**. Delete is offered only when no sequence casts it, and the message that follows has **Undo**. A saved voice stays with the character until it is deleted.
 
-Click **Save as talent** to copy the character into your Talent Library. A talent can be cast as a character in any sequence.
+Click **Save face as talent** to put the character's face in your Talent Library: its name, description and the sheet this sequence uses become a talent with that sheet as its reference sheet. Personality, movement, voice and outfits stay with the character. A talent can be cast as any character in any sequence, and as more than one character at once (twins, a one-person skit).
 
 ## Using a character in another sequence
 

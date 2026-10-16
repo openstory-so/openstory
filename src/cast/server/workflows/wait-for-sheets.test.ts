@@ -59,8 +59,8 @@ describe('waitForTalentSheets', () => {
   test('short-circuits on the first read when every sheet is ready', async () => {
     const { step, sleepSpy } = fakeStep();
     const getByIds = vi.fn(async () => [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-      { id: 't2', defaultSheet: { imageUrl: 'https://cdn/t2.png' } },
+      { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
+      { id: 't2', referenceSheet: { imageUrl: 'https://cdn/t2.png' } },
     ]);
 
     const result = await waitForTalentSheets(step, talentDb(getByIds), [
@@ -80,18 +80,18 @@ describe('waitForTalentSheets', () => {
       .fn()
       // 1st read: t2 has no sheet yet.
       .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-        { id: 't2', defaultSheet: null },
+        { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
+        { id: 't2', referenceSheet: null },
       ])
-      // 2nd read: still missing (defaultSheet present but no imageUrl).
+      // 2nd read: still missing (referenceSheet present but no imageUrl).
       .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-        { id: 't2', defaultSheet: { imageUrl: null } },
+        { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
+        { id: 't2', referenceSheet: { imageUrl: null } },
       ])
       // 3rd read: ready.
       .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-        { id: 't2', defaultSheet: { imageUrl: 'https://cdn/t2.png' } },
+        { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
+        { id: 't2', referenceSheet: { imageUrl: 'https://cdn/t2.png' } },
       ]);
 
     const result = await waitForTalentSheets(step, talentDb(getByIds), [
@@ -109,7 +109,7 @@ describe('waitForTalentSheets', () => {
     const { step } = fakeStep();
     // 'ghost' is requested but never returned by getByIds — must not be waited on.
     const getByIds = vi.fn(async () => [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
+      { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
     ]);
 
     const result = await waitForTalentSheets(step, talentDb(getByIds), [
@@ -126,10 +126,10 @@ describe('waitForTalentSheets', () => {
     const onWaitNeeded = vi.fn(async () => undefined);
     const getByIds = vi
       .fn()
-      .mockResolvedValueOnce([{ id: 't1', defaultSheet: null }])
-      .mockResolvedValueOnce([{ id: 't1', defaultSheet: null }])
+      .mockResolvedValueOnce([{ id: 't1', referenceSheet: null }])
+      .mockResolvedValueOnce([{ id: 't1', referenceSheet: null }])
       .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
+        { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
       ]);
 
     const result = await waitForTalentSheets(step, talentDb(getByIds), ['t1'], {
@@ -146,7 +146,7 @@ describe('waitForTalentSheets', () => {
     const { step } = fakeStep();
     const onWaitNeeded = vi.fn(async () => undefined);
     const getByIds = vi.fn(async () => [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
+      { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
     ]);
 
     await waitForTalentSheets(step, talentDb(getByIds), ['t1'], {
@@ -159,11 +159,11 @@ describe('waitForTalentSheets', () => {
   test('returns the rows from the final poll so callers need no second read', async () => {
     const { step } = fakeStep();
     const ready = [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
+      { id: 't1', referenceSheet: { imageUrl: 'https://cdn/t1.png' } },
     ];
     const getByIds = vi
       .fn()
-      .mockResolvedValueOnce([{ id: 't1', defaultSheet: null }])
+      .mockResolvedValueOnce([{ id: 't1', referenceSheet: null }])
       .mockResolvedValueOnce(ready);
 
     const result = await waitForTalentSheets(step, talentDb(getByIds), ['t1']);
@@ -175,7 +175,7 @@ describe('waitForTalentSheets', () => {
   test('gives up after the bounded number of attempts and reports pending ids', async () => {
     const { step, doSpy, sleepSpy } = fakeStep();
     // Never becomes ready.
-    const getByIds = vi.fn(async () => [{ id: 't1', defaultSheet: null }]);
+    const getByIds = vi.fn(async () => [{ id: 't1', referenceSheet: null }]);
 
     const result = await waitForTalentSheets(step, talentDb(getByIds), ['t1']);
 
@@ -183,7 +183,7 @@ describe('waitForTalentSheets', () => {
     expect(result.pendingIds).toEqual(['t1']);
     // Even on timeout the caller gets the last read, so matching can proceed
     // best-effort with whatever the rows do have.
-    expect(result.rows).toEqual([{ id: 't1', defaultSheet: null }]);
+    expect(result.rows).toEqual([{ id: 't1', referenceSheet: null }]);
     // One check per attempt; one fewer sleep (no sleep after the final check).
     const attempts = getByIds.mock.calls.length;
     expect(attempts).toBeGreaterThan(1);

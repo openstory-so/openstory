@@ -11,6 +11,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useTalent } from '@/cast/ui/use-talent';
 import type { TalentWithSheets } from '@/platform/server/db/schema';
 import {
+  isTalentPreparing,
   talentSquareImageClassName,
   talentSquarePreview,
 } from '@/cast/talent-preview';
@@ -36,12 +37,15 @@ const TalentPickerCard: React.FC<TalentPickerCardProps> = ({
   onClick,
 }) => {
   const preview = talentSquarePreview(talent);
+  // Its face is still being made: not castable yet (#2018).
+  const preparing = isTalentPreparing(talent);
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
+      disabled={preparing}
+      className="group flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
     >
       <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
         {preview.url ? (
@@ -62,6 +66,11 @@ const TalentPickerCard: React.FC<TalentPickerCardProps> = ({
         )}
       </div>
       <span className="text-sm font-medium truncate w-full">{talent.name}</span>
+      {preparing ? (
+        <span className="text-xs text-muted-foreground">
+          Preparing the face…
+        </span>
+      ) : null}
     </button>
   );
 };

@@ -4,11 +4,9 @@ import {
   locationSheetInputHash,
   talentSheetInputHash,
 } from '@/shots/input-hash';
-import type { SheetDivergenceScopedDb } from './sheet-divergence';
 import { locationChannelId } from '@/cast/cast-channel';
 
 const generationEmit = vi.fn(async () => undefined);
-const locationEmit = vi.fn(async () => undefined);
 const talentEmit = vi.fn(async () => undefined);
 
 const getGenerationChannel = vi.fn((sequenceId?: string) => {
@@ -25,26 +23,11 @@ vi.doMock('@/platform/realtime', () => ({
   getTalentChannel,
 }));
 
-type TalInsertArgs = Parameters<
-  SheetDivergenceScopedDb['talentSheetVariants']['insertDivergent']
->[0];
-
-const talentInsertDivergent = vi.fn(async (values: TalInsertArgs) => ({
-  id: 'talent-variant-id',
-  ...values,
-}));
-
-const scopedDb: SheetDivergenceScopedDb = {
-  talentSheetVariants: { insertDivergent: talentInsertDivergent },
-};
-
 beforeEach(() => {
   generationEmit.mockClear();
-  locationEmit.mockClear();
   talentEmit.mockClear();
   getGenerationChannel.mockClear();
   getTalentChannel.mockClear();
-  talentInsertDivergent.mockClear();
 });
 
 describe('reportParkedSheet', () => {
@@ -109,25 +92,14 @@ describe('reportParkedSheet', () => {
   });
 });
 
-describe('saveDivergentTalentSheet', () => {
-  it('emits on the talent channel using talentId, with talentSheetId as entityId', async () => {
-    const { saveDivergentTalentSheet } = await import('./sheet-divergence');
+describe('reportParkedTalentSheet', () => {
+  it('emits on the talent channel: the talent is the entity, the parked row the variant (#2018)', async () => {
+    const { reportParkedTalentSheet } = await import('./sheet-divergence');
 
-    const variantId = await saveDivergentTalentSheet({
-      scopedDb,
-      talentSheetId: 'sheet-1',
+    await reportParkedTalentSheet({
       talentId: 'talent-1',
-      model: 'flux-pro',
-      url: 'https://r2/talent.png',
+      sheetId: 'sheet-1',
       snapshotInputHash: talentSheetInputHash('hash-tal'),
-    });
-
-    expect(variantId).toBe('talent-variant-id');
-    const [firstTalentCall] = talentInsertDivergent.mock.calls;
-    if (!firstTalentCall) throw new Error('test setup: insert call missing');
-    expect(firstTalentCall[0]).toMatchObject({
-      talentSheetId: 'sheet-1',
-      inputHash: 'hash-tal',
     });
 
     expect(getTalentChannel).toHaveBeenCalledWith('talent-1');
@@ -135,10 +107,10 @@ describe('saveDivergentTalentSheet', () => {
     expect(talentEmit).toHaveBeenCalledTimes(1);
     expect(talentEmit).toHaveBeenCalledWith('generation.stale:detected', {
       entityType: 'talent',
-      entityId: 'sheet-1',
+      entityId: 'talent-1',
       artifact: 'sheet',
       snapshotInputHash: 'hash-tal',
-      divergedVariantId: 'talent-variant-id',
+      divergedVariantId: 'sheet-1',
     });
   });
 });

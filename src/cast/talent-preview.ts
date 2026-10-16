@@ -9,32 +9,30 @@
 
 type SheetLike = {
   imageUrl?: string | null;
-  isDefault?: boolean | null;
-  divergedAt?: Date | string | null;
 };
 
 export type TalentPreviewInput = {
   imageUrl?: string | null;
-  defaultSheet?: SheetLike | null;
-  sheets?: readonly SheetLike[] | null;
+  /** The reference sheet (#2018): the row `talent.selectedSheetId` names. */
+  referenceSheet?: SheetLike | null;
 };
 
-function sheetUrlIfConvergent(
-  sheet: SheetLike | null | undefined
-): string | null {
-  if (!sheet || sheet.divergedAt) return null;
-  return sheet.imageUrl ?? null;
+/** The reference sheet's url; a talent with no sheet yet has none. */
+export function talentSheetUrl(talent: TalentPreviewInput): string | null {
+  return talent.referenceSheet?.imageUrl ?? null;
 }
 
-/** Default / first convergent sheet url. Divergent rows are not an identity. */
-export function talentSheetUrl(talent: TalentPreviewInput): string | null {
-  const fromDefault = sheetUrlIfConvergent(talent.defaultSheet);
-  if (fromDefault) return fromDefault;
-  const sheets = talent.sheets ?? [];
-  const preferred =
-    sheets.find((s) => s.isDefault && !s.divergedAt) ??
-    sheets.find((s) => !s.divergedAt);
-  return preferred?.imageUrl ?? null;
+/**
+ * A talent whose face is still being made (#2018): no reference sheet yet,
+ * and a sheet run holds the claim — Save face as talent, or a first Generate.
+ * The picker shows it as preparing and a recast refuses it, so nobody casts
+ * a face that is not there yet by description alone.
+ */
+export function isTalentPreparing(talent: {
+  referenceSheet: SheetLike | null;
+  pendingPromoteSheetId: string | null;
+}): boolean {
+  return !talent.referenceSheet && talent.pendingPromoteSheetId !== null;
 }
 
 export type TalentSquarePreview = {
