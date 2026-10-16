@@ -368,6 +368,33 @@ describe('stitch preview requests', () => {
     });
   });
 
+  it('refuses another host and any method but GET and HEAD', async () => {
+    await withPreview(async (url) => {
+      // fetch drops a Host header, so a raw request carries the rebound one.
+      const { port } = new URL(url);
+      const rebound = await new Promise<number>((resolveStatus, reject) => {
+        const req = httpRequest(
+          {
+            host: '127.0.0.1',
+            port,
+            path: '/media/0',
+            headers: { Host: 'evil.example' },
+          },
+          (response) => {
+            response.resume();
+            resolveStatus(response.statusCode ?? 0);
+          }
+        );
+        req.on('error', reject);
+        req.end();
+      });
+      expect(rebound).toBe(403);
+      const post = await fetch(new URL('/media/0', url), { method: 'POST' });
+      expect(post.status).toBe(405);
+      expect(post.headers.get('allow')).toBe('GET, HEAD');
+    });
+  });
+
   it('sends the whole file without a Range, and no body for HEAD', async () => {
     await withPreview(async (url) => {
       const whole = await fetch(new URL('/media/0', url));
@@ -581,6 +608,25 @@ describe('stitch remote media', () => {
         } finally {
           await preview.close();
         }
+        // A remote that is not media is opaque bytes, never a page.
+        const pageUrl = new URL('/index.html', remote.url).href;
+        const opaque = await startPreview({
+          served: { ...served, files: new Map([['0', pageUrl]]) },
+          pageDir: cwd,
+          port: 0,
+        });
+        try {
+          const page = await fetch(new URL('/media/0', opaque.url));
+          expect(page.headers.get('content-type')).toBe(
+            'application/octet-stream'
+          );
+          expect(page.headers.get('x-content-type-options')).toBe('nosniff');
+        } finally {
+          await opaque.close();
+        }
+        await expect(
+          parseArgs(['board.png', '--audio', pageUrl], cwd)
+        ).rejects.toThrow(/not a wav, mp3, m4a, or ogg/);
         await expect(
           parseArgs([new URL('/missing.png', remote.url).href], cwd)
         ).rejects.toThrow(/HTTP 404/);

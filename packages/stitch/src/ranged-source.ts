@@ -6,7 +6,7 @@
  * frame, where their headers are ~20 KB (faststart). Here reads come in
  * 64 KiB blocks, one request for a clip's header, and the read-ahead only
  * doubles while reads stay sequential (a clip being played), up to 2 MiB.
- * `fetchAll` pulls the whole file in 2 MiB requests and holds it, so the
+ * `fetchAll` streams the whole file in one request and holds it, so the
  * player can download a clip ahead of the playhead and know when it is all
  * here (#2124).
  */
@@ -73,6 +73,67 @@ export function createRangedReader(
       const oldest = blocks.keys().next().value;
       if (oldest === undefined) break;
       blocks.delete(oldest);
+    }
+  }
+
+  /**
+   * Stream the file from block `first` to its end in one request, storing
+   * each block as it lands so a read waiting on it goes on at once.
+   */
+  async function streamFrom(first: number, total: number): Promise<void> {
+    const last = Math.ceil(total / BLOCK) - 1;
+    const pending = new Map<
+      number,
+      { resolve: () => void; reject: (error: unknown) => void }
+    >();
+    for (let b = first; b <= last; b++) {
+      if (inFlight.has(b)) continue;
+      const landed = new Promise<void>((resolve, reject) => {
+        pending.set(b, { resolve, reject });
+      });
+      landed.catch(() => {}); // the waiting read reports it
+      inFlight.set(
+        b,
+        landed.finally(() => inFlight.delete(b))
+      );
+    }
+    try {
+      const response = await fetchFn(url, {
+        headers: { Range: `bytes=${first * BLOCK}-${total - 1}` },
+        signal: abort.signal,
+      });
+      if (response.status !== 206 || response.body === null) {
+        throw new Error(`HTTP ${response.status} for ${url}`);
+      }
+      const reader = response.body.getReader();
+      let b = first;
+      let block = new Uint8Array(BLOCK);
+      let fill = 0;
+      const blockSize = (index: number) =>
+        Math.min(BLOCK, total - index * BLOCK);
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        let from = 0;
+        while (from < value.byteLength && b <= last) {
+          const take = Math.min(blockSize(b) - fill, value.byteLength - from);
+          block.set(value.subarray(from, from + take), fill);
+          fill += take;
+          from += take;
+          if (fill === blockSize(b)) {
+            blocks.set(b, block.subarray(0, fill));
+            pending.get(b)?.resolve();
+            pending.delete(b);
+            b++;
+            block = new Uint8Array(BLOCK);
+            fill = 0;
+          }
+        }
+      }
+      if (b <= last) throw new Error(`${url} ended at block ${b} of ${last}`);
+    } catch (error) {
+      for (const waiter of pending.values()) waiter.reject(error);
+      throw error;
     }
   }
 
@@ -155,17 +216,28 @@ export function createRangedReader(
       return out;
     },
     /**
-     * Fetch every missing block, first to last, in 2 MiB requests, so a read
-     * inside the file unblocks as its request lands rather than when the
-     * whole file has. The file is held past the cache limit until `drop()`.
+     * Stream the whole file in one request, from the first block not yet
+     * cached, storing blocks as they land. A dropped connection picks up
+     * from the last block that landed. The file is held past the cache
+     * limit until `drop()`.
      */
     fetchAll: async (): Promise<void> => {
       held = true;
       if (size === null) await ensure(0, 0);
       if (size === null) throw new Error(`No size for ${url}`);
       const last = Math.ceil(size / BLOCK) - 1;
-      for (let s = 0; s <= last; s += MAX_AHEAD_BLOCKS) {
-        await ensure(s, Math.min(s + MAX_AHEAD_BLOCKS - 1, last));
+      for (let attempt = 0; ; attempt++) {
+        let first = 0;
+        while (first <= last && blocks.has(first)) first++;
+        if (first > last) return;
+        try {
+          await streamFrom(first, size);
+          return;
+        } catch (error) {
+          const delay = RETRY_DELAYS_MS[attempt];
+          if (abort.signal.aborted || delay === undefined) throw error;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       }
     },
     /** True once every block of the file is cached. */

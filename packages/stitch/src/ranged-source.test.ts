@@ -103,8 +103,8 @@ function throttledServer(size: number) {
 }
 
 describe('createRangedReader whole-file download (#2124)', () => {
-  it('fetches the file in 2 MiB requests and never fetches a block twice', async () => {
-    const { ranges, sizes, fetchFn, release } = throttledServer(6 * MB);
+  it('streams the file in one request and never fetches a block twice', async () => {
+    const { sizes, fetchFn, release } = throttledServer(6 * MB);
     const reader = createRangedReader('/clip.mp4', fetchFn);
     const sized = reader.getSize();
     release();
@@ -122,8 +122,7 @@ describe('createRangedReader whole-file download (#2124)', () => {
       release();
     }
     expect(isRange(await read, 100 * KB)).toBe(true);
-    expect(sizes()).toEqual([64, 2048 - 64, 2048, 2048]);
-    expect(ranges.length).toBe(4);
+    expect(sizes()).toEqual([64, 6 * 1024 - 64]);
     expect(reader.isComplete()).toBe(true);
   });
 
