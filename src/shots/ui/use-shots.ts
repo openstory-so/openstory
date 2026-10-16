@@ -126,7 +126,10 @@ export function useSequenceVideoModels(sequenceId?: string) {
 
 // All video ShotVariant rows for a sequence (#545). Used by the scenes view to
 // resolve each shot's displayed video through the active model's variant.
-export function useSequenceVideoVariants(sequenceId?: string) {
+export function useSequenceVideoVariants(
+  sequenceId?: string,
+  options?: { refetchInterval?: number | false }
+) {
   return useQuery<ShotVariant[]>({
     queryKey: ['sequence-video-variants', sequenceId ?? ''],
     queryFn: async () => {
@@ -135,6 +138,7 @@ export function useSequenceVideoVariants(sequenceId?: string) {
     },
     enabled: !!sequenceId,
     staleTime: 30_000,
+    refetchInterval: options?.refetchInterval ?? false,
   });
 }
 
