@@ -1,5 +1,19 @@
 # @openstory/stitch
 
+## 0.3.0
+
+### Minor Changes
+
+- afabd49: The `stitch` command takes `http(s)` URLs anywhere a file goes. A URL is probed over the network and proxied through the local server with the browser's `Range`, so a remote without CORS headers still plays and exports.
+
+  `--frame 9:16` (or `1080x1920`) sets the shape of the page. Without it only the first clip is read before the page opens; other videos are read only when `--subs` needs their lengths.
+
+- 8f29900: Clips are downloaded whole, in order, one at a time, up to two past the clip under the playhead, and held in memory. `play()` resolves once the current clip is all here, and a stall at a cut clears once the next clip is, so a slow link waits once per clip for the clip's bytes instead of stop-and-go; music still streams. Clips outside that window are let go of. The `stitch` preview server answers only its own host and only GET and HEAD, types a remote file as media or opaque bytes, and `--music` / `--audio` take only `.wav`, `.mp3`, `.m4a`, or `.ogg`.
+
+### Patch Changes
+
+- 9d5165f: Releases publish only after the repository's tests pass on the commit being released.
+
 ## 0.2.0
 
 ### Minor Changes
