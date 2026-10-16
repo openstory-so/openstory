@@ -487,7 +487,7 @@ bible version with the new talent and face, and the voice is never touched.
   or hard-delete those characters first. A pinned-only refusal (history
   alone no longer blocking) can come when a later rebuild changes that FK
   to `restrict`.
-- **Existing rows** (`20261007115216_backfill_talent_likeness`): the Default
+- **Existing rows** (`20261016024127_backfill_talent_likeness`): the Default
   (else newest convergent) sheet WITH AN IMAGE became the reference sheet
   (an image-less sheet never does; such a talent keeps NULL); other
   convergent sheets were discarded (restorable); live parked variants became
