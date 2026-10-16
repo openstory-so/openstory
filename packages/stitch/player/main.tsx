@@ -12,6 +12,7 @@ type Cut = {
   frameHeight: number;
   musicUrl: string | null;
   musicGainDb: number;
+  readAheadSeconds: number;
 };
 
 const stage = document.getElementById('stage') ?? document.body;
@@ -83,6 +84,7 @@ function Preview({ cut }: { cut: Cut }) {
         musicUrl={cut.musicUrl}
         musicGainDb={cut.musicGainDb}
         musicEnabled={musicOn}
+        readAheadSeconds={cut.readAheadSeconds}
         subtitles
         download={{ filename: 'cut.mp4' }}
         onLoadProgress={(count) => setLoaded(count)}
@@ -168,6 +170,7 @@ function readCut(value: unknown): Cut {
     frameHeight: positive(record.frameHeight, 'frameHeight'),
     musicUrl: stringOrNull(record.musicUrl, 'musicUrl'),
     musicGainDb: numberOf(record.musicGainDb, 'musicGainDb'),
+    readAheadSeconds: positive(record.readAheadSeconds, 'readAheadSeconds'),
   };
 }
 

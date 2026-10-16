@@ -96,7 +96,7 @@ npm install react @videojs/react
 
 ## Command
 
-`npx @openstory/stitch` plays stills and videos in the browser. It listens on `127.0.0.1`, prints the URL, and opens it. The page is this player: captions, a music switch, a loading line, and Download. The page is the shape of `--frame`, or of the first clip, so a portrait cut fills the window as portrait. The process runs until Ctrl+C. `--no-open` skips the browser. `--port` chooses the port.
+`npx @openstory/stitch` plays stills and videos in the browser. It listens on `127.0.0.1`, prints the URL, and opens it. The page is this player: captions, a music switch, a loading line, and Download. The page is the shape of `--frame`, or of the first clip, so a portrait cut fills the window as portrait. The process runs until Ctrl+C. `--no-open` skips the browser. `--port` chooses the port. `--read-ahead` is the page's `readAheadSeconds`.
 
 Files play in the order you name them. Each one is a path or an `http(s)` URL. A URL is read through the local server, so a remote without CORS headers still plays, exports, and opens in picture-in-picture.
 
@@ -208,6 +208,7 @@ import { StitchedPlayer } from '@openstory/stitch/react';
   musicUrl="/score.mp3"
   musicGainDb={-3}
   musicEnabled
+  readAheadSeconds={6} // the default; more for a slow link
   subtitles // showing by default when any clip has cues
   autoPlay={false}
   download={{ filename: 'cut.mp4', subtitles: 'sidecar' }}
@@ -267,6 +268,7 @@ media.setSource({
   musicUrl: null,
   musicGainDb: 0,
   musicEnabled: false,
+  readAheadSeconds: 6,
   subtitles: true,
 });
 media.attach(canvas); // the engine draws into this HTMLCanvasElement
@@ -287,6 +289,7 @@ const engine = new SequencePlayerEngine({
   musicUrl: null,
   musicGainDb: 0,
   musicEnabled: false,
+  readAheadSeconds: 6,
   onTimeUpdate: (t) => {},
   onBuffering: (stalled) => {},
   onEnded: () => {},
@@ -308,6 +311,7 @@ engine.dispose();
 
 - **Opening is concurrent.** Every clip is opened at once for its duration and size, then the first frame is read, so a twenty-clip cut is one round of header reads plus that frame, not twenty sequential opens. Stills decode their images during `prepare()`.
 - **Reads are bounded range requests.** 64 KiB blocks. A faststart header is one request; read-ahead doubles up to 2 MiB while a clip plays. Up to 16 MiB is cached per source, so a short clip can sit entirely in memory. `locate()` walks the offset table, O(N) in the clip count.
+- **Play waits for a lead, once.** `readAheadSeconds` (default 6) of the clip under the playhead are fetched before `play()` resolves, kept fetched while playing, and fetched again before a stall clears, so a slow link gives one wait instead of stop-and-go. The next clip's opening is fetched to the same lead in the last seconds before a cut. Byte position is taken as linear in time from the clip's size and duration, and the window is capped at 8 MiB per clip.
 - **Sound streams too.** Each clip's audio is decoded a second ahead of the playhead and dropped once played; the next clip's opening is fetched three seconds before the cut.
 - **A stall holds everything together.** The audio clock is the playback clock, so a network stall suspends it, and the picture, the music and every queued line of dialogue pause and resume as one.
 

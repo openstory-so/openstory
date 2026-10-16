@@ -33,7 +33,8 @@ npx @openstory/stitch@latest \
 7. `--poster` is the still shown while the cut opens. It belongs on an opening video. `--fallback` is the picture tried when the still before it fails to load.
 8. `--music` is the bed under the whole cut. `--music-gain` changes only that bed, in dB. It defaults to 0. The page can turn that bed off; dialogue stays.
 9. `--frame 9:16` (or `1080x1920`) is the shape of the page. Give it when the shape is known: without it the command reads the first clip to find out. Every clip is fitted into that box.
-10. Run that `npx` command and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
+10. `--read-ahead` is how many seconds the page fetches ahead of the playhead before it plays. It defaults to 6. Local files rarely need it.
+11. Run that `npx` command and give the user the `http://127.0.0.1:` URL it prints. Leave the process running until they are done. `--no-open` skips opening a browser.
 
 ## Installing this command
 

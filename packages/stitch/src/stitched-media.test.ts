@@ -68,6 +68,7 @@ const source = {
   musicUrl: '/music.mp3' as string | null,
   musicGainDb: 0,
   musicEnabled: true,
+  readAheadSeconds: 6,
   subtitles: true,
 };
 

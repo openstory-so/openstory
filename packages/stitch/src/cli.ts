@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { readImageSize } from './image-size.js';
 import type { PlaybackClip, PlaybackCue } from './playback-clip.js';
 import { placeTimelineCues } from './place-cues.js';
+import { DEFAULT_READ_AHEAD_SECONDS } from './read-ahead.js';
 import { parseSubtitles } from './subtitles.js';
 import type { TimelineCue } from './subtitles.js';
 import {
@@ -32,7 +33,7 @@ const STILL_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov']);
 const DEFAULT_STILL_SECONDS = 4;
 
-export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-gain db] [--subs file] [--port n] [--no-open]
+export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-gain db] [--read-ahead s] [--subs file] [--port n] [--no-open]
              <file> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...
 
        stitch skill [--global]
@@ -45,6 +46,8 @@ still. --poster belongs to an opening video and shows while the cut opens.
 it. --subs is one .srt or .vtt for the whole cut. --seconds defaults to ${DEFAULT_STILL_SECONDS}.
 --frame is the shape of the page, as a ratio (9:16) or a size (1080x1920).
 Without it the first clip sets the shape. Every clip is fitted into that box.
+--read-ahead is how many seconds the page fetches ahead of the playhead before
+it plays and after a stall; it defaults to ${DEFAULT_READ_AHEAD_SECONDS}.
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -80,6 +83,8 @@ export type LocalCut = {
   frame: { width: number; height: number } | null;
   music: string | null;
   musicGainDb: number;
+  /** Seconds the page fetches ahead of the playhead; see `SequencePlayerOptions`. */
+  readAheadSeconds: number;
   /** Whole-cut subtitles. Null when --subs was omitted. */
   subs: TimelineCue[] | null;
   open: boolean;
@@ -93,6 +98,7 @@ export type ServedCut = {
   frameHeight: number;
   musicUrl: string | null;
   musicGainDb: number;
+  readAheadSeconds: number;
   files: ReadonlyMap<string, string>;
 };
 
@@ -127,6 +133,7 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   const clips: LocalClip[] = [];
   let music: string | null = null;
   let musicGainDb = 0;
+  let readAheadSeconds = DEFAULT_READ_AHEAD_SECONDS;
   let subs: TimelineCue[] | null = null;
   let frame: { width: number; height: number } | null = null;
   let open = true;
@@ -162,6 +169,11 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
       const value = argv[i + 1];
       if (value === undefined) throw new Error(`${arg} needs a value`);
       musicGainDb = numberValue(value, arg);
+      i += 1;
+      continue;
+    }
+    if (arg === '--read-ahead') {
+      readAheadSeconds = positive(take(arg, i), arg);
       i += 1;
       continue;
     }
@@ -227,7 +239,16 @@ async function parseCut(argv: string[], cwd: string): Promise<LocalCut> {
   }
 
   if (clips.length === 0) throw new Error('Name at least one still or video');
-  return { clips, frame, music, musicGainDb, subs, open, port };
+  return {
+    clips,
+    frame,
+    music,
+    musicGainDb,
+    readAheadSeconds,
+    subs,
+    open,
+    port,
+  };
 }
 
 function previousClip(clips: LocalClip[], flag: string): LocalClip {
@@ -443,6 +464,7 @@ export async function serveCut(cut: LocalCut): Promise<ServedCut> {
     frameHeight: frame.height,
     musicUrl: cut.music ? await urlFor(cut.music) : null,
     musicGainDb: cut.musicGainDb,
+    readAheadSeconds: cut.readAheadSeconds,
     files,
   };
 }
@@ -542,6 +564,7 @@ async function handleRequest(
       frameHeight: served.frameHeight,
       musicUrl: served.musicUrl,
       musicGainDb: served.musicGainDb,
+      readAheadSeconds: served.readAheadSeconds,
     });
     response.writeHead(200, {
       'Content-Type': 'application/json; charset=utf-8',

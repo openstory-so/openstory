@@ -23,6 +23,8 @@ Pass the new array through when the list changes. Identity is order plus the med
 
 `musicUrl` is a bed under the whole sequence. `musicGainDb` changes only that bed. `0` leaves it as recorded. `musicEnabled: false` mutes the bed. Dialogue stays at its own level.
 
+`readAheadSeconds` is how much of the clip under the playhead is fetched before play starts and after a stall. It defaults to 6. Raise it for a slow link; the first wait grows with it.
+
 ## Bytes
 
 Video, music, and a still's `audioUrls` need an HTTP URL that answers `Range` with 206, or a `blob:` URL whose `fetch` does. A still's line may be a `data:` URL.

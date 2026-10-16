@@ -6,6 +6,8 @@
  * frame, where their headers are ~20 KB (faststart). Here reads come in
  * 64 KiB blocks, one request for a clip's header, and the read-ahead only
  * doubles while reads stay sequential (a clip being played), up to 2 MiB.
+ * `ensureRange` banks a window ahead of the playhead in 2 MiB requests so a
+ * slow link waits once for a lead instead of once per block (#2124).
  */
 
 import { CustomSource } from 'mediabunny';
@@ -14,9 +16,13 @@ const BLOCK = 64 * 1024;
 const MAX_AHEAD_BLOCKS = 32; // 2 MiB
 /** Per source. Only the clip under the playhead holds more than its header. */
 const MAX_CACHED_BLOCKS = 256; // 16 MiB
+/** A read-ahead window never holds more than half the cache, so the blocks under the playhead stay. */
+const MAX_BANK_BYTES = (MAX_CACHED_BLOCKS / 2) * BLOCK; // 8 MiB
 const RETRY_DELAYS_MS = [500, 1500, 4000];
 
 type FetchFn = typeof fetch;
+
+export type RangedReader = ReturnType<typeof createRangedReader>;
 
 /** The reads behind {@link createRangedSource}; exported for its test. */
 export function createRangedReader(
@@ -146,6 +152,36 @@ export function createRangedReader(
       const out = copyOut(start, end, first, last);
       if (!out) throw new Error(`Range ${start}-${end} of ${url} was evicted`);
       return out;
+    },
+    /**
+     * Fetch the blocks under [start, end) without reading them out, in
+     * 2 MiB requests, so a read inside the window unblocks as its request
+     * lands rather than when the whole window has. The window is capped at
+     * 8 MiB past `start`; `cachedFrom` reports that cap as the file's end.
+     */
+    ensureRange: async (start: number, end: number): Promise<void> => {
+      if (size === null) await ensure(0, 0);
+      const first = Math.floor(start / BLOCK);
+      const last = Math.floor(
+        (Math.min(end, start + MAX_BANK_BYTES) - 1) / BLOCK
+      );
+      for (let s = first; s <= last; s += MAX_AHEAD_BLOCKS) {
+        await ensure(s, Math.min(s + MAX_AHEAD_BLOCKS - 1, last));
+      }
+    },
+    /**
+     * Contiguous cached bytes from `start`: Infinity once the run reaches the
+     * end of the file or the 8 MiB window cap, 0 before the size is known.
+     */
+    cachedFrom: (start: number): number => {
+      if (size === null) return 0;
+      const lastBlock = Math.ceil(size / BLOCK) - 1;
+      let b = Math.floor(start / BLOCK);
+      while (b <= lastBlock && blocks.has(b)) b++;
+      const cached = b * BLOCK - start;
+      return b > lastBlock || cached >= MAX_BANK_BYTES
+        ? Infinity
+        : Math.max(0, cached);
     },
     dispose: () => {
       abort.abort();

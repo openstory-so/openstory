@@ -10,6 +10,7 @@
  * - `@openstory/stitch/react`   a React surface under the Video.js skin.
  * - `@openstory/stitch/export`  in-browser MP4 export of the same stitch.
  */
+export { DEFAULT_READ_AHEAD_SECONDS } from './read-ahead.js';
 export {
   SequencePlayerEngine,
   type SequencePlayerMeta,

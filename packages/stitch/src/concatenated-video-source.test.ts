@@ -51,10 +51,16 @@ vi.doMock('mediabunny', () => ({
     }
   },
   EncodedPacket: class {},
-  EncodedPacketSink: class {},
+  CustomSource: class {
+    url: string;
+    constructor(reader: { url: string }) {
+      this.url = reader.url;
+    }
+  },
 }));
 vi.doMock('./ranged-source.js', () => ({
   createRangedSource: (url: string) => ({ url }),
+  createRangedReader: (url: string) => ({ url, getSize: async () => 8e6 }),
 }));
 const { ConcatenatedVideoSource } =
   await import('./concatenated-video-source.js');

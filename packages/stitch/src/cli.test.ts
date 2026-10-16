@@ -48,6 +48,8 @@ describe('stitch arguments', () => {
           'score.mp3',
           '--music-gain',
           '-3',
+          '--read-ahead',
+          '12',
           'board.png',
           '--audio',
           'line.wav',
@@ -67,6 +69,7 @@ describe('stitch arguments', () => {
       expect(request.kind).toBe('play');
       if (request.kind !== 'play') return;
       expect(request.musicGainDb).toBe(-3);
+      expect(request.readAheadSeconds).toBe(12);
       expect(request.open).toBe(false);
       expect(request.clips[0]).toMatchObject({
         kind: 'still',

@@ -90,3 +90,59 @@ describe('createRangedReader', () => {
     expect(ranges.length).toBe(before + 1);
   });
 });
+
+function throttledServer(size: number) {
+  const server = fakeServer(size);
+  const gates: Array<() => void> = [];
+  const fetchFn: typeof server.fetchFn = async (url, init) => {
+    await new Promise<void>((resolve) => gates.push(resolve));
+    return server.fetchFn(url, init);
+  };
+  const release = () => gates.splice(0).forEach((open) => open());
+  return { ...server, fetchFn, release };
+}
+
+describe('createRangedReader read-ahead (#2124)', () => {
+  it('banks a window in 2 MiB requests and never fetches a block twice', async () => {
+    const { ranges, sizes, fetchFn, release } = throttledServer(24 * MB);
+    const reader = createRangedReader('/clip.mp4', fetchFn);
+    const sized = reader.getSize();
+    release();
+    expect(await sized).toBe(24 * MB);
+    const banked = reader.ensureRange(0, 6 * MB);
+    // A read inside the window while it is in flight waits on it.
+    const read = reader.read(100 * KB, 120 * KB);
+    const pending = { count: 1 };
+    void banked.then(() => {
+      pending.count = 0;
+    });
+    while (pending.count > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release();
+    }
+    expect(isRange(await read, 100 * KB)).toBe(true);
+    expect(sizes()).toEqual([64, 2048 - 64, 2048, 2048]);
+    expect(ranges.length).toBe(4);
+    expect(reader.cachedFrom(0)).toBe(6 * MB);
+    expect(reader.cachedFrom(5 * MB)).toBe(1 * MB);
+    expect(reader.cachedFrom(6 * MB)).toBe(0);
+  });
+
+  it('reports the end of the file and the 8 MiB cap as fully banked', async () => {
+    const size = 24 * MB;
+    const { sizes, fetchFn } = fakeServer(size);
+    const reader = createRangedReader('/clip.mp4', fetchFn);
+    await reader.getSize();
+    await reader.ensureRange(size - 100 * KB, size + 5 * MB);
+    expect(reader.cachedFrom(size - 100 * KB)).toBe(Infinity);
+    await reader.ensureRange(4 * MB, 20 * MB);
+    expect(Math.max(...sizes())).toBe(2048);
+    expect(
+      sizes()
+        .slice(2)
+        .reduce((a, b) => a + b, 0)
+    ).toBe(8 * 1024);
+    expect(reader.cachedFrom(4 * MB)).toBe(Infinity);
+    expect(reader.cachedFrom(12 * MB)).toBe(0);
+  });
+});
