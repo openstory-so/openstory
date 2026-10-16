@@ -1,5 +1,5 @@
 import { resolveSequenceStyleConfig } from '@/look/style-config';
-import type { StyleConfig } from '@/look/style-config';
+import type { StoredStyleConfig, StyleConfig } from '@/look/style-config';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 
 type StyleSequence = {
@@ -26,7 +26,7 @@ export async function resolveSequenceStyle(
 /** `resolveSequenceStyle` with the catalog row already read (#2082). */
 export function sequenceStyleFromRow(
   sequence: StyleSequence,
-  style: { config: StyleConfig } | null | undefined
+  style: { config: StoredStyleConfig } | null | undefined
 ): StyleConfig | undefined {
   return sequence.styleConfig != null || style
     ? resolveSequenceStyleConfig({
