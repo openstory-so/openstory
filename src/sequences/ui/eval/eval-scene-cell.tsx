@@ -265,7 +265,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
               muted
               loop
               playsInline
-              onMouseEnter={(e) => void e.currentTarget.play()}
+              onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})}
               onMouseLeave={(e) => {
                 e.currentTarget.pause();
                 e.currentTarget.currentTime = 0;

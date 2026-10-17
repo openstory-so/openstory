@@ -166,7 +166,9 @@ function StudioCard({
             onMouseEnter={(event) => {
               if (window.matchMedia('(prefers-reduced-motion: reduce)').matches)
                 return;
-              void event.currentTarget.play();
+              // Mouse-out pauses before play() settles (AbortError), or the clip has
+              // no playable source (NotSupportedError); the poster stays either way.
+              void event.currentTarget.play().catch(() => {});
             }}
             onMouseLeave={(event) => {
               event.currentTarget.pause();

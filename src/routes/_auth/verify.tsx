@@ -11,7 +11,7 @@ import { Navigate, createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
 const searchSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional().catch(undefined),
   redirectTo: z.string().optional(),
 });
 

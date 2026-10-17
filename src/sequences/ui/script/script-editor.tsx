@@ -98,18 +98,20 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       </div>
 
       <div className="shrink-0 flex items-center justify-between">
+        {/* Fixed locale: the server renders en-US, so a phone's own locale
+            ("10.000") would fail hydration (#2132). */}
         {showCharacterCount && (
           <div className="text-sm text-muted-foreground">
             <span
               className={cn(isOverLimit && 'text-destructive font-medium')}
               data-testid="character-count"
             >
-              {value.length.toLocaleString()}
+              {value.length.toLocaleString('en-US')}
             </span>
             {maxLength && (
               <>
                 {' / '}
-                <span>{maxLength.toLocaleString()}</span>
+                <span>{maxLength.toLocaleString('en-US')}</span>
                 <span> characters</span>
               </>
             )}
