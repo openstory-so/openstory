@@ -1,3 +1,4 @@
+import { playHoverPreview } from '@/ui/play-hover-preview';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import type { SceneWithScript } from '@/shots/ui/use-scenes';
@@ -265,7 +266,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
               muted
               loop
               playsInline
-              onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})}
+              onMouseEnter={(e) => playHoverPreview(e.currentTarget)}
               onMouseLeave={(e) => {
                 e.currentTarget.pause();
                 e.currentTarget.currentTime = 0;

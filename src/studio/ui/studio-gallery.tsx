@@ -1,3 +1,4 @@
+import { playHoverPreview } from '@/ui/play-hover-preview';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -166,9 +167,7 @@ function StudioCard({
             onMouseEnter={(event) => {
               if (window.matchMedia('(prefers-reduced-motion: reduce)').matches)
                 return;
-              // Mouse-out pauses before play() settles (AbortError), or the clip has
-              // no playable source (NotSupportedError); the poster stays either way.
-              void event.currentTarget.play().catch(() => {});
+              playHoverPreview(event.currentTarget);
             }}
             onMouseLeave={(event) => {
               event.currentTarget.pause();
