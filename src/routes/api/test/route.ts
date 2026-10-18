@@ -35,7 +35,7 @@ export const testOnlyGuard = createMiddleware().server(async ({ next }) => {
  * Parent route definition for the /api/test group.
  *
  * We keep this as a normal (non-pathless) directory so the URLs remain
- * /api/test/user, /api/test/talent, etc. (we want "test" visible in the path).
+ * /api/test/user, /api/test/character, etc. (we want "test" visible in the path).
  *
  * Per the server-routes docs, pathless layouts (`_something`) are the
  * mechanism for applying middleware to a *group* of routes. However,

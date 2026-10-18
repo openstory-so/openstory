@@ -71,11 +71,6 @@ import {
   createPublicStylesReadMethods,
   createStylesMethods,
 } from '@/look/server/db/styles';
-import {
-  createPublicTalentReadMethods,
-  createTalentMethods,
-} from '@/cast/server/db/talent';
-import { createTalentSheetVariantsMethods } from '@/cast/server/db/talent-sheet-variants';
 import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
 import { and, inArray, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 
@@ -256,24 +251,6 @@ export async function listPublicStyles() {
 }
 
 /**
- * List public ("system") talent without team scoping or auth. Lets anonymous
- * visitors browse and pre-cast system talent on the public new-sequence
- * screen and talent library page.
- */
-export async function listPublicTalent(options?: { favoritesOnly?: boolean }) {
-  return createPublicTalentReadMethods(getDb()).list(options);
-}
-
-/**
- * Fetch a public ("system") talent with its sheets and media, no auth.
- * Returns undefined if the talent isn't public. Lets anonymous visitors open a
- * talent detail page read-only.
- */
-export async function getPublicTalentWithRelations(talentId: string) {
-  return createPublicTalentReadMethods(getDb()).getWithRelations(talentId);
-}
-
-/**
  * Get a sequence by ID without team scoping.
  * Only for admin operations where team context isn't available yet.
  */
@@ -413,7 +390,6 @@ export function createScopedDb(teamId: string, userId: string) {
     sequences: createSequencesMethods(db, teamId, userId),
     sequence: (sequenceId: string) => createSequenceMethods(db, sequenceId),
 
-    talent: createTalentMethods(db, teamId, userId),
     styles: createStylesMethods(db, teamId, userId),
     locations: createLocationsMethods(db, teamId),
     library: createLibraryMethods(db, teamId),
@@ -440,7 +416,6 @@ export function createScopedDb(teamId: string, userId: string) {
     characterSheetVariants: createCharacterSheetVariantsMethods(db, teamId),
     characterLooks: createCharacterLooksMethods(db, teamId),
     locationSheetVariants: createLocationSheetVariantsMethods(db, teamId),
-    talentSheetVariants: createTalentSheetVariantsMethods(db, teamId),
     sequenceMusicPromptVersions: createSequenceMusicPromptVersionsMethods(db),
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),

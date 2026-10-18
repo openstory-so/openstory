@@ -11,7 +11,7 @@ columns are gone (#1819).
   copy): `src/sequences/generation-plan.ts`.
 - Loader (rows + verdicts, one read per table): `src/sequences/server/generation-plan.ts`.
   Every read is per sequence, never per shot, look or location (#2082): the
-  sheet verdicts take their rows (cast talent, live sheet versions, location
+  sheet verdicts take their rows (character sheets, live sheet versions, location
   photos, style) from one batch and call the detail page's compare
   (`lookSheetStaleness`, `locationSheetStaleness`) in memory. The one
   exception is a character whose default look has no row yet, which the
@@ -353,8 +353,13 @@ Storyboard freezes the same plan a Continue click uses and spawns the same
 just created. The loader ignores this parent run's processing banner, while
 retaining actual artifact claims. Frozen stop-at, switches and model choices
 remain authoritative. The reservation grows from this materialized plan before
-rendering. Missing first character sheets reuse a compatible matched talent
-sheet, with zero generation cost; explicit regeneration still renders the edit.
+rendering. A character's face, sheet and voice live on the character.
+Migration `20261018090430` copies a talent sheet onto a character that had
+no sheet of its own and copies a talent voice onto a character with no
+selected voice; `20261018090611` drops the talent tables. A sheet hash
+still includes `talentSheetHash` (null when uncast). Sheets stamped while
+cast to a talent read stale after that drop; the image stays until Update
+redraws it. Explicit regeneration still renders the edit.
 A look's sheet is the character's, shared by every sequence that casts it
 (#2017), so a sequence that casts a character with a finished sheet owes
 none. Voice-only cast never owes a sheet.

@@ -44,7 +44,6 @@ test.describe('Characters page', () => {
       sequence.id,
       'char_001',
       `Mia ${suffix}`,
-      null,
       { sheetImageUrl: SHEET_URL }
     );
   });
@@ -140,7 +139,7 @@ test.describe('Characters page', () => {
     ).toHaveCount(0);
     // The sequence's own detail view is what shows below.
     await expect(
-      page.getByRole('button', { name: 'Save as talent' })
+      page.getByRole('button', { name: 'Remove', exact: true })
     ).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   });
 

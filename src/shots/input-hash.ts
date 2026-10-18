@@ -94,9 +94,6 @@ export type CharacterSheetInputHash = string & {
 export type LocationSheetInputHash = string & {
   readonly __brand: 'LocationSheetInputHash';
 };
-export type TalentSheetInputHash = string & {
-  readonly __brand: 'TalentSheetInputHash';
-};
 export type MusicPromptInputHash = string & {
   readonly __brand: 'MusicPromptInputHash';
 };
@@ -113,8 +110,6 @@ export const characterSheetInputHash = (hex: string): CharacterSheetInputHash =>
   hex as CharacterSheetInputHash;
 export const locationSheetInputHash = (hex: string): LocationSheetInputHash =>
   hex as LocationSheetInputHash;
-export const talentSheetInputHash = (hex: string): TalentSheetInputHash =>
-  hex as TalentSheetInputHash;
 export const musicPromptInputHash = (hex: string): MusicPromptInputHash =>
   hex as MusicPromptInputHash;
 export const sequenceMusicInputHash = (hex: string): SequenceMusicInputHash =>
@@ -296,7 +291,7 @@ const characterSheetTalentHashFieldsSchema = z.object({
     })
     .nullable(),
 });
-export type CharacterSheetTalentHashFields = z.infer<
+type CharacterSheetTalentHashFields = z.infer<
   typeof characterSheetTalentHashFieldsSchema
 >;
 
@@ -663,57 +658,6 @@ export async function locationSheetInputHashMatches(
         )),
   ]);
   return digests.includes(stored);
-}
-
-export type TalentSheetHashInput = {
-  talent: {
-    name: string;
-    description: string | null;
-  };
-  /** Unordered set of reference media hashes (talent_media rows). */
-  referenceMediaHashes: readonly string[];
-  imageModel: string;
-};
-
-function talentSheetHashBody(
-  input: TalentSheetHashInput,
-  includeName: boolean
-): unknown {
-  return {
-    artifact: 'talent:sheet',
-    talent: {
-      ...(includeName ? { name: trim(input.talent.name) } : {}),
-      description: trim(input.talent.description),
-    },
-    referenceMediaHashes: sortedRefs(input.referenceMediaHashes),
-    imageModel: input.imageModel,
-  };
-}
-
-const talentSheetHashInputSchema = z.object({
-  talent: z.object({
-    name: z.string(),
-    description: z.string().nullable(),
-  }),
-  referenceMediaHashes: z.array(z.string()),
-  imageModel: z.string(),
-});
-
-export function computeTalentSheetInputHash(
-  raw: TalentSheetHashInput
-): Promise<TalentSheetInputHash> {
-  const input = talentSheetHashInputSchema.parse(raw);
-  return sha256Hex(talentSheetHashBody(input, false)).then(
-    talentSheetInputHash
-  );
-}
-
-/** Named-talent digest. Verify/tests only — delete after {@link LEGACY_HASH_UNTIL}. */
-export function computeTalentSheetInputHashLegacy(
-  raw: TalentSheetHashInput
-): Promise<string> {
-  const input = talentSheetHashInputSchema.parse(raw);
-  return sha256Hex(talentSheetHashBody(input, true));
 }
 
 // ---------------------------------------------------------------------------

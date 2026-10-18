@@ -16,19 +16,9 @@ import { and, eq } from 'drizzle-orm';
 import type { drizzle as drizzleD1 } from 'drizzle-orm/d1';
 import type { Database } from './client';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
-import {
-  DEFAULT_SYSTEM_TALENT,
-  getTalentSheetUrl,
-} from '@/cast/server/talent/talent-templates';
 import type { createD1HttpClient } from './client-d1-http';
 import { generateId } from '@/platform/id';
-import {
-  appMetadata,
-  styles,
-  talent,
-  talentSheets,
-  teams,
-} from '@/platform/server/db/schema';
+import { appMetadata, styles, teams } from '@/platform/server/db/schema';
 
 export type SeedDb =
   | ReturnType<typeof drizzleD1>
@@ -61,7 +51,6 @@ async function computeSeedHash(): Promise<string> {
   const payload = JSON.stringify(
     {
       styles: DEFAULT_SYSTEM_STYLES,
-      talent: DEFAULT_SYSTEM_TALENT,
       renames: RENAMES,
       assetsDomain: import.meta.env.VITE_R2_PUBLIC_ASSETS_DOMAIN ?? '',
     },
@@ -284,85 +273,4 @@ async function syncSystemTemplates(
   }
 
   log(`Synced templates: ${updatedCount} updated, ${insertedCount} inserted`);
-
-  // 4. Sync system talent
-  const existingTalent = await db
-    .select()
-    .from(talent)
-    .where(eq(talent.teamId, systemTeam.id));
-
-  const existingTalentByName = new Map(existingTalent.map((t) => [t.name, t]));
-  let talentInserted = 0;
-  let talentUpdated = 0;
-
-  for (const template of DEFAULT_SYSTEM_TALENT) {
-    const existing = existingTalentByName.get(template.name);
-
-    if (existing) {
-      await db
-        .update(talent)
-        .set({
-          description: template.description,
-          isPublic: template.isPublic,
-          isTemplate: template.isTemplate,
-          isHuman: template.isHuman,
-          imageUrl: template.imageUrl,
-          updatedAt: new Date(),
-        })
-        .where(eq(talent.id, existing.id));
-      talentUpdated++;
-    } else {
-      await db.insert(talent).values({
-        ...template,
-        teamId: systemTeam.id,
-        createdBy: null,
-      });
-      talentInserted++;
-      log(`+ talent ${template.name}`);
-    }
-  }
-
-  log(`Synced talent: ${talentUpdated} updated, ${talentInserted} inserted`);
-
-  // 4b. Sync system talent sheets
-  const allSystemTalent = await db
-    .select()
-    .from(talent)
-    .where(eq(talent.teamId, systemTeam.id));
-
-  let talentSheetsInserted = 0;
-
-  for (const template of DEFAULT_SYSTEM_TALENT) {
-    const talentRecord = allSystemTalent.find((t) => t.name === template.name);
-    if (!talentRecord) continue;
-
-    // Check if a default sheet already exists
-    const existingSheets = await db
-      .select()
-      .from(talentSheets)
-      .where(
-        and(
-          eq(talentSheets.talentId, talentRecord.id),
-          eq(talentSheets.isDefault, true)
-        )
-      );
-
-    if (existingSheets.length > 0) continue;
-
-    await db.insert(talentSheets).values({
-      id: generateId(),
-      talentId: talentRecord.id,
-      name: 'Default',
-      imageUrl: getTalentSheetUrl(template.name),
-      imagePath: `talent/${template.name.toLowerCase().replace(/\s+/g, '-')}/sheet.webp`,
-      isDefault: true,
-      source: 'ai_generated',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    talentSheetsInserted++;
-    log(`+ talent sheet ${template.name}`);
-  }
-
-  log(`Synced talent sheets: ${talentSheetsInserted} inserted`);
 }

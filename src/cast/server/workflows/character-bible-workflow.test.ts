@@ -57,10 +57,8 @@ const characterCreate = vi.fn(
     id: string;
     characterId: string;
     standardClothing?: string | null;
-    talentId?: string | null;
   }) => ({
     ...row,
-    talentId: row.talentId ?? null,
     selectedBibleVersionId: `bible-${row.id}`,
     lookId: row.id,
     lookName: 'Default',
@@ -423,7 +421,6 @@ describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
       expect.objectContaining({
         lookVersionId: `lookver-${row.id}`,
         bibleVersionId: `bible-${row.id}`,
-        talentId: null,
       }),
       expect.objectContaining({
         markGenerating: false,

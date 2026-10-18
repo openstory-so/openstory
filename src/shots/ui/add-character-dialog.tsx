@@ -16,7 +16,7 @@ import {
   useAttachLibraryCharacter,
   useLibraryCharacters,
 } from '@/cast/ui/use-team-characters';
-import { talentSquareImageClassName } from '@/cast/talent-preview';
+import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import { errorMessage } from '@/platform/errors';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -179,7 +179,7 @@ export const AddCharacterDialog: React.FC<{
                             alt=""
                             width={40}
                             height={40}
-                            className={talentSquareImageClassName(
+                            className={sheetSquareImageClassName(
                               !character.sheetPortraitUrl
                             )}
                           />

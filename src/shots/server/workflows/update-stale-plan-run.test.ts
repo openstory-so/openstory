@@ -352,7 +352,6 @@ const references = {
       lookId: 'ravi',
       lookVersionId: 'lv-ravi',
       bibleVersionId: 'bible-ravi',
-      talentId: null,
     },
   ],
   lookSheetsAfterDefault: [],
@@ -406,7 +405,6 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       {
         lookVersionId: 'lv-ravi',
         bibleVersionId: 'bible-ravi',
-        talentId: null,
       },
       {
         markGenerating: true,
@@ -438,14 +436,12 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
               lookId: 'maya',
               lookVersionId: 'lookver-default',
               bibleVersionId: 'bible-1',
-              talentId: 'talent-1',
             },
             {
               characterDbId: 'maya',
               lookId: 'gala',
               lookVersionId: 'lookver-gala',
               bibleVersionId: 'bible-1',
-              talentId: 'talent-1',
             },
           ],
           locationSheets: [],
@@ -463,7 +459,6 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       {
         lookVersionId: 'lookver-gala',
         bibleVersionId: 'bible-1',
-        talentId: 'talent-1',
       },
       expect.objectContaining({ markGenerating: true })
     );
@@ -481,7 +476,6 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
       lookVersionId: 'lookver-gala',
       lookStyling: null,
       bibleVersionId: 'bible-1',
-      talentId: null,
       // what the hash reads
       characterMetadata: {
         name: 'Maya',
@@ -495,8 +489,6 @@ describe('UpdateStaleShotsWorkflow — a continue (#1818)', () => {
         consistencyTag: 'maya',
       },
       imageModel: 'nano_banana_2',
-      talentSheetInputHash: null,
-      castTalentDescription: null,
     };
     await run(
       plan({

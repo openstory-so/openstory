@@ -8,10 +8,7 @@
  */
 
 import { PHOTOREAL_RENDERING } from '@/cast/rendering';
-import type {
-  CharacterBibleEntry,
-  TalentSheetMetadata,
-} from '@/shots/scene-analysis.schema';
+import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import { referenceProvenanceKey } from '@/motion/reference-provenance';
@@ -72,7 +69,7 @@ export const buildCharacterReferenceImages = (
 /**
  * The environment, optical and lighting sections for what the character is
  * rendered as (#2017). Photoreal keeps the commercial reference photography
- * wording every talent sheet was recorded with; anything else is the same
+ * wording photoreal character sheets were recorded with; anything else is the same
  * neutral studio with the rendering named. The sequence's palette, grade and
  * mood never reach a sheet: they apply at the shot.
  */
@@ -148,141 +145,9 @@ ${lightingSection}
 Hyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.`.trim();
 };
 
-/**
- * Talent appearance data for merging with character role attributes.
- * Used by buildCastingAttributes to determine which attributes come from talent vs role.
- */
-type TalentAppearanceData = {
-  /** Talent sheet metadata containing physical appearance data */
-  sheetMetadata?: TalentSheetMetadata;
-  /** Talent name (used for consistencyTag and fallback descriptions) */
-  talentName: string;
-  /** Talent description/notes */
-  talentDescription?: string;
-  // Talent performance (#1561): the talent's own when non-blank, else the
-  // role's. `''` = library has none.
-  personality: string;
-  movement: string;
-};
-
-/**
- * Result of merging talent appearance with character role attributes.
- * Physical attributes come from the talent, costume from the role. The
- * role's styling is its looks', which the entry keeps (#2065).
- */
-type CastingAttributes = {
-  age: string;
-  gender: string;
-  ethnicity: string;
-  physicalDescription: string;
-  standardClothing: string;
-  personality: string;
-  movement: string;
-  consistencyTag: string;
-};
-
-/**
- * Slugify a name for use in consistencyTag (e.g. "Elvis Presley" → "elvis_presley")
- */
-const slugify = (name: string): string =>
-  name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '');
-
-/** Stands in for a talent's looks when the library holds no description. */
+/** Stands in for a reference image when a prompt has no other description. */
 export const REFERENCE_LIKENESS_INSTRUCTION =
   "Match the appearance of the person shown in this character's reference image exactly.";
-
-/**
- * Merge talent appearance with character role attributes for casting.
- *
- * Physical appearance (age, gender, ethnicity, physicalDescription) comes from the TALENT.
- * Costume (standardClothing) comes from the CHARACTER role, and so does the styling, which its looks carry.
- * Performance (personality, movement) is the talent's when non-blank, else the role's.
- * ConsistencyTag is regenerated from the character ID + talent name.
- *
- * @param scriptEntry - The character's script-derived attributes
- * @param talent - The talent being cast
- * @returns Merged attributes suitable for DB storage and prompt building
- */
-export const buildCastingAttributes = (
-  scriptEntry: CharacterBibleEntry,
-  talent: TalentAppearanceData
-): CastingAttributes => {
-  const meta = talent.sheetMetadata;
-
-  return {
-    // Physical attributes: from talent, falling back to script
-    age: meta?.age || scriptEntry.age,
-    gender: meta?.gender || scriptEntry.gender,
-    ethnicity: meta?.ethnicity || scriptEntry.ethnicity,
-    // Likeness is anchored to the reference image, never to the talent's
-    // name: naming a person and demanding exact likeness trips OpenAI's
-    // real-person moderation deterministically (the reseed retry can't
-    // rescue it), and the name adds nothing the reference image doesn't carry.
-    physicalDescription:
-      meta?.physicalDescription ||
-      `${REFERENCE_LIKENESS_INSTRUCTION}${talent.talentDescription ? ` ${talent.talentDescription}` : ''}`,
-    // Costume: always from the character role
-    standardClothing: scriptEntry.standardClothing,
-    // Performance: the talent's own where the library has it, else the role's
-    personality: talent.personality.trim() || scriptEntry.personality,
-    movement: talent.movement.trim() || scriptEntry.movement,
-    // Regenerate tag from talent identity
-    consistencyTag: `${scriptEntry.characterId}_${slugify(talent.talentName)}`,
-  };
-};
-
-/**
- * Apply casting across a whole character bible: every character matched to
- * library talent gets `buildCastingAttributes` applied (the exact transform the
- * character-bible workflow persists); unmatched characters pass through
- * unchanged.
- *
- * Used so the visual/motion prompt workflows generate from — and hash — the same
- * cast bible the DB ends up holding. Without this the prompts hash the raw,
- * pre-cast bible while staleness verification reads the cast DB row, so every
- * talent-matched frame reports permanently stale (#867).
- *
- * `talentMatches` is typed structurally (not as `TalentCharacterMatch`) to keep
- * this prompt module free of a workflow-types dependency.
- */
-export const buildCastCharacterBible = (
-  characterBible: readonly CharacterBibleEntry[],
-  talentMatches: readonly {
-    characterId: string;
-    talentName: string;
-    sheetMetadata?: TalentSheetMetadata;
-    personality: string;
-    movement: string;
-  }[]
-): CharacterBibleEntry[] => {
-  const byCharacterId = new Map(talentMatches.map((m) => [m.characterId, m]));
-  return characterBible.map((character) => {
-    const match = byCharacterId.get(character.characterId);
-    if (!match) return character;
-    const cast = buildCastingAttributes(character, {
-      sheetMetadata: match.sheetMetadata,
-      talentName: match.talentName,
-      personality: match.personality,
-      movement: match.movement,
-    });
-    return { ...character, ...cast };
-  });
-};
-
-/**
- * Talent appearance data for character sheet generation
- */
-type TalentOverrides = {
-  /** Talent sheet metadata containing physical appearance data */
-  sheetMetadata?: TalentSheetMetadata;
-  /** Talent description/notes to include in prompt */
-  description?: string;
-  /** Talent sheet image URL to use as reference */
-  sheetImageUrl?: string;
-};
 
 /**
  * Result of building a character sheet prompt
@@ -290,12 +155,12 @@ type TalentOverrides = {
 type CharacterSheetPromptResult = {
   /** The generated prompt text */
   prompt: string;
-  /** Array of reference image URLs (e.g., talent sheet) */
+  /** Reference image URLs. The default look's sheet, when this look is drawn from it. */
   referenceUrls: string[];
 };
 
 /**
- * Build a detailed character sheet prompt from character bible entry
+ * Build a detailed character sheet prompt from a character bible entry.
  *
  * Creates a 4-panel horizontal reference grid:
  * - Panel 1: Full body frontal view
@@ -303,62 +168,32 @@ type CharacterSheetPromptResult = {
  * - Panel 3: Full body side profile (left)
  * - Panel 4: Full body rear view
  *
- * When talentOverrides is provided (during casting), the character's script-derived
- * identity is preserved, and the talent's appearance is added as supplementary
- * information for visual consistency.
- *
- * @param entry - The character bible entry from script analysis
- * @param talentOverrides - Optional talent data for casting
+ * @param entry - The character bible entry
  * @param styling - The look's hair / makeup / injury notes (#2015), as
  *   `effectiveStyling` resolves them: on the default look they hold what the
  *   bible called distinguishing features (#2065). Null when the look has
  *   none. `entry.standardClothing` is the look's clothing.
  * @param faceSheetUrl - The default look's completed sheet. When set, it is
  *   the only reference: this look keeps that person and changes the costume.
- *   The talent image is not sent.
  * @returns Prompt and reference URLs for image generation
  */
 export const buildCharacterSheetPrompt = (
   entry: CharacterBibleEntry,
-  talentOverrides: TalentOverrides | undefined,
   styling: string | null,
   faceSheetUrl: string | null
 ): CharacterSheetPromptResult => {
-  // A look other than the default is this person in another outfit. The
-  // default look's sheet is the person; the talent sheet is not also sent.
+  // A look other than the default is this person in another outfit.
   const fromDefaultLook = Boolean(faceSheetUrl);
-  const talentMeta = fromDefaultLook
-    ? undefined
-    : talentOverrides?.sheetMetadata;
-  const hasTalent = fromDefaultLook
-    ? false
-    : !!(talentMeta || talentOverrides?.description);
 
-  // Collect reference URLs
   const referenceUrls: string[] = [];
   if (fromDefaultLook && faceSheetUrl) {
     referenceUrls.push(faceSheetUrl);
-  } else if (talentOverrides?.sheetImageUrl) {
-    referenceUrls.push(talentOverrides.sheetImageUrl);
   }
 
-  // When a talent is cast, think of it like dressing an actor for a role:
-  // - Physical appearance comes from the TALENT (that's who they are)
-  // - Costume/wardrobe comes from the CHARACTER (that's the role)
-  // - Makeup can achieve some character traits (scars, aging) but not change fundamentals
-
-  // Physical attributes: use talent's if cast, otherwise character's
-  const age = talentMeta?.age || entry.age;
-  const gender = talentMeta?.gender || entry.gender;
-  const ethnicity = talentMeta?.ethnicity || entry.ethnicity;
-  const talentDescription = talentOverrides?.description;
-  const physicalDescription =
-    talentMeta?.physicalDescription ||
-    (hasTalent && talentDescription
-      ? `${talentDescription}. Match the appearance in the reference image exactly.`
-      : entry.physicalDescription);
-
-  // Costume/wardrobe: always from the character (the role they're playing)
+  const age = entry.age;
+  const gender = entry.gender;
+  const ethnicity = entry.ethnicity;
+  const physicalDescription = entry.physicalDescription;
   const standardClothing = entry.standardClothing;
 
   // One styling section (#2065): the look's effective styling, which on the
@@ -369,10 +204,6 @@ export const buildCharacterSheetPrompt = (
   let stylingSection = '';
   if (notes && fromDefaultLook) {
     stylingSection = `Hair, Makeup & Condition for this look:\n${notes}`;
-  } else if (notes && hasTalent) {
-    stylingSection = `
-Makeup & Styling (apply to achieve the character look):
-${notes}`;
   } else if (notes) {
     stylingSection = `Distinguishing Features:\n${notes}`;
   }
@@ -382,24 +213,14 @@ ${notes}`;
   const genderLine = gender ? `Gender: ${gender}` : '';
   const ethnicityLine = ethnicity ? `Ethnicity: ${ethnicity}` : '';
 
-  // Build reference image instruction
   let referenceInstruction = '';
   if (fromDefaultLook) {
     referenceInstruction = `
 CRITICAL - Same person, new outfit:
 The reference image is this character's default look. Every panel must show that same person: face, body, skin, and hair match the reference. Change the costume to the clothing described above. Change the hair only when the styling notes for this look say to. For face, body, skin and hair, the IMAGE takes priority over any text. For the clothing, the TEXT takes priority over the image: the reference wears another outfit.
 `;
-  } else if (hasTalent && referenceUrls.length > 0) {
-    const talentNotes = talentDescription
-      ? `\nTalent notes: ${talentDescription}`
-      : '';
-    referenceInstruction = `
-CRITICAL - Actor Reference:
-The reference image defines this character's appearance. Their physical appearance (face, body type, skin tone, hair, age) MUST match the reference image exactly. If any text description conflicts with the reference image, the IMAGE takes priority. Dress this person in the costume described above and apply any character makeup/styling notes, but DO NOT alter their fundamental physical appearance.${talentNotes}
-`;
   }
 
-  // Build identity section
   const identitySection = `[CHARACTER IDENTITY]:
 Name: ${entry.name}
 ${[ageStr, genderLine, ethnicityLine].filter(Boolean).join('\n')}
@@ -420,81 +241,4 @@ ${stylingSection}`.trim();
   );
 
   return { prompt, referenceUrls };
-};
-
-/**
- * Build a detailed talent sheet prompt that uses reference images as the source of truth.
- * Uses the shared 4-panel horizontal layout from buildBaseSheetPrompt.
- */
-export const buildLibraryTalentSheetPrompt = (
-  name: string,
-  description?: string,
-  hasReferenceImages?: boolean
-): string => {
-  const descSection = description ? `\nUser Description:\n${description}` : '';
-
-  const referenceInstruction = hasReferenceImages
-    ? `IMPORTANT: Use the provided reference images as the definitive source for this person's appearance.
-Match all physical details exactly: age, build, skin tone, hair color/style, facial features, and clothing.
-`
-    : `IMPORTANT: Generate a consistent character based on the name and description provided.
-Create a realistic, detailed appearance that matches the description.
-`;
-
-  const appearanceSection = hasReferenceImages
-    ? `DERIVE ALL DETAILS FROM THE REFERENCE IMAGES PROVIDED. Match the person's exact appearance.`
-    : `Use the name and description to create a detailed, consistent appearance. Ensure all panels show the same person with matching physical features, clothing, and distinguishing characteristics.`;
-
-  const consistencyNote = hasReferenceImages
-    ? `\nMaintain absolute consistency with reference images across all panels.`
-    : `\nMaintain absolute consistency across all panels - the same person must appear in every view with matching features.`;
-
-  const identitySection = `[PERSON IDENTITY]:
-Name: ${name}
-${descSection}
-
-Physical Appearance, Attire, and Distinguishing Features:
-${appearanceSection}
-${consistencyNote}`.trim();
-
-  return buildBaseSheetPrompt(identitySection, referenceInstruction);
-};
-
-/**
- * Build a prompt for generating a talent headshot/avatar.
- * Used as the talent's profile image.
- */
-export const buildTalentHeadshotPrompt = (
-  name: string,
-  description?: string,
-  hasReferenceImages?: boolean
-): string => {
-  const descSection = description ? `\nPerson notes: ${description}` : '';
-  const referenceSection = hasReferenceImages
-    ? `IMPORTANT: Use the provided reference images as the definitive source for this person's appearance.
-Match all physical details exactly: face shape, skin tone, hair color/style, eye color, and any distinguishing features.`
-    : `IMPORTANT: Generate a realistic portrait based on the name and description provided.
-Create a detailed, consistent appearance that matches the description.`;
-
-  const consistencyNote = hasReferenceImages
-    ? `Maintain absolute consistency with reference images.`
-    : `Ensure the portrait matches the description and is consistent with the character reference sheet.`;
-
-  return `Professional headshot portrait of ${name}, photorealistic, studio lighting.
-
-${referenceSection}
-
-Requirements:
-- Head and shoulders portrait, centered composition
-- Neutral to friendly expression
-- Direct eye contact with camera
-- Soft, even professional studio lighting
-- Clean, solid neutral background
-- Sharp focus on face and eyes
-- High detail on facial features
-${descSection}
-
-Style: Professional portrait photography, headshot for actor/model portfolio.
-Aspect ratio: Square 1:1 format.
-${consistencyNote}`;
 };

@@ -25,8 +25,6 @@ import {
   locations,
   sequences,
   styles,
-  talent,
-  talentSheets,
   teams,
   user,
 } from '@/platform/server/db/schema';
@@ -36,7 +34,6 @@ import type { Database } from '@/platform/server/db/client';
 import {
   characterSheetInputHash,
   locationSheetInputHash,
-  talentSheetInputHash,
 } from '@/shots/input-hash';
 import { createCharacterSheetVariantsMethods } from './character-sheet-variants';
 import { createCharacterLooksMethods } from './character-looks';
@@ -44,7 +41,6 @@ import { createCharactersMethods } from './characters';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { createLocationsMethods } from './locations';
 import { createSequencesMethods } from '@/sequences/server/db/sequences';
-import { createTalentMethods } from './talent';
 
 let client: Client;
 let db: Database;
@@ -54,7 +50,6 @@ let sequenceId = '';
 let characterId = '';
 let locationId = '';
 let otherStyleId = '';
-let talentId = '';
 
 const HASH = characterSheetInputHash('a'.repeat(64));
 const LOC_HASH = locationSheetInputHash('b'.repeat(64));
@@ -74,10 +69,8 @@ beforeEach(async () => {
   for (const table of [
     characterSheetVariants,
     locationSheetVariants,
-    talentSheets,
     characters,
     locations,
-    talent,
     sequences,
     styles,
     teams,
@@ -118,13 +111,8 @@ beforeEach(async () => {
       config: { ...style.config, mood: 'tense' },
     })
     .returning();
-  const [tal] = await db
-    .insert(talent)
-    .values({ teamId, name: 'Ada' })
-    .returning();
-  if (!otherStyle || !tal) throw new Error('setup');
+  if (!otherStyle) throw new Error('setup');
   otherStyleId = otherStyle.id;
-  talentId = tal.id;
   const ch = await createCharactersMethods(db, teamId).create(
     {
       sequenceId,
@@ -134,7 +122,6 @@ beforeEach(async () => {
       physicalDescription: 'tall',
       standardClothing: 'grey suit',
       sheetStatus: 'pending',
-      talentId,
     },
     { source: 'analysis', createdBy: null }
   );
@@ -152,13 +139,6 @@ beforeEach(async () => {
 });
 
 const chars = () => createCharactersMethods(db, teamId);
-const castWith = (to: string | null) =>
-  chars().updateBible(
-    sequenceId,
-    characterId,
-    {},
-    { actorId: null, source: 'recast', talentId: to }
-  );
 const looks = () => createCharacterLooksMethods(db, teamId);
 const charVersions = () => createCharacterSheetVariantsMethods(db, teamId);
 const locs = () => createLocationsMethods(db, teamId);
@@ -169,8 +149,6 @@ const changeStyle = () =>
     id: sequenceId,
     styleId: otherStyleId,
   });
-const talents = () => createTalentMethods(db, teamId, userId);
-
 async function character() {
   const row = await chars().getById(sequenceId, characterId);
   if (!row) throw new Error('character gone');
@@ -185,7 +163,6 @@ async function snapshotOf(lookId: string) {
   return {
     lookVersionId: look.lookVersionId,
     bibleVersionId: row.selectedBibleVersionId,
-    talentId: row.talentId,
   };
 }
 
@@ -371,21 +348,14 @@ describe('character sheet claims', () => {
     expect(await landCharacter(c)).toBe('promoted');
   });
 
-  it('is revoked by a recast and by a change to the cast talent', async () => {
-    let versionId = await claim();
-    await castWith(talentId);
-    expect(await landCharacter(versionId)).toBe('parked');
-
-    versionId = await claim();
-    await talents().sheets.create({
-      talentId,
-      name: 'New look',
-      imageUrl: '/r2/look.png',
-    });
-    expect(await landCharacter(versionId)).toBe('parked');
-
-    versionId = await claim();
-    await talents().update(talentId, { description: 'older now' });
+  it('is revoked by a bible edit', async () => {
+    const versionId = await claim();
+    await chars().updateBible(
+      sequenceId,
+      characterId,
+      { physicalDescription: 'short' },
+      { source: 'edit', actorId: userId }
+    );
     expect(await landCharacter(versionId)).toBe('parked');
   });
 
@@ -592,11 +562,16 @@ describe('look sheet claims (#2015)', () => {
       ).held
     ).toBe(false);
 
-    const recast = await snapshotOf(characterId);
-    await castWith(null);
+    const edited = await snapshotOf(characterId);
+    await chars().updateBible(
+      sequenceId,
+      characterId,
+      { personality: 'quiet' },
+      { source: 'edit', actorId: userId }
+    );
     expect(
       (
-        await looks().claimSheet(characterId, recast, {
+        await looks().claimSheet(characterId, edited, {
           markGenerating: true,
           activity: null,
         })
@@ -1053,82 +1028,6 @@ describe('location claims', () => {
       .from(sequenceEvents)
       .where(eq(sequenceEvents.kind, 'sheet.started'));
     expect(startedAfter).toHaveLength(1);
-  });
-});
-
-describe('library talent claims', () => {
-  const NO_INPUTS = { description: null, referenceImageUrls: [] };
-  const claimTalent = async () => {
-    const sheetId = generateId();
-    await talents().claimSheet(talentId, sheetId, NO_INPUTS);
-    return sheetId;
-  };
-  const T_HASH = talentSheetInputHash('e'.repeat(64));
-  const land = (sheetId: string, source: 'ai_generated' | 'manual_upload') =>
-    talents().landSheet({
-      sheetId,
-      talentId,
-      name: 'Sheet',
-      imageUrl: `/r2/${sheetId}.png`,
-      imagePath: `${sheetId}.png`,
-      metadata: undefined,
-      source,
-      inputHash: T_HASH,
-    });
-
-  it('lands a held claim, makes a first upload the default, and revokes cast sheets', async () => {
-    const castClaim = await claim();
-    const sheetId = await claimTalent();
-
-    const { sheet, landed } = await land(sheetId, 'manual_upload');
-    expect(landed).toBe(true);
-    expect(sheet.divergedAt).toBeNull();
-    expect(sheet.isDefault).toBe(true);
-    expect((await character()).pendingPromoteSheetVersionId).toBeNull();
-    expect(await landCharacter(castClaim)).toBe('parked');
-
-    // Retry of the same step: same row, still landed.
-    expect((await land(sheetId, 'manual_upload')).landed).toBe(true);
-  });
-
-  it('parks after a description edit, never as default', async () => {
-    const sheetId = await claimTalent();
-    await talents().update(talentId, { description: 'new' });
-    const { sheet, landed } = await land(sheetId, 'manual_upload');
-    expect(landed).toBe(false);
-    expect(sheet.divergedAt).not.toBeNull();
-    expect(sheet.isDefault).toBe(false);
-  });
-
-  it('refuses the claim when an input moved after the snapshot', async () => {
-    const media = await talents().media.create({
-      talentId,
-      type: 'image',
-      url: '/r2/photo.png',
-      path: 'photo.png',
-    });
-    const inputs = { description: null, referenceImageUrls: [media.url] };
-    expect(await talents().claimSheet(talentId, generateId(), inputs)).toBe(
-      true
-    );
-
-    await talents().update(talentId, { description: 'edited' });
-    expect(await talents().claimSheet(talentId, generateId(), inputs)).toBe(
-      false
-    );
-
-    const edited = { ...inputs, description: 'edited' };
-    await talents().media.delete(media.id);
-    expect(await talents().claimSheet(talentId, generateId(), edited)).toBe(
-      false
-    );
-  });
-
-  it('parks an older run once a newer run claims', async () => {
-    const older = await claimTalent();
-    const newer = await claimTalent();
-    expect((await land(older, 'ai_generated')).landed).toBe(false);
-    expect((await land(newer, 'ai_generated')).landed).toBe(true);
   });
 });
 

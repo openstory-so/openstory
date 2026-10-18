@@ -11,7 +11,6 @@ import {
   locationSheetStaleness,
   lookSheetStaleness,
 } from '@/cast/server/production-staleness';
-import { castTalentFields } from '@/cast/server/sheets/character-sheet-trigger';
 import { sequenceStyleFromRow } from '@/cast/server/sheets/sequence-style';
 import {
   computeStyleConfigHash,
@@ -281,7 +280,7 @@ async function loadPlanInput(
   }
 
   // Every sheet's verdict from rows read once per sequence (#2082): the
-  // cast talent, the live sheet versions, the location photos and the style.
+  // live sheet versions, the location photos and the style.
   // The compare is the detail page's (`lookSheetStaleness`,
   // `locationSheetStaleness`), which reads nothing — except a character
   // with no default look row yet, where `requireCharacterLook` backfills
@@ -311,10 +310,7 @@ async function loadPlanInput(
   const unique = (ids: (string | null)[]) => [
     ...new Set(ids.filter((id): id is string => id !== null)),
   ];
-  const [talents, sheetVersions, locationVersions, photos] = await Promise.all([
-    scopedDb.talent.getWithSheetsByIds(
-      unique(wornLooks.map(({ owner }) => owner.talentId))
-    ),
+  const [sheetVersions, locationVersions, photos] = await Promise.all([
     scopedDb.characterSheetVariants.getByIds(
       unique(
         wornLooks.map(
@@ -327,7 +323,6 @@ async function loadPlanInput(
     ),
     scopedDb.locations.listPhotosByLocationIds(locations.map((l) => l.id)),
   ]);
-  const talentById = new Map(talents.map((t) => [t.id, t]));
   const sheetVersionById = new Map(sheetVersions.map((v) => [v.id, v]));
   const locationVersionById = new Map(locationVersions.map((v) => [v.id, v]));
   // Parsed once, inside the first verdict's read: a snapshot that fails to
@@ -360,9 +355,6 @@ async function loadPlanInput(
                 lookId: look ? look.id : owner.lookId,
                 styleConfigHash: (await sequenceStyle()).hash,
                 rows: {
-                  cast: castTalentFields(
-                    owner.talentId ? talentById.get(owner.talentId) : undefined
-                  ),
                   liveVersion: worn.selectedSheetVersionId
                     ? (sheetVersionById.get(worn.selectedSheetVersionId) ??
                       null)

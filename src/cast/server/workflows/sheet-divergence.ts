@@ -5,35 +5,16 @@
  * kickoff, the user picking a sheet) parks its result as a divergent variant
  * instead of landing it. Character and sequence-location sheets park inside
  * their land batch (`src/cast/server/db/sheet-claims.ts`), so the helpers
- * for them only notify the UI via `stale:detected`. Talent results live
- * outside the versions table, so their helper still inserts the divergent
- * row, then notifies.
+ * for them only notify the UI via `stale:detected`.
  */
 
-import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { SheetLanding } from '@/cast/server/db/sheet-claims';
 import type { getLogger } from '@/platform/logger';
 import type {
   CharacterSheetInputHash,
   LocationSheetInputHash,
-  TalentSheetInputHash,
 } from '@/shots/input-hash';
-// `ScopedDb` is imported for type extraction only; the helpers themselves
-// take a narrower `SheetDivergenceScopedDb` shape (defined below).
-import { getGenerationChannel, getTalentChannel } from '@/platform/realtime';
-
-// Subset of ScopedDb used by the helpers below. Defined structurally so the
-// full ScopedDb is assignable (production passes it directly) and tests can
-// build a minimal mock without `as any`. The return type is narrowed to
-// `{ id: string }` because that's all these helpers consume from the row.
-type TalInsertArgs = Parameters<
-  ScopedDb['talentSheetVariants']['insertDivergent']
->[0];
-export type SheetDivergenceScopedDb = {
-  talentSheetVariants: {
-    insertDivergent: (values: TalInsertArgs) => Promise<{ id: string }>;
-  };
-};
+import { getGenerationChannel } from '@/platform/realtime';
 
 /** A sheet run parked its result: tell the UI that started it. */
 export async function reportParkedSheet(args: {
@@ -86,51 +67,4 @@ export async function landSheetRun(
   });
   await reportParkedSheet(report);
   return { kind: 'divergent', versionId: report.versionId };
-}
-
-export type SaveDivergentTalentSheetArgs = {
-  scopedDb: SheetDivergenceScopedDb;
-  talentSheetId: string;
-  /**
-   * Parent talent id — used for realtime channel routing. Required: the
-   * talent channel is the only place the talent UI subscribes for stale
-   * events. Passing nothing here would silently drop the notification.
-   */
-  talentId: string;
-  model: string;
-  url: string;
-  storagePath?: string;
-  workflowRunId?: string;
-  snapshotInputHash: TalentSheetInputHash;
-};
-
-export async function saveDivergentTalentSheet({
-  scopedDb,
-  talentSheetId,
-  talentId,
-  model,
-  url,
-  storagePath,
-  workflowRunId,
-  snapshotInputHash,
-}: SaveDivergentTalentSheetArgs): Promise<string> {
-  const variant = await scopedDb.talentSheetVariants.insertDivergent({
-    talentSheetId,
-    model,
-    url,
-    storagePath: storagePath ?? null,
-    workflowRunId: workflowRunId ?? null,
-    status: 'completed',
-    generatedAt: new Date(),
-    inputHash: snapshotInputHash,
-    divergedAt: new Date(),
-  });
-  await getTalentChannel(talentId).emit('generation.stale:detected', {
-    entityType: 'talent',
-    entityId: talentSheetId,
-    artifact: 'sheet',
-    snapshotInputHash,
-    divergedVariantId: variant.id,
-  });
-  return variant.id;
 }

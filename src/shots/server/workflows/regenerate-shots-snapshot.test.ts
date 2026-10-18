@@ -77,7 +77,6 @@ function makeCharacter(
     teamId: 'team-1',
     selectedBibleVersionId: 'bible-1',
     pendingPromoteSheetVersionId: null,
-    talentId: null,
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,

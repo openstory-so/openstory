@@ -66,9 +66,9 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
   // result will carry. The row is appended at completion (no pending row),
   // so a claim miss parks it as divergent in the same batch. A character's
   // sheets belong to its looks (#2015): the pointer and the claim are on
-  // `character_looks`, and the claim is taken only while the look version,
-  // the bible version and the talent are still the ones the run was
-  // snapshotted from (#1863).
+  // `character_looks`, and the claim is taken only while the look version
+  // and the bible version are still the ones the run was snapshotted from
+  // (#1863).
   'character sheets': {
     tables: ['character_sheet_variants', 'character_looks'],
     claim: 'characterLooks.claimSheet',
@@ -86,13 +86,6 @@ const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
     clear: 'locations.failReferenceClaim',
     promote: 'locationSheetVariants.promoteIfPending',
     userSelect: 'locationSheetVariants.select',
-  },
-  'talent sheets': {
-    tables: ['talent_sheets', 'talent_sheet_variants'],
-    claim: 'talent.claimSheet',
-    clear: 'talent.clearSheetClaimIf',
-    promote: 'talent.landSheet',
-    userSelect: 'talentSheetVariants.promoteAtomically',
   },
   // Pointer claim, taken together with the generating husk (#1715).
   voices: {

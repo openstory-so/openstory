@@ -3,7 +3,7 @@
  * Record e2e fixtures, then vendor provider media URLs onto durable R2.
  *
  * Extra args are forwarded to Playwright so
- * `bun test:e2e:record e2e/tests/talent.spec.ts` still works. A trailing
+ * `bun test:e2e:record e2e/tests/characters.spec.ts` still works. A trailing
  * `&& bun scripts/mirror-…` in package.json would steal those args.
  */
 

@@ -1,4 +1,3 @@
-import { reusesTalentSheet } from '@/cast/server/talent/reuse-talent-sheet';
 /**
  * The references wave of a plan run (#1818): the sheets, element references
  * and voices a continue owes, each as the payload its per-entity workflow
@@ -118,26 +117,11 @@ export async function buildPlanReferences(args: {
     owedLooks
       .filter((owed) => !afterDefault(owed))
       .map(async ({ character, dressed }) => {
-        const payload = await buildRegenerateCharacterSheetPayload({
+        return buildRegenerateCharacterSheetPayload({
           ...context,
           character,
           lookId: dressed.lookId,
         });
-        // A first sheet of the default look can copy the matched talent.
-        // Any other look is drawn from the default look's sheet, never
-        // from the talent image. An existing sheet's regeneration must
-        // apply the edited look instead.
-        if (
-          dressed.lookId === character.id &&
-          !dressed.selectedSheetVersionId
-        ) {
-          payload.reuseTalentSheet = reusesTalentSheet(dressed, {
-            sheetImageUrl: payload.referenceImageUrl,
-            sheetMetadata: payload.talentMetadata,
-            talentDescription: payload.castTalentDescription,
-          });
-        }
-        return payload;
       })
   );
   const lookSheetsAfterDefault = await Promise.all(
@@ -216,9 +200,7 @@ export async function buildPlanReferences(args: {
         sequence.imageModel,
         DEFAULT_IMAGE_MODEL
       ),
-      characterSheets:
-        characterSheets.filter((sheet) => !sheet.reuseTalentSheet).length +
-        lookSheetsAfterDefault.length,
+      characterSheets: characterSheets.length + lookSheetsAfterDefault.length,
       locationSheets: locationSheets.length,
       elementSheets: owedElements.length,
       pricing: await getEffectiveFalPricing(),

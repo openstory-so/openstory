@@ -34,8 +34,8 @@ describe('last page', () => {
   });
 
   it('keeps path and search, and drops the hash', () => {
-    rememberLastPage('/characters?tab=talent#sheet');
-    expect(loginRedirect(undefined, true)).toBe('/characters?tab=talent');
+    rememberLastPage('/characters?q=ada#sheet');
+    expect(loginRedirect(undefined, true)).toBe('/characters?q=ada');
   });
 
   it('lets an explicit redirect win, including home', () => {

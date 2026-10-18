@@ -203,11 +203,6 @@
       "class_name": "LocationSheetWorkflow",
     },
     {
-      "name": "library-talent-sheet-workflow",
-      "binding": "LIBRARY_TALENT_SHEET_WORKFLOW",
-      "class_name": "LibraryTalentSheetWorkflow",
-    },
-    {
       "name": "shot-variant-workflow",
       "binding": "SHOT_VARIANT_WORKFLOW",
       "class_name": "ShotVariantWorkflow",
@@ -228,11 +223,6 @@
       "class_name": "MusicPromptWorkflow",
     },
     {
-      "name": "recast-character-workflow",
-      "binding": "RECAST_CHARACTER_WORKFLOW",
-      "class_name": "RecastCharacterWorkflow",
-    },
-    {
       "name": "location-matching-workflow",
       "binding": "LOCATION_MATCHING_WORKFLOW",
       "class_name": "LocationMatchingWorkflow",
@@ -241,11 +231,6 @@
       "name": "shot-images-workflow",
       "binding": "SHOT_IMAGES_WORKFLOW",
       "class_name": "ShotImagesWorkflow",
-    },
-    {
-      "name": "talent-matching-workflow",
-      "binding": "TALENT_MATCHING_WORKFLOW",
-      "class_name": "TalentMatchingWorkflow",
     },
     {
       "name": "character-bible-workflow",
@@ -499,11 +484,6 @@
           "class_name": "LocationSheetWorkflow",
         },
         {
-          "name": "library-talent-sheet-workflow",
-          "binding": "LIBRARY_TALENT_SHEET_WORKFLOW",
-          "class_name": "LibraryTalentSheetWorkflow",
-        },
-        {
           "name": "shot-variant-workflow",
           "binding": "SHOT_VARIANT_WORKFLOW",
           "class_name": "ShotVariantWorkflow",
@@ -524,11 +504,6 @@
           "class_name": "MusicPromptWorkflow",
         },
         {
-          "name": "recast-character-workflow",
-          "binding": "RECAST_CHARACTER_WORKFLOW",
-          "class_name": "RecastCharacterWorkflow",
-        },
-        {
           "name": "location-matching-workflow",
           "binding": "LOCATION_MATCHING_WORKFLOW",
           "class_name": "LocationMatchingWorkflow",
@@ -537,11 +512,6 @@
           "name": "shot-images-workflow",
           "binding": "SHOT_IMAGES_WORKFLOW",
           "class_name": "ShotImagesWorkflow",
-        },
-        {
-          "name": "talent-matching-workflow",
-          "binding": "TALENT_MATCHING_WORKFLOW",
-          "class_name": "TalentMatchingWorkflow",
         },
         {
           "name": "character-bible-workflow",
@@ -810,11 +780,6 @@
           "class_name": "LocationSheetWorkflow",
         },
         {
-          "name": "library-talent-sheet-workflow",
-          "binding": "LIBRARY_TALENT_SHEET_WORKFLOW",
-          "class_name": "LibraryTalentSheetWorkflow",
-        },
-        {
           "name": "shot-variant-workflow",
           "binding": "SHOT_VARIANT_WORKFLOW",
           "class_name": "ShotVariantWorkflow",
@@ -835,11 +800,6 @@
           "class_name": "MusicPromptWorkflow",
         },
         {
-          "name": "recast-character-workflow",
-          "binding": "RECAST_CHARACTER_WORKFLOW",
-          "class_name": "RecastCharacterWorkflow",
-        },
-        {
           "name": "location-matching-workflow",
           "binding": "LOCATION_MATCHING_WORKFLOW",
           "class_name": "LocationMatchingWorkflow",
@@ -848,11 +808,6 @@
           "name": "shot-images-workflow",
           "binding": "SHOT_IMAGES_WORKFLOW",
           "class_name": "ShotImagesWorkflow",
-        },
-        {
-          "name": "talent-matching-workflow",
-          "binding": "TALENT_MATCHING_WORKFLOW",
-          "class_name": "TalentMatchingWorkflow",
         },
         {
           "name": "character-bible-workflow",

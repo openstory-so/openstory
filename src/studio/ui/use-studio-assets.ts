@@ -8,6 +8,7 @@ import {
   getStudioEditHistoryFn,
   listStudioAssetsFn,
   listStudioUploadsFn,
+  presignStudioUploadFn,
   setStudioAssetFavoriteFn,
   renderStudioAssetAtQualityFn,
 } from '@/studio/studio-assets.fn';
@@ -26,6 +27,7 @@ import {
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { isInsufficientCreditsError } from '@/platform/errors';
+import { putToR2, snapshotFile } from '@/ui/upload';
 import { toast } from 'sonner';
 
 type StudioAssetFilters = {
@@ -233,6 +235,28 @@ export function useDraftStudioPrompt() {
 export const studioUploadKeys = {
   all: ['studio-uploads'] as const,
 };
+
+/** Upload a composer reference into the team's upload prefix. */
+export function useUploadStudioMedia() {
+  return useMutation({
+    mutationFn: async (data: {
+      file: File;
+      onProgress?: (percent: number) => void;
+    }) => {
+      const file = await snapshotFile(data.file);
+      const presign = await presignStudioUploadFn({
+        data: { filename: file.name },
+      });
+      await putToR2(
+        presign.uploadUrl,
+        file,
+        presign.contentType,
+        data.onProgress
+      );
+      return { url: presign.publicUrl, path: presign.path };
+    },
+  });
+}
 
 /** The team's past composer uploads (the picker's Uploads tab). */
 export function useStudioUploads() {

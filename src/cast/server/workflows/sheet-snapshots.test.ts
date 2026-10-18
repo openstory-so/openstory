@@ -13,7 +13,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
   CharacterSheetWorkflowInput,
-  LibraryTalentSheetWorkflowInput,
   LocationSheetWorkflowInput,
 } from '@/platform/server/workflow/types';
 import type { SheetPayload } from './sheet-snapshots';
@@ -27,7 +26,6 @@ import {
   computeCharacterSheetHashFromDto,
   queuedLegacyStyling,
   finishCharacterSheetPayload,
-  computeLibraryTalentSheetHashFromDto,
   computeLocationSheetHashFromDto,
   computeStyleConfigHash,
   uploadedCharacterSheetHashMatchesStored,
@@ -62,7 +60,6 @@ describe('character-sheet hash', () => {
     lookVersionId: 'c1',
     lookStyling: null,
     face: null,
-    talentId: null,
     bibleVersionId: null,
     characterName: 'Jack',
     characterMetadata: {
@@ -83,8 +80,6 @@ describe('character-sheet hash', () => {
       consistencyTag: 'jack',
     },
     imageModel: 'nano_banana_2',
-    talentSheetInputHash: 'talent-v1',
-    castTalentDescription: null,
   };
 
   it('treats missing imageModel as DEFAULT_IMAGE_MODEL on both paths', async () => {
@@ -470,25 +465,5 @@ describe('location-sheet hash', () => {
         )
       ).toBe(false);
     });
-  });
-});
-
-describe('library-talent-sheet hash', () => {
-  const baseInput: SheetPayload<LibraryTalentSheetWorkflowInput> = {
-    userId: 'u1',
-    teamId: 't1',
-    talentId: 'tal1',
-    talentName: 'Alice',
-    talentDescription: 'Lead actress',
-    referenceImageUrls: ['https://r2/a.png', 'https://r2/b.png'],
-    imageModel: 'nano_banana_2',
-  };
-
-  it('hashes are insensitive to inlined URL order (FromDto sorts)', async () => {
-    const inputA = { ...baseInput, referenceImageUrls: ['x', 'y', 'z'] };
-    const inputB = { ...baseInput, referenceImageUrls: ['z', 'x', 'y'] };
-    const a = await computeLibraryTalentSheetHashFromDto(inputA);
-    const b = await computeLibraryTalentSheetHashFromDto(inputB);
-    expect(a).toBe(b);
   });
 });

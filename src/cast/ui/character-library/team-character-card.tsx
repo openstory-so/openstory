@@ -1,5 +1,5 @@
 import type { TeamCharacter } from '@/cast/server/db/characters';
-import { talentSquareImageClassName } from '@/cast/talent-preview';
+import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Card } from '@/ui/shadcn/card';
 import { Link } from '@tanstack/react-router';
@@ -15,8 +15,8 @@ function castLine(sequences: TeamCharacter['sequences']): string {
 }
 
 /**
- * One of the team's characters (#2017), laid out as a talent card is. The
- * picture is its default look's sheet.
+ * One of the team's characters (#2017). The picture is its default look's
+ * sheet.
  */
 export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
   character,
@@ -41,7 +41,7 @@ export const TeamCharacterCard: React.FC<{ character: TeamCharacter }> = ({
               // The whole four-panel sheet: one panel is a quarter of it.
               width={portraitUrl ? 240 : 960}
               height={240}
-              className={talentSquareImageClassName(!portraitUrl)}
+              className={sheetSquareImageClassName(!portraitUrl)}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center">

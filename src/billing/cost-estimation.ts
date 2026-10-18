@@ -460,8 +460,7 @@ export function estimateStoryboardRenderCost(
  * Two callers with very different information. Pre-flight only has the script,
  * so it passes the `estimate*SheetCount(sceneCount)` heuristics. The in-run
  * gate runs after casting, where the counts are FACTS — one sheet per bible
- * entry, minus the characters whose matched talent sheet is reused (a storage
- * copy, no generation) — so it passes those instead. Sheets are always square
+ * entry — so it passes those instead. Sheets are always square
  * 16:9 regardless of the sequence's ratio.
  */
 export function estimateReferenceSheetCost(opts: {
@@ -496,10 +495,9 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
   const { pricing } = opts;
 
   // The script stage always runs scene-split's three calls: scenes, bibles,
-  // shot-list (which also carries the dialogue, #1585). Talent and location
-  // matching only call the LLM when the user pre-cast talent or has library
-  // locations, and those outputs are short, so three stand-ins cover the
-  // common case.
+  // shot-list (which also carries the dialogue, #1585). Location matching
+  // calls the LLM when the team has library locations, and that output is
+  // short, so three stand-ins cover the common case.
   const llmCalls = estimateRunsStage(opts, 'script') ? 3 : 0;
   const llmCost = estimateLLMCost(llmCalls);
 
@@ -520,8 +518,8 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
         )
       : micros(0);
   // Dialogue clips (#1554 / #1629) run in the Dialogue stage, just before
-  // motion. TTS still runs when a speaker already has a voiceId (talent
-  // copy), not only when Voices is on — so the stand-in is on the
+  // motion. TTS still runs when a speaker already has a voice, not only when
+  // Voices is on — so the stand-in is on the
   // dialogue slice, not gated on generateVoices.
   const ttsCost = estimateRunsStage(opts, 'dialogue')
     ? estimateTtsCost(sceneCount * TYPICAL_DIALOGUE_CHARS_PER_SHOT)

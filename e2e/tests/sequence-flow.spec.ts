@@ -2,61 +2,31 @@
  * Sequence Creation Flow E2E Tests
  *
  * Tests the complete flow:
- * 1. Create sequence with suggested talent
+ * 1. Fill a new sequence (style + script)
  * 2. Generate and select variants
- * 3. Recast character with different talent
  */
 
 import { expect } from 'playwright/test';
 import { test as testWithUser } from '../fixtures/auth.fixture';
 import { setupMockRoutes } from '../mocks/handlers';
-import {
-  fillScriptEditor,
-  openComposerReference,
-} from '../fixtures/test-utils';
-import {
-  createTestTalentSet,
-  cleanupTalentById,
-  type TestTalent,
-} from '../fixtures/talent.fixture';
+import { fillScriptEditor } from '../fixtures/test-utils';
 import {
   createTestSequence,
   createTestShot,
-  createTestCharacter,
   cleanupSequenceById,
   getTestShot,
-  getTestCharacter,
   type TestSequence,
   type TestShot,
-  type TestCharacter,
 } from '../fixtures/sequence.fixture';
 
 // Each test creates its own data with unique names for parallel execution
 testWithUser.describe('Sequence Creation Flow', () => {
-  let testTalents: TestTalent[] = [];
-
-  testWithUser.beforeEach(async ({ page, testUser }) => {
-    // Setup mock routes for AI/workflow calls
+  testWithUser.beforeEach(async ({ page }) => {
     await setupMockRoutes(page);
-
-    // Create test talent for the test user's team with unique names
-    const suffix = crypto.randomUUID().slice(0, 8);
-    testTalents = await createTestTalentSet(testUser.teamId, [
-      `E2E Test Actor One ${suffix}`,
-      `E2E Test Actor Two ${suffix}`,
-    ]);
-  });
-
-  testWithUser.afterEach(async () => {
-    // Cleanup test data - only the specific talents we created
-    for (const t of testTalents) {
-      await cleanupTalentById(t.id);
-    }
-    testTalents = [];
   });
 
   testWithUser(
-    'can create sequence with suggested talent',
+    'can fill a new sequence once a style and script are set',
     async ({ page }) => {
       // Navigate to new sequence page
       await page.goto('/sequences/new');
@@ -104,38 +74,6 @@ Here's your caffeine fix. How's it going?
       await expect(page.getByRole('button', { name: /Generate/i })).toBeEnabled(
         { timeout: 10000 }
       );
-
-      await openComposerReference(page, 'Talent');
-
-      // Wait for talent dialog to open - the dialog is rendered via a portal
-      // Use a longer timeout as it may need to fetch talent data
-      const talentDialog = page.getByRole('dialog');
-      await expect(talentDialog).toBeVisible({ timeout: 10000 });
-      await expect(
-        talentDialog.getByRole('tab', { name: 'Talent' })
-      ).toHaveAttribute('aria-selected', 'true');
-
-      // Verify our test talents appear in the dialog (use variable names)
-      const firstTalent = testTalents[0];
-      const secondTalent = testTalents[1];
-      if (!firstTalent || !secondTalent) {
-        throw new Error('test setup: expected two test talents');
-      }
-      await expect(page.getByText(firstTalent.name)).toBeVisible();
-      await expect(page.getByText(secondTalent.name)).toBeVisible();
-
-      // Select first talent by clicking on it
-      await page.getByText(firstTalent.name).click();
-
-      // Submit dialog (button text reflects selection count)
-      await talentDialog.getByRole('button', { name: /^Cast \d+$/i }).click();
-      await expect(talentDialog).not.toBeVisible();
-
-      // Verify submit button is ready (may have different text based on state)
-      const submitButton = page.getByRole('button', {
-        name: /Generate/i,
-      });
-      await expect(submitButton).toBeVisible();
     }
   );
 });
@@ -332,154 +270,6 @@ testWithUser.describe('Variant Selection', () => {
     await expect(page.getByText('Select this variant?')).not.toBeVisible();
     await expect(page.getByText('Failed to select variant')).not.toBeVisible();
   });
-});
-
-// Each test creates its own data with unique names for parallel execution
-testWithUser.describe('Character Recast', () => {
-  let testTalents: TestTalent[] = [];
-  let testSequence: TestSequence;
-  let testCharacter: TestCharacter;
-
-  testWithUser.beforeEach(async ({ page, testUser }) => {
-    await setupMockRoutes(page);
-
-    // Create test talent with unique names
-    const suffix = crypto.randomUUID().slice(0, 8);
-    testTalents = await createTestTalentSet(testUser.teamId, [
-      `E2E Current Actor ${suffix}`,
-      `E2E New Actor ${suffix}`,
-    ]);
-
-    const firstTalent = testTalents[0];
-    if (!firstTalent) {
-      throw new Error('test setup: expected at least one test talent');
-    }
-
-    // Create pre-seeded sequence with character (unique name)
-    testSequence = await createTestSequence(
-      testUser.teamId,
-      testUser.id,
-      `E2E Recast Test Sequence ${suffix}`
-    );
-
-    // Create a character linked to the first talent
-    testCharacter = await createTestCharacter(
-      testSequence.id,
-      'char_001',
-      'John',
-      firstTalent.id,
-      {
-        // Use real placeholder image
-        sheetImageUrl:
-          'http://localhost:3020/api/test/image?w=1920&h=1080&label=character',
-        sheetStatus: 'completed',
-      }
-    );
-  });
-
-  testWithUser.afterEach(async () => {
-    // Cleanup specific entities we created
-    for (const t of testTalents) {
-      await cleanupTalentById(t.id);
-    }
-    await cleanupSequenceById(testSequence.id, testSequence.styleId);
-    testTalents = [];
-  });
-
-  testWithUser(
-    'can recast character with different talent',
-    async ({ page }) => {
-      const firstTalent = testTalents[0];
-      const secondTalent = testTalents[1];
-      if (!firstTalent || !secondTalent) {
-        throw new Error('test setup: expected two test talents');
-      }
-
-      // Verify initial state - character is linked to first talent
-      const characterBefore = await getTestCharacter(testCharacter.id);
-      expect(characterBefore?.talentId).toBe(firstTalent.id);
-
-      // Navigate to the character detail page
-      await page.goto(`/sequences/${testSequence.id}/cast/${testCharacter.id}`);
-
-      // Wait for character detail to load
-      await page.waitForLoadState('domcontentloaded');
-      await expect(page.locator('h1').filter({ hasText: 'John' })).toBeVisible({
-        timeout: 15000,
-      });
-
-      // Click Recast button. `exact` so the rename-sequence control
-      // (aria-label includes the sequence title, which contains "Recast")
-      // is not a strict-mode match.
-      const recastButton = page.getByRole('button', {
-        name: 'Recast',
-        exact: true,
-      });
-      await expect(recastButton).toBeVisible();
-      await recastButton.click();
-
-      // Talent picker dialog should open
-      const talentDialog = page.getByRole('dialog');
-      await expect(talentDialog).toBeVisible();
-      await expect(talentDialog.getByText('Select Talent')).toBeVisible();
-
-      // Select the second talent (use variable name)
-      await page.getByText(secondTalent.name).click();
-
-      // Recast confirmation dialog should appear (use regex with variable)
-      await expect(
-        page.getByText(new RegExp(`Recast ${secondTalent.name} as John`, 'i'))
-      ).toBeVisible();
-
-      // Confirm the recast
-      await page.getByRole('button', { name: 'Recast', exact: true }).click();
-
-      // The confirmation dialog should close (loading state may briefly appear)
-      // With mocks, the mutation should complete quickly
-      await expect(
-        page.getByText(new RegExp(`Recast ${secondTalent.name} as John`, 'i'))
-      ).not.toBeVisible({ timeout: 10000 });
-
-      // Verify the database was updated - character now linked to second talent
-      await expect
-        .poll(
-          async () => {
-            const characterAfter = await getTestCharacter(testCharacter.id);
-            return characterAfter?.talentId;
-          },
-          { timeout: 20_000 }
-        )
-        .toBe(secondTalent.id);
-    }
-  );
-});
-
-// Skip empty state test in parallel mode - it interferes with other tests
-// by cleaning up all talent for the shared team. This test works in serial mode.
-// TODO: Consider running this test with a dedicated user/team for isolation
-testWithUser.describe.skip('Empty States', () => {
-  testWithUser(
-    'shows empty state when no talent in library',
-    async ({ page }) => {
-      await setupMockRoutes(page);
-
-      await page.goto('/sequences/new');
-
-      // Wait for React hydration + data loading
-      await expect(
-        page.getByRole('grid', { name: 'Style selection' })
-      ).toBeVisible({ timeout: 15000 });
-
-      await openComposerReference(page, 'Talent');
-
-      // Wait for dialog to open
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toBeVisible({ timeout: 10000 });
-
-      // Verify empty state
-      await expect(page.getByText('No talent in library')).toBeVisible();
-    }
-  );
 });
 
 testWithUser.describe('Theatre stitcher clip language (#1744)', () => {

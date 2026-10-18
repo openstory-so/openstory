@@ -10,7 +10,7 @@
  * (Storybook, tests) wrap with <UploadRightsGateStub>.
  */
 
-import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
+import { PortraitAttestationFields } from '@/cast/ui/portrait-attestation-fields';
 import { attestUploadsFn } from '@/cast/upload-rights.fn';
 import type { UploadRef } from '@/cast/upload-rights';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';

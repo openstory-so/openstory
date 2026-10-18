@@ -170,8 +170,6 @@ describe('tools/list and whoami', () => {
       'openstory.get_reference_staleness',
       'openstory.get_render_segment_staleness',
       'openstory.get_music_staleness',
-      'openstory.list_talent',
-      'openstory.get_talent',
       'openstory.list_styles',
       'openstory.get_style',
       'openstory.list_library_locations',
@@ -268,7 +266,6 @@ describe('tools/list and whoami', () => {
       'openstory.add_element',
       'openstory.replace_element',
       'openstory.regenerate_character_sheet',
-      'openstory.recast_character',
       'openstory.generate_character_voice',
       'openstory.cancel_character_voice',
       'openstory.regenerate_location_sheet',
@@ -380,7 +377,6 @@ describe('tools/list and whoami', () => {
       'openstory.add_element',
       'openstory.replace_element',
       'openstory.regenerate_character_sheet',
-      'openstory.recast_character',
       'openstory.generate_character_voice',
       'openstory.cancel_character_voice',
       'openstory.regenerate_location_sheet',
@@ -439,7 +435,7 @@ describe('tools/list and whoami', () => {
         })
         .parse(tools.find((tool) => tool.name === name)?.inputSchema);
       expect(libraryResourceSchema.properties.kind.enum).toEqual(
-        expect.arrayContaining(['talent_sheet', 'audio', 'vfx'])
+        expect.arrayContaining(['location_sheet', 'audio', 'vfx'])
       );
       expect(libraryResourceSchema.required).not.toContain('parentId');
     }
@@ -656,7 +652,6 @@ describe('production tool authorization', () => {
 
   it.each([
     'list_sequences',
-    'list_talent',
     'list_library_locations',
     'list_styles',
     'list_gallery_samples',
@@ -837,10 +832,6 @@ describe('generation and upload tool authorization (#1979)', () => {
       { sequenceId, elementId: otherId, upload, name: 'Logo' },
     ],
     ['regenerate_character_sheet', { sequenceId, characterId: otherId }],
-    [
-      'recast_character',
-      { sequenceId, characterId: otherId, talentId: otherId },
-    ],
     ['generate_character_voice', { sequenceId, characterId: otherId }],
     ['regenerate_location_sheet', { sequenceId, locationId: otherId }],
     [

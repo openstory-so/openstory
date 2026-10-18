@@ -1,22 +1,19 @@
 /**
- * CharacterSheetWorkflow: the reuse money path (#1248) and landing through
- * the sheet claim (#1113).
+ * CharacterSheetWorkflow: generating a sheet from the character bible and
+ * look, and landing through the sheet claim (#1113).
  *
- * Casting with a matching costume copies the talent sheet into the
- * characters bucket and must not call fal or deduct credits. The result
- * lands through the trigger's claim: promoted while held, parked (with
- * `stale:detected`) when it moved; a pre-#1113 payload lands unconditionally.
+ * The result lands through the trigger's claim: promoted while held, parked
+ * (with `stale:detected`) when it moved; a pre-#1113 payload lands
+ * unconditionally.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { asStub } from '@/test/as-stub';
 
-const mockCopyStoredImage = vi.fn();
 const mockGenerateImageWithProvider = vi.fn();
 const mockStoreGeneratedPng = vi.fn();
 const mockDeductWorkflowCredits = vi.fn();
@@ -25,9 +22,6 @@ const mockRecordProvenance = vi.fn();
 const mockEmit = vi.fn();
 const mockTriggerSheetPortrait = vi.fn();
 
-vi.doMock('@/platform/server/storage/copy-stored-image', () => ({
-  copyStoredImage: mockCopyStoredImage,
-}));
 vi.doMock('@/stills/server/image-generation', () => ({
   generateImageWithProvider: mockGenerateImageWithProvider,
 }));
@@ -136,13 +130,9 @@ async function makeEvent(
     lookVersionId: 'lookver-1',
     lookStyling: null,
     face: null,
-    talentId: null,
     bibleVersionId: null,
     characterName: 'Sam',
     characterMetadata,
-    referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
-    reuseTalentSheet: true,
-    castTalentDescription: null,
     sheetVersionId: 'ver-1',
     ...overrides,
   };
@@ -159,11 +149,6 @@ async function makeEvent(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockCopyStoredImage.mockResolvedValue({
-    publicUrl: '/r2/characters/team-1/seq-1/char-1/copied.png',
-    path: 'team-1/seq-1/char-1/copied.png',
-    fullPath: 'characters/team-1/seq-1/char-1/copied.png',
-  });
   mockGenerateImageWithProvider.mockResolvedValue({
     imageUrls: ['https://fal.example/out.png'],
     metadata: { usedOwnKey: false, requestId: 'req-1' },
@@ -180,56 +165,26 @@ beforeEach(() => {
   mockPromoteIfPending.mockResolvedValue('promoted');
 });
 
-describe('CharacterSheetWorkflow reuseTalentSheet', () => {
-  it('copies the talent sheet into CHARACTERS and does not generate or deduct', async () => {
-    const result = await makeWorkflow().runBody(
-      await makeEvent(),
-      makeStep(),
-      makeScopedDb()
-    );
-
-    expect(mockCopyStoredImage).toHaveBeenCalledTimes(1);
-    expect(mockCopyStoredImage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        sourceUrl: '/r2/talent/team-1/tal-1/sheet.png',
-        destBucket: STORAGE_BUCKETS.CHARACTERS,
-      })
-    );
-    expect(mockGenerateImageWithProvider).not.toHaveBeenCalled();
-    expect(mockDeductWorkflowCredits).not.toHaveBeenCalled();
-    // The free path stays free: no portrait run is started, the tile crops.
-    expect(mockTriggerSheetPortrait).not.toHaveBeenCalled();
-    expect(result.sheetImageUrl).toBe(
-      '/r2/characters/team-1/seq-1/char-1/copied.png'
-    );
-    expect(result.diverged).toBeUndefined();
-  });
-
-  it('draws a look from the default sheet, not the talent image (#2015)', async () => {
+describe('CharacterSheetWorkflow looks', () => {
+  it('draws a look from the default sheet (#2015)', async () => {
     await makeWorkflow().runBody(
       await makeEvent({
         lookId: 'gala',
-        reuseTalentSheet: true,
         face: {
           url: '/r2/characters/team-1/char-1/default.png',
           versionId: 'char-1',
         },
-        talentDescription: 'Elvis Presley',
-        referenceImageUrl: '/r2/talent/team-1/tal-1/sheet.png',
       }),
       makeStep(),
       makeScopedDb()
     );
 
-    expect(mockCopyStoredImage).not.toHaveBeenCalled();
     expect(mockGenerateImageWithProvider).toHaveBeenCalledTimes(1);
     const params = mockGenerateImageWithProvider.mock.calls[0]?.[0];
     expect(params.referenceImageUrls).toEqual([
       '/r2/characters/team-1/char-1/default.png',
     ]);
     expect(params.prompt).toContain("this character's default look");
-    expect(params.prompt).not.toContain('Elvis Presley');
-    expect(params.prompt).not.toContain('/r2/talent/');
 
     // The sheet lands first; its portrait run is started after, for the
     // version that landed.
@@ -258,7 +213,7 @@ describe('CharacterSheetWorkflow sheet claim (#1113)', () => {
         characterId: 'char-1',
         versionId: 'ver-1',
         claimed: true,
-        url: '/r2/characters/team-1/seq-1/char-1/copied.png',
+        url: '/r2/characters/team-1/seq-1/char-1/out.png',
       })
     );
     expect(result.sheetVersionId).toBe('ver-1');

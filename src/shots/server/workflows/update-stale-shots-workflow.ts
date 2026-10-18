@@ -424,7 +424,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       };
       // Conditional (#1863): the payload was built at the click, and an edit
       // since then found no claim to revoke. The claim is taken only while
-      // the look, the bible and the cast it was built from still hold;
+      // the look and the bible it was built from still hold;
       // otherwise the run parks its sheet. Null when the claim step failed.
       const claimCharacterSheet = async (
         payload: Pick<
@@ -432,7 +432,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           | 'lookId'
           | 'lookVersionId'
           | 'bibleVersionId'
-          | 'talentId'
           | 'characterName'
           | 'imageModel'
         >
@@ -451,7 +450,6 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                     // Passed as frozen: a plan from before #1600 has
                     // none, and `claimSheet` skips what is absent.
                     bibleVersionId: payload.bibleVersionId,
-                    talentId: payload.talentId,
                   },
                   {
                     markGenerating: true,

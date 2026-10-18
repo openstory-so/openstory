@@ -33,10 +33,6 @@ import {
   getTestShot,
 } from '../fixtures/sequence.fixture';
 import {
-  getSystemTalentByName,
-  type TestTalent,
-} from '../fixtures/talent.fixture';
-import {
   fillScriptEditor,
   openComposerReference,
   pinRecordedPipelineSettings,
@@ -128,20 +124,11 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   // running near their limit plus setup.
   testWithUser.setTimeout(1_800_000);
 
-  let testTalents: TestTalent[] = [];
   let testLocation: TestLocation | null = null;
   let styleId: string | null = null;
   let createdSequenceId: string | null = null;
 
   testWithUser.beforeEach(async ({ testUser }) => {
-    // Pull seeded system talent rather than fabricating ones with
-    // placeholder URLs — workflows need real R2 reference images for
-    // character matching and sheet rendering. The seed runs in
-    // e2e/start-webserver.ts before Workerd starts.
-    testTalents = [
-      await getSystemTalentByName('Sienna Blake'),
-      await getSystemTalentByName('Jude Calloway'),
-    ];
     // Locations belong to the team (#1695), so the one the recorded
     // location match names is made for this test's own team.
     testLocation = await createSunlitLoftLocation(testUser.teamId);
@@ -154,8 +141,6 @@ testWithUser.describe('Full Sequence Pipeline', () => {
     }
     // After the sequence: a location a sequence links to cannot be deleted.
     if (testLocation) await cleanupLocationById(testLocation.id);
-    // System talent is shared and seeded — never delete it.
-    testTalents = [];
     testLocation = null;
     styleId = null;
     createdSequenceId = null;
@@ -267,20 +252,8 @@ SUPER:  CORAL.  OUT NOW.
         { timeout: t(60_000) }
       );
 
-      // 5. Pick talent.
-      await openComposerReference(page, 'Talent');
-      const talentDialog = page.getByRole('dialog');
-      await expect(talentDialog).toBeVisible({ timeout: 10_000 });
-      const firstTalent = testTalents[0];
-      if (!firstTalent) {
-        throw new Error('test setup: expected at least one test talent');
-      }
-      await page.getByText(firstTalent.name).click();
-      await page.getByRole('button', { name: 'Cast 1', exact: true }).click();
-      await expect(talentDialog).not.toBeVisible();
-
-      // 6. Pick location.
-      await openComposerReference(page, 'Locations');
+      // 5. Pick location. Characters come from the script (#2135).
+      await openComposerReference(page);
       const locationDialog = page.getByRole('dialog');
       await expect(locationDialog).toBeVisible({ timeout: 10_000 });
       if (!testLocation) throw new Error('testLocation not initialised');

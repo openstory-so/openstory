@@ -23,64 +23,42 @@ import type {
 } from '@/platform/server/db/schema';
 import type { AnalysedLocation } from '@/cast/server/db/locations';
 import { withBibleLooks } from '@/cast/bible-looks';
-import { buildCastingAttributes } from '@/cast/character-prompt';
-import { isPersonFromTalentCast } from '@/cast/likeness';
 import type {
   AttachedCastSnapshot,
   ElementSheetEntry,
   LibraryLocationMatch,
-  TalentCharacterMatch,
 } from '@/platform/server/workflow/types';
 
 export function buildCharacterInsert(args: {
   sequenceId: string;
   character: CharacterBibleEntry;
-  talentMatch: TalentCharacterMatch | undefined;
   sheetStatus: SheetStatus;
 }): NewCharacter {
-  const { sequenceId, character, talentMatch, sheetStatus } = args;
-  const castingAttrs = talentMatch
-    ? buildCastingAttributes(character, {
-        sheetMetadata: talentMatch.sheetMetadata,
-        talentName: talentMatch.talentName,
-        personality: talentMatch.personality,
-        movement: talentMatch.movement,
-      })
-    : null;
+  const { sequenceId, character, sheetStatus } = args;
   return {
     id: generateId(),
     sequenceId,
     characterId: character.characterId,
     name: character.name,
-    age: castingAttrs?.age ?? character.age,
-    gender: castingAttrs?.gender ?? character.gender,
-    ethnicity: castingAttrs?.ethnicity ?? character.ethnicity,
-    physicalDescription:
-      castingAttrs?.physicalDescription ?? character.physicalDescription,
+    age: character.age,
+    gender: character.gender,
+    ethnicity: character.ethnicity,
+    physicalDescription: character.physicalDescription,
     standardClothing: character.standardClothing,
-    personality: castingAttrs?.personality ?? character.personality,
-    movement: castingAttrs?.movement ?? character.movement,
+    personality: character.personality,
+    movement: character.movement,
     voiceOnly: character.voiceOnly,
     rendering: character.voiceOnly ? null : character.rendering,
-    // What the script says, or a person when cast with a signed portrait.
-    // For a character that already exists the write keeps a person a
-    // person whatever this says (`characters.create`, #2065).
-    isPerson: isPersonFromTalentCast(
-      character.isPerson,
-      talentMatch?.hasSignedRelease
-    ),
-    consistencyTag: castingAttrs?.consistencyTag ?? character.consistencyTag,
-    // Cast copies the talent's voice (#1553); the upsert keeps a voice the
-    // row already holds.
-    voiceId: talentMatch?.voiceId ?? null,
-    voiceDescription:
-      talentMatch?.voiceDescription ??
-      (character.voiceDescription.trim() || null),
+    // What the script says. For a character that already exists the write
+    // keeps a person a person whatever this says (`characters.create`, #2065).
+    isPerson: character.isPerson,
+    consistencyTag: character.consistencyTag,
+    voiceId: null,
+    voiceDescription: character.voiceDescription.trim() || null,
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
     sheetStatus,
-    talentId: talentMatch?.talentId ?? null,
   };
 }
 
@@ -170,7 +148,6 @@ export async function createCastRecords(
     /** The trigger's cast snapshot (#2050): which entries are shared characters. */
     cast: readonly AttachedCastSnapshot[];
     characterBible: CharacterBibleEntry[];
-    talentMatches: TalentCharacterMatch[];
     locationBible: LocationBibleEntry[];
     locationMatches: LibraryLocationMatch[];
     elementBible: ElementBibleEntry[];
@@ -184,9 +161,6 @@ export async function createCastRecords(
   lookIds: Record<string, string>;
 }> {
   const { sequenceId } = args;
-  const talentByCharacter = new Map(
-    args.talentMatches.map((m) => [m.characterId, m])
-  );
   const sharedById = new Map(
     args.cast.filter((c) => c.shared).map((c) => [c.entry.characterId, c.id])
   );
@@ -212,7 +186,6 @@ export async function createCastRecords(
       buildCharacterInsert({
         sequenceId,
         character,
-        talentMatch: talentByCharacter.get(character.characterId),
         sheetStatus: 'pending',
       }),
       { source: 'analysis', createdBy: null }

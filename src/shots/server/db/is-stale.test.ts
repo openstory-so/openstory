@@ -19,8 +19,6 @@ import {
   locations,
   sequences,
   styles,
-  talent,
-  talentSheets,
   teams,
   user,
 } from '@/platform/server/db/schema';
@@ -40,8 +38,6 @@ async function seed() {
   await db.delete(characters);
   await db.delete(locationSheetVariants);
   await db.delete(locations);
-  await db.delete(talentSheets);
-  await db.delete(talent);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -157,33 +153,6 @@ describe('location_sheet_variants.input_hash', () => {
       .select()
       .from(locationSheetVariants)
       .where(eq(locationSheetVariants.id, sheet.id));
-    if (!refreshed) throw new Error('test setup: refresh failed');
-    expect(refreshed.inputHash).toBe('h');
-  });
-});
-
-describe('talent_sheets.input_hash', () => {
-  it('defaults to null and persists when set', async () => {
-    const [t] = await db
-      .insert(talent)
-      .values({ teamId: team.id, name: 'T' })
-      .returning();
-    if (!t) throw new Error('test setup: talent insert returned nothing');
-    const [sheet] = await db
-      .insert(talentSheets)
-      .values({ talentId: t.id, name: 'casual' })
-      .returning();
-    if (!sheet) throw new Error('test setup: sheet insert returned nothing');
-    expect(sheet.inputHash).toBeNull();
-
-    await db
-      .update(talentSheets)
-      .set({ inputHash: 'h' })
-      .where(eq(talentSheets.id, sheet.id));
-    const [refreshed] = await db
-      .select()
-      .from(talentSheets)
-      .where(eq(talentSheets.id, sheet.id));
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.inputHash).toBe('h');
   });

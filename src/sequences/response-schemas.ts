@@ -49,20 +49,6 @@ export type StyleRecommendationResponse = z.infer<
 >;
 
 /**
- * Talent Matching Response
- */
-export const talentMatchResponseSchema = z.object({
-  matches: z.array(
-    z.object({
-      characterId: z.string(),
-      talentId: z.string(),
-      confidence: z.number(), // 0-1 range enforced by prompt, not schema (Anthropic doesn't support min/max)
-      reason: z.string(),
-    })
-  ),
-});
-
-/**
  * Location Matching Response
  */
 export const locationMatchResponseSchema = z.object({

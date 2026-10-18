@@ -24,7 +24,7 @@ export function formatStaleToastMessage(count: number): string {
 
 // Bind to the schema's discriminated union so `data.entityType` narrows to a
 // literal — a hand-rolled `entityType: string` defeats branch narrowing and
-// was the structural pattern behind the round-1 talent-channel routing bug.
+// was the structural pattern behind the round-1 channel routing bug.
 type StaleDetectedEvent = {
   event: 'generation.stale:detected';
   data: StaleDetectedPayload;

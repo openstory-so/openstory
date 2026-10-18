@@ -1,6 +1,7 @@
 /**
  * Characters Schema
- * Scripted characters (roles) extracted from scripts, linked to talent for casting
+ * Scripted characters (roles) extracted from scripts. A character is the
+ * person: face, looks, sheets and voice.
  */
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
@@ -41,7 +42,7 @@ export type VoicePreview = {
  * A character belongs to the team (#2017). A sequence uses one through a
  * `sequence_cast` link that holds the script id and the soft-remove; the
  * character itself, at its current bible, voice and looks, is what every
- * sequence reads. The talent is on the current bible version.
+ * sequence reads.
  */
 export const characters = snakeCase.table(
   'characters',
@@ -91,8 +92,7 @@ export const characters = snakeCase.table(
     useVoice: integer({ mode: 'boolean' }),
     // The selected `character_voice_versions` row (#1657): the voice IS that
     // row (#1788). Its `voiceId` is an ElevenLabs/Seed voice on the PLATFORM
-    // account, copied onto `talent.voiceId` at save-to-library and back at
-    // cast, so release through `releaseVoiceIfUnreferenced`, never a bare
+    // account. Release through `releaseVoiceIfUnreferenced`, never a bare
     // delete. Null until the first voice write: a character without a voice
     // is a legitimate state, not an unknown.
     selectedVoiceVersionId: text(),
@@ -187,8 +187,6 @@ export type CharacterLink = {
  * `sequence_cast` link, under the names the character's own columns had.
  */
 export type CharacterCast = CharacterLink & {
-  /** The talent on the current bible version. */
-  talentId: string | null;
   /** Removed from this sequence (`sequence_cast.removedAt`). */
   deletedAt: Date | null;
   /** The character's current bible version. */
@@ -291,8 +289,8 @@ export type CastCharacterWithSheet = CharacterWithSheet & CharacterLink;
  * A new character: the row's own columns plus the bible its first version
  * row carries. `voiceOnly` / `isPerson` default to false / true, as the
  * columns did. `voiceId` / `voiceDescription` are the voice the cast arrives
- * with (the talent's, or the analysed description); a voice the character
- * already has wins, and one that lands becomes its first voice version.
+ * with; a voice the character already has wins, and one that lands becomes
+ * its first voice version.
  */
 export type NewCharacter = Omit<
   InferInsertModel<typeof characters>,
@@ -304,10 +302,8 @@ export type NewCharacter = Omit<
   // The scoped module's own team.
   | 'teamId'
 > &
-  // The sequence that casts it, and how (#2017). On a re-analysis a talent
-  // left out keeps the cast and `null` uncasts.
+  // The sequence that casts it, and how (#2017).
   Pick<CharacterCast, 'sequenceId' | 'characterId'> &
-  Partial<Pick<CharacterCast, 'talentId'>> &
   Pick<CharacterBible, 'name' | 'rendering'> &
   Partial<Omit<CharacterBible, 'name' | 'rendering'>> &
   // The default look's clothing and sheet lifecycle (#2015). `sheetStatus`
@@ -336,15 +332,3 @@ export type CharacterMinimal = Pick<
   /** The looks a scene can pick from (`dressForScene`). */
   looks: CharacterLookMinimal[];
 };
-
-// Composite types for API responses
-export type CharacterWithTalent = CharacterWithSheet & {
-  talent: {
-    id: string;
-    name: string;
-    imageUrl: string | null;
-    /** A real person, from the upload ledger; holds `isPerson` (#2065). */
-    isHuman: boolean | null;
-  } | null;
-};
-export type CastCharacterWithTalent = CharacterWithTalent & CharacterLink;

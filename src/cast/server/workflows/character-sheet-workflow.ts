@@ -21,7 +21,6 @@ import { buildCharacterSheetPrompt } from '@/cast/character-prompt';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { getGenerationChannel } from '@/platform/realtime';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { copyStoredImage } from '@/platform/server/storage/copy-stored-image';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { storeGeneratedPng } from '@/stills/server/image-storage';
 import { generateImageSoftening } from '@/stills/server/workflows/content-soften';
@@ -100,115 +99,6 @@ async function landSheet(
   });
 }
 
-async function persistReusedTalentSheet(params: {
-  event: Readonly<WorkflowEvent<CharacterSheetWorkflowInput>>;
-  step: WorkflowStep;
-  scopedDb: WorkflowScopedDb;
-  input: CharacterSheetWorkflowInput;
-  workflowRunId: string;
-}): Promise<CharacterSheetWorkflowResult> {
-  const { step, scopedDb, input, workflowRunId } = params;
-  const sourceUrl = input.referenceImageUrl;
-  if (!sourceUrl) {
-    throw new WorkflowValidationError(
-      'reuseTalentSheet requires referenceImageUrl'
-    );
-  }
-  if (!input.characterDbId || !input.teamId) {
-    throw new WorkflowValidationError(
-      'reuseTalentSheet requires characterDbId and teamId'
-    );
-  }
-  const characterDbId = input.characterDbId;
-  const sequenceId = input.sequenceId;
-  const channel = getGenerationChannel(
-    castChannelId(sequenceId, characterDbId)
-  );
-
-  const storageResult = await step.do('copy-talent-sheet', async () => {
-    logger.info(
-      `[CharacterSheetWorkflow:cf] Reusing talent sheet for ${input.characterName}`
-    );
-    const uniqueId = generateId();
-    const storagePath = `${input.teamId}/${sheetStorageScope(sequenceId)}/${characterDbId}/${uniqueId}.png`;
-    const result = await copyStoredImage({
-      sourceUrl,
-      destBucket: STORAGE_BUCKETS.CHARACTERS,
-      destPath: storagePath,
-    });
-    return {
-      url: result.publicUrl,
-      path: result.path,
-    };
-  });
-
-  await step.do('record-provenance', async () => {
-    await recordProvenance(scopedDb.provenance, {
-      teamId: input.teamId,
-      userId: input.userId,
-      assetKind: 'character_sheet',
-      assetId: characterDbId,
-      storageKey: storageResult.path,
-      provider: 'internal',
-      model: 'reuse-talent-sheet',
-      providerRequestId: null,
-      workflowRunId,
-      prompt: 'Reuse uploaded/library talent sheet without regeneration',
-      sequenceId: sequenceId ?? undefined,
-      referenceImageCount: 1,
-    });
-  });
-
-  const reconcileOutcome = await step.do('reconcile-database', () =>
-    landSheet(
-      scopedDb,
-      input,
-      {
-        url: storageResult.url,
-        path: storageResult.path,
-        model: input.imageModel ?? DEFAULT_IMAGE_MODEL,
-        // A reused talent sheet costs nothing, and is the four-across
-        // layout the tile's crop was made for: no portrait run is started.
-      },
-      workflowRunId
-    )
-  );
-
-  if (reconcileOutcome.kind === 'divergent') {
-    await step.do('settle-divergent-status', async () => {
-      await channel.emit('generation.character-sheet:progress', {
-        characterId: characterDbId,
-        lookId: input.lookId,
-        status: 'completed',
-      });
-    });
-    return {
-      sheetImageUrl: storageResult.url,
-      sheetImagePath: storageResult.path,
-      characterDbId,
-      lookId: input.lookId,
-      diverged: true,
-    };
-  }
-
-  await step.do('emit-complete-event', async () => {
-    await channel.emit('generation.character-sheet:progress', {
-      characterId: characterDbId,
-      lookId: input.lookId,
-      status: 'completed',
-      sheetImageUrl: storageResult.url,
-    });
-  });
-
-  return {
-    sheetImageUrl: storageResult.url,
-    sheetImagePath: storageResult.path,
-    characterDbId,
-    lookId: input.lookId,
-    sheetVersionId: reconcileOutcome.versionId,
-  };
-}
-
 /** Where a run's sheet is stored: under its sequence, or the team's own. */
 const sheetStorageScope = (sequenceId: string | null) => sequenceId ?? 'team';
 
@@ -259,17 +149,7 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       }
     });
 
-    // A look other than the default is drawn from that look's sheet. The
-    // talent-sheet copy is only for the default look's first sheet.
-    if (input.reuseTalentSheet && input.face === null) {
-      return persistReusedTalentSheet({
-        event,
-        step,
-        scopedDb,
-        input,
-        workflowRunId,
-      });
-    }
+    // A look other than the default is drawn from that look's sheet.
 
     // Step 1: Validate and build prompt
     const builtParams: ImageGenerationParams = await step.do(
@@ -280,24 +160,12 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           throw new WorkflowValidationError('characterMetadata is required');
         }
 
-        const hasTalent = !!(input.talentMetadata || input.talentDescription);
         logger.info(
-          `[CharacterSheetWorkflow:cf] Starting sheet generation for character ${input.characterName}${hasTalent ? ' with talent appearance' : ''}`
+          `[CharacterSheetWorkflow:cf] Starting sheet generation for character ${input.characterName}`
         );
 
-        // Build talent overrides if talent data is provided (for casting)
-        const talentOverrides = hasTalent
-          ? {
-              sheetMetadata: input.talentMetadata,
-              description: input.talentDescription,
-              sheetImageUrl: input.referenceImageUrl,
-            }
-          : undefined;
-
-        // Build prompt with character identity + talent appearance + rendering
         const { prompt, referenceUrls } = buildCharacterSheetPrompt(
           input.characterMetadata,
-          talentOverrides,
           input.lookStyling,
           input.face === null ? null : input.face.url
         );
@@ -309,7 +177,6 @@ export class CharacterSheetWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           // Character sheets use landscape aspect ratio for multi-panel layout
           imageSize: 'landscape_16_9' as const,
           numImages: 1,
-          // Use talent reference image(s) for visual consistency
           referenceImageUrls:
             referenceUrls.length > 0 ? referenceUrls : undefined,
         } satisfies ImageGenerationParams;

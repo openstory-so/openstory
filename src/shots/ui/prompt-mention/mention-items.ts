@@ -5,7 +5,7 @@
  */
 
 import type {
-  CastCharacterWithTalent,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
@@ -41,7 +41,7 @@ export function mentionIsRenameable(section: MentionSection): boolean {
 
 /** Fields buildMentionItems actually consumes. */
 export type MentionCharacterInput = Pick<
-  CastCharacterWithTalent,
+  CastCharacterWithSheet,
   'id' | 'characterId' | 'name' | 'consistencyTag' | 'sheetImageUrl'
 >;
 export type MentionElementInput = Pick<

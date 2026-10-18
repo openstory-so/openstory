@@ -194,7 +194,6 @@ describe('computeGenerationPlan', () => {
           list: () => Promise.resolve([]),
           listPhotosByLocationIds: () => Promise.resolve([]),
         },
-        talent: { getWithSheetsByIds: () => Promise.resolve([]) },
         characterSheetVariants: { getByIds: () => Promise.resolve([]) },
         locationSheetVariants: { getByIds: () => Promise.resolve([]) },
         frameVariants: {

@@ -243,7 +243,7 @@ export function bannerStagesForStopAt(
  * Generate-dialog / continue-slider stops. Same as a full-run banner — the
  * last thumb is Motion & Music (`stopAt: 'music'`). Reference-only has no
  * Images stop. Voices off has no Dialogue stop — clips still run before
- * motion when a talent already holds a voiceId. Start frames + Voices share
+ * motion when a character already holds a voice. Start frames + Voices share
  * one start-frames-and-dialogue stop (the two ticks do not fit on the canvas slider).
  */
 export function sliderStages(

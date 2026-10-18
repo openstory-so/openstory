@@ -8,7 +8,17 @@
  * bundle (#1257).
  */
 
+import { getSignedUploadUrl } from '#storage';
+import {
+  TEAM_USER_UPLOAD_PREFIX,
+  teamUserUploadStoragePath,
+} from '@/cast/server/team-user-upload';
+import { generateId } from '@/platform/id';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import {
+  getExtensionFromUrl,
+  getMimeTypeFromExtension,
+} from '@/platform/server/storage/file';
 import { listFiles } from '@/platform/server/storage/storage-cloudflare';
 import {
   createStudioAssets,
@@ -21,7 +31,6 @@ import {
   getStudioEditHistory,
   setStudioAssetFavorite,
 } from '@/studio/server/studio-asset-actions';
-import { TEAM_USER_UPLOAD_PREFIX } from '@/cast/server/team-user-upload';
 import {
   studioActivitySchema,
   studioCreateInputSchema,
@@ -42,9 +51,9 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   });
 
 /**
- * Everything this team has uploaded to the composer (or dropped on the talent
- * dialog and never saved), newest first. Uploads have no DB row: the R2
- * prefix is the record, and the ULID key orders them by time.
+ * Everything this team has uploaded to the composer, newest first. Uploads
+ * have no DB row: the R2 prefix is the record, and the ULID key orders them
+ * by time.
  */
 export const listStudioUploadsFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
@@ -63,6 +72,22 @@ export const listStudioUploadsFn = createServerFn({ method: 'GET' })
         );
         return kind ? [{ url: `/r2/${file.id}`, label: file.name, kind }] : [];
       });
+  });
+
+/**
+ * Presign a composer upload. The object stays in `uploads/` on the same
+ * prefix {@link listStudioUploadsFn} reads (#1634).
+ */
+export const presignStudioUploadFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.object({ filename: z.string().min(1) })))
+  .handler(async ({ context, data }) => {
+    const ext = getExtensionFromUrl(data.filename);
+    return getSignedUploadUrl(
+      STORAGE_BUCKETS.TALENT,
+      teamUserUploadStoragePath(context.teamId, generateId(), ext),
+      getMimeTypeFromExtension(ext)
+    );
   });
 
 const listStudioAssetsInputSchema = z.object({

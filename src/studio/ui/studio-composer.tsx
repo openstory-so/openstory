@@ -69,10 +69,10 @@ import {
   useDraftStudioPrompt,
   useStudioPendingCreates,
   studioUploadKeys,
+  useUploadStudioMedia,
 } from './use-studio-assets';
 import { useQueryClient } from '@tanstack/react-query';
-import { useUploadTalentUserMedia } from '@/cast/ui/use-talent';
-import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
+import { PortraitAttestationFields } from '@/cast/ui/portrait-attestation-fields';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import {
   needsLikenessCheck,
@@ -197,7 +197,7 @@ function referenceMentionItem(
   kind: StudioReferenceToken = 'Image'
 ): MentionItem {
   const slot = `${kind}${index + 1}`;
-  // A named reference (talent, location, element) keeps its name in the
+  // A named reference (character, location, element) keeps its name in the
   // prompt (#1748); everything else is spelled by its slot.
   const tag = reference.alias ?? slot;
   return {
@@ -358,7 +358,7 @@ export function StudioComposer({
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
-  const upload = useUploadTalentUserMedia();
+  const upload = useUploadStudioMedia();
   const attest = useAttestUploads();
   const queryClient = useQueryClient();
   const library = useStudioLibrary();
@@ -890,10 +890,7 @@ export function StudioComposer({
       }
       setUploading((n) => n + 1);
       try {
-        const { url } = await upload.mutateAsync({
-          file,
-          type: kind === 'audio' ? 'recording' : kind,
-        });
+        const { url } = await upload.mutateAsync({ file });
         placeReference(
           { url, label: file.name, kind, durationSeconds },
           target

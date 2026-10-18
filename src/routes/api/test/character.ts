@@ -10,7 +10,6 @@ const CreateCharacterSchema = z.object({
   sequenceId: z.string(),
   characterId: z.string(),
   name: z.string(),
-  talentId: z.string().nullable().optional(),
   sheetImageUrl: z.string().optional(),
   sheetStatus: z
     .enum(['pending', 'generating', 'completed', 'failed'])
@@ -36,7 +35,6 @@ export const Route = createFileRoute('/api/test/character')({
             body.sequenceId,
             body.characterId,
             body.name,
-            body.talentId ?? null,
             {
               sheetImageUrl: body.sheetImageUrl,
               sheetStatus: body.sheetStatus,

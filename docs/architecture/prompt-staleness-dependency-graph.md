@@ -11,6 +11,8 @@ _inconsistently_ between the moment an artifact is generated (**stamp**) and the
 moment the UI checks it (**verify**) — which is what produces the false-positive
 "out of sync" dots on a brand-new sequence.
 
+A character's face, sheet and voice live on the character. Talent tables are dropped by migration `20261018090611` after `20261018090430` copies a talent sheet onto a character that had no sheet of its own and copies a talent voice onto a character with no selected voice. A sheet hash still includes `talentSheetHash` (null when uncast). Sheets stamped while cast to a talent read stale after this change; the image stays until Update redraws it.
+
 It is the operational companion to
 [workflow-snapshots-and-content-hash-staleness.md](./workflow-snapshots-and-content-hash-staleness.md)
 (the design) — read that first for _why_ we hash inputs at all.
@@ -41,7 +43,7 @@ code now says "shot"; the file map in §7 is current.
    scene-tag fallback when the visual prompt names nobody, so an off-camera
    sheet can stale a still.
 2. **Cast bible fed into prompt generation.** `analyze-script-workflow.ts`
-   computes the cast bible (`buildCastCharacterBible`) right after talent matching
+   computes the cast bible (`buildCastCharacterBible`) right after the bibles are persisted
    and hands it to the prompt branches, so the stamped hash equals the cast DB row
    read at verify time.
 3. **Hash scoped to real drivers.** `input-hash.ts` projects each bible entry to
@@ -57,7 +59,7 @@ code now says "shot"; the file map in §7 is current.
 in `analyze-script-workflow.ts` writes the image prompt for every clip of a
 **2+ shot scene** without an LLM child. It passed the raw pre-cast
 `characterBible` — defect A below, reintroduced — so every clip of every
-multi-shot scene read stale from birth whenever a character was talent-cast,
+multi-shot scene read stale from birth whenever a character bible was rewritten between stamp and verify,
 and with no `Changed:` line, because no input row was newer than the artifact.
 Fixed by handing it `castCharacterBible`, the same bible the prompt children
 get.
@@ -67,8 +69,8 @@ the payload bible. `buildCastCharacterBible` is computed once in
 `analyze-script-workflow.ts` and is the only character bible any hash may see
 inside that run. A stamp↔verify test whose bible is empty cannot catch this —
 cast and raw are then identical — so the round-trip test (§6-4) must use a
-talent-cast character, tagged in `continuity.characterTags` so narrowing keeps
-it.
+character the shot names, tagged in `continuity.characterTags` so narrowing
+keeps it.
 
 ---
 
@@ -127,10 +129,8 @@ flowchart TD
 
     script --> split["scene-split-workflow<br/>LLM → scenes + continuity<br/>+ characterBible + locationBible + elementBible"]
 
-    split --> talent["talent-matching-workflow<br/>character ↔ library talent"]
+    split --> cbib["character-bible-workflow ⊟<br/>persists characters (CAST)<br/>→ character-sheet ⊟"]
     split --> locmatch["location-matching-workflow<br/>script location ↔ team location<br/>a match is a link (#1695)"]
-
-    talent --> cbib["character-bible-workflow ⊟<br/>persists characters (CAST)<br/>→ character-sheet ⊟"]
     locmatch --> lbib["location-bible-workflow<br/>persists locations, links the matched<br/>→ location-sheet ⊟ for the ones made here"]
     split --> elem["element-sheet-workflow ⊟<br/>auto-detected elements"]
 
@@ -228,8 +228,6 @@ flowchart LR
     cbible --> CS
     look --> CS
     style --> CS
-    TS(["talent sheet hash"]) --> CS
-    talentrow{{"talent description<br/>+ default sheet image/look"}} --> CS
 
     lbible --> LS
     lphotos --> LS
@@ -388,17 +386,16 @@ Source of truth: [`src/shots/input-hash.ts`](../../src/shots/input-hash.ts).
 
 Listed in generation order (matching §4.1):
 
-| Artifact                                  | Stamp site                                                                              | Verify site                                              | Hashed inputs                                                                                                                                                                                                                                                                                                                                                             |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Talent sheet** (library)                | `library-talent-sheet-workflow`                                                         | none (no talent staleness check)                         | talent description, referenceMediaHashes (sorted set), imageModel                                                                                                                                                                                                                                                                                                         |
-| **Character sheet** (one per look, #2015) | `character-sheet-workflow`                                                              | `readReferenceStaleness`                                 | character bible fields, the look's clothing (as `standardClothing`) and styling (only when set), the default look's sheet version on every other look (the selected version, or that look's id when the pointer is still null; only when set, in every digest shape), talentSheetHash, cast talent (description, default sheet image + look), styleConfigHash, imageModel |
-| **Location sheet**                        | `location-sheet-workflow`                                                               | `readReferenceStaleness`                                 | every location bible field the sheet prompt reads (`rendering` included), referencePhotoHashes (sorted set), imageModel. No style (#1695)                                                                                                                                                                                                                                 |
-| **Visual prompt**                         | `persist-shot-specs` · Rebuild (`rebuild-shot-prompts.ts`, `regenerate-shot-prompt.ts`) | `computeShotStaleness`                                   | scene input surface, styleConfig, narrowed cast bibles, aspectRatio, analysisModel, canonical spec content (`current` only), `PROMPT_INPUT_HASH_VERSION`                                                                                                                                                                                                                  |
-| **Motion prompt**                         | `persist-shot-specs` · Rebuild                                                          | `computeShotStaleness`                                   | _same as visual_, plus `referenceOnly`. A `current` digest omits the starting-frame URL. Voice ids are **not** a prompt channel.                                                                                                                                                                                                                                          |
-| **Sequence music prompt**                 | `music-prompt-workflow`                                                                 | `readMusicPromptStaleness`                               | sceneSummaries, analysisModel                                                                                                                                                                                                                                                                                                                                             |
-| **Thumbnail / variant image**             | `shot-images-workflow.ts` / `image-workflow-snapshot.ts`                                | `computeShotStaleness` via the regenerate-shots snapshot | effective visual prompt text, imageModel, aspectRatio, size, seed, characterSheetHashes, locationSheetHashes, elementReferenceHashes                                                                                                                                                                                                                                      |
-| **Shot video**                            | `motion-workflow*`                                                                      | pointer compare in `src/shots/scene-segments.ts`         | manifest pointers (motion-prompt / frame version ids, `usesStartFrame`, durationMs, `audioClipIds`, `audioSourceKey`, `dialogueKey`, `referenceKeys`)                                                                                                                                                                                                                     |
-| **Sequence music track**                  | `music-workflow`                                                                        | `musicTrackStaleness`                                    | music prompt text, tags, durationSeconds (clamped), audioModel                                                                                                                                                                                                                                                                                                            |
+| Artifact                                  | Stamp site                                                                              | Verify site                                              | Hashed inputs                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Character sheet** (one per look, #2015) | `character-sheet-workflow`                                                              | `readReferenceStaleness`                                 | character bible fields, the look's clothing (as `standardClothing`) and styling (only when set), the default look's sheet version on every other look (the selected version, or that look's id when the pointer is still null; only when set, in every digest shape), talentSheetHash (null when uncast; sheets stamped while cast to a talent read stale after `20261018090611`, and the image stays until Update redraws it), styleConfigHash, imageModel |
+| **Location sheet**                        | `location-sheet-workflow`                                                               | `readReferenceStaleness`                                 | every location bible field the sheet prompt reads (`rendering` included), referencePhotoHashes (sorted set), imageModel. No style (#1695)                                                                                                                                                                                                                                                                                                                   |
+| **Visual prompt**                         | `persist-shot-specs` · Rebuild (`rebuild-shot-prompts.ts`, `regenerate-shot-prompt.ts`) | `computeShotStaleness`                                   | scene input surface, styleConfig, narrowed cast bibles, aspectRatio, analysisModel, canonical spec content (`current` only), `PROMPT_INPUT_HASH_VERSION`                                                                                                                                                                                                                                                                                                    |
+| **Motion prompt**                         | `persist-shot-specs` · Rebuild                                                          | `computeShotStaleness`                                   | _same as visual_, plus `referenceOnly`. A `current` digest omits the starting-frame URL. Voice ids are **not** a prompt channel.                                                                                                                                                                                                                                                                                                                            |
+| **Sequence music prompt**                 | `music-prompt-workflow`                                                                 | `readMusicPromptStaleness`                               | sceneSummaries, analysisModel                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Thumbnail / variant image**             | `shot-images-workflow.ts` / `image-workflow-snapshot.ts`                                | `computeShotStaleness` via the regenerate-shots snapshot | effective visual prompt text, imageModel, aspectRatio, size, seed, characterSheetHashes, locationSheetHashes, elementReferenceHashes                                                                                                                                                                                                                                                                                                                        |
+| **Shot video**                            | `motion-workflow*`                                                                      | pointer compare in `src/shots/scene-segments.ts`         | manifest pointers (motion-prompt / frame version ids, `usesStartFrame`, durationMs, `audioClipIds`, `audioSourceKey`, `dialogueKey`, `referenceKeys`)                                                                                                                                                                                                                                                                                                       |
+| **Sequence music track**                  | `music-workflow`                                                                        | `musicTrackStaleness`                                    | music prompt text, tags, durationSeconds (clamped), audioModel                                                                                                                                                                                                                                                                                                                                                                                              |
 
 Two cross-cutting normalizations make the hash order-insensitive and
 default-stable:
@@ -439,29 +436,14 @@ const sortedRefs = (refs) => [...(refs ?? [])].sort(); // order-insensitive set
 
 The hashed artifacts, ordered by when they are produced in the pipeline (§2):
 
-#### Library assets — generated outside this sequence; feed the cascade
-
-These pre-exist a given sequence (a talent is created once in the team
-library) and flow downstream as a single **hash**, not their full contents, so
-regenerating them with identical inputs doesn't churn dependents. There is no
-library location (#1695): a location is the team's and has one sheet, hashed
-in § 2 below.
-
-**Talent sheet — `computeTalentSheetInputHash`**
-
-```ts
-sha256Hex({
-  artifact: 'talent:sheet',
-  talent: { description: trim(description) }, // the name is a label
-  referenceMediaHashes: sortedRefs(referenceMediaHashes), // unordered set of talent_media rows
-  imageModel,
-});
-```
-
 #### 1. Character sheet — `computeCharacterSheetInputHash`
 
-Generated in the references wave from the (cast) character bible, one look
-of the character (#2015) and the matched talent sheet. One digest per look.
+Generated in the references wave from the character bible and one look of the
+character (#2015). The face, the sheet and the voice live on the character.
+One digest per look. `talentSheetHash` stays in the digest and is null when
+the character was never cast to a talent. Sheets stamped while cast to a
+talent read stale after migration `20261018090611`; the image stays until
+Update redraws it.
 
 ```ts
 sha256Hex({
@@ -487,27 +469,18 @@ sha256Hex({
   // bible's legacy features). Joined only when set. A legacy shape hashes
   // the look's own stored styling here instead.
   styling: trim(styling),
-  talentSheetHash: talentSheetHash ?? null, // ← cascade from the talent sheet above
-  // #1785 — only when cast, so no uncast digest moved. What the sheet prompt
-  // reads from the talent LIVE: a description edit or a promoted talent-sheet
-  // variant (same inputHash, new image) re-stales the character sheet.
-  talent: {
-    description: trim(talent.description), // the talent ROW's text (`castTalentDescription`),
-    //   not `talentDescription`, which recast / bible / regenerate each word differently
-    sheetImageUrl: trim(sheetImageUrl), // the default convergent talent sheet
-    sheetLook: { age, gender, ethnicity, physicalDescription } | null, // its metadata
-  },
+  talentSheetHash: talentSheetHash ?? null, // null when uncast (#2135)
   styleConfigHash, // hash of the StyleConfig, not the object
   imageModel,
 });
 ```
 
-One resolver, `resolveCastTalent` (`sheet-snapshots.ts`), feeds the
-regenerate/verify payload, the upload stamp and the workflow's divergence
-recompute, so the three cannot pick different talent sheets. Pre-#1785 digests
-(no talent channel) and pre-#2065 digests (the features under their own key)
-still verify until `LEGACY_HASH_UNTIL` (2026-12-31, #1371). A verify passes
-the look's stored parts (`legacyStylingParts`) as a required argument.
+Pre-#1785 digests (no `talentSheetHash` channel) and pre-#2065 digests
+(the features under their own key) still verify until `LEGACY_HASH_UNTIL`
+(2026-12-31, #1371). A verify passes the look's stored parts
+(`legacyStylingParts`) as a required argument. A digest stamped while the
+character was cast to a talent no longer matches: `talentSheetHash` is null,
+so that sheet reads stale and the image stays until Update redraws it.
 
 #### 2. Location sheet — `computeLocationSheetInputHash`
 
@@ -877,11 +850,11 @@ flowchart TD
 ### A. Casting / enrichment asymmetry — **the #867 root cause** ✅ fixed (twice: #867, #1732)
 
 The visual & motion prompt hashes were stamped from the **raw scene-split
-character bible** carried in the workflow payload. But the
-`character-bible-workflow` **rewrites** several of those exact fields when it
-persists the character, via
-[`buildCastingAttributes`](../../src/cast/character-prompt.ts) whenever a
-character is matched to library talent:
+character bible** carried in the workflow payload. The
+`character-bible-workflow` used to rewrite several of those fields when a
+character was cast to library talent. That library is gone (#2135): a
+character's face, sheet and voice live on the character. The old mismatch
+was:
 
 | field                          | raw scene-split value (hashed at stamp) | persisted value (hashed at verify)                                            |
 | ------------------------------ | --------------------------------------- | ----------------------------------------------------------------------------- |
@@ -904,11 +877,9 @@ flowchart LR
     class stale bad;
 ```
 
-Because casting is applied at **persist** time but not at **stamp** time, the two
-hashes can never agree — the prompt is reported stale **immediately, with nothing
-edited, on every sequence that has a talent-matched character.** A developer or
-team with a populated talent library hits this on _every_ sequence, which reads
-as "always stale."
+Because that rewrite was applied at **persist** time but not at **stamp** time,
+the two hashes could never agree — the prompt was reported stale immediately,
+with nothing edited.
 
 The same shape (stamp = raw payload, verify = transformed DB row) is latent for
 any future bible enrichment. It does not arise for a matched location (#1695):
@@ -963,7 +934,7 @@ Ordered by value / risk. **1, 2, 4 and 5 shipped; 3 is still open** (see C).
    The persisted character/location bible is the canonical "current inputs"; the
    transient scene-split payload is not. Feed the **cast** character bible (the
    output of `buildCastingAttributes`, computed once in `analyze-script-workflow`
-   after talent matching) to the visual + motion prompt workflows, so the value
+   before any stamp) to the visual + motion prompt workflows, so the value
    hashed at stamp time equals the value persisted and re-hashed at verify time.
    This also means the prompt LLM sees the cast character — arguably more correct.
    _Single source of truth for the bible removes the asymmetry by construction._

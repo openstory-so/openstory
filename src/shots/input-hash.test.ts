@@ -20,8 +20,6 @@ import {
   computeMusicPromptInputHash,
   LEGACY_HASH_UNTIL,
   computeSequenceMusicInputHash,
-  computeTalentSheetInputHash,
-  computeTalentSheetInputHashLegacy,
   assembleMotionPromptHashInput,
   hashVisualPromptInput,
   computeVisualPromptInputHashV4,
@@ -36,7 +34,6 @@ import {
   type MotionPromptInputHash,
   type ShotImageHashInput,
   type LocationSheetHashInput,
-  type TalentSheetHashInput,
 } from './input-hash';
 import { effectiveStyling } from '@/cast/character-looks';
 import { deriveShotDialogueLines, shotDialogue } from './shot-dialogue';
@@ -808,49 +805,6 @@ describe('computeLocationSheetInputHash', () => {
         false
       );
     });
-  });
-});
-
-describe('computeTalentSheetInputHash', () => {
-  const base: TalentSheetHashInput = {
-    talent: { name: 'Talent Name', description: 'Headshot reference' },
-    referenceMediaHashes: ['m1', 'm2', 'm3'],
-    imageModel: 'flux-pro-v1.1',
-  };
-
-  it('is order-insensitive for reference media', async () => {
-    const a = await computeTalentSheetInputHash(base);
-    const b = await computeTalentSheetInputHash({
-      ...base,
-      referenceMediaHashes: ['m3', 'm1', 'm2'],
-    });
-    expect(a).toBe(b);
-  });
-
-  it('reacts to description, media set, and image model, not a rename', async () => {
-    const a = await computeTalentSheetInputHash(base);
-    const renamed = await computeTalentSheetInputHash({
-      ...base,
-      talent: { ...base.talent, name: 'Other Talent' },
-    });
-    const variants = await Promise.all([
-      computeTalentSheetInputHash({
-        ...base,
-        talent: { ...base.talent, description: 'Full body reference' },
-      }),
-      computeTalentSheetInputHash({
-        ...base,
-        referenceMediaHashes: ['m1', 'm2', 'm4'],
-      }),
-      computeTalentSheetInputHash({ ...base, imageModel: 'sdxl-v1' }),
-    ]);
-    expect(renamed).toBe(a);
-    expect(new Set([a, ...variants]).size).toBe(4);
-  });
-
-  it('the pre-drop named talent digest differs from the current one', async () => {
-    const named = await computeTalentSheetInputHashLegacy(base);
-    expect(named).not.toBe(await computeTalentSheetInputHash(base));
   });
 });
 

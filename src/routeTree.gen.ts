@@ -64,8 +64,6 @@ import { Route as AppSettingsDeveloperRouteImport } from './routes/_app/settings
 import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/passkeys'
 import { Route as AppStudioIndexRouteImport } from './routes/_app/studio/index'
 import { Route as AppStylesIndexRouteImport } from './routes/_app/styles/index'
-import { Route as AppTalentIndexRouteImport } from './routes/_app/talent/index'
-import { Route as AppTalentIdRouteImport } from './routes/_app/talent/$id'
 import { Route as AppVideosIndexRouteImport } from './routes/_app/videos/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBillingWebhookRouteImport } from './routes/api/billing/webhook'
@@ -78,7 +76,6 @@ import { Route as ApiTestLocationRouteImport } from './routes/api/test/location'
 import { Route as ApiTestSequenceRouteImport } from './routes/api/test/sequence'
 import { Route as ApiTestShotRouteImport } from './routes/api/test/shot'
 import { Route as ApiTestStyleRouteImport } from './routes/api/test/style'
-import { Route as ApiTestTalentRouteImport } from './routes/api/test/talent'
 import { Route as ApiTestUserRouteImport } from './routes/api/test/user'
 import { Route as ApiTestVerifyRouteImport } from './routes/api/test/verify'
 import { Route as ApiV1IndexRouteImport } from './routes/api/v1/index'
@@ -383,16 +380,6 @@ const AppStylesIndexRoute = AppStylesIndexRouteImport.update({
   path: '/styles/',
   getParentRoute: () => AppRouteRoute,
 } as any)
-const AppTalentIndexRoute = AppTalentIndexRouteImport.update({
-  id: '/talent/',
-  path: '/talent/',
-  getParentRoute: () => AppRouteRoute,
-} as any)
-const AppTalentIdRoute = AppTalentIdRouteImport.update({
-  id: '/talent/$id',
-  path: '/talent/$id',
-  getParentRoute: () => AppRouteRoute,
-} as any)
 const AppVideosIndexRoute = AppVideosIndexRouteImport.update({
   id: '/videos/',
   path: '/videos/',
@@ -451,11 +438,6 @@ const ApiTestShotRoute = ApiTestShotRouteImport.update({
 const ApiTestStyleRoute = ApiTestStyleRouteImport.update({
   id: '/style',
   path: '/style',
-  getParentRoute: () => ApiTestRouteRoute,
-} as any)
-const ApiTestTalentRoute = ApiTestTalentRouteImport.update({
-  id: '/talent',
-  path: '/talent',
   getParentRoute: () => ApiTestRouteRoute,
 } as any)
 const ApiTestUserRoute = ApiTestUserRouteImport.update({
@@ -660,7 +642,6 @@ export interface FileRoutesByFullPath {
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
-  '/talent/$id': typeof AppTalentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
@@ -672,7 +653,6 @@ export interface FileRoutesByFullPath {
   '/api/test/sequence': typeof ApiTestSequenceRoute
   '/api/test/shot': typeof ApiTestShotRoute
   '/api/test/style': typeof ApiTestStyleRoute
-  '/api/test/talent': typeof ApiTestTalentRoute
   '/api/test/user': typeof ApiTestUserRoute
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
@@ -689,7 +669,6 @@ export interface FileRoutesByFullPath {
   '/settings/': typeof AppSettingsIndexRoute
   '/studio/': typeof AppStudioIndexRoute
   '/styles/': typeof AppStylesIndexRoute
-  '/talent/': typeof AppTalentIndexRoute
   '/videos/': typeof AppVideosIndexRoute
   '/api/v1/': typeof ApiV1IndexRoute
   '/models/family/$': typeof AppModelsFamilySplatRoute
@@ -757,7 +736,6 @@ export interface FileRoutesByTo {
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
-  '/talent/$id': typeof AppTalentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
@@ -769,7 +747,6 @@ export interface FileRoutesByTo {
   '/api/test/sequence': typeof ApiTestSequenceRoute
   '/api/test/shot': typeof ApiTestShotRoute
   '/api/test/style': typeof ApiTestStyleRoute
-  '/api/test/talent': typeof ApiTestTalentRoute
   '/api/test/user': typeof ApiTestUserRoute
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
@@ -786,7 +763,6 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsIndexRoute
   '/studio': typeof AppStudioIndexRoute
   '/styles': typeof AppStylesIndexRoute
-  '/talent': typeof AppTalentIndexRoute
   '/videos': typeof AppVideosIndexRoute
   '/api/v1': typeof ApiV1IndexRoute
   '/models/family/$': typeof AppModelsFamilySplatRoute
@@ -859,7 +835,6 @@ export interface FileRoutesById {
   '/_app/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/_app/settings/developer': typeof AppSettingsDeveloperRoute
   '/_app/settings/passkeys': typeof AppSettingsPasskeysRoute
-  '/_app/talent/$id': typeof AppTalentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
@@ -871,7 +846,6 @@ export interface FileRoutesById {
   '/api/test/sequence': typeof ApiTestSequenceRoute
   '/api/test/shot': typeof ApiTestShotRoute
   '/api/test/style': typeof ApiTestStyleRoute
-  '/api/test/talent': typeof ApiTestTalentRoute
   '/api/test/user': typeof ApiTestUserRoute
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
@@ -888,7 +862,6 @@ export interface FileRoutesById {
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/studio/': typeof AppStudioIndexRoute
   '/_app/styles/': typeof AppStylesIndexRoute
-  '/_app/talent/': typeof AppTalentIndexRoute
   '/_app/videos/': typeof AppVideosIndexRoute
   '/api/v1/': typeof ApiV1IndexRoute
   '/_app/sequences/$id/_workspace': typeof AppSequencesIdWorkspaceRouteRouteWithChildren
@@ -961,7 +934,6 @@ export interface FileRouteTypes {
     | '/settings/api-keys'
     | '/settings/developer'
     | '/settings/passkeys'
-    | '/talent/$id'
     | '/api/auth/$'
     | '/api/billing/webhook'
     | '/api/openrouter/callback'
@@ -973,7 +945,6 @@ export interface FileRouteTypes {
     | '/api/test/sequence'
     | '/api/test/shot'
     | '/api/test/style'
-    | '/api/test/talent'
     | '/api/test/user'
     | '/api/test/verify'
     | '/api/v1/openapi.json'
@@ -990,7 +961,6 @@ export interface FileRouteTypes {
     | '/settings/'
     | '/studio/'
     | '/styles/'
-    | '/talent/'
     | '/videos/'
     | '/api/v1/'
     | '/models/family/$'
@@ -1058,7 +1028,6 @@ export interface FileRouteTypes {
     | '/settings/api-keys'
     | '/settings/developer'
     | '/settings/passkeys'
-    | '/talent/$id'
     | '/api/auth/$'
     | '/api/billing/webhook'
     | '/api/openrouter/callback'
@@ -1070,7 +1039,6 @@ export interface FileRouteTypes {
     | '/api/test/sequence'
     | '/api/test/shot'
     | '/api/test/style'
-    | '/api/test/talent'
     | '/api/test/user'
     | '/api/test/verify'
     | '/api/v1/openapi.json'
@@ -1087,7 +1055,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/studio'
     | '/styles'
-    | '/talent'
     | '/videos'
     | '/api/v1'
     | '/models/family/$'
@@ -1159,7 +1126,6 @@ export interface FileRouteTypes {
     | '/_app/settings/api-keys'
     | '/_app/settings/developer'
     | '/_app/settings/passkeys'
-    | '/_app/talent/$id'
     | '/api/auth/$'
     | '/api/billing/webhook'
     | '/api/openrouter/callback'
@@ -1171,7 +1137,6 @@ export interface FileRouteTypes {
     | '/api/test/sequence'
     | '/api/test/shot'
     | '/api/test/style'
-    | '/api/test/talent'
     | '/api/test/user'
     | '/api/test/verify'
     | '/api/v1/openapi.json'
@@ -1188,7 +1153,6 @@ export interface FileRouteTypes {
     | '/_app/settings/'
     | '/_app/studio/'
     | '/_app/styles/'
-    | '/_app/talent/'
     | '/_app/videos/'
     | '/api/v1/'
     | '/_app/sequences/$id/_workspace'
@@ -1638,20 +1602,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStylesIndexRouteImport
       parentRoute: typeof AppRouteRoute
     }
-    '/_app/talent/': {
-      id: '/_app/talent/'
-      path: '/talent'
-      fullPath: '/talent/'
-      preLoaderRoute: typeof AppTalentIndexRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
-    '/_app/talent/$id': {
-      id: '/_app/talent/$id'
-      path: '/talent/$id'
-      fullPath: '/talent/$id'
-      preLoaderRoute: typeof AppTalentIdRouteImport
-      parentRoute: typeof AppRouteRoute
-    }
     '/_app/videos/': {
       id: '/_app/videos/'
       path: '/videos'
@@ -1734,13 +1684,6 @@ declare module '@tanstack/react-router' {
       path: '/style'
       fullPath: '/api/test/style'
       preLoaderRoute: typeof ApiTestStyleRouteImport
-      parentRoute: typeof ApiTestRouteRoute
-    }
-    '/api/test/talent': {
-      id: '/api/test/talent'
-      path: '/talent'
-      fullPath: '/api/test/talent'
-      preLoaderRoute: typeof ApiTestTalentRouteImport
       parentRoute: typeof ApiTestRouteRoute
     }
     '/api/test/user': {
@@ -2052,7 +1995,6 @@ interface AppRouteRouteChildren {
   AppLocationsLocationIdRoute: typeof AppLocationsLocationIdRoute
   AppModelsSplatRoute: typeof AppModelsSplatRoute
   AppOauthConsentRoute: typeof AppOauthConsentRoute
-  AppTalentIdRoute: typeof AppTalentIdRoute
   AppCharactersIndexRoute: typeof AppCharactersIndexRoute
   AppClipsIndexRoute: typeof AppClipsIndexRoute
   AppGalleryIndexRoute: typeof AppGalleryIndexRoute
@@ -2062,7 +2004,6 @@ interface AppRouteRouteChildren {
   AppSequencesIndexRoute: typeof AppSequencesIndexRoute
   AppStudioIndexRoute: typeof AppStudioIndexRoute
   AppStylesIndexRoute: typeof AppStylesIndexRoute
-  AppTalentIndexRoute: typeof AppTalentIndexRoute
   AppVideosIndexRoute: typeof AppVideosIndexRoute
   AppModelsFamilySplatRoute: typeof AppModelsFamilySplatRoute
   AppSequencesNewScenesRoute: typeof AppSequencesNewScenesRoute
@@ -2085,7 +2026,6 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppLocationsLocationIdRoute: AppLocationsLocationIdRoute,
   AppModelsSplatRoute: AppModelsSplatRoute,
   AppOauthConsentRoute: AppOauthConsentRoute,
-  AppTalentIdRoute: AppTalentIdRoute,
   AppCharactersIndexRoute: AppCharactersIndexRoute,
   AppClipsIndexRoute: AppClipsIndexRoute,
   AppGalleryIndexRoute: AppGalleryIndexRoute,
@@ -2095,7 +2035,6 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppSequencesIndexRoute: AppSequencesIndexRoute,
   AppStudioIndexRoute: AppStudioIndexRoute,
   AppStylesIndexRoute: AppStylesIndexRoute,
-  AppTalentIndexRoute: AppTalentIndexRoute,
   AppVideosIndexRoute: AppVideosIndexRoute,
   AppModelsFamilySplatRoute: AppModelsFamilySplatRoute,
   AppSequencesNewScenesRoute: AppSequencesNewScenesRoute,
@@ -2145,7 +2084,6 @@ interface ApiTestRouteRouteChildren {
   ApiTestSequenceRoute: typeof ApiTestSequenceRoute
   ApiTestShotRoute: typeof ApiTestShotRoute
   ApiTestStyleRoute: typeof ApiTestStyleRoute
-  ApiTestTalentRoute: typeof ApiTestTalentRoute
   ApiTestUserRoute: typeof ApiTestUserRoute
   ApiTestVerifyRoute: typeof ApiTestVerifyRoute
 }
@@ -2157,7 +2095,6 @@ const ApiTestRouteRouteChildren: ApiTestRouteRouteChildren = {
   ApiTestSequenceRoute: ApiTestSequenceRoute,
   ApiTestShotRoute: ApiTestShotRoute,
   ApiTestStyleRoute: ApiTestStyleRoute,
-  ApiTestTalentRoute: ApiTestTalentRoute,
   ApiTestUserRoute: ApiTestUserRoute,
   ApiTestVerifyRoute: ApiTestVerifyRoute,
 }

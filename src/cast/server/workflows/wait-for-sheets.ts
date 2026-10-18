@@ -1,27 +1,15 @@
 /**
- * Durable "wait for sheet generation" helpers for the matching workflows.
+ * Durable wait for element vision.
  *
- * When a user adds new talent while creating a sequence
- * (`TalentSuggestionSelector` → `createTalentFn`), the sheet generation runs in
- * a *separate*, fire-and-forget workflow (`/library-talent-sheet`). The
- * sequence's `analyze-script-workflow` then spawns `talent-matching`, which uses
- * `talent.defaultSheet?.imageUrl` as the casting reference image.
- *
- * If the sheet workflow hasn't finished by the time matching reads the row, the
- * pre-cast talent gets an empty reference image (so the character no longer
- * looks like the chosen person). Location matching needs no wait: a match is a
- * link and draws no sheet (#1695). This helper closes that race by polling the DB in a
- * durable loop until every still-pending entity has its sheet — bounded by a
- * timeout so a sheet that failed to generate can't stall the whole pipeline.
+ * Elements uploaded while creating a sequence kick off `/element-vision`.
+ * Analyze reads their descriptions, so this helper polls until vision is
+ * terminal — bounded so a failed vision cannot stall the pipeline.
  *
  * The poll uses `step.do` (durable, replay-safe) for each read and `step.sleep`
  * between reads, mirroring the batched-polling pattern in `motion-workflow.ts`.
  */
 
-import type {
-  SequenceElement,
-  TalentWithSheets,
-} from '@/platform/server/db/schema';
+import type { SequenceElement } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
 import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
@@ -34,7 +22,6 @@ const logger = getLogger(['openstory', 'workflow', 'wait-for-sheets']);
  * sanctioned live reads, and this type is what says so at the boundary.
  */
 export type WaitForSheetsReadDb = {
-  talent: Pick<ScopedDb['talent'], 'getByIds'>;
   sequenceElements: Pick<ScopedDb['sequenceElements'], 'listByIds'>;
 };
 
@@ -134,35 +121,6 @@ async function pollUntilReady<TRow extends Rpc.Serializable<TRow>>(
   return { ready: false, pendingIds, rows };
 }
 
-/**
- * Block until every requested talent has a usable default sheet image, or the
- * timeout expires. Talent without a sheet (newly created, generation still in
- * flight) are polled; talent that already have one short-circuit on the first
- * read so existing/library talent add no latency.
- */
-export async function waitForTalentSheets(
-  step: WorkflowStep,
-  scopedDb: WaitForSheetsReadDb,
-  talentIds: string[],
-  opts?: { onWaitNeeded?: OnWaitNeeded }
-): Promise<WaitForSheetsResult<TalentWithSheets>> {
-  return pollUntilReady(step, {
-    ids: talentIds,
-    stepPrefix: 'wait-talent-sheets',
-    label: 'talent sheets',
-    onWaitNeeded: opts?.onWaitNeeded,
-    check: async () => {
-      const rows = await scopedDb.talent.getByIds(talentIds);
-      return {
-        rows,
-        pendingIds: rows
-          .filter((t) => !t.defaultSheet?.imageUrl)
-          .map((t) => t.id),
-      };
-    },
-  });
-}
-
 /** Element vision statuses that are still in flight (not terminal). */
 const ELEMENT_VISION_IN_FLIGHT = new Set(['pending', 'analyzing']);
 
@@ -187,8 +145,7 @@ const ELEMENT_VISION_IN_FLIGHT = new Set(['pending', 'analyzing']);
  * vision already finished short-circuits with no added latency.
  *
  * `rows` is every element the wait read — the scan's rows, overlaid with the
- * final poll's — so the caller consumes them instead of reading again (the
- * talent wait's shape, #1113).
+ * final poll's — so the caller consumes them instead of reading again (#1113).
  */
 export async function waitForElementVision(
   step: WorkflowStep,

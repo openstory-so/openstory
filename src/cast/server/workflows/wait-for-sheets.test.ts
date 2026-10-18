@@ -1,18 +1,15 @@
 /**
- * Tests for the matching-workflow sheet-wait helpers.
+ * Tests for the element-vision wait.
  *
- * These close the race where a newly-added talent's sheet generation
- * (fire-and-forget `/library-talent-sheet`) hasn't finished when
- * `talent-matching` reads the row. The wait
- * must: short-circuit when everything is already ready, poll across durable
- * steps until pending entities become ready, and give up (best-effort) after a
- * bounded number of attempts so a failed sheet can't stall the pipeline.
+ * The wait must short-circuit when everything is already ready, poll across
+ * durable steps until pending elements become ready, and give up
+ * (best-effort) after a bounded number of attempts.
  */
 
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, test, vi } from 'vitest';
-import { waitForElementVision, waitForTalentSheets } from './wait-for-sheets';
+import { waitForElementVision } from './wait-for-sheets';
 import { asStub } from '@/test/as-stub';
 
 /**
@@ -31,166 +28,11 @@ function fakeStep(): {
   return { step, doSpy, sleepSpy };
 }
 
-/** ScopedDb stub exposing only `talent.getByIds`. */
-function talentDb(getByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // helper only reaches scopedDb.talent.getByIds
-  return asStub<ScopedDb>({ talent: { getByIds } });
-}
-
 /** ScopedDb stub exposing `sequenceElements.listByIds`. */
 function elementDb(listByIds: ReturnType<typeof vi.fn>): ScopedDb {
   // helper only reaches scopedDb.sequenceElements.listByIds
   return asStub<ScopedDb>({ sequenceElements: { listByIds } });
 }
-
-describe('waitForTalentSheets', () => {
-  test('returns ready without reading the DB when there are no ids', async () => {
-    const { step, doSpy, sleepSpy } = fakeStep();
-    const getByIds = vi.fn();
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), []);
-
-    expect(result).toMatchObject({ ready: true, pendingIds: [] });
-    expect(getByIds).not.toHaveBeenCalled();
-    expect(doSpy).not.toHaveBeenCalled();
-    expect(sleepSpy).not.toHaveBeenCalled();
-  });
-
-  test('short-circuits on the first read when every sheet is ready', async () => {
-    const { step, sleepSpy } = fakeStep();
-    const getByIds = vi.fn(async () => [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-      { id: 't2', defaultSheet: { imageUrl: 'https://cdn/t2.png' } },
-    ]);
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), [
-      't1',
-      't2',
-    ]);
-
-    expect(result).toMatchObject({ ready: true, pendingIds: [] });
-    expect(getByIds).toHaveBeenCalledTimes(1);
-    // Ready immediately → never sleeps.
-    expect(sleepSpy).not.toHaveBeenCalled();
-  });
-
-  test('polls until the pending sheet appears, sleeping between reads', async () => {
-    const { step, sleepSpy } = fakeStep();
-    const getByIds = vi
-      .fn()
-      // 1st read: t2 has no sheet yet.
-      .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-        { id: 't2', defaultSheet: null },
-      ])
-      // 2nd read: still missing (defaultSheet present but no imageUrl).
-      .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-        { id: 't2', defaultSheet: { imageUrl: null } },
-      ])
-      // 3rd read: ready.
-      .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-        { id: 't2', defaultSheet: { imageUrl: 'https://cdn/t2.png' } },
-      ]);
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), [
-      't1',
-      't2',
-    ]);
-
-    expect(result).toMatchObject({ ready: true, pendingIds: [] });
-    expect(getByIds).toHaveBeenCalledTimes(3);
-    // Slept after the two not-ready reads, not after the ready one.
-    expect(sleepSpy).toHaveBeenCalledTimes(2);
-  });
-
-  test('ignores ids the scoped read does not return (deleted / not owned)', async () => {
-    const { step } = fakeStep();
-    // 'ghost' is requested but never returned by getByIds — must not be waited on.
-    const getByIds = vi.fn(async () => [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-    ]);
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), [
-      't1',
-      'ghost',
-    ]);
-
-    expect(result).toMatchObject({ ready: true, pendingIds: [] });
-    expect(getByIds).toHaveBeenCalledTimes(1);
-  });
-
-  test('fires onWaitNeeded exactly once, only when a wait is actually needed', async () => {
-    const { step } = fakeStep();
-    const onWaitNeeded = vi.fn(async () => undefined);
-    const getByIds = vi
-      .fn()
-      .mockResolvedValueOnce([{ id: 't1', defaultSheet: null }])
-      .mockResolvedValueOnce([{ id: 't1', defaultSheet: null }])
-      .mockResolvedValueOnce([
-        { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-      ]);
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), ['t1'], {
-      onWaitNeeded,
-    });
-
-    expect(result.ready).toBe(true);
-    // Fired once, on first discovery of a pending sheet, with the pending count.
-    expect(onWaitNeeded).toHaveBeenCalledTimes(1);
-    expect(onWaitNeeded).toHaveBeenCalledWith(1);
-  });
-
-  test('does not fire onWaitNeeded when everything is already ready', async () => {
-    const { step } = fakeStep();
-    const onWaitNeeded = vi.fn(async () => undefined);
-    const getByIds = vi.fn(async () => [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-    ]);
-
-    await waitForTalentSheets(step, talentDb(getByIds), ['t1'], {
-      onWaitNeeded,
-    });
-
-    expect(onWaitNeeded).not.toHaveBeenCalled();
-  });
-
-  test('returns the rows from the final poll so callers need no second read', async () => {
-    const { step } = fakeStep();
-    const ready = [
-      { id: 't1', defaultSheet: { imageUrl: 'https://cdn/t1.png' } },
-    ];
-    const getByIds = vi
-      .fn()
-      .mockResolvedValueOnce([{ id: 't1', defaultSheet: null }])
-      .mockResolvedValueOnce(ready);
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), ['t1']);
-
-    // The freshest read, not the one that found the sheet missing.
-    expect(result.rows).toEqual(ready);
-  });
-
-  test('gives up after the bounded number of attempts and reports pending ids', async () => {
-    const { step, doSpy, sleepSpy } = fakeStep();
-    // Never becomes ready.
-    const getByIds = vi.fn(async () => [{ id: 't1', defaultSheet: null }]);
-
-    const result = await waitForTalentSheets(step, talentDb(getByIds), ['t1']);
-
-    expect(result.ready).toBe(false);
-    expect(result.pendingIds).toEqual(['t1']);
-    // Even on timeout the caller gets the last read, so matching can proceed
-    // best-effort with whatever the rows do have.
-    expect(result.rows).toEqual([{ id: 't1', defaultSheet: null }]);
-    // One check per attempt; one fewer sleep (no sleep after the final check).
-    const attempts = getByIds.mock.calls.length;
-    expect(attempts).toBeGreaterThan(1);
-    expect(doSpy).toHaveBeenCalledTimes(attempts);
-    expect(sleepSpy).toHaveBeenCalledTimes(attempts - 1);
-  });
-});
 
 describe('waitForElementVision', () => {
   test('short-circuits without polling when no element is in flight', async () => {

@@ -73,7 +73,6 @@ function makeCharacter(
     pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
     pendingPromoteVoiceVersionId: null,
-    talentId: null,
     firstMentionLine: null,
     firstMentionText: null,
     firstMentionSceneId: null,

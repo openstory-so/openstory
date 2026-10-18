@@ -23,7 +23,6 @@ import {
   musicDesignResultSchema,
   sceneSplitBiblesResultSchema,
   sceneSplitScenesResultSchema,
-  talentMatchResponseSchema,
 } from '@/sequences/response-schemas';
 import {
   SCRIPT_ANALYSIS_MODELS,
@@ -31,7 +30,6 @@ import {
   isSelectableAnalysisModelId,
 } from '@/models/models.config';
 import { addLineGutter } from '@/sequences/boundary-split';
-import { buildMatchingPromptVariables } from '@/cast/server/talent-matching-prompt';
 import { buildLocationMatchingPromptVariables } from '@/cast/server/location-matching-prompt';
 import { musicSceneSummariesFromAnalysis } from '@/audio/server/workflows/music-scene-summaries';
 import { STYLE_CATEGORIES } from '@/look/auto-style';
@@ -40,7 +38,6 @@ import {
   LOCATION_CASE,
   PROSE_GOLD_BEATS,
   PROSE_SCRIPT,
-  TALENT_CASE,
   loadEvalGold,
   type EvalGold,
 } from './eval-analysis/fixtures';
@@ -58,7 +55,6 @@ import {
   scoreLocation,
   scoreMusic,
   scoreSceneSplit,
-  scoreTalent,
 } from './eval-analysis/score';
 import { writeReport, type EvalRow } from './eval-analysis/report';
 
@@ -67,7 +63,6 @@ const CALLS = [
   'split-prose',
   'bibles',
   'auto-style',
-  'talent',
   'location',
   'visual',
   'motion',
@@ -169,7 +164,6 @@ const WEIGHTS: Record<CallId, number> = {
   'split-prose': 1.2,
   bibles: 1.0,
   'auto-style': 0.6,
-  talent: 0.5,
   location: 0.5,
   visual: 1.2,
   motion: 1.2,
@@ -189,8 +183,7 @@ function hasFlag(name: string): boolean {
 }
 
 function prodEffort(call: CallId): Effort {
-  if (call === 'talent' || call === 'location' || call === 'music')
-    return 'none';
+  if (call === 'location' || call === 'music') return 'none';
   return 'medium';
 }
 
@@ -486,40 +479,6 @@ async function runCall(
           payload: JSON.stringify(call.parsed, null, 2).slice(0, 4000),
         });
     return { structural: scored.quality, judge, details: scored.details, call };
-  }
-
-  if (job.call === 'talent') {
-    const vars = buildMatchingPromptVariables(
-      TALENT_CASE.characters,
-      TALENT_CASE.talent
-    );
-    const { messages } = await getChatPrompt(
-      'phase/talent-matching-chat',
-      vars
-    );
-    const call = await timedStructuredCall({
-      model,
-      messages,
-      schema: talentMatchResponseSchema,
-      effort: job.effort,
-      observationName: 'eval-analysis-talent',
-      timeoutMs,
-    });
-    if (!call.ok || !call.parsed) {
-      return {
-        structural: 0,
-        judge: undefined,
-        details: { error: call.error },
-        call,
-      };
-    }
-    const scored = scoreTalent(call.parsed.matches);
-    return {
-      structural: scored.quality,
-      judge: undefined,
-      details: scored.details,
-      call,
-    };
   }
 
   if (job.call === 'location') {

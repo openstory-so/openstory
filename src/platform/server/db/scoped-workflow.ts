@@ -208,8 +208,6 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
    * those numbers are this run's own writes, not knowable at the trigger.
    */
   shots: Pick<ScopedDb['shots'], 'getById' | 'getByIds' | 'listBySequence'>;
-  /** `getByIds`: wait-for-sheets polling. */
-  talent: Pick<ScopedDb['talent'], 'getByIds'>;
   /** Spawn-time billing guards — video has no claim rows to hold the slot. */
   videoVariants: Pick<
     ScopedDb['videoVariants'],

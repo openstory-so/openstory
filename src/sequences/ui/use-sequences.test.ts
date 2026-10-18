@@ -96,7 +96,6 @@ const INPUT = {
   autoGenerateMusic: false,
   generateStartFrames: false,
   targetDurationSeconds: 30,
-  suggestedTalentIds: ['talent_1'],
   suggestedLocationIds: ['loc_1'],
 };
 

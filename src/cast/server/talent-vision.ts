@@ -1,9 +1,9 @@
 /**
- * Talent reference vision helper.
+ * Likeness vision for an uploaded photo (#1581).
  *
- * Classifies uploaded talent media as a character/talent sheet vs a regular
- * photo, and describes appearance so we can fill a talent description and
- * sheet metadata without a second model call.
+ * `classifyUpload` uses `subjectKind` to decide whether the rights gate
+ * must ask for a portrait release. The other fields are what the same
+ * call returns; recorded fixtures still parse them.
  */
 
 import type { Microdollars } from '@/billing/money';
@@ -35,7 +35,7 @@ export const talentMediaAnalysisSchema = z.object({
   distinguishingFeatures: z.string(),
 });
 
-export type TalentMediaAnalysis = z.infer<typeof talentMediaAnalysisSchema>;
+type TalentMediaAnalysis = z.infer<typeof talentMediaAnalysisSchema>;
 
 export type AnalyzeTalentMediaInput = {
   imageUrls: string[];

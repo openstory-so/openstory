@@ -60,7 +60,7 @@ Shows the original script extract for this scene — the exact text from your sc
 
 ### Cast Tab
 
-Shows which characters appear in this scene. Each character links to their detail page where you can view their full profile and recast them.
+Shows which characters appear in this scene. Each character links to their detail page. A character's face, sheet and voice live on the character.
 
 ### Location Tab
 

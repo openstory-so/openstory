@@ -32,7 +32,6 @@ import type {
   LegacyStylingParts,
   LocationSheetInputHash,
   ShotImageInputHash,
-  TalentSheetInputHash,
 } from '@/shots/input-hash';
 import type {
   DialogueTakeBase,
@@ -47,7 +46,6 @@ import type {
   MotionDialogue,
   MotionPrompt,
   Scene,
-  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
@@ -335,12 +333,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
-  /** Talent IDs suggested by user for AI-assisted casting */
-  suggestedTalentIds?: string[];
   /** Location IDs suggested by user for visual consistency */
   suggestedLocationIds?: string[];
-  /** @see TalentMatchingWorkflowInput.suggestedTalent — resolved by the launcher. */
-  suggestedTalent?: SuggestedTalentSnapshot[];
   /** @see LocationMatchingWorkflowInput.suggestedLocations — resolved by the launcher. */
   suggestedLocations?: SuggestedLocationSnapshot[];
   /**
@@ -405,7 +399,6 @@ export type StoryboardTriggerInput = Omit<
   | 'elementIds'
   | 'cast'
   | 'musicPromptSource'
-  | 'suggestedTalent'
   | 'suggestedLocations'
   | 'ownerEmail'
   | 'sequenceUrl'
@@ -449,12 +442,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
-  /** Talent IDs suggested by user for AI-assisted casting */
-  suggestedTalentIds?: string[];
   /** Location IDs suggested by user for visual consistency */
   suggestedLocationIds?: string[];
-  /** @see TalentMatchingWorkflowInput.suggestedTalent — passed straight through. */
-  suggestedTalent?: SuggestedTalentSnapshot[];
   /** @see LocationMatchingWorkflowInput.suggestedLocations — passed straight through. */
   suggestedLocations?: SuggestedLocationSnapshot[];
   /**
@@ -859,11 +848,6 @@ export interface CharacterSheetWorkflowInput extends Omit<
    * row); it joins the sheet hash.
    */
   face: { url: string; versionId: string } | null;
-  /**
-   * The cast talent at the snapshot; null when not cast. The claim is taken
-   * only while the character is still cast with it.
-   */
-  talentId: string | null;
   /** Character name for logging */
   characterName: string;
   /**
@@ -873,31 +857,6 @@ export interface CharacterSheetWorkflowInput extends Omit<
   characterMetadata: CharacterBibleEntry;
   /** Image model to use (defaults to nano_banana_2) */
   imageModel?: TextToImageModel;
-  /** Reference image URL (e.g., from talent sheet) for recasting */
-  referenceImageUrl?: string;
-  /** Talent metadata from talent sheet (for appearance overrides when recasting) */
-  talentMetadata?: TalentSheetMetadata;
-  /** Talent description to include in prompt */
-  talentDescription?: string;
-  /**
-   * When true, copy `referenceImageUrl` onto the character instead of
-   * generating a costumed sheet. Snapshotted at trigger time from
-   * `shouldReuseTalentSheet`.
-   */
-  reuseTalentSheet?: boolean;
-  /**
-   * Snapshot of the upstream talent sheet's `input_hash` at trigger time.
-   * `null` when the character has no talent assignment, or when the talent
-   * sheet predates hash tracking. Snapshot pattern only — see
-   * docs/architecture/workflow-snapshots-and-content-hash-staleness.md.
-   */
-  talentSheetInputHash?: string | null;
-  /**
-   * The cast talent's own `description` (#1785), hashed in place of
-   * `talentDescription`, which each path words differently for the prompt.
-   * `null` when not cast or blank. Snapshot pattern only.
-   */
-  castTalentDescription: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
   snapshotInputHash: CharacterSheetInputHash;
   /**
@@ -1028,139 +987,12 @@ export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
   snapshotInputHash: string;
 }
 
-/**
- * Recast character workflow input
- * Orchestrates character sheet generation + shot regeneration for recast
- */
-export interface RecastCharacterWorkflowInput
-  extends
-    SequenceWorkflowContext,
-    Pick<
-      CharacterSheetWorkflowInput,
-      'lookId' | 'lookVersionId' | 'lookStyling' | 'talentId'
-    > {
-  /** Character database ID. The sheet redrawn is its default look's (#2015). */
-  characterDbId: string;
-  /** Character name for logging */
-  characterName: string;
-  /** Character metadata from script analysis */
-  characterMetadata: CharacterBibleEntry;
-  /** Image model to use */
-  imageModel?: TextToImageModel;
-  /** Reference image URL from talent sheet */
-  referenceImageUrl?: string;
-  /** Talent metadata for appearance overrides */
-  talentMetadata?: TalentSheetMetadata;
-  /** Talent description */
-  talentDescription?: string;
-  /**
-   * Copy the talent sheet onto the character instead of generating a
-   * costumed sheet. Threaded through to the character-sheet child.
-   */
-  reuseTalentSheet?: boolean;
-  /**
-   * The upstream talent sheet's `input_hash`, resolved at trigger time. The
-   * workflow used to re-derive this two DB reads deep, minutes later — a
-   * different talent identity than the one the user recast to.
-   */
-  talentSheetInputHash: string | null;
-  /** The cast talent's own description; see `CharacterSheetWorkflowInput`. */
-  castTalentDescription: string | null;
-  /** The sheet claim for the child; see `CharacterSheetWorkflowInput`. */
-  sheetVersionId: string;
-  /** See `CharacterSheetWorkflowInput.bibleVersionId`. */
-  bibleVersionId: string | null;
-  /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
-  aspectRatio: AspectRatio;
-  resolution?: Resolution;
-  /**
-   * Per-shot regenerate-shots snapshots for the shots this character appears
-   * in, resolved at trigger time. The scope of the regeneration IS this list —
-   * there is no separate `affectedShotIds`. The recast character's own sheet
-   * enters as a sentinel (see `recast-snapshot.ts`) because the awaited child
-   * has not generated it yet; the workflow substitutes it in memory.
-   */
-  shotSnapshots: RegenerateShotSnapshot[];
-  /** Batch hash over `shotSnapshots` as sent (payload tamper check). */
-  snapshotInputHash: string;
-}
-
-/**
- * Talent-to-character match result from AI casting
- */
-export type TalentCharacterMatch = {
-  /** Character ID from CharacterBibleEntry.characterId */
-  characterId: string;
-  /** Talent database ID */
-  talentId: string;
-  /** Talent name for logging/display */
-  talentName: string;
-  /** Talent's default sheet image URL for reference */
-  sheetImageUrl: string;
-  /** Talent sheet metadata for appearance blending */
-  sheetMetadata?: TalentSheetMetadata;
-  /** Talent library description, snapshotted at match time for reuse checks. */
-  talentDescription?: string;
-  // Talent performance (#1561) from the trigger-time snapshot; `''` = library
-  // has none, use the script's (`||` in buildCastingAttributes, which also
-  // tolerates pre-#1561 checkpoints that lack the keys).
-  personality: string;
-  movement: string;
-  // Talent voice (#1553), copied onto the character at cast. `null` = the
-  // library has none (pre-#1553 checkpoints lack the keys: `?? null`).
-  voiceId: string | null;
-  voiceDescription: string | null;
-  /**
-   * Signed real-person portrait (`talent.isHuman`). Stamps character
-   * `isPerson: true` at insert (#1682). Absent on pre-stamp checkpoints.
-   */
-  hasSignedRelease?: boolean;
-  /**
-   * The matched default sheet's `input_hash`, so a pipeline character sheet
-   * is stamped with the same hash a regenerate would (#1113). Absent on
-   * pre-#1113 checkpoints.
-   */
-  sheetInputHash?: string | null;
-};
-
-/**
- * Talent matching workflow input
- */
-export interface TalentMatchingWorkflowInput extends SequenceWorkflowContext {
-  analysisModelId: AnalysisModelId;
-  suggestedTalentIds?: string[];
-  /**
-   * Name/description/performance per suggested talent, snapshotted at the
-   * trigger. The workflow re-reads the talent rows only for `defaultSheet.imageUrl`, which
-   * genuinely arrives late (fire-and-forget `/library-talent-sheet`); the
-   * casting identity itself must not drift mid-run.
-   */
-  suggestedTalent?: SuggestedTalentSnapshot[];
-  /** Pre-extracted character bible from scene splitting. Skips extraction LLM call when provided. */
-  characterBible: CharacterBibleEntry[];
-}
-
-/** @see TalentMatchingWorkflowInput.suggestedTalent */
-type SuggestedTalentSnapshot = {
-  talentId: string;
-  name: string;
-  description: string | null;
-  personality: string;
-  movement: string;
-  voiceId: string | null;
-  voiceDescription: string | null;
-};
-
 /** @see LocationMatchingWorkflowInput.suggestedLocations */
 type SuggestedLocationSnapshot = {
   locationId: string;
   name: string;
   description: string | null;
 };
-
-export interface TalentMatchingWorkflowOutput {
-  matches: TalentCharacterMatch[];
-}
 
 /**
  * Character sheet generation workflow input
@@ -1171,9 +1003,6 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
 
   /** Image model to use (defaults to nano_banana_2) */
   imageModel?: TextToImageModel;
-
-  /** Matched talent data for characters that should use talent references */
-  talentMatches?: TalentCharacterMatch[];
 
   /** Sequence style config to apply to character sheets */
   styleConfig?: StyleConfig;
@@ -1373,50 +1202,6 @@ export interface UpscaleShotVariantWorkflowResult {
 }
 
 /**
- * Library talent sheet generation workflow input
- * Generates a talent sheet from reference media uploaded by the user
- */
-export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
-  /** Talent ID from the library */
-  talentId: string;
-  /** Talent name for the prompt */
-  talentName: string;
-  /** Talent description for the prompt */
-  talentDescription?: string;
-  /** Reference media URLs to use as input (optional - if not provided, generates from name/description) */
-  referenceImageUrls?: string[];
-  /** Image model to use */
-  imageModel?: TextToImageModel;
-  /** Name for the generated sheet */
-  sheetName?: string;
-  /**
-   * Existing character/talent sheet the user uploaded. When set, the
-   * workflow stores this image as the sheet instead of generating a new
-   * 4-panel, then crops the close-up panel as the portrait.
-   */
-  uploadedSheetUrl?: string;
-  /** Appearance metadata extracted from the uploaded sheet, when available. */
-  uploadedSheetMetadata?: TalentSheetMetadata;
-  /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash: TalentSheetInputHash;
-  /**
-   * The sheet claim (#1113): the id of the `talent_sheets` row this run writes, taken at the trigger
-   * (`talent.claimSheet`). The run lands only while the claim still names it,
-   * else it parks as divergent. Absent only on a run queued before #1113,
-   * which lands unconditionally.
-   */
-  sheetId: string;
-}
-
-export interface LibraryTalentSheetWorkflowResult {
-  sheetId: string;
-  sheetImageUrl: string;
-  sheetImagePath?: string;
-  headshotImageUrl?: string;
-  headshotImagePath?: string;
-}
-
-/**
  * Location sheet generation workflow input. `sequenceId` is null for a run
  * started from the Locations page (#1695): it stores under the team and
  * reports on the location's own channel.
@@ -1508,8 +1293,7 @@ export interface LocationMatchingWorkflowInput extends SequenceWorkflowContext {
   suggestedLocationIds?: string[];
   /**
    * Name/description per suggested library location, snapshotted at the
-   * trigger. @see TalentMatchingWorkflowInput.suggestedTalent — only
-   * `referenceImageUrl` is read live.
+   * trigger. Only `referenceImageUrl` is read live.
    */
   suggestedLocations?: SuggestedLocationSnapshot[];
   /** Pre-extracted location bible from scene splitting. Skips extraction LLM call when provided. */

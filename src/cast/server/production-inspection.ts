@@ -88,12 +88,10 @@ const characterLookReadSchema = createSelectSchema(characterLooks)
   });
 export const characterReadSchema = createSelectSchema(characters)
   .pick({ id: true })
-  // How the sequence casts it (#2017): its cast link, and the talent on the
-  // bible version that link pins.
+  // How the sequence casts it (#2017): its cast link.
   .extend({
     sequenceId: createSelectSchema(sequenceCast).shape.sequenceId,
     characterId: createSelectSchema(sequenceCast).shape.scriptCharacterId,
-    talentId: createSelectSchema(characterBibleVersions).shape.talentId,
   })
   .extend(
     createSelectSchema(characters).pick({

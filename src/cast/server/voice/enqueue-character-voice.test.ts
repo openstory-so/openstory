@@ -10,7 +10,6 @@ function character(
   return {
     id: 'char-1',
     sequenceId: 'seq-1',
-    talentId: null,
     characterId: 'maya',
     name: 'Maya',
     age: null,

@@ -204,7 +204,6 @@ describe('createSequencesMethods style snapshot', () => {
       {
         lookVersionId: character.looks[0]?.lookVersionId ?? '',
         bibleVersionId: character.selectedBibleVersionId,
-        talentId: character.talentId,
       },
       { markGenerating: true, activity: null }
     );

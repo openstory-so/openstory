@@ -103,19 +103,6 @@ export const assertNameFree = async (
 };
 
 /**
- * The characters played by a talent: the ones whose current bible version
- * names it. A condition on `characters`, for `demoteCharacterSheetClaims`.
- */
-export const castOfTalent = (db: Database, talentId: string): SQL =>
-  inArray(
-    characters.selectedBibleVersionId,
-    db
-      .select({ id: characterBibleVersions.id })
-      .from(characterBibleVersions)
-      .where(eq(characterBibleVersions.talentId, talentId))
-  );
-
-/**
  * Delete the cast links `where` matches. They RESTRICT their parents' delete
  * (the #612 rebuild trap), so this goes before the sequence's or the
  * character's, in the same batch.

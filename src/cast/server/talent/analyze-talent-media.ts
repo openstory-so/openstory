@@ -1,5 +1,7 @@
 /**
- * Billed talent-vision call used by server fns and library-talent create.
+ * Billed likeness-vision calls on a photo or a stored clip. Upload
+ * classification (`classifyUpload`) is the only caller: it decides whether
+ * the media shows a real person before the rights gate.
  */
 
 import {
@@ -7,10 +9,8 @@ import {
   analyzeTalentMedia,
   TALENT_CLIP_MODEL,
   TALENT_VISION_MODEL,
-  type TalentMediaAnalysis,
   type TalentVisionResult,
 } from '@/cast/server/talent-vision';
-import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import type { ScopedDb } from '@/platform/server/db/scoped';
@@ -47,7 +47,7 @@ export async function analyzeTalentMediaForTeam(
     resolveLlmKey: (model) => input.scopedDb.apiKeys.resolveLlmKey(model),
     observability: {
       userId: input.userId,
-      tags: ['vision', 'talent'],
+      tags: ['vision', 'likeness'],
     },
   });
   await billTalentVision(input, result, input.imageUrls.length);
@@ -79,7 +79,7 @@ export async function analyzeTalentClipForTeam(input: {
     const result = await analyzeTalentClip({
       clip: file,
       llmKey,
-      observability: { userId: input.userId, tags: ['vision', 'talent'] },
+      observability: { userId: input.userId, tags: ['vision', 'likeness'] },
     });
     await billTalentVision(input, result, 1);
     return result;
@@ -125,39 +125,4 @@ async function billTalentVision(
       metadata: { imageCount: mediaCount },
     });
   }
-}
-
-function slugifyName(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '');
-  return slug.length > 0 ? slug : 'talent';
-}
-
-export function sheetMetadataFromAnalysis(
-  name: string,
-  analysis: TalentMediaAnalysis
-): TalentSheetMetadata {
-  const slug = slugifyName(name);
-  return {
-    characterId: slug,
-    name,
-    age: analysis.age,
-    gender: analysis.gender,
-    ethnicity: analysis.ethnicity,
-    physicalDescription:
-      analysis.physicalDescription.trim() || analysis.description,
-    standardClothing: analysis.standardClothing,
-    looks: [],
-    distinguishingFeatures: analysis.distinguishingFeatures,
-    // A photo carries no performance; cast reads the talent row's (Edit talent).
-    personality: '',
-    movement: '',
-    voiceDescription: '',
-    // A talent photo is a face by definition.
-    voiceOnly: false,
-    isPerson: true,
-    consistencyTag: slug,
-  };
 }

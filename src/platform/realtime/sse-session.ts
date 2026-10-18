@@ -51,7 +51,7 @@ export function jitterReconnectDelay(baseMs: number, unit: number): number {
 }
 
 /**
- * Heavy (talent / sequence) drives the shared status. A billing reconnect
+ * Heavy (character / sequence) drives the shared status. A billing reconnect
  * must not demote a live heavy stream, or the stale-sheet toast sticks.
  */
 export function combineRealtimeStatus(

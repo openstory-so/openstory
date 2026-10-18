@@ -102,49 +102,40 @@ async function references(
   });
 }
 
-describe('plan reference talent-sheet reuse', () => {
+describe('plan reference character sheets', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     buildSheet.mockImplementation(async () => ({
       characterDbId: 'maya',
-      reuseTalentSheet: false,
-      referenceImageUrl: 'https://example.com/talent.jpg',
-      talentMetadata: { standardClothing: 'yellow rain jacket' },
-      castTalentDescription: 'A matching actor',
     }));
   });
-  it('reuses a matching talent sheet for a missing first sheet without charging generation', async () => {
+  it('bills a missing first sheet', async () => {
     const result = await references();
     expect(result?.characterSheets).toEqual([
-      expect.objectContaining({ reuseTalentSheet: true }),
-    ]);
-    expect(result?.cost.sheets).toBe(0);
-    expect(estimateSheets).toHaveBeenCalledWith(
-      expect.objectContaining({ characterSheets: 0 })
-    );
-  });
-  it('regenerates an existing selected sheet even when talent still matches', async () => {
-    const result = await references({
-      selectedSheetVersionId: 'existing-sheet',
-    });
-    expect(result?.characterSheets).toEqual([
-      expect.objectContaining({ reuseTalentSheet: false }),
+      expect.objectContaining({ characterDbId: 'maya' }),
     ]);
     expect(result?.cost.sheets).toBe(100);
     expect(estimateSheets).toHaveBeenCalledWith(
       expect.objectContaining({ characterSheets: 1 })
     );
   });
-  it('builds one sheet per look a unit names, deciding reuse per look (#2015)', async () => {
+  it('bills an existing selected sheet the same way', async () => {
+    const result = await references({
+      selectedSheetVersionId: 'existing-sheet',
+    });
+    expect(result?.characterSheets).toEqual([
+      expect.objectContaining({ characterDbId: 'maya' }),
+    ]);
+    expect(result?.cost.sheets).toBe(100);
+    expect(estimateSheets).toHaveBeenCalledWith(
+      expect.objectContaining({ characterSheets: 1 })
+    );
+  });
+  it('builds one sheet per look a unit names (#2015)', async () => {
     buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
       characterDbId: 'maya',
       lookId,
-      reuseTalentSheet: false,
-      referenceImageUrl: 'https://example.com/talent.jpg',
-      talentMetadata: { standardClothing: 'yellow rain jacket' },
-      castTalentDescription: 'A matching actor',
     }));
-    // minimal looks: only what dressing and the reuse check read
     const look = (id: string, clothing: string, isDefault: boolean) =>
       asStub<Character['looks'][number]>({
         id,
@@ -170,27 +161,21 @@ describe('plan reference talent-sheet reuse', () => {
         { kind: 'sheet:character', id: 'gala' },
       ]
     );
-    // The default look matches the talent's own clothes and copies its sheet.
-    // The gown is drawn from that sheet, so it waits for it in the same run
-    // (a draft with no face), and is billed. The look no unit names is
-    // skipped.
+    // The gown waits for the default sheet this run makes. A look no unit
+    // names is skipped. Both owed sheets are billed.
     expect(result?.characterSheets).toEqual([
-      expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
+      expect.objectContaining({ lookId: 'maya' }),
     ]);
     expect(result?.lookSheetsAfterDefault).toEqual([
       expect.objectContaining({ lookId: 'gala' }),
     ]);
     expect(buildSheet).toHaveBeenCalledTimes(1);
-    expect(result?.cost.sheets).toBe(100);
+    expect(result?.cost.sheets).toBe(200);
   });
-  it('never copies the talent sheet onto a look other than the default', async () => {
+  it('drafts a non-default look to follow the default sheet', async () => {
     buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
       characterDbId: 'maya',
       lookId,
-      reuseTalentSheet: false,
-      referenceImageUrl: 'https://example.com/talent.jpg',
-      talentMetadata: { standardClothing: 'yellow rain jacket' },
-      castTalentDescription: 'A matching actor',
     }));
     const look = (id: string, isDefault: boolean) =>
       asStub<Character['looks'][number]>({
@@ -212,7 +197,7 @@ describe('plan reference talent-sheet reuse', () => {
       ]
     );
     expect(result?.characterSheets).toEqual([
-      expect.objectContaining({ lookId: 'maya', reuseTalentSheet: true }),
+      expect.objectContaining({ lookId: 'maya' }),
     ]);
     expect(result?.lookSheetsAfterDefault).toEqual([
       expect.objectContaining({ lookId: 'gala' }),
@@ -222,7 +207,6 @@ describe('plan reference talent-sheet reuse', () => {
     buildSheet.mockImplementation(async ({ lookId }: { lookId: string }) => ({
       characterDbId: 'maya',
       lookId,
-      reuseTalentSheet: false,
       face: { url: '/r2/maya.png', versionId: 'maya-v1' },
     }));
     const look = (id: string, isDefault: boolean) =>
@@ -244,7 +228,6 @@ describe('plan reference talent-sheet reuse', () => {
     expect(result?.characterSheets).toEqual([
       expect.objectContaining({
         lookId: 'gala',
-        reuseTalentSheet: false,
         face: { url: '/r2/maya.png', versionId: 'maya-v1' },
       }),
     ]);

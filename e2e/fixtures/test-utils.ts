@@ -160,26 +160,16 @@ export async function selectComposerStyle(
 }
 
 /**
- * Open Talent or Locations from the composer. Desktop shows the pickers
- * inline; below md they sit behind a References sheet.
+ * Open Locations from the composer. Desktop shows the picker inline; below
+ * md it sits behind a References sheet.
  */
-export async function openComposerReference(
-  page: Page,
-  name: 'Talent' | 'Locations'
-): Promise<void> {
-  // On a new sequence talent is a tab of the Cast picker (#2017).
-  const inner = page.getByRole('button', {
-    name: name === 'Talent' ? 'Cast' : name,
-    exact: true,
-  });
+export async function openComposerReference(page: Page): Promise<void> {
+  const inner = page.getByRole('button', { name: 'Locations', exact: true });
   if (!(await inner.isVisible())) {
     await page.getByRole('button', { name: 'References' }).click();
   }
   await expect(inner).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   await inner.click();
-  if (name === 'Talent') {
-    await page.getByRole('dialog').getByRole('tab', { name: 'Talent' }).click();
-  }
 }
 
 /**
@@ -231,33 +221,6 @@ async function selectSingleCatalogModel(
 }
 
 /**
- * Wait until every file picked in an add/edit dialog has finished uploading.
- *
- * Order matters. The submit button is only disabled while
- * `files.length > uploadedUrls.length`, and both are empty until React commits
- * the picked file — so waiting on the button alone passes instantly, before the
- * upload even starts, and the form submits with no media (#827). Waiting for
- * the file row first pins `files.length >= 1`, which makes the subsequent
- * enabled-check a genuine "uploadedUrls caught up" signal.
- */
-export async function waitForUploadComplete(
-  page: Page,
-  submitName = 'Add Talent'
-): Promise<void> {
-  const dialog = page.getByRole('dialog', { name: submitName });
-  await expect(
-    dialog.locator('[data-slot="file-upload-item"]').first()
-  ).toBeVisible();
-  // Scope to the open dialog: the page header still has an enabled
-  // "Add Talent" trigger, and during the PUT the dialog submit is
-  // relabeled "Uploading…". Waiting for the dialog's own submit name
-  // is what actually means the file landed.
-  await expect(dialog.getByRole('button', { name: submitName })).toBeEnabled({
-    timeout: 15_000,
-  });
-}
-
-/**
  * Wait for a library page to be hydrated by checking that its Add button is enabled.
  * The button is disabled during SSR/hydration via useHydrated hook.
  */
@@ -269,9 +232,8 @@ export async function waitForLibraryPageLoad(
   await expect(addButton).toBeEnabled({ timeout: 30000 });
 }
 
-/** URL shapes that only the library *detail* routes can produce. */
+/** URL shape that only the location detail route can produce. */
 export const LOCATION_DETAIL_URL = /\/locations\/[^/?#]+/;
-export const TALENT_DETAIL_URL = /\/talent\/[^/?#]+/;
 
 /**
  * Click a library card and wait for its detail route to take over.
@@ -311,21 +273,6 @@ export async function cleanupLocationByName(
   name: string
 ): Promise<void> {
   await fetch('http://localhost:3020/api/test/location', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ teamId, name }),
-  });
-}
-
-/**
- * Find and cleanup a talent created during a test by name.
- * Use for tests that create entities via UI and need inline cleanup.
- */
-export async function cleanupTalentByName(
-  teamId: string,
-  name: string
-): Promise<void> {
-  await fetch('http://localhost:3020/api/test/talent', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ teamId, name }),

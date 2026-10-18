@@ -150,7 +150,7 @@ function previewCastForShot(
         const who = [
           entry.gender,
           entry.age,
-          // A cast talent's bible points at a sheet the preview does not send.
+          // A stored likeness instruction points at a sheet this preview does not send.
           entry.physicalDescription.replace(REFERENCE_LIKENESS_INSTRUCTION, ''),
         ]
           .map((part) => part.trim().replace(/\.+$/, ''))

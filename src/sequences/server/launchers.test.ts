@@ -79,13 +79,6 @@ function makeScopedDb(opts: {
     config: StyleConfig;
   } | null;
   elementIds?: string[];
-  talent?: Array<{
-    id: string;
-    name: string;
-    description: string | null;
-    personality: string | null;
-    movement: string | null;
-  }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
   /** The sequence's live location links (#1695). */
   linkedLocations?: Array<{ id: string; attached: boolean }>;
@@ -125,7 +118,6 @@ function makeScopedDb(opts: {
   const listElements = vi.fn(async () =>
     (opts.elementIds ?? ['el_1', 'el_2']).map((id) => ({ id }))
   );
-  const getTalentByIds = vi.fn(async () => opts.talent ?? []);
   const getLocationsByIds = vi.fn(
     async (_ids: readonly string[]) => opts.locations ?? []
   );
@@ -138,7 +130,6 @@ function makeScopedDb(opts: {
     styles: { getById: getStyleById },
     sequenceElements: { list: listElements },
     characters: { list: listCharacters, getHeldElsewhere },
-    talent: { getByIds: getTalentByIds },
     locations: { list: listLocations, getCurrentByIds: getLocationsByIds },
     teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
@@ -155,7 +146,6 @@ function makeScopedDb(opts: {
     getForUser,
     getStyleById,
     listElements,
-    getTalentByIds,
     getLocationsByIds,
     listLocations,
   };
@@ -279,8 +269,6 @@ describe('triggerStoryboard', () => {
       // No music prompt on the row yet, so whatever the pipeline writes is a
       // first generation — resolved here, not by a lookup in the grandchild.
       musicPromptSource: 'ai-generated',
-      // Casting identity is snapshotted here too; INPUT suggests neither.
-      suggestedTalent: [],
       // The picked ids plus the attached ones (#1695): none here.
       suggestedLocationIds: [],
       suggestedLocations: [],
@@ -423,42 +411,22 @@ describe('triggerStoryboard', () => {
     });
   });
 
-  test('snapshots suggested talent + location identity so matching never re-reads it', async () => {
+  test('snapshots suggested location identity so matching never re-reads it', async () => {
     runStateResult = 'failed';
     triggerWorkflowMock.mockReset();
     triggerWorkflowMock.mockResolvedValue('run-1');
-    const { scopedDb, getTalentByIds, getLocationsByIds } = makeScopedDb({
+    const { scopedDb, getLocationsByIds } = makeScopedDb({
       workflowRunId: null,
-      talent: [
-        {
-          id: 'tal_1',
-          name: 'Alice',
-          description: 'Lead',
-          personality: 'guarded',
-          movement: null,
-        },
-      ],
       locations: [{ id: 'loc_1', name: 'Docks', description: null }],
     });
 
     await triggerStoryboard(scopedDb, {
       ...INPUT,
-      suggestedTalentIds: ['tal_1'],
       suggestedLocationIds: ['loc_1'],
     });
 
-    expect(getTalentByIds).toHaveBeenCalledWith(['tal_1']);
     expect(getLocationsByIds).toHaveBeenCalledWith(['loc_1']);
     expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
-      suggestedTalent: [
-        {
-          talentId: 'tal_1',
-          name: 'Alice',
-          description: 'Lead',
-          personality: 'guarded',
-          movement: '',
-        },
-      ],
       suggestedLocations: [
         { locationId: 'loc_1', name: 'Docks', description: null },
       ],
@@ -469,13 +437,12 @@ describe('triggerStoryboard', () => {
     runStateResult = 'failed';
     triggerWorkflowMock.mockReset();
     triggerWorkflowMock.mockResolvedValue('run-1');
-    const { scopedDb, getTalentByIds, getLocationsByIds } = makeScopedDb({
+    const { scopedDb, getLocationsByIds } = makeScopedDb({
       workflowRunId: null,
     });
 
     await triggerStoryboard(scopedDb, INPUT);
 
-    expect(getTalentByIds).not.toHaveBeenCalled();
     // The read is always made (the attached locations join the set, #1695);
     // with no ids it asks for none.
     expect(getLocationsByIds).toHaveBeenCalledWith([]);

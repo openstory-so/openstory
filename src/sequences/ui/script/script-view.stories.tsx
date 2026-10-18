@@ -62,7 +62,6 @@ Oh, hi Mom. Yeah, I'm fine. Just... working on a big project.`,
   generateVoices: false,
   draftMotion: false,
   targetDurationSeconds: null,
-  suggestedTalentIds: null,
   suggestedLocationIds: null,
 };
 

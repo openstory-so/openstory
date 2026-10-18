@@ -29,7 +29,6 @@ const CALL_LABEL: Record<string, string> = {
   'split-prose': 'Scene split (prose)',
   bibles: 'Bibles',
   'auto-style': 'Auto style',
-  talent: 'Talent match',
   location: 'Location match',
   visual: 'Visual prompt',
   motion: 'Motion prompt + vision',

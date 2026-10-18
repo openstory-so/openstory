@@ -1,6 +1,6 @@
 import { NewLocationDialog } from '@/cast/ui/location-library/new-location-dialog';
 import { TeamLocationList } from '@/cast/ui/location-library/team-location-list';
-import { LibraryGridSkeleton } from '@/cast/ui/talent-library/talent-library-list';
+import { LibraryGridSkeleton } from '@/cast/ui/library-virtual-grid';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { PageContainer } from '@/ui/layout/page-container';

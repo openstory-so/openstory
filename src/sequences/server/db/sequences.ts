@@ -641,7 +641,6 @@ export function createSequencesMethods(
       draftMotion?: boolean;
       /** Film length asked for (#1593); absent / null = auto. */
       targetDurationSeconds?: number | null;
-      suggestedTalentIds?: string[];
       suggestedLocationIds?: string[];
     }): Promise<Sequence> => {
       const styleConfig = params.deferStyleSnapshot
@@ -672,7 +671,6 @@ export function createSequencesMethods(
         generateStartFrames: params.generateStartFrames ?? false,
         generateVoices: params.generateVoices ?? false,
         targetDurationSeconds: params.targetDurationSeconds ?? null,
-        suggestedTalentIds: params.suggestedTalentIds ?? null,
         suggestedLocationIds: params.suggestedLocationIds ?? null,
         status: 'draft',
       };

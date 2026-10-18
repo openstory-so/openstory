@@ -1,17 +1,10 @@
 /**
- * Who a new sequence is cast with (#2017): one button, one picker, two tabs.
+ * Who a new sequence is cast with (#2017): one button, one picker.
  * A character is added directly: every pick is cast, whether or not the
- * script names it yet. Talent is a suggestion: analysis decides which of the
- * script's characters each one plays.
+ * script names it yet.
  */
 
-import { talentSquareImageClassName } from '@/cast/talent-preview';
-import {
-  TALENT_CASTING_HINT,
-  TalentAvatars,
-  TalentPickerPanel,
-} from '@/cast/ui/talent/talent-suggestion-selector';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/shadcn/tabs';
+import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import type { TeamCharacter } from '@/cast/server/db/characters';
 import { useHydrated } from '@/ui/use-hydrated';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -35,12 +28,10 @@ type CastSelectorProps = {
   /** The team's characters; undefined while they load. */
   characters: readonly TeamCharacter[] | undefined;
   failed: boolean;
-  /** Signed out there is no team: the picker opens on Talent. */
+  /** Signed out there is no team. */
   signedOut: boolean;
   selectedIds: readonly string[];
   onSelectionChange: (ids: string[]) => void;
-  selectedTalentIds: string[];
-  onTalentChange: (ids: string[]) => void;
   disabled: boolean;
 };
 
@@ -57,7 +48,7 @@ const Picture: React.FC<{ character: TeamCharacter; iconClass: string }> = ({
       alt={character.name}
       width={portraitUrl ? 160 : 640}
       height={160}
-      className={talentSquareImageClassName(!portraitUrl)}
+      className={sheetSquareImageClassName(!portraitUrl)}
     />
   ) : (
     <div className="flex h-full w-full items-center justify-center">
@@ -72,8 +63,6 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
   signedOut,
   selectedIds,
   onSelectionChange,
-  selectedTalentIds,
-  onTalentChange,
   disabled,
 }) => {
   const [open, setOpen] = useState(false);
@@ -150,10 +139,6 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
             )}
           </div>
         )}
-        <TalentAvatars
-          selectedTalentIds={selectedTalentIds}
-          onSelectionChange={onTalentChange}
-        />
       </div>
 
       <Dialog
@@ -175,114 +160,93 @@ export const CastSelector: React.FC<CastSelectorProps> = ({
             <DialogHeader>
               <DialogTitle>Cast</DialogTitle>
               <DialogDescription>
-                Add your characters, or suggest talent for the script's own.
+                Add your characters. Characters the script adds are made new.
               </DialogDescription>
             </DialogHeader>
-            <Tabs
-              defaultValue={signedOut ? 'talent' : 'characters'}
-              className="flex flex-col gap-4"
-            >
-              <TabsList>
-                <TabsTrigger value="characters">Characters</TabsTrigger>
-                <TabsTrigger value="talent">Talent</TabsTrigger>
-              </TabsList>
-              <TabsContent value="talent" className="flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">
-                  {TALENT_CASTING_HINT}
+            <p className="text-sm text-muted-foreground">
+              Each one joins this sequence with its looks, sheets and voice.
+            </p>
+            <Input
+              type="search"
+              aria-label="Search characters"
+              placeholder="Search characters…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              // Enter would submit the form and close the picker mid-search.
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.preventDefault();
+              }}
+            />
+            <ScrollArea className="h-[min(400px,40dvh)]">
+              {failed ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  Could not load characters.
                 </p>
-                <TalentPickerPanel
-                  selectedTalentIds={selectedTalentIds}
-                  onSelectionChange={onTalentChange}
-                />
-              </TabsContent>
-              <TabsContent value="characters" className="flex flex-col gap-4">
-                <p className="text-sm text-muted-foreground">
-                  Each one joins this sequence with its looks, sheets and voice.
-                  Characters the script adds are made new.
-                </p>
-                <Input
-                  type="search"
-                  aria-label="Search characters"
-                  placeholder="Search characters…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  // Enter would submit the form and close the picker mid-search.
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.preventDefault();
-                  }}
-                />
-                <ScrollArea className="h-[min(400px,40dvh)]">
-                  {failed ? (
-                    <p className="py-12 text-center text-sm text-muted-foreground">
-                      Could not load characters.
-                    </p>
-                  ) : !shown ? (
-                    <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
-                      {Array.from({ length: 8 }).map((_, i) => (
-                        <div key={i} className="flex flex-col gap-2 p-3">
-                          <Skeleton className="aspect-square w-full rounded-lg" />
-                          <Skeleton className="h-4 w-3/4" />
-                        </div>
-                      ))}
+              ) : !shown ? (
+                <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="flex flex-col gap-2 p-3">
+                      <Skeleton className="aspect-square w-full rounded-lg" />
+                      <Skeleton className="h-4 w-3/4" />
                     </div>
-                  ) : shown.length === 0 ? (
-                    <div className="flex flex-col items-center gap-3 py-12 text-center">
-                      <p className="text-sm text-muted-foreground">
-                        {search.trim()
-                          ? 'No character matches.'
-                          : signedOut
-                            ? 'Sign in to add your characters.'
-                            : 'No characters yet.'}
-                      </p>
-                      {!search.trim() && !signedOut && (
-                        <Button asChild variant="outline" size="sm">
-                          <Link to="/characters">Open Characters</Link>
-                        </Button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
-                      {shown.map((character) => {
-                        const isSelected = selectedIds.includes(character.id);
-                        return (
-                          <button
-                            key={character.id}
-                            type="button"
-                            aria-pressed={isSelected}
-                            onClick={() => toggle(character.id)}
-                            className={cn(
-                              'relative flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                              isSelected
-                                ? 'bg-primary/10 ring-2 ring-primary'
-                                : 'hover:bg-muted'
-                            )}
-                          >
-                            <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
-                              <Picture
-                                character={character}
-                                iconClass="h-12 w-12"
-                              />
-                            </div>
-                            <span className="w-full truncate text-sm font-medium">
-                              {character.name}
-                            </span>
-                            {isSelected && (
-                              <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
-                                <Check className="h-3 w-3 text-primary-foreground" />
-                              </div>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  ))}
+                </div>
+              ) : shown.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    {search.trim()
+                      ? 'No character matches.'
+                      : signedOut
+                        ? 'Sign in to add your characters.'
+                        : 'No characters yet.'}
+                  </p>
+                  {!search.trim() && !signedOut && (
+                    <Button asChild variant="outline" size="sm">
+                      <Link to="/characters">Open Characters</Link>
+                    </Button>
                   )}
-                </ScrollArea>
-              </TabsContent>
-            </Tabs>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-4 p-1 sm:grid-cols-4">
+                  {shown.map((character) => {
+                    const isSelected = selectedIds.includes(character.id);
+                    return (
+                      <button
+                        key={character.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggle(character.id)}
+                        className={cn(
+                          'relative flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                          isSelected
+                            ? 'bg-primary/10 ring-2 ring-primary'
+                            : 'hover:bg-muted'
+                        )}
+                      >
+                        <div className="aspect-square w-full overflow-hidden rounded-lg bg-muted">
+                          <Picture
+                            character={character}
+                            iconClass="h-12 w-12"
+                          />
+                        </div>
+                        <span className="w-full truncate text-sm font-medium">
+                          {character.name}
+                        </span>
+                        {isSelected && (
+                          <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
+                            <Check className="h-3 w-3 text-primary-foreground" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
             <div className="flex justify-end">
               <Button type="submit">
-                {selectedIds.length + selectedTalentIds.length > 0
-                  ? `Cast ${selectedIds.length + selectedTalentIds.length}`
+                {selectedIds.length > 0
+                  ? `Cast ${selectedIds.length}`
                   : 'Continue'}
               </Button>
             </div>

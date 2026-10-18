@@ -30,7 +30,7 @@ export const castReadTools = [
   ),
   productionRead(
     'get_character',
-    'Inspect a sequence character by database characterId, including appearance, performance, voice takes, first mention and selected sheet. characterId is not an analysis label or talent library ID.',
+    'Inspect a sequence character by database characterId, including appearance, performance, voice takes, first mention and selected sheet. characterId is not an analysis label.',
     sequenceInput.extend({ characterId: ulidSchema }),
     z.object({ character: characterReadSchema }),
     async (input, { scopedDb, origin }) => ({

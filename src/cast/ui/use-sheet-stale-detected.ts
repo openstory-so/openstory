@@ -19,7 +19,7 @@ type SheetStaleDetectedOptions = {
   /**
    * Resolved realtime channel id. Sequence channels use the bare sequence id;
    * a run started from no sequence reports on the entity's own channel
-   * (`talent:<id>`, `castChannelId`, `locationChannelId`).
+   * (`castChannelId`, `locationChannelId`).
    */
   channelId: string | undefined;
   /**
@@ -27,7 +27,7 @@ type SheetStaleDetectedOptions = {
    * of the values in this list. Avoids cross-talk when several entity types
    * share a sequence channel (shot + character + location all emit there).
    */
-  entityTypes: ReadonlyArray<'shot' | 'character' | 'location' | 'talent'>;
+  entityTypes: ReadonlyArray<'shot' | 'character' | 'location'>;
   /**
    * Query keys to invalidate when a matching stale:detected event arrives.
    * Caller decides which divergent-variant queries should refetch.

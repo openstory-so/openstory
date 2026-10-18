@@ -2,7 +2,7 @@
  * Whether a character must stay a person (#2065). One function decides it
  * for the reads the bible form shows and for the edit the server refuses, so
  * they cannot disagree. Whether an image shows a real person never comes
- * from the client: the talent's `isHuman` and the upload ledger answer.
+ * from the client: the upload ledger answers.
  *
  * The sheets that count are the character's in EVERY sequence, not only the
  * one being edited: a bible version is shared, so a version made not a
@@ -16,11 +16,6 @@ import { ConflictError } from '@/platform/errors';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 
 type LockDb = Pick<ScopedDb, 'compliance' | 'characterLooks'>;
-type Lockable = {
-  id: string;
-  /** The talent the character's bible version is cast with. */
-  talent: { name: string; isHuman: boolean | null } | null;
-};
 
 /**
  * Each character's lock, in order. Two reads for all of them: their sheets
@@ -28,12 +23,10 @@ type Lockable = {
  */
 export async function personLocksOf(
   scopedDb: LockDb,
-  characters: readonly Lockable[]
+  characters: readonly { id: string }[]
 ): Promise<(PersonLock | null)[]> {
   const sheets = await scopedDb.characterLooks.listCastSheetUrls(
-    characters
-      .filter((character) => character.talent?.isHuman !== true)
-      .map((character) => character.id)
+    characters.map((character) => character.id)
   );
   const real =
     sheets.length === 0
@@ -47,27 +40,17 @@ export async function personLocksOf(
       .filter((sheet) => real.has(sheet.url))
       .map((sheet) => sheet.characterId)
   );
-  return characters.map((character) => {
-    if (character.talent?.isHuman === true) {
-      return { reason: 'talent', talentName: character.talent.name };
-    }
-    return photographed.has(character.id) ? { reason: 'upload' } : null;
-  });
+  return characters.map((character) =>
+    photographed.has(character.id) ? { reason: 'upload' } : null
+  );
 }
 
-/**
- * One character's lock, by the talent id its bible version carries. The
- * talent is read as the cast list's join reads it (`getCastIdentity`: by
- * id, whatever its visibility now), so the form and the edit agree.
- */
+/** One character's lock, from the upload ledger. */
 export async function personLockOf(
-  scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
-  character: { id: string; talentId: string | null }
+  scopedDb: LockDb,
+  character: { id: string }
 ): Promise<PersonLock | null> {
-  const talent = character.talentId
-    ? ((await scopedDb.talent.getCastIdentity(character.talentId)) ?? null)
-    : null;
-  const [lock] = await personLocksOf(scopedDb, [{ id: character.id, talent }]);
+  const [lock] = await personLocksOf(scopedDb, [character]);
   return lock ?? null;
 }
 
@@ -84,9 +67,9 @@ export async function personLockOf(
  * An unlocked character's edit comes back as it was sent.
  */
 export async function lockedPersonEdit<U extends { isPerson?: boolean | null }>(
-  scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
+  scopedDb: LockDb,
   update: U,
-  character: { id: string; talentId: string | null }
+  character: { id: string }
 ): Promise<U> {
   const lock = await personLockOf(scopedDb, character);
   if (!lock) return update;
@@ -112,10 +95,10 @@ export async function lockedPersonEdit<U extends { isPerson?: boolean | null }>(
  * doubt, a person: over-registering is the safe direction.
  */
 export async function keepLockedCharacterAPerson(
-  scopedDb: LockDb & Pick<ScopedDb, 'talent' | 'characters'>,
+  scopedDb: LockDb & Pick<ScopedDb, 'characters'>,
   actor: { userId: string },
   sequenceId: string | null,
-  character: { id: string; talentId: string | null; isPerson: boolean }
+  character: { id: string; isPerson: boolean }
 ): Promise<void> {
   if (character.isPerson) return;
   if (!(await personLockOf(scopedDb, character))) return;
@@ -139,7 +122,7 @@ export async function keepLockedCharacterAPerson(
 
 /**
  * The same check again, after the edit wrote `isPerson: false`. D1 has no
- * interactive transaction, so a recast or an uploaded sheet can land between
+ * interactive transaction, so an uploaded sheet can land between
  * {@link lockedPersonEdit} and the write. If the character is locked
  * now, `putBack` writes it a person again and the edit is refused.
  *
@@ -148,9 +131,9 @@ export async function keepLockedCharacterAPerson(
  * version). The same user would have to race their own two requests.
  */
 export async function requirePersonEditStillAllowed(
-  scopedDb: LockDb & Pick<ScopedDb, 'talent'>,
+  scopedDb: LockDb,
   update: { isPerson?: boolean | null },
-  character: { id: string; talentId: string | null },
+  character: { id: string },
   putBack: () => Promise<unknown>
 ): Promise<void> {
   if (update.isPerson !== false) return;

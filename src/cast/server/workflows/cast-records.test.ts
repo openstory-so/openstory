@@ -112,7 +112,6 @@ describe('createCastRecords', () => {
           consistencyTag: 'sarah',
         },
       ],
-      talentMatches: [],
       locationMatches: [],
       locationBible: [
         {
@@ -189,7 +188,6 @@ describe('createCastRecords', () => {
       sequenceId: 'seq_1',
       cast: [],
       characterBible: [],
-      talentMatches: [],
       locationBible: [],
       locationMatches: [],
       elementBible: [entry('BOTTLE')],
@@ -249,7 +247,6 @@ describe('createCastRecords (attached cast, #2050)', () => {
       sequenceId: 'seq_1',
       cast: [{ id: 'row-sarah', shared, entry: sarah }],
       characterBible: [sarah],
-      talentMatches: [],
       locationBible: [],
       locationMatches: [],
       elementBible: [],
@@ -279,103 +276,8 @@ describe('createCastRecords (attached cast, #2050)', () => {
   });
 });
 
-describe('createCastRecords (talent match, #1561)', () => {
-  const sarah = {
-    characterId: 'char_1',
-    name: 'Sarah',
-    age: '30s',
-    gender: 'female',
-    ethnicity: '',
-    physicalDescription: 'tall',
-    standardClothing: 'coat',
-    looks: [],
-    distinguishingFeatures: '',
-    personality: 'anxious',
-    movement: 'restless hands',
-    voiceDescription: '',
-    voiceOnly: false,
-    isPerson: true,
-    rendering: 'Photoreal live action',
-    consistencyTag: 'sarah',
-  };
-  const match = {
-    voiceId: null,
-    voiceDescription: null,
-    characterId: 'char_1',
-    talentId: 'tal_1',
-    talentName: 'Ada',
-    sheetImageUrl: '/r2/ada.png',
-  };
-
-  const run = async (personality: string, movement: string) => {
-    const characterCreate = vi.fn(async (row: { id: string }) => row);
-    // minimal stub
-    const scopedDb = asStub<WorkflowScopedDb>({
-      characters: { create: characterCreate },
-      characterLooks: { syncFromAnalysis },
-      locations: { createBulk: vi.fn(async () => []) },
-      sequenceElements: { create: vi.fn() },
-      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
-    });
-    await createCastRecords(scopedDb, {
-      sequenceId: 'seq_1',
-      cast: [],
-      characterBible: [sarah],
-      talentMatches: [{ ...match, personality, movement }],
-      locationBible: [],
-      locationMatches: [],
-      elementBible: [],
-      existingElements: [],
-    });
-    return characterCreate.mock.calls[0]?.[0];
-  };
-
-  test("the talent's own performance wins", async () => {
-    expect(await run('swaggering', 'hip swivel')).toMatchObject({
-      talentId: 'tal_1',
-      personality: 'swaggering',
-      movement: 'hip swivel',
-    });
-  });
-
-  test("a talent with none keeps the script's", async () => {
-    expect(await run('', '')).toMatchObject({
-      personality: 'anxious',
-      movement: 'restless hands',
-    });
-  });
-
-  test('a signed talent portrait stamps likeness real (#1682)', async () => {
-    const characterCreate = vi.fn(async (row: { id: string }) => row);
-    // minimal stub
-    const scopedDb = asStub<WorkflowScopedDb>({
-      characters: { create: characterCreate },
-      characterLooks: { syncFromAnalysis },
-      locations: { createBulk: vi.fn(async () => []) },
-      sequenceElements: { create: vi.fn() },
-      liveRead: { sequenceElements: { getByToken: vi.fn(async () => null) } },
-    });
-    await createCastRecords(scopedDb, {
-      sequenceId: 'seq_1',
-      cast: [],
-      characterBible: [sarah],
-      talentMatches: [
-        { ...match, personality: '', movement: '', hasSignedRelease: true },
-      ],
-      locationBible: [],
-      locationMatches: [],
-      elementBible: [],
-      existingElements: [],
-    });
-    expect(characterCreate.mock.calls[0]?.[0]).toMatchObject({
-      isPerson: true,
-      rendering: 'Photoreal live action',
-    });
-  });
-});
-
 describe('createCastRecords (voice only, #1585)', () => {
-  test('a narrator persists with voiceOnly true and no talent', async () => {
+  test('a narrator persists with voiceOnly true', async () => {
     const characterCreate = vi.fn(async (row: { id: string }) => row);
     // minimal stub
     const scopedDb = asStub<WorkflowScopedDb>({
@@ -407,7 +309,6 @@ describe('createCastRecords (voice only, #1585)', () => {
           consistencyTag: 'narrator',
         },
       ],
-      talentMatches: [],
       locationBible: [],
       locationMatches: [],
       elementBible: [],
@@ -420,7 +321,6 @@ describe('createCastRecords (voice only, #1585)', () => {
       isPerson: true,
       rendering: null,
       sheetStatus: 'pending',
-      talentId: null,
     });
   });
 
@@ -457,7 +357,6 @@ describe('createCastRecords (voice only, #1585)', () => {
           consistencyTag: 'narrator',
         },
       ],
-      talentMatches: [],
       locationBible: [],
       locationMatches: [],
       elementBible: [],

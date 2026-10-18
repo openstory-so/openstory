@@ -220,9 +220,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
           stopAt: input.stopAt,
           musicModel: input.musicModel,
           audioModels: input.audioModels,
-          suggestedTalentIds: input.suggestedTalentIds,
           suggestedLocationIds: input.suggestedLocationIds,
-          suggestedTalent: input.suggestedTalent,
           suggestedLocations: input.suggestedLocations,
           referenceOnly: input.referenceOnly,
           generateVoices: input.generateVoices ?? false,
@@ -231,7 +229,7 @@ export class StoryboardWorkflow extends OpenStoryWorkflowEntrypoint<StoryboardWo
         },
         spawnStepName: 'spawn-analyze-script',
         awaitStepName: 'await-analyze-script',
-        // Scene splitting and parallel cast/location matching each allow 45m.
+        // Scene splitting and location matching each allow 45m.
         timeout: '2 hours',
       });
 
