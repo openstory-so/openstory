@@ -157,7 +157,9 @@ export function AppSidebar() {
 
   useEffect(() => {
     if (!canSearch) return;
-    const onKey = (event: KeyboardEvent) => {
+    const onKey = (event: Event) => {
+      // Chrome autofill fires a bare `keydown` Event with no `key` (#2132).
+      if (!(event instanceof KeyboardEvent)) return;
       if (event.key.toLowerCase() !== 'k') return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey)
         return;
