@@ -103,6 +103,7 @@ import { Route as AppSequencesIdCastIndexRouteImport } from './routes/_app/seque
 import { Route as AppSequencesIdElementsIndexRouteImport } from './routes/_app/sequences/$id/elements/index'
 import { Route as AppSequencesIdLocationsIndexRouteImport } from './routes/_app/sequences/$id/locations/index'
 import { Route as ApiV1SequencesIdExportsRouteImport } from './routes/api/v1/sequences.$id.exports'
+import { Route as ApiV1StitchesIdPublishRouteImport } from './routes/api/v1/stitches.$id.publish'
 import { Route as AppSequencesIdWorkspaceCastCharacterIdRouteImport } from './routes/_app/sequences/$id/_workspace/cast/$characterId'
 import { Route as AppSequencesIdWorkspaceElementsElementIdRouteImport } from './routes/_app/sequences/$id/_workspace/elements/$elementId'
 import { Route as AppSequencesIdWorkspaceLocationsLocationIdRouteImport } from './routes/_app/sequences/$id/_workspace/locations/$locationId'
@@ -579,6 +580,11 @@ const ApiV1SequencesIdExportsRoute = ApiV1SequencesIdExportsRouteImport.update({
   path: '/exports',
   getParentRoute: () => ApiV1SequencesIdRoute,
 } as any)
+const ApiV1StitchesIdPublishRoute = ApiV1StitchesIdPublishRouteImport.update({
+  id: '/$id/publish',
+  path: '/$id/publish',
+  getParentRoute: () => ApiV1StitchesRoute,
+} as any)
 const AppSequencesIdWorkspaceCastCharacterIdRoute =
   AppSequencesIdWorkspaceCastCharacterIdRouteImport.update({
     id: '/cast/$characterId',
@@ -664,7 +670,7 @@ export interface FileRoutesByFullPath {
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
-  '/api/v1/stitches': typeof ApiV1StitchesRoute
+  '/api/v1/stitches': typeof ApiV1StitchesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/characters/': typeof AppCharactersIndexRoute
   '/clips/': typeof AppClipsIndexRoute
@@ -693,6 +699,7 @@ export interface FileRoutesByFullPath {
   '/sequences/new/': typeof AppSequencesNewIndexRoute
   '/sequences/$id/scenes': typeof AppSequencesIdWorkspaceScenesRoute
   '/api/v1/sequences/$id/exports': typeof ApiV1SequencesIdExportsRoute
+  '/api/v1/stitches/$id/publish': typeof ApiV1StitchesIdPublishRoute
   '/sequences/$id/cast/': typeof AppSequencesIdCastIndexRoute
   '/sequences/$id/elements/': typeof AppSequencesIdElementsIndexRoute
   '/sequences/$id/locations/': typeof AppSequencesIdLocationsIndexRoute
@@ -759,7 +766,7 @@ export interface FileRoutesByTo {
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
-  '/api/v1/stitches': typeof ApiV1StitchesRoute
+  '/api/v1/stitches': typeof ApiV1StitchesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/characters': typeof AppCharactersIndexRoute
   '/clips': typeof AppClipsIndexRoute
@@ -788,6 +795,7 @@ export interface FileRoutesByTo {
   '/sequences/new': typeof AppSequencesNewIndexRoute
   '/sequences/$id/scenes': typeof AppSequencesIdWorkspaceScenesRoute
   '/api/v1/sequences/$id/exports': typeof ApiV1SequencesIdExportsRoute
+  '/api/v1/stitches/$id/publish': typeof ApiV1StitchesIdPublishRoute
   '/sequences/$id/cast': typeof AppSequencesIdCastIndexRoute
   '/sequences/$id/elements': typeof AppSequencesIdElementsIndexRoute
   '/sequences/$id/locations': typeof AppSequencesIdLocationsIndexRoute
@@ -859,7 +867,7 @@ export interface FileRoutesById {
   '/api/test/verify': typeof ApiTestVerifyRoute
   '/api/v1/openapi.json': typeof ApiV1OpenapiDotjsonRoute
   '/api/v1/sequences': typeof ApiV1SequencesRouteWithChildren
-  '/api/v1/stitches': typeof ApiV1StitchesRoute
+  '/api/v1/stitches': typeof ApiV1StitchesRouteWithChildren
   '/api/v1/styles': typeof ApiV1StylesRouteWithChildren
   '/_app/characters/': typeof AppCharactersIndexRoute
   '/_app/clips/': typeof AppClipsIndexRoute
@@ -889,6 +897,7 @@ export interface FileRoutesById {
   '/_app/sequences/new/': typeof AppSequencesNewIndexRoute
   '/_app/sequences/$id/_workspace/scenes': typeof AppSequencesIdWorkspaceScenesRoute
   '/api/v1/sequences/$id/exports': typeof ApiV1SequencesIdExportsRoute
+  '/api/v1/stitches/$id/publish': typeof ApiV1StitchesIdPublishRoute
   '/_app/sequences/$id/cast/': typeof AppSequencesIdCastIndexRoute
   '/_app/sequences/$id/elements/': typeof AppSequencesIdElementsIndexRoute
   '/_app/sequences/$id/locations/': typeof AppSequencesIdLocationsIndexRoute
@@ -988,6 +997,7 @@ export interface FileRouteTypes {
     | '/sequences/new/'
     | '/sequences/$id/scenes'
     | '/api/v1/sequences/$id/exports'
+    | '/api/v1/stitches/$id/publish'
     | '/sequences/$id/cast/'
     | '/sequences/$id/elements/'
     | '/sequences/$id/locations/'
@@ -1083,6 +1093,7 @@ export interface FileRouteTypes {
     | '/sequences/new'
     | '/sequences/$id/scenes'
     | '/api/v1/sequences/$id/exports'
+    | '/api/v1/stitches/$id/publish'
     | '/sequences/$id/cast'
     | '/sequences/$id/elements'
     | '/sequences/$id/locations'
@@ -1183,6 +1194,7 @@ export interface FileRouteTypes {
     | '/_app/sequences/new/'
     | '/_app/sequences/$id/_workspace/scenes'
     | '/api/v1/sequences/$id/exports'
+    | '/api/v1/stitches/$id/publish'
     | '/_app/sequences/$id/cast/'
     | '/_app/sequences/$id/elements/'
     | '/_app/sequences/$id/locations/'
@@ -1218,7 +1230,7 @@ export interface RootRouteChildren {
   ApiStorageUploadRoute: typeof ApiStorageUploadRoute
   ApiV1OpenapiDotjsonRoute: typeof ApiV1OpenapiDotjsonRoute
   ApiV1SequencesRoute: typeof ApiV1SequencesRouteWithChildren
-  ApiV1StitchesRoute: typeof ApiV1StitchesRoute
+  ApiV1StitchesRoute: typeof ApiV1StitchesRouteWithChildren
   ApiV1StylesRoute: typeof ApiV1StylesRouteWithChildren
   ApiV1IndexRoute: typeof ApiV1IndexRoute
   ApiV1DeviceCodeRoute: typeof ApiV1DeviceCodeRoute
@@ -1887,6 +1899,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiV1SequencesIdExportsRouteImport
       parentRoute: typeof ApiV1SequencesIdRoute
     }
+    '/api/v1/stitches/$id/publish': {
+      id: '/api/v1/stitches/$id/publish'
+      path: '/$id/publish'
+      fullPath: '/api/v1/stitches/$id/publish'
+      preLoaderRoute: typeof ApiV1StitchesIdPublishRouteImport
+      parentRoute: typeof ApiV1StitchesRoute
+    }
     '/_app/sequences/$id/_workspace/cast/$characterId': {
       id: '/_app/sequences/$id/_workspace/cast/$characterId'
       path: '/cast/$characterId'
@@ -2149,6 +2168,18 @@ const ApiV1SequencesRouteWithChildren = ApiV1SequencesRoute._addFileChildren(
   ApiV1SequencesRouteChildren,
 )
 
+interface ApiV1StitchesRouteChildren {
+  ApiV1StitchesIdPublishRoute: typeof ApiV1StitchesIdPublishRoute
+}
+
+const ApiV1StitchesRouteChildren: ApiV1StitchesRouteChildren = {
+  ApiV1StitchesIdPublishRoute: ApiV1StitchesIdPublishRoute,
+}
+
+const ApiV1StitchesRouteWithChildren = ApiV1StitchesRoute._addFileChildren(
+  ApiV1StitchesRouteChildren,
+)
+
 interface ApiV1StylesRouteChildren {
   ApiV1StylesIdRoute: typeof ApiV1StylesIdRoute
 }
@@ -2187,7 +2218,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStorageUploadRoute: ApiStorageUploadRoute,
   ApiV1OpenapiDotjsonRoute: ApiV1OpenapiDotjsonRoute,
   ApiV1SequencesRoute: ApiV1SequencesRouteWithChildren,
-  ApiV1StitchesRoute: ApiV1StitchesRoute,
+  ApiV1StitchesRoute: ApiV1StitchesRouteWithChildren,
   ApiV1StylesRoute: ApiV1StylesRouteWithChildren,
   ApiV1IndexRoute: ApiV1IndexRoute,
   ApiV1DeviceCodeRoute: ApiV1DeviceCodeRoute,

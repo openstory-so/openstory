@@ -4,10 +4,12 @@
  * The first share signs in with the public API's device code: the command
  * prints a short code, opens the approval page, and polls until the user
  * approves. The API key it gets is kept in ~/.openstory/stitch.json, one per
- * origin. A share is then two calls: POST /api/v1/stitches with the cut, whose
- * media URLs are the bundle's `media/<id>.<ext>` names, and one PUT per file
- * to the upload link the response carries. The server rewrites the names to
- * its own storage URLs; the printed link is the player page for that cut.
+ * origin. A share is then three steps: POST /api/v1/stitches with the cut,
+ * whose media URLs are the bundle's `media/<id>.<ext>` names, one PUT per
+ * file to the upload link the response carries, and a POST to its publish
+ * link, which checks the files and the stills and makes the page live. The
+ * server rewrites the names to its own storage URLs; the printed link is the
+ * player page for that cut.
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -15,7 +17,7 @@ import { join } from 'node:path';
 
 import type { ServedCut } from './cli.js';
 import { bundledMediaUrl, cutJson } from './cli.js';
-import { mediaType, readBytes } from './media-file.js';
+import { extensionOf, mediaType, readBytes } from './media-file.js';
 
 type Writer = { write: (text: string) => void };
 
@@ -23,6 +25,8 @@ export type ShareOptions = {
   cut: ServedCut;
   origin: string;
   home: string;
+  /** `--portrait-rights`: the basis for using a real person's likeness. */
+  portraitRights: string | null;
   stderr: Writer;
   open: (url: string) => void;
   fetch?: typeof fetch;
@@ -31,10 +35,37 @@ export type ShareOptions = {
 const KEY_FILE = ['.openstory', 'stitch.json'] as const;
 const DEVICE_WAIT = '60s';
 
+/** The extensions OpenStory stores for a stitch; the same list as its cut schema. */
+const SHARED_EXTENSIONS = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.gif',
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.mp3',
+  '.wav',
+  '.ogg',
+  '.m4a',
+]);
+
 /** Uploads the cut and returns the public link. */
 export async function shareCut(options: ShareOptions): Promise<string> {
   const fetchFn = options.fetch ?? fetch;
   const origin = options.origin;
+  for (const file of options.cut.files.values()) {
+    const ext = extensionOf(file);
+    if (ext === '') {
+      throw new Error(
+        `${file} has no file extension; share a copy that has one`
+      );
+    }
+    if (!SHARED_EXTENSIONS.has(ext)) {
+      throw new Error(`${file}: ${ext} is not a type the shared player plays`);
+    }
+  }
   let key = await storedKey(options.home, origin);
   let fresh = false;
   if (key === null) {
@@ -42,14 +73,17 @@ export async function shareCut(options: ShareOptions): Promise<string> {
     fresh = true;
   }
   let created = await createStitch(fetchFn, origin, key, options.cut);
-  if (created.status === 401 && !fresh) {
+  if (!created.ok && created.status === 401 && !fresh) {
     // The stored key was revoked. Sign in once more, then give up.
     key = await signIn({ ...options, fetch: fetchFn });
     created = await createStitch(fetchFn, origin, key, options.cut);
   }
-  if (created.status === 401) throw new Error('OpenStory refused the key');
-  if (!created.ok) throw created.error;
-  const { url, uploadHref } = created;
+  if (!created.ok) {
+    throw created.status === 401
+      ? new Error('OpenStory refused the key')
+      : created.error;
+  }
+  const { url, uploadHref, publishHref } = created;
   for (const [id, file] of options.cut.files) {
     const name = bundledMediaUrl(id, file).slice('media/'.length);
     const type = mediaType(file);
@@ -72,11 +106,35 @@ export async function shareCut(options: ShareOptions): Promise<string> {
       );
     }
   }
+  const published = await fetchFn(new URL(publishHref, origin), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      portraitAttestation:
+        options.portraitRights === null
+          ? null
+          : {
+              statementVersion: 'portrait-rights-v1',
+              authorizationBasis: options.portraitRights,
+            },
+    }),
+  });
+  if (!published.ok) {
+    const text = await errorText(published);
+    throw new Error(
+      published.status === 400 && text.includes('real person')
+        ? `${text} Run stitch share again with --portrait-rights <basis>.`
+        : `OpenStory did not publish the cut (${published.status}) ${text}`
+    );
+  }
   return url;
 }
 
 type Created =
-  | { ok: true; status: number; url: string; uploadHref: string }
+  | { ok: true; url: string; uploadHref: string; publishHref: string }
   | { ok: false; status: number; error: Error };
 
 async function createStitch(
@@ -105,11 +163,16 @@ async function createStitch(
   const record = recordOf(await response.json());
   const url = record.url;
   const links = recordOf(record._links);
-  const href = recordOf(links.upload).href;
-  if (typeof url !== 'string' || typeof href !== 'string') {
+  const uploadHref = recordOf(links.upload).href;
+  const publishHref = recordOf(links.publish).href;
+  if (
+    typeof url !== 'string' ||
+    typeof uploadHref !== 'string' ||
+    typeof publishHref !== 'string'
+  ) {
     throw new Error('OpenStory answered without a link to upload to');
   }
-  return { ok: true, status: response.status, url, uploadHref: href };
+  return { ok: true, url, uploadHref, publishHref };
 }
 
 /** A JSON object's fields, or none: a wrong shape reads as missing fields. */
@@ -124,15 +187,29 @@ function stringOf(value: unknown, label: string): string {
   throw new Error(`OpenStory answered without ${label}`);
 }
 
+/**
+ * The error envelope's message, with each field issue a 400 carries
+ * (`details.issues`, as `path: message`), else the raw body.
+ */
 async function errorText(response: Response): Promise<string> {
   const text = await response.text().catch(() => '');
   try {
     const parsed = recordOf(JSON.parse(text));
+    const error = recordOf(parsed.error);
     const message =
       typeof parsed.error === 'string'
         ? parsed.error
-        : (recordOf(parsed.error).message ?? parsed.message);
-    return typeof message === 'string' ? message : text;
+        : (error.message ?? parsed.message);
+    if (typeof message !== 'string') return text;
+    const issues = recordOf(error.details).issues;
+    if (!Array.isArray(issues)) return message;
+    const lines = issues.map((issue) => {
+      const record = recordOf(issue);
+      const path = Array.isArray(record.path) ? record.path.join('.') : '';
+      const text = typeof record.message === 'string' ? record.message : '';
+      return `${path}: ${text}`;
+    });
+    return [message, ...lines].join('\n  ');
   } catch {
     return text;
   }
@@ -141,21 +218,40 @@ async function errorText(response: Response): Promise<string> {
 type KeyFile = { keys: Record<string, string> };
 
 async function readKeyFile(home: string): Promise<KeyFile> {
+  let text: string;
   try {
-    const keys = recordOf(
-      recordOf(JSON.parse(await readFile(join(home, ...KEY_FILE), 'utf8'))).keys
+    text = await readFile(join(home, ...KEY_FILE), 'utf8');
+  } catch (error) {
+    // Only a missing file means "no keys yet". Anything else would be
+    // overwritten by the next sign-in, taking every other origin's key with it.
+    if (isMissingFile(error)) return { keys: {} };
+    throw new Error(
+      `~/${KEY_FILE.join('/')} is unreadable: ${error instanceof Error ? error.message : String(error)}`
     );
-    return {
-      keys: Object.fromEntries(
-        Object.entries(keys).filter(
-          (entry): entry is [string, string] => typeof entry[1] === 'string'
-        )
-      ),
-    };
-  } catch {
-    // Missing or unreadable: no keys yet.
   }
-  return { keys: {} };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`~/${KEY_FILE.join('/')} is not JSON; fix or remove it`);
+  }
+  const keys = recordOf(recordOf(parsed).keys);
+  return {
+    keys: Object.fromEntries(
+      Object.entries(keys).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+      )
+    ),
+  };
+}
+
+function isMissingFile(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'ENOENT'
+  );
 }
 
 async function storedKey(home: string, origin: string): Promise<string | null> {
@@ -192,6 +288,9 @@ function sameOriginUrl(value: string, origin: string): string {
   }
   return url.href;
 }
+
+const sleep = (seconds: number) =>
+  new Promise((r) => setTimeout(r, seconds * 1000));
 
 /** Device-code sign-in (RFC 8628 shape); stores and returns the API key. */
 async function signIn(
@@ -233,9 +332,10 @@ async function signIn(
       options.stderr.write('Signed in.\n');
       return key;
     }
-    if (response.status === 428) continue;
-    if (response.status === 429) {
-      await new Promise((r) => setTimeout(r, code.interval * 1000));
+    // OpenStory long-polls on `wait`, so a 428 comes back after a minute; a
+    // server that answers at once is paced by its interval, like a 429.
+    if (response.status === 428 || response.status === 429) {
+      await sleep(code.interval);
       continue;
     }
     throw new Error(

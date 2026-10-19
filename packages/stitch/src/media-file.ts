@@ -5,7 +5,10 @@ import { extname } from 'node:path';
 
 import { isHttpUrl } from './video-size.js';
 
-/** The bytes of a path or an http(s) URL. Stills and --subs are read whole. */
+/**
+ * The bytes of a path or an http(s) URL, read whole into memory: stills and
+ * --subs while parsing, and every file when bundling a URL or sharing.
+ */
 export async function readBytes(file: string): Promise<Buffer> {
   if (!isHttpUrl(file)) return readFile(file);
   const response = await fetch(file);

@@ -47,7 +47,7 @@ export const usage = `Usage: stitch [--frame 16:9|WxH] [--music file] [--music-g
              <file> [--poster file] [--fallback file] [--audio file] [--seconds n] [--cue start-end text]...
 
        stitch bundle <dir> [cut options] <file>...
-       stitch share [--origin url] [cut options] <file>...
+       stitch share [--origin url] [--portrait-rights basis] [cut options] <file>...
        stitch skill [--global]
 
 Play stills and videos in the browser. Each file is a path or an http(s) URL;
@@ -63,7 +63,9 @@ stitch bundle writes the player page, cut.json, and a copy of every file
 (a URL is downloaded) into <dir>. Put that folder on any static host.
 stitch share uploads the same bundle to OpenStory and prints a link anyone
 can open. The first share signs in with a device code and keeps the key in
-~/.openstory/stitch.json. --origin picks the OpenStory server.
+~/.openstory/stitch.json. --origin picks the OpenStory server. Every still is
+checked for a real person; one who is needs --portrait-rights with the basis
+for using their likeness (a release reference, "self", a contract id).
 
 stitch skill copies stitch and stitch-player into .agents/skills/ and
 .claude/skills/. Agents load stitch as the /stitch command. stitch-player
@@ -119,7 +121,11 @@ type SkillRequest = { kind: 'skill'; global: boolean };
 type HelpRequest = { kind: 'help' };
 type PlayRequest = { kind: 'play' } & LocalCut;
 type BundleRequest = { kind: 'bundle'; dir: string } & LocalCut;
-type ShareRequest = { kind: 'share'; origin: string } & LocalCut;
+type ShareRequest = {
+  kind: 'share';
+  origin: string;
+  portraitRights: string | null;
+} & LocalCut;
 export type CliRequest =
   | SkillRequest
   | HelpRequest
@@ -152,6 +158,7 @@ export async function parseArgs(
   }
   if (argv[0] === 'share') {
     let origin = DEFAULT_ORIGIN;
+    let portraitRights: string | null = null;
     const rest: string[] = [];
     const args = argv.slice(1);
     for (let i = 0; i < args.length; i++) {
@@ -163,9 +170,23 @@ export async function parseArgs(
         }
         origin = new URL(value).origin;
         i += 1;
+      } else if (arg === '--portrait-rights') {
+        const value = args[i + 1]?.trim();
+        if (value === undefined || value === '' || value.startsWith('-')) {
+          throw new Error(
+            '--portrait-rights needs the basis for using the person’s likeness (a release reference, "self", a contract id)'
+          );
+        }
+        portraitRights = value;
+        i += 1;
       } else rest.push(arg);
     }
-    return { kind: 'share', origin, ...(await parseCut(rest, cwd)) };
+    return {
+      kind: 'share',
+      origin,
+      portraitRights,
+      ...(await parseCut(rest, cwd)),
+    };
   }
   return { kind: 'play', ...(await parseCut(argv, cwd)) };
 }
@@ -902,6 +923,7 @@ export async function main(
       const url = await shareCut({
         cut,
         origin: request.origin,
+        portraitRights: request.portraitRights,
         home: io.home ?? homedir(),
         stderr,
         open: io.open ?? ((target) => openUrl(target, stderr)),

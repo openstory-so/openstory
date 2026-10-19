@@ -1,7 +1,7 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "9bf59d20-8655-4d88-90cd-904565d1c576",
+  "id": "544379f3-6666-4aec-8132-d46cc16959c4",
   "prevIds": ["44917977-d9d5-4338-a37e-39486368ce2e"],
   "ddl": [
     {
@@ -8171,6 +8171,16 @@
       "default": null,
       "generated": null,
       "name": "created_at",
+      "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "published_at",
       "entityType": "columns",
       "table": "stitches"
     },

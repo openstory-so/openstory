@@ -119,7 +119,7 @@ npx @openstory/stitch \
 
 ## Partager une coupe
 
-`npx @openstory/stitch bundle <dir> …` écrit la page du lecteur, `cut.json` et chaque fichier (une URL est téléchargée) dans un dossier qui se lit depuis n'importe quel hébergement statique. `npx @openstory/stitch share …` envoie le même dossier à OpenStory et affiche un lien que n'importe qui peut ouvrir ; le premier partage se connecte par code d'appareil et garde la clé dans `~/.openstory/stitch.json`. Les deux prennent toutes les options de coupe de la commande de lecture.
+`npx @openstory/stitch bundle <dir> …` écrit la page du lecteur, `cut.json` et chaque fichier (une URL est téléchargée) dans un dossier qui se lit depuis n'importe quel hébergement statique. `npx @openstory/stitch share …` envoie le même dossier à OpenStory et affiche un lien que n'importe qui peut ouvrir ; le premier partage se connecte par code d'appareil et garde la clé dans `~/.openstory/stitch.json`. `--origin` vise un autre serveur OpenStory. Chaque image fixe est vérifiée pour une personne réelle ; s'il y en a une, il faut `--portrait-rights <base>`, la base pour utiliser son image. Les deux prennent toutes les options de coupe de la commande de lecture et aucun n'ouvre le navigateur sur la coupe. Un agent sans shell partage la même coupe par l'outil `create_stitch` du serveur MCP OpenStory : chaque média est une URL que le serveur télécharge ou un petit fichier en base64.
 
 ## Skill
 

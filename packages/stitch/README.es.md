@@ -119,7 +119,7 @@ npx @openstory/stitch \
 
 ## Compartir un corte
 
-`npx @openstory/stitch bundle <dir> …` escribe la página del reproductor, `cut.json` y cada archivo (una URL se descarga) en una carpeta que se reproduce desde cualquier alojamiento estático. `npx @openstory/stitch share …` sube esa misma carpeta a OpenStory e imprime un enlace que cualquiera puede abrir; el primer uso inicia sesión con un código de dispositivo y guarda la clave en `~/.openstory/stitch.json`. Ambos aceptan todas las opciones de corte del comando de reproducción.
+`npx @openstory/stitch bundle <dir> …` escribe la página del reproductor, `cut.json` y cada archivo (una URL se descarga) en una carpeta que se reproduce desde cualquier alojamiento estático. `npx @openstory/stitch share …` sube esa misma carpeta a OpenStory e imprime un enlace que cualquiera puede abrir; el primer uso inicia sesión con un código de dispositivo y guarda la clave en `~/.openstory/stitch.json`. `--origin` apunta a otro servidor de OpenStory. Cada imagen fija se revisa por si muestra a una persona real; si la muestra, hace falta `--portrait-rights <base>`, la base para usar su imagen. Ambos aceptan todas las opciones de corte del comando de reproducción y ninguno abre el navegador sobre el corte. Un agente sin shell puede compartir el mismo corte con la herramienta `create_stitch` del servidor MCP de OpenStory: cada medio es una URL que el servidor descarga o un archivo pequeño en base64.
 
 ## Skill
 

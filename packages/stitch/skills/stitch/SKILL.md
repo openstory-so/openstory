@@ -41,7 +41,7 @@ npx @openstory/stitch@latest \
 
 `npx @openstory/stitch@latest share …` uploads that bundle to OpenStory and prints a link anyone can open. The first share prints a short code and opens the approval page; let the user approve it. The key is kept in `~/.openstory/stitch.json`. Use `share` when the user wants to send the cut to someone, and `bundle` when they want the files themselves.
 
-Without a shell, or when the files are not on disk, call `create_stitch` on the OpenStory MCP server instead (the OpenStory plugin connects it). It takes the same cut: each media slot is `{ url }` for a file the server can fetch, or `{ data, mimeType }` with base64 for a small file. Base64 travels through the model, so send stills and short lines inline and give clips as URLs. It returns the same kind of link. Prefer the command when the files are on disk: it streams any size.
+Without a shell, or when the files are not on disk, call `create_stitch` on the OpenStory MCP server instead (the OpenStory plugin connects it). It takes the same cut: each media slot is `{ url }` for a file the server can fetch, or `{ data, mimeType }` with base64 for a small file. Base64 travels through the model, so send stills and short lines inline and give clips as URLs. It returns the same kind of link. Prefer the command when the files are on disk: it uploads each file as it is, up to about 100 MB per file. Either way every still is checked for a real person; one who is needs the basis for using their likeness: `--portrait-rights <basis>` on the command, `portraitAttestation` on the tool.
 
 ## Installing this command
 

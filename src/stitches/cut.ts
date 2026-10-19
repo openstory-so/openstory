@@ -9,18 +9,45 @@
 
 import { z } from 'zod';
 
+/**
+ * The extensions the player plays: `UPLOAD_EXTENSIONS` (image, video, audio)
+ * in `src/shots/server/upload-media.ts`, which this client-safe file cannot
+ * import. `stitch-storage.test.ts` pins the two lists equal.
+ */
+export const STITCH_EXTENSIONS = [
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+  'mp4',
+  'webm',
+  'mov',
+  'mp3',
+  'wav',
+  'ogg',
+  'm4a',
+] as const;
+
 /** `media/<n>.<ext>`: what the CLI names a file in a bundle. */
-const STITCH_MEDIA_NAME = /^media\/\d{1,4}\.[a-z0-9]{1,5}$/;
+const STITCH_MEDIA_NAME = new RegExp(
+  `^media/\\d{1,4}\\.(${STITCH_EXTENSIONS.join('|')})$`
+);
 
 const mediaName = z
   .string()
   .regex(STITCH_MEDIA_NAME, 'Not a bundle media name');
 
-const cueSchema = z.object({
-  startSeconds: z.number().min(0),
-  endSeconds: z.number().positive(),
-  text: z.string().max(2_000),
-});
+const cueSchema = z
+  .object({
+    startSeconds: z.number().min(0),
+    endSeconds: z.number().positive(),
+    text: z.string().max(2_000),
+  })
+  .refine((cue) => cue.startSeconds < cue.endSeconds, {
+    message: 'A cue ends after it starts',
+    path: ['endSeconds'],
+  });
 
 /** The cut with every media slot of type `media`. */
 export function cutSchemaOf<M extends z.ZodType>(media: M) {

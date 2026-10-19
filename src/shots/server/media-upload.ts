@@ -764,7 +764,11 @@ export const UPLOAD_USES = [
 ] as const;
 type UploadUse = (typeof UPLOAD_USES)[number];
 /** `stitch` is `create_stitch`'s store only (#2127): a shared cut's file, outside any sequence. */
-export type StoreUse = UploadUse | 'stitch';
+type StoreUse = UploadUse | 'stitch';
+/** What is stored: a sequence or Studio use, or a file of one stitch. */
+export type StoreTarget =
+  | { use: UploadUse }
+  | { use: 'stitch'; stitchId: string };
 
 /** Media type → stored extension, for every type any use accepts. */
 const UPLOAD_MEDIA_TYPES: Record<string, string> = {
@@ -824,21 +828,20 @@ const MAX_URL_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_URL_MEDIA_BYTES = 500 * 1024 * 1024;
 
 function uploadTarget(
-  use: StoreUse,
+  target: StoreTarget,
   teamId: string,
   sequenceId: string | null,
-  ext: string,
-  stitchId: string | null
+  ext: string
 ): { bucket: StorageBucket; path: string } {
   const id = generateId();
-  if (use === 'stitch') {
+  if (target.use === 'stitch') {
     // Beside the stitch CLI's uploads: `stitches/<team>/<stitch>/<file>`.
-    if (!stitchId) throw new ValidationError('A stitch upload needs stitchId.');
     return {
       bucket: STORAGE_BUCKETS.STITCHES,
-      path: `${teamId}/${stitchId}/${id}.${ext}`,
+      path: `${teamId}/${target.stitchId}/${id}.${ext}`,
     };
   }
+  const { use } = target;
   if (use === 'studio') {
     // The composer's key (`presignTalentUploadFn`), which list_studio_uploads reads.
     return {
@@ -911,22 +914,21 @@ export type UploadSource = { url: string } | { data: string; mimeType: string };
  * needs the portrait sign-off, which is recorded here. Returns the stored
  * `/r2/` URL the attach functions take.
  */
-export async function storeUpload(args: {
-  scopedDb: ScopedDb;
-  userId: string;
-  /**
-   * Null for a Studio upload, which belongs to the team, and for the sheet
-   * of a location worked on from no sequence.
-   */
-  sequenceId: string | null;
-  use: StoreUse;
-  /** The stitch a `use: 'stitch'` file belongs to; null for every other use. */
-  stitchId?: string | null;
-  source: UploadSource;
-  filename?: string;
-  portraitAttestation?: Omit<PortraitAttestation, 'url'>;
-  request: LikenessRequestContext;
-}): Promise<{
+export async function storeUpload(
+  args: StoreTarget & {
+    scopedDb: ScopedDb;
+    userId: string;
+    /**
+     * Null for a Studio upload, which belongs to the team, and for the sheet
+     * of a location worked on from no sequence.
+     */
+    sequenceId: string | null;
+    source: UploadSource;
+    filename?: string;
+    portraitAttestation?: Omit<PortraitAttestation, 'url'>;
+    request: LikenessRequestContext;
+  }
+): Promise<{
   url: string;
   mediaType: string;
   bytes: number | null;
@@ -953,13 +955,7 @@ export async function storeUpload(args: {
         'Inline data is over 8 MB; host the file and send its url instead.'
       );
     }
-    const { bucket, path } = uploadTarget(
-      use,
-      teamId,
-      args.sequenceId,
-      ext,
-      args.stitchId ?? null
-    );
+    const { bucket, path } = uploadTarget(args, teamId, args.sequenceId, ext);
     const result = await uploadFile(bucket, path, bytes, {
       contentType: mediaType,
     });
@@ -992,13 +988,7 @@ export async function storeUpload(args: {
         `The file is over ${cap / 1024 / 1024} MB, the limit for this upload.`
       );
     }
-    const { bucket, path } = uploadTarget(
-      use,
-      teamId,
-      args.sequenceId,
-      ext,
-      args.stitchId ?? null
-    );
+    const { bucket, path } = uploadTarget(args, teamId, args.sequenceId, ext);
     if (isImage) {
       const bytes = new Uint8Array(await res.arrayBuffer());
       if (bytes.byteLength > cap) {

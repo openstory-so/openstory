@@ -86,6 +86,7 @@ export async function createStitchFromSources(args: {
     if (!url) throw new Error('stitch source was not stored');
     return url;
   });
-  await args.scopedDb.stitches.create({ id, cut });
+  // Every file went through storeUpload's checks, so the row is born published.
+  await args.scopedDb.stitches.create({ id, cut, publishedAt: new Date() });
   return { id, files: stored.size };
 }

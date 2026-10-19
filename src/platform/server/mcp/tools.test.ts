@@ -4155,8 +4155,10 @@ describe('generation and uploads (#1979)', () => {
 
   it('create_stitch stores each file once under the stitch and writes the cut (#2127)', async () => {
     const wav = Buffer.from('RIFFwav').toString('base64');
+    const mp4 = Buffer.from('ftypisom').toString('base64');
     const still = { data: png, mimeType: 'image/png' };
     const line = { data: wav, mimeType: 'audio/wav' };
+    const clipFile = { data: mp4, mimeType: 'video/mp4' };
     const result = z
       .object({ id: z.string(), url: z.string(), files: z.number() })
       .parse(
@@ -4172,6 +4174,7 @@ describe('generation and uploads (#1979)', () => {
                 height: 1,
                 cues: [{ startSeconds: 0, endSeconds: 2, text: 'Hi' }],
               },
+              { videoUrl: clipFile, posterUrl: still, cues: [] },
             ],
             frameWidth: 16,
             frameHeight: 9,
@@ -4182,20 +4185,26 @@ describe('generation and uploads (#1979)', () => {
         })
       );
     expect(result.url).toBe(`https://openstory.test/stitch/${result.id}`);
-    expect(result.files).toBe(2);
+    expect(result.files).toBe(3);
     const [row] = await db
       .select()
       .from(stitches)
       .where(eq(stitches.id, result.id));
+    // Stored through storeUpload's checks, so the row is born published.
+    expect(row?.publishedAt).not.toBeNull();
     const prefix = `/r2/stitches/${teamId}/${result.id}/`;
     const clip = row?.cut.clips[0];
     if (!clip || !('imageUrl' in clip)) throw new Error('expected a still');
     expect(clip.imageUrl).toMatch(new RegExp(`^${prefix}\\w+\\.png$`));
     expect(clip.audioUrls[0]).toMatch(new RegExp(`^${prefix}\\w+\\.wav$`));
+    const video = row?.cut.clips[1];
+    if (!video || !('videoUrl' in video)) throw new Error('expected a video');
+    expect(video.videoUrl).toMatch(new RegExp(`^${prefix}\\w+\\.mp4$`));
+    expect(video.posterUrl).toBe(clip.imageUrl);
     expect(row?.cut.musicUrl).toBe(clip.audioUrls[0]);
     expect(row?.cut.musicGainDb).toBe(-3);
 
-    // A picture in a sound slot is refused.
+    // A picture in a video slot is refused.
     expect(
       await call('create_stitch', {
         cut: {
@@ -4207,6 +4216,48 @@ describe('generation and uploads (#1979)', () => {
         },
       })
     ).toMatchObject(refusal('VALIDATION_ERROR'));
+  });
+
+  it('create_stitch needs the portrait sign-off for a real person in a still', async () => {
+    vi.mocked(analyzeTalentMediaForTeam).mockResolvedValue(
+      asStub({ subjectKind: 'human' })
+    );
+    const cut = {
+      clips: [
+        {
+          imageUrl: { data: png, mimeType: 'image/png' },
+          fallbackImageUrl: null,
+          durationSeconds: 3,
+          audioUrls: [],
+          width: 1,
+          height: 1,
+          cues: [],
+        },
+      ],
+      frameWidth: 16,
+      frameHeight: 9,
+      musicUrl: null,
+      musicGainDb: 0,
+    };
+    const before = (await db.select().from(stitches)).length;
+    expect(await call('create_stitch', { cut })).toMatchObject(
+      refusal('ATTESTATION_REQUIRED')
+    );
+    expect(await db.select().from(stitches)).toHaveLength(before);
+    const shared = z.object({ id: z.string() }).parse(
+      await data('create_stitch', {
+        cut,
+        portraitAttestation: {
+          statementVersion: 'portrait-rights-v1',
+          authorizationBasis: 'self',
+        },
+      })
+    );
+    const [row] = await db
+      .select()
+      .from(stitches)
+      .where(eq(stitches.id, shared.id));
+    expect(row?.publishedAt).not.toBeNull();
   });
 
   it('needs the portrait sign-off for a real person', async () => {

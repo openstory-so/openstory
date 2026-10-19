@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { stitchCutSchema } from './cut';
-import { storedStitchCut, stitchUploadHref } from './server/stitch-storage';
+import { UPLOAD_EXTENSIONS } from '@/shots/server/upload-media';
+import { STITCH_EXTENSIONS, stitchCutSchema } from './cut';
+import {
+  storedStitchCut,
+  storedStitchPath,
+  stitchUploadHref,
+} from './server/stitch-storage';
 
 const cut = stitchCutSchema.parse({
   clips: [
@@ -34,6 +39,12 @@ describe('shared stitch storage', () => {
     });
     expect(stored.musicUrl).toBe('/r2/stitches/TEAM/ID/1.wav');
     expect(stored.musicGainDb).toBe(-3);
+    expect(storedStitchPath('/r2/stitches/TEAM/ID/0.png')).toBe(
+      'TEAM/ID/0.png'
+    );
+    expect(() => storedStitchPath('/r2/talent/TEAM/x.png')).toThrow(
+      'Not a stored stitch URL'
+    );
   });
 
   it('templates the upload link on the team path', () => {
@@ -43,17 +54,44 @@ describe('shared stitch storage', () => {
   });
 
   it('refuses a cut whose media is not a bundle name', () => {
-    const outside = {
+    const videoOnly = (videoUrl: string) => ({
+      ...cut,
+      clips: [{ videoUrl, posterUrl: null, cues: [] }],
+    });
+    expect(
+      stitchCutSchema.safeParse(videoOnly('https://evil.example/x.mp4')).success
+    ).toBe(false);
+    expect(stitchCutSchema.safeParse(videoOnly('media/../x.mp4')).success).toBe(
+      false
+    );
+    // Only what the player plays: no HTML, SVG or script under the name.
+    expect(stitchCutSchema.safeParse(videoOnly('media/0.html')).success).toBe(
+      false
+    );
+    expect(stitchCutSchema.safeParse(videoOnly('media/0.svg')).success).toBe(
+      false
+    );
+    expect(stitchCutSchema.safeParse(videoOnly('media/0')).success).toBe(false);
+  });
+
+  it('accepts exactly the upload extensions, so the two lists cannot drift', () => {
+    const server = [
+      ...UPLOAD_EXTENSIONS.image,
+      ...UPLOAD_EXTENSIONS.video,
+      ...UPLOAD_EXTENSIONS.audio,
+    ].sort();
+    expect([...STITCH_EXTENSIONS].sort()).toEqual(server);
+  });
+
+  it('refuses a cue that ends before it starts', () => {
+    const clip = cut.clips[0];
+    if (!clip || !('imageUrl' in clip)) throw new Error('expected a still');
+    const backwards = {
       ...cut,
       clips: [
-        { videoUrl: 'https://evil.example/x.mp4', posterUrl: null, cues: [] },
+        { ...clip, cues: [{ startSeconds: 5, endSeconds: 2, text: 'No' }] },
       ],
     };
-    expect(stitchCutSchema.safeParse(outside).success).toBe(false);
-    const traversal = {
-      ...cut,
-      clips: [{ videoUrl: 'media/../x.mp4', posterUrl: null, cues: [] }],
-    };
-    expect(stitchCutSchema.safeParse(traversal).success).toBe(false);
+    expect(stitchCutSchema.safeParse(backwards).success).toBe(false);
   });
 });

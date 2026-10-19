@@ -670,6 +670,71 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/stitches/{id}/publish`]: {
+        post: {
+          tags: ['stitches'],
+          summary: 'Publish a stitch',
+          description:
+            'After the last PUT: checks every file the cut names is in storage and every image for a real person, then makes the page live. A real person needs `portraitAttestation` in the body (`stitch share --portrait-rights`). Idempotent once published.',
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'The stitch id (ULID), from the create response.',
+              schema: { type: 'string' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    portraitAttestation: {
+                      type: 'object',
+                      nullable: true,
+                      required: ['statementVersion', 'authorizationBasis'],
+                      properties: {
+                        statementVersion: {
+                          type: 'string',
+                          enum: ['portrait-rights-v1'],
+                        },
+                        authorizationBasis: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'The page is live.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['id', 'url', 'publishedAt', '_links'],
+                    properties: {
+                      id: { type: 'string' },
+                      url: { type: 'string', format: 'uri' },
+                      publishedAt: { type: 'string', format: 'date-time' },
+                      _links: { $ref: '#/components/schemas/HalLinks' },
+                    },
+                  },
+                },
+              },
+            },
+            '400': errorResponse(
+              'A file was not uploaded, or a still shows a real person and no portraitAttestation was sent (ATTESTATION_REQUIRED).'
+            ),
+            '401': errorResponse('Missing or invalid API key.'),
+            '404': errorResponse('No such stitch for this key.'),
+          },
+        },
+      },
     },
     components: {
       securitySchemes: {

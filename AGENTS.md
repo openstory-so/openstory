@@ -329,7 +329,11 @@ changing the area, and update it in the same PR.**
   `src/sequences/ui/theatre/playback-clips.ts`. A CLI cut is shared without
   the CLI (#2127): `stitch bundle` writes a static folder, `stitch share`
   uploads it (`POST /api/v1/stitches`, media names only, rewritten to
-  `/r2/stitches/<team>/<id>/…`) and `/stitch/$id` plays it with no auth.
+  `/r2/stitches/<team>/<id>/…`, then one PUT per file, then
+  `POST …/$id/publish`, which checks every file is there and every image
+  for a real person before the row is published) and `/stitch/$id` plays
+  a published row with no auth. `create_stitch` on MCP stores through
+  `storeUpload`, so its row is born published.
 
 ## Frame System
 

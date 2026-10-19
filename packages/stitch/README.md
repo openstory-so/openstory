@@ -133,7 +133,7 @@ The folder holds the player page, `cut.json`, and every file under `media/`. A U
 npx @openstory/stitch share --music score.mp3 shot.mp4 board.png --audio line.wav
 ```
 
-The first share signs you in: the command prints a short code and opens the approval page in your browser. The key it gets is kept in `~/.openstory/stitch.json`. Every file is uploaded to your team's storage and the command prints `https://openstory.so/stitch/<id>`, a page anyone with the link can watch: the same player, captions, music switch and Download. `--origin` points at another OpenStory server.
+The first share signs you in: the command prints a short code and opens the approval page in your browser. The key it gets is kept in `~/.openstory/stitch.json`. Every file is uploaded to your team's storage and the command prints `https://openstory.so/stitch/<id>`, a page anyone with the link can watch: the same player, captions, music switch and Download. `--origin` points at another OpenStory server. Every still is checked for a real person; one who is needs `--portrait-rights <basis>`, the basis for using their likeness (a release reference, `self`, a contract id).
 
 Both take every cut option of the play command. Neither opens a browser on the cut itself.
 

@@ -15,7 +15,7 @@ export const STORAGE_BUCKETS = {
   TALENT: 'talent',
   VFX: 'vfx',
   ELEMENTS: 'elements',
-  /** Cuts shared from the stitch CLI (#2127): `<teamId>/<stitchId>/<n>.<ext>`. */
+  /** Shared stitches (#2127): `<teamId>/<stitchId>/<file>`; the CLI names `<n>.<ext>`, `create_stitch` a ULID. */
   STITCHES: 'stitches',
 } as const;
 

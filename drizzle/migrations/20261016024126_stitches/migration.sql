@@ -4,6 +4,7 @@ CREATE TABLE `stitches` (
 	`user_id` text NOT NULL,
 	`cut` text NOT NULL,
 	`created_at` integer NOT NULL,
+	`published_at` integer,
 	CONSTRAINT `fk_stitches_team_id_teams_id_fk` FOREIGN KEY (`team_id`) REFERENCES `teams`(`id`) ON DELETE RESTRICT,
 	CONSTRAINT `fk_stitches_user_id_user_id_fk` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE RESTRICT
 );
