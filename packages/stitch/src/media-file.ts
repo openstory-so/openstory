@@ -40,6 +40,8 @@ export function mediaType(file: string): string {
       return 'image/jpeg';
     case '.webp':
       return 'image/webp';
+    case '.gif':
+      return 'image/gif';
     case '.mp4':
     case '.m4v':
       return 'video/mp4';

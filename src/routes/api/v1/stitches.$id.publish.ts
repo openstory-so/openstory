@@ -8,22 +8,11 @@
  */
 
 import { authWithTeamRequestMiddleware } from '@/platform/middleware.fn';
-import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
-import { runApiV1Handler } from '@/platform/server/api-v1/errors';
+import { apiJsonError, runApiV1Handler } from '@/platform/server/api-v1/errors';
 import { getLink, withLinks } from '@/platform/server/api-v1/hal';
+import { publishStitchBodySchema } from '@/stitches/publish-body';
 import { publishStitch } from '@/stitches/server/publish-stitch';
 import { createFileRoute } from '@tanstack/react-router';
-import { z } from 'zod';
-
-const bodySchema = z.object({
-  portraitAttestation: z
-    .strictObject({
-      statementVersion: z.literal(PORTRAIT_RIGHTS_V1.version),
-      authorizationBasis: z.string().trim().min(1).max(500),
-    })
-    .nullable()
-    .default(null),
-});
 
 export const Route = createFileRoute('/api/v1/stitches/$id/publish')({
   server: {
@@ -32,9 +21,19 @@ export const Route = createFileRoute('/api/v1/stitches/$id/publish')({
       POST: async ({ params, request, context }) =>
         runApiV1Handler(async () => {
           const text = await request.text();
-          const { portraitAttestation } = bodySchema.parse(
-            text.trim() === '' ? {} : JSON.parse(text)
-          );
+          let body: unknown = {};
+          if (text.trim() !== '') {
+            try {
+              body = JSON.parse(text);
+            } catch {
+              return apiJsonError(
+                400,
+                'INVALID_JSON',
+                'Request body must be valid JSON.'
+              );
+            }
+          }
+          const { portraitAttestation } = publishStitchBodySchema.parse(body);
           const stitch = await publishStitch({
             scopedDb: context.scopedDb,
             userId: context.user.id,

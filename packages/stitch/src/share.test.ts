@@ -154,8 +154,7 @@ describe('stitch share', () => {
             {
               error: {
                 code: 'ATTESTATION_REQUIRED',
-                message:
-                  'A still shows a real person: send portraitAttestation.',
+                message: 'Send portraitAttestation to publish this still.',
               },
             },
             400

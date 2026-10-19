@@ -115,6 +115,33 @@ describe('publishStitch (#2127)', () => {
     expect(publish).toHaveBeenCalledWith('S');
   });
 
+  it('checks a file any slot shows as a picture, even one a video slot also names', async () => {
+    const base = row(null);
+    getById.mockResolvedValue({
+      ...base,
+      cut: {
+        ...base.cut,
+        clips: [
+          ...base.cut.clips,
+          // The still again, misfiled as a clip: it is still a picture.
+          { videoUrl: STILL, posterUrl: null, cues: [] },
+        ],
+      },
+    });
+    classifyUpload.mockResolvedValue({ status: 'needs_portrait' });
+    await expect(publishStitch(args)).rejects.toMatchObject({
+      code: 'ATTESTATION_REQUIRED',
+    });
+    expect(classifyUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers a concurrent publish with the published row, not an error', async () => {
+    const at = new Date('2026-10-19T03:00:00Z');
+    publish.mockResolvedValue(null);
+    getById.mockResolvedValueOnce(row(null)).mockResolvedValueOnce(row(at));
+    expect((await publishStitch(args)).publishedAt).toBe(at);
+  });
+
   it('is idempotent once published', async () => {
     const at = new Date('2026-10-19T01:00:00Z');
     getById.mockResolvedValue(row(at));

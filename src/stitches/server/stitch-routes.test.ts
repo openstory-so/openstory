@@ -162,6 +162,20 @@ describe('POST /api/v1/stitches/$id/publish', () => {
     );
   });
 
+  it('400s a body that is not JSON, like the create route', async () => {
+    const res = await postPublish({
+      request: post('{nope', 'ST'),
+      params: { id: 'ST' },
+      context,
+    });
+    expect(res.status).toBe(400);
+    const body = z
+      .object({ error: z.object({ code: z.string() }) })
+      .parse(await res.json());
+    expect(body.error.code).toBe('INVALID_JSON');
+    expect(publishStitch).not.toHaveBeenCalled();
+  });
+
   it('turns the publish step’s refusal into the error envelope', async () => {
     const { AttestationRequiredError } = await import('@/platform/errors');
     publishStitch.mockRejectedValue(

@@ -36,12 +36,16 @@ export async function publishStitch(args: {
   if (!stitch) throw new NotFoundError('This stitch does not exist');
   if (stitch.publishedAt !== null) return stitch;
 
-  const media = new Map<string, MediaRole>();
-  mapCutMedia(stitch.cut, (url, role) => {
-    media.set(url, role);
+  // Every file once; every file that any slot shows as a picture, whatever
+  // other slot names it, so a still cannot hide behind a video slot.
+  const files = new Set<string>();
+  const images = new Set<string>();
+  mapCutMedia(stitch.cut, (url, role: MediaRole) => {
+    files.add(url);
+    if (role === 'image') images.add(url);
     return url;
   });
-  for (const url of media.keys()) {
+  for (const url of files) {
     const path = storedStitchPath(url);
     if (!(await fileExists(STORAGE_BUCKETS.STITCHES, path))) {
       throw new ValidationError(
@@ -49,8 +53,7 @@ export async function publishStitch(args: {
       );
     }
   }
-  for (const [url, role] of media) {
-    if (role !== 'image') continue;
+  for (const url of images) {
     const rights = await classifyUpload({
       scopedDb: args.scopedDb,
       userId: args.userId,
@@ -70,6 +73,10 @@ export async function publishStitch(args: {
     );
   }
   const published = await args.scopedDb.stitches.publish(args.id);
-  if (!published) throw new Error('stitch publish updated no row');
-  return published;
+  if (published) return published;
+  // The guarded UPDATE found no unpublished row: a concurrent publish got
+  // there first. Then the row is published, and that is the answer.
+  const now = await args.scopedDb.stitches.getById(args.id);
+  if (now?.publishedAt) return now;
+  throw new Error('stitch publish updated no row');
 }

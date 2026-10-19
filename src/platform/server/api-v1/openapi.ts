@@ -28,6 +28,7 @@ import {
 import { errorEnvelopeSchema, rootDocumentSchema } from './discovery';
 import { styleListResultSchema } from './styles';
 import { stitchCutSchema } from '@/stitches/cut';
+import { publishStitchBodySchema } from '@/stitches/publish-body';
 import { z, type ZodType } from 'zod';
 
 type JsonValue =
@@ -132,6 +133,8 @@ export function buildOpenApiDocument(): JsonObject {
   const { root: createStitchRequest, defs: stitchDefs } = componentSchemas(
     z.object({ cut: stitchCutSchema })
   );
+  const { root: publishStitchRequest, defs: publishStitchDefs } =
+    componentSchemas(publishStitchBodySchema);
 
   const waitParam: JsonObject = {
     name: 'wait',
@@ -689,23 +692,7 @@ export function buildOpenApiDocument(): JsonObject {
             required: false,
             content: {
               'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    portraitAttestation: {
-                      type: 'object',
-                      nullable: true,
-                      required: ['statementVersion', 'authorizationBasis'],
-                      properties: {
-                        statementVersion: {
-                          type: 'string',
-                          enum: ['portrait-rights-v1'],
-                        },
-                        authorizationBasis: { type: 'string' },
-                      },
-                    },
-                  },
-                },
+                schema: { $ref: '#/components/schemas/PublishStitchRequest' },
               },
             },
           },
@@ -759,6 +746,8 @@ export function buildOpenApiDocument(): JsonObject {
         ...styleDefs,
         CreateStitchRequest: createStitchRequest,
         ...stitchDefs,
+        PublishStitchRequest: publishStitchRequest,
+        ...publishStitchDefs,
         // Response documents, generated from the schemas their TypeScript
         // types are inferred from. Each contributes its own component plus any
         // nested named schema (SequenceStateShot, HalLink, StyleDocument, …).

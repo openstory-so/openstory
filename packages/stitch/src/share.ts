@@ -123,9 +123,9 @@ export async function shareCut(options: ShareOptions): Promise<string> {
     }),
   });
   if (!published.ok) {
-    const text = await errorText(published);
+    const { code, text } = await errorInfo(published);
     throw new Error(
-      published.status === 400 && text.includes('real person')
+      code === 'ATTESTATION_REQUIRED'
         ? `${text} Run stitch share again with --portrait-rights <basis>.`
         : `OpenStory did not publish the cut (${published.status}) ${text}`
     );
@@ -192,26 +192,34 @@ function stringOf(value: unknown, label: string): string {
  * (`details.issues`, as `path: message`), else the raw body.
  */
 async function errorText(response: Response): Promise<string> {
+  return (await errorInfo(response)).text;
+}
+
+/** The envelope's `error.code` beside the text, for a branch that must not rest on wording. */
+async function errorInfo(
+  response: Response
+): Promise<{ code: string | null; text: string }> {
   const text = await response.text().catch(() => '');
   try {
     const parsed = recordOf(JSON.parse(text));
     const error = recordOf(parsed.error);
+    const code = typeof error.code === 'string' ? error.code : null;
     const message =
       typeof parsed.error === 'string'
         ? parsed.error
         : (error.message ?? parsed.message);
-    if (typeof message !== 'string') return text;
+    if (typeof message !== 'string') return { code, text };
     const issues = recordOf(error.details).issues;
-    if (!Array.isArray(issues)) return message;
+    if (!Array.isArray(issues)) return { code, text: message };
     const lines = issues.map((issue) => {
       const record = recordOf(issue);
       const path = Array.isArray(record.path) ? record.path.join('.') : '';
       const text = typeof record.message === 'string' ? record.message : '';
       return `${path}: ${text}`;
     });
-    return [message, ...lines].join('\n  ');
+    return { code, text: [message, ...lines].join('\n  ') };
   } catch {
-    return text;
+    return { code: null, text };
   }
 }
 
