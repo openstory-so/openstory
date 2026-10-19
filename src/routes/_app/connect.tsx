@@ -7,6 +7,7 @@
 import {
   ClaudeLogo,
   CursorLogo,
+  GeminiLogo,
   GrokLogo,
   OpenAILogo,
 } from '@/ui/icons/agent-logos';
@@ -41,6 +42,7 @@ const tabValues = [
   'claude-code',
   'codex',
   'grok',
+  'gemini',
   'cursor',
   'cli',
 ] as const;
@@ -56,13 +58,14 @@ const clients: readonly {
   { value: 'claude-code', label: 'Claude Code', logo: ClaudeLogo },
   { value: 'codex', label: 'Codex', logo: OpenAILogo },
   { value: 'grok', label: 'Grok', logo: GrokLogo },
+  { value: 'gemini', label: 'Gemini', logo: GeminiLogo },
   { value: 'cursor', label: 'Cursor', logo: CursorLogo },
   { value: 'cli', label: 'CLI', logo: SquareTerminal },
 ];
 
 const title = `Skills & MCP — ${SITE_CONFIG.name}`;
 const description =
-  'Use OpenStory from Claude, ChatGPT, Grok, Codex or Cursor: connect the MCP server and install the agent skills.';
+  'Use OpenStory from Claude, ChatGPT, Grok, Gemini, Codex or Cursor: connect the MCP server and install the agent skills.';
 
 export const Route = createFileRoute('/_app/connect')({
   validateSearch: z.object({
@@ -189,8 +192,13 @@ function ConnectPage() {
         </TabsContent>
 
         <TabsContent value="grok" className="flex flex-col gap-4 pt-4">
+          <Steps>
+            <li>On grok.com, open Connectors and add a custom connector.</li>
+            <li>Paste the URL below and sign in to OpenStory when asked.</li>
+          </Steps>
+          <McpUrl />
           <Terminal
-            label="Grok"
+            label="Grok Build"
             comment="Run these in your terminal."
             lines={[
               `grok plugin marketplace add ${SKILLS_REPO}`,
@@ -198,6 +206,25 @@ function ConnectPage() {
             ]}
           />
           <PluginNote />
+        </TabsContent>
+
+        <TabsContent value="gemini" className="flex flex-col gap-4 pt-4">
+          <Steps>
+            <li>
+              In the Gemini app, open Settings, then Connected apps, then Custom
+              apps.
+            </li>
+            <li>Paste the URL below and sign in to OpenStory when asked.</li>
+          </Steps>
+          <McpUrl />
+          <Terminal
+            label="Gemini CLI"
+            comment="Run these in your terminal."
+            lines={[
+              `gemini mcp add --transport http openstory ${MCP_URL}`,
+              `npx skills add ${SKILLS_REPO}`,
+            ]}
+          />
         </TabsContent>
 
         <TabsContent value="cursor" className="flex flex-col gap-4 pt-4">

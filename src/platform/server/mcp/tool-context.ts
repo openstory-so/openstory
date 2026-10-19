@@ -304,6 +304,15 @@ type ToolSpec<I extends z.ZodObject, O extends z.ZodObject> = {
   }>;
 };
 
+/**
+ * The tool's display title, from its name: `get_sequence_status` →
+ * "Get sequence status". Claude's directory requires one on every tool.
+ */
+function toolTitle(name: string): string {
+  const words = name.replaceAll('_', ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /** One `openstory.*` tool as a `toolDefinition().server()`. */
 export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
   spec: ToolSpec<I, O>
@@ -324,7 +333,7 @@ export function openstoryTool<I extends z.ZodObject, O extends z.ZodObject>(
     description: spec.description,
     inputSchema: spec.inputSchema,
     outputSchema: spec.outputSchema,
-    metadata: { annotations: spec.annotations },
+    metadata: { title: toolTitle(spec.name), annotations: spec.annotations },
   }).server<OpenStoryToolContext>(
     // createMCPServer sends a CallToolResult as is, which keeps the error
     // envelope and the JSON text fallback; the typed output is its

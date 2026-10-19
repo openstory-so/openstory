@@ -46,6 +46,8 @@ const toolsListResult = z.object({
   tools: z.array(
     z.object({
       name: z.string(),
+      // Claude's connector directory rejects a tool without a title.
+      title: z.string().min(1),
       description: z.string(),
       inputSchema: z.object({ type: z.literal('object') }).passthrough(),
       outputSchema: z.object({ type: z.literal('object') }),
