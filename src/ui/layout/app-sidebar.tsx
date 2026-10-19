@@ -11,6 +11,7 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
@@ -264,6 +265,9 @@ export function AppSidebar() {
                 <span>Skills &amp; MCP</span>
               </Link>
             </SidebarMenuButton>
+            <SidebarMenuBadge className="bg-primary/15 text-primary">
+              New
+            </SidebarMenuBadge>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Pricing">
