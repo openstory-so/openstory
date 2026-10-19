@@ -75,7 +75,7 @@ const agents: readonly {
 
 /** Each maps to tools the MCP server has: studio images and videos, sequences, music and export. */
 const examplePrompts = [
-  'Make three images of a lighthouse at dusk.',
+  'Make three portraits of my lead character in different outfits.',
   'Turn this photo into a short video.',
   'Turn this script into a sequence with consistent characters.',
   'Score my sequence and export it as an MP4.',
