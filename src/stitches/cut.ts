@@ -133,3 +133,16 @@ export function mapCutMedia<A, B>(
     ),
   };
 }
+
+/**
+ * The picture the cut opens on (#2140): the first clip's poster, or its still
+ * (else that still's fallback). Null when the first clip has none — a video
+ * shared with no poster. The social preview shows it.
+ */
+export function openingPicture<M>(cut: Cut<M>): M | null {
+  const first = cut.clips[0];
+  if (!first) return null;
+  return 'videoUrl' in first
+    ? first.posterUrl
+    : (first.imageUrl ?? first.fallbackImageUrl);
+}

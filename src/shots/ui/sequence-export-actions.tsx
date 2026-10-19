@@ -5,9 +5,14 @@
  * Download / Copy link once the current cut has a render, otherwise why it
  * has none and "Render MP4 on server". "Publish to social…" (#1267) exists
  * only for teams that saved an Upload-Post key; everyone else never sees it.
+ * "Share stitch link" (#2140) needs no render: it shares the cut the theatre
+ * plays as a public /stitch page and copies its link.
  */
 
 import { Button } from '@/ui/shadcn/button';
+import { shareSequenceStitchFn } from '@/stitches/stitch.fn';
+import { copyTextToClipboard } from '@/ui/clipboard';
+import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +25,7 @@ import type { SequenceExportState } from '@/sequences/ui/theatre/use-sequence-ex
 import { PublishDialog } from '@/sequences/ui/theatre/publish-dialog';
 import { getSocialPublishingFn } from '@/sequences/social-publish.fn';
 import { cn } from '@/ui/utils';
-import { skipToken, useQuery } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import {
   ChevronDown,
   CircleStop,
@@ -29,6 +34,7 @@ import {
   Loader2,
   Send,
   Server,
+  Share2,
 } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 
@@ -60,7 +66,7 @@ export const SequenceDownloadMenu: React.FC<{
   /** Draft clips in the cut (#1756) — the render would carry 480p shots. */
   draftLabel?: string | null;
   variant: 'toolbar' | 'overlay';
-  /** Enables "Publish to social…" when the team has an Upload-Post key. */
+  /** Enables "Share stitch link", and "Publish to social…" when the team has an Upload-Post key. */
   publish?: PublishTarget;
 }> = ({ sequenceExport, draftLabel = null, variant, publish }) => {
   const {
@@ -89,6 +95,23 @@ export const SequenceDownloadMenu: React.FC<{
     staleTime: 5 * 60 * 1000,
   });
   const canPublish = publishing?.enabled === true;
+  const shareStitch = useMutation({
+    mutationFn: (sequenceId: string) =>
+      shareSequenceStitchFn({ data: { sequenceId } }),
+    onSuccess: async ({ id }) => {
+      const url = `${window.location.origin}/stitch/${id}`;
+      // The copy runs after the round trip, which some browsers refuse; the
+      // link is in the toast either way.
+      const copied = await copyTextToClipboard(url);
+      toast.success(copied ? 'Stitch link copied' : 'Stitch shared', {
+        description: url,
+      });
+    },
+    onError: (error) =>
+      toast.error('Could not share the stitch', {
+        description: error.message,
+      }),
+  });
   // The render the dialog publishes is the one on screen when it was opened.
   const [publishExportId, setPublishExportId] = useState<string | null>(null);
 
@@ -185,6 +208,15 @@ export const SequenceDownloadMenu: React.FC<{
               </span>
             )}
           </DropdownMenuItem>
+          {publish && (
+            <DropdownMenuItem
+              disabled={shareStitch.isPending}
+              onSelect={() => shareStitch.mutate(publish.sequenceId)}
+            >
+              <Share2 />
+              {shareStitch.isPending ? 'Sharing…' : 'Share stitch link'}
+            </DropdownMenuItem>
+          )}
           {canPublish && (
             <DropdownMenuItem
               disabled={!sequenceExport.freshExportId}
