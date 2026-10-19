@@ -39,7 +39,11 @@ export const Route = createFileRoute('/api/v1/stitches/$id/publish')({
             userId: context.user.id,
             id: params.id,
             portraitAttestation,
-            request,
+            // The same request context the MCP server and the editor record.
+            request: {
+              ipAddress: request.headers.get('cf-connecting-ip'),
+              userAgent: request.headers.get('user-agent'),
+            },
           });
           const url = new URL(`/stitch/${stitch.id}`, request.url).href;
           return Response.json(
