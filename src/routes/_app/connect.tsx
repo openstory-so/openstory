@@ -63,6 +63,14 @@ const clients: readonly {
   { value: 'cli', label: 'CLI', logo: SquareTerminal },
 ];
 
+/** Each maps to tools the MCP server has: studio images and videos, sequences, music and export. */
+const examplePrompts = [
+  'Make three images of a lighthouse at dusk.',
+  'Turn this photo into a short video.',
+  'Turn this script into a sequence with consistent characters.',
+  'Score my sequence and export it as an MP4.',
+] as const;
+
 const title = `Skills & MCP — ${SITE_CONFIG.name}`;
 const description =
   'Use OpenStory from Claude, ChatGPT, Grok, Gemini, Codex or Cursor: connect the MCP server and install the agent skills.';
@@ -95,7 +103,7 @@ function ConnectPage() {
           OpenStory in your agent
         </h1>
         <p className="text-muted-foreground">
-          Write, cast and render sequences from the chat you already use.
+          Make images, videos and whole sequences from the chat you already use.
         </p>
       </div>
 
@@ -127,9 +135,8 @@ function ConnectPage() {
 
         <TabsContent value="claude" className="flex flex-col gap-4 pt-4">
           <Steps>
-            <li>Add the OpenStory connector. Claude fills in the URL.</li>
+            <li>Connect in Claude. The name and URL are filled in.</li>
             <li>Sign in to OpenStory when Claude asks.</li>
-            <li>Ask Claude for a sequence.</li>
           </Steps>
           <div>
             <Button asChild>
@@ -144,17 +151,16 @@ function ConnectPage() {
         <TabsContent value="chatgpt" className="flex flex-col gap-4 pt-4">
           <Steps>
             <li>
-              In the ChatGPT desktop app, open Plugins and choose Add a
-              marketplace.
+              Open Plugins on chatgpt.com, select +, then Add custom MCP server.
             </li>
-            <li>Enter the marketplace below and install OpenStory.</li>
-            <li>Sign in to OpenStory when ChatGPT asks.</li>
+            <li>Paste the URL below and sign in to OpenStory.</li>
           </Steps>
-          <Terminal label="Marketplace" lines={[SKILLS_REPO]} prompt={false} />
-          <Note>
-            Desktop only: the plugin ships an MCP server, which chatgpt.com in a
-            browser does not run.
-          </Note>
+          <McpUrl />
+          <Terminal
+            label="Desktop app, with skills"
+            comment="Run this, restart ChatGPT, then install OpenStory from Plugins → Personal."
+            lines={[`codex plugin marketplace add ${SKILLS_REPO}`]}
+          />
         </TabsContent>
 
         <TabsContent value="claude-code" className="flex flex-col gap-4 pt-4">
@@ -169,7 +175,7 @@ function ConnectPage() {
           <PluginNote />
           <Terminal
             label="MCP server only"
-            comment="Run this in your terminal."
+            comment="Run this, then /mcp in Claude Code to sign in."
             lines={[`claude mcp add --transport http openstory ${MCP_URL}`]}
           />
         </TabsContent>
@@ -186,24 +192,26 @@ function ConnectPage() {
           <PluginNote />
           <Terminal
             label="MCP server only"
-            comment="Run this in your terminal."
-            lines={[`codex mcp add openstory --url ${MCP_URL}`]}
+            comment="Run these in your terminal."
+            lines={[
+              `codex mcp add openstory --url ${MCP_URL}`,
+              'codex mcp login openstory',
+            ]}
           />
         </TabsContent>
 
         <TabsContent value="grok" className="flex flex-col gap-4 pt-4">
           <Steps>
-            <li>On grok.com, open Connectors and add a custom connector.</li>
-            <li>Paste the URL below and sign in to OpenStory when asked.</li>
+            <li>
+              Open grok.com/connectors, select New Connector, then Custom.
+            </li>
+            <li>Paste the URL below and sign in to OpenStory.</li>
           </Steps>
           <McpUrl />
           <Terminal
             label="Grok Build"
-            comment="Run these in your terminal."
-            lines={[
-              `grok plugin marketplace add ${SKILLS_REPO}`,
-              'grok plugin install openstory --trust',
-            ]}
+            comment="Run this in your terminal."
+            lines={[`grok plugin install ${SKILLS_REPO} --trust`]}
           />
           <PluginNote />
         </TabsContent>
@@ -211,25 +219,28 @@ function ConnectPage() {
         <TabsContent value="gemini" className="flex flex-col gap-4 pt-4">
           <Steps>
             <li>
-              In the Gemini app, open Settings, then Connected apps, then Custom
-              apps.
+              Open gemini.google.com, then Settings, Connected Apps, Add a
+              custom app.
             </li>
-            <li>Paste the URL below and sign in to OpenStory when asked.</li>
+            <li>Paste the URL below, select Next and sign in to OpenStory.</li>
           </Steps>
           <McpUrl />
+          <Note>
+            Custom apps need a personal Google account in the US, for now.
+          </Note>
           <Terminal
             label="Gemini CLI"
-            comment="Run these in your terminal."
+            comment="Run these, then /mcp auth openstory in Gemini CLI to sign in."
             lines={[
               `gemini mcp add --transport http openstory ${MCP_URL}`,
-              `npx skills add ${SKILLS_REPO}`,
+              `npx skills add ${SKILLS_REPO} -a gemini-cli`,
             ]}
           />
         </TabsContent>
 
         <TabsContent value="cursor" className="flex flex-col gap-4 pt-4">
           <Steps>
-            <li>Add the MCP server. Cursor asks you to confirm.</li>
+            <li>Add to Cursor, and confirm in Cursor.</li>
             <li>Sign in to OpenStory when Cursor asks.</li>
           </Steps>
           <div>
@@ -240,7 +251,7 @@ function ConnectPage() {
           <Terminal
             label="Skills"
             comment="Run this in your project."
-            lines={[`npx skills add ${SKILLS_REPO}`]}
+            lines={[`npx skills add ${SKILLS_REPO} -a cursor`]}
           />
         </TabsContent>
 
@@ -257,6 +268,19 @@ function ConnectPage() {
           <McpUrl />
         </TabsContent>
       </Tabs>
+
+      <section className="flex flex-col gap-3" aria-labelledby="ask-heading">
+        <h2 id="ask-heading" className="text-lg font-semibold">
+          What you can ask
+        </h2>
+        <ul className="flex flex-col gap-2 text-sm">
+          {examplePrompts.map((prompt) => (
+            <li key={prompt} className="rounded-lg border px-3 py-2">
+              {prompt}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <a
         href={`https://github.com/${SKILLS_REPO}`}
