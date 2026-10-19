@@ -152,13 +152,20 @@ const exportedHandler: ExportedHandler<WorkerEnv> = {
     // put either D1 round trip in front of it on cold starts.
     const servesMedia = pathname.startsWith('/r2/');
 
+    // OAuth discovery and registration read no templates. A hosted MCP
+    // client (Gemini) gives up on a slow registration (#2138), so they start
+    // the seed without waiting for it.
+    const readsNoTemplates =
+      pathname.startsWith('/.well-known/') ||
+      pathname.startsWith('/api/auth/oauth2/');
+
     if (!servesMedia) {
       const seeded = ensureSeededOnce(env.DB, env.E2E_TEST);
       // Before the await: a disconnect during this read must not stick the
       // isolate (#2073). Same hold for sign-in, below, once we know this
       // request will reach a route that can be the first `getAuth()` caller.
       holdInstanceStartup(ctx, seeded);
-      await seeded;
+      if (!readsNoTemplates) await seeded;
     }
 
     // Markdown content negotiation for agents (#819): serve a real markdown

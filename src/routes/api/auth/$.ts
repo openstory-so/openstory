@@ -4,6 +4,7 @@ import { inferNativeRegistration } from '@/platform/server/auth/oauth-client-reg
 import { pruneOrphanedOAuthClients } from '@/platform/server/db/scoped';
 import { getLogger } from '@/platform/logger';
 import { createFileRoute } from '@tanstack/react-router';
+import { waitUntil } from 'cloudflare:workers';
 import { scheduleFlushAnalytics } from '#flush-scheduler';
 
 const logger = getLogger(['openstory', 'api', 'auth']);
@@ -24,16 +25,21 @@ function isClientRegistration(request: Request): boolean {
   );
 }
 
-async function guardClientRegistration(request: Request): Promise<void> {
-  if (!isClientRegistration(request)) return;
-  await assertDeviceLoginRate(request);
+async function pruneInBackground(): Promise<void> {
   try {
     const pruned = await pruneOrphanedOAuthClients();
     if (pruned > 0) logger.info('pruned orphaned oauth clients', { pruned });
   } catch (error) {
-    // Housekeeping must never block a registration.
     logger.warn('orphaned oauth client prune failed', { err: error });
   }
+}
+
+async function guardClientRegistration(request: Request): Promise<void> {
+  if (!isClientRegistration(request)) return;
+  await assertDeviceLoginRate(request);
+  // Housekeeping runs after the response. Gemini gives up on a registration
+  // that takes a few seconds (#2138), and D1 is a round trip per statement.
+  waitUntil(pruneInBackground());
 }
 
 /**
