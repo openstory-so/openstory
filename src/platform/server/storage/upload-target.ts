@@ -8,6 +8,7 @@
  * prefix. Keeping this in one place avoids the check drifting between routes.
  */
 
+import { fileExists } from '#storage';
 import { isSystemAdmin } from '@/platform/server/auth/system-admin';
 import { getUserTeamMembership } from '@/platform/server/db/scoped';
 import { STORAGE_BUCKETS, type StorageBucket } from './buckets';
@@ -79,6 +80,17 @@ export async function resolveUploadTarget(
     (await getUserTeamMembership(user.id, ownerSegment)) !== null;
   if (!authorized) {
     return fail('Path must be within your team prefix', 403);
+  }
+
+  // A shared stitch's file is written once (#2127). Its page is public and
+  // its stills pass the real-person check at publish, so an overwrite after
+  // that would put an unchecked image on a live page. A failed PUT leaves no
+  // object, so a retry is still a first write.
+  if (
+    validBucket === STORAGE_BUCKETS.STITCHES &&
+    (await fileExists(validBucket, path))
+  ) {
+    return fail('A stitch file cannot be replaced; share the cut again', 409);
   }
 
   return { ok: true, target: { bucket: validBucket, path, contentType } };

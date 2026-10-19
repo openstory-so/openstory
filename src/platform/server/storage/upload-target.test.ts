@@ -6,6 +6,9 @@ vi.doMock('@/platform/server/db/scoped', () => ({ getUserTeamMembership }));
 const isSystemAdmin = vi.fn();
 vi.doMock('@/platform/server/auth/system-admin', () => ({ isSystemAdmin }));
 
+const fileExists = vi.fn();
+vi.doMock('#storage', () => ({ fileExists }));
+
 // Dynamic import so the mocks apply (vi.doMock is not hoisted).
 const { resolveUploadTarget } = await import('./upload-target');
 
@@ -26,6 +29,47 @@ beforeEach(() => {
   );
   isSystemAdmin.mockReset();
   isSystemAdmin.mockReturnValue(false);
+  fileExists.mockReset();
+  fileExists.mockResolvedValue(false);
+});
+
+describe('stitch files are written once (#2127)', () => {
+  const stitchRequest = (path: string) =>
+    new Request(
+      `https://app.example.com/api/storage/upload?bucket=stitches&path=${encodeURIComponent(path)}&contentType=image%2Fpng`
+    );
+
+  it('takes a first write under the team', async () => {
+    const resolved = await resolveUploadTarget(
+      stitchRequest(`${TEAM}/01STITCH/0.png`),
+      USER
+    );
+    expect(resolved.ok).toBe(true);
+    expect(fileExists).toHaveBeenCalledWith(
+      'stitches',
+      `${TEAM}/01STITCH/0.png`
+    );
+  });
+
+  it('409s a write over a file that is already there', async () => {
+    fileExists.mockResolvedValue(true);
+    const resolved = await resolveUploadTarget(
+      stitchRequest(`${TEAM}/01STITCH/0.png`),
+      USER
+    );
+    expect(resolved.ok).toBe(false);
+    if (!resolved.ok) expect(resolved.response.status).toBe(409);
+  });
+
+  it('does not ask storage for any other bucket', async () => {
+    fileExists.mockResolvedValue(true);
+    const resolved = await resolveUploadTarget(
+      request(`teams/${TEAM}/sequences/s1/exports/abc_openstory.mp4`),
+      USER
+    );
+    expect(resolved.ok).toBe(true);
+    expect(fileExists).not.toHaveBeenCalled();
+  });
 });
 
 describe('resolveUploadTarget', () => {
