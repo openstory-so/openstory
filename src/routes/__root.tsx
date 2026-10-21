@@ -3,7 +3,12 @@
 // oxlint-disable-next-line boundaries/no-server-imports
 import { getProductionDeploymentAppUrl } from '@/platform/server/env/environment';
 import { IS_PREVIEW_DEPLOYMENT } from '@/platform/flags';
+import { LastPageTracker } from '@/platform/ui/auth/last-page-tracker';
 import { DocsReferrerTracker } from '@/ui/docs/docs-referrer-tracker';
+import {
+  AppUpdatedNotice,
+  isAppUpdatedError,
+} from '@/ui/error/app-updated-notice';
 import { DefaultNotFound } from '@/ui/error/default-not-found';
 import { Providers } from '@/ui/providers';
 import { Button } from '@/ui/shadcn/button';
@@ -142,6 +147,7 @@ function RootLayout() {
       <body>
         <Providers queryClient={queryClient}>
           <DocsReferrerTracker />
+          <LastPageTracker />
           <Outlet />
         </Providers>
         <Scripts />
@@ -152,6 +158,14 @@ function RootLayout() {
 
 function ErrorBoundary({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
+
+  if (isAppUpdatedError(error)) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <AppUpdatedNotice />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4">

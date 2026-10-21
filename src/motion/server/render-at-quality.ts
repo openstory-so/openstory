@@ -1,3 +1,4 @@
+import { buildDraftFinalRender } from './build-motion-render';
 /**
  * Render an approved Ark draft at quality (#1756).
  *
@@ -26,10 +27,16 @@ import {
 } from '@/billing/server/preflight';
 import { DEFAULT_VIDEO_MODEL, safeImageToVideoModel } from '@/models/models';
 import { DRAFT_FINAL_RESOLUTION, draftTaskUsable } from '@/motion/draft-mode';
+import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-duration';
+import { ConflictError, ValidationError } from '@/platform/errors';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { VideoVariant } from '@/platform/server/db/schema';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
+import { getLogger } from '@/platform/logger';
+
+const logger = getLogger(['openstory', 'motion', 'render-at-quality']);
 
 type RenderableSequence = {
   id: string;
@@ -69,25 +76,37 @@ export async function renderDraftAtQuality(options: {
 }): Promise<{ workflowRunId: string; versionId: string }> {
   const { scopedDb, sequence, version } = options;
   const blocker = draftRenderBlocker(version);
-  if (blocker) throw new Error(blocker);
+  if (blocker) throw new ValidationError(blocker);
   const draftTaskId = version.draftTaskId;
-  if (!draftTaskId) throw new Error('This clip is not a draft');
+  if (!draftTaskId) throw new ValidationError('This clip is not a draft');
   const lead = version.manifest[0];
-  if (!lead) throw new Error('The draft covers no shots');
+  if (!lead) throw new ValidationError('The draft covers no shots');
   // The segment is already rendering — a second final would bill twice for
   // the same clip.
   const siblings = await scopedDb.videoVariants.listBySegment(
     version.renderSegmentId
   );
   if (siblings.some((row) => row.status === 'generating')) {
-    throw new Error(ALREADY_RENDERING);
+    throw new ConflictError(ALREADY_RENDERING);
   }
   // See the header: one hold and one instance per (draft, attempt).
   const runKey = `motion-final-${version.id}-${siblings.length}`;
 
   const model = safeImageToVideoModel(version.model, DEFAULT_VIDEO_MODEL);
-  const duration =
+  const manifestSeconds =
     version.manifest.reduce((sum, entry) => sum + entry.durationMs, 0) / 1000;
+  // Ark renders the final at the draft's own length, and the draft of a
+  // Seedance 2.5 edit followed its clip, not the manifest (#2036). So the
+  // hold reads the draft's stored file; a file we cannot read refuses here.
+  // Rounded, so an ordinary 5.04s draft still holds 5s.
+  const draftKey = version.url ? r2KeyFromUrl(version.url) : null;
+  const draftSeconds = draftKey
+    ? await measureOwnMediaDuration(draftKey).catch((error: unknown) => {
+        logger.warn('Could not read the draft clip', { draftKey, error });
+        throw new ValidationError("Couldn't read the draft clip. Try again.");
+      })
+    : null;
+  const holdSeconds = Math.max(manifestSeconds, Math.round(draftSeconds ?? 0));
   const promptVersion = lead.motionPromptVersionId
     ? await scopedDb.shotPromptVersions.getByIdForShot(
         lead.motionPromptVersionId,
@@ -98,7 +117,7 @@ export async function renderDraftAtQuality(options: {
   const reservationId = await reserveRunCredits(
     scopedDb,
     gateEstimate(
-      estimateVideoCost(model, duration, {
+      estimateVideoCost(model, holdSeconds, {
         pricing: await getEffectiveFalPricing(),
         resolution: DRAFT_FINAL_RESOLUTION,
         hasReferenceImages: lead.referenceKeys.length > 0,
@@ -114,29 +133,23 @@ export async function renderDraftAtQuality(options: {
   );
 
   return releaseReservationOnThrow(scopedDb, reservationId, async () => {
-    const payload: MotionWorkflowInput = {
+    const payload = buildDraftFinalRender({
       userId: options.userId,
       teamId: scopedDb.teamId,
-      sequenceId: sequence.id,
-      shotId: lead.shotId,
+      sequence,
+      lead,
       sceneId: options.sceneId,
-      // The mode the draft ran in, so the final is stamped the same way and
-      // a reference-only draft is not asked for a start frame it never had.
-      referenceOnly: !lead.usesStartFrame,
       // Provenance only — the final sends the task id, not a prompt.
-      prompt: promptVersion?.text ?? '',
+      authoredPrompt: promptVersion?.text ?? '',
       model,
-      duration,
-      aspectRatio: sequence.aspectRatio,
-      sequenceTitle: sequence.title,
+      duration: manifestSeconds,
       reservationId,
-      ownsReservation: true,
-      finalFromDraft: {
+      draft: {
         taskId: draftTaskId,
         renderSegmentId: version.renderSegmentId,
         manifest: version.manifest,
       },
-    };
+    });
     const workflowRunId = await triggerWorkflow('/motion', payload, {
       deduplicationId: runKey,
     });

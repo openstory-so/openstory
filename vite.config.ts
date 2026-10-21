@@ -13,6 +13,7 @@ import { devtools } from '@tanstack/devtools-vite';
 import viteReact from '@vitejs/plugin-react';
 import { worktreeAuthCookiePrefix } from './src/platform/auth/cookie-prefix.ts';
 import { createServerFnIdGenerator } from './src/platform/server-fn-id.ts';
+import { latin1ServerChunks } from './scripts/latin1-server-chunks.ts';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -27,7 +28,9 @@ const authCookiePrefix = isDev
   ? process.env.VITE_AUTH_COOKIE_PREFIX
   : undefined;
 
-function localTunnel(): { tunnelName: string; zone: string } | undefined {
+function localTunnel():
+  | { tunnelName: string; zone: string; hostnames: string[] }
+  | undefined {
   const path = join(homedir(), '.openstory/dev-tunnels.json');
   if (!existsSync(path)) return undefined;
   try {
@@ -44,7 +47,17 @@ function localTunnel(): { tunnelName: string; zone: string } | undefined {
       'zone' in parsed && typeof parsed.zone === 'string'
         ? parsed.zone
         : 'openstory.so';
-    return { tunnelName: parsed.tunnelName, zone };
+    const routes: unknown[] =
+      'routes' in parsed && Array.isArray(parsed.routes) ? parsed.routes : [];
+    const hostnames = routes.flatMap((route) =>
+      typeof route === 'object' &&
+      route !== null &&
+      'hostname' in route &&
+      typeof route.hostname === 'string'
+        ? [route.hostname]
+        : []
+    );
+    return { tunnelName: parsed.tunnelName, zone, hostnames };
   } catch {
     return undefined;
   }
@@ -232,6 +245,11 @@ export default defineConfig({
       '127.0.0.1',
       'host.docker.internal',
       `.${namedTunnel?.zone ?? 'openstory.so'}`,
+      // Each tunnel hostname by exact name as well: the Cloudflare plugin
+      // restarts the dev server when the connected tunnel's hostname is not
+      // in this list verbatim (the suffix entry does not count), and that
+      // restart leaves every request to the worker hanging.
+      ...(namedTunnel?.hostnames ?? []),
     ],
     watch: {
       ignored: [
@@ -253,6 +271,7 @@ export default defineConfig({
     isDev && wranglerBindingsBanner(),
     envIcons(),
     reflectMetadataPolyfill(),
+    latin1ServerChunks(),
     tailwindcss(),
     cloudflare({
       viteEnvironment: { name: 'ssr' },
@@ -306,6 +325,23 @@ export default defineConfig({
       'roughjs',
       'ts-dedent',
     ],
+  },
+  environments: {
+    ssr: {
+      build: {
+        rolldownOptions: {
+          output: {
+            // workerd holds every server chunk's source on the 128 MB heap
+            // from boot, so its size is memory, not just upload (#1893).
+            // Names are kept so stack traces and `.name` still read.
+            minify: {
+              compress: { keepNames: { function: true, class: true } },
+              mangle: { keepNames: true },
+            },
+          },
+        },
+      },
+    },
   },
   ssr: {
     noExternal: ['@videojs/react', '@tailwindcss/typography'],

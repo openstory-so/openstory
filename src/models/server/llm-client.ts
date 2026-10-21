@@ -297,11 +297,11 @@ export type LLMRequestParams<T = unknown> = {
  * https://openrouter.ai/docs/guides/features/structured-outputs
  */
 const STRUCTURED_OUTPUT_MODELS = new Set([
-  'x-ai/grok-4.6',
+  'x-ai/grok-4.7',
   'anthropic/claude-fable-5.1',
-  'anthropic/claude-sonnet-5',
+  'anthropic/claude-sonnet-5.5',
   'x-ai/grok-4.20',
-  'anthropic/claude-opus-5',
+  'anthropic/claude-opus-5.5',
   'anthropic/claude-opus-5-fast',
   'anthropic/claude-opus-4.8',
   'deepseek/deepseek-v3.2',
@@ -310,9 +310,9 @@ const STRUCTURED_OUTPUT_MODELS = new Set([
   'google/gemini-3.1-pro-preview',
   'openai/gpt-5.5',
   'openai/gpt-6-astra',
-  'openai/gpt-5.6-sol',
+  'openai/gpt-6.1-sol',
   'openai/gpt-5.6-terra',
-  'openai/gpt-5.6-luna',
+  'openai/gpt-6-luna',
   'google/gemini-3.8-flash',
   'google/gemini-3-flash-preview',
   'mistralai/mistral-small-2603',
@@ -326,9 +326,9 @@ function modelSupportsStructuredOutputs(model: string): boolean {
 }
 
 export const RECOMMENDED_MODELS = {
-  creative: 'anthropic/claude-sonnet-5',
-  structured: 'anthropic/claude-sonnet-5',
-  fast: 'anthropic/claude-sonnet-5',
+  creative: 'anthropic/claude-sonnet-5.5',
+  structured: 'anthropic/claude-sonnet-5.5',
+  fast: 'anthropic/claude-sonnet-5.5',
   premium: 'anthropic/claude-fable-5.1',
 } as const;
 
@@ -459,7 +459,7 @@ function buildGrokModelOptions(params: LLMRequestParams) {
   };
 }
 
-/** Our five-level effort scale onto xAI's (no `minimal`; grok-4.6 has `xhigh`). */
+/** Our five-level effort scale onto xAI's (no `minimal`; grok-4.7 has `xhigh`). */
 function toGrokReasoningEffort(
   effort: NonNullable<LLMRequestParams['reasoning']>['effort']
 ): 'low' | 'medium' | 'high' | 'xhigh' {

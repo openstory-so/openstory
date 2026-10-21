@@ -17,10 +17,10 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,
   },
-  'anthropic/claude-opus-5': {
-    name: 'Claude Opus 5',
-    promptPerMillionTokens: 5,
-    completionPerMillionTokens: 25,
+  'anthropic/claude-opus-5.5': {
+    name: 'Claude Opus 5.5',
+    promptPerMillionTokens: 4,
+    completionPerMillionTokens: 20,
     webSearchPerQuery: 0.01,
   },
   'anthropic/claude-opus-5-fast': {
@@ -50,8 +50,8 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,
   },
-  'openai/gpt-5.6-sol': {
-    name: 'OpenAI: GPT-5.6 Sol',
+  'openai/gpt-6.1-sol': {
+    name: 'OpenAI: GPT-6.1 Sol',
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 10,
     webSearchPerQuery: 0.01,
@@ -96,22 +96,22 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     promptPerMillionTokens: 1.32,
     completionPerMillionTokens: 3.9600000000000004,
   },
-  'anthropic/claude-sonnet-5': {
-    name: 'Anthropic: Claude Sonnet 5',
+  'anthropic/claude-sonnet-5.5': {
+    name: 'Anthropic: Claude Sonnet 5.5',
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 10,
     webSearchPerQuery: 0.01,
   },
-  'x-ai/grok-4.6': {
-    name: 'SpaceXAI: Grok 4.6',
+  'x-ai/grok-4.7': {
+    name: 'SpaceXAI: Grok 4.7',
     promptPerMillionTokens: 2,
     completionPerMillionTokens: 6,
     webSearchPerQuery: 0.005,
   },
-  'openai/gpt-5.6-luna': {
-    name: 'OpenAI: GPT-5.6 Luna',
-    promptPerMillionTokens: 0.19999999999999998,
-    completionPerMillionTokens: 1.2,
+  'openai/gpt-6-luna': {
+    name: 'OpenAI: GPT-6 Luna',
+    promptPerMillionTokens: 0.1,
+    completionPerMillionTokens: 0.5,
     webSearchPerQuery: 0.01,
   },
   'openai/gpt-5.4-mini': {

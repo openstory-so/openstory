@@ -14,7 +14,7 @@
 # Production deploy config
 /wrangler.jsonc       @tombeckenham
 
-# Schema migrations — D1/Turso table-rebuild trap, see CLAUDE.md
+# Schema migrations — D1/Turso table-rebuild trap, see AGENTS.md
 /drizzle/migrations/  @tombeckenham
 
 # Supply chain — dependency adds/upgrades and postinstall scripts run in CI with deploy secrets

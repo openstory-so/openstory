@@ -2,8 +2,15 @@ import { usesVoice } from '@/cast/voice';
 import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
 import {
+  characterBibleVersions,
+  characterLookVersions,
+  characterLooks,
+  characterVoiceVersions,
   characters,
-  sequenceLocations,
+  sequenceCast,
+  locationBibleVersions,
+  locations,
+  sequenceLocationLinks,
   sequenceElements,
 } from '@/platform/server/db/schema';
 import { projectRead, readDate } from '@/platform/server/read-projection';
@@ -26,73 +33,158 @@ const referenceSchema = z.object({
   inputHash: z.string().nullable(),
   generatedAt: readDate.nullable(),
 });
-export const characterReadSchema = createSelectSchema(characters)
+const characterVoiceSchema = createSelectSchema(characterVoiceVersions);
+const voicePreviewsSchema = z
+  .array(
+    z.object({
+      generatedVoiceId: z.string(),
+      url: z.string(),
+      takeNumber: z.number().int().positive().optional(),
+      unusable: z.enum(['saved', 'expired']).optional(),
+    })
+  )
+  .nullable();
+/** One voice the character has held (#1657); a released one cannot return. */
+export const characterVoiceVersionReadSchema = characterVoiceSchema
   .pick({
     id: true,
-    sequenceId: true,
-    characterId: true,
-    name: true,
-    talentId: true,
-    age: true,
-    gender: true,
-    ethnicity: true,
-    physicalDescription: true,
-    standardClothing: true,
-    distinguishingFeatures: true,
-    personality: true,
-    movement: true,
-    voiceOnly: true,
     voiceId: true,
-    voiceDescription: true,
-    useVoice: true,
-    consistencyTag: true,
-    firstMentionSceneId: true,
-    firstMentionText: true,
-    firstMentionLine: true,
-    sheetStatus: true,
-    sheetError: true,
-    selectedSheetVersionId: true,
+    description: true,
+    enabled: true,
+    source: true,
+    status: true,
+    error: true,
+  })
+  .extend({
+    previews: voicePreviewsSchema,
+    releasedAt: readDate.nullable(),
+    createdAt: readDate,
+  });
+/** A look's sheet state. */
+const lookSheetShape = createSelectSchema(characterLooks).pick({
+  sheetStatus: true,
+  sheetError: true,
+  selectedSheetVersionId: true,
+}).shape;
+/**
+ * One outfit of a character (#2015). `versionId` is its live definition;
+ * list its sheets with list_versions kind character_sheet and this id.
+ */
+const characterLookReadSchema = createSelectSchema(characterLooks)
+  .pick({ id: true, isDefault: true })
+  .extend(lookSheetShape)
+  .extend(
+    createSelectSchema(characterLookVersions).pick({
+      name: true,
+      clothing: true,
+      styling: true,
+    }).shape
+  )
+  .extend({
+    versionId: z.string(),
+    sheetImageUrl: z.string().nullable(),
+    // Set on a removed look; a scene that still picks it keeps wearing it.
+    deletedAt: readDate.nullable(),
+  });
+export const characterReadSchema = createSelectSchema(characters)
+  .pick({ id: true })
+  // How the sequence casts it (#2017): its cast link, and the talent on the
+  // bible version that link pins.
+  .extend({
+    sequenceId: createSelectSchema(sequenceCast).shape.sequenceId,
+    characterId: createSelectSchema(sequenceCast).shape.scriptCharacterId,
+    talentId: createSelectSchema(characterBibleVersions).shape.talentId,
+  })
+  .extend(
+    createSelectSchema(characters).pick({
+      useVoice: true,
+      firstMentionSceneId: true,
+      firstMentionText: true,
+      firstMentionLine: true,
+      selectedVoiceVersionId: true,
+    }).shape
+  )
+  // The sheet and the clothing are the character's default look's (#2015).
+  .extend(lookSheetShape)
+  .extend({
+    standardClothing: createSelectSchema(
+      characterLookVersions
+    ).shape.clothing.meta({
+      description:
+        'Deprecated: the default look’s clothing. Read looks[].clothing.',
+    }),
+    // Derived (#2065): the default look's styling owns this text.
+    distinguishingFeatures: z.string().nullable().meta({
+      description:
+        'Deprecated: features text not yet moved into the default look’s styling, else null. Read looks[].styling, which already includes it.',
+    }),
+  })
+  // The bible lives on its version row (#1600).
+  .extend(
+    createSelectSchema(characterBibleVersions).pick({
+      name: true,
+      age: true,
+      gender: true,
+      ethnicity: true,
+      physicalDescription: true,
+      rendering: true,
+      personality: true,
+      movement: true,
+      voiceOnly: true,
+      isPerson: true,
+      consistencyTag: true,
+    }).shape
+  )
+  // The voice lives on its version row (#1788).
+  .extend({
+    voiceId: characterVoiceSchema.shape.voiceId,
+    voiceDescription: characterVoiceSchema.shape.description,
   })
   .extend({
     createdAt: readDate,
     updatedAt: readDate,
     effectiveUseVoice: z.boolean(),
-    voicePreviews: z
-      .array(
-        z.object({
-          generatedVoiceId: z.string(),
-          url: z.string(),
-          takeNumber: z.number().int().positive().optional(),
-          unusable: z.enum(['saved', 'expired']).optional(),
-        })
-      )
-      .nullable(),
+    voicePreviews: voicePreviewsSchema,
     selectedSheet: referenceSchema.nullable(),
+    // Every look, the default first. The sheet fields above are the default
+    // look's.
+    looks: z.array(characterLookReadSchema),
   });
-export const locationReadSchema = createSelectSchema(sequenceLocations)
+/**
+ * A location as a sequence uses it (#1695): the team's location at its
+ * current bible, plus the sequence's link. `locationId` is the script id.
+ */
+export const locationReadSchema = createSelectSchema(locations)
   .pick({
     id: true,
-    sequenceId: true,
-    locationId: true,
-    libraryLocationId: true,
-    name: true,
-    type: true,
-    timeOfDay: true,
-    description: true,
-    architecturalStyle: true,
-    keyFeatures: true,
-    colorPalette: true,
-    lightingSetup: true,
-    ambiance: true,
-    consistencyTag: true,
-    firstMentionSceneId: true,
-    firstMentionText: true,
-    firstMentionLine: true,
     referenceStatus: true,
     referenceError: true,
     selectedReferenceVersionId: true,
   })
+  .extend(
+    createSelectSchema(sequenceLocationLinks).pick({
+      sequenceId: true,
+      firstMentionSceneId: true,
+      firstMentionText: true,
+      firstMentionLine: true,
+      attached: true,
+    }).shape
+  )
+  .extend(
+    createSelectSchema(locationBibleVersions).pick({
+      name: true,
+      type: true,
+      description: true,
+      architecturalStyle: true,
+      keyFeatures: true,
+      ambiance: true,
+      rendering: true,
+      consistencyTag: true,
+    }).shape
+  )
   .extend({
+    locationId: createSelectSchema(sequenceLocationLinks).shape
+      .scriptLocationId,
     createdAt: readDate,
     updatedAt: readDate,
     selectedReference: referenceSchema.nullable(),
@@ -157,8 +249,7 @@ const locationSheets = (
     rows,
     (l) => l.selectedReferenceVersionId ?? l.id,
     (ids) => scopedDb.locationSheetVariants.getByIds(ids),
-    (sheet, l) =>
-      sheet.parentType === 'sequence_location' && sheet.parentId === l.id
+    (sheet, l) => sheet.locationId === l.id
   );
 
 function inspectCharacter(
@@ -170,8 +261,13 @@ function inspectCharacter(
     characterReadSchema,
     {
       ...row,
+      distinguishingFeatures: row.legacyDistinguishingFeatures,
       effectiveUseVoice: usesVoice(row, { generateVoices }),
       selectedSheet: sheet,
+      looks: row.looks.map((look) => ({
+        ...look,
+        versionId: look.lookVersionId,
+      })),
     },
     origin
   );
@@ -221,7 +317,7 @@ export async function listLocations(
 ) {
   await productionAccess(scopedDb).sequence(input.sequenceId);
   const page = await readPage(input, [input.sequenceId, 'locations'], (next) =>
-    scopedDb.sequenceLocations.list(input.sequenceId, next)
+    scopedDb.locations.list(input.sequenceId, next)
   );
   return {
     locations: (await locationSheets(scopedDb, page.items)).map((read) =>
@@ -266,4 +362,71 @@ export async function readElement(
     await productionAccess(scopedDb).element(sequenceId, elementId),
     origin
   );
+}
+
+/**
+ * Every voice a live character of this sequence has held, newest first, and
+ * which one is selected — the editor's voice history.
+ */
+export async function listCharacterVoiceVersions(
+  scopedDb: ScopedDb,
+  sequenceId: string,
+  characterId: string,
+  origin: string
+) {
+  const character = await productionAccess(scopedDb).character(
+    sequenceId,
+    characterId
+  );
+  const versions = await scopedDb.characters.listVoiceVersions(character.id);
+  return {
+    characterId: character.id,
+    selectedVoiceVersionId: character.selectedVoiceVersionId,
+    useVoice: character.useVoice,
+    versions: projectRead(
+      z.array(characterVoiceVersionReadSchema),
+      versions,
+      origin
+    ),
+  };
+}
+
+const deletedAtOf = (row: { deletedAt: Date | null }) => {
+  // The queries select deleted rows only; the type still says nullable.
+  if (!row.deletedAt) throw new Error('listDeleted returned a live row');
+  return row.deletedAt.toISOString();
+};
+
+/**
+ * A sequence's soft-deleted characters, locations and elements, newest first.
+ * Ids are the database ids every other tool takes; `token` is the script
+ * token (`char_*`, `loc_*`, an element's name).
+ */
+export async function listDeletedCast(scopedDb: ScopedDb, sequenceId: string) {
+  const sequence = await productionAccess(scopedDb).sequence(sequenceId);
+  const [characters, locations, elements] = await Promise.all([
+    scopedDb.characters.listDeleted(sequence.id),
+    scopedDb.locations.listDeleted(sequence.id),
+    scopedDb.sequenceElements.listDeleted(sequence.id),
+  ]);
+  return {
+    characters: characters.map((row) => ({
+      characterId: row.id,
+      token: row.characterId,
+      name: row.name,
+      deletedAt: deletedAtOf(row),
+    })),
+    locations: locations.map((row) => ({
+      locationId: row.id,
+      token: row.locationId,
+      name: row.name,
+      deletedAt: deletedAtOf(row),
+    })),
+    elements: elements.map((row) => ({
+      elementId: row.id,
+      token: row.token,
+      kind: row.kind,
+      deletedAt: deletedAtOf(row),
+    })),
+  };
 }

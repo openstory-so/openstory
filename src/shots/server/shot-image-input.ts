@@ -115,6 +115,7 @@ export async function prepareShotImageWorkflowInput(args: {
    */
   promptVersionOverride?: string | null;
   modelOverride?: ImageWorkflowInput['model'];
+  reservationId?: string;
   /** True only when `promptOverride` came from a user edit (drives rescan upstream). */
   userEditedPrompt?: boolean;
   /**
@@ -174,8 +175,22 @@ export async function prepareShotImageWorkflowInput(args: {
         scopedDb,
         sequence,
         scene,
+        prompt,
       })
     : undefined;
+  // The edit is the user's act, so it lands NOW, at the click (#1786), and
+  // the run renders from that row by id. Written inside the run, it landed
+  // minutes later as a selected edit and could override a newer one.
+  const editedVersion = userEditProvenance
+    ? await scopedDb.framePromptVersions.write({
+        frameId: frame.id,
+        text: prompt,
+        source: 'user-edit',
+        inputHash: userEditProvenance.inputHash,
+        analysisModel: userEditProvenance.analysisModel,
+        createdBy: userId,
+      })
+    : null;
 
   const continuity = scene?.continuity;
 
@@ -183,12 +198,13 @@ export async function prepareShotImageWorkflowInput(args: {
     ? [refs.characters, refs.locations, refs.elements]
     : await Promise.all([
         scopedDb.characters.listWithSheets(sequence.id),
-        scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        scopedDb.locations.listWithReferences(sequence.id),
         scopedDb.sequenceElements.list(sequence.id),
       ]);
 
   const matchedCharacters = matchCharactersToShotImage(allCharacters, {
     characterTags: continuity?.characterTags,
+    characterLooks: continuity?.characterLooks,
     visualPrompt: prompt,
   });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
@@ -241,7 +257,10 @@ export async function prepareShotImageWorkflowInput(args: {
       }),
       { model, operation: 'shot-image' }
     ),
-    { errorMessage: 'Insufficient credits for image generation' }
+    {
+      errorMessage: 'Insufficient credits for image generation',
+      reservationId: args.reservationId,
+    }
   );
 
   // Build a per-scene snapshot so the image workflow records a non-null
@@ -278,6 +297,7 @@ export async function prepareShotImageWorkflowInput(args: {
 
   return {
     userId,
+    variantOnly: false,
     teamId: sequence.teamId,
     prompt,
     model,
@@ -287,11 +307,12 @@ export async function prepareShotImageWorkflowInput(args: {
     frameId: frame.id,
     // The version `prompt` was read from — the workflow stamps it on the
     // variant it writes rather than re-reading the pointer mid-run (#1070). A
-    // user edit supersedes it with the row the workflow writes.
+    // user edit is the row written above.
     promptVersionId:
-      promptVersionOverride === undefined
+      editedVersion?.id ??
+      (promptVersionOverride === undefined
         ? (selectedPrompt?.id ?? null)
-        : promptVersionOverride,
+        : promptVersionOverride),
     sequenceId: sequence.id,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
@@ -302,6 +323,5 @@ export async function prepareShotImageWorkflowInput(args: {
       ...locationReferences,
       ...elementReferences,
     ],
-    userEditProvenance,
   };
 }

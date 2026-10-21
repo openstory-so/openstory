@@ -207,6 +207,7 @@ export function toShotReadiness(shot: ShotView): ShotReadiness {
     previewImageUrl: shot.previewThumbnailUrl,
     hasSelectedVideo: shot.video !== null,
     primaryVideoStatus: shot.primaryVideo?.status ?? null,
+    primaryImageStatus: shot.primaryImage?.status ?? null,
   };
 }
 
@@ -279,8 +280,8 @@ export function buildSequenceSummary(params: {
       ? { url: toShareableUrl(sequence.posterUrl, origin) }
       : null,
     music: {
-      status: sequence.musicStatus ?? 'pending',
-      url: share(sequence.musicUrl ?? null),
+      status: sequence.musicStatus,
+      url: share(sequence.musicUrl),
     },
     counts,
   };
@@ -292,7 +293,9 @@ export async function buildSequenceState(
     frames: Pick<ScopedDb['frames'], 'listAnchorsBySequence'>;
     frameVariants: Pick<
       ScopedDb['frameVariants'],
-      'getSelectedByFrameIds' | 'listLatestPreviewsByFrameIds'
+      | 'getSelectedByFrameIds'
+      | 'listLatestPreviewsByFrameIds'
+      | 'getPrimaryByFrameIds'
     >;
     framePromptVersions: Pick<
       ScopedDb['framePromptVersions'],
@@ -333,6 +336,7 @@ export async function buildSequenceState(
     selectedPromptByFrame,
     selectedVideoByShot,
     primaryVideoByShot,
+    primaryImageByFrame,
   ] = await Promise.all([
     scopedDb.frameVariants.getSelectedByFrameIds(anchorRows.map((f) => f.id)),
     // The pre-prompt stand-in is a `kind: 'preview'` row (#1101).
@@ -344,6 +348,7 @@ export async function buildSequenceState(
     ),
     scopedDb.videoVariants.getSelectedByShotIds(shots.map((s) => s.id)),
     scopedDb.videoVariants.getPrimaryByShotIds(shots.map((s) => s.id)),
+    scopedDb.frameVariants.getPrimaryByFrameIds(anchorRows.map((f) => f.id)),
   ]);
   const shotViews = shots.flatMap((shot) => {
     const frame = anchorsByShot.get(shot.id);
@@ -353,6 +358,7 @@ export async function buildSequenceState(
             image: selectedByFrame.get(frame.id) ?? null,
             preview: previewByFrame.get(frame.id) ?? null,
             imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
+            primaryImage: primaryImageByFrame.get(frame.id) ?? null,
             video: selectedVideoByShot.get(shot.id) ?? null,
             primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
           }),

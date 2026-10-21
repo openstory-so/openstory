@@ -23,9 +23,14 @@ UPDATE frame_variants SET status = 'failed', updated_at = unixepoch()
 UPDATE frame_variants SET shot_variant_status = 'failed', updated_at = unixepoch()
   WHERE shot_variant_status = 'generating';
 
--- sequences: music ('generating')
-UPDATE sequences SET music_status = 'failed', updated_at = unixepoch()
-  WHERE music_status = 'generating';
+-- sequence_music_variants: music track rows ('pending', #1115), and the
+-- sequence claims that named them
+UPDATE sequences SET pending_promote_music_variant_id = NULL
+  WHERE pending_promote_music_variant_id IN (
+    SELECT id FROM sequence_music_variants WHERE status = 'pending'
+  );
+UPDATE sequence_music_variants SET status = 'failed', updated_at = unixepoch()
+  WHERE status = 'pending';
 
 -- sequence_elements (uses 'analyzing')
 UPDATE sequence_elements SET vision_status = 'failed', updated_at = unixepoch()

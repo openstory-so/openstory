@@ -11,7 +11,7 @@ import {
 } from '@/sequences/ui/use-sequences-with-shots';
 import { useTeamDivergentSequenceVariants } from '@/audio/ui/use-sequence-variants';
 import { useStyles } from '@/look/ui/use-styles';
-import { isSystemAdminFn } from '@/billing/gift-tokens.fn';
+import { systemAdminStatusQueryOptions } from '@/billing/ui/system-admin-status';
 import { useQuery, useInfiniteQuery, useQueries } from '@tanstack/react-query';
 import { Card } from '@/ui/shadcn/card';
 import { Skeleton } from '@/ui/shadcn/skeleton';
@@ -30,7 +30,10 @@ import {
   getAllAdminSequencesFn,
 } from '@/platform/admin-support.fn';
 import type { Sequence } from '@/platform/server/db/schema';
-import type { ShotView } from '@/shots/shot-view';
+import {
+  sequenceListShotFromView,
+  type SequenceListShot,
+} from '@/shots/shot-view';
 
 const EvalMatrix = lazy(() =>
   import('./eval-matrix').then((m) => ({ default: m.EvalMatrix }))
@@ -97,8 +100,9 @@ function useAdminAllSequencesWithShots(
     queries: (enabled && loadShots ? allSequences : []).map(
       (seq: Sequence) => ({
         queryKey: adminSupportKeys.shots(seq.id),
-        queryFn: async (): Promise<ShotView[]> => {
-          return getAdminShotsFn({ data: { sequenceId: seq.id } });
+        queryFn: async (): Promise<SequenceListShot[]> => {
+          const shots = await getAdminShotsFn({ data: { sequenceId: seq.id } });
+          return shots.map(sequenceListShotFromView);
         },
         staleTime: 60_000,
         enabled: allSequences.length > 0,
@@ -206,11 +210,9 @@ export const EvalView: React.FC<EvalViewProps> = ({
     ]
   );
 
-  const { data: adminStatus, isLoading: adminStatusLoading } = useQuery({
-    queryKey: ['system-admin-status'],
-    queryFn: () => isSystemAdminFn(),
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: adminStatus, isLoading: adminStatusLoading } = useQuery(
+    systemAdminStatusQueryOptions
+  );
 
   const isAdmin = adminStatus?.isAdmin ?? false;
   const internalDomains = useMemo(

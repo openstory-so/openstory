@@ -36,18 +36,17 @@ describe('storyboard envelope wiring', () => {
     expect(source).toMatch(/releaseReservationOnThrow/);
   });
 
-  test('analyze-script grows or stops before spawning shot-images', () => {
+  test('storyboard grows or stops before handing the plan to its executor', () => {
     const source = readFileSync(
-      'src/sequences/server/workflows/analyze-script-workflow.ts',
+      'src/sequences/server/workflows/storyboard-workflow.ts',
       'utf8'
     );
     expect(source).toMatch(/gateStoryboardRenders/);
-    expect(source).toMatch(/spawn-shot-images/);
+    expect(source).toMatch(/spawn-continue/);
     expect(source.indexOf('gateStoryboardRenders')).toBeLessThan(
-      source.indexOf('spawn-shot-images')
+      source.indexOf('spawn-continue')
     );
-    expect(source).toMatch(/updateStatus\('failed'/);
-    expect(source).toMatch(/NonRetryableError/);
+    expect(source).toMatch(/WorkflowValidationError/);
     expect(source).toMatch(/creditsShortStatusError/);
   });
 

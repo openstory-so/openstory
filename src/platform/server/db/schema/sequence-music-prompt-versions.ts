@@ -1,9 +1,10 @@
 /**
  * Sequence Music Prompt Versions Schema
  *
- * One row per revision of a sequence's music prompt + tags. The current
- * "active" prompt is mirrored on `sequences.musicPrompt` / `sequences.musicTags`
- * for read-path simplicity; this table stores the full revision history.
+ * One row per revision of a sequence's music prompt + tags. The live prompt is
+ * the row `sequences.selectedMusicPromptVersionId` points at (#1115); every
+ * scoped sequence read projects it as `musicPrompt` / `musicTags` /
+ * `musicPromptInputHash`.
  *
  * Renamed from `sequence_music_prompt_variants` in the Scene→Shot→Frame
  * redesign (#988) — a prompt is a *version* history, not parallel *variants*.
@@ -47,7 +48,7 @@ export const sequenceMusicPromptVersions = snakeCase.table(
 
     // The natural-language music prompt.
     prompt: text().notNull(),
-    // Comma-separated music tags string (mirrors `sequences.musicTags`).
+    // Comma-separated music tags string.
     tags: text(),
 
     source: text().$type<PromptVariantSource>().notNull(),

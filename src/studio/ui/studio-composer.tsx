@@ -10,6 +10,11 @@
  *   - Frames    — a start frame, plus an end frame where the model takes one
  */
 
+import { readMediaDuration } from '@/cast/element-kind';
+import {
+  isSeedanceEdit,
+  seedanceEditLengthMessage,
+} from '@/motion/seedance-edit';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { ActionCost } from '@/billing/ui/action-cost';
 import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
@@ -80,10 +85,9 @@ import { studioReferenceImages } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
-  DEFAULT_VIDEO_MODEL,
+  defaultVideoModelFor,
   getCompatibleModel,
   IMAGE_TO_VIDEO_MODELS,
-  isOfferedVideoModel,
   supportsDraftMode,
   supportsReferenceImages,
   type ImageToVideoModel,
@@ -113,6 +117,9 @@ import {
   unresolvedStudioReferences,
   resolveStudioAliases,
   snapStudioVideoDuration,
+  studioBillableSeconds,
+  studioSupportsAutoDuration,
+  type StudioDuration,
   studioAudioLimit,
   studioCombinedRefCap,
   studioReferenceEndpoint,
@@ -143,6 +150,7 @@ import {
   Shuffle,
   SlidersHorizontal,
   Sparkles,
+  UserRound,
   X,
 } from 'lucide-react';
 import {
@@ -160,6 +168,7 @@ const MODE_LABELS: Record<StudioVideoMode, string> = {
   text: 'Text to video',
   reference: 'Reference to video',
   frames: 'Image to video',
+  edit: 'Edit video',
 };
 
 type PickerTarget = 'reference' | 'start' | 'end';
@@ -213,6 +222,7 @@ function Tile({
   onRemove,
   removeLabel = `Remove ${reference.label}`,
   checking = false,
+  realPerson,
 }: {
   reference: StudioReference;
   badge: string;
@@ -220,6 +230,8 @@ function Tile({
   removeLabel?: string;
   /** Rights check in flight (#1581): the still is being looked at. */
   checking?: boolean;
+  /** A cleared still the user can mark as a real person (#1847). */
+  realPerson?: { marked: boolean; onToggle: () => void };
 }) {
   return (
     <div
@@ -280,6 +292,24 @@ function Tile({
         )}
         {badge}
       </span>
+      {realPerson && (
+        <Button
+          type="button"
+          size="icon-xs"
+          variant={realPerson.marked ? 'default' : 'secondary'}
+          className={cn(
+            'absolute top-1 left-1 transition-opacity',
+            !realPerson.marked &&
+              'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+          )}
+          aria-label={`${badge} shows a real person`}
+          title="This shows a real person"
+          aria-pressed={realPerson.marked}
+          onClick={realPerson.onToggle}
+        >
+          <UserRound aria-hidden="true" />
+        </Button>
+      )}
       <Button
         type="button"
         size="icon-xs"
@@ -324,7 +354,7 @@ export function StudioComposer({
 }: StudioComposerProps) {
   const { requireAuth, isAuthenticated } = useAuthGate();
   const posthog = usePostHog();
-  const { pricing } = useFalPricing();
+  const { pricing, isPending: pricingPending } = useFalPricing();
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
@@ -341,16 +371,14 @@ export function StudioComposer({
   // the platform default otherwise. The via query is warmed by the `_app`
   // loader, so a signed-in user gets the right answer on first paint.
   const [videoModel, setVideoModel] = useState<ImageToVideoModel>(() =>
-    isOfferedVideoModel('seedance_v2_5', vias)
-      ? 'seedance_v2_5'
-      : DEFAULT_VIDEO_MODEL
+    defaultVideoModelFor(vias)
   );
   const [aspectRatio, setAspectRatio] =
     useState<AspectRatio>(DEFAULT_ASPECT_RATIO);
   const [pickedResolution, setResolution] =
     useState<Resolution>(DEFAULT_RESOLUTION);
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
-  const [duration, setDuration] = useState(5);
+  const [duration, setDuration] = useState<StudioDuration>(5);
   const [generateAudio, setGenerateAudio] = useState(true);
   // On by default (#1756): a 480p look before the 1080p spend.
   const [draftMode, setDraftMode] = useState(true);
@@ -377,6 +405,9 @@ export function StudioComposer({
   // given for, so attaching another unattested still un-ticks it.
   const [portraitTickedFor, setPortraitTickedFor] = useState('');
   const [authorizationBasis, setAuthorizationBasis] = useState('');
+  // Cleared stills the user says show a real person (#1847). Only ever adds
+  // a sign-off; the server still decides what counts as cleared.
+  const [markedReal, setMarkedReal] = useState<string[]>([]);
   const [pendingSeed, setPendingSeed] = useState<StudioReuse | null>(null);
 
   const applySeed = useCallback(
@@ -523,9 +554,23 @@ export function StudioComposer({
     : mode === 'reference' && references.length + videoRefs.length === 0
       ? 'text'
       : mode;
+  // Length follows the clip, so the picker shows Auto and the estimate
+  // prices the model's longest clip (#2036).
+  const followsReferenceVideo = isSeedanceEdit({
+    model: compatibleVideoModel,
+    onArk: vias.byteplus === true,
+    prompt,
+    hasInputVideo:
+      effectiveMode === 'edit' ||
+      (effectiveMode === 'reference' && videoRefs.length > 0),
+    explicitEdit: effectiveMode === 'edit',
+  });
+  const pricedDuration: StudioDuration = followsReferenceVideo
+    ? 'auto'
+    : snappedDuration;
 
   const estimate = useMemo(() => {
-    if (!pricing) return null;
+    if (!pricing) return pricingPending ? undefined : null;
     if (activity === 'image') {
       const still = estimateImageCost(imageModel, aspectRatio, 1, {
         pricing,
@@ -536,7 +581,7 @@ export function StudioComposer({
     }
     const motion = estimateStudioVideoCost(
       compatibleVideoModel,
-      snappedDuration,
+      studioBillableSeconds(pricedDuration, compatibleVideoModel),
       {
         pricing,
         mode: effectiveMode,
@@ -553,9 +598,10 @@ export function StudioComposer({
     effectiveMode,
     imageModel,
     pricing,
+    pricingPending,
     references.length,
     resolution,
-    snappedDuration,
+    pricedDuration,
   ]);
 
   const trimmed = prompt.trim();
@@ -588,7 +634,7 @@ export function StudioComposer({
         videoModel: compatibleVideoModel,
         aspectRatio,
         resolution,
-        duration: snappedDuration,
+        duration: pricedDuration,
         count,
         generateAudio: audioCapable ? generateAudio : undefined,
         draft: draftCapable ? draftMode : undefined,
@@ -633,7 +679,26 @@ export function StudioComposer({
     const url = gatedUrls[i];
     return url ? [{ url, query }] : [];
   });
-  const owed = checks.filter((c) => c.query.data?.status === 'needs_portrait');
+  const cleared = new Set(
+    checks.filter((c) => c.query.data?.status === 'cleared').map((c) => c.url)
+  );
+  const owed = checks.filter(
+    (c) =>
+      c.query.data?.status === 'needs_portrait' ||
+      (cleared.has(c.url) && markedReal.includes(c.url))
+  );
+  const realPersonToggle = (url: string) =>
+    cleared.has(url)
+      ? {
+          marked: markedReal.includes(url),
+          onToggle: () =>
+            setMarkedReal((prev) =>
+              prev.includes(url)
+                ? prev.filter((u) => u !== url)
+                : [...prev, url]
+            ),
+        }
+      : undefined;
   const portraitUrls = owed.map((c) => c.url);
   const portraitKey = portraitUrls.join('\n');
   const portraitTicked =
@@ -803,13 +868,34 @@ export function StudioComposer({
         continue;
       }
       taken[kind] += 1;
+      const durationSeconds =
+        kind === 'video' ? await readMediaDuration(file, 'video') : undefined;
+      if (
+        kind === 'video' &&
+        isSeedanceEdit({
+          model: compatibleVideoModel,
+          onArk: vias.byteplus === true,
+          prompt,
+          hasInputVideo: true,
+          explicitEdit: mode === 'edit',
+        })
+      ) {
+        const lengthMessage = seedanceEditLengthMessage(durationSeconds);
+        if (lengthMessage) {
+          toast.error(lengthMessage);
+          continue;
+        }
+      }
       setUploading((n) => n + 1);
       try {
         const { url } = await upload.mutateAsync({
           file,
           type: kind === 'audio' ? 'recording' : kind,
         });
-        placeReference({ url, label: file.name, kind }, target);
+        placeReference(
+          { url, label: file.name, kind, durationSeconds },
+          target
+        );
         void queryClient.invalidateQueries({ queryKey: studioUploadKeys.all });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Upload failed');
@@ -1105,6 +1191,15 @@ export function StudioComposer({
       setPromptTooLongOpen(true);
       return;
     }
+    if (followsReferenceVideo) {
+      for (const ref of videoRefs) {
+        const lengthMessage = seedanceEditLengthMessage(ref.durationSeconds);
+        if (lengthMessage) {
+          toast.error(lengthMessage);
+          return;
+        }
+      }
+    }
     if (trimmed.length === 0) {
       posthog.capture('empty_prompt_generate_clicked', {
         surface: 'studio',
@@ -1149,7 +1244,11 @@ export function StudioComposer({
     resolutionTiers.length > 0
       ? RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label
       : null,
-    isVideo && durationCapable ? `${snappedDuration}s` : null,
+    isVideo && durationCapable
+      ? pricedDuration === 'auto'
+        ? 'Auto length'
+        : `${pricedDuration}s`
+      : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
     draftOn ? 'Draft 480p' : null,
     `×${count}`,
@@ -1208,6 +1307,7 @@ export function StudioComposer({
                     reference={reference}
                     badge={`@Image${index + 1}`}
                     checking={checking.has(reference.url)}
+                    realPerson={realPersonToggle(reference.url)}
                     onRemove={() => removeReference('image', index)}
                   />
                 ))}
@@ -1242,6 +1342,7 @@ export function StudioComposer({
                     reference={startFrame}
                     badge="Start"
                     checking={checking.has(startFrame.url)}
+                    realPerson={realPersonToggle(startFrame.url)}
                     removeLabel="Remove start frame"
                     onRemove={() => setStartFrame(null)}
                   />
@@ -1257,6 +1358,7 @@ export function StudioComposer({
                       reference={endFrame}
                       badge="End"
                       checking={checking.has(endFrame.url)}
+                      realPerson={realPersonToggle(endFrame.url)}
                       removeLabel="Remove end frame"
                       onRemove={() => setEndFrame(null)}
                     />
@@ -1321,77 +1423,74 @@ export function StudioComposer({
         </div>
       )}
 
-      {isAuthenticated &&
-        checks.length > 0 && (
-          // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
-          <div
-            className="flex shrink-0 flex-col gap-2"
-            onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
-              if (!(event.target instanceof HTMLInputElement)) return;
-              event.preventDefault();
-              if (rightsTicked && !attest.isPending) confirmRights();
-            }}
-          >
-            {checks
-              .filter((c) => c.query.isError)
-              .map((c) => (
-                <p key={c.url} className="text-xs text-destructive">
-                  Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
-                  {isInsufficientCreditsError(c.query.error) ? (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() =>
-                        openAddCreditsDialog('studio-rights-check')
-                      }
-                    >
-                      Add credits
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() => void c.query.refetch()}
-                    >
-                      Retry
-                    </Button>
-                  )}
-                </p>
-              ))}
-            {portraitUrls.length > 0 && (
-              <PortraitAttestationFields
-                id="studio-portrait-attestation"
-                attested={portraitTicked}
-                onAttestedChange={(checked) =>
-                  setPortraitTickedFor(checked ? portraitKey : '')
-                }
-                authorizationBasis={authorizationBasis}
-                onAuthorizationBasisChange={setAuthorizationBasis}
+      {isAuthenticated && checks.length > 0 && (
+        // oxlint-disable-next-line jsx-a11y/no-static-element-interactions -- Enter in the basis field confirms rights, not Generate (the outer form)
+        <div
+          className="flex shrink-0 flex-col gap-2"
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            if (!(event.target instanceof HTMLInputElement)) return;
+            event.preventDefault();
+            if (rightsTicked && !attest.isPending) confirmRights();
+          }}
+        >
+          {checks
+            .filter((c) => c.query.isError)
+            .map((c) => (
+              <p key={c.url} className="text-xs text-destructive">
+                Couldn't check {badgeFor(c.url)}: {c.query.error?.message}{' '}
+                {isInsufficientCreditsError(c.query.error) ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => openAddCreditsDialog('studio-rights-check')}
+                  >
+                    Add credits
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => void c.query.refetch()}
+                  >
+                    Retry
+                  </Button>
+                )}
+              </p>
+            ))}
+          {portraitUrls.length > 0 && (
+            <PortraitAttestationFields
+              id="studio-portrait-attestation"
+              attested={portraitTicked}
+              onAttestedChange={(checked) =>
+                setPortraitTickedFor(checked ? portraitKey : '')
+              }
+              authorizationBasis={authorizationBasis}
+              onAuthorizationBasisChange={setAuthorizationBasis}
+            >
+              <p className="text-xs font-medium">
+                Real person in {badges(portraitUrls)}
+              </p>
+            </PortraitAttestationFields>
+          )}
+          {owed.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                disabled={!rightsTicked || attest.isPending}
+                onClick={confirmRights}
               >
-                <p className="text-xs font-medium">
-                  Real person in {badges(portraitUrls)}
-                </p>
-              </PortraitAttestationFields>
-            )}
-            {owed.length > 0 && (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!rightsTicked || attest.isPending}
-                  onClick={confirmRights}
-                >
-                  {attest.isPending ? 'Saving…' : 'Confirm rights'}
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
+                {attest.isPending ? 'Saving…' : 'Confirm rights'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {isVideo && (
@@ -1523,8 +1622,13 @@ export function StudioComposer({
                   <section className="flex flex-col gap-2">
                     <h3 className="text-sm font-medium">Duration</h3>
                     <Select
-                      value={String(snappedDuration)}
+                      value={String(pricedDuration)}
+                      disabled={followsReferenceVideo}
                       onValueChange={(value) => {
+                        if (value === 'auto') {
+                          setDuration('auto');
+                          return;
+                        }
                         const next = Number(value);
                         if (Number.isFinite(next) && next > 0)
                           setDuration(next);
@@ -1537,6 +1641,14 @@ export function StudioComposer({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        {studioSupportsAutoDuration(compatibleVideoModel) && (
+                          <SelectItem
+                            value="auto"
+                            className="font-mono text-xs"
+                          >
+                            Auto
+                          </SelectItem>
+                        )}
                         {studioVideoDurations(compatibleVideoModel).map(
                           (value) => (
                             <SelectItem
@@ -1550,6 +1662,11 @@ export function StudioComposer({
                         )}
                       </SelectContent>
                     </Select>
+                    {followsReferenceVideo && (
+                      <p className="text-xs text-muted-foreground">
+                        An edit keeps the clip's length.
+                      </p>
+                    )}
                   </section>
                 </>
               )}
@@ -1680,7 +1797,11 @@ export function StudioComposer({
               Clear all
             </Button>
           )}
-          <ActionCost estimate={estimate} align="end" />
+          <ActionCost
+            estimate={estimate}
+            align="end"
+            amountWidth={activity === 'video' ? 'double' : 'single'}
+          />
           <VoiceInputButton label="prompt" {...promptVoice} />
           <Button
             type="submit"

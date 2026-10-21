@@ -14,11 +14,28 @@ import type {
   TalentWithSheets,
 } from '@/platform/server/db/schema';
 import { talent, talentMedia, talentSheets } from '@/platform/server/db/schema';
+import type { TalentSheetInputHash } from '@/shots/input-hash';
+import { castOfTalent } from './sequence-cast';
+import {
+  demoteCharacterSheetClaims,
+  demoteTalentSheetClaim,
+} from './sheet-claims';
 import {
   SERVER_MANAGED_TALENT_COLUMNS,
   type ServerManagedTalentColumn,
 } from '@/cast/server/talent.schemas';
-import { and, asc, desc, eq, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  exists,
+  inArray,
+  ne,
+  notExists,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { stripServerManagedColumns } from '@/platform/server/db/scoped/server-managed';
 
 const TALENT_WRITE_DENIED =
@@ -254,6 +271,24 @@ function createTalentReadMethodsScoped(db: Database, teamId: string | null) {
       });
     },
 
+    /**
+     * A cast talent's name and whether it is a real person (#2065), by id,
+     * whatever its visibility now: what the person lock reads. Not scoped
+     * on purpose. The cast list's join (`characters.listWithTalent`) is not
+     * either, so the form and the edit give one answer, and a talent that
+     * has since gone private still locks the characters cast with it.
+     * Nothing else of the row is returned.
+     */
+    getCastIdentity: async (
+      talentId: string
+    ): Promise<{ name: string; isHuman: boolean | null } | undefined> => {
+      const [row] = await db
+        .select({ name: talent.name, isHuman: talent.isHuman })
+        .from(talent)
+        .where(eq(talent.id, talentId));
+      return row;
+    },
+
     getWithRelations: async (talentId: string) => {
       return db.query.talent.findFirst({
         where: { id: talentId, ...queryScope },
@@ -268,28 +303,24 @@ function createTalentReadMethodsScoped(db: Database, teamId: string | null) {
       });
     },
 
+    /** `getWithRelations` for many, in one read (#2082): what a plan's sheet verdicts take of the cast talent. */
+    getWithSheetsByIds: async (talentIds: string[]) => {
+      if (talentIds.length === 0) return [];
+      return db.query.talent.findMany({
+        where: { id: { in: talentIds }, ...queryScope },
+        with: {
+          sheets: {
+            orderBy: { isDefault: 'desc', createdAt: 'desc' },
+          },
+        },
+      });
+    },
+
     sheets: {
       getById: async (sheetId: string): Promise<TalentSheet | undefined> => {
         return db.query.talentSheets.findFirst({
           where: { id: sheetId },
         });
-      },
-
-      isStale: async (
-        sheetId: string,
-        currentHash: string
-      ): Promise<boolean> => {
-        const result = await db
-          .select({ hash: talentSheets.inputHash })
-          .from(talentSheets)
-          .where(eq(talentSheets.id, sheetId));
-        const first = result[0];
-        if (!first) {
-          throw new Error(`TalentSheet ${sheetId} not found`);
-        }
-        const stored = first.hash;
-        if (stored === null) return false;
-        return currentHash !== stored;
       },
     },
 
@@ -356,15 +387,184 @@ export function createTalentMethods(
         return undefined;
       }
 
-      const [updated] = await db
-        .update(talent)
-        .set({
-          ...stripServerManagedColumns(data, SERVER_MANAGED_TALENT_COLUMNS),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(talent.id, talentId), eq(talent.teamId, teamId)))
-        .returning();
+      // Claims (#1113): the description feeds this talent's own sheet run
+      // and every character cast with it. (A rename is not a sheet input: the
+      // sheet hash never covered the name.)
+      const descriptionMoved = data.description !== undefined;
+      const [[updated]] = await db.batch([
+        db
+          .update(talent)
+          .set({
+            ...stripServerManagedColumns(data, SERVER_MANAGED_TALENT_COLUMNS),
+            ...(descriptionMoved ? { pendingPromoteSheetId: null } : {}),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(talent.id, talentId), eq(talent.teamId, teamId)))
+          .returning(),
+        demoteCharacterSheetClaims(
+          db,
+          descriptionMoved ? castOfTalent(db, talentId) : sql`0`
+        ),
+      ]);
       return updated;
+    },
+
+    /**
+     * Take the library sheet claim (#1113): point it at the `talent_sheets.id`
+     * the run will write. Taken only once a trigger started a NEW run — a
+     * deduplicated trigger that reused an in-flight run must leave that run's
+     * claim alone. Last kickoff wins.
+     *
+     * Taken only while the inputs the run was snapshotted from still hold:
+     * the same description and every reference photo still present. An edit
+     * that landed between the snapshot and this write found no claim to
+     * revoke, so it fails the claim instead and the run parks. Returns
+     * whether the claim was taken.
+     */
+    claimSheet: async (
+      talentId: string,
+      sheetId: string,
+      inputs: { description: string | null; referenceImageUrls: string[] }
+    ): Promise<boolean> => {
+      await requireWritableTalent(db, talentId, teamId);
+      const urls = [...new Set(inputs.referenceImageUrls)];
+      const photosStillThere =
+        urls.length === 0
+          ? undefined
+          : sql`(${db
+              .select({ n: sql`count(distinct ${talentMedia.url})` })
+              .from(talentMedia)
+              .where(
+                and(
+                  eq(talentMedia.talentId, talentId),
+                  eq(talentMedia.type, 'image'),
+                  inArray(talentMedia.url, urls)
+                )
+              )}) = ${urls.length}`;
+      const result = await db
+        .update(talent)
+        .set({ pendingPromoteSheetId: sheetId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(talent.id, talentId),
+            sql`${talent.description} IS ${inputs.description}`,
+            photosStillThere
+          )
+        );
+      return (result.rowsAffected ?? 0) > 0;
+    },
+
+    /** A failed run clears its claim — only while it still holds it. */
+    clearSheetClaimIf: async (
+      talentId: string,
+      sheetId: string
+    ): Promise<void> => {
+      await db
+        .update(talent)
+        .set({ pendingPromoteSheetId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(talent.id, talentId),
+            eq(talent.pendingPromoteSheetId, sheetId)
+          )
+        );
+    },
+
+    /**
+     * Land a library sheet run's sheet (#1113). One batch: insert the row
+     * under the claimed id as parked (divergent, never default), then — only
+     * while the claim still names it — unpark it, make a first upload the
+     * default, revoke the claims of the characters cast with this talent
+     * (their sheets read its sheets), and consume the claim. Returns the row
+     * and whether it landed; a parked row is the caller's to report.
+     *
+     * Retry-safe: the insert is keyed on the claimed id, and the outcome is
+     * read from the row.
+     */
+    landSheet: async (args: {
+      sheetId: string;
+      talentId: string;
+      name: string;
+      imageUrl: string;
+      imagePath: string;
+      metadata: NewTalentSheet['metadata'];
+      source: NewTalentSheet['source'];
+      inputHash: TalentSheetInputHash | null;
+    }): Promise<{ sheet: TalentSheet; landed: boolean }> => {
+      const { sheetId, talentId } = args;
+      await requireWritableTalent(db, talentId, teamId);
+      const holds = exists(
+        db
+          .select({ one: sql`1` })
+          .from(talent)
+          .where(
+            and(
+              eq(talent.id, talentId),
+              eq(talent.pendingPromoteSheetId, sheetId)
+            )
+          )
+      );
+      const now = new Date();
+      const [, , , , , [sheet]] = await db.batch([
+        db
+          .insert(talentSheets)
+          .values({
+            id: sheetId,
+            talentId,
+            name: args.name,
+            imageUrl: args.imageUrl,
+            imagePath: args.imagePath,
+            metadata: args.metadata,
+            isDefault: false,
+            source: args.source,
+            inputHash: args.inputHash,
+            divergedAt: now,
+          })
+          .onConflictDoNothing(),
+        db
+          .update(talentSheets)
+          .set({ divergedAt: null, updatedAt: now })
+          .where(and(eq(talentSheets.id, sheetId), holds)),
+        // Generated sheets never take the Default badge on their own; a
+        // first uploaded sheet does (the same rule `sheets.create` applies).
+        db
+          .update(talentSheets)
+          .set({ isDefault: true })
+          .where(
+            and(
+              eq(talentSheets.id, sheetId),
+              eq(talentSheets.source, 'manual_upload'),
+              holds,
+              notExists(
+                db
+                  .select({ one: sql`1` })
+                  .from(talentSheets)
+                  .where(
+                    and(
+                      eq(talentSheets.talentId, talentId),
+                      ne(talentSheets.id, sheetId)
+                    )
+                  )
+              )
+            )
+          ),
+        demoteCharacterSheetClaims(
+          db,
+          and(castOfTalent(db, talentId), holds) ?? sql`0`
+        ),
+        db
+          .update(talent)
+          .set({ pendingPromoteSheetId: null, updatedAt: now })
+          .where(
+            and(
+              eq(talent.id, talentId),
+              eq(talent.pendingPromoteSheetId, sheetId)
+            )
+          ),
+        db.select().from(talentSheets).where(eq(talentSheets.id, sheetId)),
+      ]);
+      if (!sheet) throw new Error(`TalentSheet ${sheetId} was not written`);
+      return { sheet, landed: sheet.divergedAt === null };
     },
 
     delete: async (talentId: string): Promise<boolean> => {
@@ -417,10 +617,18 @@ export function createTalentMethods(
             .where(eq(talentSheets.talentId, data.talentId));
         }
 
-        const [sheet] = await db
-          .insert(talentSheets)
-          .values({ ...data, isDefault: shouldBeDefault })
-          .returning();
+        // A new convergent sheet can become the cast identity: it revokes the
+        // sheet claims of the characters cast with this talent (#1113).
+        const [[sheet]] = await db.batch([
+          db
+            .insert(talentSheets)
+            .values({ ...data, isDefault: shouldBeDefault })
+            .returning(),
+          demoteCharacterSheetClaims(
+            db,
+            data.divergedAt ? sql`0` : castOfTalent(db, data.talentId)
+          ),
+        ]);
         if (!sheet) throw new Error('Failed to create talent sheet');
         return sheet;
       },
@@ -446,11 +654,18 @@ export function createTalentMethods(
             .where(eq(talentSheets.talentId, sheetForAcl.talentId));
         }
 
-        const [updated] = await db
-          .update(talentSheets)
-          .set({ ...data, updatedAt: new Date() })
-          .where(eq(talentSheets.id, sheetId))
-          .returning();
+        const [[updated]] = await db.batch([
+          db
+            .update(talentSheets)
+            .set({ ...data, updatedAt: new Date() })
+            .where(eq(talentSheets.id, sheetId))
+            .returning(),
+          // The default and the image are cast inputs (#1113).
+          demoteCharacterSheetClaims(
+            db,
+            castOfTalent(db, sheetForAcl.talentId)
+          ),
+        ]);
 
         return updated;
       },
@@ -463,9 +678,11 @@ export function createTalentMethods(
           return false;
         }
 
-        const result = await db
-          .delete(talentSheets)
-          .where(eq(talentSheets.id, sheetId));
+        const [result] = await db.batch([
+          db.delete(talentSheets).where(eq(talentSheets.id, sheetId)),
+          // Removing a sheet can move the cast identity (#1113).
+          demoteCharacterSheetClaims(db, castOfTalent(db, sheet.talentId)),
+        ]);
 
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
         if ((result.rowsAffected ?? 0) === 0) return false;
@@ -508,9 +725,11 @@ export function createTalentMethods(
           return false;
         }
 
-        const result = await db
-          .delete(talentMedia)
-          .where(eq(talentMedia.id, mediaId));
+        const [result] = await db.batch([
+          db.delete(talentMedia).where(eq(talentMedia.id, mediaId)),
+          // A reference photo the in-flight sheet run used is gone (#1113).
+          demoteTalentSheetClaim(db, media.talentId),
+        ]);
         // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
         return (result.rowsAffected ?? 0) > 0;
       },

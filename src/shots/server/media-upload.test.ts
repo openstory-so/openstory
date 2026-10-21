@@ -11,6 +11,7 @@
  *       against the NEW prompt text), committed in one batch; video stale.
  */
 
+import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import {
   computeVideoManifestInputHash,
@@ -36,6 +37,7 @@ import {
   videoVariants,
 } from '@/platform/server/db/schema';
 import type { VideoManifest } from '@/platform/server/db/schema';
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 import { relations } from '@/platform/server/db/schema/relations';
 import {
   computeUploadedStillInputHash,
@@ -43,6 +45,8 @@ import {
   resolveUploadExtension,
 } from './upload-media';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
+import { uploadAttestations } from '@/platform/server/db/schema';
+import { isSelectedVersionStale } from '@/shots/scene-segments';
 import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { type Client, createClient } from '@libsql/client';
 import { eq } from 'drizzle-orm';
@@ -87,6 +91,7 @@ async function seed() {
   await db.delete(frameVariants);
   await db.delete(framePromptVersions);
   await db.delete(frames);
+  await clearVersionRows(db);
   await db.delete(characters);
   await db.delete(shots);
   await db.delete(renderSegments);
@@ -160,6 +165,7 @@ async function seedSelectedImage(inputHash: string) {
     url: '/r2/thumbnails/old.png',
     storagePath: 'old.png',
     generatedAt: new Date(),
+    isPrimary: true,
     inputHash: shotImageInputHash(inputHash),
   });
   await images.select(frameId, version.id, { actorId });
@@ -195,6 +201,7 @@ async function seedSegmentAndVideo(frameVersionId: string) {
       durationMs: 4000,
       audioClipIds: [],
       audioSourceKey: null,
+      dialogueKey: null,
       referenceKeys: [],
     },
   ];
@@ -248,22 +255,24 @@ const SCENE_WITH_REFS: Scene = {
 };
 
 async function seedCharacterWithSheet(sheetInputHash: string) {
-  const [row] = await db
-    .insert(characters)
-    .values({
+  const row = await createCharactersMethods(db, teamId).create(
+    {
       sequenceId,
       characterId: 'char_001',
       name: 'Jack',
+      rendering: 'Photoreal live action',
       consistencyTag: 'char_001: Jack-denim-jacket',
       sheetStatus: 'completed',
-    })
-    .returning();
-  if (!row) throw new Error('test setup: character insert returned nothing');
+    },
+    { source: 'analysis', createdBy: null }
+  );
   // The live sheet is read from the version row, not the mirror (#1419) —
-  // keyed to the character's own id, the shape the backfill produced.
+  // keyed to the character's own id, which is its default look's id: the
+  // shape the backfill produced.
   await db.insert(characterSheetVariants).values({
     id: row.id,
     characterId: row.id,
+    lookId: row.id,
     model: 'prior',
     url: '/r2/characters/jack.png',
     status: 'completed',
@@ -271,7 +280,10 @@ async function seedCharacterWithSheet(sheetInputHash: string) {
   });
   // Return the RESOLVED read — the sheet lives on the version row now (#1419),
   // and the staleness hash is computed from it.
-  const resolved = await createCharactersMethods(db).getById(row.id);
+  const resolved = await createCharactersMethods(db, teamId).getById(
+    sequenceId,
+    row.id
+  );
   if (!resolved)
     throw new Error('test setup: character re-read returned nothing');
   return resolved;
@@ -294,6 +306,32 @@ function stalenessArgs() {
   };
 }
 
+/**
+ * The production clip compare, for a render whose motion pointer and live
+ * inputs have not moved — only the shot's selected still is in question.
+ */
+function clipIsStale(
+  version: Parameters<typeof isSelectedVersionStale>[0] | null,
+  currentFrameVersionId: string | null
+) {
+  if (!version) throw new Error('test setup: no selected clip');
+  const motion = version.manifest[0]?.motionPromptVersionId ?? null;
+  return isSelectedVersionStale(
+    version,
+    new Map([[shotId, motion]]),
+    new Map([[shotId, currentFrameVersionId]]),
+    {
+      audioSourceKeyByShot: new Map(),
+      dialogueKeyByShot: new Map(),
+      audioClipIdsByShot: new Map(),
+      referenceIdentity: new Map(),
+      referencedEntitiesByShot: new Map(),
+      durationMsByShot: new Map(),
+      audioSecondsByShot: new Map(),
+    }
+  );
+}
+
 /** Run the real verify path for this shot's anchor frame. */
 async function verifyThumbnailStaleness(scene: Scene | null) {
   const { scopedDb, sequence } = stalenessArgs();
@@ -308,6 +346,7 @@ async function verifyThumbnailStaleness(scene: Scene | null) {
     frame,
     selectedImage,
     scene,
+    dialogue: { dialogue: { presence: false, lines: [] }, onNode: false },
   });
   return result.thumbnail;
 }
@@ -387,31 +426,23 @@ describe('resolveUploadExtension', () => {
 });
 
 describe('music upload — append-only across uploads', () => {
-  it('retires the previous upload instead of overwriting it, keeping it promotable', async () => {
+  it('parks the previous upload instead of overwriting it, keeping it promotable', async () => {
     const variants = createSequenceVariantsMethods(db);
-    const upload = (url: string) => ({
-      sequenceId,
-      model: USER_UPLOAD_MODEL,
-      url,
-      storagePath: url.replace('/r2/audio/', ''),
-      status: 'completed' as const,
-      generatedAt: new Date(),
-      inputHash: null,
-    });
+    const upload = (url: string) =>
+      variants.appendUploadedMusic({
+        sequenceId,
+        model: USER_UPLOAD_MODEL,
+        url,
+        storagePath: url.replace('/r2/audio/', ''),
+        prompt: null,
+        tags: null,
+        durationSeconds: null,
+      });
 
-    const first = await variants.upsertMusicPrimary(upload('/r2/audio/v1.mp3'));
-
-    // Second upload: retire, then insert — the shape the server fn uses.
-    const retired = await variants.retireMusicPrimary(
-      sequenceId,
-      USER_UPLOAD_MODEL
-    );
-    const second = await variants.upsertMusicPrimary(
-      upload('/r2/audio/v2.mp3')
-    );
+    const first = await upload('/r2/audio/v1.mp3');
+    const second = await upload('/r2/audio/v2.mp3');
 
     // A distinct row, not an in-place update of the first.
-    expect(retired?.id).toBe(first.id);
     expect(second.id).not.toBe(first.id);
 
     // The first upload's bytes are still addressable.
@@ -425,12 +456,11 @@ describe('music upload — append-only across uploads', () => {
     const alternates = await variants.listDivergentMusic(sequenceId);
     expect(alternates.map((v) => v.id)).toContain(first.id);
 
-    // The live slot is the newest upload.
-    const primary = await variants.getMusicPrimary(
-      sequenceId,
-      USER_UPLOAD_MODEL
+    // The sequence plays the newest upload.
+    const [seq] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
     );
-    expect(primary?.id).toBe(second.id);
+    expect(seq?.selectedMusicVariantId).toBe(second.id);
   });
 });
 
@@ -491,9 +521,6 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
       aspectRatio: '16:9',
     });
     expect(uploaded.inputHash).toBe(verify.snapshotInputHash);
-    expect(await images.isStale(uploaded.id, verify.snapshotInputHash)).toBe(
-      false
-    );
 
     // Prompt untouched: same selection pointer, no new history rows.
     expect(frame?.selectedImagePromptVersionId).toBe(prompt.id);
@@ -509,25 +536,9 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
     expect(selectedVideo?.manifest[0]?.frameVersionId).not.toBe(
       frame?.selectedImageVersionId
     );
-    // …and its manifest hash diverges from one recomputed over current
-    // pointers.
-    const currentManifest: VideoManifest = [
-      {
-        shotId,
-        motionPromptVersionId: null,
-        frameVersionId: uploaded.id,
-        usesStartFrame: true,
-        durationMs: 4000,
-        audioClipIds: [],
-        audioSourceKey: null,
-        referenceKeys: [],
-      },
-    ];
+    // …so the clip compare reads it stale.
     expect(
-      await videos.isStale(
-        oldVideo.id,
-        await computeVideoManifestInputHash(currentManifest, 'kling_25')
-      )
+      clipIsStale(selectedVideo, frame?.selectedImageVersionId ?? null)
     ).toBe(true);
 
     // Events: the append logged image.uploaded, the repoint image.selected.
@@ -606,7 +617,7 @@ describe('§4.3 B — image-only upload (appendUploadedVersion + select)', () =>
       actorId,
     });
     await images.select(frameId, uploaded.id, { actorId });
-    expect(await images.isStale(uploaded.id, 'any-live-hash')).toBe(false);
+    expect(uploaded.inputHash).toBeNull();
   });
 });
 
@@ -662,7 +673,6 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
       .where(eq(frames.id, frameId));
     expect(frame?.selectedImagePromptVersionId).toBe(promptVersion.id);
     expect(frame?.selectedImageVersionId).toBe(imageVersion.id);
-    expect(frame?.imageStatus).toBe('completed');
 
     // Prompt fresh: the new user-edit version carries its upstream hash.
     expect(promptVersion.text).toBe(newText);
@@ -765,6 +775,83 @@ describe('§4.3 C — atomic prompt+image replace (replaceContent)', () => {
   });
 });
 
+describe('character sheet upload for a look other than the default (#2015)', () => {
+  it('is allowed before the default has a sheet, and reads stale once one lands', async () => {
+    const { setCharacterSheetFromUpload } = await import('./media-upload');
+    const { readLookSheetStaleness } =
+      await import('@/cast/server/production-staleness');
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const scopedDb = createScopedDb(teamId, actorId);
+    const mia = await scopedDb.characters.create(
+      {
+        sequenceId,
+        characterId: 'char_001',
+        name: 'Mia',
+        rendering: 'Photoreal live action',
+      },
+      { source: 'analysis', createdBy: null }
+    );
+    const gala = await scopedDb.characterLooks.create(
+      sequenceId,
+      mia.id,
+      { name: 'Gala gown', clothing: 'red silk gown', styling: null },
+      { source: 'edit', actorId }
+    );
+    // The upload hashes the sequence style, which must parse as today's.
+    await db
+      .update(styles)
+      .set({
+        config: {
+          version: 2,
+          look: {
+            mood: 'neutral',
+            artStyle: 'cinematic',
+            lighting: 'natural',
+            colorPalette: ['#000', '#fff'],
+            colorGrading: 'neutral',
+          },
+          motion: { camera: 'static' },
+          references: [],
+        },
+      })
+      .where(eq(styles.id, styleId));
+    const sequence = await scopedDb.sequences.getById(sequenceId);
+    if (!sequence) throw new Error('test setup: no sequence');
+    const url = `/r2/characters/teams/${teamId}/sheets/gala.png`;
+    // The upload gate reads the likeness ledger: not a person.
+    await recordLikenessFinding(scopedDb, [url], 'other', {});
+
+    // No default sheet yet: the upload is not refused.
+    await setCharacterSheetFromUpload(
+      { scopedDb, user: { id: actorId }, teamId, sequence },
+      { characterId: mia.id, lookId: gala.id, publicUrl: url }
+    );
+    const uploaded = await scopedDb.characterLooks.getById(gala.id);
+    expect(uploaded?.sheetImageUrl).toBe(url);
+    expect(
+      (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
+        .status
+    ).toBe('fresh');
+
+    // The default look's sheet lands: the upload was stamped with no face,
+    // so it now reads stale, as a look drawn before that face would.
+    await scopedDb.characterSheetVariants.applyConvergent({
+      lookId: mia.id,
+      url: `/r2/characters/teams/${teamId}/sheets/mia.png`,
+      storagePath: `teams/${teamId}/sheets/mia.png`,
+      inputHash: null,
+      model: 'test-model',
+    });
+    expect(
+      (await readLookSheetStaleness(scopedDb, sequenceId, mia.id, gala.id))
+        .status
+    ).toBe('stale');
+    // The ledger row holds the team; the next seed deletes teams.
+    await db.delete(uploadAttestations);
+  });
+});
+
 describe('video upload (appendUploadedVersion + select)', () => {
   it('appends a completed primary version with the current-pointer manifest, selects it, and re-stales it when the still moves on', async () => {
     const prompt = await seedSelectedPrompt('a red car at dawn');
@@ -781,6 +868,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
         durationMs: 4000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ];
@@ -806,9 +894,8 @@ describe('video upload (appendUploadedVersion + select)', () => {
     expect(selected?.status).toBe('completed');
     expect(selected?.isPrimary).toBe(true);
 
-    // Fresh now: the stamped manifest hash matches a recompute over the same
-    // current pointers.
-    expect(await videos.isStale(uploaded.id, inputHash)).toBe(false);
+    // Fresh now: the manifest names the shot's current pointers.
+    expect(clipIsStale(selected, still.id)).toBe(false);
 
     // Replace the still → manifest diverges → the uploaded clip reads stale.
     const images = createFrameVariantsMethods(db);
@@ -824,24 +911,7 @@ describe('video upload (appendUploadedVersion + select)', () => {
       actorId,
     });
     await images.select(frameId, nextStill.id, { actorId });
-    const divergedManifest: VideoManifest = [
-      {
-        shotId,
-        motionPromptVersionId: null,
-        frameVersionId: nextStill.id,
-        usesStartFrame: true,
-        durationMs: 4000,
-        audioClipIds: [],
-        audioSourceKey: null,
-        referenceKeys: [],
-      },
-    ];
-    expect(
-      await videos.isStale(
-        uploaded.id,
-        await computeVideoManifestInputHash(divergedManifest, USER_UPLOAD_MODEL)
-      )
-    ).toBe(true);
+    expect(clipIsStale(selected, nextStill.id)).toBe(true);
 
     const kinds = await eventKinds();
     expect(kinds).toContain('video.uploaded');
@@ -926,20 +996,17 @@ describe('video cancel parity (#1108 Phase 4)', () => {
 describe('music prompt edit vs uploaded score (#1108 Phase 4)', () => {
   it('a post-completion user edit updates the prompt, reads untracked (no nag), and never flags the uploaded score', async () => {
     const variants = createSequenceVariantsMethods(db);
-    // The user's uploaded score in the user-upload primary slot — inputHash
-    // null is the §4.4 "untracked" contract for manual audio.
-    const uploaded = await variants.upsertMusicPrimary({
+    // The user's uploaded score — inputHash null is the §4.4 "untracked"
+    // contract for manual audio.
+    const uploaded = await variants.appendUploadedMusic({
       sequenceId,
       model: 'user-upload',
       url: '/r2/audio/score.mp3',
       storagePath: 'score.mp3',
       prompt: 'old prompt',
       tags: 'calm',
-      status: 'completed',
-      generatedAt: new Date(),
-      inputHash: null,
+      durationSeconds: null,
     });
-    await variants.setMusicFromVariant(uploaded.id);
 
     // Edit the prompt AFTER the track exists — the saveMusicPromptFn path.
     const prompts = createSequenceMusicPromptVersionsMethods(db);
@@ -951,14 +1018,15 @@ describe('music prompt edit vs uploaded score (#1108 Phase 4)', () => {
       createdBy: actorId,
     });
 
-    const [seq] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [seq] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     expect(seq?.musicPrompt).toBe('a brand new mood');
     // Null stored hash → getMusicPromptStalenessFn short-circuits to
     // 'untracked': no regenerate nag from the prompt side.
     expect(seq?.musicPromptInputHash).toBeNull();
+    // The score still plays.
+    expect(seq?.musicUrl).toBe('/r2/audio/score.mp3');
 
     // The uploaded score is untouched and itself untracked — no staleness
     // derivation exists that can flag a null-hash score for regeneration.
@@ -967,33 +1035,5 @@ describe('music prompt edit vs uploaded score (#1108 Phase 4)', () => {
     expect(score?.inputHash).toBeNull();
     expect(score?.divergedAt).toBeNull();
     expect(score?.discardedAt).toBeNull();
-
-    // The user-upload slot is only ever written by the upload path, which
-    // RETIRES the previous primary before upserting (never overwrites): after
-    // a second upload the first score survives as a parked alternate
-    // (divergedAt set, promotable back), and the new upload owns the slot.
-    const retired = await variants.retireMusicPrimary(
-      sequenceId,
-      'user-upload'
-    );
-    expect(retired?.id).toBe(uploaded.id);
-    const second = await variants.upsertMusicPrimary({
-      sequenceId,
-      model: 'user-upload',
-      url: '/r2/audio/score2.mp3',
-      storagePath: 'score2.mp3',
-      prompt: 'a brand new mood',
-      tags: 'tense',
-      status: 'completed',
-      generatedAt: new Date(),
-      inputHash: null,
-    });
-    expect(second.id).not.toBe(uploaded.id);
-    const first = await variants.getMusicById(uploaded.id);
-    expect(first?.url).toBe('/r2/audio/score.mp3');
-    expect(first?.divergedAt).not.toBeNull();
-    expect(await variants.getMusicPrimary(sequenceId, 'user-upload')).toEqual(
-      second
-    );
   });
 });

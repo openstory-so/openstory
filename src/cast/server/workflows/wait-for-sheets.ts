@@ -1,23 +1,16 @@
 /**
  * Durable "wait for sheet generation" helpers for the matching workflows.
  *
- * When a user adds new talent or a new location while creating a sequence
- * (`TalentSuggestionSelector` → `createTalentFn`,
- * `LocationSuggestionSelector` → `createLibraryLocationFn`), the sheet /
- * reference-image generation runs in a *separate*, fire-and-forget workflow
- * (`/library-talent-sheet`, `/library-location-sheet`). The sequence's
- * `analyze-script-workflow` then spawns `talent-matching` / `location-matching`
- * which read those sheets:
- *
- *   - talent matching uses `talent.defaultSheet?.imageUrl` as the casting
- *     reference image, and
- *   - location matching SKIPS any library location without a
- *     `referenceImageUrl`.
+ * When a user adds new talent while creating a sequence
+ * (`TalentSuggestionSelector` → `createTalentFn`), the sheet generation runs in
+ * a *separate*, fire-and-forget workflow (`/library-talent-sheet`). The
+ * sequence's `analyze-script-workflow` then spawns `talent-matching`, which uses
+ * `talent.defaultSheet?.imageUrl` as the casting reference image.
  *
  * If the sheet workflow hasn't finished by the time matching reads the row, the
  * pre-cast talent gets an empty reference image (so the character no longer
- * looks like the chosen person) and the pre-selected location is dropped from
- * matching entirely. This helper closes that race by polling the DB in a
+ * looks like the chosen person). Location matching needs no wait: a match is a
+ * link and draws no sheet (#1695). This helper closes that race by polling the DB in a
  * durable loop until every still-pending entity has its sheet — bounded by a
  * timeout so a sheet that failed to generate can't stall the whole pipeline.
  *
@@ -26,7 +19,6 @@
  */
 
 import type {
-  LibraryLocation,
   SequenceElement,
   TalentWithSheets,
 } from '@/platform/server/db/schema';
@@ -37,13 +29,12 @@ import type { WorkflowSleepDuration, WorkflowStep } from 'cloudflare:workers';
 const logger = getLogger(['openstory', 'workflow', 'wait-for-sheets']);
 
 /**
- * The three polling reads these helpers make. Narrowed so callers hand over
+ * The polling reads these helpers make. Narrowed so callers hand over
  * `scopedDb.liveRead` — polling a sibling workflow's late writes is one of the
  * sanctioned live reads, and this type is what says so at the boundary.
  */
 export type WaitForSheetsReadDb = {
   talent: Pick<ScopedDb['talent'], 'getByIds'>;
-  locations: Pick<ScopedDb['locations'], 'getByIds'>;
   sequenceElements: Pick<ScopedDb['sequenceElements'], 'listByIds'>;
 };
 
@@ -172,33 +163,6 @@ export async function waitForTalentSheets(
   });
 }
 
-/**
- * Block until every requested library location has a reference image, or the
- * timeout expires. A location created with an uploaded reference image has one
- * immediately (short-circuit); one created from name/description only gets it
- * once `/library-location-sheet` finishes.
- */
-export async function waitForLocationReferences(
-  step: WorkflowStep,
-  scopedDb: WaitForSheetsReadDb,
-  locationIds: string[],
-  opts?: { onWaitNeeded?: OnWaitNeeded }
-): Promise<WaitForSheetsResult<LibraryLocation>> {
-  return pollUntilReady(step, {
-    ids: locationIds,
-    stepPrefix: 'wait-location-refs',
-    label: 'location references',
-    onWaitNeeded: opts?.onWaitNeeded,
-    check: async () => {
-      const rows = await scopedDb.locations.getByIds(locationIds);
-      return {
-        rows,
-        pendingIds: rows.filter((l) => !l.referenceImageUrl).map((l) => l.id),
-      };
-    },
-  });
-}
-
 /** Element vision statuses that are still in flight (not terminal). */
 const ELEMENT_VISION_IN_FLIGHT = new Set(['pending', 'analyzing']);
 
@@ -221,6 +185,10 @@ const ELEMENT_VISION_IN_FLIGHT = new Set(['pending', 'analyzing']);
  * We first scan those ids for the ones still in flight, then poll only those —
  * completed/failed elements never enter the wait set, so a sequence whose
  * vision already finished short-circuits with no added latency.
+ *
+ * `rows` is every element the wait read — the scan's rows, overlaid with the
+ * final poll's — so the caller consumes them instead of reading again (the
+ * talent wait's shape, #1113).
  */
 export async function waitForElementVision(
   step: WorkflowStep,
@@ -228,14 +196,16 @@ export async function waitForElementVision(
   elementIds: string[],
   opts?: { onWaitNeeded?: OnWaitNeeded }
 ): Promise<WaitForSheetsResult<SequenceElement>> {
-  const inFlightIds = await step.do('wait-element-vision-scan', async () => {
-    const elements = await scopedDb.sequenceElements.listByIds(elementIds);
-    return elements
-      .filter((el) => ELEMENT_VISION_IN_FLIGHT.has(el.visionStatus))
-      .map((el) => el.id);
-  });
+  // Renamed from `wait-element-vision-scan`, which cached ids, not rows: a run
+  // replaying across the #1113 deploy re-scans instead of reading that shape.
+  const scanned = await step.do('wait-element-vision-scan-rows', async () =>
+    scopedDb.sequenceElements.listByIds(elementIds)
+  );
+  const inFlightIds = scanned
+    .filter((el) => ELEMENT_VISION_IN_FLIGHT.has(el.visionStatus))
+    .map((el) => el.id);
 
-  return pollUntilReady(step, {
+  const polled = await pollUntilReady(step, {
     ids: inFlightIds,
     stepPrefix: 'wait-element-vision',
     label: 'element vision',
@@ -250,4 +220,9 @@ export async function waitForElementVision(
       };
     },
   });
+  const latest = new Map(polled.rows.map((el) => [el.id, el]));
+  return {
+    ...polled,
+    rows: scanned.map((el) => latest.get(el.id) ?? el),
+  };
 }

@@ -9,13 +9,20 @@
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { getLogger } from '@/platform/logger';
 import {
   HISTORY_MAX_ROWS,
+  HISTORY_REPLAY_MAX_BYTES,
   PRUNE_BATCH_ROWS,
   PRUNE_CATCHUP_MS,
   RealtimeChannel,
+  RUN_RECONCILE_MS,
+  SSE_MAX_BUFFERED_BYTES,
   SSE_MAX_BUFFERED_CHUNKS,
 } from './realtime-channel.do';
+import { asStub } from '@/test/as-stub';
+
+const channelLogger = getLogger(['openstory', 'realtime', 'channel']);
 
 const CHANNEL = 'billing:team-1';
 const THIRTY_DAYS_MS = 60 * 60 * 24 * 30 * 1000;
@@ -111,7 +118,9 @@ type Harness = {
   sqlStatements: string[];
 };
 
-function createHarness(): Harness {
+function createHarness(
+  env: Cloudflare.Env = asStub<Cloudflare.Env>({})
+): Harness {
   const db = new DatabaseSync(':memory:');
   let alarm: number | null = null;
   const sqlStatements: string[] = [];
@@ -131,13 +140,13 @@ function createHarness(): Harness {
         alarm = null;
       },
     },
+    id: { name: CHANNEL, toString: () => CHANNEL },
   };
 
   const channel = new RealtimeChannel(
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Node sqlite stand-in for DO storage
-    ctx as unknown as DurableObjectState,
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- DO under test does not read env
-    {} as Cloudflare.Env
+    // Node sqlite stand-in for DO storage
+    asStub<DurableObjectState>(ctx),
+    env
   );
   return {
     channel,
@@ -480,6 +489,80 @@ describe('RealtimeChannel history cap (#1332)', () => {
   });
 });
 
+describe('RealtimeChannel history replay bounds (#1811)', () => {
+  it('returns only the newest rows that fit the byte budget, oldest-first', async () => {
+    const { channel } = createHarness();
+    // 0.4 of the budget per row: rows 6, 5, 4 start at 0, 0.4 and 0.8 of it
+    // and are admitted; row 3 starts at 1.2 and is cut. The margin keeps the
+    // JSON envelope around each row from deciding the result.
+    const chunk = 'x'.repeat(HISTORY_REPLAY_MAX_BYTES * 0.4);
+    for (let n = 1; n <= 6; n++) await emit(channel, { n, chunk });
+
+    const messages = await history(channel);
+    expect(messages.map((m) => JSON.parse(m.data).n)).toEqual([4, 5, 6]);
+  });
+
+  it('budgets multi-byte data by UTF-8 bytes, not characters', async () => {
+    const { channel } = createHarness();
+    await emit(channel, { n: 1 });
+    // 'é' is one character and two bytes: half the budget in characters is the
+    // whole budget in bytes, so row 1 must be cut.
+    await emit(channel, {
+      n: 2,
+      chunk: 'é'.repeat(HISTORY_REPLAY_MAX_BYTES / 2),
+    });
+    await emit(channel, { n: 3 });
+
+    const messages = await history(channel);
+    expect(messages.map((m) => JSON.parse(m.data).n)).toEqual([2, 3]);
+  });
+
+  it('always returns the newest row even when it alone exceeds the budget', async () => {
+    const { channel } = createHarness();
+    await emit(channel, { n: 1 });
+    await emit(channel, {
+      n: 2,
+      chunk: 'y'.repeat(HISTORY_REPLAY_MAX_BYTES + 1),
+    });
+
+    const messages = await history(channel);
+    expect(messages.map((m) => JSON.parse(m.data).n)).toEqual([2]);
+  });
+
+  it('broadcasts a transient emit to subscribers without storing it', async () => {
+    const { channel, db } = createHarness();
+    const ac = new AbortController();
+    abortControllers.push(ac);
+    const response = await channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const collected = collectWhile(requireBody(response.body), ac.signal);
+
+    await channel.fetch(
+      new Request(`https://realtime.do/emit?channel=${CHANNEL}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          event: 'shotPrompt.streaming',
+          data: { delta: 'a' },
+          transient: true,
+        }),
+      })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    ac.abort();
+
+    const delivered = (await collected)
+      .filter(isUserEvent)
+      .map((frame) => frame.data);
+    expect(delivered).toContainEqual({ delta: 'a' });
+    expect(eventCount(db)).toBe(0);
+    expect(await history(channel)).toEqual([]);
+  });
+});
+
 describe('RealtimeChannel SSE backpressure (#1332)', () => {
   it('delivers events to a subscriber that is reading', async () => {
     const { channel } = createHarness();
@@ -580,5 +663,272 @@ describe('RealtimeChannel SSE backpressure (#1332)', () => {
       .filter(isUserEvent)
       .map((frame) => frame.data);
     expect(delivered).toContainEqual({ n: 'after-stall-drop' });
+  });
+
+  it('drops a stalled subscriber once buffered bytes pass the cap', async () => {
+    const warn = vi.spyOn(channelLogger, 'warn');
+    const { channel } = createHarness();
+    const ac = new AbortController();
+    abortControllers.push(ac);
+
+    await channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const chunk = 'x'.repeat(200_000);
+    await emit(channel, { chunk });
+    expect(warn).not.toHaveBeenCalledWith(
+      'dropping slow SSE subscriber',
+      expect.anything()
+    );
+
+    await emit(channel, { chunk });
+    await emit(channel, { chunk });
+    expect(warn).toHaveBeenCalledWith(
+      'dropping slow SSE subscriber',
+      expect.objectContaining({ channel: CHANNEL })
+    );
+    expect(chunk.length * 2).toBeLessThan(SSE_MAX_BUFFERED_BYTES);
+    expect(chunk.length * 3).toBeGreaterThan(SSE_MAX_BUFFERED_BYTES);
+    warn.mockRestore();
+  });
+
+  it('delivers one frame larger than the byte cap when the subscriber is caught up', async () => {
+    const { channel } = createHarness();
+    const ac = new AbortController();
+    abortControllers.push(ac);
+
+    const response = await channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const collected = collectWhile(requireBody(response.body), ac.signal);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const chunk = 'y'.repeat(SSE_MAX_BUFFERED_BYTES + 64);
+    await emit(channel, { chunk });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    ac.abort();
+
+    const delivered = (await collected)
+      .filter(isUserEvent)
+      .map((frame) => frame.data);
+    expect(delivered).toContainEqual({ chunk });
+  });
+});
+
+const RUN = {
+  instanceId: 'local_image_shot1',
+  binding: 'IMAGE_WORKFLOW',
+  className: 'ImageWorkflow',
+  label: 'Image generation',
+  parentInstanceId: null,
+  startedAt: 10,
+};
+
+async function postRun(
+  channel: RealtimeChannel,
+  path: 'started' | 'ended',
+  body: unknown
+): Promise<Response> {
+  return channel.fetch(
+    new Request(`https://realtime.do/runs/${path}?channel=${CHANNEL}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+async function listRuns(channel: RealtimeChannel): Promise<unknown[]> {
+  const response = await channel.fetch(
+    new Request(`https://realtime.do/runs?channel=${CHANNEL}`)
+  );
+  return response.json();
+}
+
+describe('RealtimeChannel open runs (#2113)', () => {
+  it('stores a start, broadcasts it, and does not write history', async () => {
+    const harness = createHarness();
+    const ac = new AbortController();
+    const response = await harness.channel.fetch(
+      new Request(`https://realtime.do/subscribe?channel=${CHANNEL}`, {
+        signal: ac.signal,
+      })
+    );
+    const collected = collectWhile(requireBody(response.body), ac.signal);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const started = await postRun(harness.channel, 'started', RUN);
+    expect(started.status).toBe(204);
+    expect(await listRuns(harness.channel)).toEqual([RUN]);
+    expect(await history(harness.channel)).toEqual([]);
+
+    await postRun(harness.channel, 'started', { ...RUN, label: 'again' });
+    const rows = await listRuns(harness.channel);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ label: 'again', startedAt: 10 });
+
+    ac.abort();
+    const frames = (await collected).filter(isUserEvent);
+    expect(frames.map((frame) => frame.event)).toContain(
+      'generation.run:started'
+    );
+  });
+
+  it('ends a run once', async () => {
+    const { channel } = createHarness();
+    await postRun(channel, 'started', RUN);
+    expect(
+      (await postRun(channel, 'ended', { instanceId: RUN.instanceId })).status
+    ).toBe(204);
+    expect(await listRuns(channel)).toEqual([]);
+    expect(
+      (await postRun(channel, 'ended', { instanceId: RUN.instanceId })).status
+    ).toBe(204);
+  });
+
+  it('arms the alarm while runs are open and pulls a later prune alarm forward', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const harness = createHarness();
+    await emit(harness.channel, { n: 1 });
+    expect(harness.getAlarm()).toBe(t0 + THIRTY_DAYS_MS);
+
+    await postRun(harness.channel, 'started', RUN);
+    expect(harness.getAlarm()).toBe(t0 + RUN_RECONCILE_MS);
+  });
+
+  it('drops a finished run and keeps a running one', async () => {
+    const t0 = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(t0);
+    const running = vi.fn(async () => ({ status: 'running' }));
+    const finished = vi.fn(async () => ({ status: 'complete' }));
+    const missing = vi.fn(async () => {
+      throw new Error('instance.not_found');
+    });
+    const get = vi.fn(async (id: string) => {
+      if (id === 'local_image_live') return { status: running };
+      if (id === 'local_image_done') return { status: finished };
+      return { status: missing };
+    });
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        IMAGE_WORKFLOW: { create: vi.fn(), get },
+      })
+    );
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId: 'local_image_live',
+    });
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId: 'local_image_done',
+      startedAt: 11,
+    });
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId: 'local_image_gone',
+      startedAt: 12,
+    });
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toEqual([
+      expect.objectContaining({ instanceId: 'local_image_live' }),
+    ]);
+    expect(harness.getAlarm()).toBe(t0 + RUN_RECONCILE_MS);
+  });
+
+  it('drops errored and terminated runs and keeps paused and waiting', async () => {
+    const statusFor = (id: string) => {
+      if (id.endsWith('errored')) return 'errored';
+      if (id.endsWith('terminated')) return 'terminated';
+      if (id.endsWith('paused')) return 'paused';
+      return 'waiting';
+    };
+    const get = vi.fn(async (id: string) => ({
+      status: async () => ({ status: statusFor(id) }),
+    }));
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        IMAGE_WORKFLOW: { create: vi.fn(), get },
+      })
+    );
+    for (const [instanceId, startedAt] of [
+      ['local_image_errored', 10],
+      ['local_image_terminated', 11],
+      ['local_image_paused', 12],
+      ['local_image_waiting', 13],
+    ] as const) {
+      await postRun(harness.channel, 'started', {
+        ...RUN,
+        instanceId,
+        startedAt,
+      });
+    }
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toEqual([
+      expect.objectContaining({ instanceId: 'local_image_paused' }),
+      expect.objectContaining({ instanceId: 'local_image_waiting' }),
+    ]);
+  });
+
+  it('drops a finished continue child by the stored binding', async () => {
+    const instanceId =
+      'continue_01ARZ3NDEKTSV4RRFFQ69G5FAV_local_storyboard_parent_rabc123';
+    const get = vi.fn(async () => ({
+      status: async () => ({ status: 'complete' }),
+    }));
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        UPDATE_STALE_SHOTS_WORKFLOW: { create: vi.fn(), get },
+      })
+    );
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId,
+      binding: 'UPDATE_STALE_SHOTS_WORKFLOW',
+      className: 'UpdateStaleShotsWorkflow',
+      label: 'Update',
+    });
+
+    await triggerAlarm(harness);
+
+    expect(get).toHaveBeenCalledWith(instanceId);
+    expect(await listRuns(harness.channel)).toEqual([]);
+  });
+
+  it('keeps a run when neither the stored binding nor the instance id resolves', async () => {
+    const harness = createHarness(asStub<Cloudflare.Env>({}));
+    await postRun(harness.channel, 'started', {
+      ...RUN,
+      instanceId:
+        'continue_01ARZ3NDEKTSV4RRFFQ69G5FAV_local_storyboard_parent_rabc123',
+      binding: '',
+    });
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toHaveLength(1);
+  });
+
+  it('keeps a run when the status check fails', async () => {
+    const status = vi.fn(async () => {
+      throw new Error('rpc down');
+    });
+    const harness = createHarness(
+      asStub<Cloudflare.Env>({
+        IMAGE_WORKFLOW: { create: vi.fn(), get: async () => ({ status }) },
+      })
+    );
+    await postRun(harness.channel, 'started', RUN);
+
+    await triggerAlarm(harness);
+
+    expect(await listRuns(harness.channel)).toEqual([RUN]);
   });
 });

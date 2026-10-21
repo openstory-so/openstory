@@ -96,19 +96,22 @@ bun db:migrate:prd         # flatten → wrangler d1 migrations apply DB --env=p
   configured deploy command — identical to `deploy` except the migrate step
   targets the `[env.production]` D1.
 - **PR previews**: CI applies migrations with `wrangler d1 migrations apply DB
---remote` after patching the PR's database id into the config.
+--remote` after patching the PR's database id into the config, then seeds
+  system templates through the D1 HTTP API before deploying the Worker.
 - **Local dev / e2e**: unchanged — drizzle-orm's migrator applies the nested
   files directly against the Miniflare binding (`bun db:migrate:local`).
 
 Migrations must stay backwards-compatible for the moment between migrate and
-deploy, and the D1 table-rebuild CASCADE trap (see CLAUDE.md) applies to every
+deploy, and the D1 table-rebuild CASCADE trap (see AGENTS.md) applies to every
 remote apply path.
 
 ## Seeding
 
-There are no CI seed steps: the worker self-seeds system templates on first
-request (`src/server.ts` → `src/platform/server/db/seed-system-templates.ts`). A hash of
-the template definitions is stored in `app_metadata`; when it matches, the
+The worker self-seeds system templates on first request (`src/server.ts` →
+`src/platform/server/db/seed-system-templates.ts`). PR previews run the same
+seed before deployment so a fresh database's remote writes do not delay the
+first page load. A hash of the template definitions is stored in
+`app_metadata`; when it matches, the
 check is a single SELECT per isolate, and when it doesn't (fresh database, or
 a deploy that changed templates) the idempotent sync runs once. `bun
 db:seed:local` / `bun scripts/seed.ts --test` reuse the same module for local
@@ -128,6 +131,10 @@ Secrets are pushed to the Worker via `wrangler secret bulk`. The full list is de
 | `EMAIL_FROM`                                | Sender address for transactional email (domain onboarded in Cloudflare Email Service) |
 
 ## Prod database cutover (velro-prd → openstory-prd)
+
+**Historical. Done once; do not repeat it or use it as a pattern.** Migrations
+reach production only through the merge's deploy, never by hand (AGENTS.md,
+"D1 table-rebuild trap"). Kept as the record of how the database was moved.
 
 One-time runbook for #897: the production D1 predates the project rename (the
 account still calls it `velro-prd`) and its migration history lives in
@@ -187,8 +194,9 @@ reopen the PR to get a fresh, wrangler-tracked preview database.
 
 Production pushes to `main` deploy via Workers Builds (see [Build & Deploy](#build--deploy) above). [`deploy-cloudflare.yml`](https://github.com/openstory-so/openstory/blob/main/.github/workflows/deploy-cloudflare.yml) handles the PR previews, which stay on GitHub Actions because Workers Builds branch previews share production bindings — no per-PR D1 provisioning, no workflow-name namespacing, no teardown on close:
 
-- **PR previews**: each PR gets its own Worker (`pr-<number>`) and D1 database (`openstory-pr-<number>`), with secrets pushed and the preview URL posted as a PR comment. Previews also get namespaced workflows (`*-pr-<number>`) and a video-export container application (`pr-<number>-videoexportcontainer`).
-- **Cleanup**: closing a PR deletes the Worker, namespaced workflows, container application, and D1 database. Container apps are account-level and outlive the worker — skipping them blocks reopened-PR redeploys and accrues provisioned instances (see #1052).
+- **PR previews**: each PR gets its own Worker (`pr-<number>`) and D1 database (`openstory-pr-<number>`), with secrets pushed and the preview URL posted as a PR comment. Previews also get namespaced workflows (`*-pr-<number>`) and a video-export container application (`pr-<number>-videoexportcontainer`). On its first deploy, an empty PR database is copied from the latest promoted preview base via a full D1 SQL export/import, including migration history. A database that already has tables is recorded at the current base revision and kept as-is, including a retry after a partial import. Later deploys that already have a fork record retain its data and apply only pending migrations. The first PR starts empty. Production D1 is never a source or destination.
+- **Preview base and promotion (#1997)**: `openstory-preview-registry` is a tiny D1 control database holding the active base database ID and revision, plus each PR's fork revision. After a merged PR's Worker is stopped, CI promotes its D1 by pointing the registry at that database. The promoted D1 is retained (as are earlier promoted databases for manual recovery); no live database is overwritten. A conditional D1 update atomically compares the fork revision with the current base, even if two PRs merge concurrently. If another PR has advanced the base since a PR forked, promotion fails, comments on the PR, and preserves its D1 for manual reconciliation. To recover, fork a new PR from the current base, explicitly copy the desired rows from the preserved database, and merge that PR; do not force-promote the stale snapshot. There is no automatic row-level merge or promotion to production. A previously opened PR is not implicitly rebased onto a new preview base; close and reopen only if you intend to discard its existing preview data.
+- **Cleanup / re-fork**: closing an unmerged PR deletes its Worker, namespaced workflows, container application, and D1 database **and its fork record**. Reopening that PR creates a new D1 from the then-current preview base, discarding its previous preview data. A merged PR cannot be reopened; use a new PR to adopt later base changes. Closing a merged PR keeps its D1 as the new base (or for conflict recovery). Container apps are account-level and outlive the worker — skipping them blocks reopened-PR redeploys and accrues provisioned instances (see #1052). The staging R2 bucket is shared among previews, so copied media URLs remain valid; media is not cloned or cleaned up with the D1.
 
 ## Platform Detection
 

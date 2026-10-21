@@ -9,6 +9,127 @@ describe('sanitizeFailResponse', () => {
     );
   });
 
+  test('unwraps a single child workflow prefix', () => {
+    expect(
+      sanitizeFailResponse('Child workflow abc failed: actual error')
+    ).toBe('actual error');
+  });
+
+  test('unwraps nested child workflow prefixes', () => {
+    expect(
+      sanitizeFailResponse(
+        'Child workflow abc failed: Child workflow def failed: actual error'
+      )
+    ).toBe('actual error');
+  });
+
+  test('unwraps deeply nested child workflow prefixes with realistic IDs', () => {
+    expect(
+      sanitizeFailResponse(
+        'Child workflow a:seq_1:run_1 failed: Child workflow b:seq_1:shot_2:model failed: Child workflow c failed: root error'
+      )
+    ).toBe('root error');
+  });
+
+  test('unwraps child workflow prefixes containing fallback "Error:" wrappers', () => {
+    expect(
+      sanitizeFailResponse(
+        'Child workflow abc failed: Error: Child workflow def failed: Something went wrong'
+      )
+    ).toBe('Something went wrong');
+    expect(
+      sanitizeFailResponse(
+        'Child workflow motion:01SEQ:01FRAME failed: Error: fal rejected the job'
+      )
+    ).toBe('fal rejected the job');
+    expect(
+      sanitizeFailResponse(
+        'Child workflow abc failed: Error: Child workflow def failed: Error: Something went wrong'
+      )
+    ).toBe('Something went wrong');
+  });
+
+  test('unwraps the error name the status fallback puts in front', () => {
+    expect(
+      sanitizeFailResponse(
+        'Child workflow a failed: NonRetryableError: Child workflow b failed: Shot too long'
+      )
+    ).toBe('Shot too long');
+    expect(
+      sanitizeFailResponse(
+        'Child workflow a failed: NonRetryableError: fal rejected the job'
+      )
+    ).toBe('fal rejected the job');
+  });
+
+  test('leaves an error name alone when there is no child wrapper', () => {
+    expect(sanitizeFailResponse('HTTPError: 502 from provider')).toBe(
+      'HTTPError: 502 from provider'
+    );
+  });
+
+  test('preserves child workflow context when unwrapping leaves generic "Unknown error"', () => {
+    expect(
+      sanitizeFailResponse('Child workflow abc failed: Unknown error')
+    ).toBe('Child workflow abc failed: Unknown error');
+  });
+
+  test('preserves child workflow context when unwrapping leaves "no error detail"', () => {
+    expect(
+      sanitizeFailResponse('Child workflow abc failed: no error detail')
+    ).toBe('Child workflow abc failed: no error detail');
+  });
+
+  test('preserves child workflow context when unwrapping leaves empty string, undefined, or null', () => {
+    expect(sanitizeFailResponse('Child workflow abc failed:')).toBe(
+      'Child workflow abc failed:'
+    );
+    expect(sanitizeFailResponse('Child workflow abc failed:   ')).toBe(
+      'Child workflow abc failed:'
+    );
+    expect(sanitizeFailResponse('Child workflow abc failed: undefined')).toBe(
+      'Child workflow abc failed: undefined'
+    );
+    expect(sanitizeFailResponse('Child workflow abc failed: null')).toBe(
+      'Child workflow abc failed: null'
+    );
+  });
+
+  test('preserves child workflow context on nested generic error', () => {
+    expect(
+      sanitizeFailResponse(
+        'Child workflow a:seq_1 failed: Child workflow b:shot_1 failed: no error detail'
+      )
+    ).toBe(
+      'Child workflow a:seq_1 failed: Child workflow b:shot_1 failed: no error detail'
+    );
+  });
+
+  test('does not falsely unwrap multi-word sentences starting with "Child workflow"', () => {
+    expect(
+      sanitizeFailResponse('Child workflow batch run failed: database locked')
+    ).toBe('Child workflow batch run failed: database locked');
+  });
+
+  test('handles mixed casing and whitespace in child workflow prefix', () => {
+    expect(
+      sanitizeFailResponse(
+        'CHILD WORKFLOW abc FAILED:   custom failure message'
+      )
+    ).toBe('custom failure message');
+  });
+
+  test('maps known CF error code wrapped inside child workflow prefix', () => {
+    expect(
+      sanitizeFailResponse('Child workflow motion:01 failed: error code: 1102')
+    ).toBe('Worker exceeded memory limit (error code: 1102)');
+    expect(
+      sanitizeFailResponse(
+        'Child workflow motion:01 failed: Error: error code: 1102'
+      )
+    ).toBe('Worker exceeded memory limit (error code: 1102)');
+  });
+
   test('maps known CF error code 1102 to friendly message', () => {
     expect(sanitizeFailResponse('error code: 1102')).toBe(
       'Worker exceeded memory limit (error code: 1102)'

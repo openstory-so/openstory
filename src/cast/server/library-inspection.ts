@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { createSelectSchema } from 'drizzle-orm/zod';
 import {
   talent,
-  locationLibrary,
+  locations,
+  locationBibleVersions,
+  locationReferencePhotos,
   talentSheets,
   talentMedia,
   talentSheetVariants,
-  locationSheets,
   locationSheetVariants,
 } from '@/platform/server/db/schema';
 import { projectRead } from '@/platform/server/read-projection';
@@ -36,20 +37,36 @@ const schemas = {
     createdAt: true,
     updatedAt: true,
   }),
-  location: createSelectSchema(locationLibrary, {
+  // One of the team's locations at its current bible, with its live sheet
+  // (#1695: the location library became the team's locations).
+  location: createSelectSchema(locations, {
     createdAt: z.string(),
     updatedAt: z.string(),
-  }).pick({
-    id: true,
-    name: true,
-    description: true,
-    referenceImageUrl: true,
-    isPublic: true,
-    isTemplate: true,
-    referenceInputHash: true,
-    createdAt: true,
-    updatedAt: true,
-  }),
+  })
+    .pick({
+      id: true,
+      referenceStatus: true,
+      referenceError: true,
+      selectedReferenceVersionId: true,
+      createdAt: true,
+      updatedAt: true,
+    })
+    .extend(
+      createSelectSchema(locationBibleVersions).pick({
+        name: true,
+        type: true,
+        description: true,
+        architecturalStyle: true,
+        keyFeatures: true,
+        ambiance: true,
+        rendering: true,
+        consistencyTag: true,
+      }).shape
+    )
+    .extend({
+      referenceImageUrl: z.string().nullable(),
+      referenceInputHash: z.string().nullable(),
+    }),
   talent_sheet: createSelectSchema(talentSheets, {
     metadata: z.json(),
     divergedAt: z.string().nullable(),
@@ -102,20 +119,15 @@ const schemas = {
     createdAt: true,
     updatedAt: true,
   }),
-  location_sheet: createSelectSchema(locationSheets, {
+  // A photo uploaded as input for the location's sheet. The kind keeps its
+  // name from when the library stored uploads as sheets.
+  location_sheet: createSelectSchema(locationReferencePhotos, {
     createdAt: z.string(),
-    updatedAt: z.string(),
   }).pick({
     id: true,
     locationId: true,
-    name: true,
-    description: true,
-    imageUrl: true,
-    isDefault: true,
-    source: true,
-    inputHash: true,
+    url: true,
     createdAt: true,
-    updatedAt: true,
   }),
   location_sheet_version: createSelectSchema(locationSheetVariants, {
     generatedAt: z.string().nullable(),
@@ -125,8 +137,7 @@ const schemas = {
     updatedAt: z.string(),
   }).pick({
     id: true,
-    parentType: true,
-    parentId: true,
+    locationId: true,
     model: true,
     url: true,
     status: true,
@@ -145,7 +156,7 @@ export type LibraryReadKind = keyof typeof schemas;
 /** What a list row carries; the detail read returns the whole resource. */
 const LIST_FIELDS = {
   talent: ['id', 'name', 'imageUrl', 'isFavorite', 'isPublic'],
-  location: ['id', 'name', 'referenceImageUrl', 'isPublic'],
+  location: ['id', 'name', 'referenceImageUrl'],
   talent_sheet: ['id', 'name', 'imageUrl', 'isDefault', 'divergedAt'],
   talent_media: ['id', 'type', 'url'],
   talent_sheet_version: [
@@ -156,7 +167,7 @@ const LIST_FIELDS = {
     'divergedAt',
     'discardedAt',
   ],
-  location_sheet: ['id', 'name', 'imageUrl', 'isDefault'],
+  location_sheet: ['id', 'url'],
   location_sheet_version: [
     'id',
     'model',
@@ -171,8 +182,9 @@ const notFound = () => new NotFoundError('Library resource not found.');
 
 /**
  * Every row of one library collection, through the reads the library UI uses.
- * `talent` and `locations` are scoped to the team plus public rows, so
- * resolving the parent through them is what authorises its children.
+ * `talent` is scoped to the team plus public rows and `locations` to the
+ * team, so resolving the parent through them is what authorises its
+ * children.
  */
 async function libraryRows(
   scopedDb: ScopedDb,
@@ -182,12 +194,12 @@ async function libraryRows(
   const talent = async (id: string) =>
     (await scopedDb.talent.getWithRelations(id)) ?? Promise.reject(notFound());
   const location = async (id: string) =>
-    (await scopedDb.locations.getById(id)) ?? Promise.reject(notFound());
+    (await scopedDb.locations.getCurrent(id)) ?? Promise.reject(notFound());
   switch (kind) {
     case 'talent':
       return scopedDb.talent.list();
     case 'location':
-      return scopedDb.locations.list();
+      return scopedDb.locations.listTeam();
     case 'talent_sheet':
       return (await talent(parentId)).sheets;
     case 'talent_media':
@@ -199,10 +211,9 @@ async function libraryRows(
       return scopedDb.talentSheetVariants.listByTalentSheet(sheet.id);
     }
     case 'location_sheet':
-      return scopedDb.locationSheets.list((await location(parentId)).id);
+      return scopedDb.locations.listPhotos((await location(parentId)).id);
     case 'location_sheet_version':
-      return scopedDb.locationSheetVariants.listByParent(
-        'library_location',
+      return scopedDb.locationSheetVariants.listByLocation(
         (await location(parentId)).id,
         { includeDiscarded: true }
       );
@@ -239,7 +250,7 @@ export async function readLibraryResource(
     kind === 'talent'
       ? await scopedDb.talent.getById(id)
       : kind === 'location'
-        ? await scopedDb.locations.getById(id)
+        ? await scopedDb.locations.getCurrent(id)
         : (await libraryRows(scopedDb, kind, parentId)).find(
             (candidate) => candidate.id === id
           );

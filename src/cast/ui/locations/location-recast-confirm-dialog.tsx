@@ -8,18 +8,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/ui/shadcn/alert-dialog';
-import { Loader2 } from 'lucide-react';
 
 type LocationRecastConfirmDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   locationName: string;
-  libraryLocationName: string;
+  /** The team location the sequence will use instead. */
+  withLocationName: string;
   affectedShotCount: number;
   isLoading: boolean;
 };
 
+/**
+ * Confirm a Replace (#1695): the sequence is re-pointed at another of the
+ * team's locations and the shots set here re-render. No sheet is drawn.
+ */
 export const LocationRecastConfirmDialog: React.FC<
   LocationRecastConfirmDialogProps
 > = ({
@@ -27,7 +31,7 @@ export const LocationRecastConfirmDialog: React.FC<
   onOpenChange,
   onConfirm,
   locationName,
-  libraryLocationName,
+  withLocationName,
   affectedShotCount,
   isLoading,
 }) => {
@@ -35,27 +39,23 @@ export const LocationRecastConfirmDialog: React.FC<
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Update {locationName} reference?</AlertDialogTitle>
+          <AlertDialogTitle>
+            Replace {locationName} with {withLocationName}?
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            This will regenerate the reference image for "{locationName}" using
-            "{libraryLocationName}" as the visual reference.
-            {affectedShotCount > 0 && (
-              <>
-                {' '}
-                <strong>
-                  {affectedShotCount}{' '}
-                  {affectedShotCount === 1 ? 'shot' : 'shots'}
-                </strong>{' '}
-                at this location will be regenerated with the new look.
-              </>
-            )}
+            {`This sequence uses ${withLocationName} instead. ${
+              affectedShotCount === 0
+                ? 'No shot is set here.'
+                : affectedShotCount === 1
+                  ? '1 shot set here re-renders.'
+                  : `${affectedShotCount} shots set here re-render.`
+            } ${locationName} stays in your locations.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction onClick={onConfirm} disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            <span>{isLoading ? 'Updating…' : 'Update Reference'}</span>
+            {isLoading ? 'Replacing…' : 'Replace'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

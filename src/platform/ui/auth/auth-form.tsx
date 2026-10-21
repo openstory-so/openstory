@@ -14,6 +14,7 @@ import {
 } from '@/ui/shadcn/card';
 import { Input } from '@/ui/shadcn/input';
 import { Label } from '@/ui/shadcn/label';
+import { useHydrated } from '@/ui/use-hydrated';
 import type { AuthOptions } from '@/platform/auth-options.fn';
 import { authClient } from './client';
 import { DEV_OTP_CODE } from '@/platform/auth/dev-otp';
@@ -44,8 +45,13 @@ export function AuthForm({
 }: AuthFormProps) {
   const navigate = useNavigate();
   const posthog = usePostHog();
+  // Pre-hydration clicks go nowhere (#2007): a tap on Google or Continue
+  // before React attaches handlers is silently dropped, so hold the controls
+  // until hydrated. The MCP connect flow lands here signed out, so it bites.
+  const hydrated = useHydrated();
   const [email, setEmail] = useState(emailEntered || '');
   const [isLoading, setIsLoading] = useState(false);
+  const busy = !hydrated || isLoading;
   const [error, setError] = useState<string | null>(null);
 
   const googleAuthEnabled = authOptions?.googleAuthEnabled ?? false;
@@ -183,7 +189,7 @@ export function AuthForm({
               variant="outline"
               className="w-full"
               onClick={() => void handleGoogleSignIn()}
-              disabled={isLoading}
+              disabled={busy}
             >
               <svg
                 className="mr-2 h-4 w-4"
@@ -239,7 +245,7 @@ export function AuthForm({
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={isLoading}
+              disabled={busy}
               required
             />
           </div>
@@ -250,7 +256,7 @@ export function AuthForm({
           <Button
             type="submit"
             className="hidden w-full group-has-[input:not(:placeholder-shown)]/email-form:inline-flex"
-            disabled={isLoading}
+            disabled={busy}
           >
             {isLoading ? 'Sending…' : 'Continue with email'}
           </Button>

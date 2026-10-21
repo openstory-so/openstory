@@ -213,6 +213,94 @@ describe('deductCredits without an idempotencyKey (keyless path)', () => {
   });
 });
 
+describe('getTransactionHistory (#1881)', () => {
+  it('pages newest first and reports hasMore without a count', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    for (let i = 0; i < 3; i++) {
+      await billing.deductCredits(micros(1_000));
+    }
+
+    const first = await billing.getTransactionHistory({ limit: 2 });
+    expect(first.transactions).toHaveLength(2);
+    expect(first.hasMore).toBe(true);
+
+    const last = await billing.getTransactionHistory({ limit: 2, offset: 2 });
+    expect(last.transactions).toHaveLength(1);
+    expect(last.hasMore).toBe(false);
+  });
+
+  it('breaks same-second ties by id, not insert order', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+    // Inserted out of id order, so insert order alone would read B, C, A.
+    for (const id of ['01A', '01C', '01B']) {
+      await db.insert(transactions).values({
+        id,
+        teamId,
+        type: 'credit_usage',
+        amount: -1,
+        balanceAfter: 0,
+        createdAt,
+      });
+    }
+
+    const first = await billing.getTransactionHistory({ limit: 2 });
+    const last = await billing.getTransactionHistory({ limit: 2, offset: 2 });
+    expect(
+      [...first.transactions, ...last.transactions].map((t) => t.id)
+    ).toEqual(['01C', '01B', '01A']);
+  });
+
+  it('reports no more when the page is exactly full', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    for (let i = 0; i < 2; i++) {
+      await billing.deductCredits(micros(1_000));
+    }
+
+    const page = await billing.getTransactionHistory({ limit: 2 });
+    expect(page.transactions).toHaveLength(2);
+    expect(page.hasMore).toBe(false);
+  });
+
+  it('filters by type', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    await billing.addCredits(micros(1_000_000), {
+      type: 'credit_adjustment',
+      description: 'seed',
+    });
+    await billing.deductCredits(micros(1_000));
+
+    const usage = await billing.getTransactionHistory({ type: 'credit_usage' });
+    expect(usage.transactions.map((t) => t.type)).toEqual(['credit_usage']);
+    expect(usage.hasMore).toBe(false);
+  });
+});
+
+describe('getAvailable asOfMs (#1881)', () => {
+  it('stamps each snapshot with the database clock, never going back', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    const first = await billing.getAvailable();
+    await billing.deductCredits(micros(1_000_000));
+    const second = await billing.getAvailable();
+    // The database clock, not a constant: within a minute of now.
+    expect(Math.abs(first.asOfMs - Date.now())).toBeLessThan(60_000);
+    expect(second.asOfMs).toBeGreaterThanOrEqual(first.asOfMs);
+    expect(second.balance).toBe(STARTING_BALANCE - 1_000_000);
+  });
+
+  it('reads a team with no credits row as zero', async () => {
+    const otherTeamId = generateId();
+    await db.insert(teams).values({ id: otherTeamId, name: 'O', slug: 'o' });
+    const funds = await createBillingMethods(
+      db,
+      otherTeamId,
+      userId
+    ).getAvailable();
+    expect(funds.balance).toBe(0);
+    expect(funds.available).toBe(0);
+  });
+});
+
 describe('createReservation / captureReservation / zeroReservation (#1310)', () => {
   const cost = micros(1_000_000); // $1
 
@@ -252,6 +340,43 @@ describe('createReservation / captureReservation / zeroReservation (#1310)', () 
       .from(creditReservations)
       .where(eq(creditReservations.teamId, teamId));
     expect(holds).toHaveLength(5);
+  });
+
+  it('a child preflight includes its own hold but excludes other runs holds', async () => {
+    const billing = createBillingMethods(db, teamId, userId);
+    const own = await billing.createReservation(micros(2_000_000), {
+      idempotencyKey: 'own',
+    });
+    const other = await billing.createReservation(micros(2_000_000), {
+      idempotencyKey: 'other',
+    });
+    expect(own.ok && other.ok).toBe(true);
+    if (!own.ok || !other.ok) throw new Error('fixture reservation failed');
+    const { available } = await billing.getAvailable();
+    expect(await billing.hasEnoughCredits(micros(available + 1))).toBe(false);
+    expect(
+      await billing.hasEnoughCredits(
+        micros(available + 2_000_000),
+        own.reservationId
+      )
+    ).toBe(true);
+    expect(
+      await billing.hasEnoughCredits(
+        micros(available + 2_000_001),
+        own.reservationId
+      )
+    ).toBe(false);
+    expect(
+      await billing.hasEnoughCredits(micros(available + 1), 'missing')
+    ).toBe(false);
+    await billing.zeroReservation(own.reservationId);
+    const after = await billing.getAvailable();
+    expect(
+      await billing.hasEnoughCredits(
+        micros(after.available + 1),
+        own.reservationId
+      )
+    ).toBe(false);
   });
 
   it('replay of the same reservation key is a no-op', async () => {

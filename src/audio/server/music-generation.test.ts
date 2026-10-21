@@ -75,7 +75,7 @@ describe('generateMusic native ElevenLabs', () => {
       duration: 61,
       teamId: 'team_1',
       sequenceId: 'seq_1',
-      scopedDb: {
+      credentials: {
         userId: 'user_1',
         resolveKey: async () => ({ key: 'el-test', source: 'platform' }),
         resolveOptionalKey: async () => ({

@@ -7,6 +7,7 @@
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { describe, expect, it, vi } from 'vitest';
 import { micros, ZERO_MICROS } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 const reportMissingBillingCost = vi.fn();
 const reportSkippedDeduction = vi.fn();
@@ -44,8 +45,8 @@ function makeScopedDb({ canAfford = true } = {}) {
     },
     modelUsage: { record: recordUsage },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowScopedDb stub exposing only the billing methods under test
-  const scopedDb = scopedDbStub as unknown as WorkflowScopedDb;
+  // minimal WorkflowScopedDb stub exposing only the billing methods under test
+  const scopedDb = asStub<WorkflowScopedDb>(scopedDbStub);
   return {
     scopedDb,
     tryDeductCredits,

@@ -13,10 +13,7 @@ import { user } from './auth';
 // shots.ts imports sequences for foreign key reference
 import { styles } from './libraries';
 import { teams } from './teams';
-import type {
-  GenerationCheckpoint,
-  GenerationStage,
-} from '@/sequences/pipeline';
+import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoredStyleConfig } from '@/look/style-config';
 
 // Enum values as constants (SQLite doesn't have native enums)
@@ -76,10 +73,18 @@ export const sequences = snakeCase.table(
     styleId: text()
       .notNull()
       .references(() => styles.id, { onDelete: 'set null' }),
-    // Recipe this sequence was generated with. Copied from styles.config on
-    // create / style change so catalog edits cannot stale existing work.
-    // Nullable only for the ADD COLUMN + backfill window; new writes always set it.
-    styleConfig: text({ mode: 'json' }).$type<StoredStyleConfig>(),
+    // The live `sequence_style_versions` row (#1600): the recipe this sequence
+    // renders with, copied from styles.config on create / style change so
+    // catalog edits cannot stale existing work. Null while an automatic style
+    // is still being derived (#1213), and on a row a pre-#1600 worker wrote.
+    selectedStyleVersionId: text(),
+    // LEGACY snapshot column (#1600). Read only as the fallback for a
+    // sequence with no style version, never written. The `legacy` name keeps
+    // the SQL column but makes every raw reader a compile error. Drop it after
+    // a second backfill in a later deploy.
+    legacyStyleConfig: text('style_config', {
+      mode: 'json',
+    }).$type<StoredStyleConfig>(),
     aspectRatio: text({ length: 10 })
       .$type<AspectRatio>()
       // Literal on purpose: a SQL default is DDL, and the schema may not
@@ -117,7 +122,7 @@ export const sequences = snakeCase.table(
     // SQL default is pinned to 'kling_v3_pro' to match every deployed DB's
     // column default (#801 changed DEFAULT_VIDEO_MODEL to grok WITHOUT a
     // migration; SQLite can't ALTER a column default without a full table
-    // rebuild, which CASCADE-deletes child rows on D1 — see CLAUDE.md). So
+    // rebuild, which CASCADE-deletes child rows on D1 — see AGENTS.md). So
     // db:generate stays clean. The app must NOT rely on this default: the
     // scoped create (db/scoped/sequences.ts) substitutes DEFAULT_VIDEO_MODEL
     // for an omitted videoModel, and create-sequences always passes the
@@ -127,22 +132,23 @@ export const sequences = snakeCase.table(
     videoModel: text({ length: 100 }).default('kling_v3_pro').notNull(),
     workflow: text({ length: 100 }),
 
-    // TB-20260804: DB-Audit: music* should not be stored on the sequence directly and instead should point to a variant / version table
-    // Music track fields (sequence-level background music)
-    musicUrl: text(),
-    musicPath: text(),
-    musicStatus: text().$type<MusicStatus>().default('pending'),
-    musicGeneratedAt: integer({
-      mode: 'timestamp',
-    }),
-    musicError: text(),
+    // The sequence's audio-model SETTING (like imageModel / videoModel) — the
+    // model a new primary track is asked of. Not a mirror of any track.
     musicModel: text({ length: 100 }),
-    musicPrompt: text(),
-    musicTags: text(),
-    // SHA-256 of the upstream context that produced the cached AI music
-    // prompt (musicDesign + analysis model). Null when no AI prompt has been
-    // generated yet, or when the most recent variant was a user-edit.
-    musicPromptInputHash: text(),
+    // The music track the sequence plays (#1115): a `sequence_music_variants`
+    // row. Soft pointer (no FK), like `selectedStyleVersionId`. Every scoped
+    // read projects the row's url / path / generatedAt under the old
+    // `musicUrl` / `musicPath` / `musicGeneratedAt` names.
+    selectedMusicVariantId: text(),
+    // The live music prompt: a `sequence_music_prompt_versions` row, projected
+    // as `musicPrompt` / `musicTags` / `musicPromptInputHash`. A pointer, not
+    // the newest row — an AI write whose hash already exists resolves to the
+    // older row.
+    selectedMusicPromptVersionId: text(),
+    // The claim (#1130): the primary track run whose result may take the
+    // pointer. Set by the trigger, consumed by completion in one guarded
+    // UPDATE, cleared by failure only while it still names that run's row.
+    pendingPromoteMusicVariantId: text(),
     // Whether the sequence's background music is included in theatre playback
     // and MP4 export. Default on (mirrors the old #687 "Include music in merged
     // video" checkbox). Toggling it off mutes only the music track — scene and
@@ -167,7 +173,7 @@ export const sequences = snakeCase.table(
     // element sheets, and this is the opt-in back to the frame-based
     // workflow. Replaced the inverted `referenceOnly` (ADD COLUMN + backfill +
     // DROP COLUMN, no rebuild, #612). Set at creation and never toggled
-    // after (`updateSequenceSchema` omits it): the storyboard trigger
+    // after (no update path takes it): the storyboard trigger
     // snapshots it onto the workflow payload,
     // and every stored motion prompt's input hash folds the resolved mode in,
     // so flipping it re-stales the prompts rather than mixing two styles.
@@ -194,18 +200,12 @@ export const sequences = snakeCase.table(
     // script label and its shots divide that.
     targetDurationSeconds: integer(),
 
-    // Auto-generation flags (derived from generationStopAt at trigger time).
-    // Kept so existing readers (progress banner, smart-retry, API v1) keep
-    // working; stop-at is the source of truth (#1408).
-    autoGenerateMotion: integer({ mode: 'boolean' }).default(false).notNull(),
-    autoGenerateMusic: integer({ mode: 'boolean' }).default(false).notNull(),
-
-    // How far the current/last run was asked to go, and how far it actually
-    // got. Checkpoint holds in-memory DAG state (bibles, matches) that is
-    // not yet in character/location rows, so a stopped run can resume.
+    // How far the current/last run was asked to go — the only word on it
+    // (#1118 dropped the derived auto-generate columns). Nullable in SQL
+    // only; create always writes it and #1118 backfilled older rows. How far
+    // it got is not stored: what is left is the generation plan, derived
+    // from live rows (#1816, #1819).
     generationStopAt: text().$type<GenerationStage>(),
-    pipelineStage: text().$type<GenerationStage>(),
-    generationCheckpoint: text({ mode: 'json' }).$type<GenerationCheckpoint>(),
 
     // Suggested talent/location IDs used during generation (for pre-populating the UI)
     suggestedTalentIds: text({
@@ -224,5 +224,35 @@ export const sequences = snakeCase.table(
 );
 
 // Type exports
-export type Sequence = InferSelectModel<typeof sequences>;
-export type NewSequence = InferInsertModel<typeof sequences>;
+/** The stored row, legacy snapshot included (scoped module only). */
+export type SequenceRecord = InferSelectModel<typeof sequences>;
+
+/**
+ * A sequence with its style snapshot resolved from the selected
+ * `sequence_style_versions` row (#1600). What every scoped read returns.
+ */
+export type Sequence = Omit<SequenceRecord, 'legacyStyleConfig'> & {
+  styleConfig: StoredStyleConfig | null;
+} & SequenceMusicProjection;
+
+/**
+ * The music surface every scoped read projects from the version tables
+ * (#1115) — the selected prompt row, the selected track row, and the newest
+ * primary track row's lifecycle. Read-only: nothing writes these names.
+ */
+type SequenceMusicProjection = {
+  musicPrompt: string | null;
+  musicTags: string | null;
+  musicPromptInputHash: string | null;
+  musicUrl: string | null;
+  musicPath: string | null;
+  musicGeneratedAt: Date | null;
+  musicStatus: MusicStatus;
+  musicError: string | null;
+};
+
+/** A new sequence row. Its style snapshot is written as its first version. */
+export type NewSequence = Omit<
+  InferInsertModel<typeof sequences>,
+  'legacyStyleConfig' | 'selectedStyleVersionId'
+>;

@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
-import { deriveMotionPrompt, deriveShots } from './shot-list.derive';
-import type { SceneWithShots } from './shot-list.schema';
+import { deriveMotionPrompt, deriveStillPrompt } from './shot-list.derive';
+import {
+  storedShotSpec,
+  type SceneWithShots,
+  type ShotSpec,
+} from './shot-list.schema';
 
 const styleConfig: StyleConfig = migrateStyleConfigV1ToV2({
   mood: 'tense',
@@ -50,6 +54,7 @@ function makeScene(overrides: Partial<SceneWithShots> = {}): SceneWithShots {
         },
         action: 'Sarah walks toward the door',
         cameraMovement: { move: 'dolly', pacing: 'slow' },
+        direction: '',
         soundCue: 'distant hum, footsteps',
         dialogue: [],
         durationSeconds: 6,
@@ -64,6 +69,7 @@ function makeScene(overrides: Partial<SceneWithShots> = {}): SceneWithShots {
         },
         action: 'she turns the handle and pushes',
         cameraMovement: { move: 'push-in', pacing: 'gradual' },
+        direction: '',
         soundCue: 'handle click, hinge creak',
         dialogue: [],
         durationSeconds: 6,
@@ -73,14 +79,19 @@ function makeScene(overrides: Partial<SceneWithShots> = {}): SceneWithShots {
   };
 }
 
-/** First shot of a scene, with a guard so tests never need a `!` assertion. */
-function firstShot(scene: SceneWithShots) {
-  const [shot] = scene.shots;
-  if (!shot) throw new Error('test scene has no shots');
-  return shot;
+/** Shot N of a scene, with a guard so tests never need a `!` assertion. */
+function shot(scene: SceneWithShots, n = 1): ShotSpec {
+  const found = scene.shots.find((s) => s.shotNumber === n);
+  if (!found) throw new Error(`test scene has no shot ${n}`);
+  return found;
 }
 
-describe('deriveShots — single source of truth', () => {
+const still = (scene: SceneWithShots, n = 1) =>
+  deriveStillPrompt(storedShotSpec(shot(scene, n)), scene, styleConfig);
+const motion = (scene: SceneWithShots, n = 1, referenceOnly = false) =>
+  deriveMotionPrompt(storedShotSpec(shot(scene, n)), { referenceOnly });
+
+describe('deriveStillPrompt', () => {
   it('does not put later arrivals into an earlier participant close-up', () => {
     const scene = makeScene();
     scene.continuity.characterTags = ['sarah', 'finn', 'ravi'];
@@ -88,156 +99,91 @@ describe('deriveShots — single source of truth', () => {
     scene.metadata.location = 'Sarah study / Finn office / Ravi kitchen';
     scene.originalScript.extract =
       'Sarah talks to Finn on a video call. Ravi joins later.';
-    const earlier = firstShot(scene);
-    const later = {
-      ...earlier,
-      shotNumber: 2,
-      framing: {
-        ...earlier.framing,
-        subjectStartState: 'Ravi waves from his webcam',
+    const earlier = shot(scene);
+    scene.shots = [
+      earlier,
+      {
+        ...earlier,
+        shotNumber: 2,
+        framing: {
+          ...earlier.framing,
+          subjectStartState: 'Ravi waves from his webcam',
+        },
       },
-    };
-    scene.shots = [earlier, later];
+    ];
 
-    const [beforeJoin, afterJoin] = deriveShots(scene, styleConfig);
-    expect(beforeJoin?.visualPrompt.fullPrompt).toContain('Sarah');
-    expect(beforeJoin?.visualPrompt.fullPrompt).not.toMatch(/ravi|finn/i);
-    expect(afterJoin?.visualPrompt.fullPrompt).toContain('Ravi');
-    expect(afterJoin?.visualPrompt.fullPrompt).not.toMatch(/sarah|finn/i);
+    expect(still(scene, 1)).toContain('Sarah');
+    expect(still(scene, 1)).not.toMatch(/ravi|finn/i);
+    expect(still(scene, 2)).toContain('Ravi');
+    expect(still(scene, 2)).not.toMatch(/sarah|finn/i);
   });
 
-  it('produces one derived shot per shot, ordered by shotNumber', () => {
+  it('reuses scene context verbatim across every shot', () => {
     const scene = makeScene();
-    const derived = deriveShots(scene, styleConfig);
-    expect(derived).toHaveLength(2);
-    expect(derived.map((d) => d.shotNumber)).toEqual([1, 2]);
-  });
-
-  it('reuses scene context verbatim across every shot (no per-shot re-derivation)', () => {
-    const derived = deriveShots(makeScene(), styleConfig);
-    for (const d of derived) {
-      const visual = d.visualPrompt.fullPrompt;
-      // Scene-level shared truth appears in EVERY shot's visual prompt.
-      expect(visual).toContain('INT. HALLWAY - NIGHT');
-      expect(visual).toContain('dim_hallway');
-      expect(visual).toContain('single overhead bulb');
-      expect(visual).toContain('cold blues');
-      expect(visual).toContain('neo-noir cinematic');
+    for (const n of [1, 2]) {
+      const text = still(scene, n);
+      expect(text).toContain('INT. HALLWAY - NIGHT');
+      expect(text).toContain('dim_hallway');
+      expect(text).toContain('single overhead bulb');
+      expect(text).toContain('cold blues');
+      expect(text).toContain('neo-noir cinematic');
     }
   });
 
-  it('composes start-frame visual from shot framing + scene context', () => {
-    const [first] = deriveShots(makeScene(), styleConfig);
-    const visual = first?.visualPrompt;
-    expect(visual?.fullPrompt).toContain('wide');
-    expect(visual?.fullPrompt).toContain('eye level');
-    expect(visual?.fullPrompt).toContain('Sarah at the far end');
-    expect(visual?.fullPrompt).toContain('single overhead bulb');
-  });
-
-  it('composes motion prompt from action + one camera move + sound cue', () => {
-    const [, second] = deriveShots(makeScene(), styleConfig);
-    const motion = second?.motionPrompt;
-    expect(motion?.fullPrompt).toContain('she turns the handle and pushes');
-    expect(motion?.fullPrompt).toContain('gradual push-in');
-    // Sound cue is carried into the audio channel for audio-capable models.
-    expect(motion?.audio.ambientSound).toBe('handle click, hinge creak');
-  });
-
-  it('carries per-shot duration as durationMs', () => {
-    const derived = deriveShots(makeScene(), styleConfig);
-    expect(derived[0]?.durationMs).toBe(6000);
-  });
-
-  it('copies no scene context onto the shot — it resolves through sceneId', () => {
-    const [first] = deriveShots(makeScene(), styleConfig);
-    expect(first).not.toHaveProperty('metadata');
+  it('opens with the shot framing', () => {
+    expect(still(makeScene())).toBe(
+      'wide, eye level, Sarah at the far end, hand on the wall, centered down the hallway, INT. HALLWAY - NIGHT, night, dim_hallway, single overhead bulb, cold blues, neo-noir cinematic, teal and orange'
+    );
   });
 });
 
-describe('deriveMotionPrompt — model-agnostic', () => {
-  it('emits no vendor-specific syntax (no Seedance/Kling/Veo tokens)', () => {
+describe('deriveMotionPrompt', () => {
+  it('composes action + camera move, with the sound cue as audio', () => {
+    const { text, audio } = motion(makeScene(), 2);
+    expect(text).toBe(
+      'she turns the handle and pushes. Camera: gradual push-in'
+    );
+    expect(audio).toEqual({
+      ambientSound: 'handle click, hinge creak',
+      soundEffects: [],
+    });
+  });
+
+  it('keeps a chained move and a free pacing intact (#1915)', () => {
     const scene = makeScene();
-    for (const shot of scene.shots) {
-      const motion = deriveMotionPrompt(scene, shot);
-      const text = JSON.stringify(motion).toLowerCase();
-      for (const vendor of [
-        'seedance',
-        'kling',
-        'veo',
-        'bytedance',
-        '--',
-        '[camera]',
-      ]) {
+    scene.shots[0] = {
+      ...shot(scene),
+      cameraMovement: {
+        move: 'arc around the actor, then follow as she runs',
+        pacing: 'accelerating into the turn',
+      },
+      direction: 'let her hesitate before she runs',
+    };
+    expect(motion(scene).text).toBe(
+      'Sarah walks toward the door. let her hesitate before she runs. Camera: accelerating into the turn arc around the actor, then follow as she runs'
+    );
+  });
+
+  it('emits no vendor-specific syntax', () => {
+    const scene = makeScene();
+    for (const n of [1, 2]) {
+      const text = JSON.stringify(motion(scene, n)).toLowerCase();
+      for (const vendor of ['seedance', 'kling', 'veo', 'bytedance', '--']) {
         expect(text).not.toContain(vendor);
       }
     }
   });
 
-  it('signals dialogue presence and empties it when the scene is silent', () => {
-    const silent = makeScene({ dialoguePresent: false });
-    const motion = deriveMotionPrompt(silent, firstShot(silent));
-    expect(motion.dialogue).toEqual({ presence: false, lines: [] });
-
-    const spoken = makeScene({ dialoguePresent: true });
-    const m2 = deriveMotionPrompt(spoken, firstShot(spoken));
-    expect(m2.dialogue.presence).toBe(true);
-    expect(m2.dialogue.lines).toHaveLength(1);
-  });
-
   it('empties audio when there is no sound cue', () => {
     const scene = makeScene();
-    const shot = { ...firstShot(scene), soundCue: '' };
-    const motion = deriveMotionPrompt(scene, shot);
-    expect(motion.audio).toEqual({ ambientSound: '', soundEffects: [] });
+    scene.shots[0] = { ...shot(scene), soundCue: '' };
+    expect(motion(scene).audio).toEqual({ ambientSound: '', soundEffects: [] });
   });
 
   it('reference-only prefixes unique framing, not scene lighting/palette/look', () => {
-    const scene = makeScene();
-    const motion = deriveMotionPrompt(scene, firstShot(scene), {
-      referenceOnly: true,
-    });
-    expect(motion.fullPrompt).toContain('wide');
-    expect(motion.fullPrompt).toContain('eye level');
-    expect(motion.fullPrompt).toContain('Sarah at the far end');
-    expect(motion.fullPrompt).toContain('Sarah walks toward the door');
-    expect(motion.fullPrompt).not.toContain('INT. HALLWAY - NIGHT');
-    expect(motion.fullPrompt).not.toContain('single overhead bulb');
-    expect(motion.fullPrompt).not.toContain('cold blues');
-    expect(motion.fullPrompt).not.toContain('neo-noir cinematic');
-    expect(motion.fullPrompt).not.toContain('dim_hallway');
-  });
-});
-
-describe('deriveShots — single-shot regression', () => {
-  it('returns exactly one derived shot for a short single-shot scene', () => {
-    const scene = makeScene({
-      metadata: {
-        title: 'Establishing',
-        durationSeconds: 4,
-        location: 'EXT. CITY - DAY',
-        timeOfDay: 'day',
-        storyBeat: 'opening',
-      },
-      shots: [
-        {
-          shotNumber: 1,
-          framing: {
-            shotSize: 'extreme wide',
-            angle: 'high angle',
-            composition: 'skyline fills the frame',
-            subjectStartState: 'static cityscape',
-          },
-          action: 'clouds drift over the towers',
-          cameraMovement: { move: 'static', pacing: 'slow' },
-          soundCue: 'city ambience',
-          dialogue: [],
-          durationSeconds: 4,
-        },
-      ],
-    });
-    const derived = deriveShots(scene, styleConfig);
-    expect(derived).toHaveLength(1);
-    expect(derived[0]?.motionPrompt.fullPrompt).toContain('slow static');
+    const { text } = motion(makeScene(), 1, true);
+    expect(text).toBe(
+      'wide, eye level, Sarah at the far end, hand on the wall, centered down the hallway. Sarah walks toward the door. Camera: slow dolly'
+    );
   });
 });

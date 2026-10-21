@@ -2,36 +2,30 @@
  * Images and Videos (#1274).
  *
  * Team-scoped create/list/favorite/delete for studio `generated_assets`.
- * Always on — unlike `/models` this is not gated by MODELS_ENABLED. Create
- * lives in `@/studio/server/create-studio-asset` so the Start compiler does not
- * ship the workflow client into the browser bundle (#1257).
+ * Always on — unlike `/models` this is not gated by MODELS_ENABLED. The work
+ * lives in `@/studio/server/` (shared with the MCP Studio tools, #1985) so
+ * the Start compiler does not ship the workflow client into the browser
+ * bundle (#1257).
  */
 
-import {
-  draftStudioPrompt,
-  STUDIO_DRAFT_MODEL,
-} from '@/studio/server/studio-prompt-draft';
-import { reportMissingBillingCost } from '@/billing/billing-observability';
-import { estimateLLMCost } from '@/billing/cost-estimation';
-import { InsufficientCreditsError } from '@/platform/errors';
-import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
-import { getLogger } from '@/platform/logger';
-import {
-  STORAGE_BUCKETS,
-  r2KeyFromUrl,
-} from '@/platform/server/storage/buckets';
-import {
-  deleteFile,
-  listFiles,
-} from '@/platform/server/storage/storage-cloudflare';
+import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
+import { listFiles } from '@/platform/server/storage/storage-cloudflare';
 import {
   createStudioAssets,
+  editStudioAsset,
   renderStudioAssetAtQuality,
 } from '@/studio/server/create-studio-asset';
 import {
+  deleteStudioAsset,
+  draftStudioPromptForTeam,
+  getStudioEditHistory,
+  setStudioAssetFavorite,
+} from '@/studio/server/studio-asset-actions';
+import { TEAM_USER_UPLOAD_PREFIX } from '@/cast/server/team-user-upload';
+import {
   studioActivitySchema,
   studioCreateInputSchema,
-  studioReferenceKindSchema,
+  studioPromptDraftInputSchema,
   studioSortSchema,
 } from './schema';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
@@ -39,8 +33,6 @@ import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
-
-const logger = getLogger(['openstory', 'serverFn', 'studio-assets']);
 
 export const createStudioAssetsFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
@@ -51,15 +43,15 @@ export const createStudioAssetsFn = createServerFn({ method: 'POST' })
 
 /**
  * Everything this team has uploaded to the composer (or dropped on the talent
- * dialog and never saved), newest first. Temp uploads have no DB row: the
- * R2 prefix is the record, and the ULID key orders them by time.
+ * dialog and never saved), newest first. Uploads have no DB row: the R2
+ * prefix is the record, and the ULID key orders them by time.
  */
 export const listStudioUploadsFn = createServerFn({ method: 'GET' })
   .middleware([authWithTeamMiddleware])
   .handler(async ({ context }) => {
     const files = await listFiles(
       STORAGE_BUCKETS.TALENT,
-      `${context.teamId}/temp`,
+      `${context.teamId}/${TEAM_USER_UPLOAD_PREFIX}`,
       { limit: 1000 }
     );
     return files
@@ -103,6 +95,30 @@ export const renderStudioAssetAtQualityFn = createServerFn({ method: 'POST' })
     return renderStudioAssetAtQuality(context.scopedDb, data.id);
   });
 
+/** Rewrite a finished clip from a prompt (#1925); see `editStudioAsset`. */
+export const editStudioAssetFn = createServerFn({ method: 'POST' })
+  .middleware([authWithTeamMiddleware])
+  .validator(
+    zodValidator(
+      z.object({
+        id: ulidSchema,
+        prompt: z.string().trim().min(1, 'Enter a prompt').max(50_000),
+        draft: z.boolean(),
+      })
+    )
+  )
+  .handler(async ({ context, data }) => {
+    return editStudioAsset(context.scopedDb, data.id, data.prompt, data.draft);
+  });
+
+/** The prompts a clip was made from (#1925); see `getStudioEditHistory`. */
+export const getStudioEditHistoryFn = createServerFn({ method: 'GET' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.object({ id: ulidSchema })))
+  .handler(async ({ context, data }) => {
+    return getStudioEditHistory(context.scopedDb, data.id);
+  });
+
 export const setStudioAssetFavoriteFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(
@@ -114,97 +130,20 @@ export const setStudioAssetFavoriteFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ context, data }) => {
-    const asset = await context.scopedDb.generatedAssets.getById(data.id);
-    if (!asset || asset.source !== 'studio') {
-      throw new Error('Generated asset not found');
-    }
-    await context.scopedDb.generatedAssets.setFavorite(
-      data.id,
-      data.isFavorite
-    );
-    return { id: data.id, isFavorite: data.isFavorite };
+    return setStudioAssetFavorite(context.scopedDb, data.id, data.isFavorite);
   });
 
 export const deleteStudioAssetFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.object({ id: ulidSchema })))
   .handler(async ({ context, data }) => {
-    const asset = await context.scopedDb.generatedAssets.getById(data.id);
-    if (!asset || asset.source !== 'studio') {
-      throw new Error('Generated asset not found');
-    }
-    await context.scopedDb.generatedAssets.delete(data.id);
-    // Storage deletion is best-effort: a leaked object beats a failed delete.
-    for (const { url } of asset.outputs ?? []) {
-      const key = r2KeyFromUrl(url);
-      if (!key) continue;
-      const bucket = key.startsWith(`${STORAGE_BUCKETS.VIDEOS}/`)
-        ? STORAGE_BUCKETS.VIDEOS
-        : STORAGE_BUCKETS.THUMBNAILS;
-      await deleteFile(bucket, key.slice(bucket.length + 1)).catch((err) =>
-        logger.warn('Failed to delete studio asset object', { err, key })
-      );
-    }
-    return { id: data.id };
+    return deleteStudioAsset(context.scopedDb, data.id);
   });
 
-const draftReferenceSchema = z.object({
-  url: mediaUrlSchema,
-  label: z.string().min(1).max(200),
-  kind: studioReferenceKindSchema,
-});
-
-/**
- * Draft a prompt from the attached references. Billed like element vision:
- * credit-gated on the platform key, charged from reported usage.
- */
+/** Draft a prompt from the attached references; see `draftStudioPromptForTeam`. */
 export const draftStudioPromptFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
-  .validator(
-    zodValidator(
-      z.object({
-        activity: studioActivitySchema,
-        references: z.array(draftReferenceSchema).max(15).default([]),
-        startImageUrl: mediaUrlSchema.optional(),
-        endImageUrl: mediaUrlSchema.optional(),
-        currentPrompt: z.string().max(5000).optional(),
-      })
-    )
-  )
+  .validator(zodValidator(studioPromptDraftInputSchema))
   .handler(async ({ context, data }) => {
-    const { scopedDb } = context;
-    const llmKey = await scopedDb.apiKeys.resolveLlmKey(STUDIO_DRAFT_MODEL);
-    if (llmKey.source !== 'team') {
-      const canAfford = await scopedDb.billing.hasEnoughCredits(
-        estimateLLMCost(1)
-      );
-      if (!canAfford) {
-        throw new InsufficientCreditsError(
-          'Insufficient credits to draft a prompt'
-        );
-      }
-    }
-
-    const result = await draftStudioPrompt({
-      ...data,
-      llmKey,
-      resolveLlmKey: (model) => scopedDb.apiKeys.resolveLlmKey(model),
-      observability: { userId: context.user.id, tags: ['studio', 'draft'] },
-    });
-
-    if (!result.usedOwnKey) {
-      if (result.costMicros > 0) {
-        await scopedDb.billing.deductCredits(result.costMicros, {
-          description: `Studio prompt draft (${result.model})`,
-          metadata: { model: result.model },
-        });
-      } else {
-        reportMissingBillingCost({
-          source: 'studio-prompt-draft',
-          modelId: result.model,
-          metadata: { references: data.references.length },
-        });
-      }
-    }
-    return { prompt: result.prompt };
+    return draftStudioPromptForTeam(context.scopedDb, data);
   });

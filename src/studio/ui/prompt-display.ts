@@ -23,7 +23,7 @@ import {
   type Resolution,
 } from '@/models/resolutions';
 import type { GeneratedAsset, JsonValue } from '@/platform/server/db/schema';
-import type { StudioVideoMode } from '@/studio/text-to-video';
+import type { StudioDuration, StudioVideoMode } from '@/studio/text-to-video';
 import { studioAspectRatio, studioPrompt } from './outputs';
 
 export type StudioShownReference = {
@@ -41,7 +41,7 @@ export type StudioReuse = {
   resolution: Resolution | null;
   imageModel: TextToImageModel | null;
   videoModel: ImageToVideoModel | null;
-  duration: number | null;
+  duration: StudioDuration | null;
   mode: StudioVideoMode | null;
   generateAudio: boolean | null;
   /** Ark draft mode (#1756); null when the row predates it. */
@@ -53,7 +53,7 @@ export type StudioReuse = {
   endImageUrl: string | null;
 };
 
-const VIDEO_MODES = ['text', 'reference', 'frames'] as const;
+const VIDEO_MODES = ['text', 'reference', 'frames', 'edit'] as const;
 
 function strings(value: JsonValue | undefined): string[] {
   if (!Array.isArray(value)) return [];
@@ -160,6 +160,7 @@ const MODE_FACT: Record<StudioVideoMode, string> = {
   text: 'Text to video',
   reference: 'Reference to video',
   frames: 'Image to video',
+  edit: 'Edit',
 };
 
 function videoMode(value: JsonValue | undefined): StudioVideoMode | null {
@@ -183,6 +184,7 @@ export function studioGenerationFacts(asset: GeneratedAsset): string[] {
   ) {
     facts.push(`${duration}s`);
   }
+  if (duration === 'auto') facts.push('Auto length');
   const mode = videoMode(asset.input.mode);
   if (mode) facts.push(MODE_FACT[mode]);
   if (asset.input.draft === true) facts.push('Draft');
@@ -196,6 +198,9 @@ export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
   const prompt = readableStudioPrompt(studioPrompt(asset)).trim();
   if (!prompt) return null;
   const input = asset.input;
+  // An edit's prompt only means something against its source clip, which
+  // the composer cannot hold; edit again from the dialog instead (#1925).
+  if (input.mode === 'edit') return null;
   const duration = input.duration;
   const aspect = aspectRatioSchema.safeParse(input.aspectRatio);
   return {
@@ -209,7 +214,10 @@ export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
       ? input.videoModel
       : null,
     duration:
-      typeof duration === 'number' && Number.isFinite(duration) && duration > 0
+      duration === 'auto' ||
+      (typeof duration === 'number' &&
+        Number.isFinite(duration) &&
+        duration > 0)
         ? duration
         : null,
     mode: videoMode(input.mode),

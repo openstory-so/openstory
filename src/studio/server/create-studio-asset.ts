@@ -34,6 +34,7 @@ import { needsLikenessCheck } from '@/cast/upload-rights';
 import { studioReferenceImages } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
+import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import {
   studioCreateInputSchema,
@@ -42,7 +43,21 @@ import {
   type StudioCreateInput,
   type StudioCreateResult,
 } from '@/studio/schema';
-import { snapStudioVideoDuration } from '@/studio/text-to-video';
+import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-duration';
+import {
+  isSeedanceEdit,
+  seedanceEditLengthMessage,
+} from '@/motion/seedance-edit';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  snapStudioVideoDuration,
+  STUDIO_EDIT_MODEL,
+  studioCanEditSource,
+  studioUsedReferenceVideo,
+  studioBillableSeconds,
+} from '@/studio/text-to-video';
+import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
+import { isResolution } from '@/models/resolutions';
 import {
   DRAFT_FINAL_RESOLUTION,
   DRAFT_RESOLUTION,
@@ -70,7 +85,7 @@ function estimateStudioCost(
     return multiplyMicros(perImage, input.count);
   }
 
-  const duration = snapStudioVideoDuration(input.duration, input.videoModel);
+  const duration = studioBillableSeconds(input.duration, input.videoModel);
   const perVideo = gateEstimate(
     estimateStudioVideoCost(input.videoModel, duration, {
       pricing,
@@ -103,6 +118,10 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
       snapshot.referenceImages = input.referenceImages;
       snapshot.referenceVideos = input.referenceVideos;
       snapshot.referenceAudio = input.referenceAudio;
+    }
+    if (input.mode === 'edit' && input.sourceVideoUrl && input.sourceAssetId) {
+      snapshot.sourceVideoUrl = input.sourceVideoUrl;
+      snapshot.sourceAssetId = input.sourceAssetId;
     }
     if (input.mode === 'frames' && input.startImageUrl) {
       snapshot.startImageUrl = input.startImageUrl;
@@ -140,6 +159,43 @@ async function zeroUnusedReservations(
 }
 
 /**
+ * An edit's source must be this team's finished studio clip, and the URL the
+ * clip's own output — so the history chain (`sourceAssetId`) never points at
+ * a row the video did not come from.
+ */
+async function requireOwnEditSource(
+  scopedDb: ScopedDb,
+  input: { sourceAssetId?: string; sourceVideoUrl?: string }
+): Promise<void> {
+  const source = input.sourceAssetId
+    ? await scopedDb.generatedAssets.getById(input.sourceAssetId)
+    : undefined;
+  if (
+    !source ||
+    source.source !== 'studio' ||
+    source.status !== 'completed' ||
+    source.activity !== 'video' ||
+    !studioCanEditSource(source.input.videoModel) ||
+    studioPrimaryOutput(source)?.url !== input.sourceVideoUrl
+  ) {
+    throw new NotFoundError('Video to edit not found');
+  }
+  // An edit registers its source in Ark's portrait library, which vouches
+  // for whoever is in it. Reference clips skip the likeness gate (only stills
+  // are classified), so a clip made from one could put an unsigned real
+  // person there. An edit's own source already passed this check, so the
+  // source alone covers the whole chain (#1925).
+  // ponytail: any reference clip refuses, uploaded or generated — a clip URL
+  // does not say which row made it. Relax once uploaded videos are
+  // classified like stills.
+  if (studioUsedReferenceVideo(source.input)) {
+    throw new ValidationError(
+      'This clip was made from a reference video, so it cannot be edited'
+    );
+  }
+}
+
+/**
  * Reserve `count` studio rows and trigger a `/studio` run for each.
  */
 export async function createStudioAssets(
@@ -160,11 +216,52 @@ export async function createStudioAssets(
         usingOwnFalKey: falKey?.source === 'team',
       }) === 'byteplus';
     if (!isOfferedVideoModel(input.videoModel, { byteplus })) {
-      throw new Error('Unknown video model');
+      throw new ValidationError('Unknown video model');
+    }
+    if (input.mode === 'edit') await requireOwnEditSource(scopedDb, input);
+    // An edit's length follows the clip, so the hold prices the model's
+    // longest clip (#2036).
+    const followsClip = isSeedanceEdit({
+      model: input.videoModel,
+      onArk: byteplus,
+      prompt: input.prompt,
+      // Reference clips ride only in reference mode, as in the composer.
+      hasInputVideo:
+        input.mode === 'edit' ||
+        (input.mode === 'reference' && input.referenceVideos.length > 0),
+      explicitEdit: input.mode === 'edit',
+    });
+    // A reference clip outside 4–30s is refused before the hold. The length
+    // is read from the stored file, never taken from the client. A URL that
+    // is not ours stays unknown and still submits; a file of ours that
+    // cannot be read is refused, not treated as unknown. Edit mode's source
+    // is a clip Seedance made, so it is assumed to be inside the window.
+    if (followsClip) {
+      const clipSeconds = await Promise.all(
+        input.referenceVideos.map(async (url) => {
+          const key = r2KeyFromUrl(url);
+          if (!key) return null;
+          return measureOwnMediaDuration(key).catch((error: unknown) => {
+            logger.warn('Could not read a Studio reference video', {
+              key,
+              error,
+            });
+            throw new ValidationError(
+              "Couldn't read that reference video. Try again."
+            );
+          });
+        })
+      );
+      for (const seconds of clipSeconds) {
+        const lengthMessage = seedanceEditLengthMessage(seconds);
+        if (lengthMessage) throw new ValidationError(lengthMessage);
+      }
     }
     input = {
       ...input,
-      duration: snapStudioVideoDuration(input.duration, input.videoModel),
+      duration: followsClip
+        ? 'auto'
+        : snapStudioVideoDuration(input.duration, input.videoModel),
     };
   }
   const pricing = await getEffectiveFalPricing();
@@ -322,13 +419,15 @@ export async function renderStudioAssetAtQuality(
 ): Promise<StudioCreateResult> {
   const asset = await scopedDb.generatedAssets.getById(assetId);
   if (!asset || asset.source !== 'studio') {
-    throw new Error('Generated asset not found');
+    throw new NotFoundError('Generated asset not found');
   }
   if (!asset.draftTaskId || asset.status !== 'completed') {
-    throw new Error('This clip is not a finished draft');
+    throw new ValidationError('This clip is not a finished draft');
   }
   if (!draftTaskUsable(asset.createdAt)) {
-    throw new Error('The draft is over seven days old — generate it again');
+    throw new ValidationError(
+      'The draft is over seven days old — generate it again'
+    );
   }
   const input = studioCreateInputSchema.parse({
     ...asset.input,
@@ -340,4 +439,49 @@ export async function renderStudioAssetAtQuality(
   return createStudioAssets(scopedDb, input, {
     finalFromDraftTaskId: asset.draftTaskId,
   });
+}
+
+/**
+ * Edit a finished studio clip (#1925): a new row whose input is `prompt`
+ * applied to the clip, on Seedance 2.5 with the length left to the model.
+ * The source URL is read off the row, never taken from the client.
+ */
+export async function editStudioAsset(
+  scopedDb: ScopedDb,
+  assetId: string,
+  prompt: string,
+  /**
+   * Edit a final as a 480p Ark draft (#1756). A draft's edit is always a
+   * draft, whatever is asked: its final comes from Render final.
+   */
+  draft: boolean
+): Promise<StudioCreateResult> {
+  const asset = await scopedDb.generatedAssets.getById(assetId);
+  if (!asset || asset.source !== 'studio' || asset.activity !== 'video') {
+    throw new NotFoundError('Generated asset not found');
+  }
+  const video = studioPrimaryOutput(asset);
+  if (asset.status !== 'completed' || !video) {
+    throw new ValidationError('This clip has not finished');
+  }
+  const input = studioCreateInputSchema.parse({
+    activity: 'video',
+    prompt,
+    videoModel: STUDIO_EDIT_MODEL,
+    // The output keeps the source's shape (`adaptive`); this is the label.
+    aspectRatio: studioAspectRatio(asset),
+    ...(isResolution(asset.input.resolution) && {
+      resolution: asset.input.resolution,
+    }),
+    draft: asset.input.draft === true || draft,
+    duration: 'auto',
+    count: 1,
+    ...(typeof asset.input.generateAudio === 'boolean' && {
+      generateAudio: asset.input.generateAudio,
+    }),
+    mode: 'edit',
+    sourceVideoUrl: video.url,
+    sourceAssetId: asset.id,
+  });
+  return createStudioAssets(scopedDb, input);
 }

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Stitch</title>
+    <style>
+      html,
+      body,
+      #root {
+        margin: 0;
+        height: 100%;
+        background: #171717;
+        color: #f5f5f5;
+        font: 16px/1.4 sans-serif;
+      }
+      #root {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px 24px;
+        container-type: size;
+      }
+      #stage {
+        position: relative;
+        /* --ar is width / height, written from /cut.json before React mounts. */
+        width: min(100cqw, calc(100cqh * var(--ar)));
+        height: min(100cqh, calc(100cqw / var(--ar)));
+        aspect-ratio: var(--ar);
+        overflow: hidden;
+        border-radius: 12px;
+        background: #000;
+        box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
+      }
+      #stage > :not(.hud) {
+        width: 100%;
+        height: 100%;
+      }
+      .hud {
+        position: absolute;
+        z-index: 3;
+        top: 8px;
+        /* 8px corner inset + 32px Download icon + 8px gap. */
+        right: 48px;
+        left: 8px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+        pointer-events: none;
+      }
+      .hud > * {
+        pointer-events: auto;
+      }
+      .note,
+      .hud button {
+        margin: 0;
+        border: 0;
+        border-radius: 6px;
+        background: rgb(0 0 0 / 0.55);
+        color: #fff;
+        font: inherit;
+        font-size: 13px;
+        line-height: 1.3;
+      }
+      .note {
+        max-width: 36rem;
+        padding: 4px 8px;
+      }
+      .hud button.icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        background: rgb(0 0 0 / 0.5);
+        cursor: pointer;
+      }
+      .hud button.icon:hover {
+        background: rgb(0 0 0 / 0.7);
+      }
+      .mark {
+        position: relative;
+        display: inline-flex;
+      }
+      .mark.off::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 20px;
+        height: 1px;
+        border-radius: 999px;
+        background: currentColor;
+        transform: translate(-50%, -50%) rotate(45deg);
+      }
+      .loading {
+        position: absolute;
+        z-index: 2;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        background: #000;
+      }
+      .loading img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .loading div {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 32px 16px 12px;
+        background: linear-gradient(transparent, rgb(0 0 0 / 0.7));
+        color: rgb(255 255 255 / 0.8);
+        font-size: 13px;
+      }
+      .loading progress {
+        width: min(20rem, 100%);
+        height: 4px;
+      }
+      .error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        height: 100%;
+        padding: 24px;
+        text-align: center;
+      }
+      .error button {
+        border: 0;
+        border-radius: 6px;
+        background: #fff;
+        color: #171717;
+        font: inherit;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="stage"></div>
+    </div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

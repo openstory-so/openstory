@@ -16,17 +16,22 @@
  */
 
 import { configureFalProxyFromEnv } from '@/models/server/fal-config';
+import { generateId } from '@/platform/id';
 import { ensureE2eModelPricing } from '@/billing/server/seed-model-pricing';
+import { foldLegacyFeaturesInPayload } from '@/cast/bible-looks';
 import { createScopedDb } from '@/platform/server/db/scoped';
 import {
   toWorkflowScopedDb,
   type WorkflowScopedDb,
 } from '@/platform/server/db/scoped-workflow';
 import {
+  isChildFailureError,
   isEngineAbortError,
   isRecipientInFiniteStateError,
+  WorkflowLoggedError,
   WorkflowValidationError,
 } from './errors';
+import type { WorkflowFailureActivity } from './errors';
 import { sanitizeFailResponse } from './sanitize-fail-response';
 import type { UserWorkflowContext } from './types';
 import {
@@ -44,9 +49,40 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import { flushAnalytics } from '@/platform/server/observability/flush-analytics';
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { getLogger, serializeError } from '@/platform/logger';
+import {
+  reportRunEnded,
+  reportRunStarted,
+} from '@/platform/server/realtime/runs';
 import { isContentRejectionError } from '@/models/content-rejection';
+import { bindingNameForReportedRun } from './trigger-bindings';
 
 const logger = getLogger(['openstory', 'workflow', 'cf', 'base']);
+
+/** Tries inside one step. A failed report must not fail the generation. */
+const RUN_REPORT_ATTEMPTS = 3;
+
+/**
+ * A few tries inside one step. The step result is checkpointed, including
+ * `{ ok: false }`, so a resume does not retry. An engine abort is rethrown
+ * so the step is not stored. The alarm can only drop a row that this start
+ * actually inserted.
+ */
+async function reportRunOnce(report: () => Promise<void>): Promise<{
+  ok: boolean;
+}> {
+  let last: unknown;
+  for (let attempt = 0; attempt < RUN_REPORT_ATTEMPTS; attempt++) {
+    try {
+      await report();
+      return { ok: true };
+    } catch (error) {
+      if (isEngineAbortError(error)) throw error;
+      last = error;
+    }
+  }
+  logger.warn('workflow run report failed', { err: last });
+  return { ok: false };
+}
 
 async function zeroOwnedReservation(
   payload: UserWorkflowContext,
@@ -93,6 +129,13 @@ function extractSequenceId(payload: UserWorkflowContext): string | undefined {
   return typeof id === 'string' ? id : undefined;
 }
 
+/** The one shot a run works on, when its payload names one. */
+function extractShotId(payload: UserWorkflowContext): string | undefined {
+  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- optional slot not part of the base payload type
+  const id = (payload as { shotId?: string }).shotId;
+  return typeof id === 'string' ? id : undefined;
+}
+
 export type OpenStoryFailureContext<T extends UserWorkflowContext> = {
   event: Readonly<WorkflowEvent<T>>;
   error: string;
@@ -116,6 +159,18 @@ export abstract class OpenStoryWorkflowEntrypoint<
   ): Promise<unknown>;
 
   /**
+   * What failed, for the sequence history: the line reads
+   * "{failureLabel} failed". Required, so a new workflow names itself and the
+   * platform base holds no product copy.
+   */
+  protected abstract readonly failureLabel: string;
+
+  /** The failure line. Override when the sentence depends on the payload. */
+  protected failureActivity(_payload: T): WorkflowFailureActivity {
+    return { kind: 'run.failed', summary: `${this.failureLabel} failed` };
+  }
+
+  /**
    * Optional failure hook. Runs inside a `step.do('emit-failure')` so the
    * cleanup write itself is retried by the engine; if it still throws after
    * its retry budget the error is logged and swallowed (the cron reconciler
@@ -127,9 +182,16 @@ export abstract class OpenStoryWorkflowEntrypoint<
   ): Promise<void> | void;
 
   override async run(
-    event: Readonly<WorkflowEvent<T>>,
+    queued: Readonly<WorkflowEvent<T>>,
     step: WorkflowStep
   ): Promise<unknown> {
+    // The payload seam (#2065): a run queued before the default look took
+    // the bible's distinguishing features still carries them on its bible
+    // entries. Folded once, here, so no workflow reads the old field.
+    const event: Readonly<WorkflowEvent<T>> = {
+      ...queued,
+      payload: foldLegacyFeaturesInPayload(queued.payload),
+    };
     if (!event.payload.teamId || !event.payload.userId) {
       throw new Error(
         `[${this.constructor.name}] payload missing teamId or userId — every workflow extending OpenStoryWorkflowEntrypoint must include both`
@@ -156,6 +218,29 @@ export abstract class OpenStoryWorkflowEntrypoint<
     // Pull the parent notify hint once — used on both success and failure
     // paths so a parent's `spawnAndAwaitChild` always sees a terminal event.
     const parentHint = extractParentHint(event.payload);
+    const sequenceId = extractSequenceId(event.payload);
+
+    // Count this run on the sequence chip (#2113). No sequence (the
+    // Characters page, the library) is out of scope. Each report is its own
+    // step so a resume replays the cached result and does not count twice.
+    if (sequenceId) {
+      const reportedSequenceId = sequenceId;
+      await step.do('report-run-started', () =>
+        reportRunOnce(() =>
+          reportRunStarted(reportedSequenceId, {
+            instanceId: event.instanceId,
+            binding: bindingNameForReportedRun(
+              this.constructor.name,
+              event.instanceId
+            ),
+            className: this.constructor.name,
+            label: this.failureLabel,
+            parentInstanceId: parentHint?.parentInstanceId ?? null,
+            startedAt: Date.now(),
+          })
+        )
+      );
+    }
 
     try {
       const result = await this.runImpl(event, step, scopedDb);
@@ -177,6 +262,14 @@ export abstract class OpenStoryWorkflowEntrypoint<
             { err: notifyError }
           );
         }
+      }
+      if (sequenceId) {
+        const reportedSequenceId = sequenceId;
+        await step.do('report-run-ended', () =>
+          reportRunOnce(() =>
+            reportRunEnded(reportedSequenceId, event.instanceId)
+          )
+        );
       }
       return result;
     } catch (error) {
@@ -280,11 +373,63 @@ export abstract class OpenStoryWorkflowEntrypoint<
         }
       }
 
+      // One history line per failure. A parent that failed only because its
+      // child did writes none: the child's line already says what broke. This
+      // runs after the parent is told, so a log that cannot be written never
+      // keeps a parent waiting. Engine aborts never reach here.
+      const failedSequenceId = extractSequenceId(event.payload);
+      if (failedSequenceId && !isChildFailureError(error)) {
+        const logged =
+          error instanceof WorkflowLoggedError
+            ? error.activity
+            : this.failureActivity(event.payload);
+        const shotId = extractShotId(event.payload);
+        try {
+          // Checkpoint the id before the insert. A retry of the insert step
+          // reuses it, so `recordOnce` does not append a second line.
+          const eventId = await step.do('failure-event-id', async () =>
+            generateId()
+          );
+          await step.do('log-run-failure', async () => {
+            await scopedDb.sequenceEvents.recordOnce({
+              id: eventId,
+              sequenceId: failedSequenceId,
+              actorId: event.payload.userId,
+              kind: logged.kind,
+              targetType: shotId ? 'shot' : 'sequence',
+              targetId: shotId ?? failedSequenceId,
+              summary: logged.summary,
+              data: { workflow: this.constructor.name },
+            });
+          });
+        } catch (logError) {
+          if (isEngineAbortError(logError)) throw logError;
+          logger.error(
+            `[${this.constructor.name}] failed to write the activity-log failure:`,
+            { err: logError }
+          );
+        }
+      }
+
+      // A real failure ends the run. An engine abort never reaches here, so
+      // a resume does not drop the chip's count for work that continues.
+      if (sequenceId) {
+        const reportedSequenceId = sequenceId;
+        await step.do('report-run-ended', () =>
+          reportRunOnce(() =>
+            reportRunEnded(reportedSequenceId, event.instanceId)
+          )
+        );
+      }
+
       // `WorkflowValidationError` is a plain Error subclass, which CF treats as
       // retryable — so without this re-wrap CF would retry validation throws up
       // to the step's retry limit (10× by default). Re-throw as CF's
       // `NonRetryableError` so the instance fails immediately.
-      if (error instanceof WorkflowValidationError) {
+      if (
+        error instanceof WorkflowValidationError ||
+        error instanceof WorkflowLoggedError
+      ) {
         throw new NonRetryableError(sanitized, error.name);
       }
       throw error;

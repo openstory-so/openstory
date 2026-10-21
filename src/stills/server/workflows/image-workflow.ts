@@ -2,18 +2,19 @@
  * Image generation workflow (#989: writes to `frames` / `frame_variants`).
  *
  * The still image is the FRAME's surface now. Each run:
- *   1. set-generating-status — claim-or-append a `frame_variants` version, then
- *      (unless variantOnly) flip the primary frame to 'generating'. With
- *      `targetVariantId` (#1085) a pre-created pending claim is transitioned
- *      in place via `claimForGeneration` (no append). Without it, a new
- *      in-flight version is appended. Prep can exit null when the claim was
+ *   1. set-generating-status — claim-or-append a `frame_variants` version
+ *      (`isPrimary: !variantOnly`); that row IS the frame's in-flight state
+ *      (#1942). With `targetVariantId` (#1085) a pre-created pending claim
+ *      is transitioned in place via `claimForGeneration` (no append).
+ *      Without it, a new in-flight version is appended. Prep can exit null when the claim was
  *      cancelled mid-flight or the anchor frame vanished.
  *   2. generate-image / deduct-credits / upload-image — unchanged.
  *   3. persist-result — status-guarded complete (`completeIfLive`), emits
  *      `image.generated`, then SELECT-OR-NOT: a new selection is a pointer
- *      repoint (`frameVariants.select`), never an overwrite. `variantOnly`
- *      (adding a model) appends without selecting; mid-flight input drift
- *      retains a stale-flagged version without repointing the primary.
+ *      repoint through the promote claim (`selectIfPendingPromoteIs`), never
+ *      an overwrite. `variantOnly` (adding a model) appends without
+ *      selecting. Mid-flight input drift still promotes; the still is stamped
+ *      with its snapshot's hash and reads stale against the live inputs.
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
@@ -36,8 +37,10 @@ import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { buildReferenceImagePrompt } from '@/stills/reference-image-prompt';
 import { getGenerationChannel } from '@/platform/realtime';
 import { simpleHash } from '@/platform/hash';
+import { generateIdAt } from '@/platform/id';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import type { WorkflowFailureActivity } from '@/platform/server/workflow/errors';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { computeImageWorkflowHashFromDto } from './image-workflow-snapshot';
@@ -75,6 +78,16 @@ type PrepResult = {
 };
 
 export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInput> {
+  protected override readonly failureLabel = 'Image generation';
+
+  protected override failureActivity(
+    payload: ImageWorkflowInput
+  ): WorkflowFailureActivity {
+    return payload.skipStorage
+      ? { kind: 'run.failed', summary: 'Preview failed' }
+      : super.failureActivity(payload);
+  }
+
   /**
    * The frame this run writes to: the trigger's `frameId`, re-read only to
    * confirm it still exists (deleted mid-run is a stand-down). Every spawner
@@ -176,10 +189,20 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return null;
         }
 
-        // No frame context (preview mode, or shotless ad-hoc): generate without
-        // claiming a version row — no in-flight row, no status flip. A preview
-        // gets its own `kind: 'preview'` row on completion, in the skipStorage
-        // branch below.
+        // A preview opens its own `kind: 'preview'` row now (#1152), never a
+        // version claim and no status flip: it lands in the skipStorage
+        // branch below, or fails in onFailure — either way a record.
+        if (input.skipStorage && input.frameId && input.sequenceId) {
+          await scopedDb.frameVariants.openPreview({
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            model: params.model,
+            promptHash: input.prompt ? simpleHash(input.prompt) : null,
+            workflowRunId,
+          });
+        }
+        // No frame context (preview mode, or shotless ad-hoc): generate
+        // without claiming a version row.
         if (!input.shotId || !input.sequenceId || input.skipStorage) {
           return { params, versionId: '' };
         }
@@ -192,9 +215,9 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return null;
         }
 
-        // The trigger decided this is a real edit and snapshotted what it was
-        // authored against — see UserEditProvenance.
-        const editedVersion = input.userEditProvenance
+        // A run queued before #1786 still carries the edit for the run to
+        // write (see PreClickEditPayload); nothing else holds the typed text.
+        const preClickEdit = input.userEditProvenance
           ? await scopedDb.framePromptVersions.write({
               frameId: frame.id,
               text: input.prompt,
@@ -204,14 +227,13 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
               createdBy: input.userId,
             })
           : null;
-
-        // The version this run's prompt text came from (#1070): the edit we
-        // just wrote, else the trigger's snapshot — including an explicit null
-        // ("this prompt came from no version"). Only un-migrated triggers, which
-        // omit the field entirely, fall back to a live read — that read is what
-        // paired a still with a prompt it was never rendered from.
+        // The version this run's prompt text came from (#1070), pinned at the
+        // trigger — a user edit is written there, at the click (#1786) —
+        // including an explicit null ("this prompt came from no version").
+        // Only un-migrated triggers, which omit the field entirely, fall back
+        // to a live read.
         const promptVersionId =
-          editedVersion?.id ??
+          preClickEdit?.id ??
           (input.promptVersionId !== undefined
             ? input.promptVersionId
             : ((await scopedDb.liveRead.frames.getById(frame.id))
@@ -251,27 +273,15 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             status: 'generating',
             workflowRunId,
             promptVersionId,
+            // An added model never speaks for the frame's status (#1942).
+            isPrimary: !input.variantOnly,
           });
         }
 
-        // Flip the primary frame to 'generating' only AFTER the claim held
-        // (#1095 review): flipping first meant a pre-render cancel abandoned
-        // the run with the frame stuck 'generating' forever. Variant-only
-        // (adding a model) never flips the primary — only this model's new
-        // version carries the in-flight state, so the picker can't trip
-        // staleness on the live selection.
+        // The version row just claimed or appended IS the frame's in-flight
+        // state (#1942): a primary one reads 'generating', a variant-only one
+        // (adding a model) never speaks for the frame.
         if (!input.variantOnly) {
-          await scopedDb.frames.setImageGenerationStatus(
-            frame.id,
-            // No `imageModel` — the in-flight model is recorded on the
-            // version row this step just appended (#1067); the frame only
-            // tracks that a primary render is running.
-            {
-              imageStatus: 'generating',
-              imageWorkflowRunId: workflowRunId,
-            },
-            { throwOnMissing: false }
-          );
           // Primary regen claims auto-promote; last kickoff wins (#1070).
           // variantOnly add-model never claims the primary.
           await scopedDb.frames.setPendingPromoteVersionId(
@@ -419,21 +429,9 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             logger.info(
               `[ImageWorkflow] version ${versionId} went terminal mid-render (user cancel); discarding result`
             );
-            // Settle the primary frame the prep step flipped to 'generating' —
-            // without this the shot keeps a perpetual spinner (#1095 review).
+            // The cancelled row reads as the selection (#1942); only the
+            // promote claim is left to drop.
             if (!input.variantOnly) {
-              const frameNow = await scopedDb.liveRead.frames.getById(frame.id);
-              await scopedDb.frames.setImageGenerationStatus(
-                frame.id,
-                {
-                  imageStatus: frameNow?.selectedImageVersionId
-                    ? 'completed'
-                    : 'pending',
-                  imageWorkflowRunId: null,
-                  imageError: null,
-                },
-                { throwOnMissing: false }
-              );
               await scopedDb.frames.clearPendingPromoteVersionIdIf(
                 frame.id,
                 versionId
@@ -494,21 +492,12 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
             return { imageUrl: upload.url, frameVersionId: versionId };
           }
 
-          // Not the promote target — finalize into history only. Reset in-flight
-          // frame status so we don't leave a perpetual generating spinner.
+          // Not the promote target — finalize into history only. The completed
+          // row reads as the selection (#1942); the emit says the same.
           const settled = await scopedDb.liveRead.frames.getById(frame.id);
           const settleStatus = settled?.selectedImageVersionId
             ? 'completed'
             : 'pending';
-          await scopedDb.frames.setImageGenerationStatus(
-            frame.id,
-            {
-              imageStatus: settleStatus,
-              imageWorkflowRunId: null,
-              imageError: null,
-            },
-            { throwOnMissing: false }
-          );
           // Clear pending only if it still points at us (shouldn't if user
           // cancelled; belt-and-suspenders if claim was stale).
           await scopedDb.frames.clearPendingPromoteVersionIdIf(
@@ -578,13 +567,13 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
           return;
         }
 
-        // A preview is a render of the caller's shot-spec prompt (#1642),
-        // not of the frame's visual prompt (#1101). It lands as its own
+        // A preview is a render of the caller's shot-spec or motion prompt
+        // (#1642, #2111), not of the frame's visual prompt (#1101). It lands as its own
         // `kind: 'preview'` row: keyed by that prompt's hash, never paired
         // with a prompt version, never selectable or promotable.
         // `skipStorage` names that (no version row, no status flip); the
         // bytes are still copied into R2 above.
-        await scopedDb.frameVariants.recordPreview({
+        const preview = await scopedDb.frameVariants.recordPreview({
           frameId: anchor.id,
           sequenceId: anchor.sequenceId,
           model: generation.params.model,
@@ -596,7 +585,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
 
         await getGenerationChannel(sequenceId).emit(
           'generation.image:progress',
-          { shotId, previewThumbnailUrl: upload.url }
+          {
+            shotId,
+            previewThumbnailUrl: upload.url,
+            previewCreatedAt: preview.createdAt.toISOString(),
+          }
         );
       });
     }
@@ -615,6 +608,19 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
   }): Promise<void> {
     const input = event.payload;
     if (input.skipStorage) {
+      // The preview's row fails with the run (#1152): a record, not a gap.
+      // The reconciler sweeps it too, so a failed write here stays logged.
+      try {
+        await scopedDb.frameVariants.markFailedByWorkflowRun(
+          event.instanceId,
+          error
+        );
+      } catch (markError) {
+        logger.error(
+          `[ImageWorkflow] Failed to fail preview row for run ${event.instanceId}:`,
+          { err: markError }
+        );
+      }
       // Parent swallows the *trigger* (#1149). The child still has to tell
       // the rail the tile failed — including after a billed generate + R2
       // miss — or it sits empty forever.
@@ -640,16 +646,11 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
     }
     if (!input.shotId || !input.teamId) return;
 
-    // Variant-only: leave the primary frame untouched on failure too — only
-    // this model's in-flight version flips to 'failed' below.
+    // The run's rows fail below; a primary one is the frame's failure
+    // (#1942). Variant-only rows never speak for the frame.
+    const anchor = await this.resolveFrame(scopedDb, input);
     if (!input.variantOnly) {
-      const anchor = await this.resolveFrame(scopedDb, input);
       if (anchor) {
-        await scopedDb.frames.setImageGenerationStatus(
-          anchor.id,
-          { imageStatus: 'failed', imageError: error },
-          { throwOnMissing: false }
-        );
         // Drop auto-promote if this run owned it (#1070).
         if (anchor.pendingPromoteVersionId) {
           const pending = await scopedDb.claims.frameVariants.getById(
@@ -664,12 +665,38 @@ export class ImageWorkflow extends OpenStoryWorkflowEntrypoint<ImageWorkflowInpu
         }
       }
     }
-    await scopedDb.frameVariants.markFailedByWorkflowRun(
+    // A claim row the trigger opened carries no run id (or its parent's)
+    // until this run's first step stamps it, so it is failed by its own id.
+    if (input.targetVariantId) {
+      await scopedDb.frameVariants.markTerminal(
+        input.targetVariantId,
+        'failed',
+        error
+      );
+    }
+    const marked = await scopedDb.frameVariants.markFailedByWorkflowRun(
       event.instanceId,
       error
     );
 
     const model = input.model ?? DEFAULT_IMAGE_MODEL;
+    if (marked === 0 && !input.targetVariantId && anchor) {
+      // The run died before `set-generating-status` opened its row. Record
+      // the failure as its own terminal row, or the shot reads as if nothing
+      // had happened (#1942). The id sorts at the click: a run clicked since
+      // stays newer, so this failure never masks it.
+      await scopedDb.frameVariants.appendVersion({
+        id: generateIdAt(event.timestamp.getTime()),
+        frameId: anchor.id,
+        sequenceId: anchor.sequenceId,
+        kind: 'model',
+        model,
+        status: 'failed',
+        error,
+        workflowRunId: event.instanceId,
+        isPrimary: !input.variantOnly,
+      });
+    }
     if (input.sequenceId) {
       try {
         await getGenerationChannel(input.sequenceId).emit(

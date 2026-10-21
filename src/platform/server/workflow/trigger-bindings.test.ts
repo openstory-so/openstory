@@ -19,14 +19,19 @@
  */
 
 import { describe, expect, test, vi } from 'vitest';
-import { triggerCfWorkflow, workflowNameFromRunId } from './trigger-bindings';
+import {
+  bindingNameForReportedRun,
+  triggerCfWorkflow,
+  workflowNameFromRunId,
+} from './trigger-bindings';
 import { buildInstanceId } from './instance-id';
 import type { CloudflareEnv } from './types';
+import { asStub } from '@/test/as-stub';
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub: triggerCfWorkflow only reads VITE_APP_URL (via buildInstanceId)
-const env = {
+// minimal env stub: triggerCfWorkflow only reads VITE_APP_URL (via buildInstanceId)
+const env = asStub<CloudflareEnv>({
   VITE_APP_URL: 'https://openstory.so',
-} as unknown as CloudflareEnv;
+});
 
 const body = { userId: 'u1', teamId: 't1' };
 
@@ -51,8 +56,8 @@ function harness(
     };
   });
   const bindingStub = { create, get };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Workflow binding stub exposing only create + get
-  const binding = bindingStub as unknown as Workflow<typeof body>;
+  // minimal Workflow binding stub exposing only create + get
+  const binding = asStub<Workflow<typeof body>>(bindingStub);
   return { binding, create, get };
 }
 
@@ -75,8 +80,8 @@ function scriptedHarness(statuses: Record<string, InstanceStatus['status']>) {
     return { id, status: () => Promise.resolve({ status }) };
   });
   const bindingStub = { create, get };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Workflow binding stub exposing only create + get
-  const binding = bindingStub as unknown as Workflow<typeof body>;
+  // minimal Workflow binding stub exposing only create + get
+  const binding = asStub<Workflow<typeof body>>(bindingStub);
   return { binding, create, get };
 }
 
@@ -106,8 +111,8 @@ describe('workflowNameFromRunId', () => {
       workflowNameFromRunId('motion_01KYH2HK_01KYH2K9_seedance_v2_ro0648u')
     ).toBe('motion');
     expect(
-      workflowNameFromRunId('frame-prompt_01KVEQFF_01KVEQG7_rw1yxay')
-    ).toBe('frame-prompt');
+      workflowNameFromRunId('shot-spec-rewrite_01KVEQFF_01KVEQG7_rw1yxay')
+    ).toBe('shot-spec-rewrite');
   });
 
   test('prefers segment[1] so top-level ids are never misread as child ids', () => {
@@ -119,6 +124,23 @@ describe('workflowNameFromRunId', () => {
     expect(workflowNameFromRunId('qstash-run-abc123')).toBeNull();
     expect(workflowNameFromRunId('mock_e2e_run')).toBeNull();
     expect(workflowNameFromRunId('')).toBeNull();
+  });
+
+  test('a continue child id has no trigger key, so the class names the binding', () => {
+    const continueId =
+      'continue_01ARZ3NDEKTSV4RRFFQ69G5FAV_local_storyboard_parent_rabc123';
+    expect(workflowNameFromRunId(continueId)).toBeNull();
+    expect(
+      bindingNameForReportedRun('UpdateStaleShotsWorkflow', continueId)
+    ).toBe('UPDATE_STALE_SHOTS_WORKFLOW');
+  });
+
+  test('an element-sheets child id is not the element-sheet trigger key', () => {
+    const sheetId = 'element-sheets_01ARZ3NDEKTSV4RRFFQ69G5FAV_parent_rhash';
+    expect(workflowNameFromRunId(sheetId)).toBeNull();
+    expect(bindingNameForReportedRun('ElementSheetWorkflow', sheetId)).toBe(
+      'ELEMENT_SHEET_WORKFLOW'
+    );
   });
 });
 
@@ -223,7 +245,7 @@ describe('triggerCfWorkflow', () => {
       await expect(
         triggerCfWorkflow({
           binding,
-          triggerPath: '/frame-prompt',
+          triggerPath: '/shot-spec-rewrite',
           body,
           env,
           deduplicationId: 'prompt-visual-f1-h4sh',

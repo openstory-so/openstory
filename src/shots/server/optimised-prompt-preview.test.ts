@@ -1,3 +1,16 @@
+import type { StyleConfig } from '@/look/style-config';
+const styleConfig: StyleConfig = {
+  version: 2,
+  look: {
+    mood: 'quiet',
+    artStyle: 'watercolour',
+    lighting: 'soft light',
+    colorPalette: ['silver', 'blue'],
+    colorGrading: 'cool shadows',
+  },
+  motion: { camera: 'locked' },
+  references: [],
+};
 import { describe, expect, it } from 'vitest';
 import {
   boundPromptImages,
@@ -97,6 +110,7 @@ describe('imageUrlsFromPromptParts', () => {
 describe('buildShotPromptPreview', () => {
   it('builds the fal motion request the inspector used to assemble in the browser', () => {
     const result = buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'grok_imagine_video_1_5',
       imagePrompt: 'Sarah types at a sunlit coffee shop',
@@ -122,6 +136,9 @@ describe('buildShotPromptPreview', () => {
     });
 
     expect(result.assembledMotionPrompt).toContain('Camera dolly forward');
+    expect(result.assembledMotionPrompt).toContain('cafe');
+    expect(result.assembledMotionPrompt).toContain('silver, blue');
+    expect(result.assembledMotionPrompt).toContain('watercolour, cool shadows');
     expect(result.motion).not.toBeNull();
     expect(result.motion?.json).toContain('https://example.com/shot.jpg');
     expect(result.motion?.endpointId).toContain('grok-imagine-video');
@@ -137,6 +154,7 @@ describe('buildShotPromptPreview', () => {
 
   it('packs Seedance 2.5 siblings into the in-clip request the model receives', () => {
     const result = buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'seedance_v2_5',
       imagePrompt: 'Sarah types',
@@ -210,6 +228,7 @@ describe('buildShotPromptPreview', () => {
 
   it('warns when prompt length kept later shots out of the packed clip', () => {
     const result = buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'gemini_omni_flash',
       imagePrompt: 'Sarah types',
@@ -274,6 +293,7 @@ describe('buildShotPromptPreview', () => {
     // none, so a blocking preview has to be tested on a model that does.
     const novel = 'x'.repeat(11000);
     const result = buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'gemini_omni_flash',
       imagePrompt: 'Sarah types',
@@ -321,6 +341,7 @@ describe('buildShotPromptPreview', () => {
 
   it('puts Kling packed shots on multi_prompt and omits prompt', () => {
     const result = buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'kling_v3_pro',
       imagePrompt: 'Sarah types',
@@ -407,6 +428,7 @@ describe('buildShotPromptPreview', () => {
 
   it('returns no image preview when the visual prompt is empty', () => {
     const result = buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'grok_imagine_video_1_5',
       imagePrompt: '   ',
@@ -440,6 +462,7 @@ describe('buildShotPromptPreview with a bound voice', () => {
   };
   const preview = () =>
     buildShotPromptPreview({
+      styleConfig,
       imageModel: 'nano_banana_2',
       videoModel: 'minimax_h3_max',
       imagePrompt: 'Mateo on a sidewalk',

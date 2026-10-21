@@ -19,6 +19,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { StyleConfig } from '@/platform/server/db/schema';
 import type { GenerationStage } from '@/sequences/pipeline';
 import type { StoryboardTriggerInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
 
 const triggerWorkflowMock = vi.fn();
 const getRequestHeader = vi.fn<(name: string) => string | undefined>();
@@ -86,12 +87,14 @@ function makeScopedDb(opts: {
     movement: string | null;
   }>;
   locations?: Array<{ id: string; name: string; description: string | null }>;
+  /** The sequence's live location links (#1695). */
+  linkedLocations?: Array<{ id: string; attached: boolean }>;
   musicPrompt?: string | null;
-  generationStopAt?: GenerationStage | null;
-  autoGenerateMotion?: boolean;
-  autoGenerateMusic?: boolean;
+  generationStopAt?: GenerationStage;
+  cast?: never[];
 }) {
   const updateStatus = vi.fn();
+  const recordSequenceEvent = vi.fn(async () => undefined);
   const claimWorkflowSlot = vi.fn<
     (params: {
       id: string;
@@ -113,9 +116,7 @@ function makeScopedDb(opts: {
     videoModel: 'not-a-real-video-model',
     workflowRunId: opts.workflowRunId,
     musicPrompt: opts.musicPrompt ?? null,
-    generationStopAt: opts.generationStopAt ?? null,
-    autoGenerateMotion: opts.autoGenerateMotion ?? false,
-    autoGenerateMusic: opts.autoGenerateMusic ?? false,
+    generationStopAt: opts.generationStopAt ?? 'images',
     status: 'failed',
   }));
   const getStyleById = vi.fn(async () =>
@@ -125,22 +126,30 @@ function makeScopedDb(opts: {
     (opts.elementIds ?? ['el_1', 'el_2']).map((id) => ({ id }))
   );
   const getTalentByIds = vi.fn(async () => opts.talent ?? []);
-  const getLocationsByIds = vi.fn(async () => opts.locations ?? []);
+  const getLocationsByIds = vi.fn(
+    async (_ids: readonly string[]) => opts.locations ?? []
+  );
+  const listLocations = vi.fn(async () => opts.linkedLocations ?? []);
+  const listCharacters = vi.fn(async () => opts.cast ?? []);
+  const getHeldElsewhere = vi.fn(async () => false);
   const getMemberEmail = vi.fn(async () => 'owner@example.com');
   const stub = {
     sequences: { getForUser, claimWorkflowSlot, update },
     styles: { getById: getStyleById },
     sequenceElements: { list: listElements },
+    characters: { list: listCharacters, getHeldElsewhere },
     talent: { getByIds: getTalentByIds },
-    locations: { getByIds: getLocationsByIds },
+    locations: { list: listLocations, getCurrentByIds: getLocationsByIds },
     teamManagement: { getMemberEmail },
     sequence: () => ({ updateStatus }),
+    sequenceEvents: { record: recordSequenceEvent },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub exposing only what the launcher touches
-  const scopedDb = stub as unknown as ScopedDb;
+  // minimal ScopedDb stub exposing only what the launcher touches
+  const scopedDb = asStub<ScopedDb>(stub);
   return {
     scopedDb,
     updateStatus,
+    recordSequenceEvent,
     claimWorkflowSlot,
     update,
     getForUser,
@@ -148,6 +157,7 @@ function makeScopedDb(opts: {
     listElements,
     getTalentByIds,
     getLocationsByIds,
+    listLocations,
   };
 }
 
@@ -220,6 +230,7 @@ describe('triggerStoryboard', () => {
       id: 'seq_1',
       expectedRunId: 'openstory-so_storyboard_old',
       claimId: expect.stringMatching(/^storyboard-seq_1-/),
+      activity: { summary: 'Started the storyboard' },
     });
     expect(updateStatus).toHaveBeenCalledWith('processing');
     const claimId = claimWorkflowSlot.mock.calls[0]?.[0]?.claimId;
@@ -263,11 +274,15 @@ describe('triggerStoryboard', () => {
       imageModel: DEFAULT_IMAGE_MODEL,
       videoModel: DEFAULT_VIDEO_MODEL,
       elementIds: ['el_1', 'el_2'],
+      // The live cast, frozen here (#2050); this sequence casts nobody yet.
+      cast: [],
       // No music prompt on the row yet, so whatever the pipeline writes is a
       // first generation — resolved here, not by a lookup in the grandchild.
       musicPromptSource: 'ai-generated',
       // Casting identity is snapshotted here too; INPUT suggests neither.
       suggestedTalent: [],
+      // The picked ids plus the attached ones (#1695): none here.
+      suggestedLocationIds: [],
       suggestedLocations: [],
       ownerEmail: 'owner@example.com',
       sequenceUrl: expect.stringMatching(/\/sequences\/seq_1\/scenes$/),
@@ -278,7 +293,7 @@ describe('triggerStoryboard', () => {
     });
   });
 
-  test('pins explicit stopAt so flags cannot collapse References to Images', async () => {
+  test('pins an explicit stopAt over the sequence snapshot', async () => {
     runStateResult = 'failed';
     triggerWorkflowMock.mockReset();
     triggerWorkflowMock.mockResolvedValue('run-1');
@@ -287,8 +302,6 @@ describe('triggerStoryboard', () => {
     await triggerStoryboard(scopedDb, {
       ...INPUT,
       stopAt: 'references',
-      autoGenerateMotion: false,
-      autoGenerateMusic: false,
     });
 
     expect(triggerWorkflowMock.mock.calls[0]?.[1]).toEqual(
@@ -303,8 +316,6 @@ describe('triggerStoryboard', () => {
     const { scopedDb } = makeScopedDb({
       workflowRunId: null,
       generationStopAt: 'references',
-      autoGenerateMotion: false,
-      autoGenerateMusic: false,
     });
 
     await triggerStoryboard(scopedDb, INPUT);
@@ -465,7 +476,47 @@ describe('triggerStoryboard', () => {
     await triggerStoryboard(scopedDb, INPUT);
 
     expect(getTalentByIds).not.toHaveBeenCalled();
-    expect(getLocationsByIds).not.toHaveBeenCalled();
+    // The read is always made (the attached locations join the set, #1695);
+    // with no ids it asks for none.
+    expect(getLocationsByIds).toHaveBeenCalledWith([]);
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+      suggestedLocationIds: [],
+      suggestedLocations: [],
+    });
+  });
+
+  test('the locations the writer attached join the picked ones for matching; analysis-made ones do not (#1695)', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockResolvedValue('run-1');
+    const { scopedDb, getLocationsByIds, listLocations } = makeScopedDb({
+      workflowRunId: null,
+      linkedLocations: [
+        { id: 'loc_attached', attached: true },
+        { id: 'loc_1', attached: true },
+        { id: 'loc_made_here', attached: false },
+      ],
+      locations: [
+        { id: 'loc_1', name: 'Docks', description: null },
+        { id: 'loc_attached', name: 'Diner', description: 'chrome' },
+      ],
+    });
+
+    await triggerStoryboard(scopedDb, {
+      ...INPUT,
+      suggestedLocationIds: ['loc_1'],
+    });
+
+    expect(listLocations).toHaveBeenCalledWith('seq_1');
+    // Picked first, then attached; each once.
+    expect(getLocationsByIds).toHaveBeenCalledWith(['loc_1', 'loc_attached']);
+    expect(triggerWorkflowMock.mock.calls[0]?.[1]).toMatchObject({
+      suggestedLocationIds: ['loc_1', 'loc_attached'],
+      suggestedLocations: [
+        { locationId: 'loc_1', name: 'Docks', description: null },
+        { locationId: 'loc_attached', name: 'Diner', description: 'chrome' },
+      ],
+    });
   });
 
   test('sequence with no script → throws synchronously, nothing claimed or triggered', async () => {
@@ -535,6 +586,29 @@ describe('triggerStoryboard', () => {
       GenerationInProgressError
     );
     expect(triggerWorkflowMock).not.toHaveBeenCalled();
+  });
+
+  test('a trigger that throws after the claim marks the sequence failed and logs it', async () => {
+    runStateResult = 'failed';
+    triggerWorkflowMock.mockReset();
+    triggerWorkflowMock.mockRejectedValue(new Error('workflow down'));
+    const { scopedDb, updateStatus, recordSequenceEvent } = makeScopedDb({
+      workflowRunId: null,
+    });
+
+    await expect(triggerStoryboard(scopedDb, INPUT)).rejects.toThrow(
+      'workflow down'
+    );
+    expect(updateStatus).toHaveBeenCalledWith('processing');
+    expect(updateStatus).toHaveBeenCalledWith('failed', 'workflow down');
+    expect(recordSequenceEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sequenceId: 'seq_1',
+        actorId: INPUT.userId,
+        kind: 'run.failed',
+        summary: 'Storyboard failed',
+      })
+    );
   });
 
   test('missing sequenceId → throws before touching the db', async () => {

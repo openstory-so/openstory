@@ -1,3 +1,4 @@
+import { resolveSequenceStyleConfig } from '@/look/style-config';
 /**
  * "Update all" planning (#1077/#1085) — pure domain logic that decides *what*
  * regenerates (and therefore what gets billed). The workflow only freezes the
@@ -15,11 +16,7 @@ import {
   usesStartFrame,
   type StartFrameSequence,
 } from '@/shots/use-start-frame';
-import { musicPromptInputHashMatches } from '@/shots/input-hash';
-import {
-  musicRequestDurationSeconds,
-  readMusicTrackStaleness,
-} from '@/audio/server/music-staleness';
+import { musicRequestDurationSeconds } from '@/audio/server/music-staleness';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
@@ -31,6 +28,8 @@ import {
   safeImageToVideoModel,
   safeTextToImageModel,
   type TextToImageModel,
+  type ImageToVideoModel,
+  type AudioModel,
 } from '@/models/models';
 import { loadShotPromptContext } from './prompt-context';
 import type {
@@ -42,18 +41,18 @@ import type {
 } from '@/shots/scene-analysis.schema';
 import {
   dialogueContextFor,
+  loadVoiceMovedShotIds,
   sceneDialogueJobs,
-  shotDialogueResolver,
+  shotPromptDialogueResolver,
+  type ShotDialogueResolver,
+  type ShotPromptDialogue,
 } from './shot-dialogue';
 import {
   dialogueAudioMaxSeconds,
   dialogueAudioMinSeconds,
-  matchingDialogueClips,
   voicedDialogueLines,
-  type VoiceCharacter,
-  type VoicedDialogueLine,
 } from '@/motion/dialogue-tts';
-import type { BatchDialogueRecording } from '@/platform/server/workflow/types';
+import type { BatchDialogueSpeech } from '@/platform/server/workflow/types';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
@@ -63,10 +62,15 @@ import type {
   FrameVariant,
   Sequence,
   Shot,
+  ShotPromptVersion,
+  ShotSpecVersion,
   StyleConfig,
 } from '@/platform/server/db/schema';
+import {
+  canonicalStoredShotSpec,
+  type StoredShotSpec,
+} from '@/shots/shot-list.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import { getLogger } from '@/platform/logger';
 import { loadSequenceSegments } from '@/shots/server/sequence-segments';
 import {
   loadSceneContextBySequence,
@@ -77,16 +81,27 @@ import {
   type ShotStalenessRefs,
   type ShotStalenessResult,
 } from './shot-staleness';
-import {
-  DEFAULT_UPDATE_STALE_DEPTH,
-  depthIncludes,
-  type UpdateStaleDepth,
-} from '@/shots/update-stale-depth';
-import { buildMusicSceneSummaries } from '@/audio/server/workflows/music-scene-summaries';
+import type { UpdateStaleDepth } from '@/shots/update-stale-depth';
+import { musicSceneSummariesFromRows } from '@/audio/server/workflows/music-scene-summaries';
 import { NotFoundError } from '@/platform/errors';
+import {
+  updateAllUnits,
+  type PlanUnit,
+  type PlanUnitKind,
+  type PlanUnitRef,
+} from '@/sequences/generation-plan';
+import { computeGenerationPlan } from '@/sequences/server/generation-plan';
+import { resolveSceneShotImageReferences } from '@/cast/server/workflows/sheet-snapshots';
+import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate-shots-snapshot';
+import { packedSceneFromScene } from '@/motion/server/build-motion-render';
+import type { MotionRenderShot } from '@/motion/server/build-motion-render';
+import type { ShotImageRefs } from './shot-image-input';
+import { pendingVoiceId } from './pending-voices';
+import {
+  buildPlanReferences,
+  type PlanReferences,
+} from './update-stale-references';
 import type { MusicSceneSummary } from '@/platform/server/workflow/types';
-
-const logger = getLogger(['openstory', 'shots', 'update-stale-plan']);
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -99,13 +114,6 @@ const logger = getLogger(['openstory', 'shots', 'update-stale-plan']);
 export type PlanTarget = {
   shotId: string;
   frameId: string;
-  /**
-   * Neighbour shot ids for motion continuity, resolved to raw metadata at
-   * spawn time (parity with regenerateShotPromptFn). Null when not a motion
-   * target, or at the ends of the sequence.
-   */
-  beforeShotId: string | null;
-  afterShotId: string | null;
   /** Frame image URL at plan time; image stage may produce a newer one later. */
   startingFrameImageUrl: string | null;
   /**
@@ -142,6 +150,22 @@ export type PlanTarget = {
   regenVisual: boolean;
   regenMotion: boolean;
   /**
+   * The spec is stale or missing. One Rewrite shot, then the prompts are
+   * rebuilt from what it writes. A current spec rebuilds for free instead.
+   */
+  rewriteSpec: boolean;
+  /** Selected spec at the click. Null when the shot has none. */
+  specVersionId: string | null;
+  spec: StoredShotSpec | null;
+  /**
+   * Live currency hash of the inputs the spec is judged against. Rebuild
+   * fills a null stamp with it. Rewrite stamps it on the new row.
+   */
+  specInputHash: string | null;
+  /** A `user-edit` prompt is never overwritten by Rebuild. */
+  visualWritten: boolean;
+  motionWritten: boolean;
+  /**
    * Re-render the still. Never true without an existing imageUrl — Update all
    * must not spend credits creating a first still.
    */
@@ -162,6 +186,54 @@ export type PlanTarget = {
    * stale. Video/music use status columns rather than pending-claim rows.
    */
   regenVideo: boolean;
+  /**
+   * A continue (#1818) renders the shot's FIRST video too; Update all never
+   * does, so the render stands down when the selection is gone.
+   */
+  createsVideo: boolean;
+  /**
+   * The clip's selected version at the click, when `regenVideo` judged it
+   * stale. While it is still the selection the run renders, whatever made
+   * it stale (a sheet, a recording, the prompt); a different selection means
+   * someone rendered since, and the manifest check decides.
+   */
+  staleVideoVersionId: string | null;
+  /**
+   * The sheet / element rows the still (or reference-only clip) is made
+   * from. A references-wave unit of this run that fails holds the shot's
+   * image and video rather than render without it.
+   */
+  referenceIds: string[];
+  /**
+   * The shot's scene has other live shots. Its clip renders on its own, so
+   * it carries the scene header (location, time, lighting, palette, look) a
+   * packed clip states once — the same rule the fresh run and the batch
+   * footer apply.
+   */
+  attachSceneHeader: boolean;
+  /** Compact render context frozen at the click, including persisted membership. */
+  motionRender: Pick<
+    MotionRenderShot,
+    | 'sceneId'
+    | 'renderSegmentId'
+    | 'packedScene'
+    | 'characterTags'
+    | 'audioClips'
+    | 'sceneTitle'
+  > & {
+    description: string;
+    selectedModel: string | null;
+    elementTags?: string[];
+    /**
+     * The scene's look picks (#2015), so a reference-only clip attaches the
+     * sheet of the look the scene dresses each character in; null when the
+     * scene picks none.
+     */
+    characterLooks: Record<string, string> | null;
+    environmentTag?: string;
+    location?: string;
+    siblingShotIds?: string[];
+  };
   /**
    * Re-record this shot's dialogue audio. True only when a reading already
    * exists (never a FIRST recording) and no longer matches the current
@@ -195,6 +267,8 @@ export type ShotClaims = {
   visualVersionId: string | null;
   motionVersionId: string | null;
   imageVariantId: string | null;
+  /** Rewrite claim id (`shots.pendingSpecVersionId`). */
+  specClaimId: string | null;
 };
 
 /**
@@ -237,6 +311,9 @@ export type MusicPlan = {
   promptSource: 'ai-generated' | 'regenerated';
   /** Track length: shot durations with the 30s empty floor (generateMusicFn). */
   durationSeconds: number;
+  /** Existing music text frozen at the click for a track-only unit. */
+  prompt: string | null;
+  tags: string | null;
 };
 
 /**
@@ -274,7 +351,54 @@ type PlanPromptContext = {
   analysisModelId: AnalysisModelId;
 };
 
+/** Explicit fresh-run choices; absent on continue and Update all. */
+export type PlanRenderOptions = {
+  imageModels?: TextToImageModel[];
+  videoModels?: ImageToVideoModel[];
+  audioModels?: AudioModel[];
+};
+
+type ShotPromptText = { shotId: string; text: string };
+export type ScenePrompts = {
+  visual: ShotPromptText[];
+  motion: ShotPromptText[];
+};
+
+function sceneSpecsFor(
+  shots: readonly Shot[],
+  selected: ReadonlyMap<string, ShotSpecVersion>
+): UpdateStalePlan['sceneSpecs'] {
+  const sceneSpecs: UpdateStalePlan['sceneSpecs'] = {};
+  for (const shot of shots) {
+    if (shot.deletedAt || !shot.sceneId) continue;
+    const version = selected.get(shot.id);
+    if (!version) continue;
+    const list = sceneSpecs[shot.sceneId] ?? [];
+    list.push({
+      shotId: shot.id,
+      shotNumber: shot.shotNumber,
+      spec: canonicalStoredShotSpec(version.spec),
+    });
+    sceneSpecs[shot.sceneId] = list;
+  }
+  return sceneSpecs;
+}
+
+/** A target's scene siblings: the scene's prompts without its own. */
+export function siblingPrompts(
+  plan: Pick<UpdateStalePlan, 'scenePrompts'>,
+  target: Pick<PlanTarget, 'shotId' | 'motionRender'>
+): ScenePrompts {
+  const scene = target.motionRender.sceneId
+    ? plan.scenePrompts[target.motionRender.sceneId]
+    : undefined;
+  const others = (list: ShotPromptText[] | undefined) =>
+    (list ?? []).filter((prompt) => prompt.shotId !== target.shotId);
+  return { visual: others(scene?.visual), motion: others(scene?.motion) };
+}
+
 export type UpdateStalePlan = {
+  renderOptions?: PlanRenderOptions;
   aspectRatio: AspectRatio;
   resolution: Resolution;
   sequence: PlanSequence;
@@ -283,7 +407,7 @@ export type UpdateStalePlan = {
   promptContext: PlanPromptContext | null;
   /**
    * Speakers with a designed voice at click time (#1554). Snapshotted so the
-   * motion *render* (TTS) never re-reads `characters.voiceId`. Not a prompt
+   * motion *render* (TTS) never re-reads the character's voice. Not a prompt
    * hash channel — voice identity binds on the clip.
    */
   characterVoices: {
@@ -297,9 +421,37 @@ export type UpdateStalePlan = {
    * live clips itself, so a scene whose audio still matches costs nothing.
    * Null when no target speaks.
    */
-  dialogueRecording: BatchDialogueRecording | null;
+  dialogueSpeech: BatchDialogueSpeech | null;
+  /**
+   * @deprecated The pre-#1913 name of `dialogueSpeech`, on a plan queued
+   * before the deploy. `UpdateStaleShotsWorkflow` folds it into
+   * `dialogueSpeech`; nothing else reads it.
+   */
+  // ponytail: delete once no pre-#1913 update-all run can be in flight.
+  dialogueRecording?: BatchDialogueSpeech | null;
+  /** Reference rows frozen once at the click; this run overlays its own sheet results. */
+  renderRefs: ShotImageRefs;
+  /**
+   * Each rewritten scene's selected prompts, stated once per scene: a target
+   * reads its siblings here minus itself. Per-target copies grow with the
+   * square of a scene's shots and can burst the 1 MiB step output.
+   */
+  scenePrompts: Record<string, ScenePrompts>;
+  /**
+   * Selected spec of every live shot, once per scene. A rewrite reads its
+   * siblings from here. Spec content, not the prompt text.
+   */
+  sceneSpecs: Record<
+    string,
+    { shotId: string; shotNumber: number | null; spec: StoredShotSpec }[]
+  >;
   targets: PlanTarget[];
   skipped: SkippedShot[];
+  /**
+   * Sheets, element references and voices to make before any shot (#1818).
+   * Null for Update all, which never touches them yet.
+   */
+  references: PlanReferences | null;
 };
 
 /**
@@ -348,26 +500,109 @@ function toPlanSequence(sequence: Sequence): PlanSequence {
 // ---------------------------------------------------------------------------
 
 /**
- * Recompute staleness for the in-scope shots from live state and freeze the
- * regeneration plan. The workflow persists this as the `compute-plan` step
- * result — the run's durable snapshot of what will be billed.
+ * Update all (#1819): the generation plan filtered to `stale` up to `depth`
+ * (`updateAllUnits`), frozen like a continue. A shot the plan could not check
+ * is reported, not dropped.
  */
-export async function computePlan(args: {
+export async function planUpdateAll(args: {
   scopedDb: ScopedDb;
   sequenceId: string;
   sceneId?: string;
   shotId?: string;
-  depth?: UpdateStaleDepth;
+  /** An explicit shot list (agent plans, #1460); wins over sceneId/shotId. */
+  shotIds?: readonly string[];
+  depth: UpdateStaleDepth;
+  userId: string;
+  /** The live plan, when the caller already computed it (agent plans). */
+  generationPlan?: readonly PlanUnit[];
 }): Promise<UpdateStalePlan> {
-  const {
+  const { scopedDb, sequenceId, sceneId, shotId, depth, userId } = args;
+  const [generationPlan, allShots] = await Promise.all([
+    args.generationPlan ?? computeGenerationPlan(scopedDb, sequenceId),
+    scopedDb.shots.listBySequence(sequenceId),
+  ]);
+  const shotIds = args.shotIds
+    ? new Set(args.shotIds)
+    : sceneId || shotId
+      ? new Set(
+          filterInScopeShots(allShots, { sceneId, shotId }).map((s) => s.id)
+        )
+      : null;
+  const plan = await computePlan({
     scopedDb,
     sequenceId,
-    sceneId,
-    shotId,
-    depth = DEFAULT_UPDATE_STALE_DEPTH,
-  } = args;
+    units: updateAllUnits(generationPlan, { depth, shotIds }),
+    userId,
+  });
+  const unchecked = new Set(
+    generationPlan
+      .filter(
+        (u) =>
+          u.state === 'blocked' &&
+          u.blockedBy?.length === 0 &&
+          SHOT_UNIT_KINDS.has(u.kind) &&
+          (shotIds === null || shotIds.has(u.id))
+      )
+      .map((u) => u.id)
+  );
+  return {
+    ...plan,
+    skipped: [
+      ...plan.skipped,
+      ...[...unchecked].map((id) => ({
+        shotId: id,
+        reason: 'staleness-unknown' as const,
+      })),
+    ],
+  };
+}
 
-  const sequence = await scopedDb.sequences.getById(sequenceId);
+const SHOT_UNIT_KINDS = new Set<PlanUnitKind>([
+  'prompt:visual',
+  'still',
+  'prompt:motion',
+  'dialogue',
+  'clip',
+]);
+
+/**
+ * Freeze generation-plan units as the executor's plan (#1818, #1819): the
+ * flags come from the units, first artifacts included, every input read
+ * from live state now. A continue passes the plan's work up to its stop;
+ * Update all the plan filtered to `stale`. The workflow persists this as its
+ * payload — the run's durable snapshot of what will be billed.
+ */
+export type FreshPlanSequenceOverrides = Partial<
+  Pick<
+    Sequence,
+    | 'generateStartFrames'
+    | 'generateVoices'
+    | 'includeMusic'
+    | 'draftMotion'
+    | 'imageModel'
+    | 'videoModel'
+    | 'aspectRatio'
+    | 'resolution'
+    | 'status'
+    | 'styleConfig'
+    | 'analysisModel'
+  >
+>;
+
+export async function computePlan(args: {
+  scopedDb: ScopedDb;
+  /** Fresh handoff retains the switches/models frozen by the original click. */
+  sequenceOverrides?: FreshPlanSequenceOverrides;
+  sequenceId: string;
+  units: readonly PlanUnitRef[];
+  /** Who clicked — stamped on the references wave's payloads. */
+  userId: string;
+  renderOptions?: PlanRenderOptions;
+}): Promise<UpdateStalePlan> {
+  const { scopedDb, sequenceId, units } = args;
+
+  const row = await scopedDb.sequences.getById(sequenceId);
+  const sequence = row ? { ...row, ...args.sequenceOverrides } : null;
   if (!sequence) {
     // Trigger-side (computePlan runs in the server fn): OpenStoryError rides
     // the serialization adapter to the client as a typed 404, not a 500.
@@ -375,56 +610,93 @@ export async function computePlan(args: {
   }
 
   const allShots = await scopedDb.shots.listBySequence(sequenceId);
-  const inScope = filterInScopeShots(allShots, { sceneId, shotId });
-  const shotIndexById = buildShotIndex(allShots);
+  const unitKindsByShot = new Map<string, Set<PlanUnitKind>>();
+  for (const unit of units) {
+    const kinds = unitKindsByShot.get(unit.id) ?? new Set<PlanUnitKind>();
+    kinds.add(unit.kind);
+    unitKindsByShot.set(unit.id, kinds);
+  }
+  // A persisted clip is one render: freeze its fresh siblings too, without
+  // adding prompt/still work for them. Only the requested artifacts cascade.
+  const renderSegmentIds = new Set(
+    allShots.flatMap((shot) =>
+      shot.renderSegmentId && unitKindsByShot.get(shot.id)?.has('clip')
+        ? [shot.renderSegmentId]
+        : []
+    )
+  );
+  for (const shot of allShots) {
+    if (
+      !shot.deletedAt &&
+      shot.renderSegmentId &&
+      renderSegmentIds.has(shot.renderSegmentId)
+    ) {
+      const kinds = unitKindsByShot.get(shot.id) ?? new Set<PlanUnitKind>();
+      kinds.add('clip');
+      unitKindsByShot.set(shot.id, kinds);
+    }
+  }
+  const inScope = allShots.filter((shot) => unitKindsByShot.has(shot.id));
 
   // Music is always sequence-scoped (not narrowed by scene/shot).
-  const music = depthIncludes(depth, 'music')
-    ? await computeMusicPlan(scopedDb, sequence, allShots)
-    : null;
+  const music = await computeMusicPlanForUnits(
+    scopedDb,
+    sequence,
+    allShots,
+    units
+  );
+  const references = await buildPlanReferences({
+    scopedDb,
+    sequence,
+    userId: args.userId,
+    units,
+  });
 
   const empty: UpdateStalePlan = {
+    renderOptions: args.renderOptions,
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
     music,
     promptContext: null,
     characterVoices: [],
-    dialogueRecording: null,
+    dialogueSpeech: null,
+    renderRefs: { characters: [], locations: [], elements: [] },
+    scenePrompts: {},
+    sceneSpecs: {},
     targets: [],
     skipped: [],
+    references,
   };
   if (inScope.length === 0) return empty;
 
-  const videoStateByShot = depthIncludes(depth, 'video')
+  const videoStateByShot = units.some((u) => u.kind === 'clip')
     ? await loadVideoStateByShot(scopedDb, sequenceId, allShots, sequence)
     : new Map<string, ShotVideoState>();
 
   await scopedDb.shots.ensureAnchorFrames(inScope);
-  const [
-    anchorRows,
-    scriptBySceneId,
-    characters,
-    locations,
-    elements,
-    style,
-    voiceRows,
-  ] = await Promise.all([
-    scopedDb.frames.listAnchorsBySequence(sequenceId),
-    loadSceneContextBySequence(scopedDb, sequenceId),
-    scopedDb.characters.listWithSheets(sequenceId),
-    scopedDb.sequenceLocations.listWithReferences(sequenceId),
-    scopedDb.sequenceElements.list(sequenceId),
-    sequence.styleId
-      ? scopedDb.styles.getById(sequence.styleId)
-      : Promise.resolve(null),
-    scopedDb.characters.list(sequenceId),
-  ]);
-  const characterVoices = voiceRows.flatMap((row) =>
-    row.voiceId
-      ? [{ name: row.name, voiceId: row.voiceId, voiceOnly: row.voiceOnly }]
-      : []
-  );
+  const [anchorRows, scriptBySceneId, characters, locations, elements, style] =
+    await Promise.all([
+      scopedDb.frames.listAnchorsBySequence(sequenceId),
+      loadSceneContextBySequence(scopedDb, sequenceId),
+      scopedDb.characters.list(sequenceId),
+      scopedDb.locations.list(sequenceId),
+      scopedDb.sequenceElements.list(sequenceId),
+      sequence.styleId
+        ? scopedDb.styles.getById(sequence.styleId)
+        : Promise.resolve(null),
+    ]);
+  // A voice this run designs (#1818) speaks under a placeholder until the
+  // references wave lands it — `bindPendingVoices`.
+  const owedVoiceIds = new Set(references?.voices.map((v) => v.characterDbId));
+  const characterVoices = characters.flatMap((row) => {
+    const voiceId = owedVoiceIds.has(row.id)
+      ? pendingVoiceId(row.id)
+      : row.voiceId;
+    return voiceId
+      ? [{ name: row.name, voiceId, voiceOnly: row.voiceOnly }]
+      : [];
+  });
   const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
   // Stills live on the selected `frame_variants` rows (#1067) — one batch read
   // so the per-shot loop below stays query-free on the image surface.
@@ -433,6 +705,7 @@ export async function computePlan(args: {
     selectedByFrame,
     selectedPromptByFrame,
     selectedMotionByShot,
+    selectedSpecByShot,
     dialogueVersions,
   ] = await Promise.all([
     scopedDb.frameVariants.getSelectedByFrameIds(frameIds),
@@ -444,6 +717,7 @@ export async function computePlan(args: {
     scopedDb.shotPromptVersions.getSelectedMotionByShots(
       allShots.map((s) => s.id)
     ),
+    scopedDb.shotSpecVersions.getSelectedByShotIds(allShots.map((s) => s.id)),
     // The authored dialogue per shot, read once (#1657). Each target carries
     // only its own shot's lines, so the run never reads the node mid-flight.
     // The rows, not just the lines: a recording names the version it spoke.
@@ -453,13 +727,15 @@ export async function computePlan(args: {
     dialogueVersions.map((version) => [version.shotId, version.lines])
   );
   const refs: ShotStalenessRefs = { characters, locations, elements, style };
-  const dialogueOf = shotDialogueResolver({
+  const promptDialogueOf = shotPromptDialogueResolver({
     linesByShotId: dialogueLinesByShotId,
     shots: allShots,
     legacyDialogueOf: (shotId) => selectedMotionByShot.get(shotId)?.dialogue,
     scriptDialogueOf: (sceneId) =>
       scriptBySceneId.get(sceneId)?.script?.dialogue,
   });
+  const dialogueOf: ShotDialogueResolver = (shot) =>
+    promptDialogueOf(shot).dialogue;
 
   const targets: PlanTarget[] = [];
   const skipped: SkippedShot[] = [];
@@ -472,22 +748,23 @@ export async function computePlan(args: {
 
     const decision = await decideShotTarget({
       scopedDb,
-      sequence,
+      sequence: args.renderOptions?.imageModels?.[0]
+        ? { ...sequence, imageModel: args.renderOptions.imageModels[0] }
+        : sequence,
       shot,
       frame,
       selectedImage: frame ? (selectedByFrame.get(frame.id) ?? null) : null,
       selectedPrompt: frame
         ? (selectedPromptByFrame.get(frame.id) ?? null)
         : null,
-      selectedMotionVersionId: selectedMotionByShot.get(shot.id)?.id ?? null,
-      dialogue: dialogueOf(shot),
-      characterVoices,
+      selectedMotion: selectedMotionByShot.get(shot.id) ?? null,
+      selectedSpec: selectedSpecByShot.get(shot.id) ?? null,
+      dialogue: promptDialogueOf(shot),
       scene,
       refs,
-      depth,
       videoState: videoStateByShot.get(shot.id),
-      shotIndexById,
       allShots,
+      unitKinds: unitKindsByShot.get(shot.id) ?? new Set(),
     });
 
     if (decision.kind === 'skip') {
@@ -514,8 +791,29 @@ export async function computePlan(args: {
   });
 
   const shotById = new Map(allShots.map((shot) => [shot.id, shot]));
+  const scenePrompts: Record<string, ScenePrompts> = {};
   for (const target of targets) {
     const sceneId = shotById.get(target.shotId)?.sceneId;
+    if (
+      sceneId &&
+      !scenePrompts[sceneId] &&
+      (target.regenVisual || target.regenMotion)
+    ) {
+      const live = allShots.filter(
+        (shot) => shot.sceneId === sceneId && !shot.deletedAt
+      );
+      scenePrompts[sceneId] = {
+        visual: live.flatMap((shot) => {
+          const frame = anchorsByShot.get(shot.id);
+          const text = frame ? selectedPromptByFrame.get(frame.id)?.text : null;
+          return text ? [{ shotId: shot.id, text }] : [];
+        }),
+        motion: live.flatMap((shot) => {
+          const text = selectedMotionByShot.get(shot.id)?.text;
+          return text ? [{ shotId: shot.id, text }] : [];
+        }),
+      };
+    }
     target.dialogueContext =
       dialogueContextFor({
         shot: { id: target.shotId },
@@ -548,19 +846,27 @@ export async function computePlan(args: {
       const durationMs = shotById.get(shotId)?.durationMs;
       return durationMs && durationMs > 0 ? durationMs / 1000 : undefined;
     },
+    voiceMovedShotIds: await loadVoiceMovedShotIds(
+      scopedDb,
+      sequenceId,
+      allShots
+    ),
   });
-  // ponytail: bounds come from the sequence's video model; a target whose
-  // selected version used a tighter model is still checked by its own render.
-  const dialogueModels = [
-    safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
-  ];
+  // A take must fit every model this run renders: a fresh run names them all.
+  const dialogueModels = args.renderOptions?.videoModels?.length
+    ? args.renderOptions.videoModels
+    : [safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL)];
   return {
     aspectRatio: sequence.aspectRatio,
     resolution: sequence.resolution,
     sequence: toPlanSequence(sequence),
+    renderOptions: args.renderOptions,
     music,
     characterVoices,
-    dialogueRecording:
+    renderRefs: { characters, locations, elements },
+    scenePrompts,
+    sceneSpecs: sceneSpecsFor(allShots, selectedSpecByShot),
+    dialogueSpeech:
       dialogueScenes.length > 0
         ? {
             scenes: dialogueScenes,
@@ -578,6 +884,7 @@ export async function computePlan(args: {
     },
     targets,
     skipped,
+    references,
   };
 }
 
@@ -598,17 +905,10 @@ function filterInScopeShots(
   });
 }
 
-function buildShotIndex(allShots: Shot[]): Map<string, number> {
-  const index = new Map<string, number>();
-  for (let i = 0; i < allShots.length; i++) {
-    const shot = allShots[i];
-    if (shot) index.set(shot.id, i);
-  }
-  return index;
-}
-
 type ShotVideoState = {
   hasVideo: boolean;
+  selectedVersionId: string | null;
+  selectedModel: string | null;
   alreadyStale: boolean;
   generating: boolean;
 };
@@ -641,6 +941,8 @@ async function loadVideoStateByShot(
     for (const segShotId of segment.shotIds) {
       byShot.set(segShotId, {
         hasVideo: segment.selectedVersion !== null,
+        selectedVersionId: segment.selectedVersion?.id ?? null,
+        selectedModel: segment.selectedVersion?.model ?? null,
         alreadyStale: segment.stale,
         generating,
       });
@@ -668,17 +970,21 @@ async function decideShotTarget(args: {
   /** Selected `frame_prompt_versions` row — the visual prompt a direct
    * image render will be built from. */
   selectedPrompt: FramePromptVersion | null;
-  /** Selected motion prompt version id — the video-only-regen default. */
-  selectedMotionVersionId: string | null;
-  /** What the shot says now (`PlanTarget.dialogue`). */
-  dialogue: MotionDialogue;
-  characterVoices: VoiceCharacter[];
+  /** Selected motion prompt — source decides whether Rebuild may replace it. */
+  selectedMotion: ShotPromptVersion | null;
+  /** Selected spec. Null when the shot has never had one. */
+  selectedSpec: ShotSpecVersion | null;
+  /**
+   * What the shot says now (`PlanTarget.dialogue`), and whether it is on
+   * its dialogue node — the motion prompt's staleness reads both (#1784).
+   */
+  dialogue: ShotPromptDialogue;
   scene: Scene | null;
   refs: ShotStalenessRefs;
-  depth: UpdateStaleDepth;
   videoState: ShotVideoState | undefined;
-  shotIndexById: Map<string, number>;
   allShots: Shot[];
+  /** The plan's units for this shot. */
+  unitKinds: ReadonlySet<PlanUnitKind>;
 }): Promise<ShotDecision> {
   const {
     scopedDb,
@@ -687,16 +993,16 @@ async function decideShotTarget(args: {
     frame,
     selectedImage,
     selectedPrompt,
-    selectedMotionVersionId,
-    dialogue,
-    characterVoices,
+    selectedMotion,
+    selectedSpec,
+    dialogue: promptDialogue,
     scene,
     refs,
-    depth,
     videoState,
-    shotIndexById,
     allShots,
+    unitKinds,
   } = args;
+  const { dialogue } = promptDialogue;
 
   if (!frame) {
     return {
@@ -718,6 +1024,7 @@ async function decideShotTarget(args: {
     selectedImage,
     scene,
     refs,
+    dialogue: promptDialogue,
   });
 
   // Fail closed: unknown ≠ fresh. Regenerating on a guess burns credits;
@@ -729,19 +1036,20 @@ async function decideShotTarget(args: {
     };
   }
 
-  const shotUsesStartFrame = usesStartFrame(shot, sequence);
-  const flags = cascadeFlags({
-    staleness,
-    selectedImage,
-    depth,
-    videoState,
-    usesStartFrame: shotUsesStartFrame,
-    voicedLines: voicedDialogueLines(dialogue, characterVoices),
-    audioClips: shot.audioClips,
-  });
+  const flags = {
+    regenVisual:
+      unitKinds.has('prompt:visual') && selectedPrompt?.source !== 'user-edit',
+    regenMotion:
+      unitKinds.has('prompt:motion') && selectedMotion?.source !== 'user-edit',
+    rewriteSpec: unitKinds.has('spec'),
+    regenImage: unitKinds.has('still'),
+    regenDialogue: unitKinds.has('dialogue'),
+    regenVideo: unitKinds.has('clip'),
+  };
   if (
     !flags.regenVisual &&
     !flags.regenMotion &&
+    !flags.rewriteSpec &&
     !flags.regenImage &&
     !flags.regenDialogue &&
     !flags.regenVideo
@@ -749,33 +1057,115 @@ async function decideShotTarget(args: {
     return { kind: 'noop' };
   }
 
-  const idx = shotIndexById.get(shot.id) ?? -1;
+  // A first still has no stored model: it renders at the sequence's, and
+  // the claim advertises the same one.
+  const imageModel = safeTextToImageModel(
+    selectedImage?.model ?? sequence.imageModel,
+    DEFAULT_IMAGE_MODEL
+  );
+  // A first still behind a prompt this run keeps has no live hash yet (the
+  // verdict only hashes a still that exists); the direct claim needs one.
+  let imageLiveHash = staleness.liveHashes.thumbnail;
+  if (
+    flags.regenImage &&
+    !flags.regenVisual &&
+    !imageLiveHash &&
+    selectedPrompt?.text
+  ) {
+    imageLiveHash = (
+      await buildRegenerateShotSnapshot({
+        shot,
+        scene,
+        frameId: frame.id,
+        imagePrompt: selectedPrompt.text,
+        characters: refs.characters,
+        locations: refs.locations,
+        elements: refs.elements,
+        imageModel,
+        aspectRatio: sequence.aspectRatio,
+      })
+    ).snapshotInputHash;
+  }
+  const referenceIds = (() => {
+    const matched = resolveSceneShotImageReferences({
+      scene,
+      visualPrompt: selectedPrompt?.text ?? null,
+      characters: refs.characters,
+      locations: refs.locations,
+      elements: refs.elements,
+    });
+    return [
+      // The look whose sheet the shot attaches (#2015): a failed sheet holds
+      // the shots of the scenes that wear it, and no others.
+      ...matched.characters.map((c) => c.lookId),
+      ...matched.locations.map((l) => l.id),
+      ...matched.elements.map((e) => e.id),
+    ];
+  })();
+
   return {
     kind: 'target',
     target: {
       shotId: shot.id,
       frameId: frame.id,
-      beforeShotId:
-        flags.regenMotion && idx > 0 ? (allShots[idx - 1]?.id ?? null) : null,
-      afterShotId:
-        flags.regenMotion && idx >= 0 ? (allShots[idx + 1]?.id ?? null) : null,
       startingFrameImageUrl: selectedImage?.url ?? null,
       usesStartFrame: usesStartFrame(shot, sequence),
       durationMs: shot.durationMs,
       standingImageVariantId: selectedImage?.id ?? null,
-      standingMotionVersionId: selectedMotionVersionId,
+      standingMotionVersionId: selectedMotion?.id ?? null,
       visualPromptVersionId: selectedPrompt?.id ?? null,
       regenVisual: flags.regenVisual,
       regenMotion: flags.regenMotion,
+      rewriteSpec: flags.rewriteSpec,
+      specVersionId: selectedSpec?.id ?? null,
+      spec: selectedSpec ? canonicalStoredShotSpec(selectedSpec.spec) : null,
+      specInputHash: staleness.liveHashes.spec,
+      visualWritten: selectedPrompt?.source === 'user-edit',
+      motionWritten: selectedMotion?.source === 'user-edit',
       regenImage: flags.regenImage,
       visualLiveHash: staleness.liveHashes.visualPrompt,
       motionLiveHash: staleness.liveHashes.motionPrompt,
-      imageLiveHash: staleness.liveHashes.thumbnail,
-      imageModel: safeTextToImageModel(
-        selectedImage?.model,
-        DEFAULT_IMAGE_MODEL
-      ),
+      imageLiveHash,
+      imageModel,
       regenVideo: flags.regenVideo,
+      createsVideo: flags.regenVideo && !videoState?.hasVideo,
+      staleVideoVersionId: flags.regenVideo
+        ? (videoState?.selectedVersionId ?? null)
+        : null,
+      referenceIds,
+      motionRender: {
+        sceneId: shot.sceneId,
+        renderSegmentId: shot.renderSegmentId,
+        siblingShotIds: shot.renderSegmentId
+          ? allShots
+              .filter(
+                (member) =>
+                  !member.deletedAt &&
+                  member.renderSegmentId === shot.renderSegmentId
+              )
+              .map((member) => member.id)
+          : [],
+        packedScene: packedSceneFromScene(
+          scene,
+          resolveSequenceStyleConfig({
+            snapshot: sequence.styleConfig,
+            live: refs.style?.config,
+          })
+        ),
+        characterTags: scene.continuity?.characterTags,
+        characterLooks: scene.continuity?.characterLooks ?? null,
+        sceneTitle: scene.metadata?.title,
+        description: scene.originalScript.extract,
+        elementTags: scene.continuity?.elementTags ?? undefined,
+        environmentTag: scene.continuity?.environmentTag,
+        location: scene.metadata?.location,
+        audioClips: shot.audioClips ?? undefined,
+        selectedModel: videoState?.selectedModel ?? null,
+      },
+      attachSceneHeader:
+        !!shot.sceneId &&
+        allShots.filter((row) => row.sceneId === shot.sceneId && !row.deletedAt)
+          .length > 1,
       regenDialogue: flags.regenDialogue,
       dialogue,
       // Filled in by `computePlan` once the voices are loaded.
@@ -788,85 +1178,9 @@ function hasUnknownStaleness(staleness: ShotStalenessResult): boolean {
   return (
     staleness.thumbnail === 'unknown' ||
     staleness.visualPrompt === 'unknown' ||
-    staleness.motionPrompt === 'unknown'
+    staleness.motionPrompt === 'unknown' ||
+    staleness.spec === 'unknown'
   );
-}
-
-/**
- * Cascade boolean algebra for one shot. Depth is cumulative
- * (`depthIncludes`). Never first-creates a still or video.
- *
- * - prompts/images: hash + pending-claim vocabulary from `computeShotStaleness`
- *   (`'stale'` only; `'updating'` is already covered).
- * - dialogue: existing clips whose source key no longer matches (#1703).
- * - video: segment assembly status columns (no pending-claim rows yet).
- */
-function cascadeFlags(args: {
-  staleness: ShotStalenessResult;
-  selectedImage: Pick<FrameVariant, 'url'> | null;
-  depth: UpdateStaleDepth;
-  videoState: ShotVideoState | undefined;
-  /** Resolved per shot — a reference-only clip never reads its still. */
-  usesStartFrame: boolean;
-  voicedLines: readonly VoicedDialogueLine[];
-  audioClips: Shot['audioClips'];
-}): {
-  regenVisual: boolean;
-  regenMotion: boolean;
-  regenImage: boolean;
-  regenDialogue: boolean;
-  regenVideo: boolean;
-} {
-  const {
-    staleness,
-    selectedImage,
-    depth,
-    videoState,
-    usesStartFrame,
-    voicedLines,
-    audioClips,
-  } = args;
-
-  // 'stale' only — 'updating' is a live claim already fixing this artifact.
-  const regenVisual = staleness.visualPrompt === 'stale';
-  const regenMotion = staleness.motionPrompt === 'stale';
-
-  // Depth ≥ images: re-render stills that are stale, or whose visual prompt
-  // regenerates in this run (would read stale the moment the prompt lands).
-  // Depth 'prompts' renders nothing. Never a FIRST still. Never on a
-  // reference-only shot: its clip renders from the sheets, so a re-rendered
-  // still is billed and then ignored — and would cascade into the clip too.
-  const regenImage =
-    usesStartFrame &&
-    depthIncludes(depth, 'images') &&
-    !!selectedImage?.url &&
-    (staleness.thumbnail === 'stale' || regenVisual);
-
-  // Depth ≥ dialogue: existing audio whose clips no longer match the current
-  // reading. Never a FIRST recording. Does not cascade into video — the new
-  // take is meant to be reviewed first (#1703).
-  const regenDialogue =
-    depthIncludes(depth, 'dialogue') &&
-    voicedLines.length > 0 &&
-    (audioClips?.length ?? 0) > 0 &&
-    matchingDialogueClips(audioClips, voicedLines).length === 0;
-
-  // Depth ≥ video: existing videos whose upstream changes in this run, or
-  // whose manifest already diverged. Leave in-flight renders alone.
-  const regenVideo =
-    depthIncludes(depth, 'video') &&
-    !!videoState &&
-    videoState.hasVideo &&
-    !videoState.generating &&
-    (regenMotion || regenImage || videoState.alreadyStale);
-
-  return {
-    regenVisual,
-    regenMotion,
-    regenImage,
-    regenDialogue,
-    regenVideo,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -874,77 +1188,37 @@ function cascadeFlags(args: {
 // ---------------------------------------------------------------------------
 
 /**
- * Sequence-level music slice. Mirrors `getMusicPromptStalenessFn`'s comparison
- * (latest version's analysis model, fallback to the sequence's) AND
- * `readMusicTrackStaleness`'s for the track. Untracked (no stored hash / no
- * scenes) means nothing — never a first music prompt or track. In-flight
- * generation is left to finish.
+ * A continue's music (#1818): the units say what to make — a first prompt or
+ * track included. The children's inputs are frozen here exactly as for
+ * Update all. Null when the plan owes no music.
  */
-async function computeMusicPlan(
+async function computeMusicPlanForUnits(
   scopedDb: ScopedDb,
   sequence: Sequence,
-  allShots: Shot[]
-): Promise<MusicPlan> {
-  // The child model the prompt regen would run with — the sequence's, matching
-  // the manual regenerate path. The staleness comparison below instead honours
-  // a model pinned by the latest stored version, mirroring
-  // `getMusicPromptStalenessFn`.
-  const analysisModelId =
-    getAnalysisModelById(sequence.analysisModel)?.id ?? DEFAULT_ANALYSIS_MODEL;
-  // Shared with the scene-music badge (`getMusicPromptStalenessFn`) so the
-  // plan and the UI agree on the duration they hash.
-  const durationSeconds = musicRequestDurationSeconds(allShots);
-  // Track staleness stands on its own (#1657): a hand-edited prompt NULLs
-  // `musicPromptInputHash`, so gating this behind the prompt's hash would hide
-  // exactly the case the edit created. Never a first generation.
-  const hasIdleTrack =
-    !!sequence.musicUrl && sequence.musicStatus !== 'generating';
-  const trackStale =
-    hasIdleTrack &&
-    (await readMusicTrackStaleness(scopedDb, sequence, allShots)) === 'stale';
-  const none: MusicPlan = {
-    regenPrompt: false,
-    regenTrack: trackStale,
-    sceneSummaries: [],
-    analysisModelId,
-    promptSource: 'ai-generated',
-    durationSeconds,
+  allShots: Shot[],
+  units: readonly PlanUnitRef[]
+): Promise<MusicPlan | null> {
+  const regenPrompt = units.some((u) => u.kind === 'prompt:music');
+  const regenTrack = units.some((u) => u.kind === 'music');
+  if (!regenPrompt && !regenTrack) return null;
+  const [sceneRows, selectedPrompt] = await Promise.all([
+    scopedDb.scenes.listBySequence(sequence.id),
+    scopedDb.sequenceMusicPromptVersions.getSelected(sequence.id),
+  ]);
+  return {
+    regenPrompt,
+    regenTrack,
+    sceneSummaries: regenPrompt
+      ? musicSceneSummariesFromRows(sceneRows, allShots).sceneSummaries
+      : [],
+    analysisModelId:
+      getAnalysisModelById(sequence.analysisModel)?.id ??
+      DEFAULT_ANALYSIS_MODEL,
+    promptSource: selectedPrompt ? 'regenerated' : 'ai-generated',
+    durationSeconds: musicRequestDurationSeconds(allShots),
+    prompt: sequence.musicPrompt,
+    tags: sequence.musicTags,
   };
-  if (!sequence.musicPromptInputHash) return none;
-
-  const sceneContext = await loadSceneContextBySequence(scopedDb, sequence.id);
-  const scenes = allShots
-    .map((s) => resolveSceneForShot(s, sceneContext).scene)
-    .filter((s): s is NonNullable<typeof s> => s !== null);
-  if (scenes.length === 0) return none;
-
-  try {
-    const sceneSummaries = buildMusicSceneSummaries(scenes);
-    const latest = await scopedDb.sequenceMusicPromptVersions.getLatest(
-      sequence.id
-    );
-    const analysisModel = latest?.analysisModel ?? analysisModelId;
-    const regenPrompt = !(await musicPromptInputHashMatches(
-      sequence.musicPromptInputHash,
-      { sceneSummaries, analysisModel }
-    ));
-    return {
-      regenPrompt,
-      // Either the track's own hash diverged, or the prompt regen cascades
-      // into it.
-      regenTrack: trackStale || (regenPrompt && hasIdleTrack),
-      sceneSummaries,
-      analysisModelId,
-      promptSource: latest ? 'regenerated' : 'ai-generated',
-      durationSeconds,
-    };
-  } catch (error) {
-    // Fail closed — same posture as per-shot 'unknown'.
-    logger.warn(`music staleness uncomputable for sequence ${sequence.id}:`, {
-      err: error,
-    });
-    return none;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -965,11 +1239,13 @@ export async function claimTargets(args: {
   targets: PlanTarget[];
   sequenceId: string;
   parentInstanceId: string;
+  /** Who started the update; named on each image's start line. */
+  actorId: string;
 }): Promise<{
   claimsByShot: Record<string, ShotClaims>;
   skipped: SkippedShot[];
 }> {
-  const { scopedDb, targets, sequenceId, parentInstanceId } = args;
+  const { scopedDb, targets, sequenceId, parentInstanceId, actorId } = args;
   const claimsByShot: Record<string, ShotClaims> = {};
   const skipped: SkippedShot[] = [];
 
@@ -979,6 +1255,7 @@ export async function claimTargets(args: {
       target,
       sequenceId,
       parentInstanceId,
+      actorId,
     });
     // Only report already-in-flight when this run owns nothing for the shot.
     // Partial ownership (e.g. visual ours, motion foreign) still regenerates
@@ -986,7 +1263,8 @@ export async function claimTargets(args: {
     const ownsAny =
       claims.visualVersionId !== null ||
       claims.motionVersionId !== null ||
-      claims.imageVariantId !== null;
+      claims.imageVariantId !== null ||
+      claims.specClaimId !== null;
     if (foreignClaim && !ownsAny) {
       skipped.push({ shotId: target.shotId, reason: 'already-in-flight' });
     }
@@ -1001,13 +1279,18 @@ async function claimShotArtifacts(args: {
   target: PlanTarget;
   sequenceId: string;
   parentInstanceId: string;
+  actorId: string;
 }): Promise<{ claims: ShotClaims; foreignClaim: boolean }> {
-  const { scopedDb, target, sequenceId, parentInstanceId } = args;
+  const { scopedDb, target, sequenceId, parentInstanceId, actorId } = args;
   const claims: ShotClaims = {
     visualVersionId: null,
     motionVersionId: null,
     imageVariantId: null,
+    specClaimId: null,
   };
+  if (target.rewriteSpec) {
+    claims.specClaimId = await scopedDb.shotSpecVersions.claim(target.shotId);
+  }
   let foreignClaim = false;
 
   if (target.regenVisual && target.visualLiveHash) {
@@ -1057,6 +1340,7 @@ async function claimShotArtifacts(args: {
       target,
       sequenceId,
       parentInstanceId,
+      actorId,
       visualVersionId: claims.visualVersionId,
     });
     if (imageResult.kind === 'ours') {
@@ -1111,10 +1395,17 @@ async function claimImageArtifact(args: {
   target: PlanTarget;
   sequenceId: string;
   parentInstanceId: string;
+  actorId: string;
   visualVersionId: string | null;
 }): Promise<ClaimResult | { kind: 'none' }> {
-  const { scopedDb, target, sequenceId, parentInstanceId, visualVersionId } =
-    args;
+  const {
+    scopedDb,
+    target,
+    sequenceId,
+    parentInstanceId,
+    actorId,
+    visualVersionId,
+  } = args;
   const liveClaims = await scopedDb.frameVariants.listLiveClaims(
     target.frameId
   );
@@ -1135,6 +1426,8 @@ async function claimImageArtifact(args: {
       model: target.imageModel,
       dependsOnVersionId: visualVersionId,
       workflowRunId: parentInstanceId,
+      isPrimary: true,
+      actorId,
     });
     return { kind: 'ours', id: row.id };
   }
@@ -1157,6 +1450,8 @@ async function claimImageArtifact(args: {
       model: target.imageModel,
       pendingInputHash: target.imageLiveHash,
       workflowRunId: parentInstanceId,
+      isPrimary: true,
+      actorId,
     });
     return { kind: 'ours', id: row.id };
   } catch (error) {

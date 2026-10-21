@@ -1,20 +1,17 @@
 /**
- * Sequences list prefs (#1314): URL search is the live snapshot; localStorage
+ * Sequences list prefs (#1314): URL search is the live snapshot; a cookie
  * is what a bare /sequences visit restores. URL params never blend with
  * stored values — a shared `?q=` must not turn on this browser's support mode.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mem = new Map<string, string>();
-const localStorageMock = {
-  getItem: (k: string) => mem.get(k) ?? null,
-  setItem: (k: string, v: string) => {
-    mem.set(k, v);
+vi.doMock('@/ui/cookie', () => ({
+  readCookie: (name: string) => mem.get(name),
+  writeCookie: (name: string, value: string) => {
+    mem.set(name, value);
   },
-  removeItem: (k: string) => {
-    mem.delete(k);
-  },
-};
+}));
 
 const storedPrefs = {
   search: 'night diner',
@@ -29,12 +26,6 @@ const storedPrefs = {
 describe('sequences list prefs', () => {
   beforeEach(() => {
     mem.clear();
-    vi.stubGlobal('window', { localStorage: localStorageMock });
-    vi.stubGlobal('localStorage', localStorageMock);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it('reads empty URL search as the default list prefs', async () => {
@@ -191,22 +182,22 @@ describe('sequences list prefs', () => {
     ).toEqual({ q: user });
   });
 
-  it('round-trips prefs through localStorage and rejects garbage', async () => {
+  it('round-trips prefs through the cookie and rejects garbage', async () => {
     const {
       loadSequencesListPrefs,
       saveSequencesListPrefs,
-      SEQUENCES_LIST_PREFS_KEY,
+      SEQUENCES_LIST_PREFS_COOKIE,
     } = await import('./list-prefs');
 
     expect(loadSequencesListPrefs()).toBeNull();
     saveSequencesListPrefs(storedPrefs);
     expect(loadSequencesListPrefs()).toEqual(storedPrefs);
 
-    localStorage.setItem(SEQUENCES_LIST_PREFS_KEY, '{not json');
+    mem.set(SEQUENCES_LIST_PREFS_COOKIE, '{not json');
     expect(loadSequencesListPrefs()).toBeNull();
 
-    localStorage.setItem(
-      SEQUENCES_LIST_PREFS_KEY,
+    mem.set(
+      SEQUENCES_LIST_PREFS_COOKIE,
       JSON.stringify({ search: 'ok', aspectRatio: 'not-a-ratio' })
     );
     expect(loadSequencesListPrefs()).toMatchObject({
@@ -214,5 +205,33 @@ describe('sequences list prefs', () => {
       aspectRatio: null,
       supportMode: false,
     });
+  });
+
+  it('sends a bare visit to the remembered prefs once, and remembers a named URL', async () => {
+    const { rememberSequencesListPrefs, saveSequencesListPrefs } =
+      await import('./list-prefs');
+
+    expect(rememberSequencesListPrefs({}, false)).toBeNull();
+
+    const linked = { support: true, q: 'ada' };
+    expect(rememberSequencesListPrefs(linked, true)).toBeNull();
+    expect(rememberSequencesListPrefs({}, false)).toBeNull();
+    expect(rememberSequencesListPrefs(linked, false)).toBeNull();
+    const target = rememberSequencesListPrefs({}, false);
+    expect(target).toEqual(linked);
+    // The redirect target names prefs, so it does not redirect again.
+    expect(target && rememberSequencesListPrefs(target, false)).toBeNull();
+
+    // Stored but nothing the URL can carry (hideInternal without support).
+    saveSequencesListPrefs({
+      search: '',
+      analysisModel: null,
+      imageModel: null,
+      aspectRatio: null,
+      styleId: null,
+      supportMode: false,
+      hideInternal: true,
+    });
+    expect(rememberSequencesListPrefs({}, false)).toBeNull();
   });
 });

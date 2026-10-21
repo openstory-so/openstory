@@ -36,11 +36,14 @@
  * separately.
  */
 
+import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
 import { getRequestCountry } from '@/platform/server/request-country';
 import {
   DEFAULT_IMAGE_MODEL,
+  DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
+  safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
 } from '@/models/models';
@@ -49,21 +52,28 @@ import {
   getAnalysisModelById,
 } from '@/models/models.config';
 import { generateId } from '@/platform/id';
+import { getLogger } from '@/platform/logger';
 import { isElevenLabsConfigured } from '@/models/server/elevenlabs-config';
 import { NotFoundError, ValidationError } from '@/platform/errors';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Sequence } from '@/platform/server/db/schema';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import { sequenceScenesUrl } from './notify-sequence-ready';
-import { refreshCheckpointFromCast } from './refresh-checkpoint';
-import { snapshotDialogueContinuation } from './dialogue-continuation';
-import { resolveStopAt } from '@/sequences/pipeline';
+import {
+  flagsFromStopAt,
+  resolveStopAt,
+  type GenerationStage,
+} from '@/sequences/pipeline';
+import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import { resolveRunState } from '@/platform/server/workflow/reconcile';
 import type {
   StoryboardTriggerInput,
   StoryboardWorkflowInput,
 } from '@/platform/server/workflow/types';
+
+const logger = getLogger(['openstory', 'launchers']);
 
 /** Thrown when a storyboard run is already in flight for the sequence. */
 export class GenerationInProgressError extends Error {
@@ -99,7 +109,7 @@ export class GenerationStatusUnknownError extends Error {
  * Both fail closed — the right direction for a mutex — but with messages
  * that match what we actually know.
  */
-async function getSequenceRejectingActiveRun(
+export async function getSequenceRejectingActiveRun(
   scopedDb: ScopedDb,
   sequenceId: string
 ) {
@@ -151,7 +161,7 @@ async function resolveStoryboardPayload(
   // choke point every run passes, rather than fail the bible stage mid-run.
   if (sequence.generateVoices && !isElevenLabsConfigured()) {
     throw new ValidationError(
-      'Voice design is not configured on this deployment. Turn Voices off to generate.'
+      'Voice design is not configured on this deployment.'
     );
   }
 
@@ -178,25 +188,39 @@ async function resolveStoryboardPayload(
   // Casting identity is snapshotted here, alongside every other frozen field:
   // the matching workflows only re-read these rows for the late-arriving sheet
   // image, never for the name/description they match on.
+  //
+  // The locations matching may bind a script location to (#1695) are the
+  // team's: the ones the writer picked for this run, then the ones already
+  // attached to the sequence.
+  const attachedLocations = (await scopedDb.locations.list(sequenceId)).filter(
+    (l) => l.attached
+  );
+  const suggestedLocationIds = [
+    ...new Set([
+      ...(input.suggestedLocationIds ?? []),
+      ...attachedLocations.map((l) => l.id),
+    ]),
+  ];
   const [suggestedTalentRows, suggestedLocationRows] = await Promise.all([
     input.suggestedTalentIds?.length
       ? scopedDb.talent.getByIds(input.suggestedTalentIds)
       : Promise.resolve([]),
-    input.suggestedLocationIds?.length
-      ? scopedDb.locations.getByIds(input.suggestedLocationIds)
-      : Promise.resolve([]),
+    scopedDb.locations.getCurrentByIds(suggestedLocationIds),
   ]);
 
-  let checkpoint = input.checkpoint
-    ? await refreshCheckpointFromCast(scopedDb, sequenceId, input.checkpoint)
-    : undefined;
-  if (checkpoint && input.startFrom === 'dialogue') {
-    checkpoint = await snapshotDialogueContinuation(
-      scopedDb,
-      sequence,
-      checkpoint
-    );
-  }
+  // The live cast, frozen for the run (#2050): analysis reads only these,
+  // and must not rewrite one another sequence has ever cast.
+  const castRows = await scopedDb.characters.list(sequenceId);
+  const cast = await Promise.all(
+    castRows.map(async (row) => ({
+      id: row.id,
+      shared: await scopedDb.characters.getAnalysisMayNotRewrite(
+        sequenceId,
+        row.id
+      ),
+      entry: characterToBible(row),
+    }))
+  );
 
   // Capture during the request: durable workflows have no request context.
   const userCountry = getRequestCountry();
@@ -205,9 +229,7 @@ async function resolveStoryboardPayload(
     ...input,
     userCountry,
     sequenceId,
-    // A continue re-reads the cast the user may have edited since the run
-    // stopped — the checkpoint's LLM bible would revert those edits.
-    checkpoint,
+    cast,
     suggestedTalent: suggestedTalentRows.map((t) => ({
       talentId: t.id,
       name: t.name,
@@ -217,6 +239,7 @@ async function resolveStoryboardPayload(
       voiceId: t.voiceId,
       voiceDescription: t.voiceDescription,
     })),
+    suggestedLocationIds,
     suggestedLocations: suggestedLocationRows.map((l) => ({
       locationId: l.id,
       name: l.name,
@@ -246,16 +269,13 @@ async function resolveStoryboardPayload(
     // leave one half of the pipeline rendering stills and the other half not.
     referenceOnly: !sequence.generateStartFrames,
     generateVoices: sequence.generateVoices,
+    includeMusic: sequence.includeMusic,
     ownerEmail: await scopedDb.teamManagement.getMemberEmail(input.userId),
     sequenceUrl: sequenceScenesUrl(sequenceId),
-    // Pin stop-at from this click, else the sequence snapshot — never let
-    // auto-generate flags collapse References to Images (#1408).
+    // Pin stop-at from this click, else the sequence snapshot (#1408).
     stopAt: resolveStopAt({
       stopAt: input.stopAt,
       generationStopAt: sequence.generationStopAt,
-      autoGenerateMotion:
-        input.autoGenerateMotion ?? sequence.autoGenerateMotion,
-      autoGenerateMusic: input.autoGenerateMusic ?? sequence.autoGenerateMusic,
     }),
   };
 }
@@ -294,6 +314,9 @@ export async function triggerStoryboard(
     id: sequenceId,
     expectedRunId: sequence.workflowRunId,
     claimId,
+    activity: {
+      summary: input.resume ? 'Continued generation' : 'Started the storyboard',
+    },
   });
   if (!claimed) throw new GenerationInProgressError();
 
@@ -305,10 +328,73 @@ export async function triggerStoryboard(
   // crashes after create() but the caller retries the whole launcher, the
   // fresh claim produces a fresh instance; a stranded claim resolves as
   // 'failed' on the next acquire and the slot recovers.
-  const workflowRunId = await triggerWorkflow('/storyboard', payload, {
-    deduplicationId: claimId,
-  });
+  let workflowRunId: string;
+  try {
+    workflowRunId = await triggerWorkflow('/storyboard', payload, {
+      deduplicationId: claimId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    try {
+      await scopedDb.sequence(sequenceId).updateStatus('failed', message);
+    } catch (statusError) {
+      logger.error('Storyboard trigger status was not marked failed', {
+        err: statusError,
+        sequenceId,
+      });
+    }
+    await recordTriggerFailure(scopedDb.sequenceEvents, {
+      sequenceId,
+      actorId: input.userId,
+      kind: 'run.failed',
+      targetType: 'sequence',
+      targetId: sequenceId,
+      summary: 'Storyboard failed',
+    });
+    throw error;
+  }
   await scopedDb.sequences.update({ id: sequenceId, workflowRunId });
 
   return { workflowRunId };
+}
+
+/**
+ * Continue (#1408, #1818): run the frozen plan's units in resume mode up to
+ * `stopAt`, with the sequence's current models. Shared by the editor's
+ * `continueGenerationFn` and agent operations (#1460). Holds the mutex via
+ * `triggerStoryboard`.
+ */
+export function triggerContinue(
+  scopedDb: ScopedDb,
+  input: {
+    userId: string;
+    teamId: string;
+    sequence: Pick<Sequence, 'id' | 'imageModel' | 'videoModel' | 'musicModel'>;
+    plan: UpdateStalePlan;
+    stopAt: GenerationStage;
+    leftoverGrokShotIds?: string[];
+  }
+): Promise<{ workflowRunId: string }> {
+  const { sequence, stopAt } = input;
+  const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(stopAt);
+  return triggerStoryboard(scopedDb, {
+    userId: input.userId,
+    teamId: input.teamId,
+    sequenceId: sequence.id,
+    resume: true,
+    plan: input.plan,
+    stopAt,
+    autoGenerateMotion,
+    autoGenerateMusic,
+    imageModels: [
+      safeTextToImageModel(sequence.imageModel, DEFAULT_IMAGE_MODEL),
+    ],
+    videoModels: [
+      safeImageToVideoModel(sequence.videoModel, DEFAULT_VIDEO_MODEL),
+    ],
+    musicModel: sequence.musicModel
+      ? safeAudioModel(sequence.musicModel, DEFAULT_MUSIC_MODEL)
+      : undefined,
+    leftoverGrokShotIds: input.leftoverGrokShotIds,
+  });
 }

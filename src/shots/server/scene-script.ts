@@ -25,6 +25,8 @@ import { scriptForShot } from '@/shots/shot-list-pass';
 export type SceneContext = {
   scene: SceneRow;
   script: Scene['originalScript'] | null;
+  /** Selected script version's `createdAt`. Absent on hand-built contexts. */
+  scriptCreatedAt?: Date | null;
 };
 
 /**
@@ -64,10 +66,14 @@ export function composeSequenceScript(
     content: Scene['originalScript'];
   }>
 ): string {
-  return [...rows]
-    .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((row) => row.content.extract)
-    .join('\n\n');
+  return (
+    [...rows]
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((row) => row.content.extract)
+      // A scene added by hand has an empty script (#1600): no blank paragraph.
+      .filter((extract) => extract.length > 0)
+      .join('\n\n')
+  );
 }
 
 type SceneContextSource =
@@ -124,6 +130,7 @@ function buildSceneContext(
     map.set(scene.id, {
       scene,
       script: versions.get(scene.id)?.content ?? null,
+      scriptCreatedAt: versions.get(scene.id)?.createdAt ?? null,
     });
   }
   return map;

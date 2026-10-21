@@ -1,3 +1,8 @@
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
 /**
  * Scoped Character Sheet Variants Sub-module
  * Append-only sheet versions plus mid-flight divergence parking.
@@ -6,32 +11,63 @@
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import type {
-  Character,
   CharacterSheetVariant,
   NewCharacterSheetVariant,
 } from '@/platform/server/db/schema';
 import {
+  characterBibleVersions,
+  characterLooks,
   characterSheetVariants,
   characters,
 } from '@/platform/server/db/schema';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { characterBibleColumns } from './bible-versions';
+import { liveLookSheetVersionId, requireLook } from './character-looks';
+import { and, asc, eq, inArray, isNull, notExists, or, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { VersionListOptions } from '@/platform/server/db/read-page';
 import { insertDivergentRaceTolerant } from '@/platform/server/db/scoped/divergent-insert';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 import type { CharacterSheetInputHash } from '@/shots/input-hash';
+import { landCharacterSheet } from './sheet-claims';
 
-export function createCharacterSheetVariantsMethods(db: Database) {
+/**
+ * The sheets of one look (#2015). A row with no `lookId` is one an older
+ * worker wrote mid-deploy: a sheet of its character's default look, whose id
+ * is the character's.
+ */
+const ofLook = (lookId: string) =>
+  or(
+    eq(characterSheetVariants.lookId, lookId),
+    and(
+      isNull(characterSheetVariants.lookId),
+      eq(characterSheetVariants.characterId, lookId)
+    )
+  );
+
+export function createCharacterSheetVariantsMethods(
+  db: Database,
+  teamId: string
+) {
+  /** Sheets of the team's characters: every read and write here carries it. */
+  const ofTeam = () =>
+    inArray(
+      characterSheetVariants.characterId,
+      db
+        .select({ id: characters.id })
+        .from(characters)
+        .where(eq(characters.teamId, teamId))
+    );
   return {
     /** Every attempt (any status), oldest-first; discarded rows on request. */
-    listByCharacter: async (
-      characterId: string,
+    listByLook: async (
+      lookId: string,
       options?: VersionListOptions
     ): Promise<CharacterSheetVariant[]> => {
       return await pageOf(
         db.select().from(characterSheetVariants).$dynamic(),
         and(
-          eq(characterSheetVariants.characterId, characterId),
+          ofTeam(),
+          ofLook(lookId),
           options?.includeDiscarded
             ? undefined
             : isNull(characterSheetVariants.discardedAt)
@@ -43,20 +79,21 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Selectable history: completed, not discarded, oldest-first so a
-     * left-to-right strip can label v1, v2, … from position (same as
+     * Selectable history of a look: completed, not discarded, oldest-first
+     * so a left-to-right strip can label v1, v2, … from position (same as
      * frame / video versions). Includes parked divergent rows so the user
      * can pick one instead of promoting through the banner.
      */
-    listHistoryByCharacter: async (
-      characterId: string
+    listHistoryByLook: async (
+      lookId: string
     ): Promise<CharacterSheetVariant[]> => {
       return db
         .select()
         .from(characterSheetVariants)
         .where(
           and(
-            eq(characterSheetVariants.characterId, characterId),
+            ofTeam(),
+            ofLook(lookId),
             eq(characterSheetVariants.status, 'completed'),
             isNull(characterSheetVariants.discardedAt)
           )
@@ -75,6 +112,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`
           )
@@ -94,6 +132,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             eq(characterSheetVariants.characterId, characterId),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
@@ -111,6 +150,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             inArray(characterSheetVariants.characterId, characterIds),
             sql`${characterSheetVariants.divergedAt} IS NOT NULL`,
             sql`${characterSheetVariants.discardedAt} IS NULL`
@@ -134,7 +174,10 @@ export function createCharacterSheetVariantsMethods(db: Database) {
             .select()
             .from(characterSheetVariants)
             .where(
-              inArray(characterSheetVariants.id, variantIds.slice(i, i + 80))
+              and(
+                ofTeam(),
+                inArray(characterSheetVariants.id, variantIds.slice(i, i + 80))
+              )
             ))
         );
       return rows;
@@ -146,7 +189,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const result = await db
         .select()
         .from(characterSheetVariants)
-        .where(eq(characterSheetVariants.id, variantId));
+        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
       return result[0] ?? null;
     },
 
@@ -160,38 +203,26 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      * backfill gave every such row a version of its own.
      */
     applyConvergent: async (args: {
-      characterId: string;
+      /** The look the sheet is of (#2015). */
+      lookId: string;
       url: string;
       storagePath: string;
-      /** Verify-mirrored current-inputs hash on parent and version row. */
+      /** Verify-mirrored current-inputs hash on the version row. */
       inputHash: CharacterSheetInputHash | null;
       model: string;
       workflowRunId?: string | null;
-      isPerson?: boolean;
-    }): Promise<{ character: Character; version: CharacterSheetVariant }> => {
-      const {
-        characterId,
-        url,
-        storagePath,
-        inputHash,
-        model,
-        workflowRunId,
-        isPerson,
-      } = args;
-      const [existing] = await db
-        .select()
-        .from(characters)
-        .where(eq(characters.id, characterId));
-      if (!existing) {
-        throw new Error(`Character ${characterId} not found`);
-      }
+    }): Promise<{ version: CharacterSheetVariant }> => {
+      const { lookId, url, storagePath, inputHash, model, workflowRunId } =
+        args;
+      const look = await requireLook(db, teamId, lookId);
 
       const now = new Date();
       const [version] = await db
         .insert(characterSheetVariants)
         .values({
           id: generateId(),
-          characterId,
+          characterId: look.characterId,
+          lookId,
           model,
           url,
           storagePath,
@@ -205,30 +236,30 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         throw new Error('Failed to insert character sheet version');
       }
 
-      const [character] = await db
-        .update(characters)
+      await db
+        .update(characterLooks)
         .set({
           sheetStatus: 'completed',
           sheetError: null,
           selectedSheetVersionId: version.id,
+          // An unclaimed write picks the sheet: it demotes a run's claim.
+          pendingPromoteSheetVersionId: null,
           updatedAt: now,
-          ...(isPerson !== undefined ? { isPerson } : {}),
         })
-        .where(eq(characters.id, characterId))
-        .returning();
-      if (!character) {
-        throw new Error(`Character ${characterId} disappeared during apply`);
-      }
-      return { character, version };
+        .where(eq(characterLooks.id, look.id));
+      return { version };
     },
 
     /**
-     * Repoint the live sheet at an existing completed version. Only moves the
-     * pointer — reads resolve url / path / hash from the version it names
-     * (#1419). A divergent row is unmarked so the banner clears. Previous
-     * pointer is recorded on the event for undo.
+     * Repoint a look's live sheet at one of its completed versions — the
+     * look is the version's own (#2015). Only moves the pointer — reads
+     * resolve url / path / hash from the version it names (#1419). A
+     * divergent row is unmarked so the banner clears. Previous pointer is
+     * recorded on the event for undo. `sequenceId` is the sequence the pick
+     * was made from, for its event; null from the Characters page.
      */
     select: async (
+      sequenceId: string | null,
       characterId: string,
       versionId: string,
       opts: { actorId: string | null }
@@ -238,30 +269,38 @@ export function createCharacterSheetVariantsMethods(db: Database) {
         .from(characterSheetVariants)
         .where(
           and(
+            ofTeam(),
             eq(characterSheetVariants.id, versionId),
             eq(characterSheetVariants.characterId, characterId)
           )
         );
       if (!version) {
-        throw new Error(
+        throw new NotFoundError(
           `CharacterSheetVariant ${versionId} not found for character ${characterId}`
         );
       }
       if (version.status !== 'completed' || !version.url) {
-        throw new Error(
+        throw new ValidationError(
           `CharacterSheetVariant ${versionId} is '${version.status}', not a completed image`
         );
       }
       if (version.discardedAt) {
-        throw new Error(
+        throw new ValidationError(
           `CharacterSheetVariant ${versionId} is discarded — restore it first`
         );
       }
 
+      const look = await requireLook(db, teamId, version.lookId ?? characterId);
       const [existing] = await db
-        .select()
+        .select({ name: characterBibleColumns.name })
         .from(characters)
-        .where(eq(characters.id, characterId));
+        .leftJoin(
+          characterBibleVersions,
+          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
+        )
+        .where(
+          and(eq(characters.id, characterId), eq(characters.teamId, teamId))
+        );
       if (!existing) {
         throw new Error(`Character ${characterId} not found`);
       }
@@ -269,34 +308,54 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       const now = new Date();
       await db.batch([
         db
-          .update(characters)
+          .update(characterLooks)
           .set({
             sheetStatus: 'completed',
             sheetError: null,
             selectedSheetVersionId: version.id,
+            // The user's pick wins over an in-flight run (#1113).
+            pendingPromoteSheetVersionId: null,
             updatedAt: now,
           })
-          .where(eq(characters.id, characterId)),
+          .where(eq(characterLooks.id, look.id)),
         db
           .update(characterSheetVariants)
           .set({ divergedAt: null, updatedAt: now })
           .where(eq(characterSheetVariants.id, versionId)),
-        buildEventInsert(db, {
-          sequenceId: existing.sequenceId,
-          actorId: opts.actorId,
-          kind: 'sheet.selected',
-          targetType: 'character',
-          targetId: characterId,
-          summary: `Selected sheet version for ${existing.name}`,
-          data: {
-            prevState: {
-              selectedSheetVersionId: existing.selectedSheetVersionId,
-            },
-            versionId,
-          },
-        }),
+        ...(sequenceId === null
+          ? []
+          : [
+              buildEventInsert(db, {
+                sequenceId,
+                actorId: opts.actorId,
+                kind: 'sheet.selected',
+                targetType: 'character',
+                targetId: characterId,
+                summary: `Selected sheet version for ${existing.name}`,
+                data: {
+                  prevState: {
+                    selectedSheetVersionId: look.selectedSheetVersionId,
+                  },
+                  lookId: look.id,
+                  versionId,
+                },
+              }),
+            ]),
       ]);
       return { ...version, divergedAt: null };
+    },
+
+    /**
+     * A sheet run's completion (#1113): append its row under the claimed id
+     * and select it only while the claim still names it; otherwise park it
+     * as divergent. See {@link landCharacterSheet}.
+     */
+    promoteIfPending: async (
+      args: Parameters<typeof landCharacterSheet>[1]
+    ) => {
+      // A character an older worker wrote gets its look row first.
+      await requireLook(db, teamId, args.lookId);
+      return await landCharacterSheet(db, args);
     },
 
     insert: async (
@@ -314,7 +373,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
     },
 
     /**
-     * Idempotent on (characterId, model, inputHash) within the divergent
+     * Idempotent on (lookId, model, inputHash) within the divergent
      * partial unique index. Tolerant to two failure modes:
      *
      *  - Step retry: the row was inserted on a previous attempt, the
@@ -329,6 +388,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
      */
     insertDivergent: async (
       values: NewCharacterSheetVariant & {
+        lookId: string;
         inputHash: CharacterSheetInputHash;
         divergedAt: Date;
       }
@@ -339,7 +399,7 @@ export function createCharacterSheetVariantsMethods(db: Database) {
           .from(characterSheetVariants)
           .where(
             and(
-              eq(characterSheetVariants.characterId, values.characterId),
+              eq(characterSheetVariants.lookId, values.lookId),
               eq(characterSheetVariants.model, values.model),
               eq(characterSheetVariants.inputHash, values.inputHash),
               sql`${characterSheetVariants.divergedAt} IS NOT NULL`
@@ -353,25 +413,81 @@ export function createCharacterSheetVariantsMethods(db: Database) {
       });
     },
 
-    /** Soft-delete a divergent alternate; preserves the row for the toast Undo. */
+    /**
+     * Soft-delete a divergent alternate; preserves the row for the toast Undo.
+     * A look's live sheet (its pointer, or a default look's pre-#1419 row
+     * keyed to the character's own id) is refused: select another version
+     * first.
+     */
     discard: async (variantId: string): Promise<Date> => {
+      // The "is it live" check sits in the UPDATE's WHERE, so a select
+      // landing between a check and the write cannot discard a sheet that
+      // was just selected. The variant's own look, by primary key; a row
+      // with no look is its character's default look's, whose id is the
+      // character's.
+      const live = db
+        .select({ id: characterLooks.id })
+        .from(characterLooks)
+        .where(
+          and(
+            eq(
+              characterLooks.id,
+              sql`COALESCE(${characterSheetVariants.lookId}, ${characterSheetVariants.characterId})`
+            ),
+            eq(liveLookSheetVersionId, characterSheetVariants.id)
+          )
+        );
       const discardedAt = new Date();
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt, updatedAt: discardedAt })
-        .where(eq(characterSheetVariants.id, variantId))
+        .where(
+          and(
+            ofTeam(),
+            eq(characterSheetVariants.id, variantId),
+            notExists(live)
+          )
+        )
         .returning();
       if (result.length === 0) {
-        throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        const [row] = await db
+          .select({ id: characterSheetVariants.id })
+          .from(characterSheetVariants)
+          .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)));
+        if (!row)
+          throw new Error(`CharacterSheetVariant ${variantId} not found`);
+        throw new ConflictError(
+          'Cannot discard the selected sheet version; select another first.'
+        );
       }
       return discardedAt;
+    },
+
+    /**
+     * A sheet's portrait, drawn by its own run after the sheet was saved.
+     * Written once: a row that already has one is left as it is.
+     */
+    setPortrait: async (
+      variantId: string,
+      portraitUrl: string
+    ): Promise<void> => {
+      await db
+        .update(characterSheetVariants)
+        .set({ portraitUrl, updatedAt: new Date() })
+        .where(
+          and(
+            ofTeam(),
+            eq(characterSheetVariants.id, variantId),
+            isNull(characterSheetVariants.portraitUrl)
+          )
+        );
     },
 
     undiscard: async (variantId: string): Promise<void> => {
       const result = await db
         .update(characterSheetVariants)
         .set({ discardedAt: null, updatedAt: new Date() })
-        .where(eq(characterSheetVariants.id, variantId))
+        .where(and(ofTeam(), eq(characterSheetVariants.id, variantId)))
         .returning();
       if (result.length === 0) {
         throw new Error(`CharacterSheetVariant ${variantId} not found`);

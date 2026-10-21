@@ -29,13 +29,17 @@ import { playerPosterSrc } from './player-poster';
 import { createPackedPlayback } from './packed-playback';
 import { usePostHog } from '@posthog/react';
 import { Download, Link, Loader2, Share2, VideoIcon } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   generatePackedShotChaptersVTT,
   packedClipWindows,
   packedPlaybackGroup,
 } from '@/shots/packed-clip-window';
 import { toast } from 'sonner';
+import {
+  shotVideoSubtitlesVtt,
+  subtitleTrackRevision,
+} from '@/sequences/ui/theatre/playback-clips';
 import { VideoPlayer } from './video-player';
 import { VideoStateOverlay } from './video-state-overlay';
 import { getShotDownloadUrlFn } from '@/shots/shots.fn';
@@ -174,7 +178,19 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     packedWindows.length > 1
       ? generatePackedShotChaptersVTT(packedGroup)
       : null;
-  const chaptersUrl = usePackedChaptersUrl(packedChaptersVtt);
+  // A data: URL, not a blob URL: it is a plain string, so SSR renders the same
+  // track as the client (workerd's URL.createObjectURL throws).
+  const chaptersUrl = packedChaptersVtt
+    ? `data:text/vtt;charset=utf-8,${encodeURIComponent(packedChaptersVtt)}`
+    : undefined;
+  const subtitlesUrl = useMemo(() => {
+    if (!currentShot?.video?.url) return undefined;
+    const members = packedGroup.length > 0 ? packedGroup : [currentShot];
+    const vtt = shotVideoSubtitlesVtt(members);
+    if (!vtt) return undefined;
+    const revision = subtitleTrackRevision(vtt);
+    return `/api/sequences/${currentShot.sequenceId}/shots/${currentShot.id}/subtitles?v=${revision}`;
+  }, [currentShot, packedGroup]);
   const showsStillImage =
     selectedTab === 'image-prompt' || selectedTab === 'scene-variants';
   const playbackVideoUrl = showsStillImage
@@ -559,6 +575,7 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             key={playbackVideoUrl || `${currentShot.id}:${displayImage || ''}`}
             src={playbackVideoUrl}
             chaptersUrl={chaptersUrl}
+            subtitlesUrl={subtitlesUrl}
             seekTo={seekTo}
             posterSrc={playbackVideoUrl ? null : displayImage}
             aspectRatio={aspectRatio}
@@ -580,8 +597,8 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
             videoStatus={
               isVariantVideoPreview ? 'completed' : currentShot.videoStatus
             }
-            imageStatus={currentShot.frame.imageStatus}
-            imageError={currentShot.frame.imageError}
+            imageStatus={currentShot.imageStatus}
+            imageError={currentShot.imageError}
             videoError={currentShot.primaryVideo?.error ?? null}
             progressMessage={progressMessage}
             retry={retry}
@@ -647,22 +664,3 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
     </div>
   );
 };
-
-function usePackedChaptersUrl(vtt: string | null): string | undefined {
-  const url = useMemo(() => {
-    if (
-      !vtt ||
-      typeof Blob === 'undefined' ||
-      typeof URL === 'undefined' ||
-      typeof URL.createObjectURL !== 'function'
-    ) {
-      return undefined;
-    }
-    return URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
-  }, [vtt]);
-  useEffect(() => {
-    if (!url) return;
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
-  return url;
-}

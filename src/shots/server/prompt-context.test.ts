@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import { buildCastCharacterBible } from '@/cast/character-prompt';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
   StyleConfig,
@@ -17,11 +17,17 @@ import {
   hashVisualPromptInput,
 } from '@/shots/input-hash';
 import { narrowShotPromptContext } from './prompt-context';
+import type { VisualPromptHashInput } from '@/shots/input-hash';
+
+/** A shot with no prompt yet: the scene's continuity tags pick the bibles. */
+const narrow = <T extends VisualPromptHashInput>(ctx: T) =>
+  narrowShotPromptContext(ctx, { channel: 'visual', prompt: null });
 import type {
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
   Scene,
+  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
 
 const style: StyleConfig = migrateStyleConfigV1ToV2({
@@ -42,12 +48,13 @@ const alice: CharacterBibleEntry = {
   ethnicity: '',
   physicalDescription: '',
   standardClothing: '',
-  distinguishingFeatures: '',
+  looks: [],
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: '',
 };
 const bob: CharacterBibleEntry = { ...alice, characterId: 'bob', name: 'Bob' };
@@ -56,13 +63,11 @@ const beach: LocationBibleEntry = {
   locationId: 'beach',
   name: 'Beach',
   type: 'exterior',
-  timeOfDay: '',
   description: '',
   architecturalStyle: '',
   keyFeatures: '',
-  colorPalette: '',
-  lightingSetup: '',
   ambiance: '',
+  rendering: 'Photoreal live action',
   consistencyTag: '',
   firstMention: { sceneId: '', text: '', lineNumber: 0 },
 };
@@ -127,7 +132,7 @@ describe('narrowShotPromptContext', () => {
       aspectRatio: '16:9',
       analysisModel: 'anthropic/claude-haiku-4.5',
     };
-    const narrowed = narrowShotPromptContext(ctx);
+    const narrowed = narrow(ctx);
     expect(narrowed.characterBible.map((c) => c.characterId)).toEqual([
       'alice',
     ]);
@@ -143,7 +148,7 @@ describe('narrowShotPromptContext', () => {
       aspectRatio: '16:9',
       analysisModel: 'anthropic/claude-haiku-4.5',
     };
-    const narrowed = narrowShotPromptContext(ctx);
+    const narrowed = narrow(ctx);
     expect(narrowed.locationBible.map((l) => l.locationId)).toEqual(['beach']);
   });
 
@@ -157,11 +162,45 @@ describe('narrowShotPromptContext', () => {
       aspectRatio: '16:9',
       analysisModel: 'anthropic/claude-haiku-4.5',
     };
-    const narrowed = narrowShotPromptContext(ctx);
+    const narrowed = narrow(ctx);
     expect(narrowed.elementBible.map((e) => e.token)).toEqual(['LOGO']);
   });
 
-  it('returns the full context unchanged when continuity is absent', () => {
+  it('names only the character the shot prompt names (#2012)', async () => {
+    const ctx = {
+      scene: sceneReferencing({ characterTags: ['alice', 'bob'] }),
+      styleConfig: style,
+      characterBible: [alice, bob],
+      locationBible: [],
+      elementBible: [],
+      aspectRatio: '16:9',
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    };
+    const view = {
+      channel: 'visual',
+      prompt: 'ALICE waits by the window.',
+    } as const;
+    const shotScoped = narrowShotPromptContext(ctx, view);
+    expect(shotScoped.characterBible.map((c) => c.characterId)).toEqual([
+      'alice',
+    ]);
+    // The scene roster is a different digest: an old stamp, never a new one.
+    expect(await hashVisualPromptInput(shotScoped)).not.toBe(
+      await hashVisualPromptInput(narrow(ctx))
+    );
+    const bobEdited = narrowShotPromptContext(
+      {
+        ...ctx,
+        characterBible: [{ ...bob, physicalDescription: 'now bearded' }, alice],
+      },
+      view
+    );
+    expect(await hashVisualPromptInput(bobEdited)).toBe(
+      await hashVisualPromptInput(shotScoped)
+    );
+  });
+
+  it('with no continuity, only a prompt can put anyone in the shot', () => {
     const ctx = {
       scene: {
         sceneId: 's1',
@@ -175,8 +214,23 @@ describe('narrowShotPromptContext', () => {
       aspectRatio: '16:9',
       analysisModel: 'anthropic/claude-haiku-4.5',
     };
-    const narrowed = narrowShotPromptContext(ctx);
-    expect(narrowed).toEqual(ctx);
+    expect(narrow(ctx)).toEqual({
+      ...ctx,
+      characterBible: [],
+      locationBible: [],
+      elementBible: [],
+    });
+    expect(
+      narrowShotPromptContext(ctx, {
+        channel: 'visual',
+        prompt: 'BOB on the beach with the LOGO.',
+      })
+    ).toEqual({
+      ...ctx,
+      characterBible: [bob],
+      locationBible: [beach],
+      elementBible: [logo],
+    });
   });
 });
 
@@ -195,15 +249,14 @@ describe('narrowed hash stability (the user-reported bug)', () => {
     analysisModel: 'anthropic/claude-haiku-4.5',
     startingFrameImageUrl: null,
     referenceOnly: false,
+    dialogue: { presence: false, lines: [] },
   };
 
   it('adding an unreferenced element does NOT change the visual hash', async () => {
-    const before = await hashVisualPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashVisualPromptInput(narrow(baseCtx));
     // Simulate uploading a new element that no scene references yet.
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         elementBible: [logo, bottle],
       })
@@ -212,11 +265,9 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   });
 
   it('adding an unreferenced character does NOT change the visual hash', async () => {
-    const before = await hashVisualPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashVisualPromptInput(narrow(baseCtx));
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         characterBible: [alice, bob],
       })
@@ -225,11 +276,9 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   });
 
   it('adding an unreferenced location does NOT change the motion hash', async () => {
-    const before = await hashMotionPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashMotionPromptInput(narrow(baseCtx));
     const after = await hashMotionPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         locationBible: [beach, forest],
       })
@@ -239,14 +288,14 @@ describe('narrowed hash stability (the user-reported bug)', () => {
 
   it('referencing a new element via continuity tags DOES change the hash', async () => {
     const before = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         elementBible: [logo, bottle],
       })
     );
     // Same bibles, but now the scene's continuity additionally references BOTTLE.
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         scene: sceneReferencing({
           characterTags: ['alice'],
@@ -263,7 +312,7 @@ describe('narrowed hash stability (the user-reported bug)', () => {
   // (e.g. 7 → 8 for a model that only supports {5, 10}) and overwrites
   // `shot.metadata` after the visual prompt hash was already stored. The
   // visual hash must NOT care about that downstream parameter — duration is
-  // hashed by `computeShotVideoInputHash` where it actually matters.
+  // in the render manifest, where it actually matters.
   it('changing metadata.durationSeconds does NOT change the visual hash', async () => {
     const continuityTags = {
       characterTags: ['alice'],
@@ -271,13 +320,13 @@ describe('narrowed hash stability (the user-reported bug)', () => {
       elementTags: ['LOGO'],
     };
     const before = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 7 }),
       })
     );
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 8 }),
       })
@@ -292,13 +341,13 @@ describe('narrowed hash stability (the user-reported bug)', () => {
       elementTags: ['LOGO'],
     };
     const before = await hashMotionPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 7 }),
       })
     );
     const after = await hashMotionPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         scene: sceneReferencing({ ...continuityTags, durationSeconds: 8 }),
       })
@@ -321,14 +370,13 @@ describe('prompt-driving projection (#867 §4.2)', () => {
     analysisModel: 'anthropic/claude-haiku-4.5',
     startingFrameImageUrl: null,
     referenceOnly: false,
+    dialogue: { presence: false, lines: [] },
   };
 
   it('a consistencyTag change on a referenced character does NOT move the visual hash', async () => {
-    const before = await hashVisualPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashVisualPromptInput(narrow(baseCtx));
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         characterBible: [{ ...alice, consistencyTag: 'alice_recast_xyz' }],
       })
@@ -337,11 +385,9 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a firstMention change on a referenced location does NOT move the motion hash', async () => {
-    const before = await hashMotionPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashMotionPromptInput(narrow(baseCtx));
     const after = await hashMotionPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         locationBible: [
           {
@@ -355,11 +401,9 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a rename on a referenced location does NOT move the visual hash', async () => {
-    const before = await hashVisualPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashVisualPromptInput(narrow(baseCtx));
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         locationBible: [{ ...beach, name: 'The Shore' }],
       })
@@ -368,11 +412,9 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a rename on a referenced character does NOT move the visual hash', async () => {
-    const before = await hashVisualPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashVisualPromptInput(narrow(baseCtx));
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         characterBible: [{ ...alice, name: 'Alicia' }],
       })
@@ -381,11 +423,9 @@ describe('prompt-driving projection (#867 §4.2)', () => {
   });
 
   it('a physicalDescription change on a referenced character DOES move the visual hash', async () => {
-    const before = await hashVisualPromptInput(
-      narrowShotPromptContext(baseCtx)
-    );
+    const before = await hashVisualPromptInput(narrow(baseCtx));
     const after = await hashVisualPromptInput(
-      narrowShotPromptContext({
+      narrow({
         ...baseCtx,
         characterBible: [{ ...alice, physicalDescription: 'now bearded' }],
       })
@@ -403,15 +443,16 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     ethnicity: 'Caucasian',
     physicalDescription: 'Tall, blonde hair, blue eyes',
     standardClothing: 'Dark trench coat',
-    distinguishingFeatures: 'Scar on left cheek',
+    looks: [],
     personality: '',
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'detective_sarah_blonde_30s',
   };
-  const talentSheet: CharacterBibleEntry = {
+  const talentSheet: TalentSheetMetadata = {
     characterId: 'talent_1',
     name: 'Elvis Presley',
     age: '25',
@@ -419,6 +460,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     ethnicity: 'White',
     physicalDescription: 'Dark hair, sideburns, athletic build',
     standardClothing: 'White jumpsuit',
+    looks: [],
     distinguishingFeatures: 'Sideburns',
     personality: '',
     movement: '',
@@ -443,7 +485,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
 
   // Simulate the row the character-bible workflow persists, then read it back
   // the way `getShotStalenessFn` does at verify time.
-  const makeCharacter = (b: CharacterBibleEntry): CharacterWithSheet => ({
+  const makeCharacter = (b: CharacterBibleEntry): CastCharacterWithSheet => ({
     id: `row_${b.characterId}`,
     sequenceId: 'seq_1',
     talentId: 'talent_1',
@@ -454,11 +496,12 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     ethnicity: b.ethnicity,
     physicalDescription: b.physicalDescription,
     standardClothing: b.standardClothing,
-    distinguishingFeatures: b.distinguishingFeatures,
+    legacyDistinguishingFeatures: null,
     personality: '',
     movement: '',
     voiceOnly: b.voiceOnly,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: null,
     voiceDescription: b.voiceDescription || null,
     voicePreviews: null,
@@ -471,18 +514,29 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
     firstMentionLine: null,
     sheetImageUrl: null,
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetStatus: 'completed',
     sheetGeneratedAt: null,
     sheetError: null,
     sheetInputHash: null,
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
+    // Cast in its sequence (#2017).
+    castId: 'cast-1',
+    teamId: 'team-1',
+    selectedBibleVersionId: 'bible-1',
+    pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });
 
   const ctxWith = (characterBible: CharacterBibleEntry[]) =>
-    narrowShotPromptContext({
+    narrow({
       scene,
       styleConfig: style,
       characterBible,
@@ -492,6 +546,7 @@ describe('casting round-trip — stamp matches verify (#867)', () => {
       analysisModel: 'anthropic/claude-haiku-4.5',
       startingFrameImageUrl: null,
       referenceOnly: false,
+      dialogue: { presence: false, lines: [] },
     });
 
   it('stamp (cast bible fed to prompt) equals verify (cast bible read from the DB)', async () => {
@@ -553,7 +608,7 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     locationBible: LocationBibleEntry[],
     elementBible: ElementBibleEntry[]
   ) =>
-    narrowShotPromptContext({
+    narrow({
       scene,
       styleConfig: style,
       characterBible: [],
@@ -567,29 +622,33 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
     l: LocationBibleEntry
   ): SequenceLocationWithReference => ({
     id: `row_${l.locationId}`,
+    teamId: 'team_1',
+    legacyLibraryReferenceHash: null,
+    linkId: `link_${l.locationId}`,
+    attached: false,
     sequenceId: 'seq_1',
-    libraryLocationId: null,
     locationId: l.locationId,
     name: l.name,
     type: l.type,
-    timeOfDay: l.timeOfDay,
     description: l.description,
     architecturalStyle: l.architecturalStyle,
     keyFeatures: l.keyFeatures,
-    colorPalette: l.colorPalette,
-    lightingSetup: l.lightingSetup,
     ambiance: l.ambiance,
+    rendering: l.rendering,
     consistencyTag: l.consistencyTag,
     firstMentionSceneId: l.firstMention.sceneId || null,
     firstMentionText: l.firstMention.text || null,
     firstMentionLine: l.firstMention.lineNumber || null,
     referenceImageUrl: null,
     referenceImagePath: null,
+    referencePortraitUrl: null,
     referenceStatus: 'completed',
     referenceGeneratedAt: null,
     referenceError: null,
     referenceInputHash: null,
     selectedReferenceVersionId: null,
+    selectedBibleVersionId: null,
+    pendingPromoteReferenceVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -623,7 +682,6 @@ describe('location/element bible round-trip — stamp matches verify (#867)', ()
       const stampLocation: LocationBibleEntry = {
         ...beach,
         type,
-        timeOfDay: 'dawn',
         description: 'sand and surf',
         keyFeatures: 'pier, dunes',
       };

@@ -39,7 +39,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'audio', 'music-generation']);
 
 export type GenerateMusicOptions = {
-  scopedDb?: CredentialScopedDb;
+  credentials?: CredentialScopedDb;
   /** PostHog LLM-analytics metadata for the generation span. */
   observability?: AIObservabilityMeta;
   /** Style/mood prompt for the music (e.g., "tense orchestral, dark atmosphere") */
@@ -164,7 +164,7 @@ export async function generateMusic(
   const attribution = {
     ...options.observability,
     // `??` after the spread — see the note in image-generation.ts.
-    userId: options.observability?.userId ?? options.scopedDb?.userId,
+    userId: options.observability?.userId ?? options.credentials?.userId,
   };
 
   try {
@@ -222,8 +222,8 @@ async function callElevenLabsAudio(
     duration: billedDuration,
   });
 
-  const apiKeyInfo = options.scopedDb
-    ? await options.scopedDb.resolveKey('elevenlabs')
+  const apiKeyInfo = options.credentials
+    ? await options.credentials.resolveKey('elevenlabs')
     : (() => {
         const key = getElevenLabsApiKey();
         if (!key) {
@@ -335,8 +335,8 @@ async function callFalAudio(
     duration: shape.duration ?? '(fixed by model)',
   });
 
-  const falApiKeyInfo = options.scopedDb
-    ? await options.scopedDb.resolveKey('fal')
+  const falApiKeyInfo = options.credentials
+    ? await options.credentials.resolveKey('fal')
     : { key: getEnv().FAL_KEY, source: 'platform' as const };
 
   const adapter = falAudio(modelConfig.id, { apiKey: falApiKeyInfo.key });

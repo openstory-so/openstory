@@ -1,18 +1,12 @@
 import { usesStartFrame } from './use-start-frame';
-import { canRenderReferenceOnly } from '@/motion/server/motion-generation';
-import { resolveVideoModel } from '@/models/resolve-asset-models';
-import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { REFERENCE_ONLY_MODEL_ERROR } from '@/sequences/server/sequence.schemas';
-import { DEFAULT_IMAGE_MODEL, safeTextToImageModel } from '@/models/models';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { estimateImageCost, gateEstimate } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
-import { getWorkflowRunOutcome } from '@/platform/server/workflow/run-outcome';
-import { workflowNameFromRunId } from '@/platform/server/workflow/trigger-bindings';
 import type { NewShot } from '@/platform/server/db/schema';
 import {
   computeShotStaleness,
+  GENERATING_STALENESS,
   loadShotStalenessBatch,
+  loadShotStalenessReads,
   UNTRACKED_STALENESS,
   type ShotStalenessResult,
 } from '@/shots/server/shot-staleness';
@@ -24,25 +18,26 @@ import {
   DEFAULT_UPDATE_STALE_DEPTH,
   UPDATE_STALE_DEPTHS,
 } from './update-stale-depth';
-import { computePlan } from '@/shots/server/update-stale-plan';
+import { planUpdateAll } from '@/shots/server/update-stale-plan';
+import {
+  launchUpdateStale,
+  findRunningUpdateStale,
+  prepareUpdateStale,
+  UPDATE_STALE_CREDIT_PROVIDERS,
+  readUpdateStaleRun,
+} from '@/shots/server/update-stale-run';
 import {
   buildUpdateStalePreview,
   type UpdateStalePreview,
 } from '@/shots/server/update-stale-preview';
-import {
-  toShotView,
-  shotViewMissingFrame,
-  pendingUpscaleUrlFromVersion,
-  type ShotGridSheet,
-} from './shot-view';
+import { toShotView, pendingUpscaleUrlFromVersion } from './shot-view';
 import { getVideoDownloadUrl } from '@/motion/server/video-storage';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
-import { loadSceneContextBySequence } from '@/shots/server/scene-script';
 import {
-  loadShotDialogueLines,
   loadShotDialogueResolver,
-  shotDialogueResolver,
+  loadShotPromptDialogue,
 } from '@/shots/server/shot-dialogue';
+import { sectionLineTiming } from '@/shots/shot-dialogue';
 import { projectVideoVariants } from '@/motion/server/video-variant-projection';
 import {
   bulkShotSchema,
@@ -50,13 +45,10 @@ import {
   updateShotSchema,
 } from '@/shots/server/shot.schemas';
 import { dbSceneId } from './scene-id';
-import { NotFoundError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { typedFromEntries } from '@/platform/typed-object';
 import { resolveSceneForShot } from '@/shots/server/scene-script';
 import { rescanContinuityFromPrompt } from '@/shots/server/rescan-continuity-from-prompt';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
-import type { UpdateStaleShotsWorkflowInput } from '@/platform/server/workflow/types';
 import { createServerFn } from '@tanstack/react-start';
 import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
@@ -65,8 +57,14 @@ import {
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 import { shotAccessMiddleware } from '@/shots/shot-access.fn';
-import { ValidationError } from '@/platform/errors';
+import {
+  createShot,
+  requireSceneInSequence,
+  requireShotInSequence,
+  setShotUseStartFrame,
+} from '@/shots/server/structure-edit';
 
+import { loadShotViews } from '@/shots/server/load-shot-views';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'serverFn', 'shots']);
@@ -78,109 +76,7 @@ const shotIdInputSchema = z.object({
 
 export const getShotsFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
-  .handler(async ({ context }) => {
-    const { scopedDb, sequence } = context;
-    const shotRows = await scopedDb.shots.listBySequence(sequence.id);
-    // Guarantee every shot has its anchor frame before assembling its view.
-    await scopedDb.shots.ensureAnchorFrames(shotRows);
-    const [anchorRows, gridSheets, motionByShot, linesByShotId, sceneContext] =
-      await Promise.all([
-        scopedDb.frames.listAnchorsBySequence(sequence.id),
-        scopedDb.frameVariants.listLatestGridSheetsBySequence(sequence.id),
-        scopedDb.shotPromptVersions.getSelectedMotionByShots(
-          shotRows.map((s) => s.id)
-        ),
-        loadShotDialogueLines(scopedDb, sequence.id),
-        loadSceneContextBySequence(scopedDb, sequence.id),
-      ]);
-    // What each shot says now (#1657) — the panel shows the words a render
-    // would speak.
-    const dialogueOf = shotDialogueResolver({
-      linesByShotId,
-      shots: shotRows,
-      legacyDialogueOf: (shotId) => motionByShot.get(shotId)?.dialogue,
-      scriptDialogueOf: (sceneId) =>
-        sceneContext.get(sceneId)?.script?.dialogue,
-    });
-    // The still lives on the selected `frame_variants` row and the video on the
-    // segment's selected `video_variants` row (#1067) — one batch read each, so
-    // assembling the sequence stays O(1) queries.
-    const shotIds = shotRows.map((s) => s.id);
-    const pendingPromoteIds = [
-      ...new Set(
-        anchorRows
-          .map((f) => f.pendingPromoteVersionId)
-          .filter((id): id is string => Boolean(id))
-      ),
-    ];
-    const [
-      selectedByFrame,
-      previewByFrame,
-      selectedPromptByFrame,
-      selectedVideoByShot,
-      primaryVideoByShot,
-      pendingById,
-    ] = await Promise.all([
-      scopedDb.frameVariants.getSelectedByFrameIds(anchorRows.map((f) => f.id)),
-      // The pre-prompt stand-in is a `kind: 'preview'` row too (#1101) —
-      // resolved by frame like the still, not read off a frame column.
-      scopedDb.frameVariants.listLatestPreviewsByFrameIds(
-        anchorRows.map((f) => f.id)
-      ),
-      scopedDb.framePromptVersions.getSelectedByFrameIds(
-        anchorRows.map((f) => f.id)
-      ),
-      scopedDb.videoVariants.getSelectedByShotIds(shotIds),
-      scopedDb.videoVariants.getPrimaryByShotIds(shotIds),
-      scopedDb.frameVariants.getByIds(pendingPromoteIds),
-    ]);
-    const anchorsByShot = new Map(anchorRows.map((f) => [f.shotId, f]));
-    return shotRows.map((shot) => {
-      const frame = anchorsByShot.get(shot.id);
-      const selectedMotion = motionByShot.get(shot.id);
-      const dialogue = dialogueOf(shot);
-      const motionPrompt = selectedMotion
-        ? motionPromptFromVersion(selectedMotion, dialogue)
-        : null;
-      // `ensureAnchorFrames` above guarantees an anchor for every shot, so this
-      // is normally unreachable. If it ever isn't, preserve the shot with a null
-      // image surface (matching the sibling read paths in sequences/admin)
-      // rather than silently dropping it from the scenes list.
-      if (!frame) {
-        logger.error(
-          `getShotsFn: shot ${shot.id} has no anchor frame after ensureAnchorFrames`
-        );
-        return shotViewMissingFrame(shot, {
-          video: selectedVideoByShot.get(shot.id) ?? null,
-          primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
-          // Motion lives on the shot, not the frame — a frameless shot still
-          // has one. The sibling reads in sequences/admin already pass it.
-          motionPrompt,
-          dialogue,
-        });
-      }
-      // Grid sheets are keyed by frame id (#989), resolved from the anchor.
-      const sheet = gridSheets.get(frame.id);
-      const gridSheet: ShotGridSheet | null = sheet
-        ? { url: sheet.url, status: sheet.status }
-        : null;
-      return toShotView(shot, frame, {
-        image: selectedByFrame.get(frame.id) ?? null,
-        preview: previewByFrame.get(frame.id) ?? null,
-        imagePromptVersion: selectedPromptByFrame.get(frame.id) ?? null,
-        video: selectedVideoByShot.get(shot.id) ?? null,
-        primaryVideo: primaryVideoByShot.get(shot.id) ?? null,
-        gridSheet,
-        motionPrompt,
-        dialogue,
-        pendingUpscaleUrl: pendingUpscaleUrlFromVersion(
-          frame.pendingPromoteVersionId
-            ? (pendingById.get(frame.pendingPromoteVersionId) ?? null)
-            : null
-        ),
-      });
-    });
-  });
+  .handler(({ context }) => loadShotViews(context.scopedDb, context.sequence));
 
 /**
  * Batched variant of `getShotsFn` for list-style pages that need shots for
@@ -191,6 +87,9 @@ export const getShotsFn = createServerFn({ method: 'GET' })
  *
  * Team scoping is enforced by the join inside `sequences.listShotsByIds`,
  * so caller-supplied ids from another team return nothing rather than leak.
+ * The row is a {@link SequenceListShot}: still and clip urls, their statuses,
+ * and the two prompt strings. A full shot view (metadata, variant rows,
+ * dialogue) is what crashed this call on the 128 MB isolate (#1897).
  * `listShotsByIds` chunks the ids to respect D1's bound-parameter limit, so
  * the cap here is only an abuse guard on request size — a team's full sequence
  * list (which the sequences/eval pages send) used to overflow the old 500 cap
@@ -221,6 +120,8 @@ export const getShotFn = createServerFn({ method: 'GET' })
       video,
       primaryVideo,
       pendingPromote,
+      primaryImage,
+      sections,
     ] = await Promise.all([
       context.scopedDb.frameVariants.getLatestGridSheet(context.frame.id),
       context.scopedDb.shotPromptVersions.getSelectedMotion(context.shot.id),
@@ -234,7 +135,14 @@ export const getShotFn = createServerFn({ method: 'GET' })
             context.frame.pendingPromoteVersionId
           )
         : Promise.resolve(null),
+      context.scopedDb.frameVariants.getPrimary(context.frame.id),
+      // The same read the list uses, so one shot is timed the same way on
+      // both paths.
+      context.scopedDb.shotDialogue.getSelectedSectionsBySequence(
+        context.sequence.id
+      ),
     ]);
+    const selectedSection = sections.find((s) => s.shotId === context.shot.id);
     // The first-shot rule needs the scene-mates, so the sequence's shots are
     // read even for one shot.
     const dialogue = (
@@ -249,10 +157,14 @@ export const getShotFn = createServerFn({ method: 'GET' })
       image,
       preview,
       imagePromptVersion,
+      primaryImage,
       video,
       primaryVideo,
       gridSheet: sheet ? { url: sheet.url, status: sheet.status } : null,
       dialogue,
+      dialogueTiming: selectedSection
+        ? sectionLineTiming(selectedSection)
+        : null,
       motionPrompt: selectedMotion
         ? motionPromptFromVersion(selectedMotion, dialogue)
         : null,
@@ -425,44 +337,17 @@ export const getSequenceSelectedModelsFn = createServerFn({ method: 'GET' })
     };
   });
 
-/** Live shot may only land in a live scene of this sequence. Exported for tests. */
-export function requireWritableScene(
-  scene: { sequenceId: string; deletedAt: Date | null } | null,
-  sequenceId: string
-): void {
-  if (!scene || scene.sequenceId !== sequenceId || scene.deletedAt !== null) {
-    throw new NotFoundError('Scene not found in this sequence');
-  }
-}
-
 export const createShotFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
   .validator(zodValidator(singleShotSchema.extend({ sequenceId: ulidSchema })))
   .handler(async ({ data, context }) => {
-    if (data.sceneId) {
-      const scene = await context.scopedDb.scenes.getById(
-        dbSceneId(data.sceneId)
-      );
-      requireWritableScene(scene, context.sequence.id);
-    }
-    // Auto-number within the scene when the caller didn't pick a slot (#1108):
-    // max over ALL rows (deleted keep their slots) + 1, so a manual add never
-    // collides with the `(sceneId, shotNumber)` unique index.
-    const shotNumber =
-      data.shotNumber ??
-      (data.sceneId
-        ? (await context.scopedDb.shots.getMaxShotNumber(data.sceneId)) + 1
-        : null);
-    const shot = await context.scopedDb.shots.create({ ...data, shotNumber });
-    await context.scopedDb.sequenceEvents.record({
-      sequenceId: data.sequenceId,
-      actorId: context.user.id,
-      kind: 'shot.created',
-      targetType: 'shot',
-      targetId: shot.id,
-      data: { sceneId: shot.sceneId ?? null, shotNumber: shot.shotNumber },
-    });
-    return shot;
+    const { sequenceId: _sequenceId, ...shot } = data;
+    return await createShot(
+      context.scopedDb,
+      { userId: context.user.id },
+      context.sequence.id,
+      shot
+    );
   });
 
 export const createShotsBulkFn = createServerFn({ method: 'POST' })
@@ -533,10 +418,10 @@ export const updateShotFn = createServerFn({ method: 'POST' })
       // Continuity is scene-scoped: auto-linking script tokens describes the
       // scene, not one of its shots.
       if (rescan.changed && context.shot.sceneId) {
-        await context.scopedDb.scenes.update(
+        await context.scopedDb.scenes.updateContinuity(
           dbSceneId(context.shot.sceneId),
-          { continuity: rescan.continuity },
-          { throwOnMissing: false }
+          rescan.continuity,
+          { actorId: context.user.id }
         );
       }
     }
@@ -607,36 +492,11 @@ export const setShotUseStartFrameFn = createServerFn({ method: 'POST' })
   .validator(zodValidator(setShotUseStartFrameSchema))
   .handler(async ({ data, context }) => {
     const { shot, frame, sequence, scopedDb } = context;
-    if (data.useStartFrame === true) {
-      const still = await scopedDb.frameVariants.getSelected(frame.id);
-      if (!still?.url) {
-        throw new ValidationError(
-          'This shot has no start frame yet. Generate one first.'
-        );
-      }
-    }
-    if (!usesStartFrame({ useStartFrame: data.useStartFrame }, sequence)) {
-      // Same via-aware question the render path asks, so the checkbox cannot
-      // accept a state the Generate button then refuses.
-      const selectedVersion = await scopedDb.videoVariants.getSelectedByShot(
-        shot.id
-      );
-      const model = resolveVideoModel({
-        selectedVersionModel: selectedVersion?.model,
-        sequenceModel: sequence.videoModel,
-      });
-      if (
-        !(await canRenderReferenceOnly(
-          model,
-          toWorkflowScopedDb(scopedDb).credentials
-        ))
-      ) {
-        throw new ValidationError(REFERENCE_ONLY_MODEL_ERROR);
-      }
-    }
-    const updated = await scopedDb.shots.update(shot.id, {
-      useStartFrame: data.useStartFrame,
-    });
+    const updated = await setShotUseStartFrame(
+      scopedDb,
+      { shot, frameId: frame.id, sequence },
+      data.useStartFrame
+    );
     return updated ?? shot;
   });
 
@@ -651,7 +511,8 @@ const updateShotDurationSchema = z.object({
  *
  * `sceneInputContext` (input-hash.ts) deliberately allowlists `durationSeconds`
  * OUT of the prompt hashes, so changing it re-stales the render
- * (`computeShotVideoInputHash`) and nothing else. That's why this is its own
+ * (the manifest's `durationMs`, compared by `isSelectedVersionStale`) and
+ * nothing else. That's why this is its own
  * endpoint rather than a field on `updateSceneScriptFn`: a duration edit must
  * not append a `scene_script_versions` row or touch prompt staleness.
  *
@@ -695,10 +556,11 @@ export const restoreShotFn = createServerFn({ method: 'POST' })
     // sequenceAccessMiddleware (not shotAccessMiddleware): the shot-scoped
     // middleware resolves scene context a hidden shot doesn't need, and this
     // must work on exactly the rows the default reads hide.
-    const shot = await context.scopedDb.shots.getById(data.shotId);
-    if (!shot || shot.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Shot not found in this sequence');
-    }
+    await requireShotInSequence(
+      context.scopedDb,
+      context.sequence.id,
+      data.shotId
+    );
     return await context.scopedDb.shots.restore(data.shotId, {
       actorId: context.user.id,
     });
@@ -720,12 +582,11 @@ export const reorderShotsFn = createServerFn({ method: 'POST' })
     )
   )
   .handler(async ({ data, context }) => {
-    const scene = await context.scopedDb.scenes.getById(
-      dbSceneId(data.sceneId)
+    await requireSceneInSequence(
+      context.scopedDb,
+      context.sequence.id,
+      data.sceneId
     );
-    if (!scene || scene.sequenceId !== context.sequence.id) {
-      throw new NotFoundError('Scene not found in this sequence');
-    }
     await context.scopedDb.shots.reorderInScene(data.sceneId, data.shotIds, {
       actorId: context.user.id,
     });
@@ -760,6 +621,7 @@ export const getShotStalenessFn = createServerFn({ method: 'GET' })
         frame,
         selectedImage: await scopedDb.frameVariants.getSelected(frame.id),
         scene,
+        dialogue: await loadShotPromptDialogue(scopedDb, sequence.id, shot),
       }),
       media.get(shot.id)
     );
@@ -810,17 +672,49 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
     if (targetShots.length === 0) {
       return {};
     }
+    // Mid-run the per-shot compare returns 'generating' before any read, and
+    // the media overlay then forces dialogue and video to the same. Skip the
+    // bible, prompt, and segment loads entirely (#1121, #1795).
+    if (sequence.status === 'processing') {
+      return typedFromEntries(
+        targetShots.map((shot) => [
+          shot.id,
+          toWireStaleness(GENERATING_STALENESS),
+        ])
+      );
+    }
 
-    await scopedDb.shots.ensureAnchorFrames(targetShots);
     // Loaded once here and threaded into every shot's comparison; without
     // that each shot would re-read the bibles for both prompt branches.
+    let loaded = await loadShotStalenessBatch(scopedDb, sequence);
+    const missingAnchors = targetShots.filter(
+      (shot) => !loaded.anchorsByShot.has(shot.id)
+    );
+    if (missingAnchors.length > 0) {
+      await scopedDb.shots.ensureAnchorFrames(missingAnchors);
+      loaded = await loadShotStalenessBatch(scopedDb, sequence);
+    }
     const {
       anchorsByShot,
       sceneContext: scriptBySceneId,
       selectedByFrame,
       refs,
-    } = await loadShotStalenessBatch(scopedDb, sequence);
-    const media = await loadShotMediaStaleness(scopedDb, sequence, allShots);
+    } = loaded;
+    const frameIds = targetShots.flatMap((shot) => {
+      const frame = anchorsByShot.get(shot.id);
+      return frame ? [frame.id] : [];
+    });
+    const [reads, media] = await Promise.all([
+      loadShotStalenessReads(
+        scopedDb,
+        sequence.id,
+        allShots,
+        targetShots.map((shot) => shot.id),
+        frameIds,
+        scriptBySceneId
+      ),
+      loadShotMediaStaleness(scopedDb, sequence, allShots),
+    ]);
 
     const entries = await Promise.all(
       targetShots.map(
@@ -851,6 +745,8 @@ export const getShotStalenessBatchFn = createServerFn({ method: 'GET' })
                   selectedImage: selectedByFrame.get(frame.id) ?? null,
                   scene,
                   refs,
+                  reads,
+                  dialogue: reads.dialogueOf(shot),
                 }),
                 media.get(shot.id)
               ),
@@ -909,87 +805,34 @@ export const updateStaleShotsFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data, context }) => {
     const { sequence, teamId, user, scopedDb } = context;
-    const depth = data.depth ?? DEFAULT_UPDATE_STALE_DEPTH;
-    // Never race the pipeline (#1121). While a storyboard run owns the
-    // sequence it is rewriting these artifacts anyway, so an Update all run
-    // would bill for work that is about to be overwritten. Staleness reads
-    // 'generating' during this window, so the UI offers no action to get
-    // here — this is the guard for a stale tab or a direct API call.
-    if (sequence.status === 'processing') {
-      throw new ValidationError(
-        'This sequence is still generating — wait for the run to finish before updating out-of-date shots.'
-      );
-    }
-    // Deliberately before the plan: this is a floor, not a quote — a run that
-    // can't afford even one artifact of its most expensive level should never
-    // start, and there's no point planning a whole sequence to tell the user
-    // that. 'prompts' has no render cost; LLM spend is deducted inside the
-    // workflow as always.
-    if (depth !== 'prompts') {
-      const model = safeTextToImageModel(
-        sequence.imageModel,
-        DEFAULT_IMAGE_MODEL
-      );
-      await requireCredits(
-        scopedDb,
-        gateEstimate(
-          estimateImageCost(model, sequence.aspectRatio, 1, {
-            pricing: await getEffectiveFalPricing(),
-            resolution: sequence.resolution,
-          }),
-          { model, operation: 'update-stale-shots' }
-        ),
-        { errorMessage: 'Insufficient credits to update out-of-date shots' }
-      );
-    }
-    const plan = await computePlan({
+    const { plan, creditFloorMicros } = await prepareUpdateStale({
       scopedDb,
-      sequenceId: sequence.id,
+      userId: user.id,
+      sequence,
+      depth: data.depth ?? DEFAULT_UPDATE_STALE_DEPTH,
       sceneId: data.sceneId,
       shotId: data.shotId,
-      depth,
     });
-    const workflowRunId = await triggerWorkflow<UpdateStaleShotsWorkflowInput>(
-      '/update-stale-shots',
-      {
-        userId: user.id,
-        teamId,
-        sequenceId: sequence.id,
-        plan,
-      },
-      {
-        // Embed the sequence id in the instance id (the timestamp+uuid tail
-        // keeps it unique per click) so `getUpdateStaleShotsRunFn` can verify
-        // a polled run id actually belongs to the sequence being authorized —
-        // without this, any authenticated user could read any run's output.
-        deduplicationId: `${sequence.id}-${Date.now()}-${crypto.randomUUID()}`,
-      }
-    );
+    if (creditFloorMicros > 0) {
+      await requireCredits(scopedDb, creditFloorMicros, {
+        providers: [...UPDATE_STALE_CREDIT_PROVIDERS],
+        errorMessage: 'Insufficient credits to update out-of-date shots',
+      });
+    }
+    // launchUpdateStale → triggerWorkflow, which runs the generation gate.
+    const workflowRunId = await launchUpdateStale({
+      userId: user.id,
+      teamId,
+      sequenceId: sequence.id,
+      plan,
+      // Embed the sequence id in the instance id (the timestamp+uuid tail
+      // keeps it unique per click) so `getUpdateStaleShotsRunFn` can verify
+      // a polled run id actually belongs to the sequence being authorized —
+      // without this, any authenticated user could read any run's output.
+      runKey: `${sequence.id}-${Date.now()}-${crypto.randomUUID()}`,
+    });
     return { workflowRunId };
   });
-
-/**
- * Shape of `UpdateStaleShotsWorkflow`'s return value. Parsed rather than cast:
- * it crosses the Cloudflare Workflows boundary as `unknown`, and a run from a
- * previously-deployed version of the workflow can legitimately not match.
- */
-const updateStaleShotsResultSchema = z.object({
-  totalShots: z.number(),
-  visualPrompts: z.number(),
-  motionPrompts: z.number(),
-  images: z.number(),
-  // Depth-picker levels (#1085). Defaulted so a run from a pre-picker
-  // deployment still parses during version skew.
-  videos: z.number().default(0),
-  // Dialogue depth (#1703/#1740), defaulted for the same version skew.
-  dialogues: z.number().default(0),
-  musicPrompts: z.number().default(0),
-  musicTracks: z.number().default(0),
-  failures: z.array(
-    z.object({ shotId: z.string(), stage: z.string(), error: z.string() })
-  ),
-  skipped: z.array(z.object({ shotId: z.string(), reason: z.string() })),
-});
 
 /**
  * Terminal outcome of an "Update all" run (#1077).
@@ -1007,31 +850,20 @@ export const getUpdateStaleShotsRunFn = createServerFn({ method: 'GET' })
       z.object({ sequenceId: ulidSchema, workflowRunId: z.string().min(1) })
     )
   )
-  .handler(async ({ data, context }) => {
-    // The middleware authorizes the SEQUENCE; the run id is caller-supplied
-    // and would otherwise let any authenticated user read any run's output.
-    // `updateStaleShotsFn` embeds the sequence id in the instance id — require
-    // both the right workflow and the right sequence before reading anything.
-    if (
-      workflowNameFromRunId(data.workflowRunId) !== 'update-stale-shots' ||
-      !data.workflowRunId.includes(context.sequence.id)
-    ) {
-      return { state: 'unknown' as const };
-    }
-    const outcome = await getWorkflowRunOutcome(data.workflowRunId);
-    if (outcome.state !== 'complete') return outcome;
-    const parsed = updateStaleShotsResultSchema.safeParse(outcome.output);
-    // A complete run whose output we can't read is not a failure to report as
-    // one — fall back to 'unknown' so the UI defers to the staleness map.
-    if (!parsed.success) {
-      logger.error(
-        `getUpdateStaleShotsRunFn: unrecognised output for ${data.workflowRunId}`,
-        { issues: parsed.error.issues }
-      );
-      return { state: 'unknown' as const };
-    }
-    return { state: 'complete' as const, result: parsed.data };
-  });
+  .handler(async ({ data, context }) =>
+    // The middleware authorizes the SEQUENCE; the run id is caller-supplied,
+    // so the reader requires the right workflow and sequence first.
+    readUpdateStaleRun(context.sequence.id, data.workflowRunId)
+  );
+
+/**
+ * The Update all run still in flight on this sequence, whoever started it
+ * (editor, another tab, MCP), so an editor opened mid-run shows it.
+ */
+export const getRunningUpdateStaleShotsFn = createServerFn({ method: 'GET' })
+  .middleware([sequenceAccessMiddleware])
+  .validator(zodValidator(z.object({ sequenceId: ulidSchema })))
+  .handler(async ({ context }) => findRunningUpdateStale(context.sequence.id));
 
 /**
  * Get a signed download URL for a shot's video.
@@ -1080,12 +912,13 @@ export const getUpdateStalePreviewFn = createServerFn({ method: 'GET' })
   )
   .handler(async ({ data, context }): Promise<UpdateStalePreview> => {
     const { sequence, scopedDb } = context;
-    const plan = await computePlan({
+    const plan = await planUpdateAll({
       scopedDb,
       sequenceId: sequence.id,
       sceneId: data.sceneId,
       shotId: data.shotId,
       depth: 'music',
+      userId: context.user.id,
     });
     return buildUpdateStalePreview(
       plan,

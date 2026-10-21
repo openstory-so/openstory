@@ -96,6 +96,7 @@ export async function buildShotImageWorkflowInput(opts: {
 
   const matchedCharacters = matchCharactersToShotImage(characters, {
     characterTags: continuity?.characterTags,
+    characterLooks: continuity?.characterLooks,
     visualPrompt: prompt,
   });
   const characterReferences = buildCharacterReferenceImages(matchedCharacters);
@@ -157,8 +158,6 @@ export async function buildShotImageWorkflowInput(opts: {
       ...locationReferences,
       ...elementReferences,
     ],
-    // No `userEditProvenance`: this builder serves the add-model path, which is
-    // never a user edit.
     variantOnly: opts.variantOnly ?? false,
   };
 }

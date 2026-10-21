@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. medium wide. eye level. Scarlett and Mina sit opposite each other in the red booth, fries and paper cups between them, rain-streaked window forming a warm reflective backdrop. Scarlett has slid into the booth with Mina; the open coral lipstick rests between them beside fries and two paper cups. Then: Mina borrows the lipstick, applies it using the dark window as a mirror, and presses her lips together. Camera: handheld truck, smooth. Characters: Scarlett: Woman, 27, A 27-year-old woman of average height with a slim, active build, warm medium skin, expressive dark eyes, and dark brown hair worn loose to the shoulders. Her face is youthful, with defined brows and a quick, open smile. Her appearance becomes visibly brighter as the coral lipstick brings color to her complexion, wearing Black fitted turtleneck, black wool coat carried or worn. Mina: Woman, Late 20s, A woman in her late 20s with an average height and softly angular features, tired eyes, and expressive brows. Her hair is medium-to-dark brown, shoulder length, and easily lifted by the rooftop wind. Her face visibly transforms from exhausted to amused after applying the lipstick, wearing Green utility jacket with a roomy pocket, simple dark top, dark trousers or jeans, and. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/bb89633ff970686336f01dc59002f0e6c279af6ab6ed1a252d4548a74be1f908.png",
+              "content_type": "image/png",
+              "file_name": "2qOD-WXceduCrOCKYP_YP_l8kgujZK.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 576
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.04
+      }
+    }
+  ]
+}

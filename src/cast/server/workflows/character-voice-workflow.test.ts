@@ -10,6 +10,7 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
+import { asStub } from '@/test/as-stub';
 
 const mockDesign = vi.fn();
 const mockSave = vi.fn();
@@ -65,18 +66,18 @@ class Probe extends CharacterVoiceWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
 
 function makeScopedDb(opts?: {
@@ -97,7 +98,7 @@ function makeScopedDb(opts?: {
   const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({ id: 'ver-1' }));
   const updateVoice = vi.fn(async () => ({ id: 'char-1' }));
   const markVoiceReleased = vi.fn(async () => undefined);
-  const getById = vi.fn(async () => ({
+  const getVoice = vi.fn(async () => ({
     id: 'char-1',
     voiceId: opts?.voiceId ?? null,
     selectedVoiceVersionId: opts?.selectedVoiceVersionId ?? null,
@@ -110,8 +111,8 @@ function makeScopedDb(opts?: {
   const getVoiceVersionById = vi.fn(async () =>
     opts && 'husk' in opts ? opts.husk : null
   );
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  const scopedDb = {
+  // stub covering only the scoped-db surface runImpl touches
+  const scopedDb = asStub<WorkflowScopedDb>({
     characters: {
       completeVoiceClaimIfLive,
       promoteVoiceClaimIfPending,
@@ -121,14 +122,14 @@ function makeScopedDb(opts?: {
       markVoiceReleased,
     },
     liveRead: {
-      characters: { getById, getVoiceReferenceCount },
+      characters: { getVoice, getVoiceReferenceCount },
     },
     claims: {
       characters: { getVoiceVersionById },
     },
     provenance: {},
     credentials: { resolveKey: vi.fn(async () => ({ key: 'el-key' })) },
-  } as unknown as WorkflowScopedDb;
+  });
   return {
     scopedDb,
     completeVoiceClaimIfLive,
@@ -148,12 +149,13 @@ const characterBible: CharacterBibleEntry = {
   ethnicity: '',
   physicalDescription: '',
   standardClothing: 'duster',
-  distinguishingFeatures: '',
+  looks: [],
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'sam',
 };
 
@@ -169,7 +171,7 @@ function makeEvent(
       characterDbId: 'char-1',
       characterBible,
       voiceDescription,
-      analysisModelId: 'anthropic/claude-sonnet-5',
+      analysisModelId: 'anthropic/claude-sonnet-5.5',
       voiceProvider: 'elevenlabs',
       takes: 2,
       ...(opts && 'targetVersionId' in opts
@@ -235,7 +237,12 @@ describe('CharacterVoiceWorkflow', () => {
           }),
           expect.objectContaining({ generatedVoiceId: 'g2', takeNumber: 2 }),
         ],
-      })
+      }),
+      {
+        sequenceId: 'seq-1',
+        actorId: 'u1',
+        summary: 'Designed a voice for Sam',
+      }
     );
     expect(promoteVoiceClaimIfPending).toHaveBeenCalledWith('char-1', 'ver-1');
     expect(mockReleaseReplaced).toHaveBeenCalled();
@@ -398,7 +405,11 @@ describe('CharacterVoiceWorkflow', () => {
       'char-1',
       expect.objectContaining({ voiceId: 'voice-1' }),
       'generated',
-      'u1'
+      'u1',
+      {
+        sequenceId: 'seq-1',
+        summary: 'Designed a voice for Sam',
+      }
     );
     expect(completeVoiceClaimIfLive).not.toHaveBeenCalled();
     expect(result.voiceId).toBe('voice-1');

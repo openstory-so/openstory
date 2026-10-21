@@ -55,7 +55,7 @@ export const sceneDetailSchema = sceneInspectionSchema.extend({
   script: z
     .object({
       id: z.string(),
-      source: z.enum(['split', 'edit']),
+      source: z.enum(['split', 'edit', 'renamed', 'backfill']),
       content: originalScriptSchema,
     })
     .nullable(),

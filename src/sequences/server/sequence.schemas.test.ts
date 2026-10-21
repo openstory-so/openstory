@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   createSequenceSchema,
   REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
-  updateSequenceSchema,
 } from './sequence.schemas';
 
 describe('createSequenceSchema', () => {
@@ -273,12 +272,5 @@ describe('createSequenceSchema over-long reference gate', () => {
       elementUploads: [upload(10)],
     });
     expect(result.success).toBe(true);
-  });
-});
-
-describe('updateSequenceSchema', () => {
-  it('omits targetDurationSeconds from the general update path', () => {
-    const parsed = updateSequenceSchema.parse({ targetDurationSeconds: 30 });
-    expect(Object.keys(parsed)).not.toContain('targetDurationSeconds');
   });
 });

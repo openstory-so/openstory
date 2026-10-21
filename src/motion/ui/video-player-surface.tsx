@@ -17,31 +17,23 @@
  */
 
 import type { Media, Video as VideoMedia } from '@videojs/media';
-import { createPlayer, Poster, useMedia } from '@videojs/react';
-import { MinimalVideoSkin, Video, videoFeatures } from '@videojs/react/video';
-import { useEffect, useRef } from 'react';
+import { Poster, useMedia } from '@videojs/react';
+import { NeutralVideoSkin, Video, VideoPlayer } from '@videojs/react/video';
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import type { CSSProperties } from 'react';
+
+import { showingCaptionText } from './showing-caption';
 
 // useMedia() returns the base Media capability set; the <Video> component
 // renders an instance with the full Video capability set (seek/source/etc.).
-// Types live in @videojs/media as of v10 beta.26 (no longer re-exported from
-// @videojs/core).
-const isVideoMedia = (media: Media): media is VideoMedia =>
-  'duration' in media && 'currentTime' in media;
-
-const isHlsSource = (src: string): boolean =>
-  new URL(src, 'https://x').pathname.endsWith('.m3u8');
-
-// `createPlayer` also constructs an AbortController, so it stays out of module
-// scope even here: this module is only ever evaluated in the browser, but the
-// singleton is still the right shape — one player instance shared across every
-// mount, built on first render.
-let playerSingleton: ReturnType<typeof createPlayer> | undefined;
-const getPlayer = () =>
-  (playerSingleton ??= createPlayer({ features: videoFeatures }));
+// Types live in @videojs/media (not re-exported from @videojs/core).
+const isVideoMedia = (media: Media | null): media is VideoMedia =>
+  media != null && 'duration' in media && 'currentTime' in media;
 
 type VideoPlayerSurfaceProps = {
   src: string;
   chaptersUrl?: string;
+  subtitlesUrl?: string;
   posterSrc?: string | null;
   autoPlay?: boolean;
   /** Seek here when the value changes (packed-clip shot windows). */
@@ -52,13 +44,12 @@ type VideoPlayerSurfaceProps = {
   onEnded?: () => void;
   onPlay?: () => void;
   onError?: (reason: string) => void;
-  /** The media element, once there is one (and null when it goes). */
-  onMedia?: (media: HTMLMediaElement | null) => void;
 };
 
 const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   src,
   chaptersUrl,
+  subtitlesUrl,
   posterSrc,
   autoPlay = false,
   seekTo,
@@ -68,7 +59,6 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   onEnded,
   onPlay,
   onError,
-  onMedia,
 }) => {
   const media = useMedia();
   const callbacksRef = useRef({
@@ -137,46 +127,6 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
     };
   }, [media]);
 
-  const onMediaRef = useRef(onMedia);
-  onMediaRef.current = onMedia;
-  useEffect(() => {
-    if (!(media instanceof HTMLMediaElement)) return;
-    onMediaRef.current?.(media);
-    return () => onMediaRef.current?.(null);
-  }, [media]);
-
-  // HLS (#1623) — the theatre's playlist of a cut's clips
-  // (`theatre-playlist.ts`): byte ranges of fragmented MP4s with a
-  // discontinuity between clips. hls.js is attached to the plain <Video>
-  // element by hand; it is large, so it loads only here.
-  const hls = isHlsSource(src);
-  useEffect(() => {
-    if (!hls || !(media instanceof HTMLMediaElement)) return;
-    const el = media;
-    let engine: { destroy: () => void } | null = null;
-    let cancelled = false;
-    void import('hls.js').then(({ default: Hls }) => {
-      if (cancelled) return;
-      if (!Hls.isSupported()) {
-        // No MSE (older iPhones): Safari plays HLS itself.
-        // oxlint-disable-next-line react/immutability
-        el.src = src;
-        return;
-      }
-      const instance = new Hls();
-      engine = instance;
-      instance.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) callbacksRef.current.onError?.(data.details);
-      });
-      instance.loadSource(src);
-      instance.attachMedia(el);
-    });
-    return () => {
-      cancelled = true;
-      engine?.destroy();
-    };
-  }, [hls, src, media]);
-
   useEffect(() => {
     if (!autoPlay || !media || !isVideoMedia(media)) return;
     void media.play().catch(() => {
@@ -198,18 +148,93 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
   }, [seekTo, media]);
 
   return (
-    <MinimalVideoSkin>
+    <NeutralVideoSkin className="shot-captions">
       <Video
-        // An HLS source is attached by hls.js in the effect above.
-        src={hls || !src ? undefined : src}
+        src={src || undefined}
         playsInline
         autoPlay={autoPlay}
         preload="metadata"
       >
         {chaptersUrl && <track kind="chapters" src={chaptersUrl} default />}
+        {subtitlesUrl && (
+          <track
+            key={subtitlesUrl}
+            kind="captions"
+            src={subtitlesUrl}
+            srcLang="en"
+            label="Dialogue"
+            default
+          />
+        )}
       </Video>
-      {!src && posterSrc && <Poster src={posterSrc} alt="Video thumbnail" />}
-    </MinimalVideoSkin>
+      {media && isVideoMedia(media) ? <ShotCaptions media={media} /> : null}
+      {!src && posterSrc && (
+        <Poster.Root>
+          <Poster.Image src={posterSrc} alt="Video thumbnail" />
+        </Poster.Root>
+      )}
+    </NeutralVideoSkin>
+  );
+};
+
+// Same layer as the sequence player. The skin's video does not paint its
+// own cues, so this reads the showing captions track and draws the active one.
+const captionsLayer: CSSProperties = {
+  position: 'absolute',
+  zIndex: 20,
+  insetInline: 0,
+  bottom: 0,
+  display: 'flex',
+  justifyContent: 'center',
+  maxHeight: '70%',
+  padding: '0 6%',
+  pointerEvents: 'none',
+  transform: 'translateY(var(--media-caption-track-y, 0px))',
+};
+
+const captionsText: CSSProperties = {
+  maxWidth: '100%',
+  overflow: 'hidden',
+  padding: '0.15em 0.5em',
+  borderRadius: '0.2em',
+  background: 'rgba(0, 0, 0, 0.65)',
+  color: '#fff',
+  fontSize: 'clamp(14px, 3.2cqi, 30px)',
+  lineHeight: 1.3,
+  textAlign: 'center',
+  whiteSpace: 'pre-line',
+};
+
+const ShotCaptions: React.FC<{ media: VideoMedia }> = ({ media }) => {
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      const tracks = media.textTracks;
+      const onCue = () => notify();
+      tracks.addEventListener('addtrack', onCue);
+      tracks.addEventListener('change', onCue);
+      media.addEventListener('timeupdate', onCue);
+      media.addEventListener('seeked', onCue);
+      media.addEventListener('loadedmetadata', onCue);
+      return () => {
+        tracks.removeEventListener('addtrack', onCue);
+        tracks.removeEventListener('change', onCue);
+        media.removeEventListener('timeupdate', onCue);
+        media.removeEventListener('seeked', onCue);
+        media.removeEventListener('loadedmetadata', onCue);
+      };
+    },
+    [media]
+  );
+  const text = useSyncExternalStore(
+    subscribe,
+    () => showingCaptionText(media.textTracks, media.currentTime),
+    () => null
+  );
+  if (!text) return null;
+  return (
+    <div data-part="shot-captions" style={captionsLayer}>
+      <span style={captionsText}>{text}</span>
+    </div>
   );
 };
 
@@ -217,13 +242,10 @@ const VideoPlayerInner: React.FC<VideoPlayerSurfaceProps> = ({
  * Default export so `video-player.tsx` can reach this through `React.lazy`,
  * which requires a module whose default is the component.
  */
-const VideoPlayerSurface: React.FC<VideoPlayerSurfaceProps> = (props) => {
-  const Player = getPlayer();
-  return (
-    <Player.Provider>
-      <VideoPlayerInner {...props} />
-    </Player.Provider>
-  );
-};
+const VideoPlayerSurface: React.FC<VideoPlayerSurfaceProps> = (props) => (
+  <VideoPlayer>
+    <VideoPlayerInner {...props} />
+  </VideoPlayer>
+);
 
 export default VideoPlayerSurface;

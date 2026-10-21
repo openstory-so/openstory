@@ -1,10 +1,10 @@
 /**
  * `POST /mcp` — Streamable HTTP MCP endpoint (#1457).
  *
- * POST only (plus CORS preflight). Served by `@modelcontextprotocol/server@2`
- * `createMcpHandler` with `legacy: "reject"`: no SSE transport, no session
- * store; each request is independent. Auth, Origin, and rate limits live in
- * `src/platform/server/mcp/`.
+ * POST only (plus CORS preflight). Served by `createMCPServer` from
+ * `@tanstack/ai-mcp/server` with `sessions: "stateless"`: no session store,
+ * each request is independent, and a 2025-era client gets a fresh server per
+ * request. Auth, Origin, and rate limits live in `src/platform/server/mcp/`.
  */
 
 import {

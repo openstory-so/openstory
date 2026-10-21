@@ -3,7 +3,7 @@
     {
       "match": {
         "userMessage": "Analyze this talent reference: is the image already a character sheet? Describe the person.\nUploaded filename: character-sheet.jpg",
-        "model": "anthropic/claude-sonnet-5",
+        "model": "anthropic/claude-sonnet-5.5",
         "turnIndex": 0,
         "hasToolResult": false
       },

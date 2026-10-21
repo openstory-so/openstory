@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import type { ReplaceElementShotSnapshot } from '@/platform/server/workflow/types';
+import { describe, expect, it, vi } from 'vitest';
+import type { WorkflowEvent } from 'cloudflare:workers';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import type {
+  ReplaceElementShotSnapshot,
+  ReplaceElementWorkflowInput,
+} from '@/platform/server/workflow/types';
 import {
+  ReplaceElementWorkflow,
   buildEditPrompt,
   decideBatchOutcome,
   partitionShotIds,
@@ -10,6 +16,7 @@ import {
   settledToResult,
   shouldDowngradeVisionOnFailure,
 } from './replace-element-workflow';
+import { asStub } from '@/test/as-stub';
 
 const snapshot = (
   overrides: Partial<ReplaceElementShotSnapshot> = {}
@@ -222,5 +229,53 @@ describe('settledToResult', () => {
       success: false,
       error: 'boom',
     });
+  });
+});
+
+describe('ReplaceElementWorkflow onFailure (#1942)', () => {
+  class Probe extends ReplaceElementWorkflow {
+    fail(
+      event: Readonly<WorkflowEvent<ReplaceElementWorkflowInput>>,
+      scopedDb: WorkflowScopedDb
+    ) {
+      return this.onFailure({ event, error: 'boom', scopedDb });
+    }
+  }
+
+  it('fails every image claim no child picked up', async () => {
+    type Ctor = ConstructorParameters<typeof Probe>;
+    // onFailure never reads ctx
+    const ctx = asStub<Ctor[0]>(undefined);
+    // onFailure never reads bindings
+    const env = asStub<Ctor[1]>({});
+    const markFailedByWorkflowRun = vi.fn(() => Promise.resolve(2));
+    // stub of the surface onFailure touches
+    const scopedDb = asStub<WorkflowScopedDb>({
+      frameVariants: { markFailedByWorkflowRun },
+      sequenceElements: { updateVisionStatus: vi.fn() },
+      liveRead: {
+        sequenceElements: {
+          getById: vi.fn(() => Promise.resolve({ visionStatus: 'completed' })),
+        },
+      },
+    });
+    // onFailure reads only these fields
+    const payload = asStub<ReplaceElementWorkflowInput>({
+      userId: 'u1',
+      teamId: 't1',
+      sequenceId: 'seq_1',
+      elementId: 'el_1',
+      token: 'LOGO',
+    });
+    await new Probe(ctx, env).fail(
+      {
+        payload,
+        instanceId: 'run_1',
+        workflowName: 'replace-element',
+        timestamp: new Date(0),
+      },
+      scopedDb
+    );
+    expect(markFailedByWorkflowRun).toHaveBeenCalledWith('run_1', 'boom');
   });
 });

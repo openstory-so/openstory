@@ -6,10 +6,12 @@
  * `openid-configuration`, and RFC 9728 `oauth-protected-resource[/mcp]` —
  * never see a root request unless we forward it. The REST API is a second
  * protected resource the MCP plugin knows nothing about, so its RFC 9728
- * document is built here. Anything else falls through to the auth router's
+ * document is built here. The OpenAI plugin portal's domain challenge
+ * is served from `OPENAI_APPS_CHALLENGE` (#2138). Anything else falls through to the auth router's
  * 404.
  */
 
+import { getEnv } from '#env';
 import { getAuth } from '@/platform/server/auth/config';
 import {
   buildApiResourceMetadata,
@@ -22,6 +24,7 @@ const API_RESOURCE_METADATA_PATH =
 const MCP_RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp';
 /** RFC 9728 unsuffixed path — Grok's probe hits this as well as `/mcp`. */
 const MCP_RESOURCE_METADATA_ROOT = '/.well-known/oauth-protected-resource';
+const OPENAI_APPS_CHALLENGE_PATH = '/.well-known/openai-apps-challenge';
 const AUTH_SERVER_METADATA_PATHS = new Set([
   '/.well-known/oauth-authorization-server',
   '/.well-known/openid-configuration',
@@ -67,8 +70,22 @@ async function withRequestOriginIssuer(
   }
 }
 
+/** The portal wants the exact token as plain text, nothing else. */
+function openaiAppsChallenge(request: Request): Response {
+  const token: unknown = Reflect.get(getEnv(), 'OPENAI_APPS_CHALLENGE');
+  if (typeof token !== 'string' || !token.trim()) {
+    return new Response('Not found', { status: 404 });
+  }
+  return new Response(request.method === 'HEAD' ? null : token.trim(), {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
+}
+
 const handle = async ({ request }: { request: Request }) => {
   const pathname = new URL(request.url).pathname.replace(/\/+$/, '');
+  if (pathname === OPENAI_APPS_CHALLENGE_PATH) {
+    return openaiAppsChallenge(request);
+  }
   if (pathname === API_RESOURCE_METADATA_PATH) {
     return jsonMetadata(buildApiResourceMetadata(), request);
   }

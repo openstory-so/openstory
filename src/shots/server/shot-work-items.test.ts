@@ -1,22 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotSpec } from '@/shots/shot-list.schema';
 import {
   clipDurationSeconds,
-  derivedShotForItem,
+  shotSpecForItem,
   shotWorkItems,
 } from './shot-work-items';
-
-const styleConfig = migrateStyleConfigV1ToV2({
-  mood: 'tense',
-  artStyle: 'neo-noir cinematic',
-  lighting: 'low key',
-  colorPalette: ['#111', '#eee'],
-  cameraWork: 'handheld',
-  referenceFilms: ['Blade Runner'],
-  colorGrading: 'teal and orange',
-});
 
 function scene(id: string, durationSeconds = 5, shots?: ShotSpec[]): Scene {
   return {
@@ -56,6 +45,7 @@ function spec(
     },
     action,
     cameraMovement: { move: 'static', pacing: 'slow' },
+    direction: '',
     soundCue: '',
     dialogue: [],
     durationSeconds,
@@ -97,13 +87,6 @@ describe('shotWorkItems', () => {
     ).toEqual([
       ['My sister is dead.', 'A voice, anywhere.'],
       ['You’re not Eliza.', 'A voice, anywhere.'],
-    ]);
-    const second = items[1];
-    if (!second) throw new Error('expected two items');
-    const derived = derivedShotForItem(second, styleConfig);
-    expect(derived?.motionPrompt.dialogue.lines.map((l) => l.line)).toEqual([
-      'You’re not Eliza.',
-      'A voice, anywhere.',
     ]);
   });
 
@@ -208,116 +191,35 @@ describe('clipDurationSeconds', () => {
   });
 });
 
-describe('derivedShotForItem', () => {
-  it('is null on the scene-head / 1-shot path', () => {
+describe('shotSpecForItem', () => {
+  const mapping = (n: number) => ({
+    analysisSceneId: 'sc-1',
+    shotId: `sh-${n}`,
+    frameId: `fr-${n}`,
+    shotNumber: n,
+  });
+
+  it('gives a 1-shot scene its spec too (#1919)', () => {
     const [item] = shotWorkItems(
       [scene('sc-1', 8, [spec(1, 8, 'walks')])],
-      [
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-1',
-          frameId: 'fr-1',
-          shotNumber: 1,
-        },
-      ]
+      [mapping(1)]
     );
-    expect(item && derivedShotForItem(item, styleConfig)).toBeNull();
+    expect(item && shotSpecForItem(item)?.action).toBe('walks');
   });
 
-  it('assembles the head of a 2+ shot scene too (#1517)', () => {
-    const [head] = shotWorkItems(
+  it('finds each clip of a 2+ shot scene by shot number', () => {
+    const items = shotWorkItems(
       [scene('sc-1', 13, [spec(1, 7, 'opens the door'), spec(2, 6, 'cut')])],
-      [
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-1',
-          frameId: 'fr-1',
-          shotNumber: 1,
-        },
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-2',
-          frameId: 'fr-2',
-          shotNumber: 2,
-        },
-      ]
+      [mapping(1), mapping(2)]
     );
-    const derived = head && derivedShotForItem(head, styleConfig);
-    expect(derived?.shotNumber).toBe(1);
-    expect(derived?.motionPrompt.fullPrompt).toContain('opens the door');
+    expect(items.map((item) => shotSpecForItem(item)?.action)).toEqual([
+      'opens the door',
+      'cut',
+    ]);
   });
 
-  it('assembles visual + motion from the extra shot spec', () => {
-    const shots = [
-      spec(1, 7, 'opens the door'),
-      spec(2, 6, 'cut to the hallway'),
-    ];
-    const items = shotWorkItems(
-      [scene('sc-1', 13, shots)],
-      [
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-1',
-          frameId: 'fr-1',
-          shotNumber: 1,
-        },
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-2',
-          frameId: 'fr-2',
-          shotNumber: 2,
-        },
-      ]
-    );
-    const extra = items[1];
-    expect(extra).toBeDefined();
-    const derived = extra && derivedShotForItem(extra, styleConfig);
-    expect(derived?.shotNumber).toBe(2);
-    expect(derived?.motionPrompt.fullPrompt).toContain('cut to the hallway');
-    expect(derived?.visualPrompt.fullPrompt).toContain('medium');
-  });
-
-  it('reference-only motion keeps framing and drops scene context', () => {
-    const shots = [
-      spec(1, 7, 'opens the door'),
-      spec(2, 6, 'cut to the hallway'),
-    ];
-    const items = shotWorkItems(
-      [
-        {
-          ...scene('sc-1', 13, shots),
-          continuity: {
-            characterTags: [],
-            environmentTag: '',
-            colorPalette: '',
-            lightingSetup: 'single overhead bulb',
-            styleTag: '',
-          },
-        },
-      ],
-      [
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-1',
-          frameId: 'fr-1',
-          shotNumber: 1,
-        },
-        {
-          analysisSceneId: 'sc-1',
-          shotId: 'sh-2',
-          frameId: 'fr-2',
-          shotNumber: 2,
-        },
-      ]
-    );
-    const derived =
-      items[0] &&
-      derivedShotForItem(items[0], styleConfig, { referenceOnly: true });
-    expect(derived?.motionPrompt.fullPrompt).toContain('medium');
-    expect(derived?.motionPrompt.fullPrompt).toContain('opens the door');
-    expect(derived?.motionPrompt.fullPrompt).not.toContain(
-      'single overhead bulb'
-    );
-    expect(derived?.visualPrompt.fullPrompt).toContain('single overhead bulb');
+  it('is undefined for a scene with no shot list', () => {
+    const [item] = shotWorkItems([scene('sc-1', 8)], [mapping(1)]);
+    expect(item && shotSpecForItem(item)).toBeUndefined();
   });
 });

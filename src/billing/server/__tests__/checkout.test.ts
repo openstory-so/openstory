@@ -1,21 +1,21 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { describe, expect, it, vi } from 'vitest';
+import type Stripe from 'stripe';
+import { asStub } from '@/test/as-stub';
 
 const create = vi.fn();
-const paymentMethodsList = vi.fn();
+const updateCustomer = vi.fn();
+const retrieveSetupIntent = vi.fn();
 vi.doMock('@/billing/server/stripe', () => ({
   getStripeOrThrow: () => ({
     customers: {
       retrieve: vi.fn().mockResolvedValue({ deleted: false }),
       create: vi.fn().mockResolvedValue({ id: 'cus_new' }),
-      update: vi.fn(),
+      update: updateCustomer,
     },
+    setupIntents: { retrieve: retrieveSetupIntent },
     checkout: {
       sessions: { create },
-    },
-    paymentMethods: {
-      list: paymentMethodsList,
-      retrieve: vi.fn(),
     },
   }),
 }));
@@ -26,10 +26,9 @@ vi.doMock('@/platform/server/observability/product-events', () => ({
 }));
 
 const {
-  chargeFingerprint,
   createCheckoutSession,
   createSetupCheckoutSession,
-  grantWelcomeIfTeamHasCard,
+  saveCardFromCheckout,
 } = await import('@/billing/server/checkout');
 
 function makeScopedDb() {
@@ -39,10 +38,11 @@ function makeScopedDb() {
         .fn()
         .mockResolvedValue({ stripeCustomerId: 'cus_1' }),
       saveStripeCustomerId: vi.fn(),
+      clearAutoTopUpFailure: vi.fn(),
     },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal ScopedDb stub
-  return stub as unknown as ScopedDb;
+  // minimal ScopedDb stub
+  return asStub<ScopedDb>(stub);
 }
 
 describe('createCheckoutSession', () => {
@@ -129,19 +129,16 @@ describe('createCheckoutSession', () => {
       id: 'cs_setup',
       url: 'https://checkout.stripe.com/setup',
     });
-    captureProductEvent.mockClear();
 
     await createSetupCheckoutSession({
       scopedDb: makeScopedDb(),
       teamId: 'team_1',
       userId: 'user_1',
       userEmail: 'test@example.com',
-      successUrl:
-        'https://app/?welcome_setup=success&session_id={CHECKOUT_SESSION_ID}',
-      cancelUrl: 'https://app/?welcome_setup=canceled',
+      successUrl: 'https://app/credits',
+      cancelUrl: 'https://app/credits',
     });
 
-    expect(create).toHaveBeenCalledTimes(1);
     const session = create.mock.calls[0]?.[0];
     expect(session.mode).toBe('setup');
     expect(session.line_items).toBeUndefined();
@@ -150,104 +147,55 @@ describe('createCheckoutSession', () => {
       userId: 'user_1',
       type: 'save_card',
     });
-    expect(session.success_url).toContain('welcome_setup=success');
-    expect(session.cancel_url).toContain('welcome_setup=canceled');
     expect(session.setup_intent_data.metadata).toEqual(session.metadata);
-    expect(captureProductEvent).toHaveBeenCalledWith({
-      distinctId: 'user_1',
-      event: 'welcome_card_setup_opened',
-      properties: expect.objectContaining({
-        teamId: 'team_1',
-        stripe_checkout_session_id: 'cs_setup',
-      }),
-    });
   });
 });
 
-describe('grantWelcomeIfTeamHasCard', () => {
-  it('does not grant when the team has no Stripe customer', async () => {
-    const addCredits = vi.fn();
-    const stub = {
-      billing: {
-        getBillingSettings: vi
-          .fn()
-          .mockResolvedValue({ stripeCustomerId: null }),
-        hasSignupGrant: vi.fn().mockResolvedValue(false),
-        addCredits,
-      },
+describe('saveCardFromCheckout', () => {
+  function setup(session: object) {
+    const billing = {
+      saveStripeCustomerId: vi.fn(),
+      clearAutoTopUpFailure: vi.fn(),
     };
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test double
-    const scopedDb = stub as unknown as ScopedDb;
-
-    const result = await grantWelcomeIfTeamHasCard({
-      scopedDb,
-      teamId: 'team_1',
-      userId: 'user_1',
-    });
-
-    expect(result).toEqual({
-      granted: false,
-      hasCard: false,
-      hasSignupGrant: false,
-    });
-    expect(addCredits).not.toHaveBeenCalled();
-  });
-
-  it('does not grant when the customer has no saved card', async () => {
-    const addCredits = vi.fn();
-    paymentMethodsList.mockResolvedValue({ data: [] });
-    const stub = {
-      billing: {
-        getBillingSettings: vi
-          .fn()
-          .mockResolvedValue({ stripeCustomerId: 'cus_1' }),
-        hasSignupGrant: vi.fn().mockResolvedValue(false),
-        addCredits,
-      },
+    updateCustomer.mockClear();
+    return {
+      billing,
+      run: () =>
+        saveCardFromCheckout(
+          // minimal Checkout session
+          asStub<Stripe.Checkout.Session>(session),
+          // minimal ScopedDb stub
+          asStub<ScopedDb>({ billing })
+        ),
     };
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test double
-    const scopedDb = stub as unknown as ScopedDb;
+  }
 
-    const result = await grantWelcomeIfTeamHasCard({
-      scopedDb,
-      teamId: 'team_1',
-      userId: 'user_1',
+  it('makes the SetupIntent card the default and records the customer', async () => {
+    retrieveSetupIntent.mockResolvedValue({ payment_method: 'pm_1' });
+    const { billing, run } = setup({
+      customer: 'cus_1',
+      setup_intent: 'seti_1',
     });
 
-    expect(result).toEqual({
-      granted: false,
-      hasCard: false,
-      hasSignupGrant: false,
+    await run();
+
+    expect(retrieveSetupIntent).toHaveBeenCalledWith('seti_1');
+    expect(updateCustomer).toHaveBeenCalledWith('cus_1', {
+      invoice_settings: { default_payment_method: 'pm_1' },
     });
-    expect(addCredits).not.toHaveBeenCalled();
-  });
-});
-
-describe('chargeFingerprint', () => {
-  const charge = (payment_method_details: unknown) =>
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test double
-    ({ payment_method_details }) as unknown as import('stripe').Stripe.Charge;
-
-  it('reads the card, Alipay or WeChat Pay account fingerprint', () => {
-    expect(
-      chargeFingerprint(charge({ type: 'card', card: { fingerprint: 'fp_c' } }))
-    ).toBe('fp_c');
-    expect(
-      chargeFingerprint(
-        charge({ type: 'alipay', alipay: { fingerprint: 'fp_a' } })
-      )
-    ).toBe('fp_a');
-    expect(
-      chargeFingerprint(
-        charge({ type: 'wechat_pay', wechat_pay: { fingerprint: 'fp_w' } })
-      )
-    ).toBe('fp_w');
+    expect(billing.saveStripeCustomerId).toHaveBeenCalledWith('cus_1');
+    expect(billing.clearAutoTopUpFailure).toHaveBeenCalled();
   });
 
-  it('is null for a method Stripe does not fingerprint', () => {
-    expect(
-      chargeFingerprint(charge({ type: 'link', link: { country: 'AU' } }))
-    ).toBeNull();
-    expect(chargeFingerprint(charge(null))).toBeNull();
+  it('throws so Stripe retries when the card is missing', async () => {
+    retrieveSetupIntent.mockResolvedValue({ payment_method: null });
+    const { billing, run } = setup({
+      customer: 'cus_1',
+      setup_intent: 'seti_1',
+    });
+
+    await expect(run()).rejects.toThrow('missing customer or payment method');
+    expect(updateCustomer).not.toHaveBeenCalled();
+    expect(billing.saveStripeCustomerId).not.toHaveBeenCalled();
   });
 });

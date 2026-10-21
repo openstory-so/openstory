@@ -3,6 +3,7 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { CreateLibraryTalentContext } from './create-library-talent';
 import { libraryTalentGenerateDedupId } from './library-talent-sheet-dedup';
+import { asStub } from '@/test/as-stub';
 
 type TriggerOptions = { deduplicationId?: string };
 
@@ -23,7 +24,13 @@ const mockRequireRights = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
+  triggerWorkflowRun: async (
+    ...args: Parameters<typeof mockTriggerWorkflow>
+  ) => ({ workflowRunId: await mockTriggerWorkflow(...args), reused: false }),
 }));
+const sheetClaim = {
+  claimSheet: vi.fn(async () => true),
+};
 vi.doMock('@/platform/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
@@ -59,13 +66,14 @@ function makeCtx(): CreateLibraryTalentContext {
     name: values.name,
     description: null,
   }));
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only talent.create + media.create
-  const scopedDb = {
+  // stub covering only talent.create + media.create
+  const scopedDb = asStub<ScopedDb>({
     talent: {
+      ...sheetClaim,
       create: mockCreate,
       media: { create: mockMediaCreate },
     },
-  } as unknown as ScopedDb;
+  });
   return {
     scopedDb,
     user: { id: 'user-1' },

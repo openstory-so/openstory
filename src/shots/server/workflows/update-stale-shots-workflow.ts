@@ -25,8 +25,8 @@
  *     immutable, identical across replays. Edits made after it can't add or
  *     remove targets — they simply produce new staleness that the indicators
  *     surface after the run. The plan holds ids, flags and prompt text; scene
- *     bodies and the cast/location/element rows stay in `load-scene-context` /
- *     `load-render-refs` steps, which get their OWN 1 MiB budgets — the script
+ *     bodies stay in `load-scene-context`, with its own 1 MiB budget; render
+ *     references and compact motion scene headers are frozen in the plan. The script
  *     term grows with script length, so folding it into the payload would put
  *     a user-supplied input against the same cap as everything else.
  *   - `claim-targets` pre-creates a pending version row per prompt/image
@@ -39,7 +39,7 @@
  *     wrong.
  *   - A chained image consumes the prompt its OWN dependency claim produced
  *     (see `spawnImage`), so a post-click edit cannot leak into the run; the
- *     video stage then reads the freshly-completed selection pointers.
+ *     video stage reads the returned claim rows and packs eligible siblings.
  *
  * Failures are per-shot and per-stage: one child failing (including an
  * insufficient-credits preflight) leaves that artifact out of date and
@@ -47,11 +47,28 @@
  * are skipped, not rendered from stale inputs.
  */
 
-import { musicPromptInputHashMatches } from '@/shots/input-hash';
+import { withLookSheet } from '@/cast/character-looks';
+import {
+  assertQueuedWithLooks,
+  finishCharacterSheetPayload,
+} from '@/cast/server/workflows/sheet-snapshots';
+import { generateId } from '@/platform/id';
+import { sheetStartedSummary } from '@/sequences/model-label';
+import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
+import {
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_MUSIC_MODEL,
+  supportsDraftMode,
+  type AudioModel,
+  type TextToImageModel,
+} from '@/models/models';
+import { DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { resolveVideoModel } from '@/models/resolve-asset-models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { estimateVideoCost, gateEstimate } from '@/billing/cost-estimation';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros } from '@/billing/money';
 import {
@@ -65,18 +82,19 @@ import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { isInsufficientCreditsError } from '@/platform/errors';
 import { buildMotionReferenceImages } from '@/motion/server/build-motion-references';
 import {
+  buildMotionRender,
+  type MotionRenderShot,
+} from '@/motion/server/build-motion-render';
+import { packPayloadDurationSeconds } from '@/motion/server/pack-motion-jobs';
+import {
   motionPromptFromVersion,
   resolveMotionPromptFromVersion,
 } from '@/motion/server/resolve-motion-prompt';
-import { resolveShotDuration } from '@/motion/resolve-shot-duration';
-import { getAnchorImageUrl } from '@/shots/server/frame-image';
 import type {
   FramePromptVersion,
   FrameVariant,
   ShotPromptVersion,
 } from '@/platform/server/db/schema';
-import type { FramePromptResult } from '@/stills/server/workflows/frame-prompt-workflow';
-import type { MotionPromptWorkflowResult } from '@/motion/server/workflows/motion-prompt-workflow';
 import { getLogger } from '@/platform/logger';
 import { reinforceInstrumentalTags } from '@/audio/server/music-prompt';
 import {
@@ -96,13 +114,28 @@ import {
   type ShotClaims,
   type SkippedShot,
 } from '@/shots/server/update-stale-plan';
+import { bindPendingVoices } from '@/shots/server/pending-voices';
+import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { shotVariantDedupId } from '@/platform/server/workflow/dedup-ids';
 import { spawnAndAwaitChild } from '@/platform/server/workflow/await-child';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
-import { WorkflowValidationError } from '@/platform/server/workflow/errors';
+import {
+  isEngineAbortError,
+  WorkflowValidationError,
+} from '@/platform/server/workflow/errors';
 import type {
-  FramePromptWorkflowInput,
+  CharacterSheetWorkflowInput,
+  CharacterSheetWorkflowResult,
+  CharacterVoiceWorkflowInput,
+  CharacterVoiceWorkflowResult,
+  ElementSheetWorkflowInput,
+  ElementSheetWorkflowResult,
+  LocationSheetWorkflowInput,
+  LocationSheetWorkflowResult,
   ImageWorkflowInput,
-  MotionPromptWorkflowInput,
+  ShotSpecRewriteWorkflowInput,
+  ShotSpecRewriteWorkflowResult,
+  ShotVariantWorkflowInput,
   DialogueAudioWorkflowInput,
   DialogueAudioWorkflowResult,
   MotionWorkflowInput,
@@ -112,6 +145,15 @@ import type {
   MusicWorkflowInput,
   UpdateStaleShotsWorkflowInput,
 } from '@/platform/server/workflow/types';
+import {
+  getGenerationChannel,
+  getShotPromptChannel,
+} from '@/platform/realtime';
+import { completeDerivedPrompts } from '@/shots/server/rebuild-shot-prompts';
+import {
+  GENERATION_STAGE_META,
+  type GenerationStage,
+} from '@/sequences/pipeline';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 
@@ -120,6 +162,9 @@ const logger = getLogger(['openstory', 'workflow', 'update-stale-shots']);
 const PARENT_BINDING_NAME = 'UPDATE_STALE_SHOTS_WORKFLOW';
 
 type UpdateStage =
+  | 'reference'
+  | 'voice'
+  | 'spec'
   | 'visual-prompt'
   | 'motion-prompt'
   | 'image'
@@ -128,10 +173,13 @@ type UpdateStage =
   | 'music-prompt'
   | 'music';
 
-/** `shotId` is the sequence id for the sequence-scoped music stages. */
+/**
+ * `shotId` is the sequence id for the sequence-scoped music stages, and the
+ * character / location / element id for the references wave.
+ */
 type UpdateFailure = { shotId: string; stage: UpdateStage; error: string };
 
-type UpdateStaleShotsResult = {
+export type UpdateStaleShotsResult = {
   totalShots: number;
   visualPrompts: number;
   motionPrompts: number;
@@ -153,11 +201,11 @@ type PromptScenes = {
   /** Script-overlaid scene metadata, the prompt children's primary input. */
   scene: Scene;
   /** Raw neighbour metadata for motion continuity. */
-  sceneBefore?: Scene;
-  sceneAfter?: Scene;
 };
 
 export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<UpdateStaleShotsWorkflowInput> {
+  protected override readonly failureLabel = 'Update';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<UpdateStaleShotsWorkflowInput>>,
     step: WorkflowStep,
@@ -165,7 +213,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
   ): Promise<UpdateStaleShotsResult> {
     const input = event.payload;
     const parentInstanceId = event.instanceId;
-    const { userId, teamId, sequenceId, plan } = input;
+    const { userId, teamId, sequenceId, plan: payloadPlan } = input;
     if (!sequenceId) {
       throw new WorkflowValidationError('Sequence ID is required');
     }
@@ -176,13 +224,18 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
     // snapshot available: identical across replays, and bound to the state the
     // user clicked on rather than to run-start state minutes later.
     // ============================================================
-    if (!plan || !Array.isArray(plan.targets)) {
+    if (!payloadPlan || !Array.isArray(payloadPlan.targets)) {
       // Only reachable for an instance queued by a build that predates the
       // move. Failing loudly beats a run that reports "nothing was stale".
       throw new WorkflowValidationError(
         'Update-all plan missing from payload; re-trigger the update'
       );
     }
+    const plan = {
+      ...payloadPlan,
+      dialogueSpeech:
+        payloadPlan.dialogueSpeech ?? payloadPlan.dialogueRecording ?? null,
+    };
     // Rationale lives with the plan type: `findTargetMissingStartFrameMode`.
     const untyped = findTargetMissingStartFrameMode(plan);
     if (untyped) {
@@ -190,6 +243,33 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         `Update-all plan predates the per-shot start-frame switch (shot ${untyped.shotId}); re-trigger the update`
       );
     }
+
+    if (
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- queued pre-1888 payloads lack this required snapshot
+      !plan.renderRefs ||
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- plans frozen before per-scene prompts
+      !plan.scenePrompts ||
+      plan.targets.some((target) => !target.motionRender)
+    ) {
+      throw new WorkflowValidationError(
+        'Update-all plan predates frozen motion sources; re-trigger the update'
+      );
+    }
+    if (
+      plan.references &&
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- plans frozen before looks were drawn from the default look
+      !plan.references.lookSheetsAfterDefault
+    ) {
+      throw new WorkflowValidationError(
+        'Update-all plan predates looks drawn from the default look; re-trigger the update'
+      );
+    }
+    // Before any claim is taken, so nothing is left to clear.
+    assertQueuedWithLooks(
+      ...(plan.references?.characterSheets ?? []),
+      ...(plan.references?.lookSheetsAfterDefault ?? []),
+      ...plan.renderRefs.characters
+    );
 
     const counters = {
       visualPrompts: 0,
@@ -201,12 +281,34 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       musicTracks: 0,
     };
     const failures: UpdateFailure[] = [];
+    // A continue runs under the storyboard banner (#1818): it moves through
+    // the same stops a fresh run does.
+    const announce = (stage: GenerationStage) =>
+      step.do(`phase-start-${stage}`, async () => {
+        await getGenerationChannel(sequenceId).emit('generation.phase:start', {
+          phase: GENERATION_STAGE_META[stage].phase,
+          phaseName: GENERATION_STAGE_META[stage].name,
+        });
+      });
+    const completePhase = (stage: GenerationStage) =>
+      step.do(`phase-complete-${stage}`, async () => {
+        await getGenerationChannel(sequenceId).emit(
+          'generation.phase:complete',
+          { phase: GENERATION_STAGE_META[stage].phase }
+        );
+      });
+    const freshPhases = input.freshRun && input.announcePhases;
     const musicToRun =
       plan.music && (plan.music.regenPrompt || plan.music.regenTrack)
         ? plan.music
         : null;
 
-    if (plan.targets.length === 0 && musicToRun === null) {
+    const references = plan.references;
+    if (
+      plan.targets.length === 0 &&
+      musicToRun === null &&
+      references === null
+    ) {
       return {
         totalShots: 0,
         ...counters,
@@ -241,6 +343,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               targets: plan.targets,
               sequenceId,
               parentInstanceId,
+              actorId: userId,
             })
           )
         : { claimsByShot: {}, skipped: [] };
@@ -274,23 +377,380 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       ])
     );
 
-    // Only the render stages match against these; a prompts-only run would pay
-    // three reads for nothing (the prompt children get their bibles from the
-    // plan's `promptContext`).
-    const renderRefs: ShotImageRefs = plan.targets.some(
-      (t) => t.regenImage || t.regenVideo
-    )
-      ? await step.do('load-render-refs', async () => {
-          const [characters, locations, elements] = await Promise.all([
-            scopedDb.liveRead.characters.listWithSheets(sequenceId),
-            scopedDb.liveRead.sequenceLocations.listWithReferences(sequenceId),
-            scopedDb.liveRead.sequenceElements.list(sequenceId),
-          ]);
-          return { characters, locations, elements };
+    // ============================================================
+    // PHASE 1d (#1818): the references wave — sheets, element references and
+    // voices a continue owes, before any shot renders from them. Payloads
+    // were built at the click; the claims are taken here, as the bible
+    // workflows take theirs. A reference that fails holds the stills and
+    // clips made from it (`referenceIds`) and fails nothing else.
+    // ============================================================
+    const leftoverGrok = new Set(input.leftoverGrokShotIds ?? []);
+    const failedReferenceIds = new Set<string>();
+    // character id → the voice this run designed, for `bindPendingVoices`.
+    const designedVoices: Record<string, string> = {};
+    const generatedCharacters = new Map<string, CharacterSheetWorkflowResult>();
+    const generatedLocations = new Map<string, LocationSheetWorkflowResult>();
+    const generatedElements = new Map<
+      string,
+      ElementSheetWorkflowResult['elements'][number]
+    >();
+    if (references) {
+      if (input.announcePhases) await announce('references');
+      // Sheets and voices have no preflight of their own (per-shot renders
+      // do): check the wave's click-time price before spawning any of it.
+      await step.do('gate-references', async () => {
+        // One aggregate check covers this wave's simultaneous platform spend.
+        // A fal BYOK key covers sheets, but never the platform-only voices.
+        const ownSheets = await scopedDb.liveRead.apiKeys.hasUsableKey('fal');
+        await requireCredits(
+          scopedDb.liveRead,
+          ownSheets
+            ? references.cost.voices
+            : addMicros(references.cost.sheets, references.cost.voices),
+          {
+            providers: [],
+            errorMessage: 'Insufficient credits for references and voices',
+            reservationId: input.reservationId,
+          }
+        );
+      });
+      const failReference = (
+        id: string,
+        stage: UpdateStage,
+        error: unknown
+      ) => {
+        failedReferenceIds.add(id);
+        failures.push(toFailure(id, stage, error));
+      };
+      // Conditional (#1863): the payload was built at the click, and an edit
+      // since then found no claim to revoke. The claim is taken only while
+      // the look, the bible and the cast it was built from still hold;
+      // otherwise the run parks its sheet. Null when the claim step failed.
+      const claimCharacterSheet = async (
+        payload: Pick<
+          CharacterSheetWorkflowInput,
+          | 'lookId'
+          | 'lookVersionId'
+          | 'bibleVersionId'
+          | 'talentId'
+          | 'characterName'
+          | 'imageModel'
+        >
+      ): Promise<string | null> => {
+        // One sheet per look (#2015).
+        const id = payload.lookId;
+        try {
+          return await step.do(
+            `claim-character-sheet-${id}`,
+            async () =>
+              (
+                await scopedDb.characterLooks.claimSheet(
+                  id,
+                  {
+                    lookVersionId: payload.lookVersionId,
+                    // Passed as frozen: a plan from before #1600 has
+                    // none, and `claimSheet` skips what is absent.
+                    bibleVersionId: payload.bibleVersionId,
+                    talentId: payload.talentId,
+                  },
+                  {
+                    markGenerating: true,
+                    activity: {
+                      sequenceId,
+                      actorId: userId,
+                      summary: sheetStartedSummary(
+                        payload.characterName,
+                        payload.imageModel ?? DEFAULT_IMAGE_MODEL
+                      ),
+                    },
+                  }
+                )
+              ).versionId
+          );
+        } catch (error) {
+          failReference(id, 'reference', error);
+          return null;
+        }
+      };
+      const spawnCharacterSheet = async (
+        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>,
+        sheetVersionId: string
+      ) => {
+        const id = payload.lookId;
+        try {
+          const generated = await spawnAndAwaitChild<
+            CharacterSheetWorkflowInput,
+            CharacterSheetWorkflowResult
+          >(step, {
+            binding: this.env.CHARACTER_SHEET_WORKFLOW,
+            parentBindingName: PARENT_BINDING_NAME,
+            parentInstanceId,
+            childId: `character-sheet:${id}`,
+            childPayload: {
+              ...payload,
+              sheetVersionId,
+              reservationId: input.reservationId,
+            },
+            spawnStepName: `spawn-character-sheet-${id}`,
+            awaitStepName: `await-character-sheet-${id}`,
+            timeout: '30 minutes',
+          });
+          generatedCharacters.set(id, {
+            ...generated,
+            sheetVersionId: generated.sheetVersionId ?? sheetVersionId,
+          });
+        } catch (error) {
+          failReference(id, 'reference', error);
+          // A child that never started has no onFailure to clear the
+          // claim; the guarded clear is a no-op when one did.
+          await step.do(`fail-character-sheet-claim-${id}`, () =>
+            scopedDb.characterLooks.failSheetClaim(
+              id,
+              sheetVersionId,
+              sanitizeFailResponse(error)
+            )
+          );
+        }
+      };
+      const drawCharacterSheet = async (
+        payload: Omit<CharacterSheetWorkflowInput, 'sheetVersionId'>
+      ) => {
+        const sheetVersionId = await claimCharacterSheet(payload);
+        if (sheetVersionId) await spawnCharacterSheet(payload, sheetVersionId);
+      };
+      // The second wave's claims are taken now, with the first wave's: the
+      // click is when the run kicks these looks off. A regenerate between
+      // the waves then takes a newer claim, and this run's older sheet
+      // parks (last kickoff wins).
+      const afterDefaultClaims = new Map<string, string>();
+      await Promise.allSettled(
+        references.lookSheetsAfterDefault.map(async (draft) => {
+          const claimed = await claimCharacterSheet(draft);
+          if (claimed) afterDefaultClaims.set(draft.lookId, claimed);
         })
-      : { characters: [], locations: [], elements: [] };
+      );
+      await Promise.allSettled([
+        ...references.characterSheets.map(drawCharacterSheet),
+        ...references.locationSheets.map(async (payload) => {
+          const id = payload.locationDbId;
+          let referenceVersionId: string;
+          try {
+            referenceVersionId = await step.do(
+              `claim-location-sheet-${id}`,
+              () =>
+                scopedDb.locations.claimReference(id, {
+                  markGenerating: true,
+                  activity: {
+                    sequenceId,
+                    actorId: userId,
+                    summary: sheetStartedSummary(
+                      payload.locationName,
+                      payload.imageModel ?? DEFAULT_IMAGE_MODEL
+                    ),
+                  },
+                })
+            );
+          } catch (error) {
+            failReference(id, 'reference', error);
+            return;
+          }
+          try {
+            const generated = await spawnAndAwaitChild<
+              LocationSheetWorkflowInput,
+              LocationSheetWorkflowResult
+            >(step, {
+              binding: this.env.LOCATION_SHEET_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `location-sheet:${id}`,
+              childPayload: {
+                ...payload,
+                referenceVersionId,
+                reservationId: input.reservationId,
+              },
+              spawnStepName: `spawn-location-sheet-${id}`,
+              awaitStepName: `await-location-sheet-${id}`,
+              timeout: '30 minutes',
+            });
+            generatedLocations.set(id, {
+              ...generated,
+              sheetVersionId: generated.sheetVersionId ?? referenceVersionId,
+            });
+          } catch (error) {
+            failReference(id, 'reference', error);
+            await step.do(`fail-location-sheet-claim-${id}`, () =>
+              scopedDb.locations.failReferenceClaim(
+                id,
+                referenceVersionId,
+                sanitizeFailResponse(error)
+              )
+            );
+          }
+        }),
+        ...(references.elementSheets
+          ? [
+              (async (payload: ElementSheetWorkflowInput) => {
+                try {
+                  const generated = await spawnAndAwaitChild<
+                    ElementSheetWorkflowInput,
+                    ElementSheetWorkflowResult
+                  >(step, {
+                    binding: this.env.ELEMENT_SHEET_WORKFLOW,
+                    parentBindingName: PARENT_BINDING_NAME,
+                    parentInstanceId,
+                    childId: `element-sheets:${sequenceId}:${parentInstanceId}`,
+                    childPayload: {
+                      ...payload,
+                      reservationId: input.reservationId,
+                    },
+                    spawnStepName: 'spawn-element-sheets',
+                    awaitStepName: 'await-element-sheets',
+                  });
+                  for (const element of generated.elements)
+                    generatedElements.set(element.id, element);
+                } catch (error) {
+                  // The child fails as a whole when any entry does.
+                  for (const entry of payload.entries)
+                    failReference(entry.elementId, 'reference', error);
+                }
+              })(references.elementSheets),
+            ]
+          : []),
+        // Voices (#1780 §4): every speaking character the plan owes one,
+        // through the same husk claim the bible workflow takes.
+        ...references.voices.map(async (payload) => {
+          const id = payload.characterDbId;
+          let huskId: string | undefined;
+          try {
+            const claim = await step.do(`claim-voice-${id}`, () =>
+              scopedDb.characters.createPendingVoiceClaim(id, userId, {
+                activity: {
+                  sequenceId,
+                  summary: `Started a voice for ${payload.characterBible.name}`,
+                },
+              })
+            );
+            huskId = claim.version.id;
+            // Someone else's design is in flight: it is making this voice.
+            if (!claim.created && claim.version.workflowRunId) return;
+            const designed = await spawnAndAwaitChild<
+              CharacterVoiceWorkflowInput,
+              CharacterVoiceWorkflowResult
+            >(step, {
+              binding: this.env.CHARACTER_VOICE_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `character-voice:${id}`,
+              childPayload: {
+                ...payload,
+                targetVersionId: claim.version.id,
+                reservationId: input.reservationId,
+              },
+              spawnStepName: `spawn-character-voice-${id}`,
+              awaitStepName: `await-character-voice-${id}`,
+              timeout: '30 minutes',
+            });
+            if (designed.voiceId) designedVoices[id] = designed.voiceId;
+          } catch (error) {
+            failures.push(toFailure(id, 'voice', error));
+            const husk = huskId;
+            if (husk) {
+              await step.do(`fail-voice-claim-${id}`, () =>
+                scopedDb.characters.markVoiceClaimTerminal(
+                  husk,
+                  'failed',
+                  sanitizeFailResponse(error)
+                )
+              );
+            }
+          }
+        }),
+      ]);
+      // The second wave (#2015): a look other than the default is drawn from
+      // the default look's sheet, so a look whose default sheet this run
+      // made waits for it. Its face is that landed sheet, from the run's own
+      // result, never a re-read. A default that failed or parked fails the
+      // look, which holds the stills that wear it.
+      await Promise.allSettled(
+        references.lookSheetsAfterDefault.map(async (draft) => {
+          const sheetVersionId = afterDefaultClaims.get(draft.lookId);
+          // The claim step failed and was reported.
+          if (!sheetVersionId) return;
+          const landed = generatedCharacters.get(draft.characterDbId);
+          const versionId = landed?.sheetVersionId;
+          if (!landed || landed.diverged || !versionId) {
+            const error = new Error(
+              `${draft.characterName}'s default look sheet did not land in this run, so this look has no face to be drawn from`
+            );
+            failReference(draft.lookId, 'reference', error);
+            // Its claim was taken at kickoff; no child holds it, so clear it
+            // here (a no-op once a newer run took it).
+            await step.do(`fail-character-sheet-claim-${draft.lookId}`, () =>
+              scopedDb.characterLooks.failSheetClaim(
+                draft.lookId,
+                sheetVersionId,
+                sanitizeFailResponse(error)
+              )
+            );
+            return;
+          }
+          const payload = await step.do(
+            `finish-look-sheet-${draft.lookId}`,
+            () =>
+              finishCharacterSheetPayload(draft, {
+                url: landed.sheetImageUrl,
+                versionId,
+              })
+          );
+          await spawnCharacterSheet(payload, sheetVersionId);
+        })
+      );
+    }
 
-    const spawnImage = async (
+    if (freshPhases && references) await completePhase('references');
+
+    // Speakers whose voice this run designed now speak in it; a shot whose
+    // voice did not land is held below, never rendered without it.
+    const { plan: voicedPlan, unvoicedShotIds } = bindPendingVoices(
+      plan,
+      designedVoices
+    );
+
+    // Frozen click-time rows, overlaid only with this run's child results.
+    // A concurrent sheet selection cannot change a render already requested.
+    const renderRefs: ShotImageRefs = {
+      // Each sheet this run made lands on its look (#2015), so a scene
+      // dressed in that look renders from it.
+      characters: plan.renderRefs.characters.map((row) =>
+        [...generatedCharacters].reduce(
+          (character, [lookId, generated]) =>
+            character.looks.some((look) => look.id === lookId) ||
+            character.lookId === lookId
+              ? withLookSheet(character, lookId, {
+                  sheetImageUrl: generated.sheetImageUrl,
+                  selectedSheetVersionId: generated.sheetVersionId ?? null,
+                })
+              : character,
+          row
+        )
+      ),
+      locations: plan.renderRefs.locations.map((row) => {
+        const generated = generatedLocations.get(row.id);
+        return generated
+          ? {
+              ...row,
+              referenceImageUrl: generated.referenceImageUrl,
+              selectedReferenceVersionId: generated.sheetVersionId ?? null,
+            }
+          : row;
+      }),
+      elements: plan.renderRefs.elements.map((row) => ({
+        ...row,
+        ...generatedElements.get(row.id),
+      })),
+    };
+
+    const spawnImageModel = async (
       target: PlanTarget,
       claims: ShotClaims,
       /**
@@ -299,7 +759,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
        * into on the unique-index collision path. Null when no prompt child
        * ran (a direct render) or it persisted nothing.
        */
-      promptedVisualVersionId: string | null
+      promptedVisualVersionId: string | null,
+      model: TextToImageModel,
+      alternate: boolean
     ): Promise<void> => {
       // The prompt source is deterministic (#1085): a chained render consumes
       // the prompt its OWN dependency row produced — never a re-read of
@@ -311,7 +773,7 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       // typed `Json`, which the step's Serializable constraint rejects even
       // though the value is plain JSON (same pattern as await-child.ts).
       const imageInputJson = await step.do(
-        `prepare-image-${target.shotId}`,
+        `prepare-image-${target.shotId}${alternate ? `-${model}` : ''}`,
         async (): Promise<string | null> => {
           const [shot, frame] = await Promise.all([
             scopedDb.liveRead.shots.getById(target.shotId),
@@ -394,12 +856,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               promptOverride: visualPrompt?.text,
               promptVersionOverride: visualPrompt?.id,
               // The claim row advertises this model; render what it promised.
-              modelOverride: target.imageModel,
+              modelOverride: model,
+              reservationId: input.reservationId,
               refs: renderRefs,
             });
             return JSON.stringify({
               ...prepared,
-              targetVariantId: claims.imageVariantId ?? undefined,
+              targetVariantId: alternate
+                ? undefined
+                : (claims.imageVariantId ?? undefined),
+              variantOnly: alternate,
+              reservationId: input.reservationId,
             });
           } catch (error) {
             // Running out of credits is terminal, not transient: retrying
@@ -432,10 +899,10 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         binding: this.env.IMAGE_WORKFLOW,
         parentBindingName: PARENT_BINDING_NAME,
         parentInstanceId,
-        childId: `image:${sequenceId}:${target.shotId}`,
+        childId: `image:${sequenceId}:${target.shotId}${alternate ? `:${model}` : ''}`,
         childPayload: imageInput,
-        spawnStepName: `spawn-image-${target.shotId}`,
-        awaitStepName: `await-image-${target.shotId}`,
+        spawnStepName: `spawn-image-${target.shotId}${alternate ? `-${model}` : ''}`,
+        awaitStepName: `await-image-${target.shotId}${alternate ? `-${model}` : ''}`,
       });
       // A user cancel (before or during the render) is a stand-down, not a
       // failure — and definitely not a render to count (#1095 review).
@@ -451,7 +918,75 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       if (!output.imageUrl) {
         throw new Error('Image workflow completed without producing an image');
       }
+      const thumbnailUrl = output.imageUrl;
       counters.images += 1;
+      if (input.freshRun) {
+        // Independent enrichment, as in ShotImagesWorkflow: it can outlive
+        // this run and bills its own instance rather than the parent envelope.
+        await step.do(`trigger-variant-${target.shotId}-${model}`, async () => {
+          const enforcement =
+            await scopedDb.liveRead.compliance.listEnforcementFor(
+              userId,
+              teamId
+            );
+          await triggerWorkflow<ShotVariantWorkflowInput>(
+            '/variant-image',
+            {
+              userId,
+              teamId,
+              sequenceId,
+              shotId: target.shotId,
+              frameId: imageInput.frameId,
+              thumbnailUrl,
+              scenePrompt: imageInput.prompt,
+              promptVersionId: imageInput.promptVersionId,
+              referenceImages: imageInput.referenceImages,
+              aspectRatio: imageInput.aspectRatio,
+              model,
+              tileHashInput: imageInput.sceneSnapshot ?? null,
+            },
+            {
+              deduplicationId: shotVariantDedupId(
+                parentInstanceId,
+                target.shotId,
+                model
+              ),
+              enforcement,
+            }
+          );
+        });
+      }
+    };
+
+    const spawnImage = async (
+      target: PlanTarget,
+      claims: ShotClaims,
+      promptedVisualVersionId: string | null
+    ): Promise<void> => {
+      const models = [
+        ...new Set(
+          plan.renderOptions?.imageModels?.length
+            ? plan.renderOptions.imageModels
+            : [target.imageModel]
+        ),
+      ];
+      const outcomes = await Promise.allSettled(
+        models.map((model, index) =>
+          spawnImageModel(
+            target,
+            claims,
+            promptedVisualVersionId,
+            model,
+            index > 0
+          )
+        )
+      );
+      for (const [index, result] of outcomes.entries()) {
+        if (result.status === 'rejected') {
+          if (index === 0) throw result.reason;
+          failures.push(toFailure(target.shotId, 'image', result.reason));
+        }
+      }
     };
 
     /**
@@ -463,7 +998,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
      * version → sequence default, #873 reference images, model-snapped
      * duration, credits preflight.
      */
-    const spawnVideo = async (
+    const preparedVideos = new Map<string, MotionRenderShot>();
+    const prepareVideo = async (
       target: PlanTarget,
       claims: ShotClaims,
       /** @see spawnImage — the motion-prompt child's twin. */
@@ -583,17 +1119,19 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
           // render).
           const selectedVideo =
             await scopedDb.liveRead.videoVariants.getSelectedByShot(shot.id);
-          if (!selectedVideo) return null;
-          if (shot.renderSegmentId) {
+          // A continue renders the first video (#1818); for Update all a
+          // vanished selection means there is nothing to update.
+          if (!selectedVideo && !target.createsVideo) return null;
+          if (target.motionRender.renderSegmentId) {
             const segmentVersions =
               await scopedDb.liveRead.videoVariants.listBySegment(
-                shot.renderSegmentId
+                target.motionRender.renderSegmentId
               );
             if (segmentVersions.some((v) => v.status === 'generating')) {
               return null;
             }
           }
-          const manifestEntry = selectedVideo.manifest.find(
+          const manifestEntry = selectedVideo?.manifest.find(
             (entry) => entry.shotId === shot.id
           );
           // A shot rendering from references has no frame pointer at all —
@@ -608,21 +1146,30 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             !manifestEntry ||
             manifestEntry.motionPromptVersionId !== motionVersion.id ||
             manifestEntry.frameVersionId !== expectedFrameVersionId;
-          if (!diverged) return null;
+          // The plan judged this very clip stale — for any reason, not only
+          // the two ids above — so it renders while it is still selected.
+          const unchangedSinceClick =
+            selectedVideo !== null &&
+            selectedVideo.id === target.staleVideoVersionId;
+          if (selectedVideo && !diverged && !unchangedSinceClick) return null;
           // Selected-version model → sequence default. (The single-shot fn
           // also consults a last-failed attempt; irrelevant here — a video
           // must already exist for this target to be planned.)
-          const model = resolveVideoModel({
-            selectedVersionModel: selectedVideo.model,
-            sequenceModel: sequenceSnapshot.videoModel,
-          });
-          const { scene } = resolveSceneForShot(shot, sceneContext);
+          // A leftover the user sent to Grok renders there at its 1s floor,
+          // as the fresh run's batch does.
+          const model = leftoverGrok.has(target.shotId)
+            ? 'grok_imagine_video_1_5'
+            : (plan.renderOptions?.videoModels?.[0] ??
+              resolveVideoModel({
+                selectedVersionModel: target.motionRender.selectedModel,
+                sequenceModel: sequenceSnapshot.videoModel,
+              }));
           const prompt = resolveMotionPromptFromVersion(
             motionVersion,
             {
               dialogue: target.dialogue,
-              characterTags: scene?.continuity?.characterTags,
-              description: scene?.originalScript.extract ?? null,
+              characterTags: target.motionRender.characterTags,
+              description: target.motionRender.description,
             },
             model
           );
@@ -633,7 +1180,16 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             );
           }
           const referenceImages = buildMotionReferenceImages({
-            scene,
+            scene: {
+              continuity: {
+                characterTags: target.motionRender.characterTags,
+                characterLooks: target.motionRender.characterLooks ?? undefined,
+                elementTags: target.motionRender.elementTags,
+                environmentTag: target.motionRender.environmentTag,
+              },
+              metadata: { location: target.motionRender.location },
+              originalScript: { extract: target.motionRender.description },
+            },
             characters: renderRefs.characters,
             elements: renderRefs.elements,
             motionPrompt: prompt,
@@ -642,61 +1198,38 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             referenceOnly: !target.usesStartFrame,
             locations: renderRefs.locations,
           });
-          const duration = resolveShotDuration({
-            durationMs: target.durationMs,
-            model,
-          });
+          const duration = packPayloadDurationSeconds(target.durationMs);
           // What the shot says, snapshotted on the target at click time
           // (#1657).
           const voicedLines = modelTakesDialogueAudio(model)
-            ? voicedDialogueLines(target.dialogue, plan.characterVoices)
+            ? voicedDialogueLines(target.dialogue, voicedPlan.characterVoices)
             : [];
           const audioClips = matchingDialogueClips(
-            shot.audioClips,
+            speechClipsByShotId[target.shotId] ??
+              target.motionRender.audioClips,
             voicedLines
           );
-          const ttsChars =
-            audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
-          try {
-            await requireCredits(
-              scopedDb.liveRead,
-              addMicros(
-                gateEstimate(
-                  estimateVideoCost(model, duration, {
-                    pricing: await getEffectiveFalPricing(),
-                    resolution: plan.resolution,
-                    // Same route the submit below takes, or a reference-only
-                    // shot is gated at the image-to-video rate.
-                    referenceOnly: !target.usesStartFrame,
-                    hasReferenceImages: referenceImages.length > 0,
-                  }),
-                  { model, operation: 'update-stale-shots:video' }
-                ),
-                estimateTtsCost(ttsChars)
-              ),
-              {
-                errorMessage: 'Insufficient credits for video generation',
-              }
+          if (voicedLines.length > 0 && audioClips.length === 0) {
+            throw new NonRetryableError(
+              `Dialogue audio is not ready for shot ${target.shotId}; motion is blocked.`
             );
-          } catch (error) {
-            if (isInsufficientCreditsError(error)) {
-              throw new NonRetryableError(
-                error instanceof Error ? error.message : String(error),
-                'InsufficientCreditsError'
-              );
-            }
-            throw error;
           }
-          const motionInput: MotionWorkflowInput = {
-            userId,
-            teamId,
-            sequenceId,
+          const motionInput: MotionRenderShot = {
             shotId: shot.id,
-            sceneId: shot.sceneId,
+            sceneId: target.motionRender.sceneId,
+            renderSegmentId: target.motionRender.renderSegmentId,
             imageUrl: target.usesStartFrame
               ? (still?.url ?? undefined)
               : undefined,
             referenceOnly: !target.usesStartFrame,
+            // Decided once, here; the preflight below holds what it says
+            // (#2036). The via is a credential, read through its hatch.
+            seedanceEditSeconds: seedanceEditSeconds({
+              model,
+              onArk: await seedanceRunsOnArk(scopedDb.credentials),
+              prompt,
+              references: referenceImages,
+            }),
             // Same rule as `expectedFrameVersionId` above — a clip rendered
             // from references names no still.
             frameVersionId: target.usesStartFrame ? (still?.id ?? null) : null,
@@ -707,21 +1240,20 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             aspectRatio: plan.aspectRatio,
             resolution: plan.resolution,
             draft: plan.sequence.draftMotion,
-            sceneTitle: scene?.metadata?.title,
+            sceneTitle: target.motionRender.sceneTitle,
             sequenceTitle: sequenceSnapshot.title,
             referenceImages,
             voicedLines,
             audioClips: audioClips.length > 0 ? audioClips : undefined,
-            // Only read when no clip matches: the recording is then acted in
-            // the conversation around the shot, not as a cold read.
-            ...(voicedLines.length > 0 && target.dialogueContext.length > 0
-              ? { dialogueContext: target.dialogueContext }
-              : {}),
             motionPrompt: motionPromptFromVersion(
               motionVersion,
               target.dialogue
             ),
-            characterTags: scene?.continuity?.characterTags,
+            characterTags: target.motionRender.characterTags,
+            // One shot of a multi-shot scene renders alone here, so it
+            // carries the scene header a packed clip states once (#1874).
+            packedScene: target.motionRender.packedScene,
+            attachSceneHeader: target.attachSceneHeader,
           };
           return JSON.stringify(motionInput);
         }
@@ -733,23 +1265,8 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         return;
       }
       // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-      const motionInput = JSON.parse(motionInputJson) as MotionWorkflowInput;
-      await spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
-        step,
-        {
-          binding: this.env.MOTION_WORKFLOW,
-          parentBindingName: PARENT_BINDING_NAME,
-          parentInstanceId,
-          childId: `motion:${sequenceId}:${target.shotId}`,
-          childPayload: motionInput,
-          spawnStepName: `spawn-video-${target.shotId}`,
-          awaitStepName: `await-video-${target.shotId}`,
-          // Same budget as motion-batch's motion children: 30 minutes of
-          // polling plus BytePlus still ingest.
-          timeout: '90 minutes',
-        }
-      );
-      counters.videos += 1;
+      const motionInput = JSON.parse(motionInputJson) as MotionRenderShot;
+      preparedVideos.set(target.shotId, motionInput);
     };
 
     /**
@@ -775,54 +1292,47 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             'WorkflowValidationError'
           );
         }
-        const neighbourIds = [target.beforeShotId, target.afterShotId].filter(
-          (id): id is string => id !== null
-        );
-        const neighbours = await Promise.all(
-          neighbourIds.map((id) => scopedDb.liveRead.shots.getById(id))
-        );
-        const sceneById = new Map(
-          neighbours
-            .filter((s) => !!s)
-            .map((s) => [
-              s.id,
-              resolveSceneForShot(s, sceneContext).scene ?? undefined,
-            ])
-        );
-        return {
-          scene,
-          sceneBefore: target.beforeShotId
-            ? sceneById.get(target.beforeShotId)
-            : undefined,
-          sceneAfter: target.afterShotId
-            ? sceneById.get(target.afterShotId)
-            : undefined,
-        };
+        return { scene };
       });
 
-    // Dialogue is recorded ONCE PER SCENE (#1657), started now because what a
-    // shot says does not wait on its prompts or its still. Every video render
-    // awaits this first: `prepare-video` reads the shot's clips live, so the
-    // clip the recording saved is simply there, and the motion child attaches
-    // it instead of recording its own window of the scene. Never fatal — a
-    // scene that cannot be recorded leaves its shots to record themselves, in
-    // context, which fails that shot and not the run.
-    const dialogueRecording = plan.dialogueRecording;
+    // Dialogue is recorded ONCE PER SCENE (#1657). Fresh runs record after
+    // Images; updates can start immediately. Every video render awaits this
+    // result, and `prepare-video` blocks any voiced shot without a matching
+    // clip before its motion child is spawned.
+    if (!input.freshRun && input.announcePhases && plan.targets.length > 0) {
+      await announce(
+        plan.targets.some((t) => t.regenVisual || t.regenImage || t.regenMotion)
+          ? 'images'
+          : plan.targets.some((t) => t.regenDialogue)
+            ? 'dialogue'
+            : 'motion'
+      );
+    }
+    const hasImageWork =
+      plan.targets.some(
+        (target) =>
+          target.regenVisual || target.regenImage || target.regenMotion
+      ) || !!(musicToRun?.regenPrompt && !musicToRun.regenTrack);
+    if (freshPhases && hasImageWork) await announce('images');
+    const dialogueSpeech = voicedPlan.dialogueSpeech;
     // Same balance gate the per-shot render applies to its own TTS, priced on
     // the whole conversation. Short of it, skip the up-front recording: each
     // shot's own gate then refuses it by name instead of the run failing here.
-    const canRecordScenes = dialogueRecording
+    const canRecordScenes = dialogueSpeech
       ? await step.do('gate-dialogue-audio', async () => {
           try {
             await requireCredits(
               scopedDb.liveRead,
               estimateTtsCost(
-                dialogueRecording.scenes.reduce(
+                dialogueSpeech.scenes.reduce(
                   (sum, job) => sum + ttsCharacterCount(job.voiced),
                   0
                 )
               ),
-              { errorMessage: 'Insufficient credits for dialogue audio' }
+              {
+                errorMessage: 'Insufficient credits for dialogue audio',
+                reservationId: input.reservationId,
+              }
             );
             return true;
           } catch (error) {
@@ -833,8 +1343,9 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
       : false;
     // Settles to the recorded clips, or to why the scene audio was not
     // recorded — never rejects, so a render awaiting it is never failed by it.
-    const dialogueRecorded: Promise<DialogueOutcome> =
-      dialogueRecording && canRecordScenes
+    let speechClipsByShotId: DialogueAudioWorkflowResult['clipsByShotId'] = {};
+    const generateDialogueSpeech = (): Promise<DialogueOutcome> =>
+      dialogueSpeech && canRecordScenes
         ? spawnAndAwaitChild<
             DialogueAudioWorkflowInput,
             DialogueAudioWorkflowResult
@@ -848,20 +1359,21 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               teamId,
               sequenceId,
               reservationId: input.reservationId,
-              scenes: dialogueRecording.scenes,
-              minDurationSeconds: dialogueRecording.minDurationSeconds,
-              maxDurationSeconds: dialogueRecording.maxDurationSeconds,
+              scenes: dialogueSpeech.scenes,
+              minDurationSeconds: dialogueSpeech.minDurationSeconds,
+              maxDurationSeconds: dialogueSpeech.maxDurationSeconds,
+              analysisModelId: plan.promptContext?.analysisModelId,
             },
             spawnStepName: 'spawn-dialogue-audio',
             awaitStepName: 'await-dialogue-audio',
             timeout: '60 minutes',
           }).then(
             (result): DialogueOutcome => ({
-              clipsByShotId: result.clipsByShotId,
+              clipsByShotId: (speechClipsByShotId = result.clipsByShotId),
             }),
             (error: unknown): DialogueOutcome => {
               logger.warn(
-                '[UpdateStaleShotsWorkflow] Scene dialogue not recorded up front; each shot records its own',
+                '[UpdateStaleShotsWorkflow] Scene dialogue not recorded; its voiced clips will be blocked',
                 { sequenceId, err: error }
               );
               return {
@@ -870,29 +1382,38 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             }
           )
         : Promise.resolve<DialogueOutcome>(
-            dialogueRecording
+            dialogueSpeech
               ? { error: 'Insufficient credits for dialogue audio' }
               : { clipsByShotId: {} }
           );
 
+    let dialogueGenerated = input.freshRun
+      ? Promise.resolve<DialogueOutcome>({ clipsByShotId: {} })
+      : generateDialogueSpeech();
+    const eligibleVideos: Array<{
+      target: PlanTarget;
+      claims: ShotClaims;
+      motionVersionId: string | null;
+    }> = [];
+
     // ============================================================
-    // PHASE 2: fan out — one job per shot, so a shot's scene step runs once
-    // for both its prompt children. Within a shot the visual-prompt → image
-    // chain is sequential while the motion prompt runs alongside, and the
-    // video render (depth ≥ 'video') waits on both. Failures are recorded
-    // per stage so one shot never blocks its peers.
+    // PHASE 2: fan out — one job per shot. A stale spec is rewritten, then
+    // its prompts are rebuilt from the new spec. A current spec rebuilds
+    // for free, with no LLM. The still waits on the visual prompt. Motion
+    // does not wait on the still. The video render waits on both.
     // ============================================================
     // `promptCommon` is provably non-null whenever targets exist (the guard
     // above throws otherwise); the ternary is for the compiler, and yields
     // the same empty job list a target-less (music-only) run needs.
     const jobs = !promptCommon
       ? []
-      : plan.targets.map((target) =>
+      : voicedPlan.targets.map((target) =>
           (async (): Promise<void> => {
             const claims = claimed.claimsByShot[target.shotId] ?? {
               visualVersionId: null,
               motionVersionId: null,
               imageVariantId: null,
+              specClaimId: null,
             };
             // A regen flag without a claim means another run already owns that
             // artifact ('already-in-flight' in `skipped`) — this run stands down.
@@ -900,7 +1421,18 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               target.regenVisual && claims.visualVersionId !== null;
             const doMotion =
               target.regenMotion && claims.motionVersionId !== null;
-            const doImage = target.regenImage && claims.imageVariantId !== null;
+            const specClaimId = claims.specClaimId;
+            const doRewrite =
+              target.rewriteSpec === true && specClaimId !== null;
+            // A sheet / element this run failed to make holds the still and
+            // clip made from it (#1818) — never render without it.
+            const heldByReference =
+              failedReferenceIds.size > 0 &&
+              target.referenceIds.some((id) => failedReferenceIds.has(id));
+            const doImage =
+              !heldByReference &&
+              target.regenImage &&
+              claims.imageVariantId !== null;
 
             // Best-effort claim cleanup on a stage failure — a claim must never
             // outlive its run's ability to complete it (the reconciler is the
@@ -910,6 +1442,30 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
             const failClaims = (stage: UpdateStage): Promise<null> =>
               step.do(`fail-claim-${stage}-${target.shotId}`, async () => {
                 try {
+                  if (stage === 'spec') {
+                    if (claims.specClaimId) {
+                      await scopedDb.shotSpecVersions.clearClaimIf({
+                        shotId: target.shotId,
+                        claimId: claims.specClaimId,
+                      });
+                    }
+                    if (claims.visualVersionId) {
+                      await scopedDb.framePromptVersions.markTerminal(
+                        claims.visualVersionId,
+                        'failed'
+                      );
+                      await scopedDb.frameVariants.cancelByDependency(
+                        claims.visualVersionId,
+                        'Upstream shot rewrite failed'
+                      );
+                    }
+                    if (claims.motionVersionId) {
+                      await scopedDb.shotPromptVersions.markTerminal(
+                        claims.motionVersionId,
+                        'failed'
+                      );
+                    }
+                  }
                   if (stage === 'visual-prompt' && claims.visualVersionId) {
                     await scopedDb.framePromptVersions.markTerminal(
                       claims.visualVersionId,
@@ -942,13 +1498,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 return null;
               });
 
-            const needsPrompt = doVisual || doMotion;
+            const needsPrompt = doVisual || doMotion || doRewrite;
             let scenes: PromptScenes | null = null;
             if (needsPrompt) {
               try {
                 scenes = await loadPromptScenes(target);
               } catch (error) {
-                // Both prompt stages depend on this; neither can proceed.
+                if (isEngineAbortError(error)) throw error;
+                if (doRewrite) {
+                  failures.push(toFailure(target.shotId, 'spec', error));
+                  await failClaims('spec');
+                }
                 if (doVisual) {
                   failures.push(
                     toFailure(target.shotId, 'visual-prompt', error)
@@ -988,165 +1548,259 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
               motionVersionId: string | null;
             } = { visualVersionId: null, motionVersionId: null };
 
-            const base = scenes && {
-              userId,
-              teamId,
-              sequenceId,
-              shotId: target.shotId,
-              scene: scenes.scene,
-              aspectRatio: plan.aspectRatio,
-              ...promptCommon,
-              // The user just clicked Update all, so a mounted shot panel should
-              // see its prompt stream in — same as the single-shot regen path.
-              emitStreaming: true,
+            const context = promptCommon;
+            const canRebuild = Boolean(target.spec && target.specVersionId);
+
+            const notePromptMiss = (
+              kind: 'visual' | 'motion',
+              error: unknown
+            ) => {
+              if (kind === 'visual') upstream.imageOk = false;
+              else upstream.motionOk = false;
+              failures.push(
+                toFailure(
+                  target.shotId,
+                  kind === 'visual' ? 'visual-prompt' : 'motion-prompt',
+                  error
+                )
+              );
             };
 
-            const stages: Array<Promise<void>> = [];
-
-            // The motion prompt is conditioned on the rendered still (#929),
-            // so when this run ALSO regenerates the image it must run after
-            // the image chain and read the fresh still — racing them stamps a
-            // hash the new still immediately invalidates, and the artifact
-            // reads stale again the moment the run finishes (#1095 review).
-            const runMotionPrompt = async (): Promise<void> => {
-              if (!(doMotion && base && scenes)) return;
-              let startingFrameImageUrl = target.startingFrameImageUrl;
-              if (doImage) {
-                startingFrameImageUrl = await step.do(
-                  `refresh-still-${target.shotId}`,
-                  async () => {
-                    // This run's own render when it landed; the selection
-                    // pointer only as the fallback, since a concurrent select
-                    // could have moved it to a still we didn't produce.
-                    const rendered = claims.imageVariantId
-                      ? await scopedDb.claims.frameVariants.getById(
-                          claims.imageVariantId
-                        )
-                      : null;
-                    if (rendered?.status === 'completed' && rendered.url) {
-                      return rendered.url;
-                    }
-                    return (
-                      (await getAnchorImageUrl(
-                        scopedDb.liveRead,
-                        target.shotId
-                      )) ??
-                      target.startingFrameImageUrl ??
-                      null
+            if (doRewrite) {
+              if (
+                typeof target.specInputHash === 'string' &&
+                scenes &&
+                context
+              ) {
+                try {
+                  const sceneId = target.motionRender.sceneId;
+                  const siblings = (
+                    sceneId ? (plan.sceneSpecs?.[sceneId] ?? []) : []
+                  )
+                    .filter((row) => row.shotId !== target.shotId)
+                    .map((row) => ({
+                      shotNumber: row.shotNumber,
+                      spec: row.spec,
+                    }));
+                  const rewritten = await spawnAndAwaitChild<
+                    ShotSpecRewriteWorkflowInput,
+                    ShotSpecRewriteWorkflowResult
+                  >(step, {
+                    binding: this.env.SHOT_SPEC_REWRITE_WORKFLOW,
+                    parentBindingName: PARENT_BINDING_NAME,
+                    parentInstanceId,
+                    childId: `shot-spec-rewrite:${sequenceId}:${target.shotId}`,
+                    childPayload: {
+                      userId,
+                      teamId,
+                      sequenceId,
+                      shotId: target.shotId,
+                      frameId: target.frameId,
+                      claimId: specClaimId,
+                      visualClaimId: doVisual ? claims.visualVersionId : null,
+                      motionClaimId: doMotion ? claims.motionVersionId : null,
+                      visualWritten: target.visualWritten === true,
+                      motionWritten: target.motionWritten === true,
+                      referenceOnly: !target.usesStartFrame,
+                      scene: scenes.scene,
+                      siblingSpecs: siblings,
+                      characterBible: context.characterBible,
+                      locationBible: context.locationBible,
+                      elementBible: context.elementBible,
+                      styleConfig: context.styleConfig,
+                      aspectRatio: plan.aspectRatio,
+                      analysisModelId: context.analysisModelId,
+                      lines: target.dialogue.lines.map(
+                        ({ character, line, tone }) => ({
+                          character,
+                          line,
+                          tone,
+                        })
+                      ),
+                      specInputHash: target.specInputHash,
+                      currentSpec: target.spec,
+                      dialogue: target.dialogue,
+                      emitStreaming: true,
+                      reservationId: input.reservationId,
+                    },
+                    spawnStepName: `spawn-shot-spec-rewrite-${target.shotId}`,
+                    awaitStepName: `await-shot-spec-rewrite-${target.shotId}`,
+                  });
+                  prompted.visualVersionId = rewritten.visualVersionId;
+                  prompted.motionVersionId = rewritten.motionVersionId;
+                  if (doVisual && !rewritten.visualVersionId) {
+                    notePromptMiss(
+                      'visual',
+                      new Error('Rewrite did not rebuild the still prompt')
                     );
+                  } else if (rewritten.visualVersionId) {
+                    counters.visualPrompts += 1;
+                  }
+                  if (doMotion && !rewritten.motionVersionId) {
+                    notePromptMiss(
+                      'motion',
+                      new Error('Rewrite did not rebuild the motion prompt')
+                    );
+                  } else if (rewritten.motionVersionId) {
+                    counters.motionPrompts += 1;
+                  }
+                } catch (error) {
+                  if (isEngineAbortError(error)) throw error;
+                  upstream.imageOk = false;
+                  upstream.motionOk = false;
+                  failures.push(toFailure(target.shotId, 'spec', error));
+                  await failClaims('spec');
+                }
+              } else {
+                upstream.imageOk = false;
+                upstream.motionOk = false;
+                failures.push({
+                  shotId: target.shotId,
+                  stage: 'spec',
+                  error: 'Shot spec is stale and cannot be rewritten',
+                });
+                await failClaims('spec');
+              }
+            } else if (
+              (doVisual || doMotion) &&
+              canRebuild &&
+              scenes &&
+              context &&
+              target.spec &&
+              target.specVersionId
+            ) {
+              const spec = target.spec;
+              const specVersionId = target.specVersionId;
+              const scene = scenes.scene;
+              try {
+                const rebuilt = await step.do(
+                  `rebuild-prompts-${target.shotId}`,
+                  async () => {
+                    const result = await completeDerivedPrompts(scopedDb, {
+                      spec,
+                      specVersionId,
+                      scene,
+                      styleConfig: context.styleConfig,
+                      characterBible: context.characterBible,
+                      locationBible: context.locationBible,
+                      elementBible: context.elementBible,
+                      aspectRatio: plan.aspectRatio,
+                      analysisModel: context.analysisModelId,
+                      dialogue: target.dialogue,
+                      referenceOnly: !target.usesStartFrame,
+                      frameId: target.frameId,
+                      shotId: target.shotId,
+                      visualClaimId: doVisual ? claims.visualVersionId : null,
+                      motionClaimId: doMotion ? claims.motionVersionId : null,
+                      visualWritten: target.visualWritten === true,
+                      motionWritten: target.motionWritten === true,
+                      currencyHash: target.specInputHash,
+                    });
+                    const channel = getShotPromptChannel(target.shotId);
+                    if (result.visualVersionId) {
+                      await channel.emit('shotPrompt.completed', {
+                        promptType: 'visual',
+                      });
+                    }
+                    if (result.motionVersionId) {
+                      await channel.emit('shotPrompt.completed', {
+                        promptType: 'motion',
+                      });
+                    }
+                    return result;
                   }
                 );
-              }
-              try {
-                const motionResult = await spawnAndAwaitChild<
-                  MotionPromptWorkflowInput,
-                  MotionPromptWorkflowResult
-                >(step, {
-                  binding: this.env.MOTION_PROMPT_WORKFLOW,
-                  parentBindingName: PARENT_BINDING_NAME,
-                  parentInstanceId,
-                  childId: `motion-prompt:${sequenceId}:${target.shotId}`,
-                  childPayload: {
-                    ...base,
-                    sceneBefore: scenes.sceneBefore,
-                    sceneAfter: scenes.sceneAfter,
-                    startingFrameImageUrl: target.usesStartFrame
-                      ? (startingFrameImageUrl ?? undefined)
-                      : undefined,
-                    referenceOnly: !target.usesStartFrame,
-                    targetVersionId: claims.motionVersionId ?? undefined,
-                  },
-                  spawnStepName: `spawn-motion-prompt-${target.shotId}`,
-                  awaitStepName: `await-motion-prompt-${target.shotId}`,
-                });
-                prompted.motionVersionId = motionResult.finalVersionId;
-                counters.motionPrompts += 1;
+                prompted.visualVersionId = rebuilt.visualVersionId;
+                prompted.motionVersionId = rebuilt.motionVersionId;
+                if (doVisual && !rebuilt.visualVersionId) {
+                  notePromptMiss(
+                    'visual',
+                    new Error('Rebuild did not complete the still prompt')
+                  );
+                  await failClaims('visual-prompt');
+                } else if (rebuilt.visualVersionId) {
+                  counters.visualPrompts += 1;
+                }
+                if (doMotion && !rebuilt.motionVersionId) {
+                  notePromptMiss(
+                    'motion',
+                    new Error('Rebuild did not complete the motion prompt')
+                  );
+                  await failClaims('motion-prompt');
+                } else if (rebuilt.motionVersionId) {
+                  counters.motionPrompts += 1;
+                }
               } catch (error) {
-                upstream.motionOk = false;
-                failures.push(toFailure(target.shotId, 'motion-prompt', error));
+                if (isEngineAbortError(error)) throw error;
+                if (doVisual) {
+                  notePromptMiss('visual', error);
+                  await failClaims('visual-prompt');
+                }
+                if (doMotion) {
+                  notePromptMiss('motion', error);
+                  await failClaims('motion-prompt');
+                }
+              }
+            } else if (doVisual || doMotion) {
+              const error = new Error(
+                'Shot has no spec to rebuild prompts from'
+              );
+              if (doVisual) {
+                notePromptMiss('visual', error);
+                await failClaims('visual-prompt');
+              }
+              if (doMotion) {
+                notePromptMiss('motion', error);
                 await failClaims('motion-prompt');
               }
-            };
-
-            if (!doImage) {
-              // No image regen — the still can't move, run alongside.
-              stages.push(runMotionPrompt());
             }
 
-            if (doVisual && base) {
-              stages.push(
-                (async () => {
-                  try {
-                    const visualResult = await spawnAndAwaitChild<
-                      FramePromptWorkflowInput,
-                      FramePromptResult
-                    >(step, {
-                      binding: this.env.FRAME_PROMPT_WORKFLOW,
-                      parentBindingName: PARENT_BINDING_NAME,
-                      parentInstanceId,
-                      childId: `frame-prompt:${sequenceId}:${target.shotId}`,
-                      childPayload: {
-                        ...base,
-                        frameId: target.frameId,
-                        targetVersionId: claims.visualVersionId ?? undefined,
-                      },
-                      spawnStepName: `spawn-frame-prompt-${target.shotId}`,
-                      awaitStepName: `await-frame-prompt-${target.shotId}`,
-                    });
-                    prompted.visualVersionId = visualResult.finalVersionId;
-                    counters.visualPrompts += 1;
-                  } catch (error) {
-                    // Never render from the prompt the regen failed to replace.
-                    upstream.imageOk = false;
-                    failures.push(
-                      toFailure(target.shotId, 'visual-prompt', error)
-                    );
-                    await failClaims('visual-prompt');
-                    // The chained image claim was cancelled by the cascade
-                    // above. The motion prompt still runs — the still didn't
-                    // change, so its claim hash remains valid.
-                    if (doImage) await runMotionPrompt();
-                    return;
-                  }
-                  if (!doImage) return;
-                  try {
-                    await spawnImage(target, claims, prompted.visualVersionId);
-                  } catch (error) {
-                    upstream.imageOk = false;
-                    failures.push(toFailure(target.shotId, 'image', error));
-                    await failClaims('image');
-                  }
-                  // After the image settles either way: fresh still on
-                  // success, unchanged still on failure — both are safe
-                  // inputs for the motion prompt.
-                  await runMotionPrompt();
-                })()
-              );
-            } else if (doImage) {
-              stages.push(
-                (async () => {
-                  try {
-                    await spawnImage(target, claims, prompted.visualVersionId);
-                  } catch (error) {
-                    upstream.imageOk = false;
-                    failures.push(toFailure(target.shotId, 'image', error));
-                    await failClaims('image');
-                  }
-                  await runMotionPrompt();
-                })()
-              );
+            if (doImage && upstream.imageOk) {
+              try {
+                await spawnImage(target, claims, prompted.visualVersionId);
+              } catch (error) {
+                if (isEngineAbortError(error)) throw error;
+                upstream.imageOk = false;
+                failures.push(toFailure(target.shotId, 'image', error));
+                await failClaims('image');
+              }
             }
 
-            await Promise.allSettled(stages);
+            if (heldByReference && target.regenImage) {
+              failures.push({
+                shotId: target.shotId,
+                stage: 'image',
+                error: 'A reference this still needs failed — not rendered',
+              });
+              await failClaims('image');
+            }
 
+            if (target.regenDialogue && unvoicedShotIds.has(target.shotId)) {
+              failures.push({
+                shotId: target.shotId,
+                stage: 'dialogue',
+                error: 'A voice these lines need was not made — not recorded',
+              });
+            }
             if (target.regenVideo) {
-              if (upstream.motionOk && upstream.imageOk) {
-                try {
-                  await dialogueRecorded;
-                  await spawnVideo(target, claims, prompted.motionVersionId);
-                } catch (error) {
-                  failures.push(toFailure(target.shotId, 'video', error));
-                }
+              if (unvoicedShotIds.has(target.shotId)) {
+                failures.push({
+                  shotId: target.shotId,
+                  stage: 'video',
+                  error: 'A voice this clip needs was not made — not rendered',
+                });
+              } else if (heldByReference) {
+                failures.push({
+                  shotId: target.shotId,
+                  stage: 'video',
+                  error: 'A reference this clip needs failed — not rendered',
+                });
+              } else if (upstream.motionOk && upstream.imageOk) {
+                eligibleVideos.push({
+                  target,
+                  claims,
+                  motionVersionId: prompted.motionVersionId,
+                });
               } else {
                 // Rendering from the prompt/still the run failed to replace would
                 // bill for a video the user didn't ask for.
@@ -1161,60 +1815,76 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
         );
 
     // ============================================================
-    // PHASE 3 (depth 'music', #1085): sequence-level music, alongside the
-    // shot jobs. Prompt first; the track then renders when it is stale on its
+    // Sequence-level music runs alongside update jobs, or after fresh motion.
+    // Prompt-only work belongs to Images. The track renders when stale on its
     // own hash or the prompt regeneration cascades into it (see MusicPlan).
     // ============================================================
-    const musicJob = musicToRun
-      ? (async (music: MusicPlan): Promise<void> => {
+    const runMusic = musicToRun
+      ? async (music: MusicPlan): Promise<void> => {
+          // Model stays the workflow default unless the plan chose models —
+          // parity with the manual regenerate path. audioModels[0] is primary.
+          const models: (AudioModel | undefined)[] = [
+            ...new Set(
+              plan.renderOptions?.audioModels?.length
+                ? plan.renderOptions.audioModels
+                : [undefined]
+            ),
+          ];
+          const primaryModel = models[0] ?? DEFAULT_MUSIC_MODEL;
+
+          // The track's row and claim come first (#1130), and only while no
+          // other primary track run holds the claim: a concurrent run or a
+          // manual regenerate already producing the fix wins, and this run
+          // makes neither the prompt nor the track — no double bill. Replaces
+          // the live `musicStatus` / `musicPromptInputHash` guards (#1115).
+          let trackVariantId: string | null = null;
+          if (music.regenTrack) {
+            // Minted in its own step so a retried claim step finds the row
+            // it already opened instead of reading its own claim as busy.
+            const mintedId = await step.do('mint-music-track-id', async () =>
+              generateId()
+            );
+            trackVariantId = await step.do('claim-music-track', async () =>
+              scopedDb.sequenceVariants.claimMusic({
+                id: mintedId,
+                sequenceId,
+                model: primaryModel,
+                prompt: music.prompt,
+                tags: music.tags,
+                durationSeconds: music.durationSeconds,
+                isPrimary: true,
+                workflowRunId: null,
+                ifPendingIs: null,
+              })
+            );
+            if (trackVariantId === null) {
+              logger.info(
+                `[UpdateStaleShotsWorkflow] music track for ${sequenceId} already rendering elsewhere; skipping`
+              );
+              return;
+            }
+          }
+          const claimedTrack = trackVariantId;
+          const failTrackClaim = async (error: unknown) => {
+            if (!claimedTrack) return;
+            await step.do('fail-music-track-claim', async () => {
+              await scopedDb.sequenceVariants.failMusicClaim(
+                { sequenceId, variantId: claimedTrack },
+                sanitizeFailResponse(error)
+              );
+            });
+          };
+
           // What the prompt child actually produced — the track renders from
-          // this rather than from the sequence mirror the child happened to
-          // write, which a concurrent regenerate can overwrite in between.
+          // this rather than from the selected prompt, which a concurrent
+          // regenerate can move in between.
           let regeneratedPrompt: { prompt: string; tags: string } | null = null;
           if (music.regenPrompt) {
+            // ponytail: a prompt-only regeneration has no claim to guard it,
+            // so two concurrent runs can both call the LLM; the hash unique
+            // index keeps the version write idempotent. Claim the prompt if
+            // the duplicate spend ever matters.
             try {
-              const musicPromptInputJson = await step.do(
-                'prepare-music-prompt',
-                async (): Promise<string | null> => {
-                  // Live only for the guard (music has no claim rows): if the
-                  // stored hash caught up with the plan's inputs meanwhile, a
-                  // concurrent run or manual regenerate already produced this
-                  // prompt — skip quietly and let that run own the cascade.
-                  const sequence =
-                    await scopedDb.liveRead.sequences.getById(sequenceId);
-                  if (!sequence) {
-                    throw new NonRetryableError(
-                      `Sequence ${sequenceId} disappeared mid-update`,
-                      'WorkflowValidationError'
-                    );
-                  }
-                  if (
-                    await musicPromptInputHashMatches(
-                      sequence.musicPromptInputHash,
-                      {
-                        sceneSummaries: music.sceneSummaries,
-                        analysisModel: music.analysisModelId,
-                      }
-                    )
-                  )
-                    return null;
-                  const payload: MusicPromptWorkflowInput = {
-                    userId,
-                    teamId,
-                    sequenceId,
-                    sceneSummaries: music.sceneSummaries,
-                    analysisModelId: music.analysisModelId,
-                    promptSource: music.promptSource,
-                  };
-                  return JSON.stringify(payload);
-                }
-              );
-              if (musicPromptInputJson === null) {
-                logger.info(
-                  `[UpdateStaleShotsWorkflow] music prompt for ${sequenceId} already regenerated elsewhere; skipping`
-                );
-                return;
-              }
               const musicDesign = await spawnAndAwaitChild<
                 MusicPromptWorkflowInput,
                 MusicPromptWorkflowResult
@@ -1223,10 +1893,17 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                 parentBindingName: PARENT_BINDING_NAME,
                 parentInstanceId,
                 childId: `music-prompt:${sequenceId}`,
-                // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-                childPayload: JSON.parse(
-                  musicPromptInputJson
-                ) as MusicPromptWorkflowInput,
+                childPayload: {
+                  userId,
+                  teamId,
+                  sequenceId,
+                  sceneSummaries: music.sceneSummaries,
+                  analysisModelId: music.analysisModelId,
+                  promptSource: music.promptSource,
+                  reservationId: input.reservationId,
+                  musicModel: primaryModel,
+                  ...(claimedTrack ? { musicVariantId: claimedTrack } : {}),
+                },
                 spawnStepName: 'spawn-music-prompt',
                 awaitStepName: 'await-music-prompt',
               });
@@ -1247,82 +1924,220 @@ export class UpdateStaleShotsWorkflow extends OpenStoryWorkflowEntrypoint<Update
                   stage: 'music',
                   error: 'Upstream music prompt failed — track not regenerated',
                 });
+                await failTrackClaim(error);
               }
               return;
             }
           }
 
-          if (!music.regenTrack) return;
+          if (!claimedTrack) return;
           try {
-            const musicInputJson = await step.do(
-              'prepare-music-track',
-              async (): Promise<string | null> => {
-                // Live only for the guard: a concurrent run or manual
-                // regenerate already has a track render in flight — it is
-                // producing the fix, don't double-bill.
-                const sequence =
-                  await scopedDb.liveRead.sequences.getById(sequenceId);
-                if (!sequence) {
-                  throw new NonRetryableError(
-                    `Sequence ${sequenceId} disappeared mid-update`,
-                    'WorkflowValidationError'
-                  );
-                }
-                if (sequence.musicStatus === 'generating') return null;
-                // A track stale on its OWN hash (#1657) renders from the
-                // prompt already on the sequence — there was no prompt child
-                // to take it from.
-                const prompt =
-                  regeneratedPrompt?.prompt ?? sequence.musicPrompt;
-                const tags = regeneratedPrompt?.tags ?? sequence.musicTags;
-                if (!prompt || !tags) {
-                  throw new NonRetryableError(
-                    'Sequence has no music prompt to regenerate from',
-                    'WorkflowValidationError'
-                  );
-                }
-                // Model stays the workflow default — parity with the manual
-                // regenerate path.
-                const payload: MusicWorkflowInput = {
-                  userId,
-                  teamId,
-                  sequenceId,
-                  prompt,
-                  tags,
-                  duration: music.durationSeconds,
-                  isPrimary: true,
-                };
-                return JSON.stringify(payload);
-              }
-            );
-            if (musicInputJson === null) {
-              logger.info(
-                `[UpdateStaleShotsWorkflow] music track for ${sequenceId} already rendering elsewhere; skipping`
+            // A track stale on its OWN hash (#1657) renders from the prompt
+            // frozen in the plan — there was no prompt child to take it from.
+            const prompt = regeneratedPrompt?.prompt ?? music.prompt;
+            const tags = regeneratedPrompt?.tags ?? music.tags;
+            if (!prompt || !tags) {
+              throw new NonRetryableError(
+                'Sequence has no music prompt to regenerate from',
+                'WorkflowValidationError'
               );
-              return;
             }
-            await spawnAndAwaitChild<MusicWorkflowInput, unknown>(step, {
-              binding: this.env.MUSIC_WORKFLOW,
-              parentBindingName: PARENT_BINDING_NAME,
-              parentInstanceId,
-              childId: `music:${sequenceId}`,
-              // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the step above serialized exactly this type
-              childPayload: JSON.parse(musicInputJson) as MusicWorkflowInput,
-              spawnStepName: 'spawn-music-track',
-              awaitStepName: 'await-music-track',
-            });
-            counters.musicTracks += 1;
+            await Promise.all(
+              models.map(async (model, index) => {
+                const suffix = index > 0 ? `-${model}` : '';
+                await spawnAndAwaitChild<MusicWorkflowInput, unknown>(step, {
+                  binding: this.env.MUSIC_WORKFLOW,
+                  parentBindingName: PARENT_BINDING_NAME,
+                  parentInstanceId,
+                  childId: `music:${sequenceId}${suffix}`,
+                  childPayload: {
+                    userId,
+                    teamId,
+                    sequenceId,
+                    prompt,
+                    tags,
+                    duration: music.durationSeconds,
+                    model,
+                    isPrimary: index === 0,
+                    // The primary renders into the row claimed above; the
+                    // other models open their own.
+                    ...(index === 0 ? { variantId: claimedTrack } : {}),
+                    reservationId: input.reservationId,
+                  },
+                  spawnStepName: `spawn-music-track${suffix}`,
+                  awaitStepName: `await-music-track${suffix}`,
+                });
+                counters.musicTracks += 1;
+              })
+            );
           } catch (error) {
             failures.push(toFailure(sequenceId, 'music', error));
+            // A child that ran failed its own row; this covers one that never
+            // started. Only a still-pending row is touched.
+            await failTrackClaim(error);
           }
-        })(musicToRun)
+        }
       : null;
 
+    const musicJob =
+      runMusic && musicToRun && (!input.freshRun || !musicToRun.regenTrack)
+        ? runMusic(musicToRun)
+        : null;
     await Promise.allSettled([...jobs, ...(musicJob ? [musicJob] : [])]);
+    if (freshPhases && hasImageWork) await completePhase('images');
+    if (input.freshRun) {
+      if (freshPhases && dialogueSpeech) await announce('dialogue');
+      dialogueGenerated = generateDialogueSpeech();
+    }
+    await dialogueGenerated;
+    if (freshPhases && dialogueSpeech) await completePhase('dialogue');
+    if (freshPhases && eligibleVideos.length > 0) await announce('motion');
+    await Promise.all(
+      eligibleVideos.map(async ({ target, claims, motionVersionId }) => {
+        try {
+          await prepareVideo(target, claims, motionVersionId);
+        } catch (error) {
+          failures.push(toFailure(target.shotId, 'video', error));
+        }
+      })
+    );
+    // Prepare every eligible target before any video child can claim a segment.
+    // Preserve plan order despite concurrent prompt/image completion.
+    const heldSegments = new Set(
+      plan.targets.flatMap((target) =>
+        target.regenVideo &&
+        target.motionRender.renderSegmentId &&
+        (!preparedVideos.has(target.shotId) ||
+          target.motionRender.siblingShotIds?.some(
+            (id) => !preparedVideos.has(id)
+          ))
+          ? [target.motionRender.renderSegmentId]
+          : []
+      )
+    );
+    const renderShots = plan.targets.flatMap((target) => {
+      if (
+        target.motionRender.renderSegmentId &&
+        heldSegments.has(target.motionRender.renderSegmentId)
+      ) {
+        if (preparedVideos.has(target.shotId))
+          failures.push({
+            shotId: target.shotId,
+            stage: 'video',
+            error: 'A sibling in this clip could not render — clip held',
+          });
+        return [];
+      }
+      const shot = preparedVideos.get(target.shotId);
+      return shot ? [shot] : [];
+    });
+    const renderJobs = plan.renderOptions?.videoModels?.length
+      ? [
+          ...buildMotionRender({
+            userId,
+            teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: renderShots
+              .filter((shot) => !leftoverGrok.has(shot.shotId))
+              // The explicit leftover partition owns fallback identity;
+              // every other shot uses the full requested model list.
+              .map((shot) => ({ ...shot, model: undefined })),
+            videoModels: plan.renderOptions.videoModels,
+          }),
+          ...buildMotionRender({
+            userId,
+            teamId,
+            sequenceId,
+            reservationId: input.reservationId,
+            shots: renderShots.filter((shot) => leftoverGrok.has(shot.shotId)),
+          }),
+        ]
+      : buildMotionRender({
+          userId,
+          teamId,
+          sequenceId,
+          reservationId: input.reservationId,
+          shots: renderShots,
+        });
+    await Promise.all(
+      renderJobs.map(async ({ input }) => {
+        const shotId = input.shotId;
+        const variant =
+          !!plan.renderOptions?.videoModels?.length &&
+          !leftoverGrok.has(shotId) &&
+          input.model !== plan.renderOptions.videoModels[0];
+        input.variantOnly = variant;
+        const suffix = variant ? `-${input.model}` : '';
+        try {
+          const model = input.model;
+          const voicedLines = input.voicedLines ?? [];
+          const audioClips = input.audioClips ?? [];
+          await step.do(`preflight-video-${shotId}${suffix}`, async () => {
+            const ttsChars =
+              audioClips.length > 0 ? 0 : ttsCharacterCount(voicedLines);
+            await requireCredits(
+              scopedDb.liveRead,
+              addMicros(
+                gateEstimate(
+                  estimateVideoCost(
+                    model,
+                    Math.max(
+                      input.duration ?? 3,
+                      input.seedanceEditSeconds ?? 0
+                    ),
+                    {
+                      pricing: await getEffectiveFalPricing(),
+                      resolution:
+                        input.draft && supportsDraftMode(model)
+                          ? DRAFT_RESOLUTION
+                          : input.resolution,
+                      referenceOnly: input.referenceOnly,
+                      hasReferenceImages:
+                        (input.referenceImages?.length ?? 0) > 0,
+                    }
+                  ),
+                  { model, operation: 'update-stale-shots:video' }
+                ),
+                estimateTtsCost(ttsChars)
+              ),
+              {
+                errorMessage: 'Insufficient credits for video generation',
+                reservationId: input.reservationId,
+              }
+            );
+          });
+          await spawnAndAwaitChild<MotionWorkflowInput, MotionWorkflowResult>(
+            step,
+            {
+              binding: this.env.MOTION_WORKFLOW,
+              parentBindingName: PARENT_BINDING_NAME,
+              parentInstanceId,
+              childId: `motion:${sequenceId}:${shotId}${suffix}`,
+              childPayload: input,
+              spawnStepName: `spawn-video-${shotId}${suffix}`,
+              awaitStepName: `await-video-${shotId}${suffix}`,
+              timeout: '90 minutes',
+            }
+          );
+          counters.videos += 1;
+        } catch (error) {
+          for (const member of input.coveredShots ?? [{ shotId }]) {
+            failures.push(toFailure(member.shotId, 'video', error));
+          }
+        }
+      })
+    );
+    if (freshPhases && eligibleVideos.length > 0) await completePhase('motion');
+    if (input.freshRun && runMusic && musicToRun?.regenTrack) {
+      if (freshPhases) await announce('music');
+      await runMusic(musicToRun);
+      if (freshPhases) await completePhase('music');
+    }
     const dialogue = dialogueTargetOutcome(
-      plan.targets,
-      dialogueRecording,
-      await dialogueRecorded
+      voicedPlan.targets,
+      dialogueSpeech,
+      await dialogueGenerated
     );
     counters.dialogues = dialogue.updated;
     failures.push(...dialogue.failures);
@@ -1359,8 +2174,8 @@ type DialogueOutcome =
  * What the up-front recording did for the targets that asked for dialogue.
  * A target counts when the recording returned its audio; neighbours that
  * came back with the scene do not. A target without audio fails at
- * 'dialogue' only when no video render follows — that render records the
- * shot itself, and fails as 'video' if it cannot.
+ * `dialogue` when no video render follows; otherwise `prepare-video` blocks
+ * the motion child before fan-out.
  */
 export function dialogueTargetOutcome(
   targets: ReadonlyArray<
@@ -1391,11 +2206,7 @@ export function dialogueTargetOutcome(
         });
       }
     } else if (!target.regenVideo) {
-      failures.push({
-        shotId: target.shotId,
-        stage: 'dialogue',
-        error: outcome.error,
-      });
+      failures.push(toFailure(target.shotId, 'dialogue', outcome.error));
     }
   }
   return { updated, failures };
@@ -1409,6 +2220,6 @@ function toFailure(
   return {
     shotId,
     stage,
-    error: error instanceof Error ? error.message : String(error),
+    error: sanitizeFailResponse(error),
   };
 }

@@ -103,6 +103,13 @@ export function useUpdateScene(sequenceId: string) {
       location?: string;
       timeOfDay?: string;
       storyBeat?: string;
+      continuity?: {
+        lightingSetup?: string;
+        colorPalette?: string;
+        environmentTag?: string;
+        /** A patch (#2015): tag → look id, or null for the default look. */
+        characterLooks?: Record<string, string | null>;
+      };
     }) => updateSceneFn({ data: { sequenceId, ...input } }),
     onSuccess: () =>
       invalidateStructure(queryClient, sequenceId, { staleness: true }),
@@ -214,8 +221,16 @@ export function useSoftDeleteShot(sequenceId: string) {
   return useMutation({
     mutationFn: (input: { shotId: string }) =>
       deleteShotFn({ data: { sequenceId, ...input } }),
-    onSuccess: () =>
-      invalidateStructure(queryClient, sequenceId, { staleness: true }),
+    onSuccess: async (_result, { shotId }) => {
+      // Drop the confirmed-deleted shot from the list now: the refetch below
+      // can lag, and a fetch started before the delete would restore it.
+      const key = shotKeys.list(sequenceId);
+      await queryClient.cancelQueries({ queryKey: key });
+      queryClient.setQueryData<ShotView[]>(key, (old) =>
+        old?.filter((shot) => shot.id !== shotId)
+      );
+      invalidateStructure(queryClient, sequenceId, { staleness: true });
+    },
   });
 }
 

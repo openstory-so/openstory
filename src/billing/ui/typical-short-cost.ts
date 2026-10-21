@@ -1,10 +1,9 @@
 /**
  * Live "cost of another short" for balance copy (#1299).
  *
- * Same composition as the signup-grant guard in `__tests__/constants.test.ts`
- * — Enhance 30s target with Turbo defaults, motion + music on — but priced
- * from the live catalog instead of a literal, so the low-balance toast quotes
- * what a run actually costs today. Reference-only because that is the default
+ * Enhance 30s target with Turbo defaults, motion + music on, priced from the
+ * live catalog so the low-balance toast quotes what a run actually costs
+ * today. Reference-only because that is the default
  * for a new sequence (no shot stills to bill).
  */
 

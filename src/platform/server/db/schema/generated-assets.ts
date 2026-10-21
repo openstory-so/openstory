@@ -12,7 +12,7 @@
  *
  * FKs deliberately use `onDelete: 'restrict'` — never CASCADE — because
  * `teams` / `user` are long-lived parent tables (see the D1 table-rebuild
- * trap in CLAUDE.md).
+ * trap in AGENTS.md).
  */
 
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';

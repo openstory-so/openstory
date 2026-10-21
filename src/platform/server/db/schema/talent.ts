@@ -3,7 +3,7 @@
  * Team-level talent (actors/actresses) library with multiple sheets and reference media
  */
 
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { index, integer, snakeCase, text } from 'drizzle-orm/sqlite-core';
 import { generateId } from '@/platform/id';
@@ -46,12 +46,19 @@ export const talent = snakeCase.table(
     // is never read at cast.
     personality: text(),
     movement: text(),
-    // Voice (#1553): copied from the character at save-to-library and onto
-    // the character at cast. Shared ElevenLabs id — see characters.voiceId.
+    // Voice (#1553): copied from the character's selected voice version at
+    // save-to-library, and onto the character (as a new version) at cast.
+    // Shared ElevenLabs id — see characters.selectedVoiceVersionId.
     voiceId: text(),
     voiceDescription: text(),
     imageUrl: text(), // Talent avatar/headshot
     imagePath: text(), // R2 storage path for avatar
+    // The sheet claim (#1113): the `talent_sheets.id` the in-flight library
+    // sheet run will write. Set at the trigger; cleared by an edit to the
+    // name, description or reference photos. The run makes its sheet the
+    // talent's identity (headshot) only while this still names it, else
+    // parks it as divergent.
+    pendingPromoteSheetId: text(),
     isFavorite: integer({ mode: 'boolean' }).default(false),
     isHuman: integer({ mode: 'boolean' }).default(false),
     isInTeamLibrary: integer({ mode: 'boolean' }).default(false),
@@ -92,7 +99,7 @@ export const talentSheets = snakeCase.table(
     name: text({ length: 255 }).notNull(), // e.g., "casual outfit", "formal wear"
     imageUrl: text(),
     imagePath: text(), // R2 storage path
-    metadata: text({ mode: 'json' }).$type<CharacterBibleEntry>(), // Full character details
+    metadata: text({ mode: 'json' }).$type<TalentSheetMetadata>(), // Full character details
     isDefault: integer({ mode: 'boolean' }).default(false),
     source: text()
       .$type<TalentSheetSource>()

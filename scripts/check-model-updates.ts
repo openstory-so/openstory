@@ -8,9 +8,8 @@
  *   - BytePlus Ark        → the installed @tanstack/ai-byteplus model catalog
  *     (offline — Ark has no public catalog)
  *
- * npm package updates (including our @tanstack/ai* deps) are intentionally NOT
- * checked here — Dependabot owns dependency bumps. This routine is only about
- * bumping model registry ids to a newer version of the same model.
+ * npm package updates are NOT checked here. The skill bumps @tanstack/ai* before
+ * running this, so the offline Ark check reads the newest adapter catalog.
  *
  * This is the deterministic backbone of the `update-model-versions` skill and
  * the daily "model freshness" routine. It only REPORTS candidates — deciding

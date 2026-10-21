@@ -1,26 +1,26 @@
 /**
- * Theatre player. Given a `playlistUrl` — the HLS list that points straight at
- * the cut's own clips (#1623) — it plays that through Video.js, with the music
- * alongside (`useTheatreMusic`); otherwise, or if that source fails, it
- * stitches scene videos + music via Mediabunny on a canvas, under the same
- * Video.js 10 skin (#1258).
+ * Theatre player. Stitches clip videos + music via Mediabunny on a canvas,
+ * under the Video.js 10 skin (#1258). Clips load as the playhead reaches them
+ * (#1845); a progress bar covers the opening, the skin's spinner any stall.
  *
  * Falls back to an overlay message when the browser can't decode the source
  * codecs. Download/Copy live on `overlayActions` (theatre).
  */
 
 import { Button } from '@/ui/shadcn/button';
-import { VideoPlayer } from '@/motion/ui/video-player';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import {
   getAspectRatioClassName,
   type AspectRatio,
 } from '@/models/aspect-ratios';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
-import type { SequencePlayerMeta } from './playback';
-import type { SceneInput } from './concatenated-video-source';
-import { scenePlaybackKey, type PlaybackClock } from './playback-scenes';
-import { useTheatreMusic } from './use-theatre-music';
+import {
+  playbackClipsKey,
+  playbackGapMessage,
+  type PlaybackClip,
+  type SequencePlayerMeta,
+} from '@openstory/stitch';
+import { getLogger } from '@/platform/logger';
 import {
   captureVideoPlay,
   captureVideoPlayFailed,
@@ -30,20 +30,20 @@ import {
   type VideoPlaySource,
 } from './player-events';
 import { cn } from '@/ui/utils';
+import { playerFrameClassName } from '@/ui/player-frame';
 import { usePostHog } from '@posthog/react';
 import { AlertCircle, Music, TriangleAlert } from 'lucide-react';
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { StitchedPlayer } from '@openstory/stitch/react';
+import { toast } from 'sonner';
+import { useEffect, useRef, useState } from 'react';
 
-// Dynamic, and rendered only after mount — see stitched-player-surface.tsx.
-// `@videojs/store` constructs an AbortController at module scope, which
-// Workerd rejects (#1139). `lazy()` alone is not enough (React invokes the
-// loader during SSR); the `mounted` gate is what keeps the server out of it.
-const StitchedPlayerSurface = lazy(() => import('./stitched-player-surface'));
+const logger = getLogger(['openstory', 'sequence-player']);
 
 type SequencePlayerProps = {
-  scenes: SceneInput[];
+  clips: PlaybackClip[];
   musicUrl: string | null;
-  musicLoudnessGainDb: number | null;
+  /** Gain in dB on the music only (a measured loudness normalization); `null` when none was measured, which plays at 0 dB. */
+  musicGainDb: number | null;
   /**
    * Whether the music track plays. Pushed into the engine's music-only gain
    * node so toggling is live and never re-prepares the player (#834). When
@@ -56,16 +56,6 @@ type SequencePlayerProps = {
   className?: string;
   /** Slot rendered as an overlay (top-right) — e.g. the Download / Share actions. */
   overlayActions?: React.ReactNode;
-  /**
-   * The `.m3u8` that lists these scenes' clips (#1623) — video and the clips'
-   * own sound, no music. When set, plays through Video.js instead of
-   * stitching in the browser.
-   * `undefined` = still finding out: show the first frame and don't start the
-   * stitching engine yet (it would be torn down the moment the URL lands).
-   * `null` = no playlist (a scene or shot selection, or the server could not
-   * list these clips): stitch.
-   */
-  playlistUrl: string | null | undefined;
   /** PostHog `video_play` source. Theatre player on the scenes canvas. */
   playSource?: VideoPlaySource;
   sequenceId?: string;
@@ -76,28 +66,21 @@ type SequencePlayerProps = {
    */
   autoPlay?: boolean;
   onAutoPlayConsumed?: () => void;
-  /** Playhead plus what this source knows about scene timing (#1771). */
-  onTimeUpdate?: (time: number, clock: PlaybackClock) => void;
+  /** Playhead plus the measured clip starts, once known (#1771). */
+  onTimeUpdate?: (time: number, clipOffsetsSeconds?: readonly number[]) => void;
   /** Draft clips in this cut (#1756): "Draft cut · 2 days left", "3 of 12 shots are drafts". */
   draftLabel?: string | null;
 };
 
-function useMounted(): boolean {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  return mounted;
-}
-
 export const SequencePlayer: React.FC<SequencePlayerProps> = ({
-  scenes,
+  clips,
   musicUrl,
-  musicLoudnessGainDb,
+  musicGainDb,
   musicEnabled,
   onMusicEnabledChange,
   aspectRatio,
   className,
   overlayActions,
-  playlistUrl: serverVideoUrl,
   playSource = 'theatre',
   sequenceId,
   autoPlay = false,
@@ -106,30 +89,13 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
   draftLabel = null,
 }) => {
   const posthog = usePostHog();
-  const mounted = useMounted();
-  const scenesKey = scenePlaybackKey(scenes);
-  // The playlist lists rendered clips only; shots that still have no video
-  // (#1690) play as stills on the canvas.
-  const hasStills = scenes.some((scene) => !('videoUrl' in scene));
+  const clipsKey = playbackClipsKey(clips);
+  // Shots that still have no video (#1690) play as stills on the canvas.
+  const hasStills = clips.some((clip) => !('videoUrl' in clip));
 
   const [meta, setMeta] = useState<SequencePlayerMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadedScenes, setLoadedScenes] = useState(0);
-  // The server source has its first frame in — until then the first clip's
-  // frame covers the empty player.
-  const [serverLoaded, setServerLoaded] = useState(false);
-  const [media, setMedia] = useState<HTMLMediaElement | null>(null);
-  // A playlist that failed to play (a browser hls.js cannot serve, a clip it
-  // cannot append) falls back to the stitcher for that URL.
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  const cachedVideoUrl =
-    hasStills || (serverVideoUrl && serverVideoUrl === failedUrl)
-      ? null
-      : serverVideoUrl;
-  // The playlist carries no music, so it plays alongside. `media` is null
-  // whenever the stitcher is up — that engine mixes its own.
-  useTheatreMusic(cachedVideoUrl ? media : null, musicUrl, musicEnabled);
-
+  const [loadedClips, setLoadedClips] = useState(0);
   const eventPropsRef = useRef({ source: playSource, sequence_id: sequenceId });
   eventPropsRef.current = { source: playSource, sequence_id: sequenceId };
   const trackerRef = useRef<PlaybackTracker | null>(null);
@@ -151,37 +117,24 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
 
   useEffect(() => () => flushWatched(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drop stitch state when the cache lookup resolves to an MP4 or the clip
-  // list changes, so a stale mixed-res warning / loading label cannot leak.
-  // Flush watched here (not only on SequencePlayer unmount): the stitcher
-  // can be torn down while this shell stays mounted (cache lands, clip list
-  // changes) and detach does not emit `pause`.
+  // Drop stitch state when the clip list changes, so a stale mixed-res
+  // warning / loading label cannot leak. Flush watched here (not only on
+  // SequencePlayer unmount): the stitcher is torn down while this shell stays
+  // mounted, and detach does not emit `pause`.
   useEffect(() => {
     setMeta(null);
-    setLoadedScenes(0);
-    setServerLoaded(false);
+    setLoadedClips(0);
     setError(null);
     flushWatched(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scenesKey, not scenes identity (#1284)
-  }, [scenesKey, musicUrl, musicLoudnessGainDb, cachedVideoUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clipsKey, not clips identity (#1284)
+  }, [clipsKey, musicUrl, musicGainDb]);
 
-  const frameClassName = cn(
-    'relative w-full overflow-hidden rounded-lg bg-black',
-    className,
-    getAspectRatioClassName(aspectRatio)
-  );
+  const frameClassName = playerFrameClassName(aspectRatio, className);
+  const gapMessage = meta ? playbackGapMessage(meta) : null;
 
   const overlay = (
     <>
       <div className="pointer-events-none absolute top-2 left-2 z-10 flex flex-col items-start gap-1">
-        {cachedVideoUrl === null ? (
-          <span
-            data-testid="theatre-local-preview"
-            className="rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm"
-          >
-            Local preview
-          </span>
-        ) : null}
         {draftLabel && (
           <span
             data-testid="theatre-draft-label"
@@ -192,6 +145,20 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         )}
       </div>
       <div className="absolute top-2 right-2 z-10 flex items-center gap-2">
+        {gapMessage && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                data-testid="playback-gap-warning"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-black/50 text-amber-400"
+                aria-label="Playback gaps"
+              >
+                <TriangleAlert className="h-4 w-4" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{gapMessage}</TooltipContent>
+          </Tooltip>
+        )}
         {meta?.hasMixedResolutions && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -204,12 +171,12 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
               </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              Scenes use different resolutions ({meta.resolutionsLabel}) because
+              Clips use different resolutions ({meta.resolutionsLabel}) because
               they were generated by different models.{' '}
               {meta.hasMixedAspectRatios
                 ? 'Playback letterboxes them into a common frame'
-                : 'Smaller scenes are upscaled to match'}
-              ; the export will be normalized (re-encoded), which is slower.
+                : 'Smaller clips are upscaled to match'}
+              ; a rendered MP4 normalizes them the same way.
             </TooltipContent>
           </Tooltip>
         )}
@@ -225,87 +192,28 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     </>
   );
 
-  // The cut opens on its first entry, which is already on hand — a clip's
-  // first frame, or the still of a shot with no video yet. Show it while the
-  // playlist or the stitcher warms up, not a grey box. `#t` makes iOS paint a
-  // frame without playback.
-  const opening = scenes[0];
-  const openingClass =
-    'pointer-events-none absolute inset-0 z-10 h-full w-full bg-black object-contain';
-  const firstFrame =
-    opening && 'videoUrl' in opening ? (
-      <video
-        data-testid="player-loading"
-        src={`${opening.videoUrl}#t=0.001`}
-        muted
-        playsInline
-        preload="auto"
-        aria-hidden
-        tabIndex={-1}
-        className={openingClass}
-      />
-    ) : opening?.imageUrl ? (
-      <img
-        data-testid="player-loading"
-        src={opening.imageUrl}
-        alt=""
-        className={openingClass}
-      />
-    ) : (
-      <Skeleton
-        data-testid="player-loading"
-        className="absolute inset-0 z-10 h-full w-full bg-muted/40"
-      />
-    );
-
-  if (cachedVideoUrl) {
-    return (
-      <div
-        data-testid="sequence-player"
-        data-state={serverLoaded ? 'ready' : 'loading'}
-        className={frameClassName}
-      >
-        {/* Same Video.js player + skin as the per-shot ScenePlayer, so the
-            theatre's cached mode is visually identical to every other player
-            in the app (#1253). */}
-        <VideoPlayer
-          src={cachedVideoUrl}
-          aspectRatio={aspectRatio}
-          className="absolute inset-0 h-full max-h-none w-full"
-          autoPlay={autoPlay}
-          playSource={playSource}
-          sequenceId={sequenceId}
-          onPlay={onAutoPlayConsumed}
-          onLoadedMetadata={() => setServerLoaded(true)}
-          onTimeUpdate={(t) =>
-            onTimeUpdate?.(t, {
-              durationSeconds:
-                media && Number.isFinite(media.duration)
-                  ? media.duration
-                  : undefined,
-            })
-          }
-          onMedia={setMedia}
-          onError={() => {
-            captureVideoPlayFailed(posthog, {
-              source: playSource,
-              reason: 'playlist_fallback',
-              sequence_id: sequenceId,
-            });
-            setFailedUrl(cachedVideoUrl);
-          }}
-        />
-        {!serverLoaded && firstFrame}
-        {overlay}
-      </div>
-    );
-  }
+  // The cut opens on its first shot's still — a clip's opening frame, or the
+  // still of a shot with no video yet — while the stitcher warms up, not a
+  // grey box.
+  const opening = clips[0];
+  const openingUrl =
+    opening && 'videoUrl' in opening ? opening.posterUrl : opening?.imageUrl;
+  const firstFrame = openingUrl ? (
+    <img
+      data-testid="player-loading"
+      src={openingUrl}
+      alt=""
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full bg-black object-contain"
+    />
+  ) : (
+    <Skeleton
+      data-testid="player-loading"
+      className="absolute inset-0 z-10 h-full w-full bg-muted/40"
+    />
+  );
 
   const stitchError =
-    error ??
-    (scenes.length === 0 && cachedVideoUrl === null
-      ? 'No scenes ready to play yet.'
-      : null);
+    error ?? (clips.length === 0 ? 'No clips ready to play yet.' : null);
 
   if (stitchError) {
     return (
@@ -324,13 +232,13 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
         <p className="text-xs text-muted-foreground text-center max-w-sm">
           {hasStills
             ? 'Check your connection and retry playback.'
-            : 'Export your sequence to download an MP4 you can play in any browser.'}
+            : 'Render MP4 on server (under Download) gives a file any browser plays.'}
         </p>
         <Button
           variant="outline"
           onClick={() => {
             setMeta(null);
-            setLoadedScenes(0);
+            setLoadedClips(0);
             setError(null);
           }}
         >
@@ -340,19 +248,25 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
     );
   }
 
+  // Opening reads every clip's header (durations, sizes); then the first
+  // frame decodes. Clip bytes load later, as the playhead reaches them.
+  const opened = Math.min(loadedClips, clips.length);
   const loading = (
     <>
       {firstFrame}
-      <p
-        aria-live="polite"
-        className="absolute inset-x-0 bottom-3 z-20 text-center text-xs text-white/80"
-      >
-        {cachedVideoUrl === undefined
-          ? 'Loading…'
-          : loadedScenes < scenes.length
-            ? `Loading scene ${loadedScenes + 1} of ${scenes.length}…`
+      <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-4 pt-8 pb-3">
+        <p aria-live="polite" className="text-xs text-white/80 tabular-nums">
+          {opened < clips.length
+            ? `Loading clip ${opened + 1} of ${clips.length}…`
             : 'Preparing playback…'}
-      </p>
+        </p>
+        <progress
+          aria-label="Loading sequence"
+          max={clips.length}
+          value={opened}
+          className="h-1 w-full max-w-xs appearance-none overflow-hidden rounded-full bg-white/20 [&::-moz-progress-bar]:bg-white/80 [&::-webkit-progress-bar]:bg-transparent [&::-webkit-progress-value]:bg-white/80 [&::-webkit-progress-value]:transition-[width] motion-reduce:[&::-webkit-progress-value]:transition-none"
+        />
+      </div>
     </>
   );
 
@@ -362,56 +276,58 @@ export const SequencePlayer: React.FC<SequencePlayerProps> = ({
       data-state={meta ? 'ready' : 'loading'}
       className={frameClassName}
     >
-      {cachedVideoUrl === null && mounted ? (
-        <Suspense fallback={null}>
-          <div className="absolute inset-0 h-full w-full">
-            <StitchedPlayerSurface
-              scenes={scenes}
-              musicUrl={musicUrl}
-              musicLoudnessGainDb={musicLoudnessGainDb}
-              musicEnabled={musicEnabled}
-              autoPlay={autoPlay}
-              onLoadProgress={(loaded) => setLoadedScenes(loaded)}
-              onMeta={(next) => {
-                setMeta(next);
-                tracker.setDuration(next.durationSeconds);
-              }}
-              onTimeUpdate={(t) => {
-                tracker.tick(t);
-                onTimeUpdate?.(t, {
-                  sceneOffsetsSeconds: meta?.sceneOffsetsSeconds,
-                });
-              }}
-              onPlay={() => {
-                if (!tracker.isActive()) tracker.start();
-                captureVideoPlay(posthog, {
-                  source: playSource,
-                  sequence_id: sequenceId,
-                });
-                onAutoPlayConsumed?.();
-              }}
-              onPause={() => flushWatched()}
-              onEnded={() => flushWatched(true)}
-              onError={(reason) => {
-                tracker.dispose();
-                setError(reason);
-                captureVideoPlayFailed(posthog, {
-                  source: playSource,
-                  reason,
-                  sequence_id: sequenceId,
-                });
-              }}
-            />
-          </div>
-        </Suspense>
-      ) : null}
+      <div className="absolute inset-0 h-full w-full">
+        <StitchedPlayer
+          clips={clips}
+          musicUrl={musicUrl}
+          musicGainDb={musicGainDb ?? 0}
+          musicEnabled={musicEnabled}
+          autoPlay={autoPlay}
+          className="h-full w-full"
+          logger={logger}
+          onLoadProgress={(loaded) => setLoadedClips(loaded)}
+          onMeta={(next) => {
+            setMeta(next);
+            tracker.setDuration(next.durationSeconds);
+          }}
+          onTimeUpdate={(t) => {
+            tracker.tick(t);
+            onTimeUpdate?.(t, meta?.clipOffsetsSeconds);
+          }}
+          onPlay={() => {
+            if (!tracker.isActive()) tracker.start();
+            captureVideoPlay(posthog, {
+              source: playSource,
+              sequence_id: sequenceId,
+            });
+            onAutoPlayConsumed?.();
+          }}
+          onPause={() => flushWatched()}
+          onEnded={() => flushWatched(true)}
+          onError={(error) => {
+            tracker.dispose();
+            setError(error.message);
+            captureVideoPlayFailed(posthog, {
+              source: playSource,
+              reason: error.message,
+              sequence_id: sequenceId,
+            });
+          }}
+          // Not a playback failure: the cut keeps playing, so say so and move on.
+          onPictureInPictureError={(error) => {
+            toast.error('Picture-in-Picture unavailable', {
+              description: error.message,
+            });
+          }}
+        />
+      </div>
       {!meta && loading}
       {overlay}
     </div>
   );
 };
 
-const MusicToggle: React.FC<{
+export const MusicToggle: React.FC<{
   enabled: boolean;
   onToggle: () => void;
   className?: string;

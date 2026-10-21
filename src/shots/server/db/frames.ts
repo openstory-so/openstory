@@ -65,17 +65,33 @@ export type PromotableFrameVariant = CompletedFrameVariant & {
 export function buildFrameImageSelection(
   db: Database,
   frameId: string,
-  version: PromotableFrameVariant
+  version: PromotableFrameVariant,
+  /**
+   * A claim-consuming promote (#1786): the same UPDATE consumes the frame's
+   * promote claim and restores the still's prompt, and lands only while the
+   * claim still names this version. One statement, so a retried step never
+   * finds the pointer moved and the mirror missing.
+   */
+  claim: { restorePromptVersionId: string | null } | null
 ) {
   return db
     .update(frames)
     .set({
       selectedImageVersionId: version.id,
-      imageStatus: version.status,
-      imageError: version.error,
+      ...(claim && { pendingPromoteVersionId: null }),
+      ...(claim?.restorePromptVersionId && {
+        selectedImagePromptVersionId: claim.restorePromptVersionId,
+      }),
       updatedAt: new Date(),
     })
-    .where(eq(frames.id, frameId));
+    .where(
+      claim
+        ? and(
+            eq(frames.id, frameId),
+            eq(frames.pendingPromoteVersionId, version.id)
+          )
+        : eq(frames.id, frameId)
+    );
 }
 
 type FrameOrderBy = 'orderIndex' | 'createdAt' | 'updatedAt';
@@ -87,8 +103,6 @@ type FrameOrderBy = 'orderIndex' | 'createdAt' | 'updatedAt';
  */
 type FrameMirrorColumn =
   | 'selectedImageVersionId'
-  | 'imageStatus'
-  | 'imageError'
   | 'selectedImagePromptVersionId';
 
 /** Fields `update` accepts — everything on a frame except the mirror columns. */
@@ -253,26 +267,6 @@ export function createFramesMethods(db: Database) {
       return frame;
     },
 
-    /** The primary render's in-flight lifecycle. No `frame_variants` row records it. */
-    setImageGenerationStatus: async (
-      frameId: string,
-      data: Pick<
-        Partial<NewFrame>,
-        'imageStatus' | 'imageWorkflowRunId' | 'imageError'
-      >,
-      options?: { throwOnMissing?: boolean }
-    ): Promise<Frame | undefined> => {
-      const [frame] = await db
-        .update(frames)
-        .set({ ...data, updatedAt: new Date() })
-        .where(eq(frames.id, frameId))
-        .returning();
-      if (!frame && options?.throwOnMissing !== false) {
-        throw new Error(`Frame ${frameId} not found`);
-      }
-      return frame;
-    },
-
     /**
      * Claim auto-promote for a primary image gen (#1070). Last kickoff wins —
      * overwrites any prior pending id. Pass `null` to cancel (explicit select /
@@ -329,6 +323,34 @@ export function createFramesMethods(db: Database) {
         );
     },
 
+    /**
+     * Move the promote claim from `fromVersionId` to `toVersionId` only while
+     * `fromVersionId` still holds it (#1786) — a run handing its claim to a
+     * replacement row (the content-rejection model fallback) must not re-take
+     * a claim a newer kickoff or a manual select already moved. A claim
+     * already on `toVersionId` (a retried handover) counts as moved.
+     */
+    movePendingPromoteVersionIdIf: async (
+      frameId: string,
+      fromVersionId: string,
+      toVersionId: string
+    ): Promise<boolean> => {
+      const moved = await db
+        .update(frames)
+        .set({ pendingPromoteVersionId: toVersionId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(frames.id, frameId),
+            inArray(frames.pendingPromoteVersionId, [
+              fromVersionId,
+              toVersionId,
+            ])
+          )
+        )
+        .returning({ id: frames.id });
+      return moved.length > 0;
+    },
+
     delete: async (frameId: string): Promise<boolean> => {
       const result = await db.delete(frames).where(eq(frames.id, frameId));
       // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- DB result may be undefined at runtime
@@ -364,32 +386,6 @@ export function createFramesMethods(db: Database) {
         .from(frameVariants)
         .where(eq(frameVariants.id, frame.selectedImageVersionId));
       return { frame, selectedVersion: version ?? null };
-    },
-
-    /**
-     * Selected version's `inputHash` vs a fresh hash. Null stored hash (no
-     * selection, or never generated) is "unknown, not stale" — never forces
-     * regeneration. Throws when the frame is missing.
-     */
-    isStale: async (frameId: string, currentHash: string): Promise<boolean> => {
-      const result = await db
-        .select({
-          frameId: frames.id,
-          hash: frameVariants.inputHash,
-        })
-        .from(frames)
-        .leftJoin(
-          frameVariants,
-          eq(frameVariants.id, frames.selectedImageVersionId)
-        )
-        .where(eq(frames.id, frameId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`Frame ${frameId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
     },
   };
 }

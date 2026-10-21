@@ -68,6 +68,13 @@ export const shots = snakeCase.table(
     // only source of the motion prompt. The render manifest snapshots it, so a
     // null here means the manifest records no prompt.
     selectedMotionPromptVersionId: text(),
+    // Soft pointer to the selected `shot_spec_versions` row (#1915). Null on
+    // a shot from before specs: its prompts stay text only.
+    selectedSpecVersionId: text(),
+    // Soft pointer (no FK) to the id Rewrite shot will insert (#1923). Set
+    // when the claim is taken, cleared when that run promotes or fails.
+    // No FK: a column with a foreign key rebuilds `shots` (#612).
+    pendingSpecVersionId: text(),
     // The render segment this shot belongs to (#990) — a scene's video is tiled
     // into ≤cap segments (`render_segments`); per-shot rendering is the
     // degenerate one-shot segment. Membership lives here (order from

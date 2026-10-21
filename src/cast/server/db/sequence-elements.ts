@@ -12,12 +12,15 @@ import type {
 } from '@/platform/server/db/schema';
 import {
   framePromptVersions,
+  frameVariants,
   frames,
   renderSegments,
   scenes,
   sceneScriptVersions,
   shots,
+  shotDialogueVersions,
   shotPromptVersions,
+  shotSpecVersions,
   sequenceElements,
   sequences,
   videoVariants,
@@ -26,13 +29,32 @@ import {
   buildShotRenameDeltas,
   replaceTokenInText,
   renameTokenInContinuity,
+  renameTokenInSpec,
 } from '@/cast/cascade-rename';
 import {
   loadSceneContextBySequenceFromDb,
   resolveSceneForShot,
 } from '@/shots/server/scene-script';
 import { matchElementsToShotImage } from '@/shots/scene-matching';
-import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm';
+import { promoteLegacyMotionDialogue } from '@/shots/server/db/shot-prompt-versions';
+import { shotPromptDialogueResolver } from '@/shots/server/shot-dialogue';
+import { hashShotSpecInput } from '@/shots/shot-spec-currency';
+import { canonicalStoredShotSpec } from '@/shots/shot-list.schema';
+import { generateId } from '@/platform/id';
+import { sceneNarrativeOf } from '@/shots/scene-narrative';
+import { joinSelectedScript, sceneColumns } from '@/shots/server/db/scenes';
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
@@ -186,6 +208,19 @@ export function createSequenceElementsMethods(db: Database) {
       );
     },
 
+    /** Soft-deleted elements of the sequence, most recently deleted first. */
+    listDeleted: async (sequenceId: string): Promise<SequenceElement[]> =>
+      await db
+        .select()
+        .from(sequenceElements)
+        .where(
+          and(
+            eq(sequenceElements.sequenceId, sequenceId),
+            isNotNull(sequenceElements.deletedAt)
+          )
+        )
+        .orderBy(desc(sequenceElements.deletedAt)),
+
     listByIds: async (ids: string[]): Promise<SequenceElement[]> => {
       if (ids.length === 0) return [];
       return await db
@@ -251,9 +286,11 @@ export function createSequenceElementsMethods(db: Database) {
 
     /**
      * Rename an element's token and rewrite every reference to the old token
-     * across the sequence: `sequences.script`, `scenes.continuity` +
-     * the selected `scene_script_versions` extract, the anchor frame's
-     * `imagePrompt` and the selected `shot_prompt_versions` motion text.
+     * across the sequence: `sequences.script`, the selected
+     * `scene_script_versions` extract and continuity (one `renamed` row,
+     * #1600), the selected shot spec (`source: 'rename'`), the anchor
+     * frame's `imagePrompt` and the selected `shot_prompt_versions` motion
+     * text. Prompt rows are `source: 'renamed'`.
      *
      * All writes (element row, script, shot deltas) run in a single
      * `db.batch()` — one transaction — so a mid-cascade failure can't leave
@@ -361,8 +398,7 @@ export function createSequenceElementsMethods(db: Database) {
         .select({
           id: frames.id,
           shotId: frames.shotId,
-          imagePrompt: framePromptVersions.text,
-          promptVersionId: framePromptVersions.id,
+          prompt: framePromptVersions,
         })
         .from(frames)
         .leftJoin(
@@ -373,21 +409,15 @@ export function createSequenceElementsMethods(db: Database) {
           and(eq(frames.sequenceId, sequenceId), eq(frames.orderIndex, 0))
         );
       const imagePromptByShot = new Map(
-        frameRows.map((f) => [f.shotId, f.imagePrompt])
+        frameRows.map((f) => [f.shotId, f.prompt?.text ?? null])
       );
-      const promptVersionIdByShot = new Map(
-        frameRows.flatMap((f) =>
-          f.promptVersionId ? [[f.shotId, f.promptVersionId]] : []
-        )
+      const selectedImagePromptByShot = new Map(
+        frameRows.flatMap((f) => (f.prompt ? [[f.shotId, f.prompt]] : []))
       );
       // The motion prompt is the *selected* `shot_prompt_versions` row (#713):
       // both the token scan and the rewrite target that row.
       const selectedMotionRows = await db
-        .select({
-          shotId: shots.id,
-          versionId: shotPromptVersions.id,
-          text: shotPromptVersions.text,
-        })
+        .select({ shotId: shots.id, version: shotPromptVersions })
         .from(shots)
         .innerJoin(
           shotPromptVersions,
@@ -395,10 +425,10 @@ export function createSequenceElementsMethods(db: Database) {
         )
         .where(eq(shots.sequenceId, sequenceId));
       const motionPromptByShot = new Map(
-        selectedMotionRows.map((r) => [r.shotId, r.text])
+        selectedMotionRows.map((r) => [r.shotId, r.version.text])
       );
       const selectedMotionVersionByShot = new Map(
-        selectedMotionRows.map((r) => [r.shotId, r.versionId])
+        selectedMotionRows.map((r) => [r.shotId, r.version])
       );
       const shotsWithPrompts = allShots.map((s) => ({
         ...s,
@@ -411,72 +441,233 @@ export function createSequenceElementsMethods(db: Database) {
         newToken
       );
       const selectedScriptRows = await db
-        .select({ version: sceneScriptVersions })
+        .select({
+          sceneId: scenes.id,
+          scene: sceneColumns,
+          version: sceneScriptVersions,
+        })
         .from(scenes)
-        .innerJoin(
-          sceneScriptVersions,
-          eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
-        )
+        .innerJoin(sceneScriptVersions, joinSelectedScript)
         .where(eq(scenes.sequenceId, sequenceId));
-      // Element tags live on the scene's continuity now, so the token rewrite
-      // targets `scenes.continuity` rather than a per-shot copy.
-      const sceneRows = await db
-        .select()
-        .from(scenes)
-        .where(eq(scenes.sequenceId, sequenceId));
-      const sceneContinuityStatements = sceneRows.flatMap((scene) => {
-        if (!scene.continuity) return [];
-        const rewritten = renameTokenInContinuity(
-          scene.continuity,
-          oldToken,
-          newToken
-        );
-        if (!rewritten) return [];
-        return [
-          db
-            .update(scenes)
-            .set({ continuity: rewritten, updatedAt: now })
-            .where(eq(scenes.id, scene.id)),
-        ];
-      });
-
+      // Version rows are append-only history (#1786): a rename appends a
+      // `renamed` row carrying the rewritten text and repoints the selection at
+      // it — never rewrites the selected row in place, which would make every
+      // still, clip and hash that pinned that row claim text it never saw. Each
+      // repoint is a compare-and-swap on the pointer this read saw, so an edit
+      // or select that lands meanwhile keeps its choice. Element tags live on
+      // the scene's continuity, which rides the same row as the text (#1600),
+      // so one row carries both rewrites.
       const sceneScriptStatements = selectedScriptRows.flatMap(
-        ({ version }) => {
+        ({ sceneId, scene, version }) => {
           const extract = version.content.extract;
-          if (!extract) return [];
-          const rewritten = replaceTokenInText(extract, oldToken, newToken);
-          if (rewritten === extract) return [];
+          const rewritten = extract
+            ? replaceTokenInText(extract, oldToken, newToken)
+            : extract;
+          const continuity = scene.continuity
+            ? renameTokenInContinuity(scene.continuity, oldToken, newToken)
+            : null;
+          if (rewritten === extract && !continuity) return [];
+          const id = generateId();
           return [
+            db.insert(sceneScriptVersions).values({
+              id,
+              sceneId,
+              content: { ...version.content, extract: rewritten },
+              ...sceneNarrativeOf(scene),
+              ...(continuity ? { continuity } : {}),
+              source: 'renamed',
+            }),
             db
-              .update(sceneScriptVersions)
-              .set({
-                content: { ...version.content, extract: rewritten },
-              })
-              .where(eq(sceneScriptVersions.id, version.id)),
+              .update(scenes)
+              .set({ selectedScriptVersionId: id, updatedAt: now })
+              .where(
+                and(
+                  eq(scenes.id, sceneId),
+                  eq(scenes.selectedScriptVersionId, version.id)
+                )
+              ),
           ];
         }
       );
 
-      const shotStatements = deltas.flatMap((delta) => {
-        const selectedMotionVersionId = selectedMotionVersionByShot.get(
-          delta.shotId
+      const dialogueRows = await db
+        .select({
+          shotId: shotDialogueVersions.shotId,
+          lines: shotDialogueVersions.lines,
+        })
+        .from(shotDialogueVersions)
+        .innerJoin(shots, eq(shots.id, shotDialogueVersions.shotId))
+        .where(
+          and(
+            eq(shots.sequenceId, sequenceId),
+            isNotNull(shotDialogueVersions.selectedAt)
+          )
         );
-        const selectedPromptVersionId = promptVersionIdByShot.get(delta.shotId);
+      const selectedSpecs = await db
+        .select({ version: shotSpecVersions })
+        .from(shots)
+        .innerJoin(
+          shotSpecVersions,
+          eq(shotSpecVersions.id, shots.selectedSpecVersionId)
+        )
+        .where(eq(shots.sequenceId, sequenceId));
+      const promptDialogueOf = shotPromptDialogueResolver({
+        linesByShotId: new Map(
+          dialogueRows.map((row) => [row.shotId, row.lines])
+        ),
+        shots: allShots,
+        legacyDialogueOf: (shotId) =>
+          selectedMotionVersionByShot.get(shotId)?.dialogue ?? null,
+        scriptDialogueOf: (sceneId) =>
+          selectedScriptRows.find((row) => row.sceneId === sceneId)?.version
+            .content.dialogue,
+      });
+      const sceneRowById = new Map<string, (typeof selectedScriptRows)[number]>(
+        selectedScriptRows.map((row) => [row.sceneId, row])
+      );
+      const specIdByShot = new Map<string, string>();
+      const specStatements = [];
+      for (const { version } of selectedSpecs) {
+        const shot = allShots.find((row) => row.id === version.shotId);
+        const sceneRow = shot?.sceneId
+          ? sceneRowById.get(shot.sceneId)
+          : undefined;
+        if (!shot || !sceneRow) continue;
+        const extract = sceneRow.version.content.extract;
+        const rewrittenExtract = extract
+          ? replaceTokenInText(extract, oldToken, newToken)
+          : extract;
+        const continuity = sceneRow.scene.continuity
+          ? (renameTokenInContinuity(
+              sceneRow.scene.continuity,
+              oldToken,
+              newToken
+            ) ?? sceneRow.scene.continuity)
+          : null;
+        const nextSpec = renameTokenInSpec(version.spec, oldToken, newToken);
+        const lines = promptDialogueOf(shot).dialogue.lines.map((line) => ({
+          character: line.character,
+          line: line.line,
+          tone: line.tone,
+        }));
+        const inputHash = await hashShotSpecInput({
+          scriptExtract: rewrittenExtract ?? '',
+          lines,
+          characterTags: continuity?.characterTags ?? [],
+          elementTags: continuity?.elementTags ?? [],
+          environmentTag: continuity?.environmentTag ?? '',
+        });
+        const textUnchanged =
+          JSON.stringify(canonicalStoredShotSpec(nextSpec)) ===
+          JSON.stringify(canonicalStoredShotSpec(version.spec));
+        if (textUnchanged && version.inputHash === inputHash) continue;
+        const id = generateId();
+        specIdByShot.set(version.shotId, id);
+        specStatements.push(
+          db.insert(shotSpecVersions).values({
+            id,
+            shotId: version.shotId,
+            spec: nextSpec,
+            source: 'rename',
+            inputHash,
+          }),
+          db
+            .update(shots)
+            .set({ selectedSpecVersionId: id, updatedAt: now })
+            .where(
+              and(
+                eq(shots.id, version.shotId),
+                eq(shots.selectedSpecVersionId, version.id)
+              )
+            )
+        );
+      }
+
+      // A pre-#1657 shot keeps its lines only on the selected motion row;
+      // lift them to the dialogue node before a new row takes the selection.
+      for (const delta of deltas) {
+        if (
+          delta.motionPrompt !== undefined &&
+          selectedMotionVersionByShot.has(delta.shotId)
+        ) {
+          await promoteLegacyMotionDialogue(db, delta.shotId);
+        }
+      }
+
+      const shotStatements = deltas.flatMap((delta) => {
+        const motion = selectedMotionVersionByShot.get(delta.shotId);
+        const image = selectedImagePromptByShot.get(delta.shotId);
+        const motionId = generateId();
+        const imageId = generateId();
         return [
-          ...(delta.motionPrompt !== undefined && selectedMotionVersionId
+          ...(delta.motionPrompt !== undefined && motion
             ? [
+                db.insert(shotPromptVersions).values({
+                  id: motionId,
+                  shotId: motion.shotId,
+                  promptType: motion.promptType,
+                  text: delta.motionPrompt,
+                  components: motion.components,
+                  parameters: motion.parameters,
+                  audio: motion.audio,
+                  usesStartFrame: motion.usesStartFrame,
+                  source: 'renamed',
+                  specVersionId:
+                    specIdByShot.get(motion.shotId) ?? motion.specVersionId,
+                  inputHash: motion.inputHash,
+                  analysisModel: motion.analysisModel,
+                }),
                 db
-                  .update(shotPromptVersions)
-                  .set({ text: delta.motionPrompt })
-                  .where(eq(shotPromptVersions.id, selectedMotionVersionId)),
+                  .update(shots)
+                  .set({
+                    selectedMotionPromptVersionId: motionId,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(shots.id, motion.shotId),
+                      eq(shots.selectedMotionPromptVersionId, motion.id)
+                    )
+                  ),
               ]
             : []),
-          ...(delta.imagePrompt !== undefined && selectedPromptVersionId
+          ...(delta.imagePrompt !== undefined && image
             ? [
+                db.insert(framePromptVersions).values({
+                  id: imageId,
+                  frameId: image.frameId,
+                  text: delta.imagePrompt,
+                  components: image.components,
+                  source: 'renamed',
+                  specVersionId:
+                    specIdByShot.get(delta.shotId) ?? image.specVersionId,
+                  inputHash: image.inputHash,
+                  analysisModel: image.analysisModel,
+                }),
                 db
-                  .update(framePromptVersions)
-                  .set({ text: delta.imagePrompt })
-                  .where(eq(framePromptVersions.id, selectedPromptVersionId)),
+                  .update(frames)
+                  .set({
+                    selectedImagePromptVersionId: imageId,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(frames.id, image.frameId),
+                      eq(frames.selectedImagePromptVersionId, image.id)
+                    )
+                  ),
+                // Selecting a still restores the prompt it links to. Point the
+                // stills linked to the old row at the rename, so re-selecting
+                // one never brings the old token back.
+                db
+                  .update(frameVariants)
+                  .set({ promptVersionId: imageId })
+                  .where(
+                    and(
+                      eq(frameVariants.frameId, image.frameId),
+                      eq(frameVariants.promptVersionId, image.id)
+                    )
+                  ),
               ]
             : []),
         ];
@@ -485,8 +676,8 @@ export function createSequenceElementsMethods(db: Database) {
       const [elementRows] = await db.batch([
         elementUpdate,
         ...scriptStatements,
-        ...sceneContinuityStatements,
         ...sceneScriptStatements,
+        ...specStatements,
         ...shotStatements,
       ]);
       const element = elementRows[0];

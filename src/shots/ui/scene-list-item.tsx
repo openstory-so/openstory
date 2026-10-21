@@ -14,7 +14,7 @@ import type { SceneWithScript } from './use-scenes';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { cn } from '@/ui/utils';
 import { plainSceneTitle } from '@/platform/markdown-plain';
-import type { ShotView } from '@/shots/shot-view';
+import { shownClipUrl, type ShotView } from '@/shots/shot-view';
 import { Link } from '@tanstack/react-router';
 import {
   ArrowDown,
@@ -90,6 +90,7 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
   // corner tick is gone — a green check on every finished shot was noise on a
   // list where "finished" is the normal state.
   const hasVideo = shot?.videoStatus === 'completed' && !!shot.video?.url;
+  const clipUrl = shot ? shownClipUrl(shot) : null;
   const isGeneratingVideo =
     !!shot && (shot.videoStatus === 'generating' || isRegeneratingMotion);
   // The row reads like a shot-list line: number + length, then the one action
@@ -197,15 +198,16 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
               <SceneThumbnail
                 thumbnailUrl={shot?.image?.url}
                 previewThumbnailUrl={shot?.previewThumbnailUrl}
-                thumbnailStatus={shot?.frame.imageStatus || undefined}
+                thumbnailStatus={shot?.imageStatus || undefined}
                 // The selected clip, whatever a newer render is doing: the
                 // pointer only moves when that render lands, and the theatre
                 // plays this clip until then. Gating on 'completed' dropped
-                // the frame back to the storyboard mid-regenerate.
-                videoUrl={shot?.video?.url}
+                // the frame back to the storyboard mid-regenerate. A sketch
+                // newer than the clip shows instead (#2111).
+                videoUrl={clipUrl}
                 videoStartSeconds={videoStartSeconds}
-                generationError={shot?.frame.imageError}
-                draftLabel={shotDraftLabel(shot)}
+                generationError={shot?.imageError}
+                draftLabel={clipUrl ? shotDraftLabel(shot) : null}
                 alt={linkLabel ?? 'Shot thumbnail'}
                 aspectRatio={aspectRatio}
                 className="w-full rounded-md"
@@ -377,8 +379,8 @@ const areEqual = (
   if (
     prevShot.image?.url !== nextShot.image?.url ||
     prevShot.previewThumbnailUrl !== nextShot.previewThumbnailUrl ||
-    prevShot.frame.imageStatus !== nextShot.frame.imageStatus ||
-    prevShot.frame.imageError !== nextShot.frame.imageError ||
+    prevShot.imageStatus !== nextShot.imageStatus ||
+    prevShot.imageError !== nextShot.imageError ||
     prevShot.gridSheet?.url !== nextShot.gridSheet?.url ||
     prevShot.pendingUpscaleIndex !== nextShot.pendingUpscaleIndex ||
     prevShot.pendingUpscaleUrl !== nextShot.pendingUpscaleUrl

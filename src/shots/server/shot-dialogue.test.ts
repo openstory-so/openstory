@@ -5,6 +5,11 @@ import {
   sceneDialogueJobs,
   shotDialogueResolver,
 } from './shot-dialogue';
+import {
+  castVoiceIds,
+  speechVoicesMoved,
+  voiceMovedShotIds,
+} from '@/shots/shot-dialogue';
 
 const characters = [
   { name: 'Ana', voiceId: 'voice-ana' },
@@ -159,6 +164,7 @@ describe('sceneDialogueJobs', () => {
       characters,
       versionIdByShotId: new Map([['shot-1', 'version-1']]),
       shotSecondsOf: (shotId) => (shotId === 'shot-1' ? 5 : undefined),
+      voiceMovedShotIds: new Set(),
     });
     expect(jobs).toHaveLength(1);
     // The whole conversation, in shot order — shot-2 included, though it was
@@ -183,8 +189,37 @@ describe('sceneDialogueJobs', () => {
         characters,
         versionIdByShotId: new Map(),
         shotSecondsOf: () => undefined,
+        voiceMovedShotIds: new Set(),
       })
     ).toEqual([]);
+  });
+
+  it('forces the shots a moved voice spoke with, and only those', () => {
+    const [job] = sceneDialogueJobs({
+      needing: [{ id: 'shot-1' }],
+      shots: allShots,
+      dialogueOf,
+      characters,
+      versionIdByShotId: new Map(),
+      shotSecondsOf: () => undefined,
+      voiceMovedShotIds: new Set(['shot-2', 'other-1']),
+    });
+    expect(job?.forceAdoptShotIds).toEqual(['shot-2']);
+  });
+});
+
+describe('speechVoicesMoved', () => {
+  const cast = castVoiceIds([{ voiceId: 'kayden-v2' }, { voiceId: null }]);
+  it('is out of date once any voice that spoke is no longer the cast’s', () => {
+    expect(
+      speechVoicesMoved(
+        [{ voiceId: 'kayden-v2' }, { voiceId: 'maya-v1' }],
+        cast
+      )
+    ).toBe(true);
+  });
+  it('is current while every voice still is', () => {
+    expect(speechVoicesMoved([{ voiceId: 'kayden-v2' }], cast)).toBe(false);
   });
 });
 
@@ -237,5 +272,47 @@ describe('requireSelectableSection', () => {
 
   it('refuses a reading longer than the shot can carry', () => {
     expect(() => ask({ limitSeconds: 3.9 })).toThrow(/limit is 3\.9s/);
+  });
+});
+
+describe('voiceMovedShotIds', () => {
+  const at = (minute: number) => new Date(Date.UTC(2026, 9, 1, 3, minute));
+  // Kayden got a new voice at :20. Tahlia's take was recorded alone at :10
+  // (a Seed and an ElevenLabs voice never share a call); Kayden's shots
+  // still play the :05 take in his old voice.
+  const input = (kaydenShotSpeech: string) => ({
+    shots: [
+      { id: 'kayden-1', sceneId: 'scene', speechIds: [kaydenShotSpeech] },
+      { id: 'tahlia-2', sceneId: 'scene', speechIds: ['tahlia-alone'] },
+      { id: 'elsewhere', sceneId: 'other', speechIds: ['other-take'] },
+    ],
+    speeches: new Map([
+      ['kayden-old', { turns: [{ voiceId: 'k-old' }], createdAt: at(5) }],
+      ['kayden-new', { turns: [{ voiceId: 'k-new' }], createdAt: at(25) }],
+      ['tahlia-alone', { turns: [{ voiceId: 't' }], createdAt: at(10) }],
+      ['other-take', { turns: [{ voiceId: 't' }], createdAt: at(10) }],
+    ]),
+    castVoiceIds: new Set(['k-new', 't']),
+    characterOfVoice: new Map([
+      ['k-old', 'kayden'],
+      ['k-new', 'kayden'],
+      ['t', 'tahlia'],
+    ]),
+    currentVoiceSince: new Map([
+      ['kayden', at(20)],
+      ['tahlia', at(0)],
+    ]),
+  });
+
+  it('dates the whole scene of a recast speaker, even a take he was not in', () => {
+    expect(voiceMovedShotIds(input('kayden-old'))).toEqual(
+      new Set(['kayden-1', 'tahlia-2'])
+    );
+  });
+
+  it('still dates a scene-mate once the recast speaker alone was re-recorded', () => {
+    expect(voiceMovedShotIds(input('kayden-new'))).toEqual(
+      new Set(['tahlia-2'])
+    );
   });
 });

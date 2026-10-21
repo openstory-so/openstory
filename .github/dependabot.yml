@@ -45,6 +45,21 @@ updates:
           - '@tanstack/ai-openrouter'
           - '@tanstack/react-ai-devtools'
         update-types: ['minor', 'patch']
+      # `@logtape/pretty` (dev) imports from `@logtape/logtape` (prod) and
+      # needs the matching release; split across production / development, a
+      # bump of one without the other breaks the build (#1906). Same
+      # first-match rule: keep this above `production` / `development`.
+      logtape:
+        patterns:
+          - '@logtape/*'
+        update-types: ['minor', 'patch']
+      # `better-auth` (prod) needs `@better-auth/core` (dev) at the same
+      # release (#1956). Keep above `production` / `development`.
+      better-auth:
+        patterns:
+          - 'better-auth'
+          - '@better-auth/*'
+        update-types: ['minor', 'patch']
       production:
         dependency-type: production
         update-types: ['minor', 'patch']
@@ -57,7 +72,7 @@ updates:
         patterns: ['*']
         update-types: ['major']
     ignore:
-      # Engines pin Node 24; types for Node 26 would lie about the runtime.
+      # Engines pin Node 26; types for a future major would lie about the runtime.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
       # Hard-pinned to the exact version @tanstack/ai-openrouter depends on
@@ -92,6 +107,6 @@ updates:
       video-export:
         patterns: ['*']
     ignore:
-      # Dockerfile is node:22-bookworm-slim — keep types on the Node 22 line.
+      # Dockerfile is node:26-bookworm-slim — keep types on the Node 26 line.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']

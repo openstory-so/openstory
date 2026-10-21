@@ -125,7 +125,7 @@ describe('estimateTotalSeconds', () => {
   test('turbo Lite + H3 Max is ~4 min, not a Seedance-class 11 min', () => {
     const defaults = estimateTotalSeconds(5);
     const turbo = estimateTotalSeconds(5, undefined, undefined, {
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
     });
@@ -141,13 +141,13 @@ describe('estimateTotalSeconds', () => {
       imageModel: 'nano_banana_2_lite',
     });
     const liteLuna = estimateTotalSeconds(5, undefined, undefined, {
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'nano_banana_2_lite',
     });
     expect(liteFable).toBeGreaterThan(liteLuna);
 
     const gptImageLuna = estimateTotalSeconds(5, undefined, undefined, {
-      analysisModel: 'openai/gpt-5.6-luna',
+      analysisModel: 'openai/gpt-6-luna',
       imageModel: 'gpt_image_2',
     });
     const gptImageFable = estimateTotalSeconds(5, undefined, undefined, {

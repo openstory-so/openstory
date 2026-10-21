@@ -25,6 +25,7 @@ import {
   useDeleteSequenceElement,
   useRenameSequenceElementToken,
   useSequenceElements,
+  useShotCountsForAllElements,
   useUploadDraftElement,
   useUploadElementToSequence,
   type DraftElementUpload,
@@ -179,6 +180,9 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
   const queryClient = useQueryClient();
   const renameToken = useRenameSequenceElementToken();
   const { data: persistedElements = [] } = useSequenceElements(
+    isPersisted ? sequenceId : undefined
+  );
+  const { data: shotCounts } = useShotCountsForAllElements(
     isPersisted ? sequenceId : undefined
   );
 
@@ -757,6 +761,12 @@ export const ElementSelector: React.FC<ElementSelectorProps> = (props) => {
                                     entry.source.tempPath,
                                     next
                                   )
+                            }
+                            affectedShotCount={
+                              entry.kind === 'persisted'
+                                ? (shotCounts?.[entry.source.id]?.shotCount ??
+                                  0)
+                                : 0
                             }
                           />
                         )}

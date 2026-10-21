@@ -29,7 +29,9 @@ import {
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { Switch } from '@/ui/shadcn/switch';
 import {
+  createSetupCheckoutSessionFn,
   getTransactionsFn,
+  listPaymentMethodsFn,
   reportCheckoutCanceledFn,
   updateAutoTopUpFn,
 } from '@/billing/billing.fn';
@@ -37,6 +39,7 @@ import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { clearBalanceFlash } from '@/billing/ui/use-balance-flash';
 import {
   BILLING_BALANCE_KEY,
+  BILLING_PAYMENT_METHODS_KEY,
   useBillingBalance,
 } from '@/billing/ui/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
@@ -59,6 +62,7 @@ type BillingSettingsProps = {
   success?: boolean;
   canceled?: boolean;
   sessionId?: string;
+  cardSaved?: boolean;
 };
 
 type SectionHeaderProps = {
@@ -102,6 +106,7 @@ export function BillingSettings({
   success,
   canceled,
   sessionId,
+  cardSaved,
 }: BillingSettingsProps) {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -112,8 +117,11 @@ export function BillingSettings({
   // Handle checkout return — runs once when returning from Stripe with success or canceled params
   const checkoutHandledRef = useRef(false);
   useEffect(() => {
-    if (checkoutHandledRef.current || (!success && !canceled)) return;
+    if (checkoutHandledRef.current || (!success && !canceled && !cardSaved))
+      return;
     checkoutHandledRef.current = true;
+
+    if (cardSaved) toast.success('Card saved');
 
     // Clear pending flash marker on cancel
     if (canceled) {
@@ -154,7 +162,7 @@ export function BillingSettings({
       window.history.replaceState({}, '', '/credits');
     }, 5000);
     return () => clearTimeout(timer);
-  }, [success, canceled, sessionId, queryClient, navigate]);
+  }, [success, canceled, sessionId, cardSaved, queryClient, navigate]);
 
   const {
     data: balanceData,
@@ -176,6 +184,20 @@ export function BillingSettings({
   }, [success, balanceLoading, balanceData]);
 
   const stripeEnabled = balanceData?.stripeEnabled ?? false;
+
+  // Asks Stripe for saved cards. A Stripe customer alone is not a card: one
+  // is created before the Add card checkout opens, even if it is canceled.
+  const {
+    data: pmData,
+    isLoading: pmLoading,
+    error: pmError,
+  } = useQuery({
+    queryKey: [...BILLING_PAYMENT_METHODS_KEY],
+    queryFn: () => listPaymentMethodsFn(),
+    staleTime: 60_000,
+    enabled: stripeEnabled,
+  });
+  const hasCard = (pmData?.paymentMethods.length ?? 0) > 0;
 
   const {
     data: invoiceData,
@@ -206,6 +228,16 @@ export function BillingSettings({
       setError(
         err instanceof Error ? err.message : 'Failed to update auto top-up'
       );
+    },
+  });
+
+  const addCardMutation = useMutation({
+    mutationFn: () => createSetupCheckoutSessionFn(),
+    onSuccess: ({ url }) => {
+      window.location.href = url;
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Could not add card');
     },
   });
 
@@ -330,24 +362,39 @@ export function BillingSettings({
                 title="Auto-reload"
                 description="Automatically add credits when your balance runs low"
                 action={
-                  balanceData?.hasPaymentMethod ? (
+                  !pmData?.canManage ? null : hasCard ? (
                     <Button
                       variant="outline"
                       onClick={() => setAutoTopUpDialogOpen(true)}
                     >
                       Modify
                     </Button>
-                  ) : undefined
+                  ) : (
+                    <Button
+                      variant="outline"
+                      disabled={addCardMutation.isPending}
+                      onClick={() => addCardMutation.mutate()}
+                    >
+                      {addCardMutation.isPending ? 'Opening…' : 'Add card'}
+                    </Button>
+                  )
                 }
               />
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              {balanceLoading ? (
+              {balanceLoading || pmLoading ? (
                 <Skeleton className="h-5 w-64" />
-              ) : !balanceData?.hasPaymentMethod ? (
+              ) : pmError ? (
+                <p className="text-sm text-destructive">
+                  Could not load your cards: {pmError.message}
+                </p>
+              ) : !pmData?.canManage ? (
                 <p className="text-sm text-muted-foreground">
-                  Save a card (no charge) or make a purchase to enable
-                  auto-reload.
+                  Only a team admin can manage cards.
+                </p>
+              ) : !hasCard || !balanceData ? (
+                <p className="text-sm text-muted-foreground">
+                  Add a card to enable auto-reload.
                 </p>
               ) : balanceData.autoTopUp.enabled ? (
                 <p className="text-sm text-muted-foreground tabular-nums">

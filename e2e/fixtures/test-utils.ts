@@ -17,7 +17,7 @@ const SEQUENCE_DRAFT_KEY = 'openstory:sequence-draft:v1';
 /** Mirrors `STORAGE_KEY` in src/sequences/ui/use-generation-settings.ts — bump both
  *  together, or the pin lands under a key the app never reads and the recorded
  *  pipeline silently reverts to Turbo defaults. */
-const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
+const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v6';
 
 /**
  * Catalog the recorded full-pipeline fal fixtures were captured against.
@@ -27,7 +27,7 @@ const GENERATION_SETTINGS_KEY = 'openstory:generation-settings:v5';
 export const RECORDED_PIPELINE_SETTINGS = {
   generationMode: 'quality',
   aspectRatio: '16:9',
-  analysisModels: ['openai/gpt-5.6-luna'],
+  analysisModels: ['openai/gpt-6-luna'],
   imageModel: 'grok_imagine_image',
   imageModels: ['grok_imagine_image'],
   motionModel: 'minimax_h3_max',
@@ -39,6 +39,9 @@ export const RECORDED_PIPELINE_SETTINGS = {
   // The fixtures were recorded on the frame-based workflow; reference-only
   // is the product default now, so opt back in explicitly.
   generateStartFrames: true,
+  // No voice-design fixtures were recorded; the app has no switch for this
+  // (#2004), so the pin is the only way to keep the replay off that call.
+  generateVoices: false,
   musicModel: 'elevenlabs_music',
   audioModels: ['elevenlabs_music'],
   autoGenerateMusic: true,
@@ -164,12 +167,19 @@ export async function openComposerReference(
   page: Page,
   name: 'Talent' | 'Locations'
 ): Promise<void> {
-  const inner = page.getByRole('button', { name, exact: true });
+  // On a new sequence talent is a tab of the Cast picker (#2017).
+  const inner = page.getByRole('button', {
+    name: name === 'Talent' ? 'Cast' : name,
+    exact: true,
+  });
   if (!(await inner.isVisible())) {
     await page.getByRole('button', { name: 'References' }).click();
   }
   await expect(inner).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   await inner.click();
+  if (name === 'Talent') {
+    await page.getByRole('dialog').getByRole('tab', { name: 'Talent' }).click();
+  }
 }
 
 /**

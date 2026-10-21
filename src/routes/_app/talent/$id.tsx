@@ -21,6 +21,7 @@ import {
 import { sheetProgressCopy } from '@/cast/sheet-progress-copy';
 import { cn } from '@/ui/utils';
 import { useQuery } from '@tanstack/react-query';
+import { librarySearchFor } from '@/cast/ui/library-search';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowLeft,
@@ -45,7 +46,16 @@ export const Route = createFileRoute('/_app/talent/$id')({
     breadcrumb: (match) => {
       const { id } = routeParams<{ id: string }>(match);
       return [
-        { label: 'Talent', to: '/talent' },
+        {
+          label: 'Characters',
+          to: '/characters',
+          search: librarySearchFor('characters'),
+        },
+        {
+          label: 'Talent',
+          to: '/characters',
+          search: librarySearchFor('talent'),
+        },
         { label: <TalentCrumbLabel id={id} /> },
       ];
     },
@@ -105,7 +115,11 @@ function TalentDetailPage() {
     if (!confirm(`Delete "${talent.name}"? This cannot be undone.`)) return;
 
     deleteTalent.mutate(talent.id, {
-      onSuccess: () => void navigate({ to: '/talent' }),
+      onSuccess: () =>
+        void navigate({
+          to: '/characters',
+          search: librarySearchFor('talent'),
+        }),
     });
   };
 
@@ -139,7 +153,9 @@ function TalentDetailPage() {
               {error?.message || 'Talent not found'}
             </p>
             <Button variant="outline" asChild>
-              <Link to="/talent">Back to Talent</Link>
+              <Link to="/characters" search={librarySearchFor('talent')}>
+                Back to Talent
+              </Link>
             </Button>
           </Card>
         </PageContainer>
@@ -152,7 +168,7 @@ function TalentDetailPage() {
       <PageContainer>
         {/* Back link */}
         <Button variant="ghost" size="sm" className="mb-4 -ml-2" asChild>
-          <Link to="/talent">
+          <Link to="/characters" search={librarySearchFor('talent')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Talent
           </Link>

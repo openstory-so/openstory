@@ -71,6 +71,14 @@ export function buildLlmsTxt(): string {
   );
   lines.push('');
 
+  lines.push('## MCP');
+  lines.push('');
+  lines.push(
+    `MCP clients connect to ${SITE_CONFIG.url}/mcp (Streamable HTTP, protocol 2026-07-28, OAuth or an API key) to inspect a production, edit scenes, plan and approve generation, poll operations and export.`
+  );
+  lines.push(`- Agent guide: ${SITE_CONFIG.url}/docs/developer-guide/agents`);
+  lines.push('');
+
   lines.push('## Documentation');
   lines.push('');
   lines.push(`- Docs: ${SITE_CONFIG.url}/docs`);

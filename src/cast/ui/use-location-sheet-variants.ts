@@ -1,41 +1,34 @@
+/**
+ * A location's sheet versions (#1695). The sheets are the location's, so
+ * every read and write here works through a sequence or from none
+ * (`sequenceId: null`, the Locations page).
+ */
 import {
-  discardSequenceLocationSheetVariantFn,
-  getSequenceLocationDivergentVariantsFn,
+  discardLocationSheetVariantFn,
+  getLocationDivergentVariantsFn,
   listLocationSheetVersionsFn,
-  promoteSequenceLocationSheetVariantFn,
+  promoteLocationSheetVariantFn,
   selectLocationSheetVersionFn,
-  undiscardSequenceLocationSheetVariantFn,
+  undiscardLocationSheetVariantFn,
 } from '@/cast/location-sheet-variants.fn';
 import {
-  libraryLocationKeys,
-  sequenceLocationKeys,
-} from './use-sequence-locations';
-import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
+  invalidateLocations,
+  locationSheetVariantKeys,
+} from '@/cast/ui/location-keys';
 import type { LocationSheetVariant } from '@/platform/server/db/schema';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-export const locationSheetVariantKeys = {
-  all: ['location-sheet-variants'] as const,
-  divergentBySequence: (sequenceId: string) =>
-    [...locationSheetVariantKeys.all, 'sequence', sequenceId] as const,
-  history: (sequenceId: string, locationDbId: string) =>
-    [
-      ...locationSheetVariantKeys.all,
-      'history',
-      sequenceId,
-      locationDbId,
-    ] as const,
-};
+export { locationSheetVariantKeys };
 
 export function useLocationSheetVersions(
-  sequenceId: string,
+  sequenceId: string | null,
   locationDbId: string
 ) {
   return useQuery({
     queryKey: locationSheetVariantKeys.history(sequenceId, locationDbId),
     queryFn: () =>
       listLocationSheetVersionsFn({ data: { sequenceId, locationDbId } }),
-    enabled: !!sequenceId && !!locationDbId,
+    enabled: !!locationDbId,
     staleTime: 15_000,
   });
 }
@@ -44,94 +37,57 @@ export function useSelectLocationSheetVersion() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: {
-      sequenceId: string;
+      sequenceId: string | null;
       locationDbId: string;
       versionId: string;
     }) => selectLocationSheetVersionFn({ data: input }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: locationSheetVariantKeys.all,
-      });
-      void queryClient.invalidateQueries({
-        queryKey: sequenceLocationKeys.all,
-      });
-      void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
+      void invalidateLocations(queryClient);
     },
   });
 }
 
-/**
- * Active divergent variants for the sequence locations in a sequence. Drives
- * the corner-dot indicator on `location-card` and the banner on the location
- * detail view.
- */
-export function useSequenceLocationDivergentVariants(
-  sequenceId: string | undefined,
-  options?: { refetchInterval?: number | false }
+/** One location's live divergent alternates: the detail view's banner. */
+export function useLocationDivergentVariants(
+  sequenceId: string | null,
+  locationDbId: string
 ) {
   return useQuery<LocationSheetVariant[]>({
-    queryKey: locationSheetVariantKeys.divergentBySequence(sequenceId ?? ''),
-    queryFn: async () => {
-      if (!sequenceId) throw new Error('sequenceId is required');
-      return getSequenceLocationDivergentVariantsFn({ data: { sequenceId } });
-    },
-    enabled: !!sequenceId,
+    queryKey: locationSheetVariantKeys.divergentByLocation(
+      sequenceId,
+      locationDbId
+    ),
+    queryFn: () =>
+      getLocationDivergentVariantsFn({ data: { sequenceId, locationDbId } }),
     staleTime: 30_000,
-    refetchInterval: options?.refetchInterval ?? false,
   });
 }
 
-type VariantInput = { sequenceId: string; variantId: string };
+type VariantInput = { sequenceId: string | null; variantId: string };
 
-export function usePromoteSequenceLocationSheetVariant() {
+export function usePromoteLocationSheetVariant() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: VariantInput) =>
-      promoteSequenceLocationSheetVariantFn({ data: input }),
-    onSuccess: async (_, { sequenceId }) => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: locationSheetVariantKeys.divergentBySequence(sequenceId),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: sequenceLocationKeys.list(sequenceId),
-        }),
-        // Library team locations may also change because the recast wizard
-        // surfaces the underlying library row.
-        queryClient.invalidateQueries({
-          queryKey: libraryLocationKeys.all,
-        }),
-      ]);
-    },
+      promoteLocationSheetVariantFn({ data: input }),
+    onSuccess: () => invalidateLocations(queryClient),
   });
 }
 
-export function useDiscardSequenceLocationSheetVariant() {
+export function useDiscardLocationSheetVariant() {
   const queryClient = useQueryClient();
-  return useMutation<
-    { variantId: string; discardedAt: Date },
-    Error,
-    VariantInput
-  >({
-    mutationFn: async (input) =>
-      discardSequenceLocationSheetVariantFn({ data: input }),
-    onSuccess: async (_, { sequenceId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: locationSheetVariantKeys.divergentBySequence(sequenceId),
-      });
-    },
+  return useMutation({
+    mutationFn: async (input: VariantInput) =>
+      discardLocationSheetVariantFn({ data: input }),
+    onSuccess: () => invalidateLocations(queryClient),
   });
 }
 
-export function useUndiscardSequenceLocationSheetVariant() {
+export function useUndiscardLocationSheetVariant() {
   const queryClient = useQueryClient();
-  return useMutation<{ variantId: string }, Error, VariantInput>({
-    mutationFn: async (input) =>
-      undiscardSequenceLocationSheetVariantFn({ data: input }),
-    onSuccess: async (_, { sequenceId }) => {
-      await queryClient.invalidateQueries({
-        queryKey: locationSheetVariantKeys.divergentBySequence(sequenceId),
-      });
-    },
+  return useMutation({
+    mutationFn: async (input: VariantInput) =>
+      undiscardLocationSheetVariantFn({ data: input }),
+    onSuccess: () => invalidateLocations(queryClient),
   });
 }

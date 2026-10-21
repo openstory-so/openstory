@@ -168,14 +168,17 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
   const resolvedSequence = useMemo<Sequence | undefined>(() => {
     if (!sequence || !activeAudioModel || !audioVariants) return sequence;
     if (sequence.musicStatus !== 'completed') return sequence;
-    const variant = audioVariants.find(
-      (v) =>
-        v.model === activeAudioModel &&
-        v.divergedAt === null &&
-        v.discardedAt === null &&
-        v.status === 'completed' &&
-        v.url
-    );
+    // Tracks are append-only (#1115): the model's newest finished one.
+    const variant = [...audioVariants]
+      .reverse()
+      .find(
+        (v) =>
+          v.model === activeAudioModel &&
+          v.divergedAt === null &&
+          v.discardedAt === null &&
+          v.status === 'completed' &&
+          v.url
+      );
     if (!variant?.url) return sequence;
     return { ...sequence, musicUrl: variant.url };
   }, [sequence, activeAudioModel, audioVariants]);
@@ -185,26 +188,24 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
     const variants = (audioVariants ?? []).filter(
       (v) => v.divergedAt === null && v.discardedAt === null
     );
-    const primaryUrl = sequence?.musicUrl ?? null;
-    const setModel = primaryUrl
-      ? (variants.find((v) => v.url === primaryUrl)?.model ??
-        sequence?.musicModel ??
-        null)
-      : null;
+    // The selected track's model (#1115). Rows are oldest-first, so the loop
+    // below leaves each model's newest status.
+    const selectedId = sequence?.selectedMusicVariantId ?? null;
+    const setModel =
+      (audioVariants ?? []).find((v) => v.id === selectedId)?.model ?? null;
     for (const v of variants) {
       map.set(v.model, v.model === setModel ? 'set' : v.status);
     }
     if (setModel && !map.has(setModel)) map.set(setModel, 'set');
-    if (sequence?.musicStatus === 'generating' && sequence.musicModel) {
-      map.set(sequence.musicModel, 'generating');
+    // The sequence's own track run in flight shows on its model, over 'set'.
+    const inFlight = [...variants]
+      .reverse()
+      .find((v) => v.isPrimary && v.status === 'pending');
+    if (sequence?.musicStatus === 'generating' && inFlight) {
+      map.set(inFlight.model, 'generating');
     }
     return map;
-  }, [
-    audioVariants,
-    sequence?.musicUrl,
-    sequence?.musicModel,
-    sequence?.musicStatus,
-  ]);
+  }, [audioVariants, sequence?.selectedMusicVariantId, sequence?.musicStatus]);
 
   const queryClient = useQueryClient();
   const posthog = usePostHog();

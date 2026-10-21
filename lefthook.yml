@@ -57,8 +57,11 @@ pre-commit:
       # Regenerate in place and stage, like the format hook. (`wrangler types
       # --check` would be the natural guard but is broken: it returns 0
       # against a provably stale file.)
+      # Node, not `bun run --bun`: under Bun, workerd's runtime-type fetch of
+      # http://dummy.com escapes to the network and writes a parking page
+      # into worker-configuration.d.ts.
       glob: 'wrangler.jsonc'
-      run: bun run --bun wrangler types >/dev/null && git add worker-configuration.d.ts
+      run: bun run wrangler types >/dev/null && git add worker-configuration.d.ts
     workflow-trigger-safety:
       glob: '.github/workflows/*.{yml,yaml}'
       run: |

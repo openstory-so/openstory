@@ -19,8 +19,11 @@ import type { VisualPromptComponents } from '@/shots/scene-analysis.schema';
 import type { VisualPromptInputHash } from '@/shots/input-hash';
 import type { Database } from '@/platform/server/db/client';
 import { framePromptVersions, frames, user } from '@/platform/server/db/schema';
-import type { FramePromptVersion } from '@/platform/server/db/schema';
-import { and, desc, eq, gt, inArray, isNotNull, ne } from 'drizzle-orm';
+import type {
+  FramePromptVersion,
+  PromptVersionSource,
+} from '@/platform/server/db/schema';
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { pageOf } from '@/platform/server/db/read-page';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { getLogger } from '@/platform/logger';
@@ -36,6 +39,13 @@ type WriteFramePromptVersionBase = {
   text: string;
   components?: VisualPromptComponents | null;
   createdBy?: string | null;
+  /**
+   * `false`: append to history only — the frame keeps its selected prompt.
+   * A content-checker soften (#1272) writes its rewrite this way (#1786): the
+   * still it renders carries the prompt into the selection when that still
+   * wins its promote claim (`frameVariants.select` restores its linked prompt).
+   */
+  select?: boolean;
 };
 
 /**
@@ -61,6 +71,14 @@ export type WriteFramePromptVersionInput = WriteFramePromptVersionBase &
         inputHash: string | null;
         analysisModel: string | null;
       }
+    | {
+        // Built from a shot spec (#1915). A restore copies this id. A
+        // derived row with no spec is rejected by the type.
+        source: 'derived';
+        inputHash: string | null;
+        analysisModel: string | null;
+        specVersionId: string;
+      }
   );
 
 // One bound param per frame id; 90 keeps each query under D1's 100-bound-
@@ -85,6 +103,50 @@ async function getSelectedImagePromptsByFrameIds(
       )
       .where(inArray(frames.id, batch));
     for (const r of rows) byFrame.set(r.frameId, r.version);
+  }
+  return byFrame;
+}
+
+/**
+ * Newest completed prompt per frame. `hashedOnly` skips null-hash user-edits,
+ * matching `getLatestWithInputHash`. One windowed read for the whole sequence
+ * (#1795) — the per-frame `getLatest` is the single-shot form of this.
+ */
+async function latestCompletedByFrameIds(
+  db: Database,
+  frameIds: string[],
+  hashedOnly: boolean
+): Promise<Map<string, FramePromptVersion>> {
+  if (frameIds.length === 0) return new Map();
+  const byFrame = new Map<string, FramePromptVersion>();
+  for (let i = 0; i < frameIds.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
+    const batch = frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH);
+    const ranked = db
+      .select({
+        id: framePromptVersions.id,
+        position:
+          sql<number>`row_number() over (partition by ${framePromptVersions.frameId} order by ${framePromptVersions.createdAt} desc, ${framePromptVersions.id} desc)`.as(
+            'position'
+          ),
+      })
+      .from(framePromptVersions)
+      .where(
+        and(
+          inArray(framePromptVersions.frameId, batch),
+          eq(framePromptVersions.status, 'completed'),
+          hashedOnly ? isNotNull(framePromptVersions.inputHash) : undefined
+        )
+      )
+      .as('ranked_frame_prompts');
+    const latest = db
+      .select({ id: ranked.id })
+      .from(ranked)
+      .where(eq(ranked.position, 1));
+    const rows = await db
+      .select()
+      .from(framePromptVersions)
+      .where(inArray(framePromptVersions.id, latest));
+    for (const row of rows) byFrame.set(row.frameId, row);
   }
   return byFrame;
 }
@@ -137,20 +199,17 @@ export function createFramePromptVersionsMethods(db: Database) {
       .where(eq(framePromptVersions.id, claimId))
       .limit(1);
     if (!row || row.pendingInputHash === null) return false;
-    // ULID ids order by creation time: any completed row newer than the claim
-    // is a post-click edit (or a later run) that must keep the mirror.
-    const [newer] = await db
-      .select({ id: framePromptVersions.id })
-      .from(framePromptVersions)
-      .where(
-        and(
-          eq(framePromptVersions.frameId, frameId),
-          eq(framePromptVersions.status, 'completed'),
-          gt(framePromptVersions.id, claimId)
-        )
-      )
+    // ULID ids order by creation time: a selection pointing at a row newer
+    // than the claim is a post-click edit (or a later run) that must keep the
+    // mirror. The POINTER, not any newer row (#1786): a content soften appends
+    // its rewrite unselected, and history the user never saw selected must
+    // not cancel a regeneration they queued.
+    const [frame] = await db
+      .select({ selected: frames.selectedImagePromptVersionId })
+      .from(frames)
+      .where(eq(frames.id, frameId))
       .limit(1);
-    return !newer;
+    return !(frame?.selected && frame.selected > claimId);
   };
 
   const methods = {
@@ -193,6 +252,8 @@ export function createFramePromptVersionsMethods(db: Database) {
             text: input.text,
             components: input.components,
             source: input.source,
+            specVersionId:
+              input.source === 'derived' ? input.specVersionId : null,
             inputHash: nextHash,
             analysisModel,
             createdBy: input.createdBy ?? null,
@@ -203,6 +264,7 @@ export function createFramePromptVersionsMethods(db: Database) {
       if (!version) {
         throw new Error('Failed to insert frame prompt version');
       }
+      if (input.select === false) return version;
 
       // Mirror the edit onto the frame, then revoke in-flight claims' mirror
       // rights so a concurrent completePendingAiVersion cannot clobber this
@@ -370,7 +432,15 @@ export function createFramePromptVersionsMethods(db: Database) {
        * verify digest captured at trigger (#1616).
        */
       inputHash?: VisualPromptInputHash;
+      /**
+       * Wins over the claim hash. Rewrite shot passes the digest of the new
+       * spec; the claim was stamped from the spec the run replaced (#1923).
+       */
+      stampHash?: VisualPromptInputHash;
       analysisModel: string;
+      /** Rebuild sets `derived` and the spec the text came from (#1923). */
+      source?: PromptVersionSource;
+      specVersionId?: string | null;
     }): Promise<FramePromptVersion | null> => {
       const [claim] = await db
         .select()
@@ -387,7 +457,8 @@ export function createFramePromptVersionsMethods(db: Database) {
           `FramePromptVersion ${input.versionId} not found for frame ${input.frameId}`
         );
       }
-      const inputHash = claim.pendingInputHash ?? input.inputHash;
+      const inputHash =
+        input.stampHash ?? claim.pendingInputHash ?? input.inputHash;
       if (!inputHash) {
         throw new Error(
           `FramePromptVersion ${input.versionId} has no pendingInputHash; cannot complete`
@@ -442,6 +513,10 @@ export function createFramePromptVersionsMethods(db: Database) {
           inputHash,
           analysisModel: input.analysisModel,
           status: 'completed',
+          ...(input.source !== undefined ? { source: input.source } : {}),
+          ...(input.specVersionId !== undefined
+            ? { specVersionId: input.specVersionId }
+            : {}),
         })
         .where(
           and(
@@ -651,6 +726,73 @@ export function createFramePromptVersionsMethods(db: Database) {
         .orderBy(desc(framePromptVersions.createdAt))
         .limit(1);
       return row ?? null;
+    },
+
+    /** @see latestCompletedByFrameIds */
+    getLatestByFrameIds: (
+      frameIds: string[]
+    ): Promise<Map<string, FramePromptVersion>> =>
+      latestCompletedByFrameIds(db, frameIds, false),
+
+    /** @see latestCompletedByFrameIds */
+    getLatestWithInputHashByFrameIds: (
+      frameIds: string[]
+    ): Promise<Map<string, FramePromptVersion>> =>
+      latestCompletedByFrameIds(db, frameIds, true),
+
+    /**
+     * Live claims for many frames. Frames with none are absent. The
+     * single-frame `getLivePending` filters this list by hash.
+     */
+    listLivePendingByFrameIds: async (
+      frameIds: string[]
+    ): Promise<Map<string, FramePromptVersion[]>> => {
+      if (frameIds.length === 0) return new Map();
+      const byFrame = new Map<string, FramePromptVersion[]>();
+      for (
+        let i = 0;
+        i < frameIds.length;
+        i += SELECTED_PROMPTS_BY_FRAMES_BATCH
+      ) {
+        const rows = await db
+          .select()
+          .from(framePromptVersions)
+          .where(
+            and(
+              inArray(
+                framePromptVersions.frameId,
+                frameIds.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH)
+              ),
+              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
+            )
+          )
+          .orderBy(desc(framePromptVersions.createdAt));
+        for (const row of rows) {
+          const list = byFrame.get(row.frameId);
+          if (list) list.push(row);
+          else byFrame.set(row.frameId, [row]);
+        }
+      }
+      return byFrame;
+    },
+
+    getByIds: async (ids: string[]): Promise<FramePromptVersion[]> => {
+      if (ids.length === 0) return [];
+      const rows: FramePromptVersion[] = [];
+      for (let i = 0; i < ids.length; i += SELECTED_PROMPTS_BY_FRAMES_BATCH) {
+        rows.push(
+          ...(await db
+            .select()
+            .from(framePromptVersions)
+            .where(
+              inArray(
+                framePromptVersions.id,
+                ids.slice(i, i + SELECTED_PROMPTS_BY_FRAMES_BATCH)
+              )
+            ))
+        );
+      }
+      return rows;
     },
   };
   return methods;

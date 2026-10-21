@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 
+import { foldLegacyFeatures } from '@/cast/bible-looks';
 import {
   characterBibleEntrySchema,
   elementBibleEntrySchema,
@@ -119,9 +120,55 @@ export type SceneSplitScenesResult = z.infer<
   typeof sceneSplitScenesResultSchema
 >;
 
+/**
+ * A look as the bibles call sends it (#2015). Kept lean for the grammar
+ * budget (#1035): no id (the name is the identity, slugged server-side) and
+ * no separate list of picks — `lines` says where it is worn. The call runs
+ * beside the scenes call and knows no scene ids, so it names each scene by a
+ * gutter line inside it, as `firstMention` does. The guidance lives in the
+ * `phase/scene-bibles-chat` prompt.
+ */
+const wireLookSchema = z.object({
+  name: z.string(),
+  clothing: z.string(),
+  styling: z.string(),
+  lines: z.array(z.number()),
+});
+
+/**
+ * Required on the wire; a response recorded before looks parses to none, and
+ * `bibleFromWire` gives the character a default look.
+ */
+const characterBibleWireEntrySchema = z.preprocess(
+  // A response recorded before #2065 still names `distinguishingFeatures`.
+  // It is no longer asked for; the text joins the default (first) look's
+  // styling, which one with no looks gets here so the text is not dropped.
+  (value) =>
+    foldLegacyFeatures(
+      typeof value === 'object' &&
+        value !== null &&
+        'distinguishingFeatures' in value &&
+        !('looks' in value && Array.isArray(value.looks) && value.looks.length)
+        ? {
+            ...value,
+            looks: [{ name: '', clothing: '', styling: '', lines: [] }],
+          }
+        : value
+    ),
+  // The model is not asked what a character is rendered as (#2017): the
+  // sequence's style says, and `bibleFromWire` fills it in.
+  characterBibleEntrySchema.omit({ rendering: true }).extend({
+    looks: z.preprocess((value) => value ?? [], z.array(wireLookSchema)),
+  })
+);
+export type CharacterBibleWireEntry = z.infer<
+  typeof characterBibleWireEntrySchema
+>;
+
 export const sceneSplitBiblesResultSchema = z.object({
-  characterBible: z.array(characterBibleEntrySchema),
-  locationBible: z.array(locationBibleEntrySchema),
+  characterBible: z.array(characterBibleWireEntrySchema),
+  // The model is not asked what a place is rendered as either (#1695).
+  locationBible: z.array(locationBibleEntrySchema.omit({ rendering: true })),
   elementBible: z.array(elementBibleEntrySchema),
 });
 

@@ -12,6 +12,7 @@
  * `CharacterBibleWorkflow`; triggered by Generate on the character card.
  */
 
+import { withoutLooks } from '@/cast/bible-looks';
 import { base64ToBytes } from '@/platform/base64';
 import {
   voiceDescriptionSchema,
@@ -60,6 +61,7 @@ import type {
   WorkflowStepConfig,
 } from 'cloudflare:workers';
 import { getLogger } from '@/platform/logger';
+import { castChannelId } from '@/cast/cast-channel';
 
 const logger = getLogger(['openstory', 'workflow', 'character-voice']);
 
@@ -70,6 +72,8 @@ const SEED_READ_STEP = {
 } as const satisfies WorkflowStepConfig;
 
 export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<CharacterVoiceWorkflowInput> {
+  protected override readonly failureLabel = 'Voice design';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<CharacterVoiceWorkflowInput>>,
     step: WorkflowStep,
@@ -77,7 +81,9 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
   ): Promise<CharacterVoiceWorkflowResult> {
     const input = event.payload;
     const { characterDbId, sequenceId, characterBible } = input;
-    const channel = getGenerationChannel(sequenceId);
+    const channel = getGenerationChannel(
+      castChannelId(sequenceId, characterDbId)
+    );
     const targetVersionId = input.targetVersionId;
     // Stamp the child instance id before design so reconcile can verify a
     // bible-spawned husk (insert has no run id) instead of failing it at 5 min.
@@ -104,13 +110,14 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             phase: { number: 3, name: 'Designing voices…' },
             promptName: 'phase/voice-design-chat',
             promptVariables: {
-              character: JSON.stringify(characterBible, null, 2),
+              // A voice is not dressed: no outfits in this prompt (#2015).
+              character: JSON.stringify(withoutLooks(characterBible), null, 2),
             },
             modelId: input.analysisModelId,
             responseSchema: voiceDescriptionSchema,
           },
           {
-            sequenceId,
+            sequenceId: sequenceId ?? undefined,
             userId: input.userId,
             workflowRunId: event.instanceId,
             scopedDb,
@@ -150,6 +157,12 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       };
       // Pre-#1715 payloads have no husk. Write the old way; do not release
       // a slot this run never claimed as a version.
+      const voiceActivity = input.sequenceId
+        ? {
+            sequenceId: input.sequenceId,
+            summary: `Designed a voice for ${input.characterBible.name}`,
+          }
+        : null;
       if (!targetVersionId) {
         await scopedDb.characters.updateVoice(
           characterDbId,
@@ -160,13 +173,14 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
             useVoice: true,
           },
           'generated',
-          input.userId
+          input.userId,
+          voiceActivity
         );
         return { voiceId, emit: 'completed' as const };
       }
-      const live = await scopedDb.liveRead.characters.getById(characterDbId);
+      const live = await scopedDb.liveRead.characters.getVoice(characterDbId);
       const shouldPromote =
-        live?.pendingPromoteVoiceVersionId === targetVersionId;
+        live.pendingPromoteVoiceVersionId === targetVersionId;
       if (!shouldPromote) {
         // Persist replay after promote: pointer is already cleared and this
         // husk is the selected voice. Do not treat that as a demote.
@@ -175,8 +189,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         if (
           existing?.status === 'completed' &&
           existing.voiceId === voiceId &&
-          (live?.selectedVoiceVersionId === targetVersionId ||
-            live?.voiceId === voiceId)
+          (live.selectedVoiceVersionId === targetVersionId ||
+            live.voiceId === voiceId)
         ) {
           return { voiceId, emit: 'completed' as const };
         }
@@ -194,7 +208,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           voiceId,
           description: voiceDescription,
           previews: parked,
-        }
+        },
+        voiceActivity ? { ...voiceActivity, actorId: input.userId } : null
       );
       if (!completed) {
         // step.do replay after D1 committed: the husk is already completed.
@@ -206,6 +221,8 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
           return { voiceId: null, emit: 'failed' as const };
         }
       }
+      // The sequence the run was for pins the new voice (#2017); the others
+      // keep theirs.
       const promoted = await scopedDb.characters.promoteVoiceClaimIfPending(
         characterDbId,
         targetVersionId
@@ -244,7 +261,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const designed = await designVoicePreviews(key, voiceDescription);
       const stored: VoicePreview[] = [];
       for (const preview of designed) {
-        const path = `${input.teamId}/${sequenceId}/${characterDbId}/${generateId()}.mp3`;
+        const path = `${input.teamId}/${sequenceId ?? 'team'}/${characterDbId}/${generateId()}.mp3`;
         const result = await uploadFile(
           STORAGE_BUCKETS.AUDIO,
           path,
@@ -294,7 +311,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
       const top = previews[0];
       if (!top) throw new Error('No preview to save');
       return saveDesignedVoice(key, {
-        voiceName: `${characterBible.name} · ${sequenceId.slice(-6)}`,
+        voiceName: `${characterBible.name} · ${characterDbId.slice(-6)}`,
         voiceDescription,
         generatedVoiceId: top.generatedVoiceId,
       });
@@ -323,14 +340,15 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         phase: { number: 3, name: 'Designing voices…' },
         promptName: 'phase/voice-range-script-chat',
         promptVariables: {
-          character: JSON.stringify(characterBible, null, 2),
+          // A voice is not dressed: no outfits in this prompt (#2015).
+          character: JSON.stringify(withoutLooks(characterBible), null, 2),
           voiceDescription,
         },
         modelId: input.analysisModelId,
         responseSchema: voiceRangeScriptSchema,
       },
       {
-        sequenceId,
+        sequenceId: sequenceId ?? undefined,
         userId: input.userId,
         workflowRunId: event.instanceId,
         scopedDb,
@@ -461,7 +479,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         model: asset.model,
         workflowRunId: event.instanceId,
         prompt: asset.prompt,
-        sequenceId: input.sequenceId,
+        sequenceId: input.sequenceId ?? undefined,
       });
     });
   }
@@ -486,7 +504,7 @@ export class CharacterVoiceWorkflow extends OpenStoryWorkflowEntrypoint<Characte
         error
       );
     }
-    await getGenerationChannel(sequenceId).emit(
+    await getGenerationChannel(castChannelId(sequenceId, characterDbId)).emit(
       'generation.character-voice:progress',
       { characterId: characterDbId, status: 'failed', error }
     );

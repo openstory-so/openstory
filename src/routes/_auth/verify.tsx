@@ -5,12 +5,13 @@
 
 import { VerifyForm } from '@/platform/ui/auth/verify-form';
 import { PageContainer } from '@/ui/layout/page-container';
-import { getRedirectFromParams } from '@/platform/ui/auth/navigation';
+import { loginRedirect } from '@/platform/ui/auth/last-page';
+import { useHydrated } from '@/ui/use-hydrated';
 import { Navigate, createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
 const searchSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().optional().catch(undefined),
   redirectTo: z.string().optional(),
 });
 
@@ -21,7 +22,8 @@ export const Route = createFileRoute('/_auth/verify')({
 
 function VerifyPage() {
   const search = Route.useSearch();
-  const redirectTo = getRedirectFromParams(search);
+  const hydrated = useHydrated();
+  const redirectTo = loginRedirect(search.redirectTo, hydrated);
 
   // If no email, redirect back to login
   if (!search.email) {

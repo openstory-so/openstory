@@ -24,7 +24,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { MentionOptions } from '@tiptap/extension-mention';
 import {
   mentionInsertAttrs,
   type MentionItem,
@@ -85,8 +84,6 @@ const mentionPosAtCaret = (view: EditorView): number | null => {
   if ($from.nodeBefore?.type.name === 'mention') return $from.pos - 1;
   return null;
 };
-
-type MentionConfigure = Partial<MentionOptions>;
 
 /**
  * Collapse every line-break form to `\n`. Web/Docs/Word often put U+2028
@@ -413,11 +410,10 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       ...(hasMentions
         ? [
             PromptMention.configure({
-              // oxlint-disable-next-line typescript/no-unsafe-type-assertion
               suggestion: createMentionSuggestion(
                 () => mentionItemsRef.current,
                 () => onMentionSelectRef.current
-              ) as MentionConfigure['suggestion'],
+              ),
             }),
           ]
         : []),

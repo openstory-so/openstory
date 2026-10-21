@@ -21,7 +21,7 @@ import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
 import type { SceneWithScript } from '@/shots/ui/use-scenes';
-import type { ShotView } from '@/shots/shot-view';
+import type { SequenceListShot } from '@/shots/shot-view';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { stripMarkdown } from '@/platform/markdown-plain';
 import { Clapperboard, FileTextIcon, ImageIcon, TextIcon } from 'lucide-react';
@@ -56,7 +56,7 @@ const DIALOG_TABS = [
 type EvalCellDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  shot: ShotView;
+  shot: SequenceListShot;
   scene?: SceneWithScript | undefined;
   sceneNumber: number;
   sequenceTitle: string;
@@ -275,14 +275,14 @@ export const EvalCellDialog: React.FC<EvalCellDialogProps> = ({
           </TabsContent>
 
           <TabsContent value="images" className="flex-1 min-h-0 mt-0">
-            {!shot.image?.url ? (
+            {!shot.imageUrl ? (
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 No image available
               </div>
             ) : (
               <div className="flex justify-center items-center h-full">
                 <AppImage
-                  src={shot.image.url}
+                  src={shot.imageUrl}
                   alt={`Scene ${sceneNumber}`}
                   className="max-w-full max-h-full object-contain rounded-lg"
                   width={1000}
@@ -293,12 +293,12 @@ export const EvalCellDialog: React.FC<EvalCellDialogProps> = ({
           </TabsContent>
 
           <TabsContent value="motion" className="flex-1 min-h-0 mt-0">
-            {!shot.video?.url ? (
-              shot.image?.url ? (
+            {!shot.videoUrl ? (
+              shot.imageUrl ? (
                 <div className="flex justify-center items-center h-full w-full">
                   <div className="relative w-full max-w-4xl">
                     <AppImage
-                      src={shot.image.url}
+                      src={shot.imageUrl}
                       alt={`Scene ${sceneNumber} preview`}
                       className="w-full h-auto object-contain rounded-lg opacity-60"
                       width={1920}
@@ -322,8 +322,8 @@ export const EvalCellDialog: React.FC<EvalCellDialogProps> = ({
               <div className="flex justify-center items-center h-full w-full">
                 <div className="w-full max-w-4xl">
                   <VideoPlayer
-                    src={shot.video.url}
-                    posterSrc={shot.image?.url}
+                    src={shot.videoUrl}
+                    posterSrc={shot.imageUrl}
                     aspectRatio={aspectRatio}
                     className="rounded-lg"
                     playSource="modal"

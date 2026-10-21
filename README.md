@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/openstory-logo.svg" alt="OpenStory" width="275" />
+  <img src="https://assets.openstory.so/brand/openstory-logo-dark.png" alt="OpenStory" width="275" />
 </p>
 
 <h1 align="center">OpenStory</h1>
@@ -23,6 +23,7 @@ OpenStory takes a script and produces a sequence of AI-generated frames — imag
 - **Script analysis** — paste a script and get an automatic scene breakdown with camera angles, mood treatments, and continuity tracking
 - **AI image generation** — generate scene images via [Fal.ai](https://fal.ai) with multiple model options
 - **Image-to-video motion** — turn still frames into motion video clips
+- **Publish to social** (optional) — with your own [Upload-Post](https://www.upload-post.com) key, post a finished render to TikTok, Instagram, YouTube, LinkedIn, X and more
 - **Style consistency** — characters, locations, color palettes, and lighting carry across scenes automatically
 - **Team workspaces** (coming soon) — shared libraries of styles, characters, VFX, and audio
 - **Passkey authentication** — passwordless sign-in via Better Auth
@@ -45,7 +46,7 @@ OpenStory takes a script and produces a sequence of AI-generated frames — imag
 | **Testing**    | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev)                                                                                                                           |
 | **Deployment** | [Cloudflare Workers](https://developers.cloudflare.com/workers)                                                                                                                               |
 
-> See [CLAUDE.md](CLAUDE.md) for full architecture documentation, server handler patterns, workflow patterns, and React conventions.
+> See [AGENTS.md](AGENTS.md) for full architecture documentation, server handler patterns, workflow patterns, and React conventions.
 
 ## Prerequisites
 
@@ -122,6 +123,26 @@ See [`.env.example`](.env.example) for all optional configuration (Google OAuth,
 | `bun setup --prod`  | Interactive production setup + deploy               |
 | `bun cf:deploy:prd` | Manual production deploy (build → migrate → deploy) |
 
+## Stitch
+
+The theatre player lives in [`packages/stitch`](packages/stitch) and publishes as [`@openstory/stitch`](https://www.npmjs.com/package/@openstory/stitch).
+
+Run a local cut with npx. It prints an `http://127.0.0.1` URL, opens that page, and runs until Ctrl+C.
+
+```sh
+npx @openstory/stitch --music score.mp3 shot.mp4
+```
+
+Install the [OpenStory plugin](https://github.com/openstory-so/skills) for the agent skills. That install includes `create-style`, `create-sequence`, and `stitch` (`/stitch`). `npx @openstory/stitch skill` copies `/stitch` and `stitch-player`, the contract for embedding the React player. The plugin does not include `stitch-player`.
+
+```sh
+npx skills add openstory-so/skills
+```
+
+Grok, Claude Code, Codex, and the ChatGPT desktop app can add `openstory-so/skills` as a marketplace and install the OpenStory plugin. The per-client commands are in that repo.
+
+The flags and the player API are in [packages/stitch/README.md](packages/stitch/README.md). That page is also in [中文](packages/stitch/README.zh-CN.md), [français](packages/stitch/README.fr.md), and [español](packages/stitch/README.es.md).
+
 ## Project Structure
 
 ```
@@ -137,10 +158,11 @@ src/
     api/          # Webhooks: workflows and auth only
     _app/         # App shell (anonymous-browsable; actions gated behind login)
 e2e/              # Playwright end-to-end tests
+packages/stitch/  # Theatre player, the stitch command, and the stitch skills
 scripts/          # CLI utilities and setup
 ```
 
-> See [CLAUDE.md](CLAUDE.md) for detailed architecture, data model, server handler patterns, and code conventions.
+> See [AGENTS.md](AGENTS.md) for detailed architecture, data model, server handler patterns, and code conventions.
 
 ## Deployment
 
@@ -152,7 +174,7 @@ The deploy button clones the repo into your Cloudflare account, provisions the r
 
 **CI/CD:** Cloudflare Workers Builds auto-deploys on push to `main` — the same mechanism deploy-button clones use. Pull requests get GitHub Actions preview deployments with dedicated D1 databases.
 
-> See the [Platform & Deployment](CLAUDE.md#platform--deployment) section in CLAUDE.md for environment variable configuration and platform detection.
+> See the [Platform & Deployment](AGENTS.md#platform--deployment) section in AGENTS.md for environment variable configuration and platform detection.
 
 ## Contributing
 

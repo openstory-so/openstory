@@ -29,7 +29,7 @@ type ReservationPreflightScopedDb = {
   billing: Pick<ScopedDb['billing'], 'hasEnoughCredits' | 'createReservation'>;
 };
 
-type Provider = 'fal' | 'openrouter';
+export type Provider = 'fal' | 'openrouter';
 
 async function coversProvider(
   scopedDb: PreflightScopedDb,
@@ -62,6 +62,8 @@ export async function requireCredits(
   estimatedCostMicros: Microdollars,
   opts: {
     providers?: Provider[];
+    /** Existing parent envelope this child spends. */
+    reservationId?: string;
     errorMessage?: string;
     llmModel?: string;
   } = {}
@@ -80,8 +82,10 @@ export async function requireCredits(
 
   if (hasAllKeys) return;
 
-  const canAfford =
-    await scopedDb.billing.hasEnoughCredits(estimatedCostMicros);
+  const canAfford = await scopedDb.billing.hasEnoughCredits(
+    estimatedCostMicros,
+    opts.reservationId
+  );
   if (!canAfford) {
     throw new InsufficientCreditsError(
       opts.errorMessage ?? 'Insufficient credits'

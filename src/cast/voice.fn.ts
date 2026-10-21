@@ -1,7 +1,7 @@
 /**
  * Voice Design availability and the ElevenLabs catalog (#1553 / #1629).
- * Platform key only, so availability is a deployment fact — the Generate
- * dialog hides the Voices switch when false.
+ * Platform key only, so availability is a deployment fact. Voices are on
+ * when this is true; there is no caller boolean (#2067).
  */
 
 import {

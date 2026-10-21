@@ -85,6 +85,17 @@ export function estimateBatchMotionCost(
      * quotes the wrong endpoint for the rest.
      */
     referenceOnly?: boolean | ((shot: BatchShot) => boolean);
+    /**
+     * Seconds the hold covers for this shot, given its snapped duration: more
+     * than that when the shot is a Seedance 2.5 edit (`seedanceEditSeconds`,
+     * #2036). Required: leaving it out would hold every edit at the shot's
+     * length.
+     */
+    holdSeconds: (
+      shot: BatchShot,
+      model: ImageToVideoModel,
+      seconds: number
+    ) => number;
   }
 ): Microdollars {
   return shots.reduce((sum, shot) => {
@@ -102,10 +113,11 @@ export function estimateBatchMotionCost(
       typeof opts.referenceOnly === 'function'
         ? opts.referenceOnly(shot)
         : (opts.referenceOnly ?? false);
+    const seconds = snapDuration(opts.duration, model);
     return addMicros(
       sum,
       gateEstimate(
-        estimateVideoCost(model, snapDuration(opts.duration, model), {
+        estimateVideoCost(model, opts.holdSeconds(shot, model, seconds), {
           pricing: opts.pricing,
           resolution:
             opts.draft && supportsDraftMode(model)

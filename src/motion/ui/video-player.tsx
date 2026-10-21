@@ -13,6 +13,7 @@ import {
   type VideoPlaySource,
 } from '@/sequences/ui/theatre/player-events';
 import { cn } from '@/ui/utils';
+import { playerFrameClassName } from '@/ui/player-frame';
 import { usePostHog } from '@posthog/react';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
@@ -27,6 +28,8 @@ const VideoPlayerSurface = lazy(() => import('./video-player-surface'));
 type VideoPlayerProps = {
   src: string;
   chaptersUrl?: string;
+  /** WebVTT captions for this file. The surface draws the active cue. */
+  subtitlesUrl?: string;
   posterSrc?: string | null;
   aspectRatio: AspectRatio;
   className?: string;
@@ -38,10 +41,8 @@ type VideoPlayerProps = {
   onPause?: () => void;
   onEnded?: () => void;
   onPlay?: () => void;
-  /** The media failed (fatal HLS error, undecodable file). */
+  /** The media failed (undecodable file). */
   onError?: (reason: string) => void;
-  /** The media element, once there is one (and null when it goes). */
-  onMedia?: (media: HTMLMediaElement | null) => void;
   /** PostHog `video_play` / `video_play_failed` source. Omit to skip capture. */
   playSource?: VideoPlaySource;
   sequenceId?: string;
@@ -87,6 +88,7 @@ const PlayerPlaceholder: React.FC<{
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
   chaptersUrl,
+  subtitlesUrl,
   posterSrc,
   aspectRatio,
   className,
@@ -98,7 +100,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   onEnded,
   onPlay,
   onError,
-  onMedia,
   playSource,
   sequenceId,
   shotId,
@@ -156,13 +157,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // the poster directly into a properly-sized aspect-ratio container instead.
   if (!src && posterSrc) {
     return (
-      <div
-        className={cn(
-          'relative w-full overflow-hidden',
-          className,
-          getAspectRatioClassName(aspectRatio)
-        )}
-      >
+      <div className={playerFrameClassName(aspectRatio, className)}>
         <PlayerPlaceholder posterSrc={posterSrc} alt="Scene thumbnail" />
       </div>
     );
@@ -173,22 +168,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   );
 
   return (
-    <div
-      className={cn(
-        'relative w-full',
-        className,
-        getAspectRatioClassName(aspectRatio)
-      )}
-    >
+    <div className={playerFrameClassName(aspectRatio, className)}>
       {mounted ? (
         <Suspense fallback={placeholder}>
           <VideoPlayerSurface
             src={src}
             chaptersUrl={chaptersUrl}
+            subtitlesUrl={subtitlesUrl}
             posterSrc={null}
             autoPlay={autoPlay}
             seekTo={seekTo}
-            onMedia={onMedia}
             onLoadedMetadata={(duration) => {
               tracker.setDuration(duration);
               onLoadedMetadata?.(duration);

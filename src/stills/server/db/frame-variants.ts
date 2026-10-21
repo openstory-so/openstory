@@ -25,6 +25,11 @@ import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Resolution } from '@/models/resolutions';
 import { generateId } from '@/platform/id';
 import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '@/platform/errors';
+import {
   framePromptVersions,
   frameVariants,
   frames,
@@ -52,13 +57,21 @@ import {
   sql,
   ne,
   or,
+  exists,
+  type SQL,
 } from 'drizzle-orm';
 import { LIVE_PENDING_STATUSES } from '@/shots/server/db/frame-prompt-versions';
 import {
   buildFrameImageSelection,
   type PromotableFrameVariant,
 } from '@/shots/server/db/frames';
-import { buildEventInsert } from '@/sequences/server/db/sequence-events';
+import { mediaModelName } from '@/sequences/model-label';
+import {
+  buildEventInsert,
+  buildEventInsertIfPresent,
+  buildEventInsertOnce,
+  eventNotLogged,
+} from '@/sequences/server/db/sequence-events';
 
 function readStringProp(value: object, key: string): string | null {
   if (!(key in value)) return null;
@@ -220,7 +233,315 @@ export async function getLatestPreviewByFrameIds(
   return byFrame;
 }
 
+/** A primary row speaks for its frame's status unless it is a preview (#1942). */
+function speaksForFrame() {
+  return and(
+    eq(frameVariants.isPrimary, true),
+    ne(frameVariants.kind, 'preview')
+  );
+}
+
+/**
+ * Newest primary non-preview version per frame — the render whose lifecycle
+ * IS the frame's image status (#1942), as `getPrimaryVideoByShotIds` is for
+ * video. Frames with none are absent. Discarded rows count: discarding hides a
+ * version from the picker, but a discarded failure is still the last thing
+ * that happened to the primary slot.
+ */
+export async function getPrimaryImageByFrameIds(
+  db: Database,
+  frameIds: string[]
+): Promise<Map<string, FrameVariant>> {
+  if (frameIds.length === 0) return new Map();
+  const byFrame = new Map<string, FrameVariant>();
+  for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+    const newest = db
+      .select({ id: sql<string>`max(${frameVariants.id})` })
+      .from(frameVariants)
+      .where(
+        and(
+          inArray(
+            frameVariants.frameId,
+            frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+          ),
+          speaksForFrame()
+        )
+      )
+      .groupBy(frameVariants.frameId);
+    const rows = await db
+      .select()
+      .from(frameVariants)
+      .where(inArray(frameVariants.id, newest));
+    for (const row of rows) byFrame.set(row.frameId, row);
+  }
+  return byFrame;
+}
+
 export function createFrameVariantsMethods(db: Database) {
+  /**
+   * `select`'s body. With `consumeClaim`, the pointer move, mirror and prompt
+   * restore are one UPDATE gated on the frame's promote claim still naming
+   * `versionId`, which it consumes (#1786); returns null when the claim had
+   * moved.
+   */
+  const selectFrameVariant = async (
+    frameId: string,
+    versionId: string,
+    opts: { actorId: string | null },
+    consumeClaim: boolean
+  ): Promise<FrameVariant | null> => {
+    const [version] = await db
+      .select()
+      .from(frameVariants)
+      .where(
+        and(eq(frameVariants.id, versionId), eq(frameVariants.frameId, frameId))
+      );
+    if (!version) {
+      throw new NotFoundError(
+        `FrameVariant ${versionId} not found for frame ${frameId}`
+      );
+    }
+    // A preview renders the raw scene text, not the frame's prompt (#1101),
+    // so promoting one would pair the still with a prompt it was never
+    // rendered from — and its url expires. Reject at the one door every
+    // selection goes through, so `frames.selectedImageVersionId` (and every
+    // render manifest that snapshots it) can never name a preview.
+    const { kind } = version;
+    if (!isSelectableFrameVariantKind(kind)) {
+      throw new ValidationError(
+        `FrameVariant ${versionId} is kind '${kind}' — a preview is a pre-prompt stand-in and can never become a frame's still`
+      );
+    }
+    // Only a finished image may become the frame's primary still. Selecting a
+    // pending/failed version would mirror its null url + failed status onto
+    // the frame, silently blanking a good image.
+    if (version.status !== 'completed') {
+      throw new ConflictError(
+        `FrameVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished image`
+      );
+    }
+    // `version` is a single object type, so the guards above narrow reads of
+    // its fields but not `version` as a whole — re-affirm both in a typed
+    // local so the mirror builder's precondition is met without an unsafe
+    // assertion.
+    const promotableVersion: PromotableFrameVariant = {
+      ...version,
+      kind,
+      status: 'completed',
+    };
+
+    const [frame] = await db
+      .select({
+        sequenceId: frames.sequenceId,
+        prev: frames.selectedImageVersionId,
+        prevPromptVersionId: frames.selectedImagePromptVersionId,
+        pendingPromoteVersionId: frames.pendingPromoteVersionId,
+      })
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    if (!frame) {
+      throw new NotFoundError(`Frame ${frameId} not found`);
+    }
+
+    // Cancel auto-promote only when the user picks a *different* version than
+    // the current primary (#1070). Re-selecting the current still leaves
+    // pending intact. Completing a gen that selects its pending version also
+    // hits prev !== versionId and clears pending (promote consumed).
+    // A claim-consuming promote (#1786) moves the pointer and consumes the
+    // claim in ONE guarded UPDATE, below — nothing is left to clear.
+    const shouldClearPending =
+      !consumeClaim &&
+      frame.prev !== versionId &&
+      frame.pendingPromoteVersionId != null;
+
+    // Resolve the prompt that was live when this still was generated, if any.
+    // Soft pointer — the row may have been pruned or never recorded.
+    let linkedPrompt: {
+      id: string;
+      text: string;
+      inputHash: string | null;
+    } | null = null;
+    if (version.promptVersionId) {
+      const [promptRow] = await db
+        .select({
+          id: framePromptVersions.id,
+          text: framePromptVersions.text,
+          inputHash: framePromptVersions.inputHash,
+          frameId: framePromptVersions.frameId,
+          status: framePromptVersions.status,
+        })
+        .from(framePromptVersions)
+        .where(eq(framePromptVersions.id, version.promptVersionId));
+      // A non-completed row is a placeholder — mirroring it would blank the
+      // frame's prompt with empty text (#1085).
+      if (
+        promptRow &&
+        promptRow.frameId === frameId &&
+        promptRow.status === 'completed'
+      ) {
+        linkedPrompt = promptRow;
+      }
+    }
+
+    const imageSelectedEvent = buildEventInsert(db, {
+      sequenceId: frame.sequenceId,
+      actorId: opts.actorId,
+      kind: 'image.selected',
+      targetType: 'frame',
+      targetId: frameId,
+      summary: `Selected ${version.model} image`,
+      data: {
+        versionId,
+        model: version.model,
+        prevVersionId: frame.prev ?? null,
+        promptVersionId: linkedPrompt?.id ?? null,
+        prevPromptVersionId: frame.prevPromptVersionId ?? null,
+      },
+    });
+
+    // Repointing the prompt is an explicit user choice (#1085): revoke the
+    // mirror rights of any in-flight prompt claims on this frame so a
+    // completing regeneration lands in history without clobbering it.
+    const demotePromptClaims = (guard?: SQL) =>
+      db
+        .update(framePromptVersions)
+        .set({ pendingInputHash: null })
+        .where(
+          and(
+            eq(framePromptVersions.frameId, frameId),
+            inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES]),
+            guard
+          )
+        );
+
+    const promptSelectedEvent = (promptVersionId: string) =>
+      buildEventInsert(db, {
+        sequenceId: frame.sequenceId,
+        actorId: opts.actorId,
+        kind: 'prompt.selected',
+        targetType: 'frame',
+        targetId: frameId,
+        summary: 'Restored image prompt with selected still',
+        data: {
+          versionId: promptVersionId,
+          prevVersionId: frame.prevPromptVersionId ?? null,
+          fromImageVersionId: versionId,
+        },
+      });
+
+    if (consumeClaim) {
+      const holdsClaim = exists(
+        db
+          .select({ id: frames.id })
+          .from(frames)
+          .where(
+            and(
+              eq(frames.id, frameId),
+              eq(frames.pendingPromoteVersionId, versionId)
+            )
+          )
+      );
+      const promote = buildFrameImageSelection(db, frameId, promotableVersion, {
+        restorePromptVersionId: linkedPrompt?.id ?? null,
+      }).returning({ id: frames.id });
+      // The demotion runs first, while the claim it checks is still held.
+      const claimed = linkedPrompt
+        ? (await db.batch([demotePromptClaims(holdsClaim), promote]))[1]
+        : await promote;
+      if (claimed.length === 0) {
+        // A retry of a step whose promote already landed finds the claim
+        // consumed and the frame on this still: that is a win, not a loss.
+        const [current] = await db
+          .select({
+            selected: frames.selectedImageVersionId,
+            pending: frames.pendingPromoteVersionId,
+          })
+          .from(frames)
+          .where(eq(frames.id, frameId));
+        return current?.selected === versionId && current.pending === null
+          ? version
+          : null;
+      }
+      // Events only once the promote won. A crash here loses the history
+      // line, never the selection.
+      await db.batch([
+        imageSelectedEvent,
+        ...(linkedPrompt ? [promptSelectedEvent(linkedPrompt.id)] : []),
+      ]);
+      return version;
+    }
+
+    const mirrorUpdate = buildFrameImageSelection(
+      db,
+      frameId,
+      promotableVersion,
+      null
+    );
+    // A failure the user answered by picking a still no longer speaks for
+    // the frame (#1942): its failed runs leave the status race, so the shot
+    // reads completed (as the old copy on the frame did) and smart retry does
+    // not pay for a new still. The rows stay history. Mirrors `selectMusic`.
+    const retireFailures = db
+      .update(frameVariants)
+      .set({ isPrimary: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(frameVariants.frameId, frameId),
+          eq(frameVariants.isPrimary, true),
+          eq(frameVariants.status, 'failed')
+        )
+      );
+
+    if (linkedPrompt && shouldClearPending) {
+      await db.batch([
+        mirrorUpdate,
+        retireFailures,
+        imageSelectedEvent,
+        demotePromptClaims(),
+        db
+          .update(frames)
+          .set({
+            selectedImagePromptVersionId: linkedPrompt.id,
+            pendingPromoteVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(frames.id, frameId)),
+        promptSelectedEvent(linkedPrompt.id),
+      ]);
+    } else if (linkedPrompt) {
+      await db.batch([
+        mirrorUpdate,
+        retireFailures,
+        imageSelectedEvent,
+        demotePromptClaims(),
+        db
+          .update(frames)
+          .set({
+            selectedImagePromptVersionId: linkedPrompt.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(frames.id, frameId)),
+        promptSelectedEvent(linkedPrompt.id),
+      ]);
+    } else if (shouldClearPending) {
+      await db.batch([
+        mirrorUpdate,
+        retireFailures,
+        imageSelectedEvent,
+        db
+          .update(frames)
+          .set({
+            pendingPromoteVersionId: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(frames.id, frameId)),
+      ]);
+    } else {
+      await db.batch([mirrorUpdate, retireFailures, imageSelectedEvent]);
+    }
+    return version;
+  };
+
   const methods = {
     getById: async (versionId: string): Promise<FrameVariant | null> => {
       const result = await db
@@ -248,8 +569,10 @@ export function createFrameVariantsMethods(db: Database) {
      * the version at click and pass `versionId`; they never hit this path.
      */
     appendVersion: async (
-      data: Omit<NewFrameVariant, 'inputHash'> & {
+      data: Omit<NewFrameVariant, 'inputHash' | 'isPrimary'> & {
         inputHash?: ShotImageInputHash | null;
+        /** Does this render speak for the frame's status? (#1942) */
+        isPrimary: boolean;
       }
     ): Promise<FrameVariant> => {
       if (data.status === 'generating' && data.workflowRunId) {
@@ -312,6 +635,8 @@ export function createFrameVariantsMethods(db: Database) {
             url: input.url,
             storagePath: input.storagePath,
             status: 'completed',
+            // The user's own still answers the primary slot (#1942).
+            isPrimary: true,
             generatedAt: new Date(),
             inputHash: input.inputHash,
             promptHash: input.promptText ? simpleHash(input.promptText) : null,
@@ -413,6 +738,7 @@ export function createFrameVariantsMethods(db: Database) {
             url: input.image.url,
             storagePath: input.image.storagePath,
             status: 'completed',
+            isPrimary: true,
             generatedAt: now,
             inputHash: input.image.inputHash,
             promptHash: simpleHash(input.prompt.text),
@@ -424,8 +750,6 @@ export function createFrameVariantsMethods(db: Database) {
           .set({
             selectedImagePromptVersionId: promptVersionId,
             selectedImageVersionId: imageVersionId,
-            imageStatus: 'completed',
-            imageError: null,
             pendingPromoteVersionId: null,
             updatedAt: now,
           })
@@ -502,19 +826,31 @@ export function createFrameVariantsMethods(db: Database) {
      */
     markFailedByWorkflowRun: async (
       workflowRunId: string,
-      error: string
-    ): Promise<void> => {
+      error: string,
+      /** `isPrimary: false`: a failure the shot must not read as its own (a failed upscale, #1942). */
+      options?: { isPrimary: false }
+    ): Promise<number> => {
       // 'pending' included since #1085: a pre-created claim row whose run died
       // before reaching `set-generating-status` must not stay live forever.
-      await db
+      const rows = await db
         .update(frameVariants)
-        .set({ status: 'failed', error, updatedAt: new Date() })
+        .set({ status: 'failed', error, ...options, updatedAt: new Date() })
         .where(
           and(
             eq(frameVariants.workflowRunId, workflowRunId),
             inArray(frameVariants.status, [...LIVE_PENDING_STATUSES])
           )
-        );
+        )
+        .returning({ id: frameVariants.id });
+      // Rows ACCOUNTED FOR, as `videoVariants.markFailedByWorkflowRun`: an
+      // already-terminal row (a user cancel) counts, so only a run that died
+      // before opening any row returns 0 and gets a terminal row (#1942).
+      if (rows.length > 0) return rows.length;
+      const [existing] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(frameVariants)
+        .where(eq(frameVariants.workflowRunId, workflowRunId));
+      return existing?.count ?? 0;
     },
 
     /**
@@ -532,27 +868,87 @@ export function createFrameVariantsMethods(db: Database) {
       dependsOnVersionId?: string | null;
       workflowRunId?: string | null;
       promptVersionId?: string | null;
+      /** False for an added model (`variantOnly`, #1942). */
+      isPrimary: boolean;
+      /** Who started it. Null when no person did. */
+      actorId: string | null;
     }): Promise<FrameVariant> => {
-      const [row] = await db
-        .insert(frameVariants)
-        .values({
-          frameId: input.frameId,
+      const id = generateId();
+      const [rows] = await db.batch([
+        db
+          .insert(frameVariants)
+          .values({
+            id,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'model',
+            model: input.model,
+            status: 'pending',
+            isPrimary: input.isPrimary,
+            pendingInputHash: input.pendingInputHash ?? null,
+            dependsOnVersionId: input.dependsOnVersionId ?? null,
+            workflowRunId: input.workflowRunId ?? null,
+            promptVersionId: input.promptVersionId ?? null,
+          })
+          .returning(),
+        buildEventInsertOnce(db, {
+          id,
           sequenceId: input.sequenceId,
-          kind: 'model',
-          model: input.model,
-          status: 'pending',
-          pendingInputHash: input.pendingInputHash ?? null,
-          dependsOnVersionId: input.dependsOnVersionId ?? null,
-          workflowRunId: input.workflowRunId ?? null,
-          promptVersionId: input.promptVersionId ?? null,
-        })
-        .returning();
+          actorId: input.actorId,
+          kind: 'image.started',
+          targetType: 'frame',
+          targetId: input.frameId,
+          summary: `Started an image with ${mediaModelName(input.model)}`,
+          data: { model: input.model },
+        }),
+      ]);
+      const row = rows[0];
       if (!row) {
         throw new Error(
           `Failed to insert pending image claim for frame ${input.frameId}`
         );
       }
       return row;
+    },
+
+    /**
+     * Open a preview's row before it renders (#1152): a `kind: 'preview'`
+     * row in `generating`, so a preview that fails leaves a `failed` record
+     * (`markFailedByWorkflowRun`) the reconciler can sweep, instead of
+     * nothing (#1149). Never selectable, never a claim: it carries no
+     * `pendingInputHash` / `dependsOnVersionId`, so the claim readers skip it.
+     * Idempotent on `(frameId, kind, workflowRunId)` across step retries.
+     */
+    openPreview: async (input: {
+      frameId: string;
+      sequenceId: string;
+      model: string;
+      promptHash: string | null;
+      workflowRunId: string;
+    }): Promise<void> => {
+      const [existing] = await db
+        .select({ id: frameVariants.id })
+        .from(frameVariants)
+        .where(
+          and(
+            eq(frameVariants.frameId, input.frameId),
+            eq(frameVariants.kind, 'preview'),
+            eq(frameVariants.workflowRunId, input.workflowRunId)
+          )
+        );
+      if (existing) return;
+      await db.insert(frameVariants).values({
+        frameId: input.frameId,
+        sequenceId: input.sequenceId,
+        kind: 'preview',
+        model: input.model,
+        status: 'generating',
+        // A preview never speaks for the frame's status (#1942).
+        isPrimary: false,
+        promptHash: input.promptHash,
+        promptVersionId: null,
+        workflowRunId: input.workflowRunId,
+      });
     },
 
     /**
@@ -587,23 +983,82 @@ export function createFrameVariantsMethods(db: Database) {
             eq(frameVariants.workflowRunId, input.workflowRunId)
           )
         );
-      if (existing) return existing;
-      const [row] = await db
-        .insert(frameVariants)
-        .values({
-          frameId: input.frameId,
-          sequenceId: input.sequenceId,
-          kind: 'preview',
-          model: input.model,
-          url: input.url,
-          storagePath: input.storagePath,
-          status: 'completed',
-          generatedAt: new Date(),
-          promptHash: input.promptHash,
-          promptVersionId: null,
-          workflowRunId: input.workflowRunId,
-        })
-        .returning();
+      // The row `openPreview` opened lands in place; a completed one is a
+      // step retry. A run queued before #1152 opened none and inserts.
+      if (existing?.status === 'completed') return existing;
+      const previewEvent = (variantId: string) =>
+        buildEventInsertIfPresent(
+          db,
+          {
+            id: generateId(),
+            sequenceId: input.sequenceId,
+            actorId: null,
+            kind: 'preview.generated',
+            targetType: 'frame',
+            targetId: input.frameId,
+            summary: `Generated a preview with ${mediaModelName(input.model)}`,
+            data: { variantId, model: input.model },
+          },
+          frameVariants,
+          and(
+            eq(frameVariants.id, variantId),
+            eventNotLogged(
+              db,
+              input.sequenceId,
+              'preview.generated',
+              'variantId',
+              variantId
+            )
+          )
+        );
+      if (existing) {
+        const [landed] = await db.batch([
+          db
+            .update(frameVariants)
+            .set({
+              model: input.model,
+              url: input.url,
+              storagePath: input.storagePath,
+              status: 'completed',
+              generatedAt: new Date(),
+              promptHash: input.promptHash,
+              updatedAt: new Date(),
+            })
+            .where(eq(frameVariants.id, existing.id))
+            .returning(),
+          previewEvent(existing.id),
+        ]);
+        const row = landed[0];
+        if (!row) {
+          throw new Error(
+            `Failed to land preview variant ${existing.id} for frame ${input.frameId}`
+          );
+        }
+        return row;
+      }
+      const id = generateId();
+      const [inserted] = await db.batch([
+        db
+          .insert(frameVariants)
+          .values({
+            id,
+            frameId: input.frameId,
+            sequenceId: input.sequenceId,
+            kind: 'preview',
+            model: input.model,
+            url: input.url,
+            storagePath: input.storagePath,
+            status: 'completed',
+            isPrimary: false,
+            generatedAt: new Date(),
+            promptHash: input.promptHash,
+            promptVersionId: null,
+            workflowRunId: input.workflowRunId,
+          })
+          .returning(),
+        previewEvent(id),
+      ]);
+      const row = inserted[0];
       if (!row) {
         throw new Error(
           `Failed to record preview variant for frame ${input.frameId}`
@@ -634,6 +1089,42 @@ export function createFrameVariantsMethods(db: Database) {
           )
         )
         .orderBy(...newestFirst);
+    },
+
+    /**
+     * `listLiveClaims` for many frames. Frames with no live claim are absent.
+     */
+    listLiveClaimsByFrameIds: async (
+      frameIds: string[]
+    ): Promise<Map<string, FrameVariant[]>> => {
+      if (frameIds.length === 0) return new Map();
+      const byFrame = new Map<string, FrameVariant[]>();
+      for (let i = 0; i < frameIds.length; i += PREVIEW_BY_FRAMES_BATCH) {
+        const rows = await db
+          .select()
+          .from(frameVariants)
+          .where(
+            and(
+              inArray(
+                frameVariants.frameId,
+                frameIds.slice(i, i + PREVIEW_BY_FRAMES_BATCH)
+              ),
+              inArray(frameVariants.status, [...LIVE_PENDING_STATUSES]),
+              isNull(frameVariants.discardedAt),
+              or(
+                isNotNull(frameVariants.pendingInputHash),
+                isNotNull(frameVariants.dependsOnVersionId)
+              )
+            )
+          )
+          .orderBy(...newestFirst);
+        for (const row of rows) {
+          const list = byFrame.get(row.frameId);
+          if (list) list.push(row);
+          else byFrame.set(row.frameId, [row]);
+        }
+      }
+      return byFrame;
     },
 
     /**
@@ -727,6 +1218,27 @@ export function createFrameVariantsMethods(db: Database) {
           and(
             eq(frameVariants.id, versionId),
             inArray(frameVariants.status, [...LIVE_PENDING_STATUSES])
+          )
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    /** Fail a claim no run has picked up yet (still `pending`); null once a
+     * run holds it (`generating`) or it is terminal. A parent that stops
+     * waiting on a child uses this, not `markTerminal`: a child still
+     * rendering owns its row and fails it itself. */
+    failUnclaimed: async (
+      versionId: string,
+      error: string
+    ): Promise<FrameVariant | null> => {
+      const [row] = await db
+        .update(frameVariants)
+        .set({ status: 'failed', error, updatedAt: new Date() })
+        .where(
+          and(
+            eq(frameVariants.id, versionId),
+            eq(frameVariants.status, 'pending')
           )
         )
         .returning();
@@ -971,6 +1483,21 @@ export function createFrameVariantsMethods(db: Database) {
     listLatestPreviewsByFrameIds: (frameIds: string[]) =>
       getLatestPreviewByFrameIds(db, frameIds),
 
+    /** See {@link getPrimaryImageByFrameIds}. */
+    getPrimaryByFrameIds: (frameIds: string[]) =>
+      getPrimaryImageByFrameIds(db, frameIds),
+
+    /** Single-frame {@link getPrimaryByFrameIds}. */
+    getPrimary: async (frameId: string): Promise<FrameVariant | null> => {
+      const rows = await db
+        .select()
+        .from(frameVariants)
+        .where(and(eq(frameVariants.frameId, frameId), speaksForFrame()))
+        .orderBy(desc(frameVariants.id))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
     /**
      * The model of each shot's SELECTED image version across a sequence, keyed
      * by the owning shot (#1066). Model identity lives on the version row that
@@ -1146,201 +1673,8 @@ export function createFrameVariantsMethods(db: Database) {
       versionId: string,
       opts: { actorId: string | null }
     ): Promise<FrameVariant> => {
-      const [version] = await db
-        .select()
-        .from(frameVariants)
-        .where(
-          and(
-            eq(frameVariants.id, versionId),
-            eq(frameVariants.frameId, frameId)
-          )
-        );
-      if (!version) {
-        throw new Error(
-          `FrameVariant ${versionId} not found for frame ${frameId}`
-        );
-      }
-      // A preview renders the raw scene text, not the frame's prompt (#1101),
-      // so promoting one would pair the still with a prompt it was never
-      // rendered from — and its url expires. Reject at the one door every
-      // selection goes through, so `frames.selectedImageVersionId` (and every
-      // render manifest that snapshots it) can never name a preview.
-      const { kind } = version;
-      if (!isSelectableFrameVariantKind(kind)) {
-        throw new Error(
-          `FrameVariant ${versionId} is kind '${kind}' — a preview is a pre-prompt stand-in and can never become a frame's still`
-        );
-      }
-      // Only a finished image may become the frame's primary still. Selecting a
-      // pending/failed version would mirror its null url + failed status onto
-      // the frame, silently blanking a good image.
-      if (version.status !== 'completed') {
-        throw new Error(
-          `FrameVariant ${versionId} is '${version.status}', not 'completed' — cannot select an unfinished image`
-        );
-      }
-      // `version` is a single object type, so the guards above narrow reads of
-      // its fields but not `version` as a whole — re-affirm both in a typed
-      // local so the mirror builder's precondition is met without an unsafe
-      // assertion.
-      const promotableVersion: PromotableFrameVariant = {
-        ...version,
-        kind,
-        status: 'completed',
-      };
-      const mirrorUpdate = buildFrameImageSelection(
-        db,
-        frameId,
-        promotableVersion
-      );
-
-      const [frame] = await db
-        .select({
-          sequenceId: frames.sequenceId,
-          prev: frames.selectedImageVersionId,
-          prevPromptVersionId: frames.selectedImagePromptVersionId,
-          pendingPromoteVersionId: frames.pendingPromoteVersionId,
-        })
-        .from(frames)
-        .where(eq(frames.id, frameId));
-      if (!frame) {
-        throw new Error(`Frame ${frameId} not found`);
-      }
-
-      // Cancel auto-promote only when the user picks a *different* version than
-      // the current primary (#1070). Re-selecting the current still leaves
-      // pending intact. Completing a gen that selects its pending version also
-      // hits prev !== versionId and clears pending (promote consumed).
-      const shouldClearPending =
-        frame.prev !== versionId && frame.pendingPromoteVersionId != null;
-
-      // Resolve the prompt that was live when this still was generated, if any.
-      // Soft pointer — the row may have been pruned or never recorded.
-      let linkedPrompt: {
-        id: string;
-        text: string;
-        inputHash: string | null;
-      } | null = null;
-      if (version.promptVersionId) {
-        const [promptRow] = await db
-          .select({
-            id: framePromptVersions.id,
-            text: framePromptVersions.text,
-            inputHash: framePromptVersions.inputHash,
-            frameId: framePromptVersions.frameId,
-            status: framePromptVersions.status,
-          })
-          .from(framePromptVersions)
-          .where(eq(framePromptVersions.id, version.promptVersionId));
-        // A non-completed row is a placeholder — mirroring it would blank the
-        // frame's prompt with empty text (#1085).
-        if (
-          promptRow &&
-          promptRow.frameId === frameId &&
-          promptRow.status === 'completed'
-        ) {
-          linkedPrompt = promptRow;
-        }
-      }
-
-      const imageSelectedEvent = buildEventInsert(db, {
-        sequenceId: frame.sequenceId,
-        actorId: opts.actorId,
-        kind: 'image.selected',
-        targetType: 'frame',
-        targetId: frameId,
-        summary: `Selected ${version.model} image`,
-        data: {
-          versionId,
-          model: version.model,
-          prevVersionId: frame.prev ?? null,
-          promptVersionId: linkedPrompt?.id ?? null,
-          prevPromptVersionId: frame.prevPromptVersionId ?? null,
-        },
-      });
-
-      // Repointing the prompt is an explicit user choice (#1085): revoke the
-      // mirror rights of any in-flight prompt claims on this frame so a
-      // completing regeneration lands in history without clobbering it.
-      const demotePromptClaims = () =>
-        db
-          .update(framePromptVersions)
-          .set({ pendingInputHash: null })
-          .where(
-            and(
-              eq(framePromptVersions.frameId, frameId),
-              inArray(framePromptVersions.status, [...LIVE_PENDING_STATUSES])
-            )
-          );
-
-      if (linkedPrompt && shouldClearPending) {
-        await db.batch([
-          mirrorUpdate,
-          imageSelectedEvent,
-          demotePromptClaims(),
-          db
-            .update(frames)
-            .set({
-              selectedImagePromptVersionId: linkedPrompt.id,
-              pendingPromoteVersionId: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(frames.id, frameId)),
-          buildEventInsert(db, {
-            sequenceId: frame.sequenceId,
-            actorId: opts.actorId,
-            kind: 'prompt.selected',
-            targetType: 'frame',
-            targetId: frameId,
-            summary: 'Restored image prompt with selected still',
-            data: {
-              versionId: linkedPrompt.id,
-              prevVersionId: frame.prevPromptVersionId ?? null,
-              fromImageVersionId: versionId,
-            },
-          }),
-        ]);
-      } else if (linkedPrompt) {
-        await db.batch([
-          mirrorUpdate,
-          imageSelectedEvent,
-          demotePromptClaims(),
-          db
-            .update(frames)
-            .set({
-              selectedImagePromptVersionId: linkedPrompt.id,
-              updatedAt: new Date(),
-            })
-            .where(eq(frames.id, frameId)),
-          buildEventInsert(db, {
-            sequenceId: frame.sequenceId,
-            actorId: opts.actorId,
-            kind: 'prompt.selected',
-            targetType: 'frame',
-            targetId: frameId,
-            summary: 'Restored image prompt with selected still',
-            data: {
-              versionId: linkedPrompt.id,
-              prevVersionId: frame.prevPromptVersionId ?? null,
-              fromImageVersionId: versionId,
-            },
-          }),
-        ]);
-      } else if (shouldClearPending) {
-        await db.batch([
-          mirrorUpdate,
-          imageSelectedEvent,
-          db
-            .update(frames)
-            .set({
-              pendingPromoteVersionId: null,
-              updatedAt: new Date(),
-            })
-            .where(eq(frames.id, frameId)),
-        ]);
-      } else {
-        await db.batch([mirrorUpdate, imageSelectedEvent]);
-      }
+      const version = await selectFrameVariant(frameId, versionId, opts, false);
+      if (!version) throw new Error(`FrameVariant ${versionId} not selected`);
       return version;
     },
 
@@ -1355,20 +1689,8 @@ export function createFrameVariantsMethods(db: Database) {
       frameId: string,
       versionId: string,
       opts: { actorId: string | null }
-    ): Promise<FrameVariant | null> => {
-      const claimed = await db
-        .update(frames)
-        .set({ pendingPromoteVersionId: null, updatedAt: new Date() })
-        .where(
-          and(
-            eq(frames.id, frameId),
-            eq(frames.pendingPromoteVersionId, versionId)
-          )
-        )
-        .returning({ id: frames.id });
-      if (claimed.length === 0) return null;
-      return await methods.select(frameId, versionId, opts);
-    },
+    ): Promise<FrameVariant | null> =>
+      selectFrameVariant(frameId, versionId, opts, true),
 
     /**
      * Soft-hide a version (undoable). Commits the `discardedAt` write and an
@@ -1443,28 +1765,6 @@ export function createFrameVariantsMethods(db: Database) {
           data: { versionId },
         }),
       ]);
-    },
-
-    /**
-     * Staleness of a single version: stored `inputHash` vs a fresh hash. Null
-     * stored hash (legacy / in-flight) is "unknown, not stale". Throws when the
-     * version is missing. Mirrors `shotVariants.isStale`.
-     */
-    isStale: async (
-      versionId: string,
-      currentHash: string
-    ): Promise<boolean> => {
-      const result = await db
-        .select({ hash: frameVariants.inputHash })
-        .from(frameVariants)
-        .where(eq(frameVariants.id, versionId));
-      const row = result[0];
-      if (!row) {
-        throw new Error(`FrameVariant ${versionId} not found`);
-      }
-      const stored = row.hash;
-      if (stored === null) return false;
-      return currentHash !== stored;
     },
 
     deleteByFrame: async (frameId: string): Promise<number> => {

@@ -16,7 +16,18 @@ import {
 } from '@/ui/shadcn/alert-dialog';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/ui/shadcn/select';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import { canonicalBibleTag } from '@/cast/bible-field';
+import { dressForScene } from '@/cast/character-looks';
+import type { SceneWithScript } from './use-scenes';
+import { useUpdateScene } from './use-scene-structure';
 import { facetIdsForShots, useSceneFacetMaps } from './use-scene-facets';
 import {
   restoreSequenceCharacter,
@@ -38,36 +49,115 @@ type SceneCastTabProps = {
   sequenceId: string;
   /** Shots in the current selection. `null` = whole sequence (show all). */
   shotIds: string[] | null;
+  /**
+   * The scene in focus, at scene scope only (#2015): each character's look
+   * is picked here, and the card shows the sheet of the look it wears.
+   */
+  scene?: SceneWithScript;
 };
 
 type CastCardProps = {
   character: CharacterWithSheet;
   sequenceId: string;
   onDelete: (character: CharacterWithSheet) => void;
+  scene?: SceneWithScript;
+};
+
+/**
+ * Which look a character wears in a scene (#2015). Writes the scene's
+ * `continuity.characterLooks`; the default look is "no pick", so choosing it
+ * removes the character's entry. Shown only when there is a choice to make.
+ */
+const SceneLookPicker: React.FC<{
+  sequenceId: string;
+  scene: SceneWithScript;
+  /** The character as read: `lookId` is its default look. */
+  character: CharacterWithSheet;
+  wornLookId: string;
+}> = ({ sequenceId, scene, character, wornLookId }) => {
+  const update = useUpdateScene(sequenceId);
+  const looks = character.looks.filter(
+    (look) => !look.deletedAt || look.id === wornLookId
+  );
+  if (looks.length < 2) return null;
+  const label = (look: (typeof looks)[number]) =>
+    look.isDefault ? `${look.name} (default look)` : look.name;
+  return (
+    <Select
+      value={wornLookId}
+      // The trigger shows the look's name, not its id.
+      items={Object.fromEntries(looks.map((look) => [look.id, label(look)]))}
+      disabled={update.isPending}
+      onValueChange={(lookId) => {
+        if (!lookId) return;
+        // A patch for this character only; the default look is "no pick".
+        update.mutate(
+          {
+            sceneId: scene.id,
+            continuity: {
+              characterLooks: {
+                [canonicalBibleTag(character)]:
+                  lookId === character.lookId ? null : lookId,
+              },
+            },
+          },
+          {
+            onError: (error) =>
+              toast.error('Could not change the look', {
+                description: errorMessage(error),
+              }),
+          }
+        );
+      }}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label={`Look ${character.name} wears in this scene`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {looks.map((look) => (
+          <SelectItem key={look.id} value={look.id}>
+            {label(look)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 };
 
 const CastCard: React.FC<CastCardProps> = ({
-  character,
+  character: owner,
   sequenceId,
   onDelete,
+  scene,
 }) => {
+  // In a scene, the card shows the character as that scene dresses it.
+  const [character = owner] = dressForScene(
+    [owner],
+    scene?.continuity?.characterLooks
+  );
   return (
-    <div className="group relative">
+    <div className="group relative flex flex-col gap-2">
       <Link
         to="/sequences/$id/cast/$characterId"
         params={{ id: sequenceId, characterId: character.id }}
+        // Opens beside the inspector: the tab and the selection stay as they are.
+        search
         className="block overflow-hidden rounded-lg bg-card cursor-pointer"
       >
-        {/* Character avatar — 4-panel sheet cropped to the close-up (panel 2) */}
+        {/* The portrait drawn from the sheet; a sheet from before portraits
+            is cropped to its close-up (panel 2 of 4). */}
         <div className="aspect-square relative overflow-hidden bg-muted">
           {character.sheetImageUrl ? (
             <AppImage
-              src={character.sheetImageUrl}
+              src={character.sheetPortraitUrl ?? character.sheetImageUrl}
               alt={character.name}
               width={160}
               height={160}
               className={cn(
-                talentSquareImageClassName(true),
+                talentSquareImageClassName(!character.sheetPortraitUrl),
                 'transition-transform duration-500 group-hover:scale-105'
               )}
             />
@@ -128,6 +218,14 @@ const CastCard: React.FC<CastCardProps> = ({
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
+      {scene && !owner.voiceOnly ? (
+        <SceneLookPicker
+          sequenceId={sequenceId}
+          scene={scene}
+          character={owner}
+          wornLookId={character.lookId}
+        />
+      ) : null}
     </div>
   );
 };
@@ -147,6 +245,7 @@ const CastCardSkeleton: React.FC = () => (
 export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   sequenceId,
   shotIds,
+  scene,
 }) => {
   const { data: characters, isLoading } = useSequenceCharacters(sequenceId);
   const { data: facetMaps } = useSceneFacetMaps(sequenceId);
@@ -209,6 +308,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
   // so a newly added one (referenced by no scene yet) would not appear here,
   // and the click would read as a no-op.
   const canAdd = shotIds === null;
+  const castIds = new Set((characters ?? []).map((c) => c.id));
 
   if (scopedCast.length === 0) {
     return (
@@ -221,7 +321,12 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             ? 'No cast yet'
             : 'No cast in this selection — clear the selection to add one'}
         </p>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <AddCharacterDialog
+            sequenceId={sequenceId}
+            castCharacterIds={castIds}
+          />
+        )}
       </div>
     );
   }
@@ -237,7 +342,12 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             {scopedCast.length === 1 ? 'character' : 'characters'}
           </span>
         </div>
-        {canAdd && <AddCharacterDialog sequenceId={sequenceId} />}
+        {canAdd && (
+          <AddCharacterDialog
+            sequenceId={sequenceId}
+            castCharacterIds={castIds}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 @[360px]/inspector:grid-cols-3">
@@ -247,6 +357,7 @@ export const SceneCastTab: React.FC<SceneCastTabProps> = ({
             character={character}
             sequenceId={sequenceId}
             onDelete={setPendingDelete}
+            scene={scene}
           />
         ))}
       </div>

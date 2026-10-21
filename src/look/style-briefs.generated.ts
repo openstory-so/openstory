@@ -100,7 +100,7 @@ export const GENERATED_STYLE_BRIEFS: Record<string, string> = {
   'street-interview':
     'On a busy downtown sidewalk, a young man with curly black hair and a green hoodie laughs and gestures as he answers an off-camera question into a visible handheld mic, the camera micro-shaking and reframing as passersby stream behind him.',
   'bedroom-confessional':
-    'A young woman with messy dark hair in an oversized cream sweater sits cross-legged on her bed against the headboard, picks at a loose thread, then looks up into the camera and quietly speaks about the hardest year of her life as warm lamplight half-shadows her face.',
+    'A young woman with messy dark hair in an oversized cream sweater sits cross-legged on her bed against the headboard, leaning conspiratorially toward the phone camera to laughingly recount an embarrassing first-date story under the cozy glow of warm lamplight.',
   'kitchen-tutorial':
     'A cheerful woman with curly brown hair tied back and a mustard apron leans toward the counter explaining her garlic butter pasta, then the overhead camera catches her hands tossing glistening noodles and showering grated parmesan over the steaming golden bowl.',
   'gym-selfie-cam':

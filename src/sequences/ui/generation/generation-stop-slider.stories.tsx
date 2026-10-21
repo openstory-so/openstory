@@ -6,24 +6,14 @@ import type { GenerationStage } from '@/sequences/pipeline';
 function StatefulSlider(
   props: Omit<
     ComponentProps<typeof GenerationStopSlider>,
-    | 'onChange'
-    | 'generateStartFrames'
-    | 'onGenerateStartFramesChange'
-    | 'generateVoices'
-    | 'onGenerateVoicesChange'
+    'onChange' | 'generateStartFrames' | 'onGenerateStartFramesChange'
   > & {
     generateStartFrames?: boolean;
-    generateVoices?: boolean;
   }
 ) {
-  const {
-    generateStartFrames: initialStartFrames,
-    generateVoices: initialVoices,
-    ...rest
-  } = props;
+  const { generateStartFrames: initialStartFrames, ...rest } = props;
   const [value, setValue] = useState<GenerationStage>(props.value);
   const [startFrames, setStartFrames] = useState(initialStartFrames ?? true);
-  const [voices, setVoices] = useState(initialVoices ?? false);
   return (
     <GenerationStopSlider
       {...rest}
@@ -31,8 +21,6 @@ function StatefulSlider(
       onChange={setValue}
       generateStartFrames={startFrames}
       onGenerateStartFramesChange={setStartFrames}
-      generateVoices={voices}
-      onGenerateVoicesChange={setVoices}
     />
   );
 }
@@ -137,7 +125,6 @@ export const DraftFirst: Story = {
 function DraftFirstSlider() {
   const [value, setValue] = useState<GenerationStage>('music');
   const [startFrames, setStartFrames] = useState(true);
-  const [voices, setVoices] = useState(false);
   const [draftFirst, setDraftFirst] = useState(true);
   return (
     <GenerationStopSlider
@@ -145,8 +132,7 @@ function DraftFirstSlider() {
       onChange={setValue}
       generateStartFrames={startFrames}
       onGenerateStartFramesChange={setStartFrames}
-      generateVoices={voices}
-      onGenerateVoicesChange={setVoices}
+      generateVoices
       draftFirst={draftFirst}
       onDraftFirstChange={setDraftFirst}
     />

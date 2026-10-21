@@ -14,6 +14,8 @@ Manage your BYOK (Bring Your Own Key) credentials. See [Credits & Billing](/docs
 - Fal.ai API key for media generation
 - OpenRouter API key or OAuth for LLM access
 
+Under **Publishing**, an optional [Upload-Post](https://www.upload-post.com) key turns on publishing to social. See [Theatre](/docs/user-guide/theatre#publish-to-social).
+
 After connecting via OpenRouter OAuth, the settings page shows a success message. If there's an error, the error details are displayed.
 
 ## Developer

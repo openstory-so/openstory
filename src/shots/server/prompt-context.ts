@@ -1,5 +1,6 @@
 import {
   charactersToBible,
+  legacyStylingByCharacter,
   sequenceElementsToBible,
   sequenceLocationsToBible,
 } from '@/cast/server/bibles-from-scoped';
@@ -7,21 +8,35 @@ import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
+import { wearBibleLooks } from '@/cast/bible-looks';
+import { dressForScene } from '@/cast/character-looks';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { ValidationError } from '@/platform/errors';
 import { resolveSequenceStyleConfig } from '@/look/style-config';
 import type {
+  LegacyStylingByCharacter,
   MotionPromptHashInput,
   VisualPromptHashInput,
 } from '@/shots/input-hash';
 import {
-  matchCharactersToScene,
-  matchElementsToScene,
-  matchLocationsToScene,
+  resolveShotReferences,
+  type ShotPromptView,
 } from '@/shots/scene-matching';
 
-export type ShotPromptContext = MotionPromptHashInput;
+/**
+ * Everything a prompt hash reads except the shot's lines, which the motion
+ * hash takes separately (`dialogue`, #1784) — the caller resolves them.
+ */
+export type ShotPromptContext = Omit<MotionPromptHashInput, 'dialogue'> & {
+  /**
+   * Verify only (#2065): the stored parts a digest stamped before the
+   * default look took the bible's features hashed, for every character of
+   * the sequence, each in the look this scene dresses it in. No stamp reads
+   * it, and it is never frozen on a payload.
+   */
+  legacyStyling: LegacyStylingByCharacter;
+};
 
 export type ShotPromptContextSequence = {
   id: string;
@@ -48,10 +63,8 @@ export type ShotPromptContextSequence = {
  * them in, turning an O(shots) read pattern into O(1).
  */
 export type ShotPromptContextRefs = {
-  characters: Awaited<ReturnType<ScopedDb['characters']['listWithSheets']>>;
-  locations: Awaited<
-    ReturnType<ScopedDb['sequenceLocations']['listWithReferences']>
-  >;
+  characters: Awaited<ReturnType<ScopedDb['characters']['list']>>;
+  locations: Awaited<ReturnType<ScopedDb['locations']['list']>>;
   elements: Awaited<ReturnType<ScopedDb['sequenceElements']['list']>>;
   style: Awaited<ReturnType<ScopedDb['styles']['getById']>> | null;
 };
@@ -59,7 +72,7 @@ export type ShotPromptContextRefs = {
 export async function loadShotPromptContext(args: {
   scopedDb: Pick<
     ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    'characters' | 'locations' | 'sequenceElements' | 'styles'
   >;
   sequence: ShotPromptContextSequence;
   scene: Scene;
@@ -94,8 +107,8 @@ export async function loadShotPromptContext(args: {
   const [characters, locations, elements, style] = refs
     ? [refs.characters, refs.locations, refs.elements, refs.style]
     : await Promise.all([
-        scopedDb.characters.listWithSheets(sequence.id),
-        scopedDb.sequenceLocations.listWithReferences(sequence.id),
+        scopedDb.characters.list(sequence.id),
+        scopedDb.locations.list(sequence.id),
         scopedDb.sequenceElements.list(sequence.id),
         hasSnapshot || !sequence.styleId
           ? Promise.resolve(null)
@@ -111,13 +124,17 @@ export async function loadShotPromptContext(args: {
     getAnalysisModelById(sequence.analysisModel)?.id ??
     DEFAULT_ANALYSIS_MODEL;
 
+  // Each character in the outfit this scene picks for it (#2015): the
+  // prompt, and its hash, read that look's clothing.
+  const dressed = dressForScene(characters, scene.continuity?.characterLooks);
   return {
     scene,
     styleConfig: resolveSequenceStyleConfig({
       snapshot: sequence.styleConfig,
       live: style?.config,
     }),
-    characterBible: charactersToBible(characters),
+    characterBible: charactersToBible(dressed),
+    legacyStyling: legacyStylingByCharacter(dressed),
     locationBible: sequenceLocationsToBible(locations),
     elementBible: sequenceElementsToBible(elements),
     aspectRatio: sequence.aspectRatio,
@@ -128,60 +145,73 @@ export async function loadShotPromptContext(args: {
 }
 
 /**
- * Same as `loadShotPromptContext` but narrows the character / location /
- * element bibles down to the entries this scene actually references — i.e. the
- * inputs that would actually change the regenerated prompt. Used when stamping
- * or comparing `visualPromptInputHash` / `motionPromptInputHash` so unrelated
- * sequence entities don't poison the hash.
- *
- * Matching mirrors the same logic that decides reference-image attachment at
- * generation time (`scene-matching.ts`), so if the hash flips, regeneration
- * really would see different inputs.
+ * `loadShotPromptContext` narrowed to what one prompt of the shot references
+ * (`shot`), plus the same inputs narrowed by the scene roster
+ * (`sceneRoster`). Only `shot` is stamped. `sceneRoster` is what every digest
+ * written before #2012 hashed; verify accepts it so those rows stay fresh
+ * until an input moves. Delete it with `LEGACY_HASH_UNTIL`.
  */
 export async function loadNarrowShotPromptContext(args: {
   scopedDb: Pick<
     ScopedDb,
-    'characters' | 'sequenceLocations' | 'sequenceElements' | 'styles'
+    'characters' | 'locations' | 'sequenceElements' | 'styles'
   >;
   sequence: ShotPromptContextSequence;
   scene: Scene;
   analysisModelOverride?: string | null;
   startingFrameImageUrl?: string | null;
   refs?: ShotPromptContextRefs;
-}): Promise<ShotPromptContext> {
-  const full = await loadShotPromptContext(args);
-  return narrowShotPromptContext(full);
+  view: ShotPromptView;
+}): Promise<{ shot: ShotPromptContext; sceneRoster: ShotPromptContext }> {
+  const { view, ...rest } = args;
+  const full = await loadShotPromptContext(rest);
+  return {
+    shot: narrowShotPromptContext(full, view),
+    sceneRoster: narrowShotPromptContext(full, { ...view, prompt: null }),
+  };
 }
 
 /**
- * Filter an already-built prompt context down to the entities this scene's
- * `continuity` references. Pure function — exposed so workflows that already
- * received full bibles as inputs (visual/motion prompt scene workflows) can
- * narrow without re-fetching from the DB. Generic so a visual-only bag
+ * Narrow a prompt context's bibles to what this prompt of the shot references
+ * (#2012, `resolveShotReferences`). Pure, so workflows that received full
+ * bibles on their payload narrow without a read. Generic so a visual-only bag
  * (no start-frame) narrows without dummy motion channels.
+ *
+ * The view is required: the hash of a prompt stamped against the wrong set
+ * reads stale (or fresh) forever, and the compiler is the only thing that
+ * tells a stamp site from a verify site.
  */
 export function narrowShotPromptContext<T extends VisualPromptHashInput>(
-  ctx: T
+  ctx: T,
+  view: ShotPromptView
 ): T {
   const { scene } = ctx;
   const continuity = scene.continuity;
-  if (!continuity) return ctx;
-
-  const characterBible = matchCharactersToScene(
-    [...ctx.characterBible],
-    continuity.characterTags
+  const resolved = resolveShotReferences(
+    {
+      // Each entry in the look this scene picks for it (#2015). A context
+      // loaded from D1 is dressed already; one frozen on a payload is not.
+      characters: wearBibleLooks(
+        ctx.characterBible,
+        continuity?.characterLooks
+      ),
+      locations: [...ctx.locationBible],
+      elements: [...ctx.elementBible],
+    },
+    {
+      characterTags: continuity?.characterTags,
+      characterLooks: continuity?.characterLooks,
+      environmentTag: continuity?.environmentTag,
+      sceneLocation: scene.metadata?.location,
+      elementTags: continuity?.elementTags,
+      sceneExtract: scene.originalScript.extract,
+    },
+    view
   );
-  const locationBible = matchLocationsToScene(
-    [...ctx.locationBible],
-    continuity.environmentTag,
-    scene.metadata?.location ?? '',
-    scene.originalScript.extract
-  );
-  const elementBible = matchElementsToScene(
-    [...ctx.elementBible],
-    continuity.elementTags ?? [],
-    scene.originalScript.extract
-  );
-
-  return { ...ctx, characterBible, locationBible, elementBible };
+  return {
+    ...ctx,
+    characterBible: resolved.characters,
+    locationBible: resolved.locations,
+    elementBible: resolved.elements,
+  };
 }

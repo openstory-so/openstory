@@ -195,19 +195,14 @@ testWithUser.describe('Manual pipeline (no storyboard)', () => {
       await page.getByRole('button', { name: /Whole sequence/ }).click();
       await page.getByRole('tab', { name: 'Cast' }).click();
       await page.getByRole('button', { name: 'Add Character' }).click();
+      await page.getByRole('button', { name: 'New character' }).click();
       await page.getByLabel('Name', { exact: true }).fill('Maya');
       await page
         .getByRole('dialog')
-        .getByRole('button', { name: 'Add Character' })
+        .getByRole('button', { name: 'Create' })
         .click();
-      await expect(page.getByText('Added Maya')).toBeVisible({
-        timeout: 10_000,
-      });
-      const mayaCard = page.getByRole('link', { name: /Maya/ });
-      await expect(mayaCard).toBeVisible({ timeout: 10_000 });
 
-      // Bible edit on the character detail page.
-      await mayaCard.click();
+      // Creating opens the character's page; the bible is edited there.
       await expect(page.locator('h1').filter({ hasText: 'Maya' })).toBeVisible({
         timeout: 15_000,
       });

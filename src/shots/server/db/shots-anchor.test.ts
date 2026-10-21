@@ -181,9 +181,7 @@ describe('listBySequence hierarchical order', () => {
   it('orders by scene then shot number, regardless of insertion order', async () => {
     const methods = createShotsMethods(db);
     const sceneB = dbSceneId(generateId());
-    await db
-      .insert(scenes)
-      .values({ id: sceneB, sequenceId, orderIndex: 1, title: 'B' });
+    await db.insert(scenes).values({ id: sceneB, sequenceId, orderIndex: 1 });
 
     // Insert deliberately out of order: scene B's shot first, and within
     // scene A the higher shot number first.

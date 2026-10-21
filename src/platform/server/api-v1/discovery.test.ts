@@ -52,6 +52,7 @@ describe('buildRootDocument', () => {
       href: '/api/v1/device/code',
     });
     expect(_links['sequence-status']?.templated).toBe(true);
+    expect(_links['agent-guide']?.href).toBe('/docs/developer-guide/agents');
 
     const create = _links['create-sequence'];
     expect(create?.method).toBe('POST');
@@ -87,5 +88,15 @@ describe('enhanceScriptLink', () => {
   it('carries an example body that satisfies the enhance schema', () => {
     const [example] = enhanceScriptLink().examples ?? [];
     expect(() => apiEnhanceScriptSchema.parse(example)).not.toThrow();
+  });
+});
+
+describe('create-stitch (#2127)', () => {
+  it('is advertised in the root document', () => {
+    const { _links } = buildRootDocument();
+    expect(_links['create-stitch']).toMatchObject({
+      href: '/api/v1/stitches',
+      method: 'POST',
+    });
   });
 });

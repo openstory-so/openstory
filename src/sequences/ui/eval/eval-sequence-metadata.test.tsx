@@ -10,7 +10,7 @@ const creditsError =
   'Not enough credits to generate images for 11 scenes. Add $4.20 more, then continue.';
 
 const failedShot = {
-  frame: { imageStatus: 'failed' as const },
+  imageStatus: 'failed' as const,
   videoStatus: 'pending' as const,
 };
 

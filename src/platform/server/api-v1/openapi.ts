@@ -27,6 +27,8 @@ import {
 } from './style-input-schema';
 import { errorEnvelopeSchema, rootDocumentSchema } from './discovery';
 import { styleListResultSchema } from './styles';
+import { stitchCutSchema } from '@/stitches/cut';
+import { publishStitchBodySchema } from '@/stitches/publish-body';
 import { z, type ZodType } from 'zod';
 
 type JsonValue =
@@ -128,6 +130,11 @@ export function buildOpenApiDocument(): JsonObject {
   );
   const { root: createStyleRequest, defs: styleDefs } =
     componentSchemas(apiCreateStyleSchema);
+  const { root: createStitchRequest, defs: stitchDefs } = componentSchemas(
+    z.object({ cut: stitchCutSchema })
+  );
+  const { root: publishStitchRequest, defs: publishStitchDefs } =
+    componentSchemas(publishStitchBodySchema);
 
   const waitParam: JsonObject = {
     name: 'wait',
@@ -160,6 +167,10 @@ export function buildOpenApiDocument(): JsonObject {
       { name: 'sequences', description: 'Create and watch video sequences.' },
       { name: 'scripts', description: 'Enhance scripts without generating.' },
       { name: 'styles', description: 'Create and browse team styles.' },
+      {
+        name: 'stitches',
+        description: 'Share a cut from the stitch CLI as a public page.',
+      },
     ],
     paths: {
       [API_V1_BASE]: {
@@ -625,6 +636,92 @@ export function buildOpenApiDocument(): JsonObject {
           },
         },
       },
+      [`${API_V1_BASE}/stitches`]: {
+        post: {
+          tags: ['stitches'],
+          summary: 'Share a stitch',
+          description:
+            'Store a cut from `npx @openstory/stitch share`. Every media URL in the cut is a bundle name (`media/<n>.<ext>`); the response carries a templated `upload` link to PUT each file to, and `url`, the public player page. Anyone with the page URL can watch.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateStitchRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'The stitch was created; upload its files next.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['id', 'url', 'createdAt', '_links'],
+                    properties: {
+                      id: { type: 'string' },
+                      url: { type: 'string', format: 'uri' },
+                      createdAt: { type: 'string', format: 'date-time' },
+                      _links: { $ref: '#/components/schemas/HalLinks' },
+                    },
+                  },
+                },
+              },
+            },
+            '400': errorResponse('Invalid JSON or a cut that is not a bundle.'),
+            '401': errorResponse('Missing or invalid API key.'),
+          },
+        },
+      },
+      [`${API_V1_BASE}/stitches/{id}/publish`]: {
+        post: {
+          tags: ['stitches'],
+          summary: 'Publish a stitch',
+          description:
+            'After the last PUT: checks every file the cut names is in storage and every image for a real person, then makes the page live. A real person needs `portraitAttestation` in the body (`stitch share --portrait-rights`). Idempotent once published.',
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              description: 'The stitch id (ULID), from the create response.',
+              schema: { type: 'string' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublishStitchRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'The page is live.',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['id', 'url', 'publishedAt', '_links'],
+                    properties: {
+                      id: { type: 'string' },
+                      url: { type: 'string', format: 'uri' },
+                      publishedAt: { type: 'string', format: 'date-time' },
+                      _links: { $ref: '#/components/schemas/HalLinks' },
+                    },
+                  },
+                },
+              },
+            },
+            '400': errorResponse(
+              'A file was not uploaded, or a still shows a real person and no portraitAttestation was sent (ATTESTATION_REQUIRED).'
+            ),
+            '401': errorResponse('Missing or invalid API key.'),
+            '404': errorResponse('No such stitch for this key.'),
+          },
+        },
+      },
     },
     components: {
       securitySchemes: {
@@ -647,6 +744,10 @@ export function buildOpenApiDocument(): JsonObject {
         ...enhanceDefs,
         CreateStyleRequest: createStyleRequest,
         ...styleDefs,
+        CreateStitchRequest: createStitchRequest,
+        ...stitchDefs,
+        PublishStitchRequest: publishStitchRequest,
+        ...publishStitchDefs,
         // Response documents, generated from the schemas their TypeScript
         // types are inferred from. Each contributes its own component plus any
         // nested named schema (SequenceStateShot, HalLink, StyleDocument, …).

@@ -26,6 +26,9 @@ export const API_KEY_PROVIDERS = [
   'xai',
   'google',
   'llmtr',
+  // Social publishing (#1267): the team's own Upload-Post account. Not a
+  // model provider, so it never takes part in generation key resolution.
+  'upload_post',
 ] as const;
 export type ApiKeyProvider = (typeof API_KEY_PROVIDERS)[number];
 

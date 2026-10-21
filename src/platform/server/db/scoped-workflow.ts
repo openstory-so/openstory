@@ -82,11 +82,27 @@ type WorkflowDomains = {
  * `hasUsableKey` is deliberately NOT here — "does this team own a key" is a
  * billing fact that gates a charge, so it lives under `liveRead.apiKeys`.
  */
+type ApiKeys = ScopedDb['apiKeys'];
+
+/**
+ * Keys a workflow may spend. `upload_post` (social publishing, #1267) is
+ * a team's own social accounts, not a generation provider — never resolved
+ * mid-run.
+ */
+type GenerationProvider = Exclude<
+  Parameters<ApiKeys['resolveKey']>[0],
+  'upload_post'
+>;
+
 type WorkflowCredentials = Pick<ScopedDb, 'teamId' | 'userId'> &
-  Pick<
-    ScopedDb['apiKeys'],
-    'resolveKey' | 'resolveOptionalKey' | 'resolveLlmKey'
-  >;
+  Pick<ApiKeys, 'resolveLlmKey'> & {
+    resolveKey: (
+      provider: GenerationProvider
+    ) => ReturnType<ApiKeys['resolveKey']>;
+    resolveOptionalKey: (
+      provider: GenerationProvider
+    ) => ReturnType<ApiKeys['resolveOptionalKey']>;
+  };
 
 /**
  * Hatch 2 — CLAIMS. Reads of append-only rows by an id the run already holds:
@@ -113,12 +129,17 @@ type WorkflowClaims = {
    * completed in place — persist retries must not treat that as a lost claim.
    */
   characters: Pick<ScopedDb['characters'], 'getVoiceVersionById'>;
+  /**
+   * A dialogue section by the clip id the payload carries (a clip's id IS its
+   * section id). Its range and recording never change after it is written.
+   */
+  shotDialogue: Pick<ScopedDb['shotDialogue'], 'getSectionById'>;
 };
 
 /**
  * Hatch 3 — LIVE READS. What is genuinely live BY DESIGN: the value's whole
- * purpose is that it may have moved since the trigger. Divergence
- * recomputation, sibling-workflow polling, balance and spawn-time billing
+ * purpose is that it may have moved since the trigger. Sibling-workflow
+ * polling, balance and spawn-time billing
  * guards, existence guards, and the bibles an update-stale run re-renders
  * against. Anything here that could have been frozen at the trigger is a bug.
  *
@@ -143,14 +164,14 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     'hasEnoughCredits' | 'checkAutoTopUp' | 'getBalance'
   >;
   /**
-   * `getById`: divergence recompute, and the pending-promote pointer at
-   * Voice Design persist (#1715) — demote must win. `listWithSheets`: live
+   * `getVoice`: the pending-promote pointer at Voice Design persist (#1715) —
+   * demote must win. `listWithSheets`: live
    * bibles for a re-render. `getVoiceReferenceCount`: slot occupancy when
    * releasing a replaced or demoted designed voice.
    */
   characters: Pick<
     ScopedDb['characters'],
-    'getById' | 'listWithSheets' | 'getVoiceReferenceCount'
+    'getVoice' | 'listWithSheets' | 'getVoiceReferenceCount'
   >;
   /**
    * `getSelected` only, and only for `getAnchorImageUrl`
@@ -161,8 +182,15 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
   frameVariants: Pick<ScopedDb['frameVariants'], 'getSelected'>;
   /** Existence guards, plus the anchor fallback for triggers that carry no `frameId`. */
   frames: Pick<ScopedDb['frames'], 'getAnchorByShot' | 'getById'>;
-  /** `getById`: divergence recompute. `getByIds`: wait-for-sheets polling. */
-  locations: Pick<ScopedDb['locations'], 'getById' | 'getByIds'>;
+  /**
+   * `getCurrentByIds`: the team locations a matching run's writer picked.
+   * `listWithReferences`: live
+   * bibles for a re-render.
+   */
+  locations: Pick<
+    ScopedDb['locations'],
+    'getCurrentByIds' | 'listWithReferences'
+  >;
   /** Existence guard on the segment a motion render promotes into. */
   renderSegments: Pick<ScopedDb['renderSegments'], 'getById'>;
   /** Idempotency guards, live bibles, and element-vision polling. */
@@ -170,24 +198,18 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
     ScopedDb['sequenceElements'],
     'getById' | 'getByToken' | 'list' | 'listByIds'
   >;
-  /** `getById`: divergence recompute. `listWithReferences`: live bibles for a re-render. */
-  sequenceLocations: Pick<
-    ScopedDb['sequenceLocations'],
-    'getById' | 'listWithReferences'
-  >;
   /**
-   * Existence guards, the music spawn-time billing guards (music has no claim
-   * rows), and the ready-email title (#1453) — scene-split writes it mid-run,
-   * so the trigger snapshot only ever holds the placeholder.
+   * The ready-email title (#1453) — scene-split writes it mid-run, so the
+   * trigger snapshot only ever holds the placeholder.
    */
-  sequences: Pick<ScopedDb['sequences'], 'getById' | 'getForUser'>;
+  sequences: Pick<ScopedDb['sequences'], 'getForUser'>;
   /**
    * Existence guards, plus the ready-email clip/duration line (#1276) —
    * those numbers are this run's own writes, not knowable at the trigger.
    */
   shots: Pick<ScopedDb['shots'], 'getById' | 'getByIds' | 'listBySequence'>;
-  /** `getByIds`: wait-for-sheets polling. `getWithRelations`: divergence recompute. */
-  talent: Pick<ScopedDb['talent'], 'getByIds' | 'getWithRelations'>;
+  /** `getByIds`: wait-for-sheets polling. */
+  talent: Pick<ScopedDb['talent'], 'getByIds'>;
   /** Spawn-time billing guards — video has no claim rows to hold the slot. */
   videoVariants: Pick<
     ScopedDb['videoVariants'],
@@ -223,6 +245,10 @@ export type WorkflowScopedDb = WorkflowDomains & {
    * references it.
    */
   stalenessPlanning: ScopedDb;
+  /** Storyboard only: one checkpoint after analysis writes its scenes, shots and
+   * initial prompts. Those rows cannot exist at the original trigger. It freezes
+   * a generation plan; later stages consume that snapshot, never this hatch. */
+  generationPlanning: ScopedDb;
 };
 
 export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
@@ -245,6 +271,7 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
     claims: scopedDb,
     liveRead: scopedDb,
     stalenessPlanning: scopedDb,
+    generationPlanning: scopedDb,
   };
 }
 
@@ -259,4 +286,4 @@ export function toWorkflowScopedDb(scopedDb: ScopedDb): WorkflowScopedDb {
  * reading env (#1552). Satisfied by `scopedDb.credentials`.
  */
 export type CredentialScopedDb = Pick<ScopedDb, 'userId'> &
-  Pick<ScopedDb['apiKeys'], 'resolveKey' | 'resolveOptionalKey'>;
+  Pick<WorkflowCredentials, 'resolveKey' | 'resolveOptionalKey'>;

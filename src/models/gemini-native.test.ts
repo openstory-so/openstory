@@ -37,8 +37,10 @@ describe('nativeGeminiTextModel', () => {
   });
 
   it('returns undefined for every non-Gemini model', () => {
-    expect(nativeGeminiTextModel('anthropic/claude-sonnet-5')).toBeUndefined();
-    expect(nativeGeminiTextModel('x-ai/grok-4.6')).toBeUndefined();
+    expect(
+      nativeGeminiTextModel('anthropic/claude-sonnet-5.5')
+    ).toBeUndefined();
+    expect(nativeGeminiTextModel('x-ai/grok-4.7')).toBeUndefined();
   });
 });
 

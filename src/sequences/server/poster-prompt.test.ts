@@ -1,9 +1,27 @@
 import { describe, expect, it } from 'vitest';
+import { REFERENCE_LIKENESS_INSTRUCTION } from '@/cast/character-prompt';
 import {
   buildPreviewPrompt,
   previewTextForShot,
+  type PreviewCharacter,
   type PreviewShotScene,
 } from './poster-prompt';
+
+const NO_CAMERA = { move: '', pacing: '' };
+
+function character(
+  overrides: Partial<PreviewCharacter> = {}
+): PreviewCharacter {
+  return {
+    name: 'Mina',
+    age: '30s',
+    gender: 'Female',
+    physicalDescription: 'Tall, cropped silver hair.',
+    standardClothing: 'a long grey coat',
+    voiceOnly: false,
+    ...overrides,
+  };
+}
 
 function scene(overrides: Partial<PreviewShotScene> = {}): PreviewShotScene {
   return {
@@ -23,6 +41,8 @@ function scene(overrides: Partial<PreviewShotScene> = {}): PreviewShotScene {
           subjectStartState: 'She stands at the door, hand on the frame.',
         },
         action: 'She opens the door.',
+        cameraMovement: { move: 'push-in', pacing: 'slow' },
+        direction: 'Hesitant, as if listening.',
       },
     ],
     ...overrides,
@@ -35,7 +55,9 @@ describe('previewTextForShot', () => {
     expect(text).toContain('medium close-up');
     expect(text).toContain('She fills the right third, doorway left');
     expect(text).toContain('She stands at the door, hand on the frame');
-    expect(text).toContain('She opens the door');
+    expect(text).toContain('Then: She opens the door');
+    expect(text).toContain('Camera: push-in, slow');
+    expect(text).toContain('Hesitant, as if listening');
     expect(text).not.toContain('Apartment hallway');
     expect(text).not.toContain('screenplay slice');
   });
@@ -53,6 +75,8 @@ describe('previewTextForShot', () => {
               subjectStartState: 'she is at the far end',
             },
             action: 'She walks toward camera.',
+            cameraMovement: NO_CAMERA,
+            direction: '',
           },
           {
             shotNumber: 2,
@@ -63,6 +87,8 @@ describe('previewTextForShot', () => {
               subjectStartState: 'her hand rests on the knob',
             },
             action: 'Cut to the hallway beyond',
+            cameraMovement: NO_CAMERA,
+            direction: '',
           },
         ],
       }),
@@ -87,6 +113,8 @@ describe('previewTextForShot', () => {
                 subjectStartState: '',
               },
               action: '',
+              cameraMovement: NO_CAMERA,
+              direction: '',
             },
           ],
           metadata: {
@@ -113,11 +141,33 @@ describe('previewTextForShot', () => {
 });
 
 describe('buildPreviewPrompt', () => {
-  it('asks for a line-art animatic and forbids text', () => {
-    const prompt = buildPreviewPrompt(previewTextForShot(scene(), 1));
-    expect(prompt.startsWith('Animatic frame.')).toBe(true);
-    expect(prompt).toContain('Loose freehand black line drawing');
+  it('asks for a greyscale animatic frame and forbids text', () => {
+    const prompt = buildPreviewPrompt(previewTextForShot(scene(), 1), []);
+    expect(prompt.startsWith('Storyboard animatic frame.')).toBe(true);
+    expect(prompt).toContain('greyscale only');
     expect(prompt.toLowerCase()).toContain('no text');
     expect(prompt).not.toContain('Art style');
+    expect(prompt).not.toContain('Characters:');
+  });
+
+  it('describes only the characters the shot names, never a voice', () => {
+    const prompt = buildPreviewPrompt('Mina waits by the door as Radio hums.', [
+      character(),
+      character({ name: 'Otto', physicalDescription: 'Stocky, bearded.' }),
+      character({ name: 'Radio', voiceOnly: true }),
+    ]);
+    expect(prompt).toContain(
+      'Characters: Mina: Female, 30s, Tall, cropped silver hair, wearing a long grey coat.'
+    );
+    expect(prompt).not.toContain('Otto');
+    expect(prompt).not.toContain('Radio:');
+  });
+
+  it('drops the reference-image instruction a cast talent carries', () => {
+    const prompt = buildPreviewPrompt('Mina waits.', [
+      character({ physicalDescription: REFERENCE_LIKENESS_INSTRUCTION }),
+    ]);
+    expect(prompt).not.toContain('reference image');
+    expect(prompt).toContain('Mina: Female, 30s, wearing a long grey coat.');
   });
 });

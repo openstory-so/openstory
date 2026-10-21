@@ -34,14 +34,16 @@ import { buildLocationReferenceImages } from '@/cast/location-prompt';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
 import {
   matchCharactersToShotImage,
-  matchElementsToMotion,
   matchElementsToShotImage,
   matchLocationsToScene,
+  resolveShotReferences,
 } from '@/shots/scene-matching';
 
 type SceneReferenceInput = {
   continuity?: {
     characterTags?: string[];
+    /** Character tag → look id (#2015); absent = everyone in their default. */
+    characterLooks?: Record<string, string>;
     elementTags?: string[] | null;
     environmentTag?: string | null;
   } | null;
@@ -54,13 +56,12 @@ export function buildMotionReferenceImages(params: {
   characters: CharacterMinimal[];
   elements: SequenceElementMinimal[];
   /**
-   * The shot's motion prompt. Cast and element refs follow it as well as the
-   * continuity tags, the same way the image path follows the visual prompt
-   * (#1432) — tags can be empty on a scene that plainly names its cast, and a
-   * missed character means a clip that reinvents them.
+   * The shot's motion prompt. Cast, location and element refs follow it
+   * (`resolveShotReferences`, #2012); the continuity tags stand in only while
+   * there is no prompt yet.
    *
    * REQUIRED, and `null` only where there genuinely is no prompt yet. Optional
-   * would let a call site omit it and silently fall back to tags alone, which
+   * would let a call site omit it and silently read the tags alone, which
    * is the bug this fixes.
    *
    * It matters most in reference-only, which skips the visual-prompt phase
@@ -86,38 +87,36 @@ export function buildMotionReferenceImages(params: {
     locations,
   } = params;
 
-  // The `*ToShotImage` matchers are prompt-agnostic — they scan whatever
-  // prompt text they are handed for names. The image path passes the visual
-  // prompt; here it is the motion prompt.
-  const matchedCharacters = matchCharactersToShotImage(characters, {
-    characterTags: scene?.continuity?.characterTags,
-    visualPrompt: motionPrompt,
-  });
-  // Reference-only: the prompt decides; with a start frame, additive. See
-  // `matchElementsToMotion`.
-  const matchedElements = matchElementsToMotion(elements, {
-    elementTags: scene?.continuity?.elementTags,
-    sceneExtract: scene?.originalScript?.extract,
-    motionPrompt,
-    referenceOnly: referenceOnly ?? false,
-  });
-  const matchedLocations =
-    referenceOnly && locations
-      ? matchLocationsToScene(
-          locations,
-          scene?.continuity?.environmentTag ?? '',
-          scene?.metadata?.location ?? '',
-          scene?.originalScript?.extract
-        )
-      : [];
+  // The same resolution the prompt hash, the cause list and the clip's
+  // `referenceKeys` compare use (#2012): what is sent is what is verified. A
+  // motion prompt that names nobody sends no sheet; the scene cast is not
+  // inherited. Elements: the prompt decides in reference-only, additive with
+  // a start frame (`matchElementsToMotion`). Location sheets ride only in
+  // reference-only, and only the room the prompt names.
+  const matched = resolveShotReferences(
+    {
+      characters,
+      locations: referenceOnly && locations ? locations : [],
+      elements,
+    },
+    {
+      characterTags: scene?.continuity?.characterTags,
+      characterLooks: scene?.continuity?.characterLooks,
+      environmentTag: scene?.continuity?.environmentTag,
+      sceneLocation: scene?.metadata?.location,
+      elementTags: scene?.continuity?.elementTags,
+      sceneExtract: scene?.originalScript?.extract,
+    },
+    { channel: 'motion', prompt: motionPrompt, referenceOnly: !!referenceOnly }
+  );
 
   // Location first among the supporting refs: it is the widest establishing
   // signal, and the reference budget is spent in order, so a scene with a big
   // cast should lose a bit player before it loses its set.
   return [
-    ...buildLocationReferenceImages(matchedLocations),
-    ...buildCharacterReferenceImages(matchedCharacters),
-    ...buildElementReferenceImages(matchedElements),
+    ...buildLocationReferenceImages(matched.locations),
+    ...buildCharacterReferenceImages(matched.characters),
+    ...buildElementReferenceImages(matched.elements),
   ];
 }
 
@@ -142,6 +141,7 @@ export function buildShotImageReferenceImages(params: {
 
   const matchedCharacters = matchCharactersToShotImage(characters, {
     characterTags: scene?.continuity?.characterTags,
+    characterLooks: scene?.continuity?.characterLooks,
     visualPrompt,
   });
   const matchedLocations = matchLocationsToScene(

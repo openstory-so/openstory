@@ -11,7 +11,18 @@ import { describe, expect, test } from 'vitest';
 
 const GATE =
   /requireGenerationAllowed|requireUploadAttestation|assertCanGenerate/;
-const TRIGGER = /triggerWorkflow/;
+/** `triggerWorkflow`, or a launcher that calls it (`sequences/server/launchers`). */
+const TRIGGER = /triggerWorkflow|triggerStoryboard|triggerContinue/;
+/**
+ * Request-path code that moved out of a server fn into a domain module the fn
+ * and MCP share (#1979) is scanned too. Not request-path: the helpers
+ * themselves, and a helper whose every caller triggers.
+ */
+const NOT_REQUEST_PATH = new Set([
+  'src/billing/server/preflight.ts',
+  // prepareShotImageWorkflowInput: its callers trigger the /image run.
+  'src/shots/server/shot-image-input.ts',
+]);
 const CREDITS_CALL = /(?:requireCredits|reserveRunCredits)\s*\(/;
 
 describe('generation-gate wiring', () => {
@@ -38,7 +49,14 @@ describe('generation-gate wiring', () => {
     // Request-path only: mid-run `requireCredits` inside a workflow is a
     // spawn-time billing guard, and the parent already passed the trigger gate.
     const missing: string[] = [];
-    for (const file of globSync('src/**/*.fn.ts')) {
+    const files = [
+      ...globSync('src/**/*.fn.ts'),
+      ...globSync('src/**/server/**/*.ts', {
+        exclude: (path) =>
+          path.includes('/workflows/') || path.endsWith('.test.ts'),
+      }),
+    ].filter((file) => !NOT_REQUEST_PATH.has(file));
+    for (const file of files) {
       const source = readFileSync(file, 'utf8');
       if (!CREDITS_CALL.test(source)) continue;
       if (GATE.test(source) || TRIGGER.test(source)) continue;

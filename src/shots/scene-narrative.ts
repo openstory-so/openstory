@@ -1,0 +1,101 @@
+/**
+ * A scene's narrative (#1600): title, heading, time of day, story beat and
+ * continuity tags. They live on the scene's selected script version with its
+ * text, so every edit is a version.
+ */
+
+import type { SceneNarrative } from '@/platform/server/db/schema';
+import { z } from 'zod';
+import { plainSceneTitle } from '@/platform/markdown-plain';
+
+export const sceneNarrativeOf = (scene: SceneNarrative): SceneNarrative => ({
+  title: scene.title,
+  location: scene.location,
+  timeOfDay: scene.timeOfDay,
+  storyBeat: scene.storyBeat,
+  continuity: scene.continuity,
+});
+
+/**
+ * Continuity as a key-order-free string, for comparing two narratives. The
+ * look picks (#2015) are a nested map, which the key-list replacer below
+ * would empty, so they are keyed on their own; no picks and no map at all
+ * compare equal, since both mean "everyone in their default look". An empty
+ * tag and a missing one compare equal too: an edit fills the tags a scene
+ * never had with '', so a look picked and then put back is no change.
+ */
+const continuityKey = (c: SceneNarrative['continuity']) => {
+  if (!c) return null;
+  const { characterLooks, ...all } = c;
+  const tags = Object.fromEntries(
+    Object.entries(all).filter(([, v]) => v != null && v.length > 0)
+  );
+  const picks = Object.entries(characterLooks ?? {}).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0
+  );
+  return (
+    JSON.stringify(tags, Object.keys(tags).sort()) +
+    (picks.length > 0 ? JSON.stringify(picks) : '')
+  );
+};
+
+/** The narrative fields that differ between two versions of a scene. */
+export function narrativeFieldsChanged(
+  before: SceneNarrative,
+  after: SceneNarrative
+): (keyof SceneNarrative)[] {
+  const changed: (keyof SceneNarrative)[] = [];
+  for (const key of ['title', 'location', 'timeOfDay', 'storyBeat'] as const) {
+    if ((before[key] ?? null) !== (after[key] ?? null)) changed.push(key);
+  }
+  if (continuityKey(before.continuity) !== continuityKey(after.continuity)) {
+    changed.push('continuity');
+  }
+  return changed;
+}
+
+// Narrative edit input, shared by the editor (scenes.fn.ts) and MCP (#1459).
+
+/** `''` / whitespace clears a nullable narrative field; otherwise trimmed. */
+const narrativeField = z
+  .string()
+  .max(2000)
+  .transform((v) => {
+    const trimmed = v.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  });
+
+/** Titles are labels: drop markdown sigils from the script editor. */
+const sceneTitleField = z
+  .string()
+  .max(2000)
+  .transform((v) => {
+    const plain = plainSceneTitle(v);
+    return plain.length > 0 ? plain : null;
+  });
+
+export const sceneNarrativeFieldsSchema = z.object({
+  title: sceneTitleField.optional(),
+  location: narrativeField.optional(),
+  timeOfDay: narrativeField.optional(),
+  storyBeat: narrativeField.optional(),
+  continuity: z
+    .object({
+      characterTags: z.array(z.string().trim().max(200)).max(100).optional(),
+      // A patch to the looks the scene's characters wear (#2015).
+      characterLooks: z
+        .record(
+          z.string().trim().max(200),
+          z.string().trim().max(64).nullable()
+        )
+        .optional()
+        .describe(
+          'Which look (outfit) each character wears in this scene, as a patch: { "<character tag or name>": "<look id from get_character looks[].id>" }. Only the characters you send change; the others keep their look. null puts that character back in its default look. A look id must be a live look of a character of this sequence.'
+        ),
+      environmentTag: z.string().trim().max(200).optional(),
+      elementTags: z.array(z.string().trim().max(200)).max(100).optional(),
+      lightingSetup: z.string().trim().max(2000).optional(),
+      colorPalette: z.string().trim().max(2000).optional(),
+    })
+    .optional(),
+});

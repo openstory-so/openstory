@@ -10,6 +10,7 @@ import type {
   SequenceElementMinimal,
   SequenceLocationMinimal,
 } from '@/platform/server/db/schema';
+import { dressForScene, type SceneLookPicks } from '@/cast/character-looks';
 
 type CharacterMatchInput = Pick<
   CharacterMinimal,
@@ -154,14 +155,21 @@ export function characterMentionedInPrompt(
  * arrivals. Legacy prompts with no identifiable subject still use tags.
  * Update all's chained stills skip `rescanContinuityFromPrompt`, so this is
  * also the path that selects references for regenerated prompts.
+ *
+ * Each comes back wearing the look the scene picks for it (#2015): its
+ * clothing and sheet are that look's. `characterLooks` is required so no
+ * call site attaches the default sheet to a scene that picked another.
  */
 export function matchCharactersToShotImage<T extends CharacterMatchInput>(
-  allCharacters: T[],
+  everyCharacter: T[],
   args: {
     characterTags?: string[] | null;
     visualPrompt?: string | null;
+    /** The scene's `continuity.characterLooks`. */
+    characterLooks: SceneLookPicks;
   }
 ): T[] {
+  const allCharacters = dressForScene(everyCharacter, args.characterLooks);
   const tagged = matchCharactersToScene(
     allCharacters,
     args.characterTags ?? []
@@ -172,6 +180,9 @@ export function matchCharactersToShotImage<T extends CharacterMatchInput>(
   const named = allCharacters.filter((c) =>
     characterMentionedInPrompt(c, prompt)
   );
+  // Stills keep the tag fallback for a prompt with no identifiable subject
+  // so stored still digests do not move. Prompt hashes and clips do not: see
+  // `resolveShotReferences`.
   return named.length > 0 ? named : tagged;
 }
 
@@ -413,6 +424,84 @@ export function matchElementsToMotion<T extends ElementMatchInput>(
       ...named,
     ]),
   ];
+}
+
+/** The scene fields a shot's references are resolved against. */
+export type ShotReferenceScene = {
+  characterTags?: string[] | null;
+  /**
+   * The scene's `continuity.characterLooks` (#2015). Required, so no call
+   * site resolves a shot's cast in the wrong outfit.
+   */
+  characterLooks: SceneLookPicks;
+  environmentTag?: string | null;
+  sceneLocation?: string | null;
+  elementTags?: string[] | null;
+  sceneExtract?: string | null;
+};
+
+/**
+ * One prompt channel of a shot. `prompt` is the channel's own text; `null`
+ * means no prompt exists yet, so the scene's continuity tags are the only
+ * word on who is in the shot.
+ */
+export type ShotPromptView =
+  | { channel: 'visual'; prompt: string | null }
+  | { channel: 'motion'; prompt: string | null; referenceOnly: boolean };
+
+/**
+ * Who and what one prompt of one shot references (#2012).
+ *
+ * The prompt hash, the staleness cause list, the clip's `referenceKeys` and
+ * the motion render all read this, so the thing verified is the thing a
+ * re-render would be sent. A prompt that names a person, a room or a prop
+ * keeps only those; one that names nobody keeps nobody. The scene cast is not
+ * inherited. Characters and locations follow the prompt text on both
+ * channels. Elements follow it on a still and on a reference-only clip; with a
+ * start frame they stay additive, per `matchElementsToMotion`.
+ *
+ * For locations, text falls through to the scene slugline when the prompt
+ * names no room, and the scene extract is read only while there is no prompt:
+ * it names every room in the scene.
+ *
+ * Characters come back wearing the look the scene picks for them (#2015), as
+ * new objects: compare them by id, not by reference.
+ */
+export function resolveShotReferences<
+  C extends CharacterMatchInput,
+  L extends LocationMatchInput,
+  E extends ElementMatchInput,
+>(
+  all: { characters: C[]; locations: L[]; elements: E[] },
+  scene: ShotReferenceScene,
+  view: ShotPromptView
+): { characters: C[]; locations: L[]; elements: E[] } {
+  const text = (view.prompt ?? '').trim();
+  const dressed = dressForScene(all.characters, scene.characterLooks);
+  const characters = text
+    ? dressed.filter((c) => characterMentionedInPrompt(c, text))
+    : matchCharactersToScene(dressed, scene.characterTags ?? []);
+  const locations = matchLocationsToScene(
+    all.locations,
+    scene.environmentTag ?? '',
+    scene.sceneLocation ?? '',
+    text ? undefined : scene.sceneExtract,
+    text || undefined
+  );
+  const elements =
+    view.channel === 'visual'
+      ? matchElementsToShotImage(all.elements, {
+          visualPrompt: text,
+          elementTags: scene.elementTags,
+          sceneExtract: scene.sceneExtract,
+        })
+      : matchElementsToMotion(all.elements, {
+          motionPrompt: text,
+          elementTags: scene.elementTags,
+          sceneExtract: scene.sceneExtract,
+          referenceOnly: view.referenceOnly,
+        });
+  return { characters, locations, elements };
 }
 
 /**

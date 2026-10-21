@@ -20,6 +20,7 @@ const searchSchema = z.object({
   success: z.boolean().optional(),
   canceled: z.boolean().optional(),
   session_id: z.string().max(256).optional(),
+  card_saved: z.boolean().optional(),
 });
 
 export const Route = createFileRoute('/_app/credits')({
@@ -53,7 +54,13 @@ const tabs = [
 ];
 
 function CreditsPage() {
-  const { tab, success, canceled, session_id: sessionId } = Route.useSearch();
+  const {
+    tab,
+    success,
+    canceled,
+    session_id: sessionId,
+    card_saved: cardSaved,
+  } = Route.useSearch();
   const navigate = useNavigate();
 
   return (
@@ -85,6 +92,7 @@ function CreditsPage() {
             success={success}
             canceled={canceled}
             sessionId={sessionId}
+            cardSaved={cardSaved}
           />
         </TabsContent>
         <TabsContent value="transactions">

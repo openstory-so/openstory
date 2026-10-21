@@ -9,7 +9,7 @@
  * This is the relational `Scene → Segment → Shot` model (the explicit entity the
  * design doc held as the upgrade path from a JSON `renderPlan`):
  * - membership lives on the shot (`shots.renderSegmentId`); a segment's shots are
- *   `shots WHERE render_segment_id = ? ORDER BY order_index` — order comes from
+ *   `shots WHERE render_segment_id = ? ORDER BY shot_number` — order comes from
  *   the shots, so a segment needs no order column of its own.
  * - the segment owns the **selection**: `selectedVideoVersionId` points at the
  *   chosen `video_variants` version (a soft pointer, no FK — the selection-pointer
@@ -17,8 +17,8 @@
  *   Reverting a segment is repointing this.
  *
  * `video_variants` are the versions of a segment's render (keyed by
- * `(renderSegmentId, model)`); the shot's cached `video*` columns mirror the
- * selected version for playback.
+ * `(renderSegmentId, model)`); playback reads the selected version through
+ * the segment's pointer.
  *
  * See docs/architecture/scene-shot-frame-redesign.md.
  */

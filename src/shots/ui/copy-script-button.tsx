@@ -88,11 +88,17 @@ export const CopyScriptButton: React.FC<{ sequenceId: string }> = ({
       onClick={() => void handleCopy()}
       aria-label={announced}
     >
-      <Icon className={cn('h-4 w-4 md:mr-1.5 md:h-3.5 md:w-3.5', className)} />
+      <Icon
+        className={cn(
+          'h-4 w-4 md:h-3.5 md:w-3.5 @[40rem]/viewbar:mr-1.5',
+          className
+        )}
+      />
       <span className="sr-only" aria-live="polite">
         {announced}
       </span>
-      <span className="hidden md:inline">{label}</span>
+      {/* Labelled only when the view bar has room (canvas-view-toggle). */}
+      <span className="hidden @[40rem]/viewbar:inline">{label}</span>
     </Button>
   );
 };

@@ -126,6 +126,14 @@ export const frameVariants = snakeCase.table(
     generatedAt: integer({ mode: 'timestamp' }),
     error: text(),
 
+    // Was this render seeking the frame's primary still, or adding a model
+    // alongside it (`variantOnly`)? The frame's image status and error are the
+    // newest primary non-preview row's (#1942), exactly as video's are the
+    // newest primary `video_variants` row's. A failure the user should not see
+    // as the shot's (a failed upscale, a failure answered by a pick) leaves
+    // the race by flipping this to false.
+    isPrimary: integer({ mode: 'boolean' }).default(true).notNull(),
+
     // Staleness of THIS version.
     promptHash: text(),
     inputHash: text(),

@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
-import type { StyleConfig } from '@/platform/server/db/schema';
+import type {
+  CharacterBibleEntry,
+  TalentSheetMetadata,
+} from '@/shots/scene-analysis.schema';
 import type { CharacterMinimal } from '@/platform/server/db/schema';
 import {
   buildCastCharacterBible,
@@ -21,16 +22,17 @@ const scriptEntry: CharacterBibleEntry = {
   ethnicity: 'Caucasian',
   physicalDescription: 'Tall, blonde hair, blue eyes',
   standardClothing: 'Dark trench coat, badge on belt',
-  distinguishingFeatures: 'Small scar on left cheek',
+  looks: [],
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: 'detective_sarah_blonde_30s',
 };
 
-const talentMetadata: CharacterBibleEntry = {
+const talentMetadata: TalentSheetMetadata = {
   characterId: 'talent_sheet_1',
   name: 'Elvis Presley',
   age: '25',
@@ -38,6 +40,7 @@ const talentMetadata: CharacterBibleEntry = {
   ethnicity: 'White',
   physicalDescription: 'Dark hair, sideburns, athletic build',
   standardClothing: 'White jumpsuit',
+  looks: [],
   distinguishingFeatures: 'Signature sideburns',
   personality: '',
   movement: '',
@@ -57,6 +60,10 @@ describe('buildCharacterReferenceImages', () => {
     sheetStatus: 'completed',
     sheetInputHash: 'hash',
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
     physicalDescription: `${overrides.name} is here`,
     voiceOnly: false,
     isPerson: true,
@@ -144,7 +151,7 @@ describe('buildCastingAttributes', () => {
     expect(blank.movement).toBe('restless hands');
   });
 
-  test('keeps costume and distinguishing features from script', () => {
+  test('keeps the costume from the script; the styling is its looks, not a casting attribute (#2065)', () => {
     const result = buildCastingAttributes(scriptEntry, {
       sheetMetadata: talentMetadata,
       talentName: 'Elvis Presley',
@@ -152,7 +159,7 @@ describe('buildCastingAttributes', () => {
     });
 
     expect(result.standardClothing).toBe('Dark trench coat, badge on belt');
-    expect(result.distinguishingFeatures).toBe('Small scar on left cheek');
+    expect(result).not.toHaveProperty('distinguishingFeatures');
   });
 
   test('generates consistencyTag from characterId + talent name', () => {
@@ -177,7 +184,7 @@ describe('buildCastingAttributes', () => {
   });
 
   test('anchors physicalDescription to the reference image (never the talent name) when talent metadata has no physicalDescription', () => {
-    const sparseMetadata: CharacterBibleEntry = {
+    const sparseMetadata: TalentSheetMetadata = {
       ...talentMetadata,
       physicalDescription: '',
     };
@@ -210,7 +217,7 @@ describe('buildCastingAttributes', () => {
   });
 
   test('uses sparse talent fields over script when available', () => {
-    const partialMeta: CharacterBibleEntry = {
+    const partialMeta: TalentSheetMetadata = {
       ...talentMetadata,
       age: '40',
       gender: '',
@@ -240,12 +247,13 @@ describe('buildCastCharacterBible', () => {
     ethnicity: 'Asian',
     physicalDescription: 'Short, dark hair',
     standardClothing: 'Grey suit',
-    distinguishingFeatures: 'Glasses',
+    looks: [],
     personality: '',
     movement: '',
     voiceDescription: '',
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     consistencyTag: 'bob_grey_suit',
   };
 
@@ -277,6 +285,9 @@ describe('buildCastCharacterBible', () => {
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
+      // The role's looks ride through a cast untouched (#2015).
+      looks: [],
       ...expected,
     });
     expect(cast.physicalDescription).toBe(
@@ -322,84 +333,64 @@ describe('buildCastCharacterBible', () => {
   });
 });
 
-const neoNoirStyle: StyleConfig = migrateStyleConfigV1ToV2({
-  mood: 'Dark, brooding, and atmospheric',
-  artStyle:
-    'Neo-noir cinematic style with deep shadows and high contrast. Gritty urban realism with expressionist framing.',
-  lighting:
-    'Low-key chiaroscuro lighting with single hard sources. Venetian blind shadows, neon reflections, harsh rim lighting.',
-  colorPalette: ['#0A0A0A', '#1A1A2E', '#E94560', '#16213E', '#533483'],
-  cameraWork:
-    'Dutch angles, low-angle power shots, tight close-ups. Slow deliberate movements with dramatic reveals.',
-  referenceFilms: [
-    'rain-slicked neon-noir cityscape cinematography',
-    'high-contrast graphic-novel monochrome',
-    'synthwave night-drive thriller framing',
-  ],
-  colorGrading:
-    'Desaturated with selective color pops. Teal and orange split toning with crushed blacks.',
-});
-
-describe('buildCharacterSheetPrompt with styleConfig', () => {
-  test('without styleConfig produces default studio prompt', () => {
-    const { prompt } = buildCharacterSheetPrompt(scriptEntry);
-
+describe('buildCharacterSheetPrompt rendering (#2017)', () => {
+  test('photoreal keeps the commercial reference photography studio', () => {
+    const { prompt } = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      null,
+      null
+    );
     expect(prompt).toContain('cyclorama');
     expect(prompt).toContain('5500K daylight');
     expect(prompt).toContain('Commercial reference photography');
   });
 
-  test('with styleConfig replaces environment, lighting, and optical sections', () => {
+  test('another rendering names it in the environment and optics, on the same neutral studio', () => {
     const { prompt } = buildCharacterSheetPrompt(
-      scriptEntry,
+      { ...scriptEntry, rendering: '3D animated, Pixar-like' },
       undefined,
-      neoNoirStyle
+      null,
+      null
     );
-
-    // Should NOT contain studio defaults
-    expect(prompt).not.toContain('cyclorama');
-    expect(prompt).not.toContain('5500K daylight');
+    expect(prompt).toContain(
+      'Render the character as 3D animated, Pixar-like.'
+    );
+    expect(prompt).toContain('3D animated, Pixar-like rendering.');
     expect(prompt).not.toContain('Commercial reference photography');
-
-    // Should contain style-derived content
-    expect(prompt).toContain('Neo-noir cinematic style');
-    expect(prompt).toContain('chiaroscuro');
-    expect(prompt).toContain('Dark, brooding');
-    expect(prompt).toContain('rain-slicked neon-noir cityscape');
+    // No palette, grade or mood: those are the sequence's, applied at the shot.
+    expect(prompt).toContain('flat neutral white background');
+    expect(prompt).toContain('5500K daylight');
   });
 
-  test('with styleConfig preserves layout and materiality sections', () => {
+  test('the rendering keeps the layout and materiality sections', () => {
     const { prompt } = buildCharacterSheetPrompt(
-      scriptEntry,
+      { ...scriptEntry, rendering: '2D cel animation' },
       undefined,
-      neoNoirStyle
+      null,
+      null
     );
-
     expect(prompt).toContain('[LAYOUT]');
     expect(prompt).toContain('four distinct, technical views');
     expect(prompt).toContain('[MATERIALITY]');
     expect(prompt).toContain('Hyper-accurate rendering');
   });
 
-  test('with styleConfig and talentOverrides composes correctly', () => {
+  test('a rendering and talentOverrides compose', () => {
     const { prompt, referenceUrls } = buildCharacterSheetPrompt(
-      scriptEntry,
+      { ...scriptEntry, rendering: '3D animated, Pixar-like' },
       {
         sheetMetadata: talentMetadata,
         sheetImageUrl: 'https://example.com/sheet.png',
       },
-      neoNoirStyle
+      null,
+      null
     );
-
-    // Style is applied
-    expect(prompt).toContain('Neo-noir cinematic style');
-    expect(prompt).not.toContain('cyclorama');
-
-    // Talent reference is preserved
+    expect(prompt).toContain(
+      'Render the character as 3D animated, Pixar-like.'
+    );
     expect(prompt).toContain('IMAGE takes priority');
     expect(referenceUrls).toContain('https://example.com/sheet.png');
-
-    // Talent appearance is used
     expect(prompt).toContain('Male');
     expect(prompt).toContain('Dark hair, sideburns');
   });
@@ -407,21 +398,117 @@ describe('buildCharacterSheetPrompt with styleConfig', () => {
 
 describe('buildCharacterSheetPrompt with talent', () => {
   test('uses talent description as fallback when physicalDescription is empty', () => {
-    const { prompt } = buildCharacterSheetPrompt(scriptEntry, {
-      description: 'This character should look like Elvis Presley',
-    });
+    const { prompt } = buildCharacterSheetPrompt(
+      scriptEntry,
+      { description: 'This character should look like Elvis Presley' },
+      null,
+      null
+    );
 
     expect(prompt).toContain('Elvis Presley');
     expect(prompt).toContain('reference image');
   });
 
   test('strengthened reference instruction mentions image priority', () => {
-    const { prompt } = buildCharacterSheetPrompt(scriptEntry, {
-      sheetMetadata: talentMetadata,
-      sheetImageUrl: 'https://example.com/sheet.png',
-    });
+    const { prompt } = buildCharacterSheetPrompt(
+      scriptEntry,
+      {
+        sheetMetadata: talentMetadata,
+        sheetImageUrl: 'https://example.com/sheet.png',
+      },
+      null,
+      null
+    );
 
     expect(prompt).toContain('IMAGE takes priority');
     expect(prompt).toContain('DO NOT alter their fundamental physical');
+  });
+
+  test("a look's styling notes join the costume as ONE section; none leaves the prompt as it was (#2015, #2065)", () => {
+    const plain = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      null,
+      null
+    ).prompt;
+    expect(plain).not.toContain('for this look');
+    expect(
+      buildCharacterSheetPrompt(scriptEntry, undefined, '  ', null).prompt
+    ).toBe(plain);
+
+    const styled = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      'hair pinned up, split lip',
+      null
+    ).prompt;
+    // The default look's styling holds what the bible called distinguishing
+    // features (#2065), under the heading that section had: the recorded
+    // e2e image fixtures match on these words.
+    expect(styled).toContain(
+      'Costume:\nDark trench coat, badge on belt\n\nDistinguishing Features:\nhair pinned up, split lip'
+    );
+    expect(styled).not.toContain('for this look:');
+    // Cast: the same one section, as makeup notes on the actor.
+    const cast = buildCharacterSheetPrompt(
+      scriptEntry,
+      { sheetMetadata: talentMetadata, sheetImageUrl: 'https://e/t.png' },
+      'hair pinned up, split lip',
+      null
+    ).prompt;
+    expect(cast).toContain(
+      'Makeup & Styling (apply to achieve the character look):\nhair pinned up, split lip'
+    );
+    expect(cast).not.toContain('Distinguishing Features:\n');
+    // Another look, drawn from the default look's sheet.
+    const other = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      'hair pinned up, split lip',
+      'https://e/default.png'
+    ).prompt;
+    expect(other).toContain(
+      'Hair, Makeup & Condition for this look:\nhair pinned up, split lip'
+    );
+    expect(other).not.toContain('Distinguishing Features:\n');
+  });
+
+  test('a look drawn from the default sheet uses that image and no other', () => {
+    const { prompt, referenceUrls } = buildCharacterSheetPrompt(
+      scriptEntry,
+      {
+        sheetMetadata: talentMetadata,
+        description: 'This character should look like Elvis Presley',
+        sheetImageUrl: 'https://example.com/talent.png',
+      },
+      'hair pinned up',
+      'https://example.com/default-look.png'
+    );
+
+    expect(referenceUrls).toEqual(['https://example.com/default-look.png']);
+    expect(prompt).toContain("this character's default look");
+    expect(prompt).toContain('Change the costume');
+    expect(prompt).not.toContain('Elvis Presley');
+    expect(prompt).not.toContain('https://example.com/talent.png');
+    expect(prompt).toContain('hair pinned up');
+  });
+
+  test('the image wins for the person, the text wins for the outfit', () => {
+    const { prompt } = buildCharacterSheetPrompt(
+      scriptEntry,
+      undefined,
+      null,
+      'https://example.com/default-look.png'
+    );
+    expect(prompt).toContain(
+      'For face, body, skin and hair, the IMAGE takes priority over any text.'
+    );
+    expect(prompt).toContain(
+      'For the clothing, the TEXT takes priority over the image: the reference wears another outfit.'
+    );
+    // Never the unscoped rule, which would keep the default look's costume.
+    expect(prompt).not.toContain(
+      'If any text conflicts with the reference image, the IMAGE takes priority.'
+    );
   });
 });

@@ -7,6 +7,7 @@ const base = {
   prompt: 'SCARLETT lifts the CORAL_LIPSTICK to the light',
   aspectRatio: '16:9' as const,
   duration: 5,
+  heldSeedanceEditSeconds: null,
 };
 
 const references = [
@@ -34,12 +35,33 @@ describe('buildBytePlusVideoRequest', () => {
         'seedance_v2_5'
       ).size
     ).toBe('adaptive_720p');
+  });
+
+  // A still demoted into the reference list is no frame role, so `adaptive`
+  // would let Ark size the clip from the first reference — a 3:4 character
+  // sheet rendered a 3:4 clip into a 9:16 sequence (#1809).
+  it('states the sequence ratio when the still is demoted to a reference (#1809)', () => {
+    const portrait = buildBytePlusVideoRequest(
+      {
+        ...base,
+        aspectRatio: '9:16',
+        resolution: '1080p',
+        referenceImages: references,
+      },
+      'seedance_v2_5'
+    );
+    expect(portrait.size).toBe('9:16_1080p');
+    expect(
+      portrait.prompt
+        .filter((part) => part.type === 'image')
+        .map((part) => part.metadata?.role)
+    ).toEqual(['reference', 'reference']);
     expect(
       buildBytePlusVideoRequest(
-        { ...base, referenceImages: references },
+        { ...base, resolution: '1080p', referenceImages: references },
         'seedance_v2_5'
       ).size
-    ).toBe('adaptive_720p');
+    ).toBe('16:9_1080p');
   });
 
   it('pins the still as start_frame when there are no references', () => {
@@ -155,6 +177,7 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
     aspectRatio: '16:9' as const,
     duration: 5,
     referenceOnly: true,
+    heldSeedanceEditSeconds: null,
   };
 
   it('states a concrete ratio, since nothing is left for adaptive to follow', () => {
@@ -220,6 +243,102 @@ describe('buildBytePlusVideoRequest — reference-only', () => {
           part.type === 'text' && part.content.includes('starting frame')
       )
     ).toBe(false);
+  });
+
+  it('keeps a concrete ratio when a Seedance 2.5 video is only a reference (#2036)', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        referenceImages: [
+          ...references,
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2_5'
+    );
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+    expect(request.duration).toBe(5);
+    expect(request.prompt.some((part) => part.type === 'video')).toBe(true);
+  });
+
+  const editRequest = (
+    heldSeedanceEditSeconds: number | null,
+    prompt: string
+  ) =>
+    buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        heldSeedanceEditSeconds,
+        prompt,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2_5'
+    );
+
+  it('sends duration -1 and an adaptive size for an edit the trigger held for (#2036)', () => {
+    const request = editRequest(8, 'Edit the walk so she turns');
+    expect(request.size).toBe('adaptive_720p');
+    expect(request.modelOptions).toMatchObject({ duration: -1 });
+    expect(request.duration).toBe(5);
+  });
+
+  it('never sends an edit the trigger did not hold for (#2036)', () => {
+    // A fixed length on a hold sized for the shot. Ark refuses it unbilled.
+    const request = editRequest(null, 'Edit the walk so she turns');
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+  });
+
+  it('never sends an edit held for a shorter clip than the one attached (#2036)', () => {
+    // A packed clip can carry a longer clip than the shot that was held.
+    const request = editRequest(6, 'Edit the walk so she turns');
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+  });
+
+  it('sends the shot length when a rewrite dropped the word (#2036)', () => {
+    const request = editRequest(8, 'She turns as she walks');
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+  });
+
+  it('keeps a concrete ratio and duration for Seedance 2.0 with a video', () => {
+    const request = buildBytePlusVideoRequest(
+      {
+        ...referenceOnlyBase,
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn.example.com/walk.mp4',
+            description: 'a walk',
+            token: 'WALK',
+            role: 'element',
+            kind: 'video',
+            durationSeconds: 8,
+          },
+        ],
+      },
+      'seedance_v2'
+    );
+    expect(request.size).toBe('16:9_720p');
+    expect(request.modelOptions.duration).toBeUndefined();
+    expect(request.duration).toBe(5);
   });
 
   it('sends a text-only request when nothing matched', () => {

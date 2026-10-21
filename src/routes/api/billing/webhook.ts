@@ -5,23 +5,15 @@
 
 import { stripeWebhookMiddleware } from '@/billing/stripe-webhook-middleware.fn';
 import {
-  chargeFingerprint,
-  fulfillSavedCard,
-  grantWelcomeCreditsForPaymentMethod,
-  grantWelcomeCreditsForTeam,
   SAVE_CARD_METADATA_TYPE,
-  type WelcomeGrantSource,
+  saveCardFromCheckout,
 } from '@/billing/server/checkout';
-import { SIGNUP_GRANT_MICROS } from '@/billing/constants';
-import { isWelcomeCardAlreadyClaimedError } from '@/platform/errors';
 import { captureCheckoutAnalyticsForStripeEvent } from '@/billing/server/checkout-events';
 import { microsToDisplayUsd, usdToMicros } from '@/billing/money';
 import { getStripeOrThrow } from '@/billing/server/stripe';
 import { getPostHogClient } from '@/platform/server/observability/posthog-server';
 import { createFileRoute } from '@tanstack/react-router';
 import { scheduleFlushAnalytics } from '#flush-scheduler';
-import type Stripe from 'stripe';
-import type { ScopedDb } from '@/platform/server/db/scoped';
 
 import { getLogger } from '@/platform/logger';
 
@@ -53,17 +45,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
                 session.mode === 'setup' &&
                 session.metadata?.type === SAVE_CARD_METADATA_TYPE
               ) {
-                if (!teamId || !userId) {
-                  throw new Error(
-                    'save_card checkout missing teamId or userId'
-                  );
-                }
-                await handleSaveCardCheckout({
-                  session,
-                  scopedDb,
-                  teamId,
-                  userId,
-                });
+                await saveCardFromCheckout(session, scopedDb);
                 break;
               }
 
@@ -107,8 +89,7 @@ export const Route = createFileRoute('/api/billing/webhook')({
               }
               const receiptUrl = charge.receipt_url ?? undefined;
 
-              // Default PM / decline-cooldown — not required for the welcome
-              // grant. Only a card is reusable: Alipay / WeChat Pay are
+              // Default PM / decline-cooldown. Only a card is reusable: Alipay / WeChat Pay are
               // single-use (#1537), so they are never attached and never
               // become the auto-top-up method.
               if (
@@ -164,65 +145,6 @@ export const Route = createFileRoute('/api/billing/webhook')({
                 logger.info(`Duplicate session ${session.id}, skipping top-up`);
               }
 
-              // Always attempt: a retry after a credited purchase must still
-              // land the welcome grant. 400 unless it landed, already claimed,
-              // or this team already has the grant — Stripe will retry.
-              if (!teamId || !userId) {
-                throw new Error('credit_top_up missing teamId or userId');
-              }
-              const fingerprint = chargeFingerprint(charge);
-              if (!fingerprint) {
-                // Nothing to key the one-per-account rule on; the team can
-                // still claim by saving a card.
-                logger.info('welcome grant skipped: no payment fingerprint', {
-                  teamId,
-                  paymentMethodType: charge.payment_method_details?.type,
-                });
-                break;
-              }
-              await grantWelcomeOrThrow(scopedDb, teamId, () =>
-                grantWelcomeCreditsForTeam({
-                  scopedDb,
-                  teamId,
-                  userId,
-                  source: 'purchase',
-                  fingerprint,
-                })
-              );
-              break;
-            }
-
-            case 'setup_intent.succeeded': {
-              const setupIntent = event.data.object;
-              if (setupIntent.metadata?.type !== SAVE_CARD_METADATA_TYPE) {
-                break;
-              }
-              if (!teamId || !userId) {
-                throw new Error(
-                  'save_card setup_intent missing teamId or userId'
-                );
-              }
-              const customerId = stripeObjectId(setupIntent.customer);
-              const paymentMethodId = stripeObjectId(
-                setupIntent.payment_method
-              );
-              if (!customerId || !paymentMethodId) {
-                logger.error('save_card setup_intent missing customer or PM', {
-                  teamId,
-                  setupIntentId: setupIntent.id,
-                });
-                throw new Error(
-                  'save_card setup_intent missing customer or PM'
-                );
-              }
-              await fulfillSavedCardIgnoringReuse({
-                scopedDb,
-                teamId,
-                userId,
-                customerId,
-                paymentMethodId,
-                source: 'setup_intent',
-              });
               break;
             }
 
@@ -270,25 +192,6 @@ export const Route = createFileRoute('/api/billing/webhook')({
                   stripePaymentIntentId: paymentIntent.id,
                 });
               }
-
-              if (!teamId || !userId) {
-                throw new Error(
-                  'credit_top_up_direct missing teamId or userId'
-                );
-              }
-              const pmId = stripeObjectId(paymentIntent.payment_method);
-              if (!pmId) {
-                throw new Error('credit_top_up_direct missing payment method');
-              }
-              await grantWelcomeOrThrow(scopedDb, teamId, () =>
-                grantWelcomeCreditsForPaymentMethod({
-                  scopedDb,
-                  teamId,
-                  userId,
-                  paymentMethodId: pmId,
-                  source: 'purchase',
-                })
-              );
               break;
             }
 
@@ -320,92 +223,4 @@ function stripeObjectId(
 ): string | undefined {
   if (!value) return undefined;
   return typeof value === 'string' ? value : value.id;
-}
-
-/**
- * Purchase/setup webhooks 200 on already-claimed so Stripe stops. Anything
- * else that leaves this team without a grant must 400 so Stripe retries.
- */
-async function grantWelcomeOrThrow(
-  scopedDb: ScopedDb,
-  teamId: string,
-  grant: () => Promise<{ granted: boolean }>
-): Promise<void> {
-  try {
-    const { granted } = await grant();
-    if (granted || SIGNUP_GRANT_MICROS <= 0) return;
-    if (await scopedDb.billing.hasSignupGrant()) return;
-    throw new Error('Welcome grant did not land');
-  } catch (err) {
-    if (isWelcomeCardAlreadyClaimedError(err)) {
-      logger.info('welcome grant skipped: card already claimed', { teamId });
-      return;
-    }
-    throw err;
-  }
-}
-
-async function handleSaveCardCheckout(opts: {
-  session: Stripe.Checkout.Session;
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-}): Promise<void> {
-  const { session, scopedDb, teamId, userId } = opts;
-  const customerId = stripeObjectId(session.customer);
-  if (!customerId) {
-    logger.error('save_card checkout missing customer', {
-      teamId,
-      sessionId: session.id,
-    });
-    throw new Error('save_card checkout missing customer');
-  }
-
-  const stripe = getStripeOrThrow();
-  const setupIntentRef = session.setup_intent;
-  const setupIntent =
-    typeof setupIntentRef === 'string'
-      ? await stripe.setupIntents.retrieve(setupIntentRef)
-      : setupIntentRef;
-  const paymentMethodId =
-    typeof setupIntent?.payment_method === 'string'
-      ? setupIntent.payment_method
-      : setupIntent?.payment_method?.id;
-  if (!paymentMethodId) {
-    logger.error('save_card checkout missing payment method', {
-      teamId,
-      sessionId: session.id,
-    });
-    throw new Error('save_card checkout missing payment method');
-  }
-
-  await fulfillSavedCardIgnoringReuse({
-    scopedDb,
-    teamId,
-    userId,
-    customerId,
-    paymentMethodId,
-    source: 'setup_checkout',
-  });
-}
-
-async function fulfillSavedCardIgnoringReuse(opts: {
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-  customerId: string;
-  paymentMethodId: string;
-  source: Exclude<WelcomeGrantSource, 'purchase'>;
-}): Promise<void> {
-  try {
-    await fulfillSavedCard(opts);
-  } catch (err) {
-    if (isWelcomeCardAlreadyClaimedError(err)) {
-      logger.info('welcome grant skipped: card already claimed', {
-        teamId: opts.teamId,
-      });
-      return;
-    }
-    throw err;
-  }
 }

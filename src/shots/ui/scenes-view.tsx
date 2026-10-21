@@ -1,4 +1,5 @@
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
+import { useSequenceRuns } from '@/sequences/ui/generation/use-sequence-runs';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { RenderWaitCopy } from '@/sequences/ui/generation/render-wait-copy';
 import { MotionProgressBanner } from '@/sequences/ui/generation/motion-progress-banner';
@@ -8,7 +9,7 @@ import { MobileSceneDrawer } from './mobile-scene-drawer';
 import { CanvasViewToggle } from './canvas-view-toggle';
 import { CopyScriptButton } from './copy-script-button';
 import { SceneCanvas } from './scene-canvas';
-import { SequenceExportActions } from './sequence-export-actions';
+import { SequenceDownloadMenu } from './sequence-export-actions';
 import { useSequenceExport } from '@/sequences/ui/theatre/use-sequence-export';
 import { SceneScriptDocument } from './scene-script-document';
 import type { BatchGenerateMotionArgs } from './scene-list';
@@ -21,6 +22,7 @@ import {
   tabsForScope,
 } from './scene-script-prompts';
 import { FailureSummaryBanner } from '@/sequences/ui/failure-summary-banner';
+import { HistoryColumn, HistorySkeleton } from '@/sequences/ui/history-page';
 import { SequenceHeaderPortal } from '@/sequences/ui/sequence-header-slot';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import {
@@ -32,15 +34,13 @@ import {
   generateMusicFn,
   getSequencesFn,
 } from '@/sequences/sequences.fn';
+import { firstStageWithWork } from '@/sequences/generation-plan';
 import {
-  artifactsFromSequenceState,
-  continueStageFromState,
-  flagsFromStopAt,
-  referenceSheetProgress,
-  type ContinueStage,
-  type GenerationStage,
-} from '@/sequences/pipeline';
-import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
+  generationPlanKeys,
+  refetchAfterRefusedContinue,
+  useGenerationPlan,
+} from '@/sequences/ui/use-generation-plan';
+import type { ContinueFlags } from '@/sequences/ui/use-sequences';
 import { getDivergentVariantPromptDiffFn } from '@/shots/prompt-variants.fn';
 import { smartRetryFn } from '@/sequences/smart-retry.fn';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
@@ -48,20 +48,18 @@ import { notifyInsufficientCredits } from '@/billing/ui/notify-insufficient-cred
 import { useSceneSelection } from './use-scene-selection';
 import { segmentKeys, useSequenceSegments } from './use-segments';
 import { useScenesBySequence, type SceneWithScript } from './use-scenes';
-import {
-  shotIsStale,
-  useSceneShotStaleness,
-  useSequenceShotStaleness,
-} from './use-shot-staleness';
+import { shotIsStale, useSequenceShotStaleness } from './use-shot-staleness';
 import { errorMessage, isInsufficientCreditsError } from '@/platform/errors';
 import { adjacentShotId } from './shot-walk';
 import {
   sequenceKeys,
   useSequence,
-  useSetSequenceVideoModel,
+  useSetSequenceMusic,
+  useSetSequenceModels,
 } from '@/sequences/ui/use-sequences';
 import { sumShotSeconds } from './scene-group';
 import {
+  EDITOR_FALLBACK_POLL_MS,
   shotKeys,
   useDiscardVariant,
   useDivergentVariants,
@@ -109,6 +107,8 @@ import type { GenerationPhaseConfig } from '@/sequences/ui/generation-stream.red
 import { useGenerationStream } from '@/sequences/ui/use-generation-stream';
 import { useStaleDetected } from './use-stale-detected';
 import { cn } from '@/ui/utils';
+import { useIsMobile } from '@/ui/use-mobile';
+import { Drawer, DrawerContent, DrawerTitle } from '@/ui/shadcn/drawer';
 import { usePostHog } from '@posthog/react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
@@ -119,6 +119,7 @@ import {
   estimateTotalSeconds,
 } from '@/sequences/time-estimate';
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -231,6 +232,11 @@ function buildSceneModelStatuses<V extends SceneModelVariant>(
 type ScenesViewProps = {
   sequenceId: string;
   search?: ScenesSearch;
+  /**
+   * A character, location or element opened from the inspector. It takes the
+   * place of the scene list and the canvas; the inspector stays where it is.
+   */
+  detail?: React.ReactNode;
 };
 
 const CompareWithPromptDiff: React.FC<{
@@ -314,9 +320,12 @@ const RAIL_COLLAPSED_KEY = 'openstory:scenes-rail-collapsed';
 export const ScenesView: React.FC<ScenesViewProps> = ({
   sequenceId,
   search = {},
+  detail = null,
 }) => {
+  const hasDetail = detail !== null;
   const queryClient = useQueryClient();
   const posthog = usePostHog();
+  const openRuns = useSequenceRuns(sequenceId);
 
   const {
     selection,
@@ -331,6 +340,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     setView,
   } = useSceneSelection({ search, sequenceId });
   const [autoPlaySequence, setAutoPlaySequence] = useState(false);
+  // Phone only: the bottom bar's cog opens the inspector as a drawer.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const isMobile = useIsMobile();
   const handlePlaySequence = useCallback(() => {
     handleClearSelection();
     setView('canvas');
@@ -382,7 +394,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         shotKeys.list(sequenceId)
       );
       return cachedShots?.some((f) => f.videoStatus === 'generating')
-        ? 2000
+        ? EDITOR_FALLBACK_POLL_MS
         : false;
     },
   });
@@ -461,28 +473,26 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     sequence?.videoModel,
     DEFAULT_VIDEO_MODEL
   );
-  const { mutate: persistVideoModel } = useSetSequenceVideoModel(sequenceId);
+  const { mutate: persistModels, isPending: modelsSaving } =
+    useSetSequenceModels(sequenceId);
+  const { mutate: persistIncludeMusic } = useSetSequenceMusic(sequenceId);
   const persistSequenceVideoModel = useCallback(
     (model: ImageToVideoModel) => {
       if (model === sequenceVideoModel) return;
-      persistVideoModel(model);
+      persistModels({ videoModel: model });
     },
-    [sequenceVideoModel, persistVideoModel]
+    [sequenceVideoModel, persistModels]
   );
   const styleName = style?.name ?? undefined;
   // Phase config from DB — set in stone when the workflow was triggered
   const phaseConfig = useMemo<GenerationPhaseConfig>(
     () => ({
       stopAt: sequence?.generationStopAt ?? undefined,
-      autoGenerateMotion: sequence?.autoGenerateMotion ?? false,
-      autoGenerateMusic: sequence?.autoGenerateMusic ?? false,
       referenceOnly: !(sequence?.generateStartFrames ?? false),
       generateVoices: sequence?.generateVoices ?? false,
     }),
     [
       sequence?.generationStopAt,
-      sequence?.autoGenerateMotion,
-      sequence?.autoGenerateMusic,
       sequence?.generateStartFrames,
       sequence?.generateVoices,
     ]
@@ -510,7 +520,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // Otherwise realtime events keep the cache fresh via updateQueryCacheFromEvent.
   const { data: shots, error: shotsError } = useShotsBySequence(
     sequenceId,
-    shouldPoll ? { refetchInterval: 2000 } : undefined
+    shouldPoll ? { refetchInterval: EDITOR_FALLBACK_POLL_MS } : undefined
   );
 
   const handleWalkShot = useCallback(
@@ -548,6 +558,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || e.repeat) return;
+      // The scene list is not on screen: Escape must not move a selection
+      // nobody can see, and it would close the detail on the way.
+      if (hasDetail) return;
 
       const target = e.target;
       if (target instanceof HTMLElement) {
@@ -605,7 +618,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     };
     window.addEventListener('keydown', onKeyDown, true);
     return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [handleAscendSelection, shots]);
+  }, [handleAscendSelection, shots, hasDetail]);
 
   // Fetch image variants for this sequence (frame_variants kind:'model', #989)
   const { data: imageVariants } = useSequenceImageVariants(sequenceId);
@@ -623,7 +636,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
   const { data: segments, error: segmentsError } = useSequenceSegments(
     sequenceId,
-    anyVideoGenerating ? { refetchInterval: 2000 } : undefined
+    anyVideoGenerating
+      ? { refetchInterval: EDITOR_FALLBACK_POLL_MS }
+      : undefined
   );
 
   const videoVariantsByShot = useMemo(() => {
@@ -657,7 +672,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // when realtime is down.
   const { data: divergentVariants } = useDivergentVariants(
     sequenceId,
-    shouldPoll ? { refetchInterval: 2000 } : undefined
+    shouldPoll ? { refetchInterval: EDITOR_FALLBACK_POLL_MS } : undefined
   );
   useStaleDetected(sequenceId);
   const promoteVariant = usePromoteVariantToPrimary();
@@ -818,13 +833,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   const scriptScene =
     selectedScenes.length === 1 ? selectedScenes[0] : undefined;
 
-  // Scene batch feeds the in-focus summary; sequence batch feeds the left
-  // rail so unselected shots (including other scenes) still get amber dots.
-  const { data: sceneStaleness, isError: sceneStalenessFailed } =
-    useSceneShotStaleness({
-      sequenceId,
-      sceneId: scriptScene?.id,
-    });
+  // One sequence batch. Scene scope filters it; a second server fn repeated
+  // the same hash work for the in-focus scene (#1795).
   const { data: sequenceStaleness, isError: sequenceStalenessFailed } =
     useSequenceShotStaleness({ sequenceId });
   const scriptSceneShots = useMemo(
@@ -834,24 +844,29 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         : undefined,
     [scriptScene, shots]
   );
+  const scopeShots = scope === 'sequence' ? shots : scriptSceneShots;
   const scopeStaleness =
-    scope === 'sequence' ? sequenceStaleness : sceneStaleness;
+    scope === 'sequence'
+      ? sequenceStaleness
+      : scopeShots && sequenceStaleness
+        ? Object.fromEntries(
+            scopeShots.flatMap((shot) => {
+              const entry = sequenceStaleness[shot.id];
+              return entry ? [[shot.id, entry] as const] : [];
+            })
+          )
+        : undefined;
   // A failed staleness check must not render as "everything is up to date":
   // with no data every downstream consumer draws a confidently clean UI (no
   // dots, no chips, no summary) off the back of a request that errored.
-  const scopeStalenessFailed =
-    scope === 'sequence' ? sequenceStalenessFailed : sceneStalenessFailed;
-  const scopeShots = scope === 'sequence' ? shots : scriptSceneShots;
+  const scopeStalenessFailed = sequenceStalenessFailed;
   const staleShotIds = useMemo(() => {
     const set = new Set<string>();
-    // Sequence-wide first so every rail thumbnail can show a dot; the
-    // in-focus scene batch overwrites the same keys when it arrives.
-    const merged = { ...sequenceStaleness, ...sceneStaleness };
-    for (const [shotId, staleness] of Object.entries(merged)) {
+    for (const [shotId, staleness] of Object.entries(sequenceStaleness ?? {})) {
       if (shotIsStale(staleness)) set.add(shotId);
     }
     return set;
-  }, [sequenceStaleness, sceneStaleness]);
+  }, [sequenceStaleness]);
 
   // Model identity lives on the version that produced the asset (#1066), so the
   // tabs target whatever the selected shot's selected image/video version was
@@ -1173,10 +1188,7 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     if (!shots) return;
 
     for (const shot of shots) {
-      if (
-        regeneratingImages.has(shot.id) &&
-        isTerminalStatus(shot.frame.imageStatus)
-      )
+      if (regeneratingImages.has(shot.id) && isTerminalStatus(shot.imageStatus))
         handleRegenerateEnd(shot.id, 'image');
       if (regeneratingMotion.has(shot.id) && isTerminalStatus(shot.videoStatus))
         handleRegenerateEnd(shot.id, 'motion');
@@ -1375,51 +1387,17 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   );
 
   const musicPromptsReady = !!(sequence?.musicPrompt && sequence.musicTags);
-  const { data: sequenceCharacters } = useSequenceCharacters(sequenceId);
-  const referenceProgress = useMemo(
-    () =>
-      sequenceCharacters
-        ? referenceSheetProgress(sequenceCharacters)
-        : undefined,
-    [sequenceCharacters]
-  );
-
+  // The generation plan is the footer's only opinion (#1817): the first stop
+  // with missing or stale work picks the footer. Null while a run holds the
+  // sequence — its units read running.
+  const { data: plan } = useGenerationPlan(sequenceId);
   const nextStage = useMemo(
-    () =>
-      continueStageFromState({
-        isProcessing,
-        artifacts: artifactsFromSequenceState({
-          sceneCount: scenes?.length ?? 0,
-          shots: shots ?? [],
-          musicStatus: sequence?.musicStatus,
-          musicUrl: sequence?.musicUrl,
-          pipelineStage: sequence?.pipelineStage,
-          referenceOnly: !generateStartFrames,
-          generateVoices: sequence?.generateVoices,
-          characters: sequenceCharacters,
-        }),
-      }),
-    [
-      isProcessing,
-      scenes?.length,
-      shots,
-      sequence?.musicStatus,
-      sequence?.musicUrl,
-      sequence?.pipelineStage,
-      sequence?.generateVoices,
-      generateStartFrames,
-      sequenceCharacters,
-    ]
+    () => (isProcessing || !plan ? null : firstStageWithWork(plan)),
+    [isProcessing, plan]
   );
 
   const handleContinueGeneration = useCallback(
-    async (args: {
-      startFrom: ContinueStage;
-      stopAt: GenerationStage;
-      generateStartFrames: boolean;
-      generateVoices: boolean;
-      draftMotion: boolean;
-    }) => {
+    async (args: ContinueFlags) => {
       // Optimistic status flip, as the motion batch does: the chip and the
       // footer key off `sequence.status`, and the server fn reserves credits
       // and triggers the workflow before it returns.
@@ -1429,15 +1407,10 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       // processing write and hide the chip for a frame (#1641).
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Sequence>(key);
-      const { autoGenerateMotion, autoGenerateMusic } = flagsFromStopAt(
-        args.stopAt
-      );
       // Reset the stream before the status flip so the chip's first paint is
       // a new run, not the leftover COMPLETE that would exit it (#1641).
       resetGenerationStream({
         stopAt: args.stopAt,
-        autoGenerateMotion,
-        autoGenerateMusic,
         referenceOnly: !args.generateStartFrames,
         generateVoices: args.generateVoices,
       });
@@ -1450,8 +1423,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
               status: 'processing',
               updatedAt: new Date(),
               generationStopAt: args.stopAt,
-              autoGenerateMotion,
-              autoGenerateMusic,
               generateStartFrames: args.generateStartFrames,
               generateVoices: args.generateVoices,
               draftMotion: args.draftMotion,
@@ -1462,7 +1433,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         await continueGenerationFn({
           data: {
             sequenceId,
-            startFrom: args.startFrom,
             stopAt: args.stopAt,
             leftoverGrokShotIds: [...leftoverGrokShotIds],
             generateStartFrames: args.generateStartFrames,
@@ -1474,13 +1444,19 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
         // Continue reserves credits like any other run, so it hits the same
         // toast as batch motion — not a generic error.
         queryClient.setQueryData<Sequence>(key, previous);
-        if (!isInsufficientCreditsError(error)) throw error;
+        if (!isInsufficientCreditsError(error)) {
+          refetchAfterRefusedContinue(queryClient, sequenceId);
+          throw error;
+        }
         notifyInsufficientCredits();
         void queryClient.invalidateQueries({ queryKey: BILLING_BALANCE_KEY });
         return;
       }
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
     },
     [sequenceId, leftoverGrokShotIds, queryClient, resetGenerationStream]
@@ -1569,30 +1545,32 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   remainingRef.current = remainingSeconds;
   const etaMinutes = Math.max(1, Math.round(remainingSeconds / 60));
 
-  // Progress rides in the view-toggle row (#1427) — no layout shift, and it
+  // Progress rides in the app header (#1427) — no layout shift, and it
   // never sits on top of anything you might want to click.
-  const progressChip = isGenerationActive ? (
-    <GenerationProgressBanner
-      generationState={generationState}
-      isProcessing={isProcessing}
-      startedAt={sequence.updatedAt}
-      script={sequence.script ?? undefined}
-      remainingSeconds={remainingSeconds}
-      analysisModel={sequence.analysisModel}
-      imageModel={sequence.imageModel}
-      videoModel={sequence.videoModel}
-      musicModel={sequence.musicModel}
-      willEmail={willEmail}
-    />
-  ) : motionBannerState !== null && sequence && shots ? (
-    <MotionProgressBanner
-      shots={shots}
-      sequence={sequence}
-      includeMusic={motionBannerState.includeMusic}
-      startedAt={motionBannerState.startedAt}
-      onComplete={resetGenerationStream}
-    />
-  ) : null;
+  const progressChip =
+    isGenerationActive || openRuns.length > 0 ? (
+      <GenerationProgressBanner
+        generationState={generationState}
+        isProcessing={isProcessing}
+        startedAt={sequence?.updatedAt}
+        script={sequence?.script ?? undefined}
+        remainingSeconds={remainingSeconds}
+        analysisModel={sequence?.analysisModel}
+        imageModel={sequence?.imageModel}
+        videoModel={sequence?.videoModel}
+        musicModel={sequence?.musicModel}
+        willEmail={willEmail}
+        runs={openRuns}
+      />
+    ) : motionBannerState !== null && sequence && shots ? (
+      <MotionProgressBanner
+        shots={shots}
+        sequence={sequence}
+        includeMusic={motionBannerState.includeMusic}
+        startedAt={motionBannerState.startedAt}
+        onComplete={resetGenerationStream}
+      />
+    ) : null;
 
   // One prop bag for the desktop sidebar and the phone sheet — same list.
   const sceneListProps: SceneListProps = {
@@ -1606,6 +1584,8 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     aspectRatio,
     resolution: sequence?.resolution,
     draftMotion: sequence?.draftMotion,
+    includeMusic: sequence?.includeMusic ?? true,
+    onIncludeMusicChange: persistIncludeMusic,
     onRenderDraftsAtQuality: handleRenderDraftsAtQuality,
     onSelectScene: handleSelectScene,
     onSelectShot: handleSelectShot,
@@ -1626,6 +1606,9 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     initialVideoModel: sequenceVideoModel,
     onVideoModelChange: handleBatchVideoModelChange,
     initialImageModel: resolvedSequenceImageModel,
+    analysisModel: sequence?.analysisModel,
+    onModelsChange: persistModels,
+    modelsSaving,
     styleCategory,
     generateStartFrames,
     generateVoices: sequence?.generateVoices,
@@ -1635,12 +1618,105 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     isAnalyzing: isProcessing,
     leftoverGrokShotIds,
     onLeftoverGrokChange: handleLeftoverGrokChange,
-    referenceProgress,
   };
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  // One inspector, two homes: the side column, or on a phone the drawer the
+  // bottom bar's cog opens. Never both, so its state and ids exist once.
+  // History stays on this column: the control opens the log here.
+  const modelBar = (
+    <SceneModelBar
+      selection={selection}
+      scenes={scenes}
+      shots={shots}
+      sequenceId={sequenceId}
+      title={sequence?.title}
+      resolvedSequenceImageModel={resolvedSequenceImageModel}
+      resolvedSequenceVideoModel={resolvedSequenceVideoModel}
+      styleId={sequence?.styleId ?? undefined}
+      stylePending={sequence?.styleConfig == null}
+      aspectRatio={aspectRatio}
+      resolution={sequence?.resolution}
+      targetDurationSeconds={sequence?.targetDurationSeconds}
+      analysisModel={sequence?.analysisModel ?? undefined}
+      historyOpen={historyOpen}
+      onHistoryToggle={() => setHistoryOpen((open) => !open)}
+    />
+  );
+  const inspector = (
+    <div className="flex h-full min-h-0 flex-col">
+      {historyOpen ? (
+        <>
+          {modelBar}
+          <Suspense fallback={<HistorySkeleton />}>
+            <HistoryColumn
+              sequenceId={sequenceId}
+              scope={
+                selection.shotId
+                  ? { shotId: selection.shotId }
+                  : selection.sceneIds.length > 0
+                    ? { sceneIds: selection.sceneIds }
+                    : undefined
+              }
+            />
+          </Suspense>
+        </>
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
+          {modelBar}
+          <div className="@container/inspector px-4 pb-4">
+            <SceneScriptPrompts
+              shot={selectedShot}
+              sequenceId={sequenceId}
+              resolution={sequence?.resolution}
+              sequenceGeneratesStartFrames={generateStartFrames}
+              sequenceDraftMotion={sequence?.draftMotion ?? false}
+              selectedTab={effectiveTab}
+              visibleTabs={visibleTabs}
+              onTabChange={setFacet}
+              regeneratingImages={regeneratingImages}
+              regeneratingMotion={regeneratingMotion}
+              onRegenerateStart={handleRegenerateStart}
+              aspectRatio={aspectRatio}
+              variantForSelectedModel={variantForSelectedModel}
+              videoVariantForSelectedModel={videoVariantForSelectedModel}
+              segment={selectedSegment}
+              segmentSpanLabel={selectedSegmentSpanLabel}
+              resolvedImageModel={resolvedImageModel}
+              leftoverGrokShotIds={leftoverGrokShotIds}
+              resolvedVideoModel={resolvedVideoModel}
+              imageModelStatuses={sceneImageModelStatuses}
+              videoModelStatuses={sceneVideoModelStatuses}
+              onImageModelChange={handleImageModelChange}
+              onVideoModelChange={handleVideoModelChange}
+              styleName={styleName}
+              styleCategory={styleCategory}
+              shotDivergentVariants={divergentVariants?.filter(
+                (v) => v.shotId === curSelectedShotId
+              )}
+              onCompareDivergent={(variant) => setCompareVariant(variant)}
+              facetShotIds={facetShotIds}
+              musicEditable={scope === 'sequence'}
+              sceneScope={scope === 'scenes'}
+              scene={scriptScene}
+              scopeShots={scopeShots}
+              filmSeconds={shots ? sumShotSeconds(shots) : undefined}
+              scopeStaleness={scopeStaleness}
+              scopeStalenessFailed={scopeStalenessFailed}
+              onSelectShot={handleSelectShot}
+              scenes={scenes}
+              onSelectScene={handleFocusScene}
+            />
+          </div>
+        </ScrollArea>
+      )}
+    </div>
+  );
 
   return (
     <div className="@container/scenes flex h-full flex-col">
-      {/* Progress rides in the sequence title row (#1427) — no layout shift,
+      {/* Progress rides in the app header (#1427) — no layout shift,
           and it never sits on top of anything you might want to click. */}
       <SequenceHeaderPortal>{progressChip}</SequenceHeaderPortal>
 
@@ -1656,7 +1732,12 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
       )}
 
       <div className="flex flex-1 min-h-0">
-        <div className="hidden min-h-0 md:block shrink-0 pl-4 py-4">
+        <div
+          className={cn(
+            'hidden min-h-0 shrink-0 pl-4 py-4',
+            !hasDetail && 'md:block'
+          )}
+        >
           {/* Both stay mounted — the list's footer drafts survive a fold. */}
           <SceneList
             {...sceneListProps}
@@ -1681,8 +1762,24 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
           />
         </div>
 
-        <div className="md:hidden">
-          <MobileSceneDrawer {...sceneListProps} />
+        <div className={cn('md:hidden', hasDetail && 'hidden')}>
+          <MobileSceneDrawer
+            {...sceneListProps}
+            settingsOpen={settingsOpen}
+            onSettingsOpenChange={setSettingsOpen}
+          />
+          {isMobile && (
+            <Drawer
+              showSwipeHandle
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+            >
+              <DrawerContent className="pb-[env(safe-area-inset-bottom)] [--drawer-content-height:85dvh] data-[swipe-axis=y]:[--drawer-content-max-height:85dvh]">
+                <DrawerTitle className="sr-only">Settings</DrawerTitle>
+                {inspector}
+              </DrawerContent>
+            </Drawer>
+          )}
         </div>
 
         {/* Queried on the width left AFTER the scenes column, so folding the
@@ -1691,158 +1788,128 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
             preview (#1713). */}
         <div className="@container/workspace flex min-h-0 min-w-0 flex-1">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto @3xl/workspace:flex-row @3xl/workspace:overflow-visible">
-            <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
-              <CanvasViewToggle
-                view={effectiveView}
-                onViewChange={setView}
-                canvasDisabled={!canvasReady}
-                trailing={
-                  effectiveView === 'script' ? (
-                    <CopyScriptButton sequenceId={sequenceId} />
-                  ) : (
-                    <SequenceExportActions
-                      sequenceExport={sequenceExport}
-                      draftLabel={theatreDraftLabel(shots ?? [])}
-                    />
-                  )
-                }
-              />
-              {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
+            {/* Unmounted, not hidden, under a detail: a hidden player would
+                keep playing its sound. */}
+            {hasDetail ? (
+              <div className="h-full min-w-0 shrink-0 @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+                {detail}
+              </div>
+            ) : (
+              // On a phone the canvas has the screen; the inspector is a
+              // drawer. The padding clears the fixed bottom bar.
+              <div className="flex h-[55dvh] min-w-0 shrink-0 flex-col max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:pb-[calc(4rem+env(safe-area-inset-bottom))] @3xl/workspace:h-auto @3xl/workspace:min-h-0 @3xl/workspace:flex-1">
+                <CanvasViewToggle
+                  view={effectiveView}
+                  onViewChange={setView}
+                  canvasDisabled={!canvasReady}
+                  trailing={
+                    <>
+                      <CopyScriptButton sequenceId={sequenceId} />
+                      <SequenceDownloadMenu
+                        sequenceExport={sequenceExport}
+                        draftLabel={theatreDraftLabel(shots ?? [])}
+                        variant="toolbar"
+                        publish={
+                          sequence
+                            ? {
+                                teamId: sequence.teamId,
+                                sequenceId: sequence.id,
+                                defaultTitle: sequence.title,
+                              }
+                            : undefined
+                        }
+                      />
+                    </>
+                  }
+                />
+                {/* flex-col so SceneCanvas's flex-1 chain still stretches — in a
                 block parent the CanvasMediaStage size container computes 0
                 height and the whole canvas collapses. */}
-              <div
-                className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
-                {...canvasSwipe}
-              >
-                {effectiveView === 'script' ? (
-                  <SceneScriptDocument
-                    sequenceId={sequenceId}
-                    scenes={scenes}
-                    selectedSceneIds={selectedScenes.map((s) => s.id)}
-                    onSelectScene={handleFocusScene}
-                    splittingScript={isProcessing ? sequence.script : undefined}
-                  />
-                ) : (
-                  <SceneCanvas
-                    sequenceExport={sequenceExport}
-                    autoPlay={autoPlaySequence}
-                    onAutoPlayConsumed={handleAutoPlayConsumed}
-                    onPlayingShot={setPlayheadShotId}
-                    selection={selection}
-                    shots={shots}
-                    scenes={scenes}
-                    loadError={shotsError}
-                    sequence={sequence}
-                    aspectRatio={aspectRatio}
-                    selectedTab={effectiveTab}
-                    overrideImageUrl={previewVariantUrl}
-                    overrideVideoUrl={previewVariantVideoUrl}
-                    badgeMessage={playerBadgeMessage}
-                    staleLabel={
-                      !isGenerationActive &&
-                      effectiveTab === 'image-prompt' &&
-                      curSelectedShotId &&
-                      !regeneratingImages.has(curSelectedShotId)
-                        ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                          'stale'
-                          ? 'Out of date'
-                          : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
-                              'updating'
-                            ? 'Updating…'
-                            : null
-                        : null
-                    }
-                    progressMessage={
-                      isGenerationActive ? (
-                        <RenderWaitCopy
-                          etaMinutes={etaMinutes}
-                          willEmail={willEmail}
-                        />
-                      ) : (
-                        generationState.phases.find(
-                          (p) => p.status === 'active'
-                        )?.phaseName
-                      )
-                    }
-                    retry={selectedShotRetry}
-                    onSelectShot={handleSelectShot}
-                    sceneImageModel={resolvedImageModel}
-                    regeneratingSceneVariants={regeneratingSceneVariants}
-                    onGenerateSceneVariantsStart={(id) =>
-                      handleRegenerateStart(id, 'scene-variants')
-                    }
-                    firstRunActive={isGenerationActive}
-                  />
-                )}
+                <div
+                  className="relative flex min-h-0 flex-1 flex-col touch-pan-y overflow-hidden"
+                  {...canvasSwipe}
+                >
+                  {effectiveView === 'script' ? (
+                    <SceneScriptDocument
+                      sequenceId={sequenceId}
+                      scenes={scenes}
+                      selectedSceneIds={selectedScenes.map((s) => s.id)}
+                      onSelectScene={handleFocusScene}
+                      splittingScript={
+                        isProcessing ? sequence.script : undefined
+                      }
+                    />
+                  ) : (
+                    <SceneCanvas
+                      sequenceExport={sequenceExport}
+                      autoPlay={autoPlaySequence}
+                      onAutoPlayConsumed={handleAutoPlayConsumed}
+                      onPlayingShot={setPlayheadShotId}
+                      playingShotId={playingShotId}
+                      selection={selection}
+                      shots={shots}
+                      scenes={scenes}
+                      loadError={shotsError}
+                      sequence={sequence}
+                      aspectRatio={aspectRatio}
+                      selectedTab={effectiveTab}
+                      overrideImageUrl={previewVariantUrl}
+                      overrideVideoUrl={previewVariantVideoUrl}
+                      badgeMessage={playerBadgeMessage}
+                      staleLabel={
+                        !isGenerationActive &&
+                        effectiveTab === 'image-prompt' &&
+                        curSelectedShotId &&
+                        !regeneratingImages.has(curSelectedShotId)
+                          ? scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                            'stale'
+                            ? 'Out of date'
+                            : scopeStaleness?.[curSelectedShotId]?.thumbnail ===
+                                'updating'
+                              ? 'Updating…'
+                              : null
+                          : null
+                      }
+                      progressMessage={
+                        isGenerationActive ? (
+                          <RenderWaitCopy
+                            etaMinutes={etaMinutes}
+                            willEmail={willEmail}
+                          />
+                        ) : (
+                          generationState.phases.find(
+                            (p) => p.status === 'active'
+                          )?.phaseName
+                        )
+                      }
+                      retry={selectedShotRetry}
+                      onSelectShot={handleSelectShot}
+                      onSelectScene={handleFocusScene}
+                      sceneImageModel={resolvedImageModel}
+                      regeneratingSceneVariants={regeneratingSceneVariants}
+                      onGenerateSceneVariantsStart={(id) =>
+                        handleRegenerateStart(id, 'scene-variants')
+                      }
+                      firstRunActive={isGenerationActive}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="relative z-10 min-w-0 shrink-0 border-t bg-background pb-20 md:pb-0 @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4">
+            {/* Too narrow for both: the detail has the screen to itself, as
+                it did as a page of its own. */}
+            <div
+              className={cn(
+                'relative z-10 min-w-0 shrink-0 border-t bg-background max-md:hidden @3xl/workspace:min-h-0 @3xl/workspace:border-0 @3xl/workspace:bg-transparent @3xl/workspace:py-4 @3xl/workspace:pr-4',
+                hasDetail && 'hidden @3xl/workspace:block'
+              )}
+            >
               <div
                 id="scene-inspector"
                 className="@3xl/workspace:flex @3xl/workspace:h-full @3xl/workspace:min-h-0 @3xl/workspace:w-[clamp(280px,38cqw,420px)] @3xl/workspace:flex-col @3xl/workspace:overflow-hidden @3xl/workspace:rounded-lg @3xl/workspace:border @3xl/workspace:bg-background"
               >
-                <ScrollArea className="h-full min-h-0">
-                  <SceneModelBar
-                    selection={selection}
-                    scenes={scenes}
-                    shots={shots}
-                    sequenceId={sequenceId}
-                    resolvedSequenceImageModel={resolvedSequenceImageModel}
-                    resolvedSequenceVideoModel={resolvedSequenceVideoModel}
-                    styleId={sequence?.styleId ?? undefined}
-                    stylePending={sequence?.styleConfig == null}
-                    aspectRatio={aspectRatio}
-                    resolution={sequence?.resolution}
-                    targetDurationSeconds={sequence?.targetDurationSeconds}
-                    analysisModel={sequence?.analysisModel ?? undefined}
-                  />
-                  <div className="@container/inspector px-4 pb-4">
-                    <SceneScriptPrompts
-                      shot={selectedShot}
-                      sequenceId={sequenceId}
-                      resolution={sequence?.resolution}
-                      sequenceGeneratesStartFrames={generateStartFrames}
-                      sequenceDraftMotion={sequence?.draftMotion ?? false}
-                      selectedTab={effectiveTab}
-                      visibleTabs={visibleTabs}
-                      onTabChange={setFacet}
-                      regeneratingImages={regeneratingImages}
-                      regeneratingMotion={regeneratingMotion}
-                      onRegenerateStart={handleRegenerateStart}
-                      aspectRatio={aspectRatio}
-                      variantForSelectedModel={variantForSelectedModel}
-                      videoVariantForSelectedModel={
-                        videoVariantForSelectedModel
-                      }
-                      segment={selectedSegment}
-                      segmentSpanLabel={selectedSegmentSpanLabel}
-                      resolvedImageModel={resolvedImageModel}
-                      leftoverGrokShotIds={leftoverGrokShotIds}
-                      resolvedVideoModel={resolvedVideoModel}
-                      imageModelStatuses={sceneImageModelStatuses}
-                      videoModelStatuses={sceneVideoModelStatuses}
-                      onImageModelChange={handleImageModelChange}
-                      onVideoModelChange={handleVideoModelChange}
-                      styleName={styleName}
-                      styleCategory={styleCategory}
-                      shotDivergentVariants={divergentVariants?.filter(
-                        (v) => v.shotId === curSelectedShotId
-                      )}
-                      onCompareDivergent={(variant) =>
-                        setCompareVariant(variant)
-                      }
-                      facetShotIds={facetShotIds}
-                      musicEditable={scope === 'sequence'}
-                      scene={scriptScene}
-                      scopeShots={scopeShots}
-                      filmSeconds={shots ? sumShotSeconds(shots) : undefined}
-                      scopeStaleness={scopeStaleness}
-                      scopeStalenessFailed={scopeStalenessFailed}
-                      onSelectShot={handleSelectShot}
-                    />
-                  </div>
-                </ScrollArea>
+                {!isMobile && inspector}
               </div>
             </div>
           </div>

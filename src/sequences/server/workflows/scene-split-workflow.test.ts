@@ -26,6 +26,7 @@ import type {
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import type { SceneSplitWorkflowInput } from '@/platform/server/workflow/types';
+import { asStub } from '@/test/as-stub';
 
 const triggerWorkflow =
   vi.fn<(path: string, body: unknown, options?: unknown) => Promise<string>>();
@@ -205,10 +206,11 @@ const INPUT: SceneSplitWorkflowInput = {
   teamId: 't1',
   sequenceId: 'seq_1',
   script: SCRIPT,
-  modelId: 'anthropic/claude-sonnet-5',
+  modelId: 'anthropic/claude-sonnet-5.5',
   promptName: 'scene-splitting',
   aspectRatio: '16:9',
   elements: [],
+  cast: [],
 };
 
 const updateSplitContent = vi.fn<
@@ -300,8 +302,8 @@ function makeScopedDb(
     },
     sequenceElements: { updateFirstMention: () => Promise.resolve() },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  return scopedDb as unknown as WorkflowScopedDb;
+  // stub covering only the scoped-db surface runImpl touches
+  return asStub<WorkflowScopedDb>(scopedDb);
 }
 
 function makeEvent(
@@ -327,8 +329,8 @@ function makeStep(): WorkflowStep {
       maybeFn?: () => Promise<unknown>
     ) => (typeof configOrFn === 'function' ? configOrFn() : maybeFn?.())
   );
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return { do: lastDoMock } as unknown as WorkflowStep;
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({ do: lastDoMock });
 }
 
 /**
@@ -348,10 +350,10 @@ class Probe extends SceneSplitWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
@@ -538,6 +540,73 @@ describe('SceneSplitWorkflow stream step config', () => {
     }
   );
 
+  test('hands the attached cast to the bibles prompt as a <CAST> block, and nothing with no cast (#2050)', async () => {
+    const { getChatPrompt } =
+      await import('@/platform/server/ai/prompts-index');
+    vi.mocked(getChatPrompt).mockClear();
+    await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
+    expect(getChatPrompt).toHaveBeenCalledWith(
+      'phase/scene-bibles-chat',
+      expect.objectContaining({ cast: '' })
+    );
+
+    vi.mocked(getChatPrompt).mockClear();
+    await makeWorkflow().split(
+      makeEvent({
+        ...INPUT,
+        cast: [
+          {
+            id: 'row-ada',
+            shared: true,
+            entry: {
+              characterId: 'char_ada',
+              name: 'Ada',
+              age: '30s',
+              gender: 'woman',
+              ethnicity: '',
+              physicalDescription: 'tall',
+              standardClothing: 'coat',
+              looks: [
+                {
+                  lookId: 'l1',
+                  name: 'Default',
+                  clothing: 'coat',
+                  styling: '',
+                },
+              ],
+              personality: '',
+              movement: '',
+              voiceDescription: '',
+              voiceOnly: false,
+              isPerson: true,
+              rendering: 'Photoreal live action',
+              consistencyTag: 'ada',
+            },
+          },
+        ],
+      }),
+      makeStep(),
+      makeScopedDb()
+    );
+    expect(getChatPrompt).toHaveBeenCalledWith(
+      'phase/scene-bibles-chat',
+      expect.objectContaining({
+        cast: expect.stringContaining(
+          '- char_ada: Ada — 30s, woman, tall. Looks: "Default" (coat)'
+        ),
+      })
+    );
+  });
+
+  test('a payload queued before the cast snapshot fails at the top (#2050)', async () => {
+    const legacy = makeEvent({ ...INPUT });
+    const payload = asStub<Partial<SceneSplitWorkflowInput>>(legacy.payload);
+    delete payload.cast;
+    await expect(
+      makeWorkflow().split(legacy, makeStep(), makeScopedDb())
+    ).rejects.toThrow('Queued before character references shipped');
+  });
+
   test('times the stream step for a first pass plus one repair retry (#1218)', async () => {
     await makeWorkflow().split(makeEvent(), makeStep(), makeScopedDb());
 
@@ -575,11 +644,11 @@ describe('SceneSplitWorkflow stream step config', () => {
       key: 'or-platform-key',
     };
     const resolveLlmKey = vi.fn(async (model?: string) =>
-      model === 'x-ai/grok-4.6' ? grokKey : splitKey
+      model === 'x-ai/grok-4.7' ? grokKey : splitKey
     );
 
     await makeWorkflow().split(
-      makeEvent({ ...INPUT, modelId: 'x-ai/grok-4.6' }),
+      makeEvent({ ...INPUT, modelId: 'x-ai/grok-4.7' }),
       makeStep(),
       makeScopedDb(resolveLlmKey)
     );
@@ -594,7 +663,7 @@ describe('SceneSplitWorkflow stream step config', () => {
       .mock.calls.find(
         ([params]) => params.observationName === 'phase-1-scene-bibles'
       )?.[0];
-    expect(bibleCall?.model).toBe('x-ai/grok-4.6');
+    expect(bibleCall?.model).toBe('x-ai/grok-4.7');
     expect(bibleCall?.apiKey).toEqual(grokKey);
   });
 });
@@ -672,6 +741,7 @@ function shotSpec(shotNumber: number, action: string) {
     },
     action,
     cameraMovement: { move: 'static', pacing: 'slow' as const },
+    direction: '',
     soundCue: '',
     dialogue: [] as Array<{ character: string; line: string; tone: string }>,
     durationSeconds: 4,

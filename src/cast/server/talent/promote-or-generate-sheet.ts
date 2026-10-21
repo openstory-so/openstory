@@ -4,12 +4,13 @@
  * the talent has no convergent sheet yet.
  */
 
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { isTeamWritableTalent } from '@/cast/server/db/talent';
 import { getLogger } from '@/platform/logger';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
 import {
   analyzeTalentMediaForTeam,
   sheetMetadataFromAnalysis,
@@ -45,7 +46,7 @@ export async function maybePromoteOrGenerateSheet(
   const convergentSheets = talentRecord.sheets.filter((s) => !s.divergedAt);
 
   let uploadedSheetUrl: string | undefined;
-  let uploadedSheetMetadata: CharacterBibleEntry | undefined;
+  let uploadedSheetMetadata: TalentSheetMetadata | undefined;
   try {
     const analysis = await analyzeTalentMediaForTeam({
       scopedDb: params.scopedDb,
@@ -71,7 +72,7 @@ export async function maybePromoteOrGenerateSheet(
     return;
   }
 
-  const workflowInput: LibraryTalentSheetWorkflowInput = {
+  const workflowInputFields: SheetPayload<LibraryTalentSheetWorkflowInput> = {
     userId: params.userId,
     teamId: params.teamId,
     talentId: talentRecord.id,
@@ -82,10 +83,13 @@ export async function maybePromoteOrGenerateSheet(
     uploadedSheetUrl,
     uploadedSheetMetadata,
   };
-  workflowInput.snapshotInputHash =
-    await computeLibraryTalentSheetHashFromDto(workflowInput);
+  const workflowInput = {
+    ...workflowInputFields,
+    snapshotInputHash:
+      await computeLibraryTalentSheetHashFromDto(workflowInputFields),
+  };
 
-  await enqueueLibraryTalentSheet({
+  await enqueueLibraryTalentSheet(params.scopedDb, {
     talentId: talentRecord.id,
     workflowInput,
     activity: uploadedSheetUrl ? 'portrait' : 'sheet',

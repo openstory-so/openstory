@@ -22,6 +22,7 @@ import {
 } from '@/platform/server/db/schema/gift-tokens';
 import type { GiftToken } from '@/platform/server/db/schema/gift-tokens';
 import { sequences } from '@/platform/server/db/schema/sequences';
+import { selectSequencesWithCreatorFrom } from '@/sequences/server/db/sequences';
 import {
   generatedAssets,
   type GeneratedAsset,
@@ -208,14 +209,7 @@ export function createAdminMethods(db: Database) {
         )
       : undefined;
 
-    const rows = await db
-      .select({
-        sequence: sequences,
-        creatorName: user.name,
-        creatorEmail: user.email,
-      })
-      .from(sequences)
-      .leftJoin(user, eq(sequences.createdBy, user.id))
+    const rows = await selectSequencesWithCreatorFrom(db)
       .where(and(not(eq(sequences.status, 'archived')), searchClause))
       .orderBy(desc(sequences.createdAt))
       .limit(limit)

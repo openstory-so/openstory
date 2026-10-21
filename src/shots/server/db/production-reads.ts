@@ -7,7 +7,13 @@
 import { and, asc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '@/platform/server/db/client';
-import { scenes, shots, sequences } from '@/platform/server/db/schema';
+import {
+  sceneScriptVersions,
+  scenes,
+  shots,
+  sequences,
+} from '@/platform/server/db/schema';
+import { joinSelectedScript, sceneColumns } from './scenes';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import {
   decodeCursorPayload,
@@ -171,9 +177,10 @@ export function createProductionReadMethods(db: Database, teamId: string) {
   async function listScenes(input: PageOptions) {
     const cursor = decode(input, 'scenes');
     const rows = await db
-      .select({ scene: scenes })
+      .select({ scene: sceneColumns })
       .from(scenes)
       .innerJoin(sequences, eq(scenes.sequenceId, sequences.id))
+      .leftJoin(sceneScriptVersions, joinSelectedScript)
       .where(
         and(
           eq(sequences.teamId, teamId),

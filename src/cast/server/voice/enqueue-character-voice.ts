@@ -8,6 +8,7 @@ import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { newVoiceProvider } from '@/models/server/seed-speech-config';
 import type { CharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { recordTriggerFailure } from '@/sequences/server/db/sequence-events';
 import type { CharacterVoiceWorkflowInput } from '@/platform/server/workflow/types';
 import {
   DEFAULT_ANALYSIS_MODEL,
@@ -19,6 +20,8 @@ const VOICE_DESIGN_NEVER_STARTED = 'Voice design never started';
 export async function enqueueCharacterVoiceDesign(args: {
   scopedDb: ScopedDb;
   character: CharacterWithSheet;
+  /** The sequence the design was asked from; null from the Characters page. */
+  sequenceId: string | null;
   userId: string;
   analysisModel: string | null;
   /** Seed takes to record (#1765). */
@@ -30,11 +33,25 @@ export async function enqueueCharacterVoiceDesign(args: {
   alreadyInFlight: boolean;
   targetVersionId: string;
 }> {
-  const { scopedDb, character, userId, analysisModel, takes, trigger } = args;
+  const {
+    scopedDb,
+    character,
+    sequenceId,
+    userId,
+    analysisModel,
+    takes,
+    trigger,
+  } = args;
   const claim = await takeLiveVoiceClaimOrInsert(
     scopedDb,
     character.id,
-    userId
+    userId,
+    sequenceId
+      ? {
+          sequenceId,
+          summary: `Started a voice for ${character.name}`,
+        }
+      : null
   );
   if (claim.alreadyInFlight) {
     return {
@@ -48,7 +65,7 @@ export async function enqueueCharacterVoiceDesign(args: {
   const payload: CharacterVoiceWorkflowInput = {
     userId,
     teamId: scopedDb.teamId,
-    sequenceId: character.sequenceId,
+    sequenceId,
     characterDbId: character.id,
     characterBible: characterToBible(character),
     voiceDescription: character.voiceDescription ?? '',
@@ -69,6 +86,16 @@ export async function enqueueCharacterVoiceDesign(args: {
       'failed',
       error instanceof Error ? error.message : String(error)
     );
+    if (sequenceId) {
+      await recordTriggerFailure(scopedDb.sequenceEvents, {
+        sequenceId,
+        actorId: userId,
+        kind: 'run.failed',
+        targetType: 'sequence',
+        targetId: sequenceId,
+        summary: 'Voice design failed',
+      });
+    }
     throw error;
   }
   await scopedDb.characters.stampVoiceClaimWorkflowRunId(
@@ -90,7 +117,8 @@ export async function enqueueCharacterVoiceDesign(args: {
 async function takeLiveVoiceClaimOrInsert(
   scopedDb: ScopedDb,
   characterId: string,
-  userId: string
+  userId: string,
+  activity: { sequenceId: string; summary: string } | null
 ): Promise<{
   alreadyInFlight: boolean;
   version: { id: string; workflowRunId: string | null };
@@ -110,7 +138,8 @@ async function takeLiveVoiceClaimOrInsert(
   }
   let inserted = await scopedDb.characters.createPendingVoiceClaim(
     characterId,
-    userId
+    userId,
+    { activity }
   );
   if (inserted.created) {
     return { alreadyInFlight: false, version: inserted.version };
@@ -125,7 +154,8 @@ async function takeLiveVoiceClaimOrInsert(
   );
   inserted = await scopedDb.characters.createPendingVoiceClaim(
     characterId,
-    userId
+    userId,
+    { activity }
   );
   if (inserted.created) {
     return { alreadyInFlight: false, version: inserted.version };

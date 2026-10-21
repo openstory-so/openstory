@@ -8,9 +8,16 @@ import {
   CardHeader,
   CardTitle,
 } from '@/ui/shadcn/card';
+import {
+  giftRedeemMessage,
+  giftRedeemOffersTopUp,
+} from '@/billing/gift-redeem';
 import { redeemGiftTokenFn } from '@/billing/gift-tokens.fn';
+import { AddCreditsDialog } from '@/billing/ui/add-credits-dialog';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { BILLING_GATE_KEY } from '@/billing/ui/use-billing-gate';
+import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
+import { errorMessage } from '@/platform/errors';
 import { sessionQueryOptions } from '@/platform/ui/auth/session-query';
 import { usePostHog } from '@posthog/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,7 +28,7 @@ import {
   useNavigate,
 } from '@tanstack/react-router';
 import { Gift, Loader2 } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 const STORAGE_KEY = 'openstory:pending-gift-code';
@@ -113,10 +120,13 @@ function AutoRedeemView({ code }: GiftCodeViewProps) {
   const navigate = useNavigate();
   const posthog = usePostHog();
   const hasTriggered = useRef(false);
+  const inFlight = useRef(false);
 
-  const { mutate, isError, isPending, error } = useMutation({
+  const { mutate, isError, isPending, error, data } = useMutation({
     mutationFn: (input: { code: string }) => redeemGiftTokenFn({ data: input }),
     onSuccess: (result) => {
+      if (result.status === 'refused') return;
+
       void queryClient.invalidateQueries({
         queryKey: [...BILLING_BALANCE_KEY],
       });
@@ -141,19 +151,61 @@ function AutoRedeemView({ code }: GiftCodeViewProps) {
         void navigate({ to: '/sequences' });
       }
     },
+    onSettled: () => {
+      inFlight.current = false;
+    },
   });
 
-  // Fire once on mount with StrictMode double-mount protection via useRef.
-  useEffect(() => {
-    if (hasTriggered.current) return;
-    hasTriggered.current = true;
+  const redeem = useCallback(() => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     mutate({ code });
   }, [code, mutate]);
 
-  if (isError) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Failed to redeem code';
+  // Fire once on mount. The ref blocks StrictMode's second mount effect.
+  useEffect(() => {
+    if (hasTriggered.current) return;
+    hasTriggered.current = true;
+    redeem();
+  }, [redeem]);
 
+  if (data?.status === 'refused') {
+    const offersTopUp = giftRedeemOffersTopUp(data.reason);
+    return (
+      <>
+        <AddCreditsDialog />
+        <CenteredLayout>
+          <CardHeader>
+            <IconBadge variant="primary">
+              <Gift className="h-7 w-7 text-primary" />
+            </IconBadge>
+            <CardTitle className="text-2xl">
+              {giftRedeemMessage(data.reason)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <CodeDisplay code={code} />
+            {offersTopUp ? (
+              <Button
+                type="button"
+                onClick={() => openAddCreditsDialog('gift_code')}
+              >
+                Top up credits
+              </Button>
+            ) : (
+              <Button variant="ghost" asChild>
+                <Link to="/credits" search={{ tab: 'gift-codes' }}>
+                  Enter a different code
+                </Link>
+              </Button>
+            )}
+          </CardContent>
+        </CenteredLayout>
+      </>
+    );
+  }
+
+  if (isError) {
     return (
       <CenteredLayout>
         <CardHeader>
@@ -164,16 +216,12 @@ function AutoRedeemView({ code }: GiftCodeViewProps) {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <Alert variant="destructive">
-            <AlertDescription>{errorMessage}</AlertDescription>
+            <AlertDescription>
+              {errorMessage(error, 'Failed to redeem code')}
+            </AlertDescription>
           </Alert>
           <div className="flex flex-col gap-2">
-            <Button
-              onClick={() => {
-                hasTriggered.current = false;
-                mutate({ code });
-              }}
-              disabled={isPending}
-            >
+            <Button type="button" onClick={redeem} disabled={isPending}>
               Try again
             </Button>
             <Button variant="ghost" asChild>

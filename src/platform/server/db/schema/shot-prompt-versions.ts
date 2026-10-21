@@ -15,6 +15,7 @@
  * § prompt versioning and docs/architecture/scene-shot-frame-redesign.md.
  */
 
+import type { ShotDialogueSectionSource } from './shot-dialogue-sections';
 import type {
   MotionAudio,
   MotionDialogue,
@@ -29,9 +30,10 @@ import type {
  * Same type on two columns with different lifecycles:
  * - `shots.audioClips` — working set from References (rewritten when
  *   lines/voices change).
- * - `shot_prompt_versions.audioClips` — clips THIS render consumed,
- *   stamped at submit. Regenerating the working set must not rewrite
- *   an old take. Ids also ride `VideoManifestEntry.audioClipIds`.
+ * - `VideoManifestEntry.audioClipIds` — the clips a render consumed, on
+ *   the clip's own manifest, so regenerating the working set never
+ *   rewrites an old take. `shot_prompt_versions.audioClips` is dead: no
+ *   longer written or read (#1786), kept only to avoid a table rebuild.
  */
 export type MotionAudioClip = {
   id: string;
@@ -55,10 +57,27 @@ export type MotionAudioClip = {
    */
   spokenLines?: { index: number; text: string }[];
   /**
-   * The `dialogue_recordings` row this clip was cut from (#1657); the clip's
+   * The `dialogue_speeches` row this clip was cut from (#1657); the clip's
    * `id` is then its `shot_dialogue_sections.id`. Absent on a row from before
-   * recordings, and on a user-bound element clip.
+   * speeches, and on a user-bound element clip.
    */
+  speechId?: string;
+  /**
+   * The section's source: `mic` marks the user's own take (#1802). Absent on
+   * clips cut before it was stamped.
+   */
+  source?: ShotDialogueSectionSource;
+  /**
+   * This shot's lines the take check could not find (#1802), by line index,
+   * with the share of each heard. Absent: every line was heard.
+   */
+  unclearLines?: { index: number; heardShare: number }[];
+  /**
+   * @deprecated The pre-#1913 name of `speechId`. The #1913 migration rewrites
+   * stored clips, but a workflow payload snapshotted before the deploy can
+   * still carry it. Read through `clipSpeechId`, never directly.
+   */
+  // ponytail: delete with `clipSpeechId`'s fallback once no pre-#1913 run can be in flight.
   recordingId?: string;
 };
 import { type InferSelectModel, sql } from 'drizzle-orm';
@@ -91,6 +110,8 @@ export type ShotPromptType = (typeof SHOT_PROMPT_TYPES)[number];
 
 const PROMPT_VARIANT_SOURCES = [
   'ai-generated',
+  // Shot-list derivation consumes no rendered start frame (#1892).
+  'derived',
   'user-edit',
   'regenerated',
   'restored',
@@ -102,6 +123,8 @@ const PROMPT_VARIANT_SOURCES = [
   // Nothing is cut inside a request builder any more, so the shortening is
   // an ordinary version the user can read and revert.
   'shortened',
+  // An element-token rename's rewrite of the selected row (#1786).
+  'renamed',
 ] as const;
 export type PromptVariantSource = (typeof PROMPT_VARIANT_SOURCES)[number];
 
@@ -117,7 +140,7 @@ export const shotPromptVersions = snakeCase.table(
       .references(() => shots.id, { onDelete: 'cascade' }),
     promptType: text().$type<ShotPromptType>().notNull(),
 
-    // Full prompt text (mirrors the cached column on `shots`).
+    // Full prompt text.
     text: text().notNull(),
     // Structured prompt components (when available — visual prompts split into
     // composition / lighting / etc.; user-edits may not have components).
@@ -143,9 +166,9 @@ export const shotPromptVersions = snakeCase.table(
 
     source: text().$type<PromptVariantSource>().notNull(),
 
-    // Provenance of this render (#1554): copied from `shots.audioClips`
-    // (or fallback TTS) at submit. Null until stamped; [] = ran and
-    // there was nothing to speak. Never inferred from the shot.
+    // DEAD since #1786 — neither written nor read. It was a third copy of
+    // render clip provenance, which lives on the video manifest's
+    // `audioClipIds`. Kept to avoid a table rebuild; drop in a later cleanup.
     audioClips: text({ mode: 'json' }).$type<MotionAudioClip[]>(),
     // Motion-only: which template authored this text — true for the
     // image-to-video prompt ("the model already sees the still"), false for
@@ -156,6 +179,9 @@ export const shotPromptVersions = snakeCase.table(
     // stamp, all of which were written before reference-only shipped and so
     // were image-to-video; every write input requires an explicit value.
     usesStartFrame: integer({ mode: 'boolean' }).default(true).notNull(),
+    // The `shot_spec_versions` row this text was derived from (#1915). Null
+    // for text that was not derived from a spec (an LLM or a user wrote it).
+    specVersionId: text(),
 
     // SHA-256 of the upstream context that produced an AI prompt; null for
     // user-edits since they have no upstream input surface.

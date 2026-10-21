@@ -98,6 +98,21 @@ export async function triggerWorkflow<
 >(
   urlPath: string,
   body: T,
+  options?: Parameters<typeof triggerWorkflowRun>[2]
+): Promise<string> {
+  return (await triggerWorkflowRun(urlPath, body, options)).workflowRunId;
+}
+
+/**
+ * {@link triggerWorkflow}, also saying whether a deduplicated trigger reused
+ * an existing instance — its payload was then never used. A trigger that took
+ * a claim for this payload hands it back on reuse (#1113).
+ */
+export async function triggerWorkflowRun<
+  T extends { userId: string; teamId: string },
+>(
+  urlPath: string,
+  body: T,
   options?: {
     deduplicationId?: string;
     /**
@@ -106,7 +121,7 @@ export async function triggerWorkflow<
      */
     enforcement?: readonly EnforcementRow[];
   }
-): Promise<string> {
+): Promise<{ workflowRunId: string; reused: boolean }> {
   logger.info('[TriggerWorkflow]', {
     url: urlPath,
     body: withAbsoluteMediaUrls(body),
@@ -122,7 +137,7 @@ export async function triggerWorkflow<
   if (env.E2E_TEST === 'true' && env.E2E_FULL_PIPELINE !== 'true') {
     const mockId = options?.deduplicationId ?? `mock-${Date.now()}`;
     logger.info(`Skipping workflow trigger: ${urlPath} (mock ID: ${mockId})`);
-    return mockId;
+    return { workflowRunId: mockId, reused: false };
   }
 
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
@@ -136,5 +151,5 @@ export async function triggerWorkflow<
     deduplicationId: options?.deduplicationId,
   });
   logger.info('[TriggerWorkflow] Response', { result });
-  return result.workflowRunId;
+  return result;
 }

@@ -3,19 +3,12 @@
  * Credit top-up Checkout sessions and save-card setup (#1516).
  */
 
-import {
-  ValidationError,
-  WelcomeCardAlreadyClaimedError,
-} from '@/platform/errors';
-import { captureProductEvent } from '@/platform/server/observability/product-events';
+import { ValidationError } from '@/platform/errors';
 import {
   formatPlatformFeePercent,
-  grantSignupCredits,
   MIN_TOPUP_AMOUNT_USD,
-  SIGNUP_GRANT_MICROS,
   splitCheckoutAmounts,
 } from '@/billing/constants';
-import { microsToUsd } from '@/billing/money';
 import { captureCheckoutOpened } from './checkout-events';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { getStripeOrThrow } from './stripe';
@@ -23,34 +16,6 @@ import type Stripe from 'stripe';
 
 /** Metadata `type` for save-card Checkout / SetupIntent — no charge. */
 export const SAVE_CARD_METADATA_TYPE = 'save_card';
-
-async function cardFingerprint(paymentMethodId: string): Promise<string> {
-  const stripe = getStripeOrThrow();
-  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
-  const fingerprint = pm.card?.fingerprint;
-  if (!fingerprint) {
-    throw new ValidationError(
-      'This card cannot be used to claim welcome credits'
-    );
-  }
-  return fingerprint;
-}
-
-/**
- * Account fingerprint of whatever paid a charge — card, Alipay or WeChat Pay
- * (#1537). Stripe stamps one on each so the welcome grant's one-per-account
- * rule holds for wallets too. `null` for a method Stripe does not fingerprint
- * (e.g. Link), which cannot claim the grant.
- */
-export function chargeFingerprint(charge: Stripe.Charge): string | null {
-  const details = charge.payment_method_details;
-  return (
-    details?.card?.fingerprint ??
-    details?.alipay?.fingerprint ??
-    details?.wechat_pay?.fingerprint ??
-    null
-  );
-}
 
 type CreateCheckoutParams = {
   scopedDb: ScopedDb;
@@ -258,15 +223,6 @@ export async function createSetupCheckoutSession(
     cancel_url: cancelUrl,
   });
 
-  captureProductEvent({
-    distinctId: userId,
-    event: 'welcome_card_setup_opened',
-    properties: {
-      teamId,
-      stripe_checkout_session_id: session.id,
-    },
-  });
-
   if (!session.url) {
     throw new Error('Stripe did not return a checkout URL');
   }
@@ -274,11 +230,38 @@ export async function createSetupCheckoutSession(
   return { url: session.url };
 }
 
-export type WelcomeGrantSource =
-  | 'setup_checkout'
-  | 'setup_intent'
-  | 'claim'
-  | 'purchase';
+/**
+ * A completed save-card Checkout: the card becomes the customer's default,
+ * which auto top-up charges. Throws when Stripe left out the customer or
+ * card, so the webhook 400s and Stripe retries.
+ */
+export async function saveCardFromCheckout(
+  session: Stripe.Checkout.Session,
+  scopedDb: ScopedDb
+): Promise<void> {
+  const stripe = getStripeOrThrow();
+  const customerId = objectId(session.customer);
+  const setupIntent =
+    typeof session.setup_intent === 'string'
+      ? await stripe.setupIntents.retrieve(session.setup_intent)
+      : session.setup_intent;
+  const paymentMethodId = objectId(setupIntent?.payment_method);
+  if (!customerId || !paymentMethodId) {
+    throw new Error('save_card checkout missing customer or payment method');
+  }
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId },
+  });
+  await scopedDb.billing.saveStripeCustomerId(customerId);
+  await scopedDb.billing.clearAutoTopUpFailure();
+}
+
+function objectId(
+  value: string | { id: string } | null | undefined
+): string | undefined {
+  if (!value) return undefined;
+  return typeof value === 'string' ? value : value.id;
+}
 
 export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {
   const settings = await scopedDb.billing.getBillingSettings();
@@ -290,148 +273,4 @@ export async function teamHasSavedCard(scopedDb: ScopedDb): Promise<boolean> {
     limit: 1,
   });
   return methods.data.length > 0;
-}
-
-export async function fulfillSavedCard(opts: {
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-  customerId: string;
-  paymentMethodId: string;
-  source: Exclude<WelcomeGrantSource, 'purchase'>;
-}): Promise<{ granted: boolean }> {
-  const fingerprint = await cardFingerprint(opts.paymentMethodId);
-  const stripe = getStripeOrThrow();
-  await stripe.customers.update(opts.customerId, {
-    invoice_settings: { default_payment_method: opts.paymentMethodId },
-  });
-  await opts.scopedDb.billing.saveStripeCustomerId(opts.customerId);
-  await opts.scopedDb.billing.clearAutoTopUpFailure();
-
-  return grantWelcomeCreditsForTeam({
-    scopedDb: opts.scopedDb,
-    teamId: opts.teamId,
-    userId: opts.userId,
-    source: opts.source,
-    fingerprint,
-  });
-}
-
-/**
- * Stamp the fingerprint first so a grandfathered grant still consumes the
- * PAN. Then pay, or no-op if this team already has the ledger row.
- */
-export async function grantWelcomeCreditsForTeam(opts: {
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-  source: WelcomeGrantSource;
-  /** Stripe payment-method fingerprint (card, Alipay, WeChat Pay). */
-  fingerprint: string;
-}): Promise<{ granted: boolean }> {
-  const reserved = await opts.scopedDb.billing.claimWelcomeCardFingerprint(
-    opts.fingerprint
-  );
-  if (!reserved) {
-    throw new WelcomeCardAlreadyClaimedError();
-  }
-
-  const alreadyGranted = await opts.scopedDb.billing.hasSignupGrant();
-  if (alreadyGranted || SIGNUP_GRANT_MICROS <= 0) {
-    return { granted: false };
-  }
-
-  const result = await grantSignupCredits({
-    teamId: opts.teamId,
-    addCredits: opts.scopedDb.billing.addCredits,
-    alreadyGranted: false,
-  });
-
-  if (!result.granted) {
-    // Unique-key collision without a readable signupGrant row, or a race
-    // the next Stripe retry will see via hasSignupGrant. Do not 200.
-    throw new Error('Welcome credit write failed');
-  }
-
-  captureProductEvent({
-    distinctId: opts.userId,
-    event: 'welcome_credits_granted',
-    properties: {
-      teamId: opts.teamId,
-      amount_usd: microsToUsd(SIGNUP_GRANT_MICROS),
-      source: opts.source,
-    },
-  });
-
-  return { granted: true };
-}
-
-/** Fingerprint from a PaymentMethod id, then grant. Throws on reuse / write fail. */
-export async function grantWelcomeCreditsForPaymentMethod(opts: {
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-  paymentMethodId: string;
-  source: WelcomeGrantSource;
-}): Promise<{ granted: boolean }> {
-  const fingerprint = await cardFingerprint(opts.paymentMethodId);
-  return grantWelcomeCreditsForTeam({
-    scopedDb: opts.scopedDb,
-    teamId: opts.teamId,
-    userId: opts.userId,
-    source: opts.source,
-    fingerprint,
-  });
-}
-
-export type WelcomeClaimResult = {
-  granted: boolean;
-  hasCard: boolean;
-  hasSignupGrant: boolean;
-};
-
-/** Return-from-Stripe safety net (webhook may still be in flight). */
-export async function grantWelcomeIfTeamHasCard(opts: {
-  scopedDb: ScopedDb;
-  teamId: string;
-  userId: string;
-}): Promise<WelcomeClaimResult> {
-  const hasSignupGrant = () => opts.scopedDb.billing.hasSignupGrant();
-  const settings = await opts.scopedDb.billing.getBillingSettings();
-  if (!settings.stripeCustomerId) {
-    return {
-      granted: false,
-      hasCard: false,
-      hasSignupGrant: await hasSignupGrant(),
-    };
-  }
-
-  const stripe = getStripeOrThrow();
-  const methods = await stripe.paymentMethods.list({
-    customer: settings.stripeCustomerId,
-    type: 'card',
-    limit: 1,
-  });
-  const pm = methods.data[0];
-  if (!pm) {
-    return {
-      granted: false,
-      hasCard: false,
-      hasSignupGrant: await hasSignupGrant(),
-    };
-  }
-
-  const { granted } = await fulfillSavedCard({
-    scopedDb: opts.scopedDb,
-    teamId: opts.teamId,
-    userId: opts.userId,
-    customerId: settings.stripeCustomerId,
-    paymentMethodId: pm.id,
-    source: 'claim',
-  });
-  return {
-    granted,
-    hasCard: true,
-    hasSignupGrant: granted || (await hasSignupGrant()),
-  };
 }

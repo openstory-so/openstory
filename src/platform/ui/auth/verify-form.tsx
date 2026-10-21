@@ -162,7 +162,7 @@ export function VerifyForm({ email, redirectTo = '/' }: VerifyFormProps) {
             type="button"
             onClick={() => handleResendOtp()}
             className="text-primary hover:underline"
-            disabled={isPending}
+            disabled={!hydrated || isPending}
           >
             Resend code
           </button>

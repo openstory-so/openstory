@@ -195,22 +195,3 @@ export async function authenticateMcpRequest(
     return mcpInternalError();
   }
 }
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-export function isMcpCallerIdentity(
-  value: unknown
-): value is McpCallerIdentity {
-  if (!isRecord(value)) return false;
-  const user = value.user;
-  return (
-    isRecord(user) &&
-    typeof user.id === 'string' &&
-    typeof user.email === 'string' &&
-    typeof user.name === 'string' &&
-    typeof value.teamId === 'string' &&
-    typeof value.teamName === 'string'
-  );
-}

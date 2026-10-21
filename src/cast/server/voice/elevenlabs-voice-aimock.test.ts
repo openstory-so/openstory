@@ -70,7 +70,14 @@ beforeAll(async () => {
       ELEVENLABS_BASE_URL: baseURL,
     }),
   }));
-});
+  // First evaluation of `@tanstack/ai` + `@tanstack/ai-elevenlabs` is the
+  // startup-CPU hit the lazy loader exists to keep off Worker boot. Pay it
+  // here so a 5s `it` timeout still means "aimock hung", not "the adapter
+  // chunk was slow under parallel vitest".
+  const { loadElevenLabsVoiceDesign } =
+    await import('@/models/server/elevenlabs-config');
+  await Promise.all([voice(), loadElevenLabsVoiceDesign()]);
+}, 30_000);
 
 afterAll(async () => {
   await mock.stop();
@@ -79,6 +86,7 @@ afterAll(async () => {
 const voice = async () => await import('./elevenlabs-voice');
 
 describe('Voice Design over aimock', () => {
+  // Real local HTTP + first adapter construct; 5s flakes under parallel vitest.
   it('designs previews through the adapter', async () => {
     const { designVoicePreviews } = await voice();
     const previews = await designVoicePreviews('test-mock-key', DESCRIPTION);
@@ -89,7 +97,7 @@ describe('Voice Design over aimock', () => {
         mediaType: 'audio/mpeg',
       },
     ]);
-  });
+  }, 15_000);
 
   it('saves, reads back and deletes a designed voice through the SDK', async () => {
     const { saveDesignedVoice, getElevenLabsVoice, deleteElevenLabsVoice } =

@@ -36,7 +36,7 @@ export const sequenceExports = snakeCase.table(
       .notNull(),
     sequenceId: text()
       .notNull()
-      // Intentionally NOT cascade — see CLAUDE.md "D1 / Turso table-rebuild
+      // Intentionally NOT cascade — see AGENTS.md "D1 / Turso table-rebuild
       // trap". Exports are cheap to keep around; cleanup runs in app code.
       .references(() => sequences.id, { onDelete: 'restrict' }),
 

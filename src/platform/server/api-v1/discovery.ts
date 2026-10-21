@@ -61,6 +61,11 @@ Styles (create your own look):
   GET /api/v1/styles lists your library styles plus the public templates
   (full documents incl. config); GET /api/v1/styles/{id} returns one.
 
+  POST /api/v1/stitches shares a cut from the stitch CLI (npx @openstory/stitch
+  share does this for you): send { cut } where every media URL is a bundle
+  name media/<n>.<ext>, then PUT each file to the templated 'upload' link in
+  the 201. The response 'url' is a public player page.
+
 Authentication:
   Every endpoint except this root and the device-login pair requires an osk_
   key or an OAuth access token. Two ways to get a key:
@@ -106,7 +111,10 @@ Errors are always JSON: { "error": { "code", "message", "details"? } } with the
 matching HTTP status — never an HTML page or redirect.
 
 Machine-readable spec: GET /api/v1/openapi.json returns the full OpenAPI 3.1
-document (generated from the same schema this API validates against).`;
+document (generated from the same schema this API validates against).
+
+MCP: to inspect and edit a whole production from an MCP client, connect to
+/mcp; see the 'agent-guide' link.`;
 
 /** A representative `POST /api/v1/sequences` body (schema defaults applied). */
 function exampleCreateBody(): unknown {
@@ -258,6 +266,13 @@ export function buildRootDocument(): RootDocument {
       },
       'enhance-script': enhanceScriptLink(),
       'create-style': createStyleLink(),
+      'create-stitch': {
+        href: `${API_V1_BASE}/stitches`,
+        method: 'POST',
+        title:
+          'Share a cut from the stitch CLI as a public page (media named media/<n>.<ext>; PUT each file to the upload link in the response)',
+        contentType: 'application/json',
+      },
       'list-styles': getLink(
         STYLES_PATH,
         "List your team's library styles and the public templates"
@@ -274,6 +289,10 @@ export function buildRootDocument(): RootDocument {
         templated: true,
         title: 'Get sequence status (supports ?wait long-polling)',
       },
+      'agent-guide': getLink(
+        '/docs/developer-guide/agents',
+        'Use OpenStory from an agent: MCP server, auth, identifiers and the production workflow'
+      ),
       'openapi-spec': {
         href: `${API_V1_BASE}/openapi.json`,
         method: 'GET',

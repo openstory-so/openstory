@@ -1,102 +1,113 @@
+import {
+  buildMotionShotPrompt,
+  buildPackedMotionPrompt,
+} from '@/motion/server/build-motion-render';
 /**
  * The `generateMotionWorkflow` durable workflow.
 
  */
 
+import { gateEstimate } from '@/billing/cost-estimation';
+import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import {
+  deductWorkflowCredits,
+  recordFalUsageStep,
+} from '@/billing/server/workflow-deduction';
+import {
+  clipContentRejectionMessage,
   CONTENT_REJECTION_EVENT,
   CONTENT_REJECTION_FALLBACK_EVENT,
   CONTENT_REJECTION_RETRY_EVENT,
   CONTENT_REJECTION_SOFTEN_EVENT,
-  clipContentRejectionMessage,
   flaggedInputs,
   isContentRejectionError,
 } from '@/models/content-rejection';
-import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
-import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import { extractFalErrorMessage } from '@/models/fal-error';
-import { isPromptTooLongError } from '@/models/prompt-length';
-import {
-  assembleMotionPrompt,
-  assemblePackedMotionPrompt,
-  packedPromptFitsLimit,
-} from '@/motion/server/assemble-motion-prompt';
-import {
-  audioSourceKeyFromVoicedLines,
-  dialogueAudioMaxSeconds,
-  matchingDialogueClips,
-  withSpokenText,
-  withVoicedLineTokens,
-} from '@/motion/dialogue-tts';
-import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
-import { referenceKeysFrom } from '@/motion/reference-provenance';
-import { recordDialogue } from '@/motion/server/record-dialogue';
-import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
-import type { MotionAudioClip } from '@/platform/server/db/schema';
-import type {
-  AssemblableMotionPrompt,
-  MotionAudio,
-} from '@/shots/scene-analysis.schema';
-import { computeVideoManifestInputHash } from '@/shots/input-hash';
 import {
   DEFAULT_VIDEO_MODEL,
   getMotionReferenceEndpoint,
   IMAGE_TO_VIDEO_MODELS,
   supportsDraftMode,
+  videoModelSupportsAudio,
   videoPromptHardLimit,
 } from '@/models/models';
-import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
-import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
 import {
   DEFAULT_ANALYSIS_MODEL,
   getAnalysisModelById,
 } from '@/models/models.config';
-import type { VideoManifest } from '@/platform/server/db/schema';
+import { isPromptTooLongError } from '@/models/prompt-length';
+import { assetLeaseOwner } from '@/models/server/byteplus-asset-pool';
+import { ingestArkAssets } from '@/models/server/byteplus-asset-steps';
 import {
-  MOTION_CONTENT_FALLBACK_MODEL,
-  shortenOverlongMotionPrompt,
-  softenRejectedMotionPrompt,
-} from '@/stills/server/workflows/content-soften';
+  audioSourceKeyFromVoicedLines,
+  matchingDialogueClips,
+  withSpokenText,
+  withVoicedLineTokens,
+} from '@/motion/dialogue-tts';
+import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
+import { referenceKeysFrom } from '@/motion/reference-provenance';
+import { raiseShotDurationToCoverAudio } from '@/motion/resolve-shot-duration';
+import { packedPromptFitsLimit } from '@/motion/server/build-motion-render';
+import { bindableReferences } from '@/motion/server/build-reference-video-prompt';
+import { cutSpanningSection } from '@/motion/server/cut-audio-section';
 import {
-  deductWorkflowCredits,
-  recordFalUsageStep,
-} from '@/billing/server/workflow-deduction';
-import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import { ensureImageUnderLimit } from '@/stills/server/image-compress';
-import {
+  arkStillsForMotion,
   calculateMotionMetadata,
   canRenderReferenceOnly,
   motionCostFromUsage,
   pollMotionJob,
-  arkStillsForMotion,
   resolveMotionVia,
   submitMotionJob,
 } from '@/motion/server/motion-generation';
-import { getEffectiveFalPricing } from '@/billing/server/fal-pricing-live';
-import { gateEstimate } from '@/billing/cost-estimation';
-import type { TokenUsage } from '@tanstack/ai';
 import { buildVideoManifest } from '@/motion/server/render-segments';
+import { dialogueClipsAsReferences } from '@/motion/server/synthesize-dialogue';
 import {
   uploadVideoToStorage,
   videoUrlFitsWorkflowCheckpoint,
 } from '@/motion/server/video-storage';
-import { recordProvenance } from '@/platform/server/compliance/provenance';
-import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
-import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
 import { getLogger } from '@/platform/logger';
 import { getGenerationChannel } from '@/platform/realtime';
+import { recordProvenance } from '@/platform/server/compliance/provenance';
+import type {
+  MotionAudioClip,
+  VideoManifest,
+} from '@/platform/server/db/schema';
+import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
+import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-otel';
+import { buildR2Key, STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
 import {
   isEngineAbortError,
   WorkflowValidationError,
 } from '@/platform/server/workflow/errors';
 import type { MotionWorkflowInput } from '@/platform/server/workflow/types';
+import { computeVideoManifestInputHash } from '@/shots/input-hash';
+import type {
+  AssemblableMotionPrompt,
+  MotionAudio,
+} from '@/shots/scene-analysis.schema';
+import { dialogueLinesKey } from '@/shots/shot-dialogue';
+import { ensureImageUnderLimit } from '@/stills/server/image-compress';
+import {
+  MOTION_CONTENT_FALLBACK_MODEL,
+  shortenOverlongMotionPrompt,
+  softenRejectedMotionPrompt,
+} from '@/stills/server/workflows/content-soften';
+import type { TokenUsage } from '@tanstack/ai';
+import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import {
+  explainSeedanceFailure,
+  isSeedanceInternalServiceError,
+  seedanceSubmitRefusal,
+  SEEDANCE_INTERNAL_BACKOFF,
+} from '@/motion/seedance-edit';
+import { UnusableReferencesError } from '@/motion/reference-support';
+import { NonRetryableError } from 'cloudflare:workflows';
 import {
   persistMotionCompletion,
   persistMotionFailure,
+  rescuedMotionPromptOf,
 } from './motion-workflow-persist';
-import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
-import { NonRetryableError } from 'cloudflare:workflows';
 
 const logger = getLogger(['openstory', 'workflow', 'motion']);
 
@@ -145,24 +156,41 @@ function classifyMotionFailure(message: string): MotionPollOutcome {
 }
 
 export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowInput> {
+  protected override readonly failureLabel = 'Motion';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<MotionWorkflowInput>>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<MotionWorkflowResult> {
-    const rawInput = event.payload;
-    // Back-compat: accept shotId or shotId from in-flight instances serialized before #906
-    // TODO(#906): remove shotId shim one release after deploy
-    const input = {
-      ...rawInput,
-      shotId:
-        rawInput.shotId ??
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- back-compat shim for in-flight CF Workflow instances serialized before #906
-        (rawInput as { shotId?: string }).shotId ??
-        undefined,
-    };
+    const input: Readonly<MotionWorkflowInput> = event.payload;
     const workflowRunId = event.instanceId;
     const model = input.model || DEFAULT_VIDEO_MODEL;
+
+    // Speech is an upstream prerequisite. Dialogue generation runs before the
+    // motion child (scene-wide in batch flows); a missing or stale take blocks
+    // this render before it can reserve credits or submit a silent clip.
+    const packedMembers =
+      (input.coveredShots?.length ?? 0) > 1 ? input.coveredShots : null;
+    const missingDialogueShotIds = packedMembers
+      ? packedMembers
+          .filter(
+            (member) =>
+              (member.voicedLines?.length ?? 0) > 0 &&
+              matchingDialogueClips(member.audioClips, member.voicedLines ?? [])
+                .length === 0
+          )
+          .map((member) => member.shotId)
+      : (input.voicedLines?.length ?? 0) > 0 &&
+          matchingDialogueClips(input.audioClips, input.voicedLines ?? [])
+            .length === 0
+        ? [input.shotId ?? '(unknown)']
+        : [];
+    if (missingDialogueShotIds.length > 0) {
+      throw new NonRetryableError(
+        `Dialogue audio is not ready for shot${missingDialogueShotIds.length === 1 ? '' : 's'} ${missingDialogueShotIds.join(', ')}; motion requires a completed dialogue take.`
+      );
+    }
 
     // Reference-only shots have no still by design — the reference sheets and
     // the prompt are the whole input. Every other shot must carry one.
@@ -209,20 +237,18 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       );
     }
 
-    // Dialogue clips (#1554) before the credit check: they raise duration
-    // (Seedance 2.5 is 4–30 s) and ride the request as audio refs, so both
-    // the video estimate and the manifest have to see them. Prefer the
-    // dialogue-stage clip snapshotted onto the payload; synthesise only
-    // when that is missing (standalone motion, stale lines, pre-#1554 rows).
+    // Upstream dialogue clips (#1554) raise duration (Seedance 2.5 is 4–30 s)
+    // and ride the request as audio refs, so both the video estimate and the
+    // manifest have to see them. Missing or stale audio was rejected above.
     let prompt = input.prompt;
     let multiPrompt = input.multiPrompt;
     let referenceImages = input.referenceImages;
     let durationHint = input.duration;
-    let audioClips: MotionAudioClip[] = input.audioClips ?? [];
+    const audioClips: MotionAudioClip[] = input.audioClips ?? [];
     // The words the bound audio actually SAYS (#1651): a dialogue-stage section
     // that was rewritten to fit records its delivered wording on the clip, and
     // the prompt drives lip movement, so assembly has to read it back.
-    let voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
+    const voicedLines = withSpokenText(input.voicedLines ?? [], audioClips);
     // The manifest key is the AUTHORED lines (#1671): every reader computes
     // it from the scene, so stamping the shortened wording would read stale
     // forever. `voicedLines` above is for the prompt, which must say what the
@@ -234,7 +260,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
      * content soften re-assembles (#1773): only the prose is rewritten.
      */
     const assembleShotPrompt = (motionPrompt: AssemblableMotionPrompt) =>
-      assembleMotionPrompt({
+      buildMotionShotPrompt({
         motionPrompt: {
           ...motionPrompt,
           dialogue: withVoicedLineTokens(motionPrompt.dialogue, voicedLines),
@@ -245,74 +271,36 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         attachSceneHeader: input.attachSceneHeader,
         scene: input.packedScene,
       });
-    if (voicedLines.length > 0 && input.shotId && input.sequenceId) {
-      const shotId = input.shotId;
-      const sequenceId = input.sequenceId;
-      if (audioClips.length === 0) {
-        // The conversation around this shot, snapshotted at the trigger so
-        // the reading is acted in context (#1657) — only THIS shot adopts it.
-        // Without one (an older trigger), the shot's own lines are the whole
-        // conversation.
-        // ponytail: N shots of one scene each record their own window; record once per scene at the batch level if this shows up in the bill.
-        const snapshotted = input.dialogueContext?.some(
-          (line) => line.shotId === shotId
+    if (voicedLines.length > 0) {
+      if (!input.sequenceId) {
+        throw new WorkflowValidationError(
+          'sequenceId is required when dialogue audio is attached to motion'
         );
-        if (!snapshotted) {
-          logger.warn('No dialogue context; recording the shot alone', {
-            shotId,
-            sequenceId,
-          });
-        }
-        const context =
-          snapshotted && input.dialogueContext
-            ? input.dialogueContext
-            : authoredLines.map((line) => ({ ...line, shotId }));
-        const recorded = await recordDialogue(step, {
-          scopedDb,
-          workflowRunId,
-          userId: input.userId,
-          teamId: input.teamId,
-          sequenceId,
-          lines: context,
-          adoptShotIds: [shotId],
-          dialogueVersionIdByShotId: {},
-          shotSeconds: { [shotId]: input.duration },
-          minDurationSeconds:
-            getMotionReferenceEndpoint(model)?.audioSeconds?.min,
-          // One model here, not the sequence's list: this is the clip about to
-          // be submitted, so its own window is the only one that binds.
-          maxDurationSeconds: dialogueAudioMaxSeconds([model]),
-          reservationId: input.reservationId,
-          stepPrefix: 'synthesize-dialogue-audio',
-          workflowName: 'MotionWorkflow',
-        });
-        // Nothing promoted for this shot is a legitimate answer (#1657):
-        // another run holds the claim for these words, or the user picked a
-        // reading while this recorded. Either way the shot's OWN audio is the
-        // truth, read live — it is what a render has to match.
-        const adopted =
-          recorded[shotId] ??
-          (await step.do('dialogue-audio-from-shot', async () =>
-            matchingDialogueClips(
-              (await scopedDb.liveRead.shots.getById(shotId))?.audioClips,
-              authoredLines
-            )
-          ));
-        if (adopted.length === 0) {
-          // Voiced lines with no audio must not render silently.
-          throw new NonRetryableError(
-            `Shot ${shotId} has no audio for its lines yet — another run may still be recording them. Try again.`
-          );
-        }
-        audioClips = adopted;
-        voicedLines = withSpokenText(authoredLines, audioClips);
       }
+      const sequenceId = input.sequenceId;
+      const packedClip = Boolean(
+        input.coveredShots && input.coveredShots.length > 1
+      );
+      // A packed clip sends one longer section of the recording, not each member's
+      // overlapping section (#1794). The members keep their own clips.
+      const wireClips = packedClip
+        ? await step.do('cut-spanning-section', () =>
+            cutSpanningSection(audioClips, {
+              teamId: input.teamId,
+              sequenceId,
+              minDurationSeconds:
+                getMotionReferenceEndpoint(model)?.audioSeconds?.min,
+              getSection: (id) =>
+                scopedDb.claims.shotDialogue.getSectionById(id),
+            })
+          )
+        : audioClips;
       referenceImages = [
         ...(input.referenceImages ?? []),
-        ...dialogueClipsAsReferences(audioClips),
+        ...dialogueClipsAsReferences(wireClips),
       ];
-      if (input.coveredShots && input.coveredShots.length > 1) {
-        const packed = assemblePackedMotionPrompt({
+      if (input.coveredShots && packedClip) {
+        const packed = buildPackedMotionPrompt({
           shots: input.coveredShots.map((member) => ({
             durationSeconds: member.duration ?? durationHint ?? 3,
             motionPrompt: member.motionPrompt
@@ -348,7 +336,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       } else if (input.motionPrompt) {
         prompt = assembleShotPrompt(input.motionPrompt);
       }
-      const audioSeconds = audioClips.reduce(
+      const audioSeconds = wireClips.reduce(
         (sum, clip) => sum + (clip.durationSeconds ?? 0),
         0
       );
@@ -435,39 +423,28 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           return { shotDeleted: true, videoVersionId: null, sceneId: null };
         }
 
-        // Everything this write needs was resolved at trigger time and threaded
-        // in: whether the edit is real, what it was authored against
-        // (`userEditProvenance`), and the audio direction to carry
-        // forward (`priorMotion`). Re-reading any of it here would be racy
-        // against concurrent append-only version writes and replay-unsafe —
-        // this very write repoints the selection pointer. `components` /
-        // `parameters` stay null on a free-text edit, as they did pre-#713.
-        // The written version is what this clip renders from, so its id — not
-        // the pointer the write just repointed — is what the manifest records.
-        let writtenMotionPromptVersionId: string | null = null;
-        if (input.userEditProvenance) {
-          const written = await scopedDb.shotPromptVersions.write({
-            shotId: input.shotId,
-            promptType: 'motion',
-            text: input.userEditText ?? input.prompt,
-            audio: input.priorMotion?.audio ?? null,
-            source: 'user-edit',
-            usesStartFrame: !input.referenceOnly,
-            inputHash: input.userEditProvenance.inputHash,
-            analysisModel: input.userEditProvenance.analysisModel,
-            createdBy: input.userId,
-          });
-          writtenMotionPromptVersionId = written.id;
-        }
+        // The clips this render consumes are recorded ONCE, as the manifest's
+        // `audioClipIds` below (#1786) — never stamped onto the prompt row.
 
-        const promptVersionId =
-          writtenMotionPromptVersionId ?? input.motionPromptVersionId ?? null;
-        if (promptVersionId && audioClips.length > 0) {
-          await scopedDb.shotPromptVersions.setAudioClips(
-            promptVersionId,
-            audioClips
-          );
-        }
+        // A run queued before #1786 still carries the edit for the run to
+        // write (see PreClickEditPayload); nothing else holds the typed text.
+        const preClickEditId = input.userEditProvenance
+          ? (
+              await scopedDb.shotPromptVersions.write({
+                shotId: input.shotId,
+                promptType: 'motion',
+                text: input.userEditText ?? input.prompt,
+                audio: input.priorMotion?.audio ?? null,
+                source: 'user-edit',
+                usesStartFrame: !input.referenceOnly,
+                inputHash: input.userEditProvenance.inputHash,
+                analysisModel: input.userEditProvenance.analysisModel,
+                createdBy: input.userId,
+              })
+            ).id
+          : null;
+        const renderedPromptVersionId =
+          preClickEditId ?? input.motionPromptVersionId ?? null;
 
         // Open an append-only `video_variants` *version* for this render (#990,
         // replaces the retired `shot_variants` video slice). It is keyed by
@@ -539,15 +516,19 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               Boolean(input.imageUrl)
             )
           );
+          // The lines the prompt quoted (#1784). Only an audio-capable model
+          // splices them in, so any other model stamps null.
+          const quotedDialogueKey = (
+            dialogue: Parameters<typeof dialogueLinesKey>[0]
+          ) =>
+            videoModelSupportsAudio(model) ? dialogueLinesKey(dialogue) : null;
           const coveredEntries =
             covered && covered.length > 1
               ? covered.map((member) => ({
                   shotId: member.shotId,
                   motionPromptVersionId:
                     member.shotId === input.shotId
-                      ? (writtenMotionPromptVersionId ??
-                        member.motionPromptVersionId ??
-                        null)
+                      ? (preClickEditId ?? member.motionPromptVersionId ?? null)
                       : (member.motionPromptVersionId ?? null),
                   frameVersionId: member.frameVersionId ?? null,
                   usesStartFrame: !member.referenceOnly,
@@ -561,6 +542,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     // match that member's own live dialogue key (#1720).
                     member.voicedLines ?? []
                   ),
+                  dialogueKey: quotedDialogueKey(member.motionPrompt?.dialogue),
                   // One clip, one request: every covered shot was sent the
                   // same references.
                   referenceKeys: sentReferenceKeys,
@@ -570,10 +552,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     shotId: input.shotId,
                     // No selection-pointer fallback: a payload without the field
                     // records null provenance rather than whatever is selected now.
-                    motionPromptVersionId:
-                      writtenMotionPromptVersionId ??
-                      input.motionPromptVersionId ??
-                      null,
+                    motionPromptVersionId: renderedPromptVersionId,
                     frameVersionId: input.frameVersionId ?? null,
                     // Provenance stamp: the mode this render ran in, independent
                     // of the null-`frameVersionId` encoding above.
@@ -582,6 +561,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                     audioClipIds: audioClips.map((clip) => clip.id),
                     audioSourceKey:
                       audioSourceKeyFromVoicedLines(authoredLines),
+                    dialogueKey: quotedDialogueKey(
+                      input.motionPrompt?.dialogue
+                    ),
                     referenceKeys: sentReferenceKeys,
                   },
                 ];
@@ -781,9 +763,12 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
      * and the length shorten (#1754): both replace the prompt mid-run, and
      * both must leave the original in Versions for the user to revert to.
      *
-     * A primary render selects the rewrite; a variant-only render appends to
-     * history only — an alternate model's rescue must not move the primary
-     * shot's prompt out from under the primary clip.
+     * The rewrite is appended to history UNSELECTED (#1786): selecting it
+     * mid-run would clobber an edit the user made meanwhile and demote a
+     * regeneration they queued. A primary clip that wins its promote claim
+     * carries it into the selection at completion (`rescuedMotionPrompt`),
+     * and only if the shot still points at the prompt the run started from
+     * and no regeneration is queued.
      *
      * A single-shot soften passes the rewritten prose and the version's
      * `audio` (#1773), so a later render still assembles dialogue and trailer
@@ -795,7 +780,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     const writeRescuedMotionPrompt = (
       stepName: string,
       text: string,
-      provenance: { inputHash: string | null; analysisModel: string | null },
+      provenance: {
+        inputHash: string | null;
+        analysisModel: string | null;
+      },
       source: 'softened' | 'shortened',
       audio: MotionAudio | null = null
     ) =>
@@ -807,12 +795,13 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           promptType: 'motion',
           text,
           audio,
+          // A rescue rewrote the text, so the row is the rewrite, not the spec.
           source,
           usesStartFrame: !input.referenceOnly,
           inputHash: provenance.inputHash,
           analysisModel: provenance.analysisModel,
           createdBy: input.userId,
-          select: !input.variantOnly,
+          select: false,
         });
         if (!videoVersionId || !manifest) return manifest ?? null;
         const rescued = manifest.map((e) => ({
@@ -826,7 +815,10 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         return rescued;
       });
 
+    let seedanceInternalRetried = false;
     for (let attempt = 0; attempt <= MAX_MOTION_ATTEMPTS; attempt++) {
+      let retrySeedanceInternal = false;
+      let internalError = '';
       const isRescue = attempt === MAX_MOTION_ATTEMPTS;
       // A final from a draft sends no prompt and cannot change model
       // (#1756): nothing to soften, nothing to swap.
@@ -897,6 +889,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               workflowRunId,
               sequenceId: input.sequenceId,
               userId: input.userId,
+              // A run queued before #1786 carries the typed text on the
+              // payload; its `motionPrompt` is the pre-edit selection.
               prompt: structured
                 ? (input.userEditText ?? structured.fullPrompt)
                 : prompt,
@@ -965,7 +959,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
       }
       const tag =
-        attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`;
+        (attempt === 0 ? '' : isRescue ? '-rescue' : `-retry-${attempt}`) +
+        (seedanceInternalRetried ? '-internal' : '');
 
       // Step 3-pre: register the stills BytePlus must see as `asset://`
       // (#1519). CreateAsset is paced by `BYTEPLUS_ASSET_WRITE_QPM`, so
@@ -1021,6 +1016,9 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
         try {
           const job = await submitMotionJob({
+            // `??`: a run queued before #2036 has no such field, and is not
+            // an edit.
+            heldSeedanceEditSeconds: input.seedanceEditSeconds ?? null,
             imageUrl: startImageUrl ?? undefined,
             referenceOnly: input.referenceOnly,
             prompt,
@@ -1036,7 +1034,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
             // and by the native xAI / Ark / Google inline vias; the rest
             // substitute tokens with descriptions.
             referenceImages,
-            scopedDb: scopedDb.credentials,
+            credentials: scopedDb.credentials,
             arkAssets,
             multiPrompt,
             draft: input.draft,
@@ -1059,6 +1057,18 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
               tooLong: true as const,
               rejection: extractFalErrorMessage(error),
             };
+          }
+          // Refused before anything was sent, and would be again.
+          if (error instanceof UnusableReferencesError) {
+            throw new NonRetryableError(error.message);
+          }
+          const providerMessage = extractFalErrorMessage(error);
+          const refusal = seedanceSubmitRefusal(providerMessage, submitVia);
+          if (refusal) {
+            logger.warn(
+              `[MotionWorkflow] Ark refused the submit for ${videoVersionId}: ${providerMessage}`
+            );
+            throw new NonRetryableError(refusal);
           }
           if (
             error instanceof Error &&
@@ -1157,7 +1167,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         }
 
         const poll = await step.do(
-          `motion-poll-batch-${attempt}-${batch}`,
+          // The suffix keeps the second job's polls apart from the first's.
+          `motion-poll-batch-${attempt}-${batch}${seedanceInternalRetried ? '-internal' : ''}`,
           async (): Promise<MotionPollOutcome> => {
             const deadline = Date.now() + POLL_BATCH_DURATION_MS;
 
@@ -1266,7 +1277,23 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           break;
         }
         if (poll.kind === 'failed') {
-          throw new NonRetryableError(poll.error);
+          // One new job, not a Cloudflare retry of the failed task (#2036).
+          if (
+            !seedanceInternalRetried &&
+            !isRescue &&
+            isSeedanceInternalServiceError(poll.error, job.via)
+          ) {
+            retrySeedanceInternal = true;
+            internalError = poll.error;
+            break;
+          }
+          const explained = explainSeedanceFailure(poll.error, job.via);
+          if (explained) {
+            logger.warn(
+              `[MotionWorkflow] Ark job ${job.jobId} failed for ${videoVersionId}: ${poll.error}`
+            );
+          }
+          throw new NonRetryableError(explained ?? poll.error);
         }
         // pending → poll the next batch
       }
@@ -1288,6 +1315,20 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           );
         }
         break;
+      }
+
+      if (retrySeedanceInternal) {
+        seedanceInternalRetried = true;
+        logger.warn(
+          `[MotionWorkflow] Ark job ${job.jobId} failed for ${videoVersionId}; submitting one new job: ${internalError}`
+        );
+        await step.sleep(
+          'seedance-internal-backoff',
+          SEEDANCE_INTERNAL_BACKOFF
+        );
+        // Keeps the new job off the content-flag budget.
+        attempt -= 1;
+        continue;
       }
 
       if (rejected) {
@@ -1449,6 +1490,42 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         })
       : {};
 
+    // Step 3: Upload video to storage. Both filename titles ride the payload
+    // (`input.sequenceTitle` / `input.sceneTitle`); a payload without them
+    // gets the static slug rather than a live read of the sequence row.
+    const { shotId } = input;
+    const storageResult = shotId
+      ? await step.do('upload-to-storage', async () => {
+          if (!input.teamId || !input.sequenceId) {
+            throw new Error('Missing teamId or sequenceId for storage upload');
+          }
+
+          const googleKey =
+            succeededJob.via === 'google'
+              ? await scopedDb.credentials.resolveOptionalKey('google')
+              : undefined;
+          const result = await uploadVideoToStorage({
+            videoUrl,
+            teamId: input.teamId,
+            sequenceId: input.sequenceId,
+            shotId,
+            sequenceTitle: input.sequenceTitle ?? 'sequence',
+            sceneTitle: input.sceneTitle,
+            googleApiKey: googleKey?.key,
+          });
+
+          if (!result.success) {
+            throw new Error('Failed to upload video');
+          }
+
+          return { path: result.path, url: result.url };
+        })
+      : undefined;
+    if (storageResult) videoUrl = storageResult.url;
+
+    // Charge only for a clip the team can see: a failed upload fails the run
+    // and onFailure zeroes the reservation (#1845).
+    //
     // Settle the spawn-time reservation against fal's billed cost. If this
     // run never reserved (BYOK / unpriced), deductWorkflowCredits falls back
     // to an atomic try-deduct.
@@ -1473,40 +1550,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
       });
     }
 
-    if (input.shotId) {
-      const { shotId } = input;
-
-      // Step 3: Upload video to storage. Both filename titles ride the payload
-      // (`input.sequenceTitle` / `input.sceneTitle`); a payload without them
-      // gets the static slug rather than a live read of the sequence row.
-      const storageResult = await step.do('upload-to-storage', async () => {
-        if (!input.teamId || !input.sequenceId) {
-          throw new Error('Missing teamId or sequenceId for storage upload');
-        }
-
-        const googleKey =
-          succeededJob.via === 'google'
-            ? await scopedDb.credentials.resolveOptionalKey('google')
-            : undefined;
-        const result = await uploadVideoToStorage({
-          videoUrl,
-          teamId: input.teamId,
-          sequenceId: input.sequenceId,
-          shotId,
-          sequenceTitle: input.sequenceTitle ?? 'sequence',
-          sceneTitle: input.sceneTitle,
-          googleApiKey: googleKey?.key,
-        });
-
-        if (!result.success) {
-          throw new Error('Failed to upload video');
-        }
-
-        return { path: result.path, url: result.url };
-      });
-
-      videoUrl = storageResult.url;
-
+    if (shotId && storageResult) {
       // Step 4: Finalize the render — flip the `video_variants` version to
       // `completed` and (for a primary render) repoint the shot's selection,
       // mirroring `shots.video*` + the render segment's selection pointer (#990,
@@ -1531,6 +1575,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
           upload: { url: storageResult.url, path: storageResult.path },
           actorId: input.userId,
           variantOnly: input.variantOnly,
+          rescuedMotionPrompt: rescuedMotionPromptOf(
+            shotId,
+            manifest,
+            renderManifest
+          ),
           emit: async (event, payload) => {
             try {
               await getGenerationChannel(input.sequenceId).emit(event, payload);

@@ -18,6 +18,7 @@
 
 import {
   isValidImageToVideoModel,
+  videoModelSupportsAudio,
   videoModelSupportsInClipMultiShot,
   type ImageToVideoModel,
 } from '@/models/models';
@@ -218,6 +219,8 @@ export type SegmentVersionInput = SegmentVideoVersion & {
   > & {
     /** Absent on pre-pointer rows; treated as voiceless. */
     audioSourceKey?: string | null;
+    /** Absent on rows from before #1784: unknown, never stale. */
+    dialogueKey?: string | null;
     /** Absent on very old rows: unknown, never stale. */
     audioClipIds?: readonly string[];
     /** Absent on rows from before #1657: unknown, never stale. */
@@ -235,10 +238,21 @@ export type SegmentVersionInput = SegmentVideoVersion & {
 export type LiveShotInputs = {
   /** Voice id + line + tone + model key per shot; `null` = voiceless. */
   audioSourceKeyByShot: ReadonlyMap<string, string | null>;
+  /**
+   * Every line the shot says, as its render prompt would quote them
+   * (`dialogueLinesKey`, #1784); `null` = no lines.
+   */
+  dialogueKeyByShot: ReadonlyMap<string, string | null>;
   /** Ids of the clips in the shot's working set (`shots.audioClips`). */
   audioClipIdsByShot: ReadonlyMap<string, readonly string[]>;
   /** `kind:entityId` → the provenance key a render would be sent now. */
   referenceIdentity: ReadonlyMap<string, string>;
+  /**
+   * Entities a render of the shot would be sent now (`kind:id`), per shot
+   * (#2012). A stamped key outside the set is not compared. A shot missing
+   * from the map has no live references; its other pointers read it stale.
+   */
+  referencedEntitiesByShot: ReadonlyMap<string, ReadonlySet<string>>;
   /** Raw `shots.durationMs` (unset/0 = no user duration, not compared). */
   durationMsByShot: ReadonlyMap<string, number | null>;
   /** Seconds of dialogue audio bound to the shot, for the audio raise. */
@@ -247,7 +261,10 @@ export type LiveShotInputs = {
 /** The half of {@link LiveShotInputs} that takes I/O; the rest is on the shot rows. */
 export type LoadedShotInputs = Pick<
   LiveShotInputs,
-  'audioSourceKeyByShot' | 'referenceIdentity'
+  | 'audioSourceKeyByShot'
+  | 'dialogueKeyByShot'
+  | 'referenceIdentity'
+  | 'referencedEntitiesByShot'
 >;
 export type SegmentShotInput = {
   id: string;
@@ -294,6 +311,8 @@ function toVersion(v: SegmentVersionInput): SegmentVideoVersion {
  * fresh. An entry with both version ids null is unknown provenance (legacy /
  * unpinned trigger) and is not stale — same contract as a null `inputHash`.
  */
+const NO_REFERENCES: ReadonlySet<string> = new Set();
+
 export function isSelectedVersionStale(
   selected: SegmentVersionInput | undefined,
   currentMotionByShot: ReadonlyMap<string, string | null>,
@@ -312,7 +331,7 @@ export function isSelectedVersionStale(
     const currentFrame = currentFrameByShot.get(entry.shotId) ?? null;
     // Match the render triggers: models without an uploaded-audio input
     // receive no voiced lines and stamp a null key, even with voices enabled.
-    // Keep the shared live key intact for the dialogue recording's own check.
+    // Keep the shared live key intact for the dialogue speech's own check.
     const currentAudio =
       entry.audioSourceKey == null &&
       isValidImageToVideoModel(selected.model) &&
@@ -325,7 +344,12 @@ export function isSelectedVersionStale(
       ((entry.audioSourceKey ?? null) !== currentAudio &&
         !legacyPackedAudioMatches(selected, index, live)) ||
       audioClipsMoved(entry, live) ||
-      referenceKeysMoved(entry.referenceKeys, live.referenceIdentity) ||
+      dialogueMoved(entry, selected.model, currentMotion, live) ||
+      referenceKeysMoved(
+        entry.referenceKeys,
+        live.referenceIdentity,
+        live.referencedEntitiesByShot.get(entry.shotId) ?? NO_REFERENCES
+      ) ||
       durationMoved(entry, selected.model, live, selected.manifest.length > 1)
     );
   });
@@ -353,6 +377,31 @@ function legacyPackedAudioMatches(
   return (
     JSON.stringify(stamped.split('\n').sort()) === JSON.stringify(keys.sort())
   );
+}
+
+/**
+ * The lines the render prompt quoted (#1784). An audio-capable model splices
+ * every line into its prompt, voiced or not, so an edit to any of them moves
+ * the clip — `audioSourceKey` only sees voiced lines, and only on models that
+ * take dialogue audio. Lines reach the prompt only through a motion prompt
+ * and only on an audio model; anything else stamps null, and compares null.
+ * An absent key is a row from before #1784: unknown, never stale.
+ */
+function dialogueMoved(
+  entry: { shotId: string; dialogueKey?: string | null },
+  model: string,
+  currentMotion: string | null,
+  live: LiveShotInputs
+): boolean {
+  if (entry.dialogueKey === undefined) return false;
+  const quoted =
+    currentMotion !== null &&
+    isValidImageToVideoModel(model) &&
+    videoModelSupportsAudio(model);
+  const current = quoted
+    ? (live.dialogueKeyByShot.get(entry.shotId) ?? null)
+    : null;
+  return entry.dialogueKey !== current;
 }
 
 /**

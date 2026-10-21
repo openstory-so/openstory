@@ -139,7 +139,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
@@ -166,7 +166,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
@@ -192,7 +192,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
         userId: 'user-123',
         sessionId: 'seq-456',
@@ -241,14 +241,14 @@ describe('llm-client', () => {
 
       let doneUsage: TokenUsage | undefined;
       for await (const chunk of callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       })) {
         if (chunk.done) doneUsage = chunk.usage;
       }
 
       expect(doneUsage?.cost).toBe(0.0042);
-      expect(llmCostFromUsage(doneUsage, 'anthropic/claude-sonnet-5')).toBe(
+      expect(llmCostFromUsage(doneUsage, 'anthropic/claude-sonnet-5.5')).toBe(
         usdToMicros(0.0042)
       );
     });
@@ -261,7 +261,7 @@ describe('llm-client', () => {
       );
 
       for await (const _chunk of callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       })) {
         // drain
@@ -293,13 +293,13 @@ describe('llm-client', () => {
       };
 
       // Fast section.
-      expect(await tierFor('openai/gpt-5.6-luna')).toBe('priority');
+      expect(await tierFor('openai/gpt-6-luna')).toBe('priority');
       expect(await tierFor('z-ai/glm-5.3-flash')).toBe('priority');
       // Quality section too: OpenRouter falls back off-tier when a model has
       // no priority endpoint, and bills the endpoint that actually served —
       // so asking costs nothing when it can't be honoured.
       expect(await tierFor('anthropic/claude-fable-5.1')).toBe('priority');
-      expect(await tierFor('anthropic/claude-sonnet-5')).toBe('priority');
+      expect(await tierFor('anthropic/claude-sonnet-5.5')).toBe('priority');
     });
 
     it('surfaces usage.cost on structured responseSchema streams from RUN_FINISHED', async () => {
@@ -329,7 +329,7 @@ describe('llm-client', () => {
       let doneUsage: TokenUsage | undefined;
       let parsed: { title: string } | undefined;
       for await (const chunk of callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
         responseSchema: schema,
       })) {
@@ -341,7 +341,7 @@ describe('llm-client', () => {
 
       expect(parsed).toEqual({ title: 'Hello' });
       expect(doneUsage?.cost).toBe(0.0123);
-      expect(llmCostFromUsage(doneUsage, 'anthropic/claude-sonnet-5')).toBe(
+      expect(llmCostFromUsage(doneUsage, 'anthropic/claude-sonnet-5.5')).toBe(
         usdToMicros(0.0123)
       );
     });
@@ -364,7 +364,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
@@ -393,7 +393,7 @@ describe('llm-client', () => {
       await expect(
         drain(
           callLLMStream({
-            model: 'openai/gpt-5.6-luna',
+            model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
             responseSchema: z.object({ scenes: z.array(z.unknown()) }),
           })
@@ -436,7 +436,7 @@ describe('llm-client', () => {
       await expect(
         drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
         )
@@ -493,7 +493,7 @@ describe('llm-client', () => {
       );
       await expect(
         callLLM({
-          model: 'anthropic/claude-sonnet-5',
+          model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
         })
       ).rejects.toThrow('not available in your region');
@@ -519,7 +519,7 @@ describe('llm-client', () => {
             })()
           );
         await callLLM({
-          model: 'anthropic/claude-opus-5',
+          model: 'anthropic/claude-opus-5.5',
           messages: [{ role: 'user', content: 'test' }],
           max_tokens,
         });
@@ -577,14 +577,14 @@ describe('llm-client', () => {
 
       let terminal;
       for await (const chunk of callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
         apiKey: { key: 'k', via: 'openrouter' },
       })) {
         if (chunk.done) terminal = chunk;
       }
 
-      expect(terminal?.model).toBe('anthropic/claude-sonnet-5');
+      expect(terminal?.model).toBe('anthropic/claude-sonnet-5.5');
       expect(terminal?.via).toBe('openrouter');
     });
 
@@ -669,7 +669,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
@@ -685,18 +685,18 @@ describe('llm-client', () => {
             type: 'RUN_ERROR',
             message: 'Provider returned error',
             code: 'provider-error',
-            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5.5' } },
           };
         })()
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
       return expect(drain(generator)).rejects.toThrow(
-        'LLM stream error [provider-error, model=anthropic/claude-sonnet-5]: Provider returned error'
+        'LLM stream error [provider-error, model=anthropic/claude-sonnet-5.5]: Provider returned error'
       );
     });
 
@@ -706,18 +706,18 @@ describe('llm-client', () => {
           yield {
             type: 'RUN_ERROR',
             message: 'Provider returned error',
-            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5.5' } },
           };
         })()
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
       return expect(drain(generator)).rejects.toThrow(
-        'LLM stream error [model=anthropic/claude-sonnet-5]: Provider returned error'
+        'LLM stream error [model=anthropic/claude-sonnet-5.5]: Provider returned error'
       );
     });
 
@@ -732,7 +732,7 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
@@ -745,7 +745,7 @@ describe('llm-client', () => {
           yield {
             type: 'RUN_ERROR',
             message: 'Provider returned error',
-            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5.5' } },
             rawEvent: {
               code: 400,
               message: 'Provider returned error',
@@ -763,12 +763,12 @@ describe('llm-client', () => {
       );
 
       const generator = callLLMStream({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
       return expect(drain(generator)).rejects.toThrow(
-        'LLM stream error [model=anthropic/claude-sonnet-5]: Provider returned error — provider=Anthropic output_config.format.schema: Invalid schema'
+        'LLM stream error [model=anthropic/claude-sonnet-5.5]: Provider returned error — provider=Anthropic output_config.format.schema: Invalid schema'
       );
     });
 
@@ -883,7 +883,7 @@ describe('llm-client', () => {
 
         const chunks = [];
         for await (const chunk of callLLMStream({
-          model: 'anthropic/claude-sonnet-5',
+          model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
           responseSchema: schema,
         })) {
@@ -951,7 +951,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-opus-5',
+            model: 'anthropic/claude-opus-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -966,7 +966,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'x-ai/grok-4.6',
+            model: 'x-ai/grok-4.7',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -984,7 +984,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'openai/gpt-5.6-luna',
+            model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -994,7 +994,7 @@ describe('llm-client', () => {
         });
       });
 
-      it.each(['openai/gpt-5.6-luna', 'openai/gpt-6-astra'] as const)(
+      it.each(['openai/gpt-6-luna', 'openai/gpt-6-astra'] as const)(
         'drops temperature for %s (no sampling params)',
         async (model) => {
           mockChat.mockReturnValue(textStream());
@@ -1018,7 +1018,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             temperature: 0.7,
           })
@@ -1050,7 +1050,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             provider: { allowFallbacks: false },
           })
@@ -1080,7 +1080,7 @@ describe('llm-client', () => {
         const thinking: string[] = [];
         let finalAccumulated = '';
         for await (const chunk of callLLMStream({
-          model: 'anthropic/claude-sonnet-5',
+          model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
           reasoning: { enabled: true, effort: 'medium' },
         })) {
@@ -1107,7 +1107,7 @@ describe('llm-client', () => {
 
         const seen: { delta: string; accumulated: string }[] = [];
         for await (const chunk of callLLMStream({
-          model: 'anthropic/claude-sonnet-5',
+          model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
           reasoning: { enabled: true, effort: 'medium' },
         })) {
@@ -1132,7 +1132,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             reasoning: { enabled: true, effort: 'medium' },
           })
@@ -1157,7 +1157,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -1240,7 +1240,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             webSearch: true,
           })
@@ -1266,7 +1266,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             webSearch: true,
             apiKey: { key: 'llmtr-team', via: 'llmtr' },
@@ -1289,7 +1289,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'openai/gpt-5.6-luna',
+            model: 'openai/gpt-6-luna',
             messages: [{ role: 'user', content: 'test' }],
             max_tokens: 300,
             temperature: 0.7,
@@ -1314,7 +1314,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
             max_tokens: 300,
             temperature: 0.7,
@@ -1338,7 +1338,7 @@ describe('llm-client', () => {
 
         await drain(
           callLLMStream({
-            model: 'anthropic/claude-sonnet-5',
+            model: 'anthropic/claude-sonnet-5.5',
             messages: [{ role: 'user', content: 'test' }],
           })
         );
@@ -1367,7 +1367,7 @@ describe('llm-client', () => {
       );
 
       const result = await callLLM({
-        model: 'anthropic/claude-sonnet-5',
+        model: 'anthropic/claude-sonnet-5.5',
         messages: [{ role: 'user', content: 'test' }],
       });
 
@@ -1386,14 +1386,14 @@ describe('llm-client', () => {
             message:
               'Insufficient credits. Add more using https://openrouter.ai/settings/credits',
             code: '402',
-            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5' } },
+            metadata: { tanstack: { model: 'anthropic/claude-sonnet-5.5' } },
           };
         })()
       );
 
       return expect(
         callLLM({
-          model: 'anthropic/claude-sonnet-5',
+          model: 'anthropic/claude-sonnet-5.5',
           messages: [{ role: 'user', content: 'test' }],
         })
       ).rejects.toThrow(/Insufficient credits/);
@@ -1464,7 +1464,7 @@ describe('llm-client', () => {
             completionTokens: 500_000,
             totalTokens: 1_500_000,
           },
-          'anthropic/claude-sonnet-5'
+          'anthropic/claude-sonnet-5.5'
         )
       ).toBe(ZERO_MICROS);
     });
@@ -1480,15 +1480,15 @@ describe('llm-client', () => {
             completionTokens: 100_000,
             totalTokens: 200_000,
           },
-          'x-ai/grok-4.6'
+          'x-ai/grok-4.7'
         )
-      ).toBe(800_000);
+      ).toBe(640_000);
     });
 
     it('prices an LLMTR call from the gateway’s catalog rates', () => {
       // LLMTR reports tokens but never a cost — $0 here would be a silent
       // revenue hole on every LLMTR-routed render.
-      // claude-sonnet-5: $2/M in, $10/M out → 1M in + 0.1M out = $3.
+      // claude-fable-5.1: $10/M in, $50/M out → 1M in + 0.1M out = $15.
       expect(
         llmCostFromUsage(
           {
@@ -1496,10 +1496,10 @@ describe('llm-client', () => {
             completionTokens: 100_000,
             totalTokens: 1_100_000,
           },
-          'anthropic/claude-sonnet-5',
+          'anthropic/claude-fable-5.1',
           'llmtr'
         )
-      ).toBe(usdToMicros(3));
+      ).toBe(usdToMicros(15));
     });
 
     it('prices a Grok model on LLMTR from LLMTR’s rates, not xAI’s', () => {
@@ -1510,12 +1510,12 @@ describe('llm-client', () => {
         completionTokens: 100_000,
         totalTokens: 200_000,
       };
-      expect(llmCostFromUsage(tokens, 'x-ai/grok-4.6', 'llmtr')).toBe(800_000);
+      expect(llmCostFromUsage(tokens, 'x-ai/grok-4.20', 'llmtr')).toBe(375_000);
     });
 
     it('still prefers a reported cost over the LLMTR rate table', () => {
       expect(
-        llmCostFromUsage(usage(0.0123), 'anthropic/claude-sonnet-5', 'llmtr')
+        llmCostFromUsage(usage(0.0123), 'anthropic/claude-sonnet-5.5', 'llmtr')
       ).toBe(usdToMicros(0.0123));
     });
 
@@ -1538,7 +1538,7 @@ describe('llm-client', () => {
     it('still prefers OpenRouter’s reported cost for a Grok model', () => {
       // A Grok call that DID go through OpenRouter carries the real bill —
       // the published-rate path must not override it.
-      expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.6')).toBe(
+      expect(llmCostFromUsage(usage(0.0123), 'x-ai/grok-4.7')).toBe(
         usdToMicros(0.0123)
       );
     });
@@ -1579,7 +1579,7 @@ describe('llm-client', () => {
       expect(isForcedGlmReasoningModel('z-ai/glm-5.3-flash')).toBe(true);
       expect(isForcedGlmReasoningModel('zai/glm-5.3-flash')).toBe(true);
       expect(isForcedGlmReasoningModel('z-ai/glm-5.3')).toBe(true);
-      expect(isForcedGlmReasoningModel('anthropic/claude-sonnet-5')).toBe(
+      expect(isForcedGlmReasoningModel('anthropic/claude-sonnet-5.5')).toBe(
         false
       );
     });

@@ -22,7 +22,7 @@
  * which the fallback model needs. A call site that builds its own adapter
  * must wrap ITSELF in `withRegionFallback` and resolve its key INSIDE the
  * wrap (a via that carries the blocked model need not carry the fallback).
- * `frame-prompt-workflow` is the one such site left, and only because it
+ * `shot-spec-rewrite-workflow` is the one such site left, and only because it
  * drives a realtime channel and an abort timeout `callLLMStream` does not
  * expose; the vision helpers used to be three more, which is how
  * `classifyUploadFn` (#1581, via talent vision) came to die on "This model is

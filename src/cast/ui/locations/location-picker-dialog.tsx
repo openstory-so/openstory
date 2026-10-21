@@ -1,3 +1,5 @@
+import type { TeamLocation } from '@/cast/server/db/locations';
+import { useTeamLocationList } from '@/cast/ui/use-team-locations';
 import {
   Dialog,
   DialogContent,
@@ -8,114 +10,67 @@ import {
 import { Input } from '@/ui/shadcn/input';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import {
-  type TeamLibraryLocation,
-  useTeamLocationsLibrary,
-} from '@/cast/ui/use-sequence-locations';
-import { MapPin, Search } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { useState } from 'react';
 import { AppImage } from '@/ui/shadcn/app-image';
 
-type LocationPickerDialogProps = {
+/** Which sequences use a location, in a line. */
+export function locationUseLine(sequences: TeamLocation['sequences']): string {
+  const [latest] = sequences;
+  if (!latest) return 'In no sequence';
+  if (sequences.length === 1) return `In ${latest.title}`;
+  return `Used in ${sequences.length} sequences`;
+}
+
+/**
+ * Pick the team location that replaces this one in the sequence (#1695).
+ * Only locations with a sheet are offered: the shots set here re-render
+ * from it, and Replace draws none.
+ */
+export const LocationPickerDialog: React.FC<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (location: TeamLibraryLocation) => void;
-  excludeLocationId?: string;
-};
+  onSelect: (location: TeamLocation) => void;
+  /** Locations the sequence already uses, this one included: not offered. */
+  excludeLocationIds: ReadonlySet<string>;
+}> = ({ open, onOpenChange, onSelect, excludeLocationIds }) => {
+  const { data: locations } = useTeamLocationList(open);
+  const [query, setQuery] = useState('');
 
-type LocationPickerCardProps = {
-  location: TeamLibraryLocation;
-  onClick: () => void;
-};
-
-const LocationPickerCard: React.FC<LocationPickerCardProps> = ({
-  location,
-  onClick,
-}) => {
-  const imageUrl = location.referenceImageUrl;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
-    >
-      <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-        {imageUrl ? (
-          <AppImage
-            src={imageUrl}
-            alt={location.name}
-            width={160}
-            height={160}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <MapPin className="h-12 w-12 text-muted-foreground/30" />
-          </div>
-        )}
-      </div>
-      <span className="text-sm font-medium truncate w-full">
-        {location.name}
-      </span>
-      <span className="text-xs text-muted-foreground truncate w-full">
-        {location.sequenceTitle}
-      </span>
-    </button>
+  const q = query.trim().toLowerCase();
+  const offered = locations?.filter(
+    (location) =>
+      location.referenceImageUrl &&
+      !excludeLocationIds.has(location.id) &&
+      location.name.toLowerCase().includes(q)
   );
-};
-
-export const LocationPickerDialog: React.FC<LocationPickerDialogProps> = ({
-  open,
-  onOpenChange,
-  onSelect,
-  excludeLocationId,
-}) => {
-  const { data: locationList, isLoading } = useTeamLocationsLibrary();
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Filter locations by search query and exclude current
-  const filteredLocations = locationList?.filter((loc) => {
-    if (excludeLocationId && loc.id === excludeLocationId) return false;
-    if (!searchQuery) return true;
-    const searchLower = searchQuery.toLowerCase();
-    return (
-      loc.name.toLowerCase().includes(searchLower) ||
-      loc.sequenceTitle.toLowerCase().includes(searchLower) ||
-      (loc.description?.toLowerCase().includes(searchLower) ?? false)
-    );
-  });
-
-  const handleSelect = (location: TeamLibraryLocation) => {
-    onSelect(location);
-    onOpenChange(false);
-  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        onOpenChange(next);
+        if (!next) setQuery('');
+      }}
+    >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Select Location Reference</DialogTitle>
+          <DialogTitle>Replace location</DialogTitle>
           <DialogDescription>
-            Choose a location from your library to use as a visual reference.
+            The sequence uses the one you pick instead. Its shots re-render.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Search input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search locations..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <Input
+          type="search"
+          placeholder="Search locations…"
+          aria-label="Search locations"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
 
-        {/* Locations grid */}
         <ScrollArea className="h-[400px]">
-          {isLoading ? (
+          {!offered ? (
             <div className="grid grid-cols-2 gap-4 p-1 sm:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="flex flex-col items-center gap-2 p-3">
@@ -125,26 +80,45 @@ export const LocationPickerDialog: React.FC<LocationPickerDialogProps> = ({
                 </div>
               ))}
             </div>
-          ) : !filteredLocations || filteredLocations.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center py-12 text-center">
-              <MapPin className="h-12 w-12 text-muted-foreground/30" />
-              <p className="mt-4 text-sm text-muted-foreground">
-                {searchQuery
-                  ? 'No locations matching your search'
-                  : 'No locations available'}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Locations from other sequences will appear here
-              </p>
-            </div>
+          ) : offered.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              {q ? 'No location matches' : 'No other locations with a sheet'}
+            </p>
           ) : (
             <div className="grid grid-cols-2 gap-4 p-1 sm:grid-cols-3">
-              {filteredLocations.map((location) => (
-                <LocationPickerCard
+              {offered.map((location) => (
+                <button
                   key={location.id}
-                  location={location}
-                  onClick={() => handleSelect(location)}
-                />
+                  type="button"
+                  onClick={() => {
+                    onSelect(location);
+                    onOpenChange(false);
+                    setQuery('');
+                  }}
+                  className="flex flex-col items-center gap-2 rounded-lg p-3 text-center transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
+                    {location.referenceImageUrl ? (
+                      <AppImage
+                        src={location.referenceImageUrl}
+                        alt=""
+                        width={320}
+                        height={180}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <MapPin className="h-12 w-12 text-muted-foreground/30" />
+                      </div>
+                    )}
+                  </div>
+                  <span className="w-full truncate text-sm font-medium">
+                    {location.name}
+                  </span>
+                  <span className="w-full truncate text-xs text-muted-foreground">
+                    {locationUseLine(location.sequences)}
+                  </span>
+                </button>
               ))}
             </div>
           )}

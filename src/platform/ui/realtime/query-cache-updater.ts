@@ -4,11 +4,13 @@ import { sceneFacetKeys } from '@/shots/ui/use-scene-facets';
 import { sceneKeys } from '@/shots/ui/use-scenes';
 import { sequenceElementKeys } from '@/cast/ui/use-sequence-elements';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
 import { locationSheetVariantKeys } from '@/cast/ui/use-location-sheet-variants';
 import { sequenceCharacterKeys } from '@/cast/ui/use-sequence-characters';
 import { sequenceLocationKeys } from '@/cast/ui/use-sequence-locations';
+import { teamLocationKeys } from '@/cast/ui/use-team-locations';
 import {
   musicPromptStalenessKey,
   sequenceKeys,
@@ -58,6 +60,22 @@ function debouncedInvalidate(
 }
 
 /**
+ * The generation plan (#1817) is derived from the same rows as staleness and
+ * the cast lists; refresh it wherever those move. It also refetches on focus
+ * and after a refused continue, so a dropped event cannot strand it.
+ */
+function invalidateGenerationPlan(
+  queryClient: QueryClient,
+  sequenceId: string
+) {
+  debouncedInvalidate(
+    queryClient,
+    generationPlanKeys.bySequence(sequenceId),
+    `generation-plan:${sequenceId}`
+  );
+}
+
+/**
  * Which cast / locations / elements belong to which shot is resolved on the
  * server (`getSceneFacetMapsFn`) and cached separately from the lists, so a
  * refreshed list still filters through a stale map. Any event that can change
@@ -87,8 +105,8 @@ function isValidMusicStatus(
 
 // Narrows to the statuses image emits carry. 'cancelled' (#1108) is
 // deliberately absent HERE: only VIDEO carries it (see isValidVideoStatus) —
-// image cancels settle the frame to completed/pending server-side. This base
-// union is assignable to the nullable `frame.imageStatus`.
+// a cancelled image row reads as the frame's selection (#1942). This base
+// union is the shot's `imageStatus`.
 type LiveEmitStatus = 'pending' | 'generating' | 'completed' | 'failed';
 function isValidShotStatus(status: unknown): status is LiveEmitStatus {
   return (
@@ -121,6 +139,7 @@ export function updateQueryCacheFromEvent(
 
   switch (eventName) {
     case 'generation.shot:created':
+      invalidateGenerationPlan(queryClient, sequenceId);
       // Debounced invalidation - multiple rapid events = one refetch.
       // Stream-time scene-split now also writes a `scenes` row + sceneId
       // link for each shot (#1072), so the spine list must refetch too.
@@ -143,6 +162,7 @@ export function updateQueryCacheFromEvent(
       break;
 
     case 'generation.shot:updated': {
+      invalidateGenerationPlan(queryClient, sequenceId);
       // Scene metadata (title, continuity, music/audio design) lives on the
       // `scenes` row now (#1067), not on the shot — there is nothing left to
       // patch in place on the cached shot, so refresh the scene spine instead.
@@ -151,11 +171,10 @@ export function updateQueryCacheFromEvent(
         sceneKeys.list(sequenceId),
         `scenes:${sequenceId}`
       );
-      // Prompt regenerations no longer travel in `metadata` — the visual/motion
-      // prompt now lives in `frame_prompt_versions` / `shot_prompt_versions`
-      // and is resolved into the `ShotView` server-side (#713). The in-place
-      // `setQueryData(metadata)` above can't re-run that resolution, so refetch
-      // the shots list to pick up the new prompt version + `motionPrompt`, and
+      // The event carries only the shot id (#1811); the visual/motion prompt
+      // lives in `frame_prompt_versions` / `shot_prompt_versions` and is
+      // resolved into the `ShotView` server-side (#713), so refetch the shots
+      // list to pick up the new prompt version + `motionPrompt`, and
       // invalidate the matching version-history query so an open prompt history
       // sheet shows the freshly appended version (#991).
       const updateType = getString(data, 'updateType');
@@ -173,6 +192,11 @@ export function updateQueryCacheFromEvent(
             queryClient,
             shotKeys.dialogueSections(shotId),
             `dialogue-sections:${shotId}`
+          );
+          debouncedInvalidate(
+            queryClient,
+            shotKeys.dialogueClaimsBySequence(sequenceId),
+            `dialogue-claims:${sequenceId}`
           );
           // A new reading is a new clip: the video rendered with the old one
           // now reads stale, and that verdict rides the segments list.
@@ -201,7 +225,12 @@ export function updateQueryCacheFromEvent(
         data,
         'previewThumbnailUrl'
       );
+      const previewCreatedAt = getOptionalString(data, 'previewCreatedAt');
       const status = data.status;
+      // A finished or failed artifact changes what the plan owes.
+      if (status === 'completed' || status === 'failed') {
+        invalidateGenerationPlan(queryClient, sequenceId);
+      }
       const errorMessage = getOptionalString(data, 'error');
       // Variant-only (#547): an added (alternate) model finished — its output
       // belongs in `shot_variants`, NOT on the live primary. Skip the
@@ -230,6 +259,9 @@ export function updateQueryCacheFromEvent(
                   // refetch; the row itself is not in this cache.
                   previewThumbnailUrl:
                     previewThumbnailUrl ?? f.previewThumbnailUrl,
+                  previewCreatedAt: previewCreatedAt
+                    ? new Date(previewCreatedAt)
+                    : f.previewCreatedAt,
                   pendingUpscaleUrl:
                     status === 'completed' || status === 'failed'
                       ? null
@@ -238,21 +270,18 @@ export function updateQueryCacheFromEvent(
                     status === 'completed' || status === 'failed'
                       ? null
                       : f.pendingUpscaleIndex,
-                  frame: {
-                    ...f.frame,
-                    imageStatus: isValidShotStatus(status)
-                      ? status
-                      : f.frame.imageStatus,
-                    // Surface the failure reason live (#881): set on `failed`,
-                    // clear when a new attempt starts/succeeds, and leave
-                    // untouched for status-less emits (e.g. preview-url).
-                    imageError:
-                      status === 'failed'
-                        ? (errorMessage ?? f.frame.imageError)
-                        : isValidShotStatus(status)
-                          ? null
-                          : f.frame.imageError,
-                  },
+                  imageStatus: isValidShotStatus(status)
+                    ? status
+                    : f.imageStatus,
+                  // Surface the failure reason live (#881): set on `failed`,
+                  // clear when a new attempt starts/succeeds, and leave
+                  // untouched for status-less emits (e.g. preview-url).
+                  imageError:
+                    status === 'failed'
+                      ? (errorMessage ?? f.imageError)
+                      : isValidShotStatus(status)
+                        ? null
+                        : f.imageError,
                 }
               : f
           )
@@ -340,6 +369,10 @@ export function updateQueryCacheFromEvent(
     case 'generation.video:progress': {
       const videoUrl = getOptionalString(data, 'videoUrl');
       const status = data.status;
+      // A finished or failed artifact changes what the plan owes.
+      if (status === 'completed' || status === 'failed') {
+        invalidateGenerationPlan(queryClient, sequenceId);
+      }
       const errorMessage = getOptionalString(data, 'error');
       const promptSoftened = data.promptSoftened === true;
       const modelFallback = data.modelFallback === true;
@@ -506,24 +539,19 @@ export function updateQueryCacheFromEvent(
 
     case 'generation.audio:progress': {
       const status = data.status;
+      // A finished or failed artifact changes what the plan owes.
+      if (status === 'completed' || status === 'failed') {
+        invalidateGenerationPlan(queryClient, sequenceId);
+      }
       const audioUrl = getOptionalString(data, 'audioUrl');
-      const model = getOptionalString(data, 'model');
-      if (isValidMusicStatus(status)) {
+      if (isValidMusicStatus(status) && data.primary !== false) {
         queryClient.setQueryData<Sequence>(
           sequenceKeys.detail(sequenceId),
           (old) => {
+            // A secondary model's run (#546) emits only to refresh the
+            // per-model queries below; applying it here would clobber the
+            // sequence's own track.
             if (!old) return old;
-            // Only the primary model owns the live `sequences.music*` columns.
-            // In a multi-model fan-out (#546) secondary models emit model-scoped
-            // events purely to refresh the per-model queries below — applying
-            // their status/url here would clobber the primary (last-writer-wins,
-            // and a secondary failure would mask a working primary track). The
-            // primary's `set-generating-status` writes `musicModel` first, so
-            // match against it; a missing `model` (single-model / legacy
-            // emitters) is treated as the primary.
-            if (model && old.musicModel && model !== old.musicModel) {
-              return old;
-            }
             return {
               ...old,
               musicStatus: status,
@@ -588,12 +616,14 @@ export function updateQueryCacheFromEvent(
     case 'generation.stale:detected': {
       // A divergent regeneration parked its result in a `*_variants` table.
       // This handler runs on the sequence channel, so it only fires for
-      // entityTypes routed there: `shot`, `character`, `location`. Per-entity
-      // channels handle their own invalidation (`useTalentSheetRealtime`,
-      // `useLocationSheetRealtime`) for `talent` and `library-location`.
+      // entityTypes routed there: `shot`, `character`, `location`. A run
+      // started from no sequence reports on the entity's own channel, where
+      // the page that started it listens (`useTalentSheetRealtime`, the
+      // character and location detail views).
       const entityType = getString(data, 'entityType');
       const entityId = getString(data, 'entityId');
       if (!entityId) break;
+      invalidateGenerationPlan(queryClient, sequenceId);
       switch (entityType) {
         case 'shot':
           // Shot thumbnail/video divergence: refresh variants list, the shot
@@ -639,8 +669,7 @@ export function updateQueryCacheFromEvent(
           break;
 
         case 'location':
-          // Sequence-location reference diverged into
-          // `location_sheet_variants` (parentType `sequence_location`).
+          // A location's sheet diverged into `location_sheet_variants`.
           debouncedInvalidate(
             queryClient,
             sequenceLocationKeys.list(sequenceId),
@@ -648,7 +677,7 @@ export function updateQueryCacheFromEvent(
           );
           debouncedInvalidate(
             queryClient,
-            locationSheetVariantKeys.divergentBySequence(sequenceId),
+            locationSheetVariantKeys.divergent(),
             `location-sheet-divergent:${sequenceId}`
           );
           break;
@@ -707,6 +736,7 @@ export function updateQueryCacheFromEvent(
         `character-sheet-variants:${sequenceId}`
       );
       invalidateSceneFacets(queryClient, sequenceId);
+      invalidateGenerationPlan(queryClient, sequenceId);
       break;
 
     case 'generation.location:matched':
@@ -715,21 +745,28 @@ export function updateQueryCacheFromEvent(
         sequenceLocationKeys.list(sequenceId),
         `sequence-locations:${sequenceId}`
       );
+      // A match links the sequence to a team location (#1695): the team
+      // list's sequence counts and order move.
+      debouncedInvalidate(queryClient, teamLocationKeys.all, 'team-locations');
       invalidateSceneFacets(queryClient, sequenceId);
       break;
 
     case 'generation.location-sheet:progress':
+      // The sheet is the location's (#1695): its detail read, every
+      // sequence that uses it and the team list show the same one.
       debouncedInvalidate(
         queryClient,
-        sequenceLocationKeys.list(sequenceId),
-        `sequence-locations:${sequenceId}`
+        sequenceLocationKeys.all,
+        'sequence-locations'
       );
+      debouncedInvalidate(queryClient, teamLocationKeys.all, 'team-locations');
       debouncedInvalidate(
         queryClient,
         locationSheetVariantKeys.all,
         `location-sheet-variants:${sequenceId}`
       );
       invalidateSceneFacets(queryClient, sequenceId);
+      invalidateGenerationPlan(queryClient, sequenceId);
       break;
 
     case 'generation.phase:start':
@@ -754,6 +791,7 @@ export function updateQueryCacheFromEvent(
         `sequence-elements:${sequenceId}`
       );
       invalidateSceneFacets(queryClient, sequenceId);
+      invalidateGenerationPlan(queryClient, sequenceId);
       break;
 
     case 'generation.preview:replaced':
@@ -778,6 +816,14 @@ export function updateQueryCacheFromEvent(
       });
       void queryClient.invalidateQueries({
         queryKey: shotKeys.dialogueSectionsAll(),
+      });
+      // Fast analysis can finish before the client subscribes to scene/shot
+      // creation events. Reconcile the scene spine and script at completion too.
+      void queryClient.invalidateQueries({
+        queryKey: sceneKeys.list(sequenceId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: sceneKeys.composedScript(sequenceId),
       });
       // Final catch-all so the cast, location and element lists — and the
       // per-scene membership the tabs filter by — reflect the finished run
@@ -805,6 +851,9 @@ export function updateQueryCacheFromEvent(
       void queryClient.invalidateQueries({
         queryKey: musicPromptStalenessKey(sequenceId),
       });
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
+      });
       break;
 
     case 'generation.error':
@@ -815,7 +864,7 @@ export function updateQueryCacheFromEvent(
             f.id === shotId
               ? {
                   ...f,
-                  frame: { ...f.frame, imageStatus: 'failed' },
+                  imageStatus: 'failed',
                   videoStatus: 'failed',
                 }
               : f
@@ -841,6 +890,7 @@ export function updateQueryCacheFromEvent(
     }
 
     case 'generation.scene:new':
+      invalidateGenerationPlan(queryClient, sequenceId);
       // Analysis now persists a scenes row as each scene completes (#1072).
       // Refetch so the spine grows scene groups live instead of only after
       // the late bulk persist-scenes step — and so the Script tab collapses

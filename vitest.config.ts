@@ -27,13 +27,30 @@ export default defineConfig({
       'cloudflare:workflows': fileURLToPath(
         new URL('./src/test/cloudflare-workflows.stub.ts', import.meta.url)
       ),
+      // Run the MCP SDK on its workerd validator (CfWorker), as in production;
+      // the Node shim compiles every tool schema with Ajv on every request.
+      '@modelcontextprotocol/server/_shims': fileURLToPath(
+        new URL(
+          './node_modules/@modelcontextprotocol/server/dist/shimsWorkerd.mjs',
+          import.meta.url
+        )
+      ),
     },
   },
   plugins: [viteReact()],
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.ts'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'packages/*/src/**/*.test.{ts,tsx}',
+      'scripts/**/*.test.ts',
+      'workers/**/*.test.ts',
+    ],
     setupFiles: ['./src/test/setup.ts'],
     environment: 'node',
     pool: 'forks',
+    // Inlined so the _shims alias above reaches the SDK and ai-mcp's import of it.
+    server: {
+      deps: { inline: ['@modelcontextprotocol/server', '@tanstack/ai-mcp'] },
+    },
   },
 });

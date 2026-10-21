@@ -26,6 +26,8 @@ type ScriptEditorProps = {
    * elements' tokens (#1079); pass the full sequence sets once analysed.
    */
   mentionItems?: MentionItem[];
+  /** Map the chosen `@` row to the item to insert; the composer attaches a team character here (#2050). */
+  onMentionSelect?: (item: MentionItem) => MentionItem;
 };
 
 export const ScriptEditor: React.FC<ScriptEditorProps> = ({
@@ -40,6 +42,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
   showCharacterCount = true,
   loading = false,
   mentionItems,
+  onMentionSelect,
 }) => {
   const handleChange = useCallback(
     (markdown: string) => {
@@ -79,6 +82,7 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
           onValueChange={handleChange}
           onKeyDown={handleKeyDown}
           mentionItems={mentionItems}
+          onMentionSelect={onMentionSelect}
           placeholder={placeholder}
           disabled={disabled}
           aria-invalid={hasError}
@@ -94,18 +98,20 @@ export const ScriptEditor: React.FC<ScriptEditorProps> = ({
       </div>
 
       <div className="shrink-0 flex items-center justify-between">
+        {/* Fixed locale: the server renders en-US, so a phone's own locale
+            ("10.000") would fail hydration (#2132). */}
         {showCharacterCount && (
           <div className="text-sm text-muted-foreground">
             <span
               className={cn(isOverLimit && 'text-destructive font-medium')}
               data-testid="character-count"
             >
-              {value.length.toLocaleString()}
+              {value.length.toLocaleString('en-US')}
             </span>
             {maxLength && (
               <>
                 {' / '}
-                <span>{maxLength.toLocaleString()}</span>
+                <span>{maxLength.toLocaleString('en-US')}</span>
                 <span> characters</span>
               </>
             )}

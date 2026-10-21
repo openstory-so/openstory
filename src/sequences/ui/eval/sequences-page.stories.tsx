@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
-import type { ShotView } from '@/shots/shot-view';
+import type { SequenceListShot } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
 import { generateMockShots } from '@/mocks/data-generators';
 import { MOCK_SYSTEM_STYLES } from '@/look/style-templates';
@@ -34,6 +34,7 @@ Oh, hi Mom. Yeah, I'm fine. Just... working on a big project.`,
   updatedBy: null,
   styleId: 'style-1',
   styleConfig: null,
+  selectedStyleVersionId: null,
   aspectRatio: '16:9',
   resolution: '720p',
   analysisModel: 'anthropic/claude-haiku-4.5',
@@ -51,15 +52,14 @@ Oh, hi Mom. Yeah, I'm fine. Just... working on a big project.`,
   musicTags: null,
   musicPromptInputHash: null,
   includeMusic: true,
+  selectedMusicVariantId: null,
+  selectedMusicPromptVersionId: null,
+  pendingPromoteMusicVariantId: null,
   statusError: null,
   workflowRunId: null,
   posterUrl: null,
   readyEmailSentAt: null,
-  autoGenerateMotion: false,
-  autoGenerateMusic: false,
-  generationStopAt: null,
-  pipelineStage: null,
-  generationCheckpoint: null,
+  generationStopAt: 'images',
   generateStartFrames: true,
   generateVoices: false,
   draftMotion: false,
@@ -126,32 +126,22 @@ function createPreviewClient() {
   seed(styleKeys.list(), MOCK_SYSTEM_STYLES);
   seed(['archived-sequences'], []);
   seed(['sequence-divergent-by-team', null], []);
-  const shotsBySequence = new Map<string, ShotView[]>();
+  const shotsBySequence = new Map<string, SequenceListShot[]>();
   for (const sequence of sequences) {
-    const shots = generateMockShots(2, sequence.id).map<ShotView>(
+    const shots = generateMockShots(2, sequence.id).map<SequenceListShot>(
       (shot, i) => ({
-        ...shot,
+        id: shot.id,
+        sequenceId: sequence.id,
         sceneId: `${sequence.id}-scene-${i}`,
-        imagePromptVersion: {
-          id: `${shot.id}-prompt`,
-          frameId: shot.frame.id,
-          text:
-            i === 0
-              ? 'Wide shot of a solitary figure on a coastal cliff at dusk. Soft amber light catches the sea mist, cinematic composition, gentle film grain.'
-              : 'Close-up of a woman beside a rain-streaked train window at night. Reflections of city lights trace her face, shallow depth of field.',
-          components: null,
-          source: 'ai-generated',
-          status: 'completed',
-          inputHash: null,
-          pendingInputHash: null,
-          workflowRunId: null,
-          analysisModel: sequence.analysisModel,
-          createdAt: sequence.createdAt,
-          createdBy: null,
-        },
-        video: null,
-        primaryVideo: null,
-        image: shot.image ? { ...shot.image, url: '/match-script.jpg' } : null,
+        imageUrl: '/match-script.jpg',
+        imageStatus: shot.imageStatus,
+        videoUrl: null,
+        videoStatus: shot.videoStatus,
+        visualPrompt:
+          i === 0
+            ? 'Wide shot of a solitary figure on a coastal cliff at dusk. Soft amber light catches the sea mist, cinematic composition, gentle film grain.'
+            : 'Close-up of a woman beside a rain-streaked train window at night. Reflections of city lights trace her face, shallow depth of field.',
+        motionPrompt: shot.motionPrompt?.fullPrompt ?? null,
       })
     );
     shotsBySequence.set(sequence.id, shots);

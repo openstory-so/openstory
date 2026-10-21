@@ -35,11 +35,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Most intelligent Anthropic model, new tier above Opus',
   },
   {
-    id: 'anthropic/claude-opus-5',
-    name: 'Claude Opus 5',
+    id: 'anthropic/claude-opus-5.5',
+    name: 'Claude Opus 5.5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1493 (opus-5-high).
+    // Bumped from Claude Opus 5 (Arena 1493, opus-5-high); re-rank on next
+    // LMArena snapshot.
     qualityRank: 3,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -83,17 +84,18 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Frontier multimodal reasoning with 1M context',
   },
   {
-    id: 'openai/gpt-5.6-sol',
-    name: 'GPT-5.6 Sol',
+    id: 'openai/gpt-6.1-sol',
+    name: 'GPT-6.1 Sol',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
-    // Arena 1483 (gpt-5.6-sol-xhigh).
+    // Bumped from GPT-6 Sol (itself bumped from GPT-5.6 Sol, Arena 1483,
+    // gpt-5.6-sol-xhigh); re-rank on next LMArena snapshot.
     qualityRank: 7,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
     description:
-      'GPT-5.6 flagship: complex reasoning and agentic work, 1M context',
+      'GPT-6.1 high-end tier: complex reasoning and agentic work, 1M context',
   },
   {
     id: 'openai/gpt-5.5',
@@ -193,11 +195,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Open-weights frontier reasoning, 1M context',
   },
   {
-    id: 'anthropic/claude-sonnet-5',
-    name: 'Claude Sonnet 5',
+    id: 'anthropic/claude-sonnet-5.5',
+    name: 'Claude Sonnet 5.5',
     vendor: 'Anthropic',
     license: 'proprietary' as const,
-    // Arena 1461 (sonnet-5-high).
+    // Bumped from Claude Sonnet 5 (Arena 1461, sonnet-5-high); re-rank on
+    // next LMArena snapshot.
     qualityRank: 15,
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -205,11 +208,12 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'State-of-the-art coding and structured output',
   },
   {
-    id: 'x-ai/grok-4.6',
-    name: 'Grok 4.6',
+    id: 'x-ai/grok-4.7',
+    name: 'Grok 4.7',
     vendor: 'SpaceXAI',
     license: 'proprietary' as const,
-    // Arena 1456 (grok-4.6-high).
+    // Bumped from Grok 4.6 (Arena 1456, grok-4.6-high); re-rank on next
+    // LMArena snapshot.
     qualityRank: 16,
     contextWindow: 500_000,
     maxOutputTokens: 450_000,
@@ -221,16 +225,17 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Frontier xAI reasoning model, xAI’s smartest, 500K context',
   },
   {
-    id: 'openai/gpt-5.6-luna',
-    name: 'GPT-5.6 Luna',
+    id: 'openai/gpt-6-luna',
+    name: 'GPT-6 Luna',
     vendor: 'OpenAI',
     license: 'proprietary' as const,
-    // Arena 1452 (gpt-5.6-luna-xhigh).
+    // Bumped from GPT-5.6 Luna (Arena 1452, gpt-5.6-luna-xhigh); re-rank on
+    // next LMArena snapshot.
     qualityRank: 17,
     contextWindow: 1_050_000,
     maxOutputTokens: 128_000,
     vision: true,
-    description: 'GPT-5.6 fast, cost-efficient tier; default analysis model',
+    description: 'GPT-6 fast, cost-efficient tier; default analysis model',
   },
   {
     id: 'openai/gpt-5.4-mini',
@@ -400,7 +405,7 @@ export function analysisModelSupportsVision(modelId: string): boolean {
  * back here).
  */
 export const DEFAULT_VISION_MODEL: AnalysisModelId =
-  'anthropic/claude-sonnet-5';
+  'anthropic/claude-sonnet-5.5';
 
 /**
  * Resolve which model should actually run a call given whether it carries image
@@ -423,7 +428,7 @@ export function resolveVisionModel(
  * full picker, grouped Fast / Quality.
  * Existing users keep whatever generation settings already store.
  */
-export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
+export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-6-luna';
 
 /**
  * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning
@@ -434,7 +439,7 @@ export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-5.6-luna';
  * this is plain Opus 5 rather than the separate Fast id. Bibles and later
  * prompt calls keep the sequence's analysis model.
  */
-export const SCENE_SPLIT_MODEL: AnalysisModelId = 'anthropic/claude-opus-5';
+export const SCENE_SPLIT_MODEL: AnalysisModelId = 'anthropic/claude-opus-5.5';
 
 /**
  * Image generation models are now in src/models/models.ts

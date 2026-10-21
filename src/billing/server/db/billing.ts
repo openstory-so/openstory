@@ -11,7 +11,6 @@ import {
   isStripeEnabled,
   MIN_TOPUP_AMOUNT_MICROS,
   RESERVATION_TTL_MS,
-  signupGrantIdempotencyKey,
   totalCheckoutCents,
 } from '@/billing/constants';
 import {
@@ -30,7 +29,6 @@ import {
   credits,
   teamBillingSettings,
   transactions,
-  welcomeCardClaims,
 } from '@/platform/server/db/schema/credits';
 import type {
   CreditBatchSource,
@@ -39,19 +37,14 @@ import type {
 } from '@/platform/server/db/schema/credits';
 import { notifyAutoTopUpFailed } from '@/billing/server/notify-auto-top-up-failed';
 import { createTeamManagementMethods } from '@/platform/server/db/scoped/team-management';
+import {
+  giftRedeemHolderReason,
+  normalizeGiftCode,
+  type GiftRedeemResult,
+} from '@/billing/gift-redeem';
 import { ValidationError } from '@/platform/errors';
 import { getBillingChannel } from '@/platform/realtime';
-import {
-  and,
-  count,
-  desc,
-  eq,
-  gte,
-  isNull,
-  notExists,
-  or,
-  sql,
-} from 'drizzle-orm';
+import { and, count, desc, eq, gte, isNull, notExists, sql } from 'drizzle-orm';
 import { generateId } from '@/platform/id';
 import { giftTokenRedemptions, giftTokens } from '@/platform/server/db/schema';
 
@@ -71,6 +64,7 @@ async function emitFundsUpdated(opts: {
   balance: Microdollars;
   reserved: Microdollars;
   available: Microdollars;
+  asOfMs: number;
   /** Signed ledger amount (negative for usage). Zero when only a hold changed. */
   amountMicros: Microdollars;
   transactionId?: string;
@@ -81,6 +75,7 @@ async function emitFundsUpdated(opts: {
     balanceUsd: microsToUsd(opts.balance),
     availableUsd: microsToUsd(opts.available),
     reservedUsd: microsToUsd(opts.reserved),
+    asOfMs: opts.asOfMs,
     amountUsd: microsToUsd(opts.amountMicros),
     ...(opts.transactionId != null && opts.type
       ? { transactionId: opts.transactionId, type: opts.type }
@@ -178,42 +173,73 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return micros(row.balance);
   }
 
-  async function reservedSum(now = new Date()): Promise<Microdollars> {
-    const nowSeconds = Math.floor(now.getTime() / 1000);
-    const [row] = await db
-      .select({
-        total: sql<number>`coalesce(sum(${creditReservations.remainingAmount}), 0)`,
-      })
-      .from(creditReservations)
-      .where(
-        and(
-          eq(creditReservations.teamId, teamId),
-          sql`${creditReservations.remainingAmount} > 0`,
-          sql`${creditReservations.expiresAt} > ${nowSeconds}`
-        )
-      );
-    return micros(Number(row?.total ?? 0));
-  }
-
-  async function getAvailable(now = new Date()): Promise<{
+  /**
+   * Posted balance, unexpired holds, and D1's clock at the read, in one
+   * batch so no write lands between them. `asOfMs` orders snapshots: D1
+   * serializes a database's statements, so a later read has a later clock
+   * whichever isolate took it (#1881).
+   */
+  async function readAvailable(
+    now = new Date(),
+    reservationId?: string
+  ): Promise<{
     balance: Microdollars;
     reserved: Microdollars;
     available: Microdollars;
+    asOfMs: number;
   }> {
-    const balance = await getBalance();
-    const reserved = await reservedSum(now);
+    const nowSeconds = Math.floor(now.getTime() / 1000);
+    const [balanceRows, [held]] = await db.batch([
+      db
+        .select({ balance: credits.balance })
+        .from(credits)
+        .where(eq(credits.teamId, teamId))
+        .limit(1),
+      db
+        .select({
+          total: sql<number>`coalesce(sum(${creditReservations.remainingAmount}), 0)`,
+          asOfMs: sql<number>`cast(unixepoch('subsecond') * 1000 as integer)`,
+        })
+        .from(creditReservations)
+        .where(
+          and(
+            eq(creditReservations.teamId, teamId),
+            reservationId
+              ? sql`${creditReservations.id} <> ${reservationId}`
+              : undefined,
+            sql`${creditReservations.remainingAmount} > 0`,
+            sql`${creditReservations.expiresAt} > ${nowSeconds}`
+          )
+        ),
+    ]);
+    const balance = balanceRows[0]
+      ? micros(balanceRows[0].balance)
+      : await getBalance();
+    const reserved = micros(Number(held?.total ?? 0));
     const available =
       balance > reserved ? subtractMicros(balance, reserved) : ZERO_MICROS;
-    return { balance, reserved, available };
+    // A NaN would compare false both ways and turn ordering off unnoticed.
+    const asOfMs = Number(held?.asOfMs);
+    if (!Number.isFinite(asOfMs)) {
+      throw new Error(`D1 returned no clock for the balance read: ${asOfMs}`);
+    }
+    return { balance, reserved, available, asOfMs };
   }
 
+  const getAvailable = (now = new Date()) => readAvailable(now);
+
   async function hasEnoughCredits(
-    estimatedCostMicros: Microdollars
+    estimatedCostMicros: Microdollars,
+    reservationId?: string
   ): Promise<boolean> {
-    const { available } = await getAvailable();
+    // Children may spend their own envelope plus unheld funds, never another
+    // run's hold. A missing, zero or expired envelope grants no extra balance.
+    const { available } = await readAvailable(new Date(), reservationId);
     return available >= estimatedCostMicros;
   }
 
+  /** One page of the team ledger, newest first. `hasMore` comes from reading
+   *  one extra row — a `count(*)` would read every ledger row (#1881). */
   async function getTransactionHistory(
     opts: { limit?: number; offset?: number; type?: TransactionType } = {}
   ): Promise<{
@@ -226,42 +252,35 @@ function createBillingReadMethods(db: Database, teamId: string) {
       metadata: unknown;
       createdAt: Date;
     }>;
-    total: number;
+    hasMore: boolean;
   }> {
     const limit = opts.limit ?? 50;
     const offset = opts.offset ?? 0;
 
-    const conditions = [eq(transactions.teamId, teamId)];
-    if (opts.type) {
-      conditions.push(eq(transactions.type, opts.type));
-    }
-    const whereClause =
-      conditions.length === 1 ? conditions[0] : and(...conditions);
+    const rows = await db
+      .select({
+        id: transactions.id,
+        type: transactions.type,
+        amount: transactions.amount,
+        balanceAfter: transactions.balanceAfter,
+        description: transactions.description,
+        metadata: transactions.metadata,
+        createdAt: transactions.createdAt,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.teamId, teamId),
+          opts.type ? eq(transactions.type, opts.type) : undefined
+        )
+      )
+      // created_at is in seconds; the ULID id breaks ties so rows written in
+      // the same second keep one order across pages.
+      .orderBy(desc(transactions.createdAt), desc(transactions.id))
+      .limit(limit + 1)
+      .offset(offset);
 
-    const [rows, countResult] = await Promise.all([
-      db
-        .select({
-          id: transactions.id,
-          type: transactions.type,
-          amount: transactions.amount,
-          balanceAfter: transactions.balanceAfter,
-          description: transactions.description,
-          metadata: transactions.metadata,
-          createdAt: transactions.createdAt,
-        })
-        .from(transactions)
-        .where(whereClause)
-        .orderBy(desc(transactions.createdAt))
-        .limit(limit)
-        .offset(offset),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(transactions)
-        .where(whereClause),
-    ]);
-
-    const total = countResult[0]?.count ?? 0;
-    return { transactions: rows, total };
+    return { transactions: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
   async function getBillingSettings(): Promise<TeamBillingSetting> {
@@ -295,34 +314,12 @@ function createBillingReadMethods(db: Database, teamId: string) {
     return existing;
   }
 
-  /** True if this team already received the $20 welcome grant.
-   *  Match idempotency key OR metadata.signupGrant: pre-#1516 rows have
-   *  no key, so the key alone would miss them and double-pay. */
-  async function hasSignupGrant(): Promise<boolean> {
-    const [row] = await db
-      .select({ id: transactions.id })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.teamId, teamId),
-          eq(transactions.type, 'credit_adjustment'),
-          or(
-            eq(transactions.idempotencyKey, signupGrantIdempotencyKey(teamId)),
-            sql`json_extract(${transactions.metadata}, '$.signupGrant') = 1`
-          )
-        )
-      )
-      .limit(1);
-    return !!row;
-  }
-
   return {
     getBalance,
     getAvailable,
     hasEnoughCredits,
     getTransactionHistory,
     getBillingSettings,
-    hasSignupGrant,
   };
 }
 
@@ -349,27 +346,6 @@ export function createBillingMethods(
       transactionId: opts.transactionId,
       type: opts.type,
     });
-  }
-
-  /**
-   * Reserve this Stripe card fingerprint for this team's welcome grant.
-   * Returns false if another team already claimed with this card.
-   */
-  async function claimWelcomeCardFingerprint(
-    fingerprint: string
-  ): Promise<boolean> {
-    const inserted = await db
-      .insert(welcomeCardClaims)
-      .values({ fingerprint, teamId })
-      .onConflictDoNothing({ target: welcomeCardClaims.fingerprint })
-      .returning({ teamId: welcomeCardClaims.teamId });
-    if (inserted.length > 0) return true;
-    const [existing] = await db
-      .select({ teamId: welcomeCardClaims.teamId })
-      .from(welcomeCardClaims)
-      .where(eq(welcomeCardClaims.fingerprint, fingerprint))
-      .limit(1);
-    return existing?.teamId === teamId;
   }
 
   async function clearAutoTopUpFailure(): Promise<void> {
@@ -1535,6 +1511,11 @@ export function createBillingMethods(
    * Redeem a gift token for a team. Adds credits via the billing sub-module.
    * Caller must provide an addCredits function (from billing sub-module) to avoid
    * circular dependency.
+   *
+   * Known refusals return `{ status: 'refused' }` (#2033). A code this team
+   * already holds is "already redeemed" / "once per account" even when the
+   * cap is also full — that check comes before the cap, so a single-use code
+   * the caller used does not come back as "fully redeemed".
    */
   async function redeemGiftToken(opts: {
     code: string;
@@ -1548,10 +1529,9 @@ export function createBillingMethods(
         metadata?: Record<string, unknown>;
       }
     ) => Promise<{ newBalance: Microdollars; transactionId: string } | null>;
-  }): Promise<{ newBalance: number; amountUsd: number }> {
-    const normalizedCode = opts.code.trim().toUpperCase();
+  }): Promise<GiftRedeemResult> {
+    const normalizedCode = normalizeGiftCode(opts.code);
 
-    // Find the token
     const [token] = await db
       .select()
       .from(giftTokens)
@@ -1559,14 +1539,35 @@ export function createBillingMethods(
       .limit(1);
 
     if (!token) {
-      throw new ValidationError('Invalid gift code');
+      return { status: 'refused', reason: 'invalid' };
     }
 
     if (token.expiresAt && token.expiresAt < new Date()) {
-      throw new ValidationError('This gift code has expired');
+      return { status: 'refused', reason: 'expired' };
     }
 
-    // Count existing redemptions
+    const teamRedemption = async () => {
+      const [holder] = await db
+        .select({ userId: giftTokenRedemptions.userId })
+        .from(giftTokenRedemptions)
+        .where(
+          and(
+            eq(giftTokenRedemptions.giftTokenId, token.id),
+            eq(giftTokenRedemptions.teamId, opts.teamId)
+          )
+        )
+        .limit(1);
+      return holder ?? null;
+    };
+
+    const ownRedemption = await teamRedemption();
+    if (ownRedemption) {
+      return {
+        status: 'refused',
+        reason: giftRedeemHolderReason(ownRedemption.userId, opts.userId),
+      };
+    }
+
     const [redemptionRow] = await db
       .select({ value: count() })
       .from(giftTokenRedemptions)
@@ -1575,10 +1576,10 @@ export function createBillingMethods(
     const redemptionCount = redemptionRow?.value ?? 0;
 
     if (redemptionCount >= token.maxRedemptions) {
-      throw new ValidationError('This gift code has been fully redeemed');
+      return { status: 'refused', reason: 'fully_redeemed' };
     }
 
-    // Record redemption -- unique index on (giftTokenId, teamId) prevents duplicates
+    // Unique index on (giftTokenId, teamId) closes the race the pre-check missed.
     const [inserted] = await db
       .insert(giftTokenRedemptions)
       .values({
@@ -1591,14 +1592,17 @@ export function createBillingMethods(
       .returning();
 
     if (!inserted) {
-      throw new ValidationError(
-        'Your team has already redeemed this gift code'
-      );
+      const holder = await teamRedemption();
+      return {
+        status: 'refused',
+        reason: holder
+          ? giftRedeemHolderReason(holder.userId, opts.userId)
+          : 'already_redeemed',
+      };
     }
 
     const amountMicros = micros(token.amountMicros);
 
-    // Add credits to team
     const result = await opts.addCredits(amountMicros, {
       type: 'credit_adjustment',
       description: `Gift code redeemed: ${normalizedCode} (${microsToDisplayUsd(amountMicros)})`,
@@ -1606,6 +1610,7 @@ export function createBillingMethods(
     });
 
     return {
+      status: 'redeemed',
       newBalance: result ? microsToUsd(result.newBalance) : 0,
       amountUsd: microsToUsd(amountMicros),
     };
@@ -1614,7 +1619,6 @@ export function createBillingMethods(
     ...read,
     addCredits,
     saveStripeCustomerId,
-    claimWelcomeCardFingerprint,
     clearAutoTopUpFailure,
     deductCredits,
     tryDeductCredits,

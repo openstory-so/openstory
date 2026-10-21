@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import type {
-  Frame,
-  Sequence,
-  SequenceExport,
-} from '@/platform/server/db/schema';
+import type { Sequence, SequenceExport } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { ShotProductionReadiness } from './db/sequences';
 import { usesStartFrame } from '@/shots/use-start-frame';
@@ -40,9 +36,12 @@ export const productionStatusSchema = z.object({
   failuresTruncated: z.boolean().optional(),
 });
 
+/** A frame whose newest primary still render failed (#1942). */
+type FailedFrame = { id: string; shotId: string; error: string | null };
+
 type ProductionStatusRead = {
   rows: ShotProductionReadiness[];
-  failedFrames: Frame[];
+  failedFrames: FailedFrame[];
   exports: SequenceExport[];
 };
 
@@ -61,15 +60,21 @@ export async function readProductionStatus(
     scopedDb.sequenceExports.listAllBySequence(sequence.id),
     includeFailures ? scopedDb.frames.listBySequence(sequence.id) : [],
   ]);
+  const primaryByFrame = await scopedDb.frameVariants.getPrimaryByFrameIds(
+    frames.map((frame) => frame.id)
+  );
   const liveShots = new Set(rows.map((row) => row.shotId));
   return buildProductionStatus(
     sequence,
     {
       rows,
       exports,
-      failedFrames: frames.filter(
-        (frame) => frame.imageStatus === 'failed' && liveShots.has(frame.shotId)
-      ),
+      failedFrames: frames.flatMap((frame) => {
+        const primary = primaryByFrame.get(frame.id);
+        return primary?.status === 'failed' && liveShots.has(frame.shotId)
+          ? [{ id: frame.id, shotId: frame.shotId, error: primary.error }]
+          : [];
+      }),
     },
     includeFailures
   );
@@ -134,7 +139,7 @@ export function buildProductionStatus(
         stage: 'image',
         id: frame.id,
         shotId: frame.shotId,
-        error: frame.imageError,
+        error: frame.error,
       });
     const seenVideos = new Set<string>();
     for (const r of rows)

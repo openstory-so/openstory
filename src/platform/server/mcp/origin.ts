@@ -25,6 +25,8 @@ export const WELL_KNOWN_MCP_CLIENT_HOSTS = [
   'claude.com',
   'chatgpt.com',
   'chat.openai.com',
+  'grok.com',
+  'gemini.google.com',
   'cursor.com',
   'www.cursor.com',
   'vscode.dev',

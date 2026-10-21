@@ -14,6 +14,16 @@ import { Fragment } from 'react';
 export type BreadcrumbCrumb = {
   label: React.ReactNode;
   to?: string;
+  /** Search params for `to`, e.g. a list's filter to return to. */
+  search?: Record<string, unknown>;
+  /**
+   * A phone shows one crumb. That is the current page unless an ancestor
+   * names the thing better than the page does ("Scenes" says less than the
+   * sequence title), in which case the ancestor sets this. A deeper page
+   * with a name of its own (a character under that sequence) sets it too,
+   * and the deepest wins.
+   */
+  keepOnMobile?: true;
 };
 
 // Subset of AnyRouteMatch that breadcrumb resolution actually needs. Defined
@@ -64,21 +74,31 @@ export function resolveCrumbs(match: BreadcrumbMatch): BreadcrumbCrumb[] {
   return [resolved];
 }
 
+/**
+ * The one crumb a phone shows: the deepest that asks (`keepOnMobile`), else
+ * the current page.
+ */
+export function mobileCrumbIndex(crumbs: BreadcrumbCrumb[]): number {
+  const kept = crumbs.map((crumb) => crumb.keepOnMobile).lastIndexOf(true);
+  return kept === -1 ? crumbs.length - 1 : kept;
+}
+
 export const Breadcrumbs: React.FC = () => {
   const matches = useMatches();
   const crumbs = matches.flatMap(resolveCrumbs);
 
   if (crumbs.length === 0) return null;
+  const mobileIndex = mobileCrumbIndex(crumbs);
 
   return (
     <Breadcrumb className="min-w-0">
       <BreadcrumbList className="flex-nowrap">
         {crumbs.map((crumb, i) => {
           const isLast = i === crumbs.length - 1;
-          // shadcn sidebar-07: hide ancestor crumbs on small screens, keep
-          // the current page. Long titles line-clamp instead of wrapping the
-          // header (which stretched the vertical separator).
-          const hideOnMobile = !isLast && crumbs.length > 1;
+          // shadcn sidebar-07: one crumb on small screens. Long titles
+          // line-clamp instead of wrapping the header (which stretched the
+          // vertical separator).
+          const hideOnMobile = i !== mobileIndex;
           const labelText =
             typeof crumb.label === 'string' ? crumb.label : undefined;
           return (
@@ -94,17 +114,13 @@ export const Breadcrumbs: React.FC = () => {
                   </BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild className="line-clamp-1">
-                    <Link to={crumb.to} title={labelText}>
+                    <Link to={crumb.to} search={crumb.search} title={labelText}>
                       {crumb.label}
                     </Link>
                   </BreadcrumbLink>
                 )}
               </BreadcrumbItem>
-              {!isLast && (
-                <BreadcrumbSeparator
-                  className={hideOnMobile ? 'hidden md:block' : undefined}
-                />
-              )}
+              {!isLast && <BreadcrumbSeparator className="hidden md:block" />}
             </Fragment>
           );
         })}

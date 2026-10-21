@@ -24,6 +24,8 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'workflow', 'talent-matching']);
 
 export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMatchingWorkflowInput> {
+  protected override readonly failureLabel = 'Talent matching';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<TalentMatchingWorkflowInput>>,
     step: WorkflowStep,
@@ -163,6 +165,7 @@ export class TalentMatchingWorkflow extends OpenStoryWorkflowEntrypoint<TalentMa
             talentName: talent.name,
             sheetImageUrl: talent.defaultSheet?.imageUrl ?? '',
             sheetMetadata: talent.defaultSheet?.metadata ?? undefined,
+            sheetInputHash: talent.defaultSheet?.inputHash ?? null,
             talentDescription: talent.description ?? undefined,
             personality: talent.personality ?? '',
             movement: talent.movement ?? '',

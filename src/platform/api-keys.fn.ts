@@ -102,13 +102,14 @@ export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
   .middleware([teamAdminAccessMiddleware])
   .validator(zodValidator(checkApiKeyStatusInputSchema))
   .handler(async ({ context }) => {
-    const [hasOpenRouter, hasFal, hasXai, hasGoogle, hasLlmtr] =
+    const [hasOpenRouter, hasFal, hasXai, hasGoogle, hasLlmtr, hasUploadPost] =
       await Promise.all([
         context.scopedDb.apiKeys.hasKey('openrouter'),
         context.scopedDb.apiKeys.hasKey('fal'),
         context.scopedDb.apiKeys.hasKey('xai'),
         context.scopedDb.apiKeys.hasKey('google'),
         context.scopedDb.apiKeys.hasKey('llmtr'),
+        context.scopedDb.apiKeys.hasKey('upload_post'),
       ]);
 
     return {
@@ -117,6 +118,7 @@ export const checkApiKeyStatusFn = createServerFn({ method: 'GET' })
       xai: hasXai ? 'team' : 'platform',
       google: hasGoogle ? 'team' : 'platform',
       llmtr: hasLlmtr ? 'team' : 'none',
+      upload_post: hasUploadPost ? 'team' : 'none',
     } as const;
   });
 

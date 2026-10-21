@@ -21,6 +21,7 @@
  */
 
 import type { Database } from '@/platform/server/db/client';
+import { selectSequencesFrom } from '@/sequences/server/db/sequences';
 import { generateId } from '@/platform/id';
 import {
   motionPromptInputHash,
@@ -849,6 +850,107 @@ describe('shot_prompt_variants helper', () => {
   });
 });
 
+describe('shotPromptVersions rescue rewrites (#1786)', () => {
+  const HAIKU = 'anthropic/claude-haiku-4.5';
+  const writeMotion = (
+    m: ReturnType<typeof createShotPromptVersionsMethods>,
+    text: string,
+    source: 'ai-generated' | 'softened' | 'user-edit',
+    select: boolean
+  ) => {
+    const base = {
+      shotId,
+      promptType: 'motion' as const,
+      text,
+      usesStartFrame: true,
+      select,
+    };
+    return source === 'ai-generated'
+      ? m.write({
+          ...base,
+          source,
+          inputHash: motionPromptInputHash('h-0'),
+          analysisModel: HAIKU,
+        })
+      : m.write({ ...base, source, inputHash: null, analysisModel: null });
+  };
+
+  it('selectIfSelectionIs carries the rewrite in while the shot still points at the original', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const original = await writeMotion(m, 'Original', 'ai-generated', true);
+    const softened = await writeMotion(m, 'Softened', 'softened', false);
+    expect((await selectedMotionVersion())?.id).toBe(original.id);
+
+    expect(
+      await m.selectIfSelectionIs(shotId, softened.id, original.id, {
+        actorId: null,
+      })
+    ).toBe(true);
+    expect((await selectedMotionVersion())?.id).toBe(softened.id);
+  });
+
+  it('a user edit made mid-run wins over the rewrite', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const original = await writeMotion(m, 'Original', 'ai-generated', true);
+    const softened = await writeMotion(m, 'Softened', 'softened', false);
+    const edit = await writeMotion(m, 'Hand edit', 'user-edit', true);
+
+    expect(
+      await m.selectIfSelectionIs(shotId, softened.id, original.id, {
+        actorId: null,
+      })
+    ).toBe(false);
+    expect((await selectedMotionVersion())?.id).toBe(edit.id);
+  });
+
+  it('an unselected rewrite does not cancel a queued regeneration', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    await writeMotion(m, 'Original', 'ai-generated', true);
+    const claim = await m.createPending({
+      usesStartFrame: true,
+      shotId,
+      pendingInputHash: 'live-hash',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+    await writeMotion(m, 'Softened', 'softened', false);
+
+    await m.completePendingAiVersion({
+      usesStartFrame: true,
+      versionId: claim.id,
+      shotId,
+      text: 'Regenerated',
+      analysisModel: HAIKU,
+    });
+    expect((await selectedMotionVersion())?.text).toBe('Regenerated');
+  });
+
+  it('a regeneration queued before the rewrite keeps its right when the clip wins', async () => {
+    const m = createShotPromptVersionsMethods(db);
+    const original = await writeMotion(m, 'Original', 'ai-generated', true);
+    const claim = await m.createPending({
+      usesStartFrame: true,
+      shotId,
+      pendingInputHash: 'live-hash',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+    const softened = await writeMotion(m, 'Softened', 'softened', false);
+
+    expect(
+      await m.selectIfSelectionIs(shotId, softened.id, original.id, {
+        actorId: null,
+      })
+    ).toBe(false);
+    await m.completePendingAiVersion({
+      usesStartFrame: true,
+      versionId: claim.id,
+      shotId,
+      text: 'Regenerated',
+      analysisModel: HAIKU,
+    });
+    expect((await selectedMotionVersion())?.text).toBe('Regenerated');
+  });
+});
+
 describe('shotPromptVersions.completePendingAiVersion', () => {
   it('completes the claim in place and selects it', async () => {
     const m = createShotPromptVersionsMethods(db);
@@ -1111,17 +1213,17 @@ describe('shotPromptVersions.completePendingAiVersion', () => {
 });
 
 describe('sequence_music_prompt_variants helper', () => {
-  it('user-edit clears musicPromptInputHash and overwrites the cached prompt/tags', async () => {
+  it('user-edit selects a row with no hash and its prompt/tags', async () => {
     const methods = createSequenceMusicPromptVersionsMethods(db);
 
-    await db
-      .update(sequences)
-      .set({
-        musicPrompt: 'AI music v1',
-        musicTags: 'epic,cinematic',
-        musicPromptInputHash: 'music-hash-1',
-      })
-      .where(eq(sequences.id, sequenceId));
+    await methods.write({
+      sequenceId,
+      prompt: 'AI music v1',
+      tags: 'epic,cinematic',
+      source: 'ai-generated',
+      inputHash: musicPromptInputHash('music-hash-1'),
+      analysisModel: 'anthropic/claude-haiku-4.5',
+    });
 
     const variant = await methods.write({
       sequenceId,
@@ -1132,10 +1234,9 @@ describe('sequence_music_prompt_variants helper', () => {
 
     expect(variant.source).toBe('user-edit');
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('User edited music prompt');
     expect(refreshed.musicTags).toBe('rock,fast');
@@ -1145,7 +1246,7 @@ describe('sequence_music_prompt_variants helper', () => {
   it('ai-generated → regenerated chain on music variants mirrors the music-prompt workflow flow', async () => {
     const methods = createSequenceMusicPromptVersionsMethods(db);
 
-    const previousBeforeFirst = await methods.getLatest(sequenceId);
+    const previousBeforeFirst = await methods.getSelected(sequenceId);
     expect(previousBeforeFirst).toBeNull();
     const firstSource = previousBeforeFirst ? 'regenerated' : 'ai-generated';
 
@@ -1158,7 +1259,7 @@ describe('sequence_music_prompt_variants helper', () => {
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
-    const previousBeforeSecond = await methods.getLatest(sequenceId);
+    const previousBeforeSecond = await methods.getSelected(sequenceId);
     expect(previousBeforeSecond?.source).toBe('ai-generated');
     const secondSource = previousBeforeSecond ? 'regenerated' : 'ai-generated';
 
@@ -1177,10 +1278,9 @@ describe('sequence_music_prompt_variants helper', () => {
       'ai-generated',
     ]);
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('AI music v2');
     expect(refreshed.musicPromptInputHash).toBe('music-hash-v2');
@@ -1208,6 +1308,7 @@ describe('sequence_music_prompt_variants helper', () => {
     });
 
     expect(retried.id).toBe(first.id);
+    expect((await methods.getSelected(sequenceId))?.id).toBe(first.id);
 
     const history = await methods.listBySequence(sequenceId);
     expect(history).toHaveLength(1);
@@ -1225,10 +1326,9 @@ describe('sequence_music_prompt_variants helper', () => {
       analysisModel: 'anthropic/claude-haiku-4.5',
     });
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('AI music v2');
     expect(refreshed.musicPromptInputHash).toBe('music-context-hash');
@@ -1316,10 +1416,9 @@ describe('sequence_music_prompt_variants helper', () => {
       'ai-generated',
     ]);
 
-    const [refreshed] = await db
-      .select()
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
+    const [refreshed] = await selectSequencesFrom(db).where(
+      eq(sequences.id, sequenceId)
+    );
     if (!refreshed) throw new Error('test setup: refresh failed');
     expect(refreshed.musicPrompt).toBe('AI music v1');
     expect(refreshed.musicPromptInputHash).toBe('music-hash-v1');

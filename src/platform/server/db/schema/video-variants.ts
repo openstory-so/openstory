@@ -6,8 +6,8 @@
  * ordered by time (ULID). Re-rolls accumulate (we keep them); they never
  * overwrite. A segment's chosen video is whichever version
  * `render_segments.selectedVideoVersionId` points at — selection is a pointer,
- * not a per-row flag (revert / switch-model is a repoint); the covered shots'
- * cached `video*` columns mirror it for playback.
+ * not a per-row flag (revert / switch-model is a repoint); playback reads the
+ * covered shots' video through that pointer.
  *
  * The render unit is the SEGMENT, not the scene: render models cap a single
  * render at a per-model limit (15s, newer models 30s), so a scene is tiled into
@@ -84,6 +84,15 @@ export type VideoManifestEntry = {
    * so stored voiceless digests do not move.
    */
   audioSourceKey: string | null;
+  /**
+   * The lines the render prompt quoted (#1784, `dialogueLinesKey`): every
+   * line, voiced or not. `null` when none reached the prompt — no lines, no
+   * motion prompt, or a model without audio. Required so stamp and verify
+   * cannot independently omit it; the hash body drops `null` so stored
+   * digests do not move. Absent on rows from before #1784: unknown, never
+   * stale.
+   */
+  dialogueKey: string | null;
   /**
    * Provenance of every reference that rode on the wire for this render
    * (#1657), in either mode: `character:<id>:<sheetVersionId|url>`,

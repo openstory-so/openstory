@@ -192,7 +192,7 @@ type SequenceListFailureInput = {
   statusError: SequenceWithShots['statusError'];
   musicError: SequenceWithShots['musicError'];
   shots: ReadonlyArray<{
-    frame: { imageStatus: string | null };
+    imageStatus: string | null;
     videoStatus: string | null;
   }>;
 };
@@ -206,9 +206,7 @@ export function sequenceListFailure(sequence: SequenceListFailureInput): {
   let errorCount = 0;
   if (sequence.status === 'failed' && !creditsShort) errorCount++;
   if (sequence.musicError) errorCount++;
-  errorCount += sequence.shots.filter(
-    (f) => f.frame.imageStatus === 'failed'
-  ).length;
+  errorCount += sequence.shots.filter((f) => f.imageStatus === 'failed').length;
   errorCount += sequence.shots.filter((f) => f.videoStatus === 'failed').length;
   return { creditsShort, errorCount };
 }

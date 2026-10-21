@@ -34,9 +34,9 @@ const WORKFLOW_PATHS = [
     (f) => !f.endsWith('.test.ts')
   ),
   'src/models/server/llm-call-helper.ts',
-  // A workflow-step helper, not a workflow: dialogue recording spends the
+  // A workflow-step helper, not a workflow: dialogue speech spends the
   // ElevenLabs key inside the step it drives (#1651, #1657).
-  'src/motion/server/record-dialogue.ts',
+  'src/motion/server/generate-dialogue-speech.ts',
 ].sort();
 
 const WORKFLOW_PATH_BY_BASE: Record<string, string> = (() => {
@@ -154,8 +154,6 @@ function workflowSourceFiles(): string[] {
 type ReadBucket =
   /** The run's designed observation moment — the plan step that decides what to regenerate. */
   | 'TRIGGER-SNAPSHOT'
-  /** Recompute an input hash from CURRENT state to compare against the frozen one. */
-  | 'DIVERGENCE-CHECK'
   /** Poll for a SIBLING workflow's late write. A snapshot would defeat the wait. */
   | 'WAIT-GATE'
   /** Read the run's OWN write back by explicit ULID. Never a selection pointer. */
@@ -182,7 +180,7 @@ type ReadBucket =
  *   - a SERVER-FN snapshot builder that happens to live in this directory
  *     (recast-snapshot.ts), spelled plainly against a full `ScopedDb`; and
  *   - a helper module that declares a narrowed dependency type
- *     (`SheetSnapshotReadDb`, `WaitForSheetsReadDb`) and is HANDED
+ *     (`WaitForSheetsReadDb`) and is HANDED
  *     `scopedDb.liveRead` by its workflow caller — the hatch is applied at the
  *     caller, and the narrowed type is what keeps the helper honest inside.
  */
@@ -190,8 +188,6 @@ const BUCKET_HATCH: Record<ReadBucket, readonly (Hatch | null)[]> = {
   // The run's designed observation moment: either the server-fn builder, or
   // the single load-refs step at the top of an update-stale run.
   'TRIGGER-SNAPSHOT': [null, 'liveRead'],
-  // sheet-snapshots' *Current helpers take SheetSnapshotReadDb.
-  'DIVERGENCE-CHECK': ['liveRead', null],
   // wait-for-sheets takes WaitForSheetsReadDb.
   'WAIT-GATE': ['liveRead', null],
   // Strict: the whole reason `claims` exists is that it cannot name a pointer.
@@ -217,13 +213,6 @@ type SanctionedRead = {
  * entry may not read at all.
  */
 const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
-  'analyze-script-workflow.ts': [
-    {
-      read: 'sequenceElements.listByIds',
-      bucket: 'WAIT-GATE',
-      why: "/element-vision writes description + visionStatus late, so the row must be live — but only for the trigger's elementIds, never a re-enumeration.",
-    },
-  ],
   'motion-batch-workflow.ts': [
     {
       read: 'bytePlusAssets.getAdmission',
@@ -245,7 +234,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Re-resolved inside each step that talks to fal, because a replayed step may run in a fresh isolate with an unconfigured singleton.',
     },
   ],
-  'record-dialogue.ts': [
+  'generate-dialogue-speech.ts': [
     {
       read: 'resolveKey',
       bucket: 'CREDENTIAL',
@@ -257,6 +246,13 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'shots.getByIds',
       bucket: 'EXISTENCE-GUARD',
       why: 'Idempotency and adoption: only a voiced shot whose working-set clip no longer matches its lines adopts the new recording, so a replayed run re-bills nothing and an untouched shot keeps its section (#1657).',
+    },
+  ],
+  'dialogue-take-workflow.ts': [
+    {
+      read: 'resolveKey',
+      bucket: 'CREDENTIAL',
+      why: 'The platform ElevenLabs (and, for a Seed voice, Seed Speech) key, resolved inside the step that converts the mic take (#1802).',
     },
   ],
   'element-sheet-workflow.ts': [
@@ -271,14 +267,28 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The uniqueness half of the same guard — catches a concurrent upload of the same token under a different id.',
     },
   ],
-  'element-vision-workflow.ts': [
+  'character-sheet-workflow.ts': [
     {
-      read: 'resolveLlmKey',
-      bucket: 'CREDENTIAL',
-      why: 'Resolved inside the step that spends it.',
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
     },
   ],
-  'frame-prompt-workflow.ts': [
+  'location-sheet-workflow.ts': [
+    {
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for the portrait run it starts once the sheet has landed.',
+    },
+  ],
+  'location-matching-workflow.ts': [
+    {
+      read: 'locations.getCurrentByIds',
+      bucket: 'EXISTENCE-GUARD',
+      why: 'The team locations the writer picked (#1695). A location deleted from the team since the pick is left out of the read; name and description come from the trigger snapshot.',
+    },
+  ],
+  'element-vision-workflow.ts': [
     {
       read: 'resolveLlmKey',
       bucket: 'CREDENTIAL',
@@ -340,7 +350,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'The platform ElevenLabs key, resolved inside the design and save steps that spend it (#1553).',
     },
     {
-      read: 'characters.getById',
+      read: 'characters.getVoice',
       bucket: 'EXISTENCE-GUARD',
       why: 'pendingPromoteVoiceVersionId at persist: the user may have picked another voice mid-run, so promote must read the live pointer (#1715).',
     },
@@ -386,6 +396,11 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'CLAIM-BY-ID',
       why: 'The motion prompt version this clip renders from, named by the trigger snapshot — its hash + model are copied onto the softened row (#1373), as soften-image-prompt does for stills.',
     },
+    {
+      read: 'shotDialogue.getSectionById',
+      bucket: 'CLAIM-BY-ID',
+      why: 'The ranges of the sections a packed clip joins into one cut (#1794), by the clip ids on the payload. A section range never changes once written.',
+    },
   ],
   'recast-snapshot.ts': [
     {
@@ -394,7 +409,7 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'buildRecastRegenerateSnapshots runs in the recast SERVER FNs, not a workflow — these reads ARE the trigger-time snapshot. The workflow-side export from this module is pure.',
     },
     {
-      read: 'sequenceLocations.listWithReferences',
+      read: 'locations.listWithReferences',
       bucket: 'TRIGGER-SNAPSHOT',
       why: 'Same server-fn snapshot builder.',
     },
@@ -462,28 +477,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       why: 'Spawn-time enforcement: a ban applied after the parent started must stop work that has not started yet.',
     },
   ],
-  'sheet-snapshots.ts': [
-    {
-      read: 'characters.getById',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "Resolves the character's current talent assignment for the *Current hash. Freezing it would make divergence unrepresentable.",
-    },
-    {
-      read: 'talent.getWithRelations',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "The upstream talent sheet's inputHash. NOTE the identity it resolves: sheets come back ordered isDefault DESC, createdAt DESC, and resolveTalentSheetHash takes the first NON-DIVERGED one — so with no explicit default the NEWEST convergent sheet wins (src/cast/server/db/talent.ts:234). A new sheet therefore shifts the hash and re-stales downstream character sheets by design.",
-    },
-    {
-      read: 'sequenceLocations.getById',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "Resolves the sequence location's library parent for the *Current hash.",
-    },
-    {
-      read: 'locations.getById',
-      bucket: 'DIVERGENCE-CHECK',
-      why: "The library location's current reference hash / name / description, recomputed live so a mid-run rename registers as divergence.",
-    },
-  ],
   'shot-variant-workflow.ts': [
     {
       read: 'frames.getById',
@@ -506,25 +499,16 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
     },
   ],
   // compute-plan now runs at the trigger, so the plan arrives on the payload.
-  // The three TRIGGER-SNAPSHOT reads below stayed deliberately: they are the
-  // `load-render-refs` step, which is kept OUT of the payload because the
-  // combined plan + scene-context + refs would put a user-supplied input
-  // (script length) against the same 1 MiB cap as everything else.
   'update-stale-shots-workflow.ts': [
     {
-      read: 'characters.listWithSheets',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'load-render-refs, once at run start: this workflow re-renders stale artifacts against CURRENT sheets, and the plan hashed those same rows moments earlier.',
+      read: 'compliance.listEnforcementFor',
+      bucket: 'BILLING-GUARD',
+      why: 'Spawn-time enforcement for independent fresh-run framing grids, as in ShotImagesWorkflow.',
     },
     {
-      read: 'sequenceLocations.listWithReferences',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'Same load-render-refs step.',
-    },
-    {
-      read: 'sequenceElements.list',
-      bucket: 'TRIGGER-SNAPSHOT',
-      why: 'Same load-render-refs step.',
+      read: 'apiKeys.hasUsableKey',
+      bucket: 'BILLING-GUARD',
+      why: 'The references wave bills only platform sheets when fal BYOK is unavailable; voices always spend platform funds.',
     },
     {
       read: 'shots.getById',
@@ -561,11 +545,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       bucket: 'BILLING-GUARD',
       why: 'Same guard: a segment already rendering is producing the fix.',
     },
-    {
-      read: 'sequences.getById',
-      bucket: 'BILLING-GUARD',
-      why: 'The music twin: musicPromptInputHash / musicStatus are the only in-flight signal, since music has no claim rows either.',
-    },
   ],
   'upscale-shot-variant-workflow.ts': [
     {
@@ -584,11 +563,6 @@ const ALLOWED_LIVE_READS: Record<string, SanctionedRead[]> = {
       read: 'talent.getByIds',
       bucket: 'WAIT-GATE',
       why: "Polls for /library-talent-sheet's write. NOTE defaultSheet's identity: the isDefault sheet, else a newest-first (createdAt DESC) scan of non-diverged sheets (src/cast/server/db/talent.ts:234) — so the gate opens on the newest convergent sheet, not necessarily the one the user will see as default later.",
-    },
-    {
-      read: 'locations.getByIds',
-      bucket: 'WAIT-GATE',
-      why: "Polls for /library-location-sheet's referenceImageUrl.",
     },
     {
       read: 'sequenceElements.listByIds',
@@ -619,7 +593,7 @@ type Has<T, K extends string> = K extends keyof T ? true : false;
 const _frameReadRemoved: Has<WorkflowScopedDb['frames'], 'getById'> = false;
 const _frameWriteKept: Has<
   WorkflowScopedDb['frames'],
-  'setImageGenerationStatus'
+  'setPendingPromoteVersionId'
 > = true;
 const _liveReadKeepsIt: Has<WorkflowScopedDb['liveRead']['frames'], 'getById'> =
   true;
@@ -682,7 +656,7 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
         unsanctioned,
         `${file} reads mutable DB state that no allow-list entry covers: ${unsanctioned.join(', ')}.\n` +
           `Snapshot it into the workflow payload at the trigger instead. If the read is genuinely ` +
-          `unavoidable (billing balance, credential, sibling-workflow polling, divergence recompute, ` +
+          `unavoidable (billing balance, credential, sibling-workflow polling, ` +
           `own-write claim read, existence guard), route it through scopedDb.liveRead and add it to ` +
           `ALLOWED_LIVE_READS in ${'src/platform/server/workflow/no-mid-run-reads.test.ts'} with a ReadBucket and a ` +
           `one-line justification. If no bucket fits, that IS the answer: the value belongs on the payload.`
@@ -705,6 +679,15 @@ describe('workflows read no unsanctioned mutable DB state mid-run', () => {
       'Only update-stale-shots-workflow.ts may use scopedDb.stalenessPlanning. ' +
         'Everything else snapshots at the trigger or goes through scopedDb.liveRead.'
     ).toEqual(['update-stale-shots-workflow.ts']);
+  });
+
+  test('generation planning is restricted to the storyboard handoff', () => {
+    const users = workflowSourceFiles().filter((file) =>
+      stripCommentLines(readFileSync(workflowPath(file), 'utf8')).includes(
+        'generationPlanning'
+      )
+    );
+    expect(users).toEqual(['storyboard-workflow.ts']);
   });
 
   test('each read comes through the hatch its bucket requires', () => {

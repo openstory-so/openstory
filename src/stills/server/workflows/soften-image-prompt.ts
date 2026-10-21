@@ -150,8 +150,11 @@ async function loadPromptProvenance(
 }
 
 /**
- * Append a `softened` prompt version (mirrors onto the frame) and stamp the
- * in-flight still so selecting it restores the text that produced it.
+ * Append a `softened` prompt version to history, UNSELECTED (#1786), and stamp
+ * the in-flight still with it. Selecting mid-run would clobber an edit the user
+ * made meanwhile and demote a regeneration they queued; instead the prompt
+ * rides the still — when the still wins its promote claim,
+ * `frameVariants.select` restores its linked prompt.
  */
 export async function persistSoftenedPromptVersion(args: {
   scopedDb: WorkflowScopedDb;
@@ -168,6 +171,7 @@ export async function persistSoftenedPromptVersion(args: {
     inputHash: args.provenance.inputHash,
     analysisModel: args.provenance.analysisModel,
     createdBy: args.createdBy,
+    select: false,
   });
 
   if (args.versionId) {
@@ -208,7 +212,7 @@ async function generateOnce(
     }
     try {
       const result = await generateImageWithProvider(params, {
-        scopedDb: scopedDb.credentials,
+        credentials: scopedDb.credentials,
         observability: {
           observationName: 'shot-image',
           tags: ['image'],
@@ -336,26 +340,45 @@ export async function generateImageWithContentRetry(
       const originalVersionId = versionId;
       const originalRejection = lastRejection;
       const fallbackHash = snapshotInputHash;
-      versionId = await step.do('switch-to-fallback-model', async () => {
-        await scopedDb.frameVariants.update(originalVersionId, {
-          status: 'failed',
-          error: originalRejection,
-        });
-        const fallbackVersion = await scopedDb.frameVariants.appendVersion({
-          frameId,
-          sequenceId,
-          kind: 'model',
-          model: IMAGE_CONTENT_FALLBACK_MODEL,
-          status: 'generating',
-          workflowRunId,
-          promptVersionId: input.promptVersionId ?? null,
-          pendingInputHash: fallbackHash,
-        });
-        if (!input.variantOnly) {
-          await scopedDb.frames.setPendingPromoteVersionId(
+      // The append is the step's last write, so a retry never appends a
+      // second fallback row; the handover and emit are their own step.
+      const fallbackVersionId = await step.do(
+        'switch-to-fallback-model',
+        async () => {
+          await scopedDb.frameVariants.update(originalVersionId, {
+            status: 'failed',
+            error: originalRejection,
+          });
+          const fallbackVersion = await scopedDb.frameVariants.appendVersion({
             frameId,
-            fallbackVersion.id
+            sequenceId,
+            kind: 'model',
+            model: IMAGE_CONTENT_FALLBACK_MODEL,
+            status: 'generating',
+            workflowRunId,
+            promptVersionId: input.promptVersionId ?? null,
+            pendingInputHash: fallbackHash,
+            isPrimary: !input.variantOnly,
+          });
+          return fallbackVersion.id;
+        }
+      );
+      versionId = fallbackVersionId;
+      await step.do('hand-claim-to-fallback', async () => {
+        // Hand the promote claim to the fallback row only while the original
+        // still holds it (#1786): a newer kickoff or a manual select made
+        // mid-run keeps its choice, and the fallback lands in history.
+        if (!input.variantOnly) {
+          const handed = await scopedDb.frames.movePendingPromoteVersionIdIf(
+            frameId,
+            originalVersionId,
+            fallbackVersionId
           );
+          if (!handed) {
+            logger.info(
+              `[ImageWorkflow] promote claim moved mid-run; fallback for shot ${input.shotId} lands in history`
+            );
+          }
         }
         if (input.shotId) {
           await getGenerationChannel(sequenceId).emit(
@@ -369,7 +392,6 @@ export async function generateImageWithContentRetry(
             }
           );
         }
-        return fallbackVersion.id;
       });
     }
 

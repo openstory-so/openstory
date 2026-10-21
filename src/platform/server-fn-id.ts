@@ -1,7 +1,5 @@
-import { createHash } from 'node:crypto';
-
 /**
- * Stable server-function ids across file moves (#1549).
+ * Stable, readable server-function ids (#1549, #1974).
  *
  * TanStack Start's default production id is
  * `sha256("<relative filename>--<functionName>")`, so moving a file changes
@@ -9,9 +7,12 @@ import { createHash } from 'node:crypto';
  * open browser tab from before the deploy then called `GET /_serverFn/<id>`
  * for ids that no longer existed — ~50 bare `HTTPError` 500s in an hour.
  *
- * Seeding on the function name alone makes a move a no-op; only renaming the
- * variable moves the id, which is a real API change. The name is still hashed
- * so the id stays compact and doesn't leak source layout.
+ * The id is the variable name, so a move is a no-op; only renaming the
+ * variable moves the id, which is a real API change. It is not hashed:
+ * Cloudflare redacts any 32+ hex-digit run in a URL, so a hash showed up in
+ * every exported trace as `/_serverFn/REDACTED`. A name like
+ * `listSequencesFn` passes Cloudflare's rule unless it is 21+ chars with two
+ * or more each of upper, lower and digits.
  *
  * Wired via `tanstackStart({ serverFns: { generateFunctionId } })` in
  * vite.config.ts. Dev is unaffected — dev ids are base64 of file + export and
@@ -27,12 +28,12 @@ export function createServerFnIdGenerator(): (opts: {
   const owners = new Map<string, string>();
 
   return ({ filename, functionName }) => {
-    const id = createHash('sha256').update(functionName).digest('hex');
+    const id = functionName.replace(/_createServerFn_handler$/, '');
     const owner = owners.get(id);
     if (owner !== undefined && owner !== filename) {
       throw new Error(
         `Duplicate server function name "${functionName}" in ${owner} and ${filename}. ` +
-          'Server function ids are seeded on the variable name alone (#1549), ' +
+          'Server function ids are the variable name alone (#1549), ' +
           'so the name must be unique across the codebase — rename one of them.'
       );
     }

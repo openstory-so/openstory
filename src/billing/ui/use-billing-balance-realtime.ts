@@ -2,34 +2,40 @@
  * Live credit-balance updates over SSE (#1090).
  *
  * Subscribes to `billing:${teamId}` only while the credit pill is visible so
- * idle sessions pay no realtime cost. On `billing.balance:updated`, optimistically
- * patches the balance query and invalidates transactions for the ledger tab.
+ * idle sessions pay no realtime cost. On `billing.balance:updated`, patches the
+ * balance query from the event and invalidates transactions for the ledger
+ * tab. The balance itself is refetched only when the event cannot settle it
+ * (#1881) — a generation emits several a second.
  */
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { BILLING_BALANCE_KEY } from './use-billing-balance';
-import { billingChannelId } from '@/platform/realtime';
+import type { BillingBalanceData } from './use-billing-balance';
+import { billingChannelId, realtimeSchema } from '@/platform/realtime';
+import type { BalanceUpdatedPayload } from '@/platform/realtime';
 import { useRealtime } from '@/platform/ui/realtime/client';
 
 export const BILLING_TRANSACTIONS_KEY = ['billing-transactions'] as const;
 
-type BalanceQueryData = {
-  teamId?: string;
-  balance: number;
-  availableUsd?: number;
-  reservedUsd?: number;
-  stripeEnabled: boolean;
-  hasUsedCredits?: boolean;
-  hasSignupGrant?: boolean;
-  autoTopUp: {
-    enabled: boolean;
-    thresholdUsd: number | null;
-    amountUsd: number | null;
-    lastFailure: { at: string } | null;
+const balanceUpdatedSchema = realtimeSchema.billing['balance:updated'];
+
+/**
+ * Apply one event to the cached balance. `refetch` is true only when
+ * nothing is cached yet. An event older than the cache is dropped by the
+ * query's `keepNewestBalance`.
+ */
+export function applyBalanceEvent(
+  prev: BillingBalanceData | undefined,
+  event: BalanceUpdatedPayload
+): { next: BillingBalanceData | undefined; refetch: boolean } {
+  if (!prev) return { next: prev, refetch: true };
+  const { balanceUsd, availableUsd, reservedUsd, asOfMs } = event;
+  return {
+    next: { ...prev, balance: balanceUsd, availableUsd, reservedUsd, asOfMs },
+    refetch: false,
   };
-  hasPaymentMethod: boolean;
-};
+}
 
 /**
  * @param teamId - Active team; subscription is a no-op while undefined
@@ -44,41 +50,36 @@ export function useBillingBalanceRealtime(
   const onData = useCallback(
     (msg: {
       event: 'billing.balance:updated';
-      data: {
-        teamId: string;
-        balanceUsd: number;
-        availableUsd?: number;
-        reservedUsd?: number;
-        amountUsd: number;
-        transactionId?: string;
-        type?:
-          | 'credit_purchase'
-          | 'credit_usage'
-          | 'credit_refund'
-          | 'credit_adjustment';
-      };
+      data: BalanceUpdatedPayload;
     }) => {
-      const { balanceUsd, availableUsd, reservedUsd } = msg.data;
-
-      queryClient.setQueryData<BalanceQueryData>(
-        [...BILLING_BALANCE_KEY],
-        (prev) =>
-          prev
-            ? {
-                ...prev,
-                balance: balanceUsd,
-                availableUsd: availableUsd ?? prev.availableUsd,
-                reservedUsd: reservedUsd ?? prev.reservedUsd,
-              }
-            : prev
-      );
-
-      void queryClient.invalidateQueries({
-        queryKey: [...BILLING_BALANCE_KEY],
-      });
       void queryClient.invalidateQueries({
         queryKey: [...BILLING_TRANSACTIONS_KEY],
       });
+      // The transport only JSON-parses. An event from a worker on the other
+      // side of a deploy can lack `asOfMs`; refetch rather than patch.
+      const event = balanceUpdatedSchema.safeParse(msg.data);
+      if (!event.success) {
+        void queryClient.invalidateQueries({
+          queryKey: [...BILLING_BALANCE_KEY],
+        });
+        return;
+      }
+      const { next, refetch } = applyBalanceEvent(
+        queryClient.getQueryData<BillingBalanceData>([...BILLING_BALANCE_KEY]),
+        event.data
+      );
+      if (next) {
+        queryClient.setQueryData<BillingBalanceData>(
+          [...BILLING_BALANCE_KEY],
+          next
+        );
+      }
+
+      if (refetch) {
+        void queryClient.invalidateQueries({
+          queryKey: [...BILLING_BALANCE_KEY],
+        });
+      }
     },
     [queryClient]
   );

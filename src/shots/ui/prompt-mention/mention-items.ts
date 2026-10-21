@@ -5,7 +5,7 @@
  */
 
 import type {
-  CharacterWithTalent,
+  CastCharacterWithTalent,
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
@@ -41,7 +41,7 @@ export function mentionIsRenameable(section: MentionSection): boolean {
 
 /** Fields buildMentionItems actually consumes. */
 export type MentionCharacterInput = Pick<
-  CharacterWithTalent,
+  CastCharacterWithTalent,
   'id' | 'characterId' | 'name' | 'consistencyTag' | 'sheetImageUrl'
 >;
 export type MentionElementInput = Pick<
@@ -73,7 +73,90 @@ export type MentionItem = {
   /** Lowercase haystack for filtering. */
   haystack: string;
   thumbnailUrl?: string | null;
+  /**
+   * Offered by the `@` dropdown only (#2050, #1695): a team character or
+   * location the sequence does not use yet. Picking it attaches it; until
+   * then its name in the text is plain prose and must not pill.
+   */
+  pickOnly?: true;
 };
+
+/** What the `@` picker needs of a team character (#2050). */
+export type LibraryCharacterMentionInput = {
+  id: string;
+  name: string;
+  sheetImageUrl: string | null;
+};
+
+/**
+ * The team's team characters the sequence does not cast yet, as `@` rows
+ * that attach on pick (#2050). Same tag shape as a cast row (the ALL-CAPS
+ * name), so the inserted text is what the cast row will pill once she is
+ * attached. In the library's order: most recently used first.
+ */
+export function libraryMentionItems(
+  library: readonly LibraryCharacterMentionInput[],
+  castCharacterIds: ReadonlySet<string>
+): MentionItem[] {
+  return library
+    .filter((c) => !castCharacterIds.has(c.id))
+    .map((c) => ({
+      id: `library-character:${c.id}`,
+      section: 'cast' as const,
+      label: c.name,
+      sublabel: 'Add to this sequence',
+      tag: c.name.toUpperCase(),
+      haystack: c.name.toLowerCase(),
+      thumbnailUrl: c.sheetImageUrl,
+      pickOnly: true as const,
+    }));
+}
+
+/** The team character a picked row names, or null for any other row. */
+export function libraryCharacterIdOf(item: MentionItem): string | null {
+  const prefix = 'library-character:';
+  return item.pickOnly && item.id.startsWith(prefix)
+    ? item.id.slice(prefix.length)
+    : null;
+}
+
+/** What the `@` picker needs of a team location (#1695). */
+export type LibraryLocationMentionInput = {
+  id: string;
+  name: string;
+  referenceImageUrl: string | null;
+};
+
+/**
+ * The team's locations the sequence does not use yet, as `@` rows that
+ * attach on pick (#1695). The inserted text is the name in capitals, as a
+ * scene heading reads. In the team list's order: most recently used first.
+ */
+export function libraryLocationMentionItems(
+  library: readonly LibraryLocationMentionInput[],
+  usedLocationIds: ReadonlySet<string>
+): MentionItem[] {
+  return library
+    .filter((l) => !usedLocationIds.has(l.id))
+    .map((l) => ({
+      id: `library-location:${l.id}`,
+      section: 'locations' as const,
+      label: l.name,
+      sublabel: 'Add to this sequence',
+      tag: l.name.toUpperCase(),
+      haystack: l.name.toLowerCase(),
+      thumbnailUrl: l.referenceImageUrl,
+      pickOnly: true as const,
+    }));
+}
+
+/** The team location a picked row names, or null for any other row. */
+export function libraryLocationIdOf(item: MentionItem): string | null {
+  const prefix = 'library-location:';
+  return item.pickOnly && item.id.startsWith(prefix)
+    ? item.id.slice(prefix.length)
+    : null;
+}
 
 /** Strip "char_001: " prefix from a consistencyTag to get the slug half. */
 function consistencyTagSlug(raw: string | null | undefined): string | null {

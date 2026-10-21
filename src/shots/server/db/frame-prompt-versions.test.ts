@@ -481,6 +481,48 @@ describe('framePromptVersions.completePendingAiVersion', () => {
     expect(frame.selectedImagePromptVersionId).toBe(edit.id);
   });
 
+  it('a softened rewrite appended unselected mid-run neither moves the prompt nor cancels a queued regeneration (#1786)', async () => {
+    const m = createFramePromptVersionsMethods(db);
+    const original = await m.write({
+      frameId,
+      text: 'Original',
+      source: 'ai-generated',
+      inputHash: visualPromptInputHash('hash-0'),
+      analysisModel: HAIKU,
+    });
+    // The user queues Update-all; the claim goes live.
+    const claim = await m.createPending({
+      frameId,
+      pendingInputHash: 'live-hash',
+    });
+    await m.markGenerating(claim.id, 'run-1');
+
+    // An image run's content soften lands its rewrite in history.
+    await m.write({
+      frameId,
+      text: 'Softened',
+      source: 'softened',
+      inputHash: visualPromptInputHash('hash-0'),
+      analysisModel: HAIKU,
+      select: false,
+    });
+    const [frame] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    expect(frame?.selectedImagePromptVersionId).toBe(original.id);
+
+    // The queued regeneration still lands as the selection.
+    await m.completePendingAiVersion({
+      versionId: claim.id,
+      frameId,
+      text: 'Regenerated',
+      inputHash: visualPromptInputHash('live-hash'),
+      analysisModel: HAIKU,
+    });
+    expect((await m.getSelected(frameId))?.text).toBe('Regenerated');
+  });
+
   it('returns null for a claim cancelled mid-flight and never mirrors', async () => {
     const m = createFramePromptVersionsMethods(db);
     await m.write({
@@ -707,5 +749,61 @@ describe('framePromptVersions.getLatestWithInputHash', () => {
     const hashed = await m.getLatestWithInputHash(frameId);
     expect(hashed?.id).toBe(ai.id);
     expect(hashed?.inputHash).toBe('ai-hash');
+  });
+});
+
+describe('framePromptVersions.getLatestByFrameIds (#1795)', () => {
+  it('returns the newest completed row per frame, and the newest hashed row separately', async () => {
+    const m = createFramePromptVersionsMethods(db);
+    const [otherShot] = await db
+      .insert(shots)
+      .values({ sequenceId, shotNumber: 2 })
+      .returning();
+    if (!otherShot) throw new Error('test setup: shot insert returned nothing');
+    const [otherFrame] = await db
+      .insert(frames)
+      .values({
+        shotId: otherShot.id,
+        sequenceId,
+        orderIndex: 0,
+        role: 'first',
+      })
+      .returning();
+    if (!otherFrame)
+      throw new Error('test setup: frame insert returned nothing');
+
+    const older = await m.write({
+      frameId,
+      text: 'older',
+      source: 'ai-generated',
+      inputHash: visualPromptInputHash('older'),
+      analysisModel: HAIKU,
+    });
+    await m.write({
+      frameId,
+      text: 'Hand-typed',
+      source: 'user-edit',
+      inputHash: null,
+      analysisModel: null,
+    });
+    const other = await m.write({
+      frameId: otherFrame.id,
+      text: 'other',
+      source: 'ai-generated',
+      inputHash: visualPromptInputHash('other'),
+      analysisModel: HAIKU,
+    });
+
+    const latest = await m.getLatestByFrameIds([frameId, otherFrame.id]);
+    expect(latest.get(frameId)?.inputHash).toBeNull();
+    expect(latest.get(otherFrame.id)?.id).toBe(other.id);
+
+    const hashed = await m.getLatestWithInputHashByFrameIds([
+      frameId,
+      otherFrame.id,
+    ]);
+    expect(hashed.get(frameId)?.id).toBe(older.id);
+    expect(hashed.get(otherFrame.id)?.id).toBe(other.id);
+    expect(latest.has('missing')).toBe(false);
   });
 });

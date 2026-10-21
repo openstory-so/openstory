@@ -44,20 +44,21 @@ shipped).
 
 ### 1.2 Edge table (what a mutation stales)
 
-| User mutation                                     | Goes stale (derived)                                                                      | Untouched                                                                 |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Scene script / location / timeOfDay / storyBeat   | Visual + motion prompts of the scene's shots                                              | Title (display label); sheets (no script→bible edge — locked decision #3) |
-| Scene/shot **reorder**                            | Music prompt only (ordered summaries)                                                     | Visual/motion prompts, images, video (v5)                                 |
-| Shot duration                                     | Video (manifest value-snapshot)                                                           | Prompts, stills                                                           |
-| Character/location bible field edit               | Prompts of referencing scenes (projected visual fields); the entity's sheet               | Name (display label); unreferenced entities                               |
-| Regenerate sheet (from current bible)             | Stills of referencing scenes (selected version id enters the still hash); then video      | Recast talent binding; shots are not auto-regenerated                     |
-| `consistencyTag` edit                             | The sheet only                                                                            | Prompts (projected out of the prompt hash, #867)                          |
-| Soft-delete character/location/element            | Prompts of referencing scenes (entity leaves the narrowed bible)                          | Continuity tags, the row's own hashes                                     |
-| Visual prompt edit (save or §1.3 A)               | Image (prompt text is in the image hash)                                                  | Video, until the image itself moves                                       |
-| Still replaced (upload or regen + select, §1.3 B) | Video (manifest names the superseded frame version); motion prompt (starting-frame URL)   | Visual prompt                                                             |
-| Motion prompt edit                                | Video (manifest names the superseded motion version)                                      | Still, visual prompt                                                      |
-| Music prompt user-edit                            | Nothing derived — hash goes **null → 'untracked'** (no nag; regenerate is user-initiated) | The playing track, uploaded scores                                        |
-| Sheet manual upload                               | Stills (selected version id is a new identity); the sheet itself is fresh if inputs match | Prompts                                                                   |
+| User mutation                                     | Goes stale (derived)                                                                                                        | Untouched                                                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Scene script / location / timeOfDay / storyBeat   | Visual + motion prompts of the scene's shots                                                                                | Title (display label); sheets (no script→bible edge — locked decision #3) |
+| Scene/shot **reorder**                            | Music prompt only (ordered summaries)                                                                                       | Visual/motion prompts, images, video (v5)                                 |
+| Shot duration                                     | Video (manifest value-snapshot); music prompt and track (scene lengths, billed length)                                      | Prompts, stills                                                           |
+| Character/location bible field edit               | Prompts of referencing scenes (projected visual fields); the entity's sheet. Personality / movement: the motion prompt only | Name (display label); unreferenced entities                               |
+| Regenerate sheet (from current bible)             | Stills of referencing scenes (selected version id enters the still hash); then video                                        | Recast talent binding; shots are not auto-regenerated                     |
+| `consistencyTag` edit                             | The character sheet only                                                                                                    | Prompts (projected out of the prompt hash, #867); location sheets         |
+| Soft-delete character/location/element            | Prompts of referencing scenes (entity leaves the narrowed bible); stills that attached it; clips that were sent it          | Continuity tags, the row's own hashes. A restore makes them fresh again   |
+| Visual prompt edit (save or §1.3 A)               | Image (prompt text is in the image hash)                                                                                    | Video, until the image itself moves                                       |
+| Still replaced (upload or regen + select, §1.3 B) | Video (manifest names the superseded frame version); motion prompt (starting-frame URL)                                     | Visual prompt                                                             |
+| Motion prompt edit                                | Video (manifest names the superseded motion version)                                                                        | Still, visual prompt                                                      |
+| Music prompt user-edit                            | The track (rendered from the old text, `musicTrackStaleness`). The prompt's own hash goes **null → 'untracked'**            | Uploaded scores (null hash, untracked)                                    |
+| Sheet manual upload                               | Stills (selected version id is a new identity); the sheet itself is fresh if inputs match                                   | Prompts                                                                   |
+| Any of the above                                  | Readiness is derived like staleness: the generation plan re-reads the rows (`docs/architecture/generation-plan.md`)         | No stored stage or checkpoint to move (#1819)                             |
 
 ### 1.3 Prompt + still replace (the atomic rule)
 
@@ -75,12 +76,18 @@ verifies with — including resolving the `user-upload` sentinel model through
 
 ### 1.4 Upload hash-stamping semantics (per surface)
 
-| Surface                  | Stamped hash                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Null/untracked case                                                                                                                               |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frame still              | Current (B) or new (C) prompt text + current sheet/element ref hashes + resolved model + aspect ratio                                                                                                                                                                                                                                                                                                                                                                                                           | Frame with **no selected prompt** stamps null → 'untracked' (verify only compares when a prompt exists); a later prompt makes it stale, correctly |
-| Shot video               | `computeVideoManifestInputHash` over a manifest of the **current** selected motion/frame pointers + durationMs (the upload's decoded duration re-snaps `shots.durationMs` **before** hashing)                                                                                                                                                                                                                                                                                                                   | —                                                                                                                                                 |
-| Sequence music           | **Always null** → 'untracked' (§4.4 escape hatch, deliberate): no track-level verify exists, and a user's chosen score must never nag for regeneration. The previous `user-upload` primary is **retired** (soft-discarded), not overwritten, so history survives. `includeMusic` is switched on — choosing a track is opting in.                                                                                                                                                                                |
-| Character/location sheet | The PARENT (`characters.sheetInputHash` / `sequence_locations.referenceInputHash`) and each VERSION row get the same verify-mirrored current-inputs hash (bible + talent/library ref + style + model) so later edits re-stale the sheet. `selectedSheetVersionId` / `selectedReferenceVersionId` is the live pointer (mirrored onto the parent URL). Stills hash the selected version id when present, else the parent input hash — so a new sheet image re-stales stills even when bible inputs didn't change. | Legacy rows with no selection pointer keep hashing the parent input hash (no catalog-wide untracked wipe).                                        |
+| Surface                  | Stamped hash                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Null/untracked case                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frame still              | Current (B) or new (C) prompt text + current sheet/element ref hashes + resolved model + aspect ratio                                                                                                                                                                                                                                                                                                                                                                                                                                      | Frame with **no selected prompt** stamps null → 'untracked' (verify only compares when a prompt exists); a later prompt makes it stale, correctly |
+| Shot video               | `computeVideoManifestInputHash` over a manifest of the **current** selected motion/frame pointers + durationMs (the upload's decoded duration re-snaps `shots.durationMs` **before** hashing)                                                                                                                                                                                                                                                                                                                                              | —                                                                                                                                                 |
+| Sequence music           | **Always null** → 'untracked' (§4.4 escape hatch, deliberate): `musicTrackStaleness` treats a null hash as unknown, so a user's chosen score never nags for regeneration. The previous `user-upload` primary is **retired** (soft-discarded), not overwritten, so history survives. `includeMusic` is switched on — choosing a track is opting in.                                                                                                                                                                                         |
+| Character/location sheet | The VERSION row gets the verify-mirrored current-inputs hash (bible + talent/library ref + style + model), read back through the selected version as `sheetInputHash` / `referenceInputHash` (#1419 dropped the parent columns), so later edits re-stale the sheet. `selectedSheetVersionId` / `selectedReferenceVersionId` is the live pointer (mirrored onto the parent URL). Stills hash the selected version id when present, else the parent input hash — so a new sheet image re-stales stills even when bible inputs didn't change. | Legacy rows with no selection pointer keep hashing the parent input hash (no catalog-wide untracked wipe).                                        |
+
+On the character and sequence-location detail pages, the version strip reads
+completed, non-discarded rows through a separate history query and appears once
+two versions exist. A regenerate kickoff returns before its workflow appends a
+version; the terminal sheet-progress event must refresh both the primary row
+and the history query so the new version appears without a page reload.
 
 All uploads: presign (`getSignedUploadUrl` → client PUT to
 `/api/storage/upload`) → finalize. Finalize validates the `publicUrl` against
@@ -163,6 +170,8 @@ Grouped the way an API/MCP layer would wrap them. Auth: `shot…` fns use
 
 ### Media inject (`src/shots/media-upload.fn.ts`)
 
+The finalize logic lives in `src/shots/server/media-upload.ts`, shared with the MCP `set_*_from_upload` tools; MCP `upload_media` stores the file (no presign).
+
 | Fn                                                                                                | Input → output                                                                                  | Rule enforced                                                    |
 | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `presignFrameImageUploadFn` / `presignShotVideoUploadFn`                                          | `{…, filename}` → `{uploadUrl, publicUrl, path, contentType}`                                   | extension allow-list, team-namespace path                        |
@@ -216,12 +225,11 @@ Grouped the way an API/MCP layer would wrap them. Auth: `shot…` fns use
 
 ## 4. Traps for future editors
 
-- **`updateSequenceFn` is not a general update** — it force-defaults
-  `aspectRatio` and treats field presence as a regeneration trigger (credits +
-  storyboard wipe). That is why `renameSequenceFn` / `setSequenceMusicFn` exist
-  as separate minimal writes. Documented, not fixed: route any new
-  single-field sequence write around it, never through it
-  (`src/sequences/sequences.fn.ts`).
+- **There is no general sequence update fn.** A script, style, aspect ratio
+  or analysis model change is a regenerate: a NEW sequence created from the
+  old one (`createSequenceFn` with `sourceSequenceId`). Every other setting is
+  its own minimal write (`renameSequenceFn`, `setSequenceMusicFn`, …) in
+  `src/sequences/sequences.fn.ts`.
 - **Integer timestamp columns round-trip at SECOND precision.** Two writes
   40ms apart store the SAME value — which is why the scene cascade restore
   matches by the event's recorded `shotIds`, not by timestamp equality (that
@@ -237,9 +245,9 @@ Grouped the way an API/MCP layer would wrap them. Auth: `shot…` fns use
   class in reverse (everything reads 'untracked'). The v5 folder
   `drizzle/migrations/20260828031159_null_prompt_hashes_for_v5` is a no-op
   kept for the snapshot chain; delete the legacy hashers after
-  `LEGACY_HASH_UNTIL` (2026-09-28, #1371).
+  `LEGACY_HASH_UNTIL` (2026-12-31, #1371).
 - **D1 schema changes: additive only.** All five #1108 migrations are plain
-  `ALTER TABLE ADD COLUMN` or data-only — see CLAUDE.md "D1 table-rebuild
+  `ALTER TABLE ADD COLUMN` or data-only — see AGENTS.md "D1 table-rebuild
   trap" before touching schema; a rebuild fires `ON DELETE CASCADE` and
   destroys child tables.
 - **`kind`/status unions are TS-only** (`$type<>()` on plain text columns) —

@@ -22,6 +22,7 @@ import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
   framePromptVersions,
+  frameVariants,
   frames,
   sceneScriptVersions,
   scenes,
@@ -35,6 +36,7 @@ import {
 import { dbSceneId } from '@/shots/scene-id';
 import { relations } from '@/platform/server/db/schema/relations';
 import { createSequenceElementsMethods } from './sequence-elements';
+import { createScenesMethods } from '@/shots/server/db/scenes';
 
 let client: Client;
 let db: Database;
@@ -108,14 +110,6 @@ async function insertSceneWithShot(args: {
       id: dbSceneId(generateId()),
       sequenceId,
       orderIndex: args.orderIndex,
-      continuity: {
-        environmentTag: '',
-        characterTags: [],
-        elementTags: args.elementTags,
-        colorPalette: '',
-        lightingSetup: '',
-        styleTag: '',
-      },
     })
     .returning();
   if (!scene) throw new Error('test setup: scene insert returned nothing');
@@ -124,6 +118,15 @@ async function insertSceneWithShot(args: {
     .values({
       sceneId: scene.id,
       content: { extract: args.extract, dialogue: [] },
+      // Continuity rides the script version (#1600).
+      continuity: {
+        environmentTag: '',
+        characterTags: [],
+        elementTags: args.elementTags,
+        colorPalette: '',
+        lightingSetup: '',
+        styleTag: '',
+      },
       source: 'split',
     })
     .returning();
@@ -386,10 +389,7 @@ describe('cascadeRename', () => {
       .where(eq(sequences.id, sequenceId));
     expect(seq?.script).toBe('The BRAND appears. Pan across the BRAND.');
 
-    const [renamedScene] = await db
-      .select({ continuity: scenes.continuity })
-      .from(scenes)
-      .where(eq(scenes.id, taggedScene.id));
+    const renamedScene = await createScenesMethods(db).getById(taggedScene.id);
     expect(renamedScene?.continuity?.elementTags).toEqual(['BRAND']);
 
     const [renamedVersion] = await db
@@ -413,6 +413,116 @@ describe('cascadeRename', () => {
     expect(replay.element.token).toBe('BRAND');
     expect(replay.scriptUpdated).toBe(false);
     expect(replay.shotsUpdated).toBe(0);
+  });
+
+  it('appends renamed rows and repoints; the rows it replaced keep their text (#1786)', async () => {
+    const methods = createSequenceElementsMethods(db);
+    const element = await insertElement('LOGO');
+    const scene = await insertSceneWithShot({
+      orderIndex: 0,
+      elementTags: ['LOGO'],
+      extract: 'The LOGO appears on screen.',
+      motionPrompt: 'Push in on the LOGO.',
+      imagePrompt: 'A LOGO on a wall.',
+    });
+    const [before] = await db
+      .select({
+        shotId: shots.id,
+        motionId: shots.selectedMotionPromptVersionId,
+        scriptId: scenes.selectedScriptVersionId,
+      })
+      .from(shots)
+      .innerJoin(scenes, eq(scenes.id, shots.sceneId))
+      .where(eq(shots.sceneId, scene.id));
+    const [frameBefore] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.shotId, before?.shotId ?? ''));
+    if (!before?.motionId || !before.scriptId || !frameBefore)
+      throw new Error('test setup: selections missing');
+    const [still] = await db
+      .insert(frameVariants)
+      .values({
+        frameId: frameBefore.id,
+        sequenceId,
+        kind: 'model',
+        model: 'nano_banana_2',
+        status: 'completed',
+        promptVersionId: frameBefore.selectedImagePromptVersionId,
+      })
+      .returning();
+
+    await methods.cascadeRename({
+      sequenceId,
+      elementId: element.id,
+      oldToken: 'LOGO',
+      newToken: 'BRAND',
+    });
+
+    // History is untouched: the rows clips and hashes pinned still say what
+    // they said.
+    const [oldMotion] = await db
+      .select()
+      .from(shotPromptVersions)
+      .where(eq(shotPromptVersions.id, before.motionId));
+    expect(oldMotion?.text).toBe('Push in on the LOGO.');
+    const [oldImage] = await db
+      .select()
+      .from(framePromptVersions)
+      .where(
+        eq(
+          framePromptVersions.id,
+          frameBefore.selectedImagePromptVersionId ?? ''
+        )
+      );
+    expect(oldImage?.text).toBe('A LOGO on a wall.');
+    const [oldScript] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, before.scriptId));
+    expect(oldScript?.content.extract).toBe('The LOGO appears on screen.');
+
+    // The selection moved to new `renamed` rows.
+    const [motion] = await db
+      .select({ version: shotPromptVersions })
+      .from(shots)
+      .innerJoin(
+        shotPromptVersions,
+        eq(shots.selectedMotionPromptVersionId, shotPromptVersions.id)
+      )
+      .where(eq(shots.id, before.shotId));
+    expect(motion?.version.id).not.toBe(before.motionId);
+    expect(motion?.version.source).toBe('renamed');
+    expect(motion?.version.text).toBe('Push in on the BRAND.');
+    const [image] = await db
+      .select({ version: framePromptVersions })
+      .from(frames)
+      .innerJoin(
+        framePromptVersions,
+        eq(frames.selectedImagePromptVersionId, framePromptVersions.id)
+      )
+      .where(eq(frames.id, frameBefore.id));
+    expect(image?.version.source).toBe('renamed');
+    expect(image?.version.text).toBe('A BRAND on a wall.');
+    // A still rendered before the rename restores the renamed prompt when
+    // selected, not the old token.
+    const [stillAfter] = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.id, still?.id ?? ''));
+    expect(stillAfter?.promptVersionId).toBe(image?.version.id);
+    const [script] = await db
+      .select({ version: sceneScriptVersions })
+      .from(scenes)
+      .innerJoin(
+        sceneScriptVersions,
+        eq(scenes.selectedScriptVersionId, sceneScriptVersions.id)
+      )
+      .where(eq(scenes.id, scene.id));
+    expect(script?.version.source).toBe('renamed');
+    expect(script?.version.content.extract).toBe(
+      'The BRAND appears on screen.'
+    );
   });
 
   it('short-circuits when oldToken === newToken', async () => {

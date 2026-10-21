@@ -11,6 +11,7 @@ import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const mockCopyStoredImage = vi.fn();
 const mockGenerateImageWithProvider = vi.fn();
@@ -47,6 +48,8 @@ vi.doMock('@/platform/realtime', () => ({
 
 const { LibraryTalentSheetWorkflow } =
   await import('./library-talent-sheet-workflow');
+const { computeLibraryTalentSheetHashFromDto } =
+  await import('./sheet-snapshots');
 
 class Probe extends LibraryTalentSheetWorkflow {
   runBody(
@@ -56,52 +59,72 @@ class Probe extends LibraryTalentSheetWorkflow {
   ) {
     return this.runImpl(event, step, scopedDb);
   }
+  failBody(
+    event: Readonly<WorkflowEvent<LibraryTalentSheetWorkflowInput>>,
+    scopedDb: WorkflowScopedDb
+  ) {
+    return this.onFailure({ event, error: 'boom', scopedDb });
+  }
 }
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal env stub; runImpl never reads bindings
-  const env = {} as unknown as Ctor[1];
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // minimal env stub; runImpl never reads bindings
+  const env = asStub<Ctor[1]>({});
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
+
+const mockLandSheet = vi.fn();
+const mockTalentUpdate = vi.fn();
+const mockClearSheetClaimIf = vi.fn();
 
 function makeScopedDb(): WorkflowScopedDb {
   const sheet = { id: 'sheet-1' };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  return {
+  // stub covering only the scoped-db surface runImpl touches
+  return asStub<WorkflowScopedDb>({
     talent: {
       sheets: {
         getById: vi.fn(async () => null),
         create: vi.fn(async (row: { id: string }) => ({ ...sheet, ...row })),
       },
-      update: vi.fn(async () => ({})),
+      update: mockTalentUpdate,
+      landSheet: mockLandSheet,
+      clearSheetClaimIf: mockClearSheetClaimIf,
+    },
+    talentSheetVariants: {
+      insertDivergent: vi.fn(async () => ({ id: 'variant-1' })),
     },
     provenance: {},
     liveRead: {},
     credentials: {},
-  } as unknown as WorkflowScopedDb;
+  });
 }
 
-function makeInput(
+async function makeInput(
   overrides: Partial<LibraryTalentSheetWorkflowInput> = {}
-): LibraryTalentSheetWorkflowInput {
-  return {
+): Promise<LibraryTalentSheetWorkflowInput> {
+  const fields = {
     userId: 'u1',
     teamId: 'team-1',
     talentId: 'tal-1',
     talentName: 'Sam',
     talentDescription: 'A cowboy',
     referenceImageUrls: ['/r2/talent/team-1/tal-1/photo.png'],
+    sheetId: 'sheet-claim',
     ...overrides,
+  };
+  return {
+    ...fields,
+    snapshotInputHash: await computeLibraryTalentSheetHashFromDto(fields),
   };
 }
 
@@ -143,6 +166,11 @@ beforeEach(() => {
   });
   mockRecordProvenance.mockResolvedValue(undefined);
   mockEmit.mockResolvedValue(undefined);
+  mockTalentUpdate.mockResolvedValue({});
+  mockLandSheet.mockImplementation(async (args: { sheetId: string }) => ({
+    sheet: { id: args.sheetId, divergedAt: null },
+    landed: true,
+  }));
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: true, body: {} }))
@@ -153,7 +181,7 @@ describe('LibraryTalentSheetWorkflow uploaded sheet', () => {
   it('copies the stored sheet and does not generate or bill a 4-panel', async () => {
     const uploadedSheetUrl = '/r2/talent/team-1/tal-1/upload.png';
     await makeWorkflow().runBody(
-      makeEvent(makeInput({ uploadedSheetUrl })),
+      makeEvent(await makeInput({ uploadedSheetUrl })),
       makeStep(),
       makeScopedDb()
     );
@@ -179,7 +207,7 @@ describe('LibraryTalentSheetWorkflow uploaded sheet', () => {
 describe('LibraryTalentSheetWorkflow generate-if-missing', () => {
   it('generates and bills the 4-panel when no sheet was uploaded', async () => {
     await makeWorkflow().runBody(
-      makeEvent(makeInput()),
+      makeEvent(await makeInput()),
       makeStep(),
       makeScopedDb()
     );
@@ -192,5 +220,47 @@ describe('LibraryTalentSheetWorkflow generate-if-missing', () => {
         destPath: 'team-1/tal-1/headshot.png',
       })
     );
+  });
+});
+
+describe('LibraryTalentSheetWorkflow sheet claim (#1113)', () => {
+  it('writes under the claimed id and sets the headshot while held', async () => {
+    const result = await makeWorkflow().runBody(
+      makeEvent(await makeInput()),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(mockLandSheet).toHaveBeenCalledWith(
+      expect.objectContaining({ sheetId: 'sheet-claim', talentId: 'tal-1' })
+    );
+    expect(mockCropPortrait).toHaveBeenCalledTimes(1);
+    expect(mockTalentUpdate).toHaveBeenCalledTimes(1);
+    expect(result.sheetId).toBe('sheet-claim');
+  });
+
+  it('parks without touching the headshot when the claim moved', async () => {
+    mockLandSheet.mockResolvedValue({
+      sheet: { id: 'sheet-claim', divergedAt: new Date() },
+      landed: false,
+    });
+
+    await makeWorkflow().runBody(
+      makeEvent(await makeInput()),
+      makeStep(),
+      makeScopedDb()
+    );
+
+    expect(mockCropPortrait).not.toHaveBeenCalled();
+    expect(mockTalentUpdate).not.toHaveBeenCalled();
+    expect(mockEmit).toHaveBeenCalledWith(
+      'generation.stale:detected',
+      expect.objectContaining({ entityType: 'talent', entityId: 'sheet-claim' })
+    );
+  });
+
+  it('clears only its own claim when it fails', async () => {
+    await makeWorkflow().failBody(makeEvent(await makeInput()), makeScopedDb());
+    expect(mockClearSheetClaimIf).toHaveBeenCalledWith('tal-1', 'sheet-claim');
   });
 });

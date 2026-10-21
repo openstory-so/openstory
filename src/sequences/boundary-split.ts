@@ -5,16 +5,19 @@
  * annotations — `{ hintLine, quote }` per scene — against a script we sent
  * with a numbered line gutter. This module resolves each quote to a raw
  * character offset with a monotonic cursor and slices the ORIGINAL script
- * into adjacent substrings, so scene extracts are byte-verbatim by
- * construction: `concat(slices) === script`, gaps/overlaps impossible.
+ * into adjacent substrings from the first kept offset through the end of
+ * the script. Extracts are byte-verbatim. Text before that offset is not a
+ * slice (#2077). A gap or overlap inside the covered range is a bug.
  *
  * Resolution ladder per boundary (each rung past the first counts as a
  * "repair"): exact substring search → normalization-tolerant compare
  * (comparison-only; mapped back to raw offsets) → fuzzy prefix scan windowed
- * around `hintLine`. The first boundary is always kept and pinned to offset 0
- * (leading text belongs to scene 1) — that pin is not a repair. Later
- * unresolvable or non-monotonic boundaries are dropped and merge into their
- * predecessor.
+ * around `hintLine`. The first boundary starts where its quote resolves
+ * (#2077). Text before that offset is not a scene — the scene-splitting
+ * prompt is what decides a title page is front matter. An unresolved first
+ * quote is pinned to offset 0 and is not a repair, so a one-scene script
+ * with a bad quote does not retry forever. Later unresolvable or
+ * non-monotonic boundaries are dropped and merge into their predecessor.
  */
 
 export type BoundaryAnnotation = {
@@ -26,8 +29,9 @@ export type BoundaryAnnotation = {
 
 export type ResolvedBoundaries = {
   /**
-   * Raw-script start offset of each kept scene. `offsets[0] === 0` always
-   * (leading text belongs to scene 1); strictly increasing.
+   * Raw-script start offset of each kept slice. Strictly increasing.
+   * When the first quote resolves, `offsets[0]` is that quote, so it may
+   * sit past 0. When it does not resolve, `offsets[0]` is 0 (#2077).
    */
   offsets: number[];
   /**
@@ -204,11 +208,13 @@ function resolveOne(
 /**
  * Resolve boundary annotations to raw offsets with a monotonic cursor.
  *
- * The first boundary is always kept and pinned to offset 0 — leading text
- * belongs to scene 1 regardless of where its quote matched. Later boundaries
- * must resolve strictly after the previous kept offset; anything else is
- * dropped (the scene merges into its predecessor). Pure and deterministic, so
- * incremental (mid-stream) and final resolution agree.
+ * The first boundary is always kept. When its quote resolves, the scene
+ * starts there — a title page the model did not quote is not a scene
+ * (#2077). When it does not resolve, the scene is pinned to offset 0 and
+ * that pin is not a repair. Later boundaries must resolve strictly after
+ * the previous kept offset; anything else is dropped (the scene merges into
+ * its predecessor). Pure and deterministic, so incremental (mid-stream) and
+ * final resolution agree.
  */
 export function resolveBoundaries(
   script: string,
@@ -223,14 +229,16 @@ export function resolveBoundaries(
 
   for (const [i, boundary] of boundaries.entries()) {
     if (i === 0) {
-      offsets.push(0);
       kept.push(0);
-      // Pin-to-0 is the product rule (leading text belongs to scene 1), not
-      // a repair. Count a repair only when the quote itself needed the
-      // normalized/fuzzy rung or did not resolve.
       const match = resolveOne(script, norm, boundary, 0);
-      if (!match || match.repaired) repairs++;
-      cursor = 1;
+      if (match) {
+        offsets.push(match.rawOffset);
+        if (match.repaired) repairs++;
+        cursor = match.rawOffset + 1;
+      } else {
+        offsets.push(0);
+        cursor = 1;
+      }
       continue;
     }
     const match = resolveOne(script, norm, boundary, cursor);
@@ -249,7 +257,8 @@ export function resolveBoundaries(
 
 /**
  * Slice the script at the resolved offsets. Adjacent substrings by
- * construction: `slices.join('') === script` always.
+ * construction: `slices.join('') === script.slice(offsets[0] ?? 0)`.
+ * A leading gap is the front matter the first quote skipped (#2077).
  */
 export function sliceScenes(script: string, offsets: number[]): string[] {
   if (offsets.length === 0) return script.length > 0 ? [script] : [];

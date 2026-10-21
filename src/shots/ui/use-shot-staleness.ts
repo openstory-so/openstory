@@ -1,4 +1,5 @@
 import { getShotStalenessBatchFn, getShotStalenessFn } from '@/shots/shots.fn';
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 import {
   type QueryClient,
@@ -75,18 +76,14 @@ const shotStalenessKey = (shotId: string | undefined) =>
   [...shotStalenessNamespace, shotId] as const;
 
 /**
- * Batched keys live under the same `'shot-staleness'` namespace so the
- * existing namespace invalidations (script save, realtime events) refresh
- * them too. No collision with `shotStalenessKey`: shot ids are ULIDs, never
- * `'scene'`/`'sequence'`.
+ * The sequence batch lives under the same `'shot-staleness'` namespace so
+ * script-save and realtime invalidations refresh it too. Shot ids are ULIDs,
+ * never `'sequence'`.
  */
-const sceneShotStalenessKey = (sceneId: string | undefined) =>
-  [...shotStalenessNamespace, 'scene', sceneId] as const;
 const sequenceShotStalenessKey = (sequenceId: string) =>
   [...shotStalenessNamespace, 'sequence', sequenceId] as const;
 
-const isBatchedKey = (key: readonly unknown[]) =>
-  key[1] === 'scene' || key[1] === 'sequence';
+const isBatchedKey = (key: readonly unknown[]) => key[1] === 'sequence';
 
 /**
  * Optimistically mark one artifact fresh everywhere it is cached — the shot's
@@ -124,6 +121,8 @@ export function markArtifactFresh(
     });
     rollbacks.push(() => queryClient.setQueryData(key, byShot));
   }
+  // The plan reads the same verdicts (#1817).
+  void queryClient.invalidateQueries({ queryKey: generationPlanKeys.all });
 
   return () => {
     for (const rollback of rollbacks) rollback();
@@ -158,7 +157,7 @@ export function useShotStaleness(args: {
  */
 async function fetchAndPrimeBatch(
   queryClient: QueryClient,
-  data: { sequenceId: string; sceneId?: string }
+  data: { sequenceId: string }
 ): Promise<Record<string, ShotStaleness>> {
   const byShot = await getShotStalenessBatchFn({ data });
   for (const [shotId, staleness] of Object.entries(byShot)) {
@@ -168,24 +167,6 @@ async function fetchAndPrimeBatch(
     );
   }
   return byShot;
-}
-
-/** Batched staleness for every shot in a scene (#1077), keyed by shot id. */
-export function useSceneShotStaleness(args: {
-  sequenceId: string;
-  sceneId: string | undefined;
-}) {
-  const { sequenceId, sceneId } = args;
-  const queryClient = useQueryClient();
-  return useQuery<Record<string, ShotStaleness>>({
-    queryKey: sceneShotStalenessKey(sceneId),
-    queryFn: () => {
-      if (!sceneId) throw new Error('sceneId required');
-      return fetchAndPrimeBatch(queryClient, { sequenceId, sceneId });
-    },
-    enabled: !!sceneId,
-    staleTime: 30_000,
-  });
 }
 
 /**

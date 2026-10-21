@@ -1,21 +1,12 @@
-import { StudioView } from '@/studio/ui/studio-view';
 import { studioListSearchSchema } from '@/studio/ui/list-prefs';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
+// Old name for /clips (#2070). Kept so links and bookmarks still work.
 export const Route = createFileRoute('/_app/videos/')({
   validateSearch: studioListSearchSchema,
-  component: VideosPage,
-  staticData: { breadcrumb: 'Videos' },
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: '/clips', search });
+  },
+  component: () => null,
+  staticData: { breadcrumb: 'Clips' },
 });
-
-function VideosPage() {
-  const search = Route.useSearch();
-  const navigate = Route.useNavigate();
-  return (
-    <StudioView
-      activity="video"
-      search={search}
-      navigate={(opts) => navigate(opts)}
-    />
-  );
-}

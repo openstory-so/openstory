@@ -1,3 +1,6 @@
+import type { StyleConfig } from '@/look/style-config';
+import { loadSequenceStyle } from '@/look/server/sequence-style';
+import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 /**
  * Optimised-prompt inspector (#1242). The scene editor used to run the same
  * fal/Ark/Grok/Gemini request builders in the browser; those now live behind
@@ -5,12 +8,12 @@
  */
 
 import { withMeasuredDurations } from '@/cast/server/sequence-elements/media-duration';
-import { isBytePlusConfigured } from '@/models/server/byteplus-config';
+import { seedanceRunsOnArk } from '@/motion/server/motion-generation';
+import { toWorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import {
-  assemblePackedMotionPrompt,
   packedPromptFitsLimit,
   packedSceneFromScene,
-} from '@/motion/server/assemble-motion-prompt';
+} from '@/motion/server/build-motion-render';
 import { packMotionBatchShots } from '@/motion/server/pack-motion-jobs';
 import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
 import { resolveShotDuration } from '@/motion/resolve-shot-duration';
@@ -59,7 +62,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
   .middleware([shotAccessMiddleware])
   .validator(zodValidator(previewShotPromptsInputSchema))
   .handler(async ({ data, context }): Promise<ShotPromptPreview> => {
-    const { shot, frame, sequence, scene, scopedDb } = context;
+    const { shot, frame, sequence, scene, script, scopedDb } = context;
+    const styleConfig = await loadSequenceStyle(scopedDb, sequence);
     const usesFrame = usesStartFrame(shot, sequence);
     const [
       characters,
@@ -76,7 +80,7 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       scopedDb.sequenceElements
         .list(sequence.id)
         .then((rows) => withMeasuredDurations(scopedDb, rows)),
-      scopedDb.sequenceLocations.listWithReferences(sequence.id),
+      scopedDb.locations.listWithReferences(sequence.id),
       usesFrame
         ? scopedDb.frameVariants.getSelected(frame.id)
         : Promise.resolve(null),
@@ -95,7 +99,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       linesByShotId,
       shots: sceneShots,
       legacyDialogueOf: () => selectedMotion?.dialogue,
-      scriptDialogueOf: () => scene?.originalScript.dialogue,
+      // The raw script, not `scene`: that is narrowed to this shot (#1784).
+      scriptDialogueOf: () => script?.dialogue,
     })(shot);
     const overrideText = data.motionPrompt ?? selectedMotion?.text ?? '';
     const motionPrompt = selectedMotion
@@ -115,6 +120,8 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       scopedDb,
       sequence,
       scene,
+      styleConfig,
+      script,
       shot,
       sceneShots,
       linesByShotId,
@@ -137,11 +144,17 @@ export const previewShotPromptsFn = createServerFn({ method: 'POST' })
       aspectRatio: sequence.aspectRatio,
       resolution: sequence.resolution,
       scene,
+      styleConfig,
       characters,
       elements,
       locations,
-      byteplusEnabled: isBytePlusConfigured(),
-      audioClips: selectedMotion?.audioClips ?? shot.audioClips ?? [],
+      // Where this team's Seedance lands, not whether the platform has
+      // Ark: a team on its own fal key is never sent an edit (#2036).
+      byteplusEnabled: await seedanceRunsOnArk(
+        toWorkflowScopedDb(scopedDb).credentials
+      ),
+      // The shot's working set is what the next render sends (#1786).
+      audioClips: shot.audioClips ?? [],
       packedMembers: packedPreview?.members,
       packedDurationShotNumbers: packedPreview?.durationShotNumbers,
     });
@@ -157,9 +170,11 @@ async function loadPackedPreviewMembers(input: {
   scopedDb: ShotContext['scopedDb'];
   sequence: ShotContext['sequence'];
   scene: ShotContext['scene'];
+  script: ShotContext['script'];
   shot: ShotContext['shot'];
   /** Every live shot of the clicked shot's scene. */
   sceneShots: readonly Shot[];
+  styleConfig: StyleConfig;
   linesByShotId: ShotDialogueLinesByShotId;
   videoModel: ImageToVideoModel;
   motionPrompt: AssemblableMotionPrompt | null;
@@ -187,7 +202,7 @@ async function loadPackedPreviewMembers(input: {
     linesByShotId: input.linesByShotId,
     shots: sceneShots,
     legacyDialogueOf: (shotId) => versions.get(shotId)?.dialogue,
-    scriptDialogueOf: () => input.scene?.originalScript.dialogue,
+    scriptDialogueOf: () => input.script?.dialogue,
   });
   const packable = sceneShots.map((row) => ({
     shotId: row.id,
@@ -198,10 +213,10 @@ async function loadPackedPreviewMembers(input: {
     renderSegmentId: row.renderSegmentId,
     shotNumber: row.shotNumber,
   }));
-  const packedScene = packedSceneFromScene(input.scene);
+  const packedScene = packedSceneFromScene(input.scene, input.styleConfig);
   const promptFits = (members: readonly (typeof packable)[number][]) =>
     packedPromptFitsLimit(
-      assemblePackedMotionPrompt({
+      buildPackedMotionPrompt({
         shots: members.map((member) => ({
           durationSeconds: resolveShotDuration({
             durationMs: member.durationMs,

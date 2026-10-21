@@ -13,7 +13,18 @@ import {
 import { dbSceneId } from '@/shots/scene-id';
 import type { NewFrame, Shot, NewShot } from '@/platform/server/db/schema';
 import type { Sequence } from '@/platform/server/db/schema/sequences';
-import { and, asc, desc, eq, gt, gte, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import type { PageOptions } from '@/platform/server/db/read-page';
 import { buildEventInsert } from '@/sequences/server/db/sequence-events';
 
@@ -23,9 +34,8 @@ import { buildEventInsert } from '@/sequences/server/db/sequence-events';
  * shot creation must materialize that frame or the image path has nowhere to
  * write. The frame gets its OWN generated id (NOT the shot's) — id-reuse was a
  * one-time migration shortcut and is never assumed at runtime; the anchor is
- * resolved by `(shotId, orderIndex 0)` via `frames.getAnchorByShot`. `imageModel`
- * / `imageStatus` keep their schema defaults here; the image workflow stamps the
- * real values when generation runs.
+ * resolved by `(shotId, orderIndex 0)` via `frames.getAnchorByShot`.
+ * Its image lifecycle lives on its `frame_variants` rows (#1942).
  */
 function anchorFrameValues(shot: Pick<Shot, 'id' | 'sequenceId'>): NewFrame {
   return {
@@ -66,10 +76,9 @@ type ShotOrderBy = 'sceneOrder' | 'createdAt' | 'updatedAt';
  */
 export type ShotWithAnchorFrame = Shot & { anchorFrameId: string };
 
-// A shot owns no hashed artifact of its own any more: image staleness is
-// checked via `frameVariants.isStale` / `frames.isStale` (#989) and video
-// staleness via `videoVariants.isStale` (#1067 phase 2d dropped the
-// `shots.videoInputHash` mirror along with the rest of the video block).
+// A shot owns no hashed artifact of its own any more: the still's hash is on
+// its `frame_variants` row (#989) and a clip is compared by the pointers in
+// its render manifest (#1067 phase 2d dropped `shots.videoInputHash`).
 
 // Anchor-frame inserts bind ~10 params per row; 9 rows/chunk keeps each INSERT
 // well under D1's 100-bound-parameter ceiling (see `ensureAnchorFrames`).
@@ -104,7 +113,7 @@ export function createShotsMethods(db: Database) {
   // instead of reading it back (#991: no DB reads in workflows).
   //
   // Chunked to stay under D1's 100-bound-parameter ceiling: each anchor row binds
-  // ~10 params (id, shotId, sequenceId, orderIndex, role, imageStatus,
+  // a handful of params (id, shotId, sequenceId, orderIndex, role,
   // createdAt, updatedAt — the schema defaults are inlined as binds),
   // so a single INSERT of a whole sequence's shots overflowed the limit and threw
   // (#1019: getShotsFn calls this with every shot on each read, so sequences with
@@ -331,6 +340,16 @@ export function createShotsMethods(db: Database) {
       ]);
       return deletedAt;
     },
+
+    /** Soft-deleted shots of a sequence, most recently deleted first. */
+    listDeletedBySequence: async (sequenceId: string): Promise<Shot[]> =>
+      await db
+        .select()
+        .from(shots)
+        .where(
+          and(eq(shots.sequenceId, sequenceId), isNotNull(shots.deletedAt))
+        )
+        .orderBy(desc(shots.deletedAt)),
 
     /**
      * Undo a shot soft-delete. Refuses while the parent scene is itself

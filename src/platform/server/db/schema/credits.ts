@@ -77,7 +77,15 @@ export const transactions = snakeCase.table(
   (table) => [
     index('idx_transactions_created_at').on(table.createdAt),
     index('idx_transactions_type').on(table.type),
-    index('idx_transactions_team_id').on(table.teamId),
+    // Team ledger newest first — the history page (#1881). Also serves every
+    // team_id lookup, so there is no single-column team index.
+    index('idx_transactions_team_created').on(table.teamId, table.createdAt),
+    // Team ledger by type, newest first — the typed history page (#1881).
+    index('idx_transactions_team_type_created').on(
+      table.teamId,
+      table.type,
+      table.createdAt
+    ),
     index('idx_transactions_user_id').on(table.userId),
     uniqueIndex('idx_transactions_stripe_session_id').on(table.stripeSessionId),
     uniqueIndex('idx_transactions_team_idempotency_key')
@@ -152,8 +160,8 @@ export const teamBillingSettings = snakeCase.table('team_billing_settings', {
 });
 
 /**
- * One Stripe card fingerprint may unlock the welcome grant for one team.
- * Fingerprint is Stripe's stable id for the PAN (same card, same account).
+ * Retired with the welcome grant (#1883): nothing reads or writes it. Kept
+ * because dropping it is a DROP TABLE migration (see AGENTS.md, #612).
  */
 export const welcomeCardClaims = snakeCase.table(
   'welcome_card_claims',

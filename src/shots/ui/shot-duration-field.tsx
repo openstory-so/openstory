@@ -2,8 +2,8 @@
  * Shot Duration Field — the duration control for a shot, on the video surface.
  *
  * Duration is a **video parameter**, not a prompt driver: `sceneInputContext`
- * (input-hash.ts) allowlists it out of the prompt hashes, and it is hashed only
- * by `computeShotVideoInputHash`. Changing it re-stales the render, never the
+ * (input-hash.ts) allowlists it out of the prompt hashes, and only the render
+ * manifest's `durationMs` reads it. Changing it re-stales the render, never the
  * image/motion prompts — which is why this lives on the Motion tab next to the
  * model and the segment panel rather than under the scene script.
  *

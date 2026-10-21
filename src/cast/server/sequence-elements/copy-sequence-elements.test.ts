@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { asStub } from '@/test/as-stub';
 
 const copyFile = vi.fn(async () => undefined);
 const triggerWorkflow = vi.fn(async () => 'run-1');
@@ -10,10 +11,10 @@ const { copySequenceElements } = await import('./copy-sequence-elements');
 
 function fakeDb(source: Record<string, unknown>) {
   const create = vi.fn(async (row: Record<string, unknown>) => row);
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- copy only reaches sequenceElements.list/create
-  const scopedDb = {
+  // copy only reaches sequenceElements.list/create
+  const scopedDb = asStub<ScopedDb>({
     sequenceElements: { list: vi.fn(async () => [source]), create },
-  } as unknown as ScopedDb;
+  });
   return { scopedDb, create };
 }
 

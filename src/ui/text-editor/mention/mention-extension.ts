@@ -22,7 +22,8 @@ import {
   mentionShowsAt,
   type MentionSection,
 } from '@/shots/ui/prompt-mention/mention-items';
-import { Mention } from '@tiptap/extension-mention';
+import { Mention, type MentionOptions } from '@tiptap/extension-mention';
+import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import type { MarkdownNodeSpec } from 'tiptap-markdown';
 import {
   MENTION_PILL_BASE_CLASS as BASE_PILL_CLASS,
@@ -66,7 +67,9 @@ function isMentionSection(value: string): value is MentionSection {
   );
 }
 
-export const PromptMention = Mention.extend({
+export const PromptMention = Mention.extend<
+  MentionOptions<MentionItem, MentionItem>
+>({
   addAttributes() {
     return {
       id: {

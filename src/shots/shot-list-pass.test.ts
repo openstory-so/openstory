@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { dbSceneId } from '@/shots/scene-id';
 import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
-import { deriveShots } from './shot-list.derive';
-import type { ShotListPassResult, ShotSpec } from './shot-list.schema';
+import { deriveMotionPrompt, deriveStillPrompt } from './shot-list.derive';
+import {
+  storedShotSpec,
+  type ShotListPassResult,
+  type ShotSpec,
+} from './shot-list.schema';
 import type { SceneSplittingScene } from '@/sequences/server/streaming-scene-parser';
 import {
   allocateSceneShots,
@@ -67,6 +71,7 @@ const twoShotSpec = (n: number): ShotSpec => ({
     move: n === 1 ? 'static' : 'push-in',
     pacing: 'slow',
   },
+  direction: '',
   soundCue: n === 1 ? 'latch click' : 'echo',
   dialogue:
     n === 1
@@ -259,7 +264,8 @@ describe('attachShotLists', () => {
       'She opens the door',
       'Cut to the hallway beyond',
     ]);
-    // Two shots divide the 8s label: on a 4s-minimum grid that is 4 + 4.
+    // No Scene N label: the model's 4s + 4s are kept, not stretched to the
+    // 8s word-count ceiling on the scene.
     expect(scene.shots?.map((s) => s.durationSeconds)).toEqual([4, 4]);
   });
 
@@ -286,6 +292,174 @@ describe('attachShotLists', () => {
     expect(attached[0]?.shots).toHaveLength(1);
     expect(attached[1]?.shots).toHaveLength(1);
     expect(attached[1]?.shots?.[0]?.durationSeconds).toBe(5);
+  });
+
+  it('keeps the model seconds on an unlabelled scene instead of the word-count ceiling (#2077)', () => {
+    const extract = [
+      'INT. KITCHEN - NIGHT',
+      'Sarah fills the kettle and watches rain streak the dark window, the street below empty, the clock over the stove stuck.',
+      '',
+      'SARAH',
+      'Tea?',
+      '',
+      'JOHN',
+      'Please.',
+    ].join('\n');
+    const scene = makeScene(1, extract, {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 40 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [{ ...twoShotSpec(1), durationSeconds: 4 }],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([4]);
+    expect(attached?.metadata.durationSeconds).toBe(4);
+    const words = extract.split(/\s+/).filter(Boolean).length;
+    expect(attached?.metadata.durationSeconds).toBeLessThan(
+      Math.round(words / 3)
+    );
+  });
+
+  it('raises an unlabelled shot until its lines fit, within the longest clip (#2077)', () => {
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah talks.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 40 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [
+              {
+                ...twoShotSpec(1),
+                durationSeconds: 4,
+                dialogue: [
+                  {
+                    character: 'SARAH',
+                    line: 'word '.repeat(20).trim(),
+                    tone: '',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    // 20 words at 2 words a second. The model's 4s is below that, and 10s
+    // is under both the 15s clip and the 40s ceiling.
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([10]);
+    expect(attached?.metadata.durationSeconds).toBe(10);
+  });
+
+  it('splits an overfull unlabelled shot and gives each piece its lines (#2077)', () => {
+    const line = (n: number) => ({
+      character: 'SARAH',
+      line: `line ${n} ${'word '.repeat(9).trim()}`,
+      tone: '',
+    });
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah talks.');
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [
+              {
+                ...twoShotSpec(1),
+                durationSeconds: 6,
+                dialogue: [1, 2, 3, 4].map(line),
+              },
+            ],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    // Two groups of 22 words. The parent's 6s is not shared (that would be
+    // 3s + 3s) and not counted twice (12s). Each piece is 11s, which the
+    // 8s word-count ceiling does not pull back down.
+    const seconds = attached?.shots?.map((shot) => shot.durationSeconds) ?? [];
+    expect(seconds).toEqual([11, 11]);
+    expect(attached?.metadata.durationSeconds).toBe(22);
+  });
+
+  it('drops unlabelled shots past the word-count ceiling and caps their sum (#2077)', () => {
+    const silent = (n: number, seconds: number): ShotSpec => ({
+      ...twoShotSpec(n),
+      dialogue: [],
+      durationSeconds: seconds,
+    });
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah waits.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 3 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [1, 2, 3, 4, 5].map((n) => silent(n, 15)),
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    const seconds = attached?.shots?.map((shot) => shot.durationSeconds) ?? [];
+    expect(seconds).toEqual([1, 1, 1]);
+    expect(attached?.metadata.durationSeconds).toBe(3);
+  });
+
+  it('pulls a long unlabelled sum down to the word-count ceiling (#2077)', () => {
+    const silent = (n: number, seconds: number): ShotSpec => ({
+      ...twoShotSpec(n),
+      dialogue: [],
+      durationSeconds: seconds,
+    });
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah waits.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 8 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [{ sceneNumber: 1, shots: [silent(1, 15), silent(2, 15)] }],
+      },
+      SEEDANCE
+    );
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([
+      4, 4,
+    ]);
+    expect(attached?.metadata.durationSeconds).toBe(8);
+  });
+
+  it('caps one unlabelled shot at the longest clip, under the word-count ceiling (#2077)', () => {
+    const scene = makeScene(1, 'INT. KITCHEN - NIGHT\nSarah waits.', {
+      metadata: { ...makeScene(1, '').metadata, durationSeconds: 40 },
+    });
+    const [attached] = attachShotLists(
+      [scene],
+      {
+        scenes: [
+          {
+            sceneNumber: 1,
+            shots: [{ ...twoShotSpec(1), dialogue: [], durationSeconds: 100 }],
+          },
+        ],
+      },
+      SEEDANCE
+    );
+    expect(attached?.shots?.map((shot) => shot.durationSeconds)).toEqual([15]);
   });
 });
 
@@ -392,11 +566,14 @@ describe('formatCastForShotList', () => {
 describe('film length is the sum of the scene labels (#1593)', () => {
   it('whatever the shot count the pass emits, each scene sums to its label', () => {
     const scenes = [
-      makeScene(1, 'She opens the door. Cut to the hallway beyond.'),
-      makeScene(2, 'She walks on.', {
+      makeScene(
+        1,
+        'Scene 1 — 8s\nShe opens the door. Cut to the hallway beyond.'
+      ),
+      makeScene(2, 'Scene 2 — 12s\nShe walks on.', {
         metadata: { ...makeScene(2, '').metadata, durationSeconds: 12 },
       }),
-      makeScene(3, 'She stops.', {
+      makeScene(3, 'Scene 3 — 5s\nShe stops.', {
         metadata: { ...makeScene(3, '').metadata, durationSeconds: 5 },
       }),
     ];
@@ -515,7 +692,12 @@ describe('formatDirectorStyleForShotList', () => {
 describe('formatScenesForShotListPrompt', () => {
   it('numbers slices with title, location, duration and shot budget', () => {
     const text = formatScenesForShotListPrompt(
-      [makeScene(1, 'She opens the door. Cut to the hallway beyond.')],
+      [
+        makeScene(
+          1,
+          'Scene 1 — 8s\nShe opens the door. Cut to the hallway beyond.'
+        ),
+      ],
       SEEDANCE
     );
     expect(text).toContain('## Scene 1 — Scene 1');
@@ -527,7 +709,7 @@ describe('formatScenesForShotListPrompt', () => {
   it('a short label still allows inserts; a very long one needs a floor', () => {
     const tiny = formatScenesForShotListPrompt(
       [
-        makeScene(2, 'Blink.', {
+        makeScene(2, 'Scene 2 — 5s\nBlink.', {
           metadata: { ...makeScene(2, '').metadata, durationSeconds: 5 },
         }),
       ],
@@ -537,7 +719,7 @@ describe('formatScenesForShotListPrompt', () => {
     // 993s on a 15s max clip needs 67 clips; editorial 1s holds 993.
     const long = formatScenesForShotListPrompt(
       [
-        makeScene(4, 'Siege.', {
+        makeScene(4, 'Scene 4 — 993s\nSiege.', {
           metadata: { ...makeScene(4, '').metadata, durationSeconds: 993 },
         }),
       ],
@@ -548,6 +730,21 @@ describe('formatScenesForShotListPrompt', () => {
     expect(
       formatScenesForShotListPrompt([makeScene(3, 'x')], NO_GRID)
     ).not.toContain('shots:');
+  });
+
+  it('omits the duration total when the slice has no Scene N label (#2077)', () => {
+    const text = formatScenesForShotListPrompt(
+      [
+        makeScene(
+          1,
+          'INT. KITCHEN - NIGHT\nSarah fills the kettle.\nSARAH\nTea?'
+        ),
+      ],
+      SEEDANCE
+    );
+    expect(text).not.toContain('duration:');
+    expect(text).toContain('shots: up to 8');
+    expect(text).not.toContain('shots: 1 to');
   });
 });
 
@@ -571,17 +768,22 @@ describe('derive from attached shots — acceptance fixture', () => {
       referenceFilms: [],
       colorGrading: 'teal and orange',
     });
-    const derived = deriveShots(buildSceneWithShots(scene), styleConfig);
-    expect(derived).toHaveLength(2);
-    for (const shot of derived) {
-      expect(shot.visualPrompt.fullPrompt).toContain('INT. HALLWAY - NIGHT');
-      expect(shot.visualPrompt.fullPrompt).toContain('single overhead bulb');
-    }
-    expect(derived[0]?.visualPrompt.fullPrompt).toContain('wide');
-    expect(derived[1]?.visualPrompt.fullPrompt).toContain('close-up');
-    expect(derived[0]?.motionPrompt.fullPrompt).toContain('She opens the door');
-    expect(derived[1]?.motionPrompt.fullPrompt).toContain(
-      'Cut to the hallway beyond'
+    const built = buildSceneWithShots(scene);
+    expect(built.shots).toHaveLength(2);
+    const stills = built.shots.map((spec) =>
+      deriveStillPrompt(storedShotSpec(spec), built, styleConfig)
     );
+    const motions = built.shots.map(
+      (spec) =>
+        deriveMotionPrompt(storedShotSpec(spec), { referenceOnly: false }).text
+    );
+    for (const still of stills) {
+      expect(still).toContain('INT. HALLWAY - NIGHT');
+      expect(still).toContain('single overhead bulb');
+    }
+    expect(stills[0]).toContain('wide');
+    expect(stills[1]).toContain('close-up');
+    expect(motions[0]).toContain('She opens the door');
+    expect(motions[1]).toContain('Cut to the hallway beyond');
   });
 });

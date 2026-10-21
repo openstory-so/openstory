@@ -15,7 +15,7 @@ import type { ShotImageInputHash } from '@/shots/input-hash';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
 } from '@/platform/server/db/schema';
@@ -34,7 +34,7 @@ import { buildRegenerateShotSnapshot } from '@/shots/server/workflows/regenerate
  * script-bearing `.svg` (or an `.html` typed as such) out of a bucket the
  * worker serves same-origin from `/r2/`.
  */
-const UPLOAD_EXTENSIONS = {
+export const UPLOAD_EXTENSIONS = {
   image: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
   video: ['mp4', 'webm', 'mov'],
   audio: ['mp3', 'wav', 'ogg', 'm4a'],
@@ -107,7 +107,7 @@ export async function computeUploadedStillInputHash(args: {
   frameId: string;
   scene: Scene | null;
   promptText: string | null;
-  characters: CharacterWithSheet[];
+  characters: CastCharacterWithSheet[];
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   aspectRatio: AspectRatio;

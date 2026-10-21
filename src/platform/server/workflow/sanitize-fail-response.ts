@@ -8,11 +8,44 @@ const CF_ERROR_CODES: Record<string, string> = {
 };
 
 /**
+ * Detect generic or placeholder error messages that carry no useful debugging
+ * information if stripped away from their wrapper (#1694).
+ */
+function isGenericError(text: string): boolean {
+  if (!text) return true;
+  return /^(?:unknown error|no error detail|undefined|null|\[object object\]|\{\})$/i.test(
+    text.trim()
+  );
+}
+
+/**
+ * Strip repetitive child-workflow prefixes so user-facing errors name the
+ * underlying cause rather than the spawn hierarchy (#1694).
+ *
+ * Handles arbitrary nesting depths and the error name the status fallback
+ * puts in front of a message (`Error:`, `NonRetryableError:` — see
+ * `spawnAndAwaitChild`). If stripping would leave only an empty or generic
+ * placeholder (e.g. "no error detail" or "Unknown error"), the wrapper is
+ * preserved so the child workflow ID is not destroyed.
+ */
+function unwrapChildWorkflowError(message: string): string {
+  const unwrapped = message
+    .replace(
+      /^(?:(?:\w*Error:\s*)?Child workflow\s+\S+\s+failed:\s*)+(?:\w*Error:\s*)?/i,
+      ''
+    )
+    .trim();
+  return isGenericError(unwrapped) ? message : unwrapped;
+}
+
+/**
  * Extract a useful error message from a thrown workflow failure, mapping known
  * Cloudflare error codes to friendly text and capping the length.
  */
 export function sanitizeFailResponse(failResponse: unknown): string {
-  const message = extractRawMessage(failResponse).trim();
+  const message = unwrapChildWorkflowError(
+    extractRawMessage(failResponse).trim()
+  );
   if (!message) return 'Unknown error';
 
   // Map known CF error codes

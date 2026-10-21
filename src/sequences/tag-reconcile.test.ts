@@ -37,6 +37,7 @@ const characterBible = [
     ethnicity: '',
     physicalDescription: '',
     standardClothing: '',
+    looks: [],
     distinguishingFeatures: '',
     personality: '',
     movement: '',
@@ -52,12 +53,9 @@ const locationBible = [
     locationId: 'loc_001',
     name: 'INT. OFFICE - DAY',
     type: 'interior' as const,
-    timeOfDay: 'day',
     description: '',
     architecturalStyle: '',
     keyFeatures: '',
-    colorPalette: 'cool steel',
-    lightingSetup: 'overhead fluorescents',
     ambiance: '',
     consistencyTag: 'office_modern_steel',
     firstMention: {
@@ -126,8 +124,8 @@ describe('reconcileSceneTags', () => {
       { characterBible: [], locationBible, elementBible: [] }
     );
     expect(scenes[0]?.continuity.environmentTag).toBe('office_modern_steel');
-    expect(scenes[0]?.continuity.colorPalette).toBe('cool steel');
-    expect(scenes[0]?.continuity.lightingSetup).toBe('overhead fluorescents');
+    expect(scenes[0]?.continuity.colorPalette).toBe('');
+    expect(scenes[0]?.continuity.lightingSetup).toBe('');
     expect(stats.assignedEnvironmentTags).toBe(1);
   });
 

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "This is a location reference sheet of several views. Make one square establishing image of this exact place: same architecture, materials, palette, light and rendering style. The most recognisable view of it, subject centred. One image only: no panels, no borders, no text, no labels.",
+        "model": "google/nano-banana-lite/edit"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/4690b5e8fcb6be92a07fc9c669087ea151474c567e00ab2cd41360ca23a70ffe.png",
+              "content_type": "image/png",
+              "file_name": "sCxMqI1adVbKjuQqsTgc2_HrmGtQM3.png",
+              "file_size": null,
+              "width": 1024,
+              "height": 1024
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042368
+      }
+    }
+  ]
+}

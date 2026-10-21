@@ -9,7 +9,7 @@ import {
 import { useSeedVoices } from '@/cast/ui/use-voice-design-available';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import {
   catalogVoiceBrief,
   designedTakesForDisplay,
@@ -26,11 +26,13 @@ import {
   useAssignCharacterVoice,
   useCharacterVoiceVersions,
   useChooseCharacterVoiceTake,
+  useCancelCharacterVoice,
   useGenerateCharacterVoice,
   useSelectCharacterVoiceVersion,
   useSetCharacterVoiceEnabled,
 } from '@/cast/ui/use-sequence-characters';
 import { VoiceLibraryDialog } from '@/cast/ui/talent/voice-library-dialog';
+import { castChannelId } from '@/cast/cast-channel';
 import { errorMessage } from '@/platform/errors';
 import type {
   CharacterVoiceVersionSource,
@@ -59,12 +61,14 @@ const TAKE_CHOICES = Array.from(
  * The description itself is a bible field.
  */
 export const CharacterVoiceSection: React.FC<{
-  sequenceId: string;
+  /** Null from the Characters page (#2017): the same voice, no sequence. */
+  sequenceId: string | null;
   character: CharacterWithSheet;
   generateVoices: boolean;
 }> = ({ sequenceId, character, generateVoices }) => {
   const queryClient = useQueryClient();
   const generate = useGenerateCharacterVoice();
+  const cancel = useCancelCharacterVoice();
   const seedVoices = useSeedVoices();
   const [takeCount, setTakeCount] = useState(SEED_VOICE_DEFAULT_TAKES);
   const setEnabled = useSetCharacterVoiceEnabled();
@@ -94,15 +98,15 @@ export const CharacterVoiceSection: React.FC<{
     if (!hadLiveHusk.current) return;
     hadLiveHusk.current = false;
     void queryClient.invalidateQueries({
-      queryKey: sequenceCharacterKeys.list(sequenceId),
+      queryKey: sequenceCharacterKeys.all,
     });
     void queryClient.invalidateQueries({
       queryKey: elevenLabsVoiceKeys.saved(character.id),
     });
-  }, [pendingHusk, character.id, queryClient, sequenceId]);
+  }, [pendingHusk, character.id, queryClient]);
 
   useRealtime({
-    channels: [sequenceId],
+    channels: [castChannelId(sequenceId, character.id)],
     events: ['generation.character-voice:progress'] as const,
     enabled: true,
     onData: useCallback(
@@ -123,7 +127,8 @@ export const CharacterVoiceSection: React.FC<{
             character.id
           ),
         });
-        if (data.status === 'failed') {
+        const cancelled = 'error' in data && data.error === 'Cancelled';
+        if (data.status === 'failed' && !cancelled) {
           toast.error('Voice design failed', {
             description:
               'error' in data && typeof data.error === 'string'
@@ -133,7 +138,7 @@ export const CharacterVoiceSection: React.FC<{
         }
         if (data.status !== 'generating') {
           void queryClient.invalidateQueries({
-            queryKey: sequenceCharacterKeys.list(sequenceId),
+            queryKey: sequenceCharacterKeys.all,
           });
           void queryClient.invalidateQueries({
             queryKey: elevenLabsVoiceKeys.saved(character.id),
@@ -319,24 +324,29 @@ export const CharacterVoiceSection: React.FC<{
               <Library className="mr-2 h-4 w-4" />
               Browse voices
             </Button>
-            <div className="flex w-fit flex-col gap-1">
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  generate.mutate(
-                    {
-                      sequenceId,
-                      characterId: character.id,
-                      takes: takeCount,
-                    },
-                    {
-                      onError: (error) =>
-                        toast.error('Failed to design voice', {
-                          description: errorMessage(error),
-                        }),
-                    }
-                  )
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() =>
+                generate.mutate(
+                  {
+                    sequenceId,
+                    characterId: character.id,
+                    takes: takeCount,
+                  },
+                  {
+                    onError: (error) =>
+                      toast.error('Failed to design voice', {
+                        description: errorMessage(error),
+                      }),
+                  }
+                )
+              }
+            >
+              <InButtonCost
+                onPrimary={false}
+                estimate={
+                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
                 }
               >
                 {designing ? (
@@ -348,13 +358,19 @@ export const CharacterVoiceSection: React.FC<{
                   designing,
                   Boolean(character.voiceId || takes.length > 0)
                 )}
-              </Button>
-              <ActionCost
-                estimate={
-                  seedVoices ? seedVoiceEstimate(takeCount) : VOICE_DESIGN_COST
+              </InButtonCost>
+            </Button>
+            {pendingHusk ? (
+              <Button
+                variant="ghost"
+                disabled={cancel.isPending}
+                onClick={() =>
+                  cancel.mutate({ sequenceId, characterId: character.id })
                 }
-              />
-            </div>
+              >
+                {cancel.isPending ? 'Cancelling…' : 'Cancel'}
+              </Button>
+            ) : null}
             {seedVoices && (
               <div className="flex flex-col gap-1">
                 <ToggleGroup
@@ -423,7 +439,7 @@ const VOICE_SOURCE_LABELS: Record<CharacterVoiceVersionSource, string> = {
  * Hidden until there is something to go back to.
  */
 const VoiceHistory: React.FC<{
-  sequenceId: string;
+  sequenceId: string | null;
   character: CharacterWithSheet;
 }> = ({ sequenceId, character }) => {
   const { data: versions, isError } = useCharacterVoiceVersions(

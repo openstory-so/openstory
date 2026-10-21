@@ -99,6 +99,8 @@ type SceneImageContext = {
 };
 
 export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWorkflowInput> {
+  protected override readonly failureLabel = 'Image generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ShotImagesWorkflowInput>>,
     step: WorkflowStep,
@@ -229,6 +231,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
         // snapshot, never a scene-keyed map whose last shot wins for everyone.
         matchCharactersToShotImage(charactersWithSheets, {
           characterTags: scene.continuity?.characterTags,
+          characterLooks: scene.continuity?.characterLooks,
           visualPrompt,
         })
       );
@@ -302,6 +305,7 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
 
       const childBody: ImageWorkflowInput = {
         userId: input.userId,
+        variantOnly: false,
         teamId: input.teamId,
         reservationId: input.reservationId,
         prompt: visualPrompt,
@@ -382,6 +386,15 @@ export class ShotImagesWorkflow extends OpenStoryWorkflowEntrypoint<ShotImagesWo
                 elementRefs.length > 0 ? elementRefs : undefined,
               aspectRatio,
               model,
+              tileHashInput: sceneSnapshot
+                ? {
+                    visualPrompt: sceneSnapshot.visualPrompt,
+                    characterSheetHashes: sceneSnapshot.characterSheetHashes,
+                    locationSheetHashes: sceneSnapshot.locationSheetHashes,
+                    elementReferenceHashes:
+                      sceneSnapshot.elementReferenceHashes,
+                  }
+                : null,
             },
             {
               // Replay-stable: a retry of this step.do must reuse the

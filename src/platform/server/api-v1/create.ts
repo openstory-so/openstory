@@ -6,8 +6,8 @@
  *   ingest hosted refs (no DB) → enhance (optional) →
  *   insert talents/locations without billed sheets →
  *   validate via createSequenceSchema → createSequences →
- *   enqueue sheets → response. On failure after insert, inline library
- *   rows are deleted so a hung fetch cannot leave charged sheets.
+ *   enqueue sheets → response. On failure after insert, the inline talent
+ *   and team locations are deleted so a hung fetch cannot leave charged sheets.
  *
  * Returns the created sequence ids + workflow run ids (generation is async) and
  * the enhanced script when enhancement ran.
@@ -16,15 +16,18 @@
 import { z } from 'zod';
 import { enhanceScriptToString } from '@/sequences/server/script-enhancement';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
-import { DEFAULT_VIDEO_MODEL, isValidImageToVideoModel } from '@/models/models';
+import { AUTO_STYLE_ID } from '@/look/auto-style';
+import { isValidImageToVideoModel } from '@/models/models';
 import { isShortScript } from '@/models/should-enhance';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import {
-  createLibraryLocation,
-  enqueueLibraryLocationSheet,
-} from '@/cast/server/locations/create-library-location';
+  createTeamLocation,
+  triggerTeamLocationSheet,
+} from '@/cast/server/locations/team-locations';
+import { renderingOfStyle } from '@/cast/rendering';
+import { parseStyleConfig } from '@/look/style-config';
 import { getLogger } from '@/platform/logger';
 import { createSequenceSchema } from '@/sequences/server/sequence.schemas';
 import { createSequences } from '@/sequences/server/create-sequences';
@@ -37,7 +40,6 @@ import {
   enqueueLibraryTalentSheet,
   type EnqueueLibraryTalentSheetParams,
 } from '@/cast/server/talent/enqueue-library-talent-sheet';
-import type { LibraryLocationSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { SEQUENCE_STATUSES } from '@/platform/server/db/schema/sequences';
 import { createSequenceLink } from './discovery';
 import {
@@ -48,6 +50,7 @@ import {
   waitLink,
 } from './hal';
 import type { ApiCreateSequenceInput } from './input-schema';
+import { apiStopAt } from './input-schema';
 import { sequenceStateResourceSchema } from './state';
 import {
   ingestElements,
@@ -56,6 +59,7 @@ import {
   resolveTalentIds,
 } from './resolve';
 import { ingestImageToBucket } from './safe-fetch';
+import { resolveApiVideoDefaults } from './video-defaults';
 import {
   attestUploads,
   classifyUpload,
@@ -243,12 +247,13 @@ async function rollbackInlineCreates(
 ): Promise<void> {
   const results = await Promise.allSettled([
     ...talentIds.map((id) => ctx.scopedDb.talent.delete(id)),
-    ...locationIds.map((id) => ctx.scopedDb.locations.delete(id)),
+    // Nothing uses a location this request made, so the team delete holds.
+    ...locationIds.map((id) => ctx.scopedDb.locations.softDeleteForTeam(id)),
   ]);
   for (const result of results) {
     if (result.status === 'rejected') {
       logger.warn(
-        'Failed to roll back inline library row after create failure',
+        'Failed to roll back an inline talent or location after create failure',
         {
           err: result.reason,
         }
@@ -269,13 +274,22 @@ export async function runOneShotCreate(
     input.enhance === 'always' ||
     (input.enhance === 'auto' && isShortScript(input.script));
 
-  const [style, elementUploads, ingestedCharacters, ingestedLocations] =
-    await Promise.all([
-      resolveStyle(ctx.scopedDb, input.style),
-      ingestElements(ctx.teamId, input.elements),
-      ingestInlineCharacterImages(input.characters, ctx.teamId),
-      ingestInlineLocationImages(input.locations, ctx.teamId),
-    ]);
+  const [
+    style,
+    elementUploads,
+    ingestedCharacters,
+    ingestedLocations,
+    videoDefaults,
+  ] = await Promise.all([
+    // No style (or "auto") is Match script, the app's default (#1213).
+    input.style && input.style !== AUTO_STYLE_ID
+      ? resolveStyle(ctx.scopedDb, input.style)
+      : null,
+    ingestElements(ctx.teamId, input.elements),
+    ingestInlineCharacterImages(input.characters, ctx.teamId),
+    ingestInlineLocationImages(input.locations, ctx.teamId),
+    resolveApiVideoDefaults(ctx.scopedDb),
+  ]);
   await requireIngestedImageRights(ctx, [
     ...inlineCreates<CharacterCreate>(input.characters).map((item) => ({
       label: `Character "${item.name}"`,
@@ -303,7 +317,7 @@ export async function runOneShotCreate(
         targetDuration: input.targetSeconds,
         videoModel:
           input.videoModels?.find(isValidImageToVideoModel) ??
-          DEFAULT_VIDEO_MODEL,
+          videoDefaults.videoModel,
         aspectRatio: input.aspectRatio,
         // Feed the enhancer the same style + element inputs the UI does.
         ...toEnhanceInputs({ style, elements: elementUploads }),
@@ -322,16 +336,16 @@ export async function runOneShotCreate(
   const createdTalentIds: string[] = [];
   const createdLocationIds: string[] = [];
   const deferredTalentSheets: EnqueueLibraryTalentSheetParams[] = [];
-  const deferredLocationSheets: Array<{
-    locationId: string;
-    workflowInput: LibraryLocationSheetWorkflowInput;
-  }> = [];
 
   try {
-    const [suggestedTalentIds, suggestedLocationIds] = await Promise.all([
+    const [
+      { talentIds: suggestedTalentIds, castCharacterIds },
+      suggestedLocationIds,
+    ] = await Promise.all([
       resolveTalentIds(
         {
           talent: ctx.scopedDb.talent,
+          characters: ctx.scopedDb.characters,
           createTalent: async (item) => {
             const { talent, deferredSheet } = await createLibraryTalent(
               {
@@ -354,21 +368,21 @@ export async function runOneShotCreate(
         {
           locations: ctx.scopedDb.locations,
           createLocation: async (item) => {
-            const { location, sheetWorkflowInput } =
-              await createLibraryLocation(
-                {
-                  name: item.name,
-                  description: item.description,
-                  referenceImageUrls: ingestedLocations.get(item) ?? [],
-                },
-                ctx,
-                { enqueueSheet: false }
-              );
+            // A team location (#1695). Rendered as the sequence's style
+            // says, unless the caller said.
+            const location = await createTeamLocation(
+              ctx.scopedDb,
+              {
+                name: item.name,
+                description: item.description ?? null,
+                rendering:
+                  item.rendering ??
+                  renderingOfStyle(style && parseStyleConfig(style.config)),
+                photoUrls: ingestedLocations.get(item) ?? [],
+              },
+              { userId: ctx.user.id, teamId: ctx.teamId, triggerSheet: false }
+            );
             createdLocationIds.push(location.id);
-            deferredLocationSheets.push({
-              locationId: location.id,
-              workflowInput: sheetWorkflowInput,
-            });
             return location;
           },
         },
@@ -382,20 +396,24 @@ export async function runOneShotCreate(
     const parsed = createSequenceSchema.parse({
       title: input.title,
       script,
-      styleId: style.id,
+      styleId: style?.id ?? AUTO_STYLE_ID,
       // Mirror the new-sequence page: fall back to the style's recommended aspect
       // ratio when the caller doesn't pin one.
       aspectRatio:
-        input.aspectRatio ?? style.defaultAspectRatio ?? DEFAULT_ASPECT_RATIO,
+        input.aspectRatio ?? style?.defaultAspectRatio ?? DEFAULT_ASPECT_RATIO,
       resolution: input.resolution ?? DEFAULT_RESOLUTION,
       analysisModels: input.analysisModels,
       imageModels: input.imageModels,
-      videoModels: input.videoModels,
-      autoGenerateMotion: input.motion,
-      autoGenerateMusic: input.music,
-      // The API keeps the frame-based workflow: motion is opt-in spend here, and
-      // reference-only (the app default) cannot exist without it.
-      generateStartFrames: true,
+      videoModels: input.videoModels ?? [videoDefaults.videoModel],
+      // Always a stop, never the legacy flags: the app's default when the
+      // caller names none (#2084).
+      stopAt: apiStopAt(input),
+      // Voices are not a caller choice (#2067). Omitted here, createSequences
+      // turns them on wherever voice design is configured.
+      generateStartFrames: input.startFrames,
+      // Like the composer: Draft first only where this team reaches BytePlus.
+      // A draft that lands on fal is refused, not rendered.
+      draftMotion: input.draftMotion && videoDefaults.byteplus,
       audioModels: input.audioModels,
       // Only Enhance sets the target (#1593); a verbatim script is auto.
       targetDurationSeconds: enhancedScript ? input.targetSeconds : undefined,
@@ -405,6 +423,7 @@ export async function runOneShotCreate(
       suggestedLocationIds: suggestedLocationIds.length
         ? suggestedLocationIds
         : undefined,
+      castCharacterIds: castCharacterIds.length ? castCharacterIds : undefined,
       elementUploads: elementUploads.length ? elementUploads : undefined,
     });
 
@@ -418,9 +437,20 @@ export async function runOneShotCreate(
     // here must not fail the create: the client already has sequence ids, and
     // the storyboard wait-for-sheets gate will surface a missing sheet.
     await Promise.allSettled([
-      ...deferredTalentSheets.map((sheet) => enqueueLibraryTalentSheet(sheet)),
-      ...deferredLocationSheets.map(({ workflowInput }) =>
-        enqueueLibraryLocationSheet(workflowInput)
+      ...deferredTalentSheets.map((sheet) =>
+        enqueueLibraryTalentSheet(ctx.scopedDb, sheet)
+      ),
+      ...createdLocationIds.map((locationId) =>
+        triggerTeamLocationSheet(ctx.scopedDb, {
+          userId: ctx.user.id,
+          teamId: ctx.teamId,
+          locationId,
+        }).catch((error: unknown) => {
+          logger.error('Failed to start the location sheet run', {
+            err: error,
+            locationId,
+          });
+        })
       ),
     ]);
 

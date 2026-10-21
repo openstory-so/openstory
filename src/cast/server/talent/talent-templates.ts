@@ -44,6 +44,7 @@ export const DEFAULT_TALENT_TEMPLATES: Array<
     voiceDescription: null,
     imageUrl: getTalentPreviewUrl('Sienna Blake'),
     imagePath: null,
+    pendingPromoteSheetId: null,
   },
   {
     id: '01KRMKES6T70N08WV09TCZFGEN',
@@ -61,6 +62,7 @@ export const DEFAULT_TALENT_TEMPLATES: Array<
     voiceDescription: null,
     imageUrl: getTalentPreviewUrl('Jude Calloway'),
     imagePath: null,
+    pendingPromoteSheetId: null,
   },
   {
     id: '01KRMKES6T2BZJ04SKRKNTB8RX',
@@ -78,6 +80,7 @@ export const DEFAULT_TALENT_TEMPLATES: Array<
     voiceDescription: null,
     imageUrl: getTalentPreviewUrl('Rani Sharma'),
     imagePath: null,
+    pendingPromoteSheetId: null,
   },
 ];
 

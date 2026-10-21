@@ -17,7 +17,9 @@ export const ElementTokenButton: React.FC<{
   token: string;
   /** Commit the (already normalized) new token. Reject to show the error inline. */
   onRename: (nextToken: string) => Promise<void>;
-}> = ({ token, onRename }) => {
+  /** Shots whose prompts name the token; a rename leaves them out of date. */
+  affectedShotCount: number;
+}> = ({ token, onRename, affectedShotCount }) => {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState(token);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +103,11 @@ export const ElementTokenButton: React.FC<{
           <p id="token-rename-hint" className="text-xs text-muted-foreground">
             Saved as <span className="font-mono">{normalized}</span>
           </p>
+          {!isUnchanged && affectedShotCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {`${affectedShotCount} shot${affectedShotCount === 1 ? '' : 's'} that use it will show as out of date.`}
+            </p>
+          )}
           {error && (
             <p
               id="token-rename-error"

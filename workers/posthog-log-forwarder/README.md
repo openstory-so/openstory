@@ -47,11 +47,20 @@ The main `wrangler.jsonc` references the forwarder via `tail_consumers`. CI
 patches previews to reference the `stg` forwarder. Both must be deployed
 before the main Worker can reference them.
 
+Nothing deploys the forwarder automatically. A handler change merged without
+the two commands in step 1 does not go live.
+
+Do not switch to `streaming_tail_consumers`: from 2026-10-02 to 10-05
+Cloudflare never called the forwarder that way, from prod or any preview, even
+after both sides were redeployed, and prod logs were lost (#1974). The
+`tailStream()` handler (which would stamp each record with Cloudflare's trace
+id so PostHog links logs to traces) stays in the code, unused.
+
 ## How it works
 
-A tail consumer is a Worker that receives a batch of `TailEvent` objects every
-time the source Worker handles an invocation. Each event contains all the
-`console.log` lines emitted during that invocation plus any thrown exceptions.
+A tail consumer gets a batch of finished invocations of the source Worker,
+each with its `console.log` lines, thrown exceptions and `outcome`
+(`cf.outcome`).
 
 For each log line:
 
@@ -65,10 +74,14 @@ For each log line:
    covers third-party libs that haven't been routed through LogTape.
 
 Exceptions become ERROR-level records with `exception.name` /
-`exception.message` attributes.
+`exception.message` / `exception.stacktrace` attributes.
 
-OTLP payload is POSTed to `${POSTHOG_HOST}/i/v1/logs?token=${POSTHOG_TOKEN}`
-inside `ctx.waitUntil` so the request survives isolate suspension.
+The forwarder reads the unredacted request URL, so `http.url` goes through
+`src/log-url.ts`, which applies Cloudflare's own tail redaction rule (long
+hex or mixed-case ids become `REDACTED`) everywhere except a `/_serverFn/`
+path, where the id names the server function.
+
+OTLP payload is POSTed to `${POSTHOG_HOST}/i/v1/logs?token=${POSTHOG_TOKEN}`.
 
 ## Quotas
 

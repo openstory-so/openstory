@@ -245,7 +245,7 @@ export const IMAGE_MODELS = {
     // No number: Grok images always route natively and xAI documents no cap
     // (fal's 8000 is fal's, not xAI's). The 4000 we carried was
     // @tanstack/ai-grok's stale grok-2-image constant, which threw
-    // client-side — patched out under patches/ until upstream drops it (#1754).
+    // client-side until @tanstack/ai-grok 0.19 dropped it (#1754).
     maxPromptLength: undefined,
   },
   grok_imagine_image_quality: {
@@ -366,10 +366,15 @@ type TextToImageModelId = ImageModelConfig['id'];
 
 export const DEFAULT_IMAGE_MODEL: TextToImageModel = 'gpt_image_2';
 
-/** Model used for fast preview image generation. krea_2_turbo stays hidden
- *  (no edit/reference endpoint). flux_2_turbo is a picker model; stored
- *  preview variants may still name it. */
+/** Model for the sequence poster. krea_2_turbo stays hidden (no
+ *  edit/reference endpoint). Stored preview variants may still name it, or
+ *  flux_2_turbo before it. */
 export const PREVIEW_IMAGE_MODEL: TextToImageModel = 'krea_2_turbo';
+
+/** Model that draws a shot's storyboard sketch (#2094). Krea could not hold
+ *  a staged frame from the full shot spec; Lite can, at about five times
+ *  the price and a few seconds more. */
+export const SHOT_PREVIEW_IMAGE_MODEL: TextToImageModel = 'nano_banana_2_lite';
 
 // Helper to get model ID from key
 export function getTextToImageModelId(
@@ -426,6 +431,19 @@ export function supportsDraftMode(model: ImageToVideoModel): boolean {
 }
 
 export const DEFAULT_VIDEO_MODEL: ImageToVideoModel = 'seedance_v2';
+
+/**
+ * The video model new work starts on when none is named: Seedance 2.5 where
+ * the team reaches BytePlus (its only route), the platform default otherwise.
+ * Stored rows never go through this — they keep the model they were made on.
+ */
+export function defaultVideoModelFor(vias: {
+  byteplus?: boolean;
+}): ImageToVideoModel {
+  return isOfferedVideoModel('seedance_v2_5', vias)
+    ? 'seedance_v2_5'
+    : DEFAULT_VIDEO_MODEL;
+}
 
 /** Check if a video model supports audio output. */
 export function videoModelSupportsAudio(modelKey: ImageToVideoModel): boolean {
@@ -897,7 +915,8 @@ export const MOTION_REFERENCE_ENDPOINTS: Partial<
     maxVideos: 10,
     maxAudio: 10,
     maxCombined: 50,
-    // "Each video must be 1.8 to 30.2 seconds"; audio the same.
+    // Each video 1.8–30.2s; audio the same. A 2.5 edit (the word "edit")
+    // is checked separately at 4–30s (seedanceEditLengthMessage, #2036).
     videoSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
     audioSeconds: { min: 1.8, max: 30.2, maxCombined: 30.2 },
   },

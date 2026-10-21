@@ -25,6 +25,12 @@ baseTest.describe('Route Protection', () => {
           'Create 5-minute AI films with consistent characters. Iterate until you nail it.'
         )
       ).toBeVisible();
+      // The composer generate button is the sign-in control. The mid-page
+      // Sign in button is gone; the sidebar still has its own.
+      await expect(
+        page.getByRole('button', { name: 'Sign in to Generate' })
+      ).toBeVisible();
+      await expect(page.getByText('~$x.xx')).toHaveCount(0);
     }
   );
 
@@ -66,6 +72,8 @@ baseTest.describe('Route Protection', () => {
       await page.goto('/images');
       await expect(page).toHaveURL(/\/images/);
       await expect(page).not.toHaveURL(/\/login/);
+      // Library empty state, under the copy.
+      await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
       await expect(
         page.locator('[data-testid="studio-prompt"] .ProseMirror')
       ).toBeVisible({ timeout: 15_000 });
@@ -104,8 +112,7 @@ baseTest.describe('Route Protection', () => {
       await page.goto('/');
       await waitForScriptEditor(page);
       const generate = page.getByRole('button', {
-        name: 'Generate',
-        exact: true,
+        name: 'Sign in to Generate',
       });
       await expect(generate).toBeEnabled();
       await generate.click();
@@ -129,8 +136,7 @@ baseTest.describe('Route Protection', () => {
       );
 
       const generate = page.getByRole('button', {
-        name: 'Generate',
-        exact: true,
+        name: 'Sign in to Generate',
       });
       await expect(generate).toBeEnabled();
       await generate.click();
@@ -250,9 +256,9 @@ test.describe('Authenticated User', () => {
   });
 
   test('can access talent page', async ({ authenticatedPage }) => {
-    await authenticatedPage.goto('/talent');
+    await authenticatedPage.goto('/characters?tab=talent');
 
-    await expect(authenticatedPage).toHaveURL(/\/talent/);
+    await expect(authenticatedPage).toHaveURL(/\/characters\?tab=talent/);
   });
 
   test('session persists across navigation', async ({ authenticatedPage }) => {
@@ -261,8 +267,8 @@ test.describe('Authenticated User', () => {
     await expect(authenticatedPage).toHaveURL(/\/sequences/);
 
     // Navigate to talent
-    await authenticatedPage.goto('/talent');
-    await expect(authenticatedPage).toHaveURL(/\/talent/);
+    await authenticatedPage.goto('/characters?tab=talent');
+    await expect(authenticatedPage).toHaveURL(/\/characters\?tab=talent/);
 
     // Navigate back to sequences
     await authenticatedPage.goto('/sequences');

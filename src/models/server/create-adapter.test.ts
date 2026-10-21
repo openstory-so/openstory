@@ -117,7 +117,7 @@ vi.doMock('@tanstack/ai-gemini', () => ({
   createGeminiChat: createGeminiChatMock,
 }));
 
-// Dynamic import so the mocks above apply — see CLAUDE.md module-mocking
+// Dynamic import so the mocks above apply — see AGENTS.md module-mocking
 // pattern.
 const {
   createAdapter,
@@ -126,7 +126,7 @@ const {
   resolveNativeGrokModel,
 } = await import('./create-adapter');
 
-const MODEL = 'x-ai/grok-4.6';
+const MODEL = 'x-ai/grok-4.7';
 const FAL_URL = 'https://fal.run/openrouter/router/openai/v1';
 const LLMTR_URL = 'https://llmtr.com/v1';
 
@@ -189,7 +189,7 @@ afterEach(() => {
 
 describe('createAdapter LLMTR routing', () => {
   it('routes via:"llmtr" through openaiCompatibleText, translating the slug', () => {
-    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+    createAdapter('x-ai/grok-4.20', { key: 'llmtr-team', via: 'llmtr' });
 
     const call = lastLlmtrCall();
     expect(call.config.apiKey).toBe('llmtr-team');
@@ -197,19 +197,19 @@ describe('createAdapter LLMTR routing', () => {
     expect(call.config.name).toBe('llmtr');
     expect(call.config.api).toBe('responses');
     // LLMTR spells this vendor `xai/`; sending the OpenRouter slug 404s.
-    expect(call.model).toBe('xai/grok-4.6');
+    expect(call.model).toBe('xai/grok-4.20-0309-reasoning');
     expect(createOpenRouterTextMock).not.toHaveBeenCalled();
     expect(openRouterTextMock).not.toHaveBeenCalled();
   });
 
   it('keeps the id unchanged for a model LLMTR spells the same way', () => {
-    createAdapter('anthropic/claude-sonnet-5', {
+    createAdapter('anthropic/claude-fable-5.1', {
       key: 'llmtr-team',
       via: 'llmtr',
     });
 
     const call = lastLlmtrCall();
-    expect(call.model).toBe('anthropic/claude-sonnet-5');
+    expect(call.model).toBe('anthropic/claude-fable-5.1');
     expect(call.config.baseURL).toBe(LLMTR_URL);
     expect(call.config.api).toBe('chat-completions');
   });
@@ -238,16 +238,16 @@ describe('createAdapter LLMTR routing', () => {
     // Aimock's OpenRouter fixtures are the wrong wire format for the
     // Chat Completions adapter. LLMTR stays on its own URL.
     testEnv.OPENROUTER_BASE_URL = 'http://localhost:4010/v1';
-    createAdapter(MODEL, { key: 'llmtr-team', via: 'llmtr' });
+    createAdapter('x-ai/grok-4.20', { key: 'llmtr-team', via: 'llmtr' });
 
     expect(lastLlmtrCall().config.baseURL).toBe(LLMTR_URL);
     expect(createOpenRouterTextMock).not.toHaveBeenCalled();
   });
 
   it('never resolves a platform LLMTR key — LLMTR is team BYOK only', () => {
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toBeUndefined();
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toBeUndefined();
     testEnv.OPENROUTER_KEY = 'platform-or';
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toEqual({
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toEqual({
       key: 'platform-or',
       via: 'openrouter',
       source: 'platform',
@@ -365,7 +365,7 @@ describe('native xAI routing (issue #1167)', () => {
 
     expect(grokCalls).toStrictEqual([
       {
-        model: 'grok-4.6',
+        model: 'grok-4.7',
         key: 'xai-team',
         config: expect.objectContaining({ fetch: expect.any(Function) }),
       },
@@ -451,7 +451,7 @@ describe('native Google routing', () => {
     // Mirrors the xai case: a Google key reaching OpenRouter would 401 as
     // "Missing Authentication header", so the mismatch fails loudly instead.
     expect(() =>
-      createAdapter('anthropic/claude-sonnet-5', {
+      createAdapter('anthropic/claude-sonnet-5.5', {
         key: 'google-team',
         via: 'google',
       })
@@ -510,7 +510,7 @@ describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
     testEnv.GEMINI_API_KEY = 'platform-google';
     testEnv.OPENROUTER_KEY = 'platform-or';
 
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')?.via).toBe(
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')?.via).toBe(
       'openrouter'
     );
     expect(getPlatformLlmKey()?.via).toBe('openrouter');
@@ -527,7 +527,7 @@ describe('getPlatformLlmKey with GEMINI_API_KEY', () => {
 describe('resolveNativeGrokModel', () => {
   it('agrees with createAdapter about which route a request takes', () => {
     expect(resolveNativeGrokModel(MODEL, { key: 'k', via: 'xai' })).toBe(
-      'grok-4.6'
+      'grok-4.7'
     );
     expect(
       resolveNativeGrokModel(MODEL, { key: 'k', via: 'openrouter' })
@@ -555,7 +555,7 @@ describe('getPlatformLlmKey with XAI_API_KEY (issue #1167)', () => {
     testEnv.XAI_API_KEY = 'platform-xai';
     testEnv.OPENROUTER_KEY = 'platform-or';
 
-    expect(getPlatformLlmKey('anthropic/claude-sonnet-5')).toStrictEqual({
+    expect(getPlatformLlmKey('anthropic/claude-sonnet-5.5')).toStrictEqual({
       key: 'platform-or',
       via: 'openrouter',
       source: 'platform',

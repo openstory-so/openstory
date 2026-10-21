@@ -8,8 +8,7 @@
  * login dialog used to gate actions.
  */
 
-import { useAuthGate } from './auth-gate-provider';
-import { Button } from '@/ui/shadcn/button';
+import { SignInButton } from './sign-in-button';
 import { EmptyState } from '@/ui/shadcn/empty-state';
 import { LogIn } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -23,14 +22,12 @@ export function SignInPrompt({
   title?: string;
   description?: string;
 }) {
-  const { openLogin } = useAuthGate();
-
   return (
     <EmptyState
       icon={icon}
       title={title}
       description={description}
-      action={<Button onClick={openLogin}>Sign in</Button>}
+      action={<SignInButton />}
     />
   );
 }

@@ -3,7 +3,7 @@
  * Centralized ID generation for all database entities using ULIDs
  */
 
-import { monotonicFactory } from 'ulid';
+import { monotonicFactory, ulid } from 'ulid';
 
 /**
  * Monotonic ULID factory. Unlike the plain `ulid()`, calls within the same
@@ -36,6 +36,16 @@ const monotonicUlid = monotonicFactory();
  */
 export function generateId(): string {
   return monotonicUlid();
+}
+
+/**
+ * A ULID that sorts at `time` (ms) rather than now: for a row recording
+ * something that happened earlier, e.g. a run that failed before opening its
+ * row sorts at its click, not after runs clicked since. Not monotonic: the
+ * monotonic factory clamps an earlier time up to the last one it issued.
+ */
+export function generateIdAt(time: number): string {
+  return ulid(time);
 }
 
 /**

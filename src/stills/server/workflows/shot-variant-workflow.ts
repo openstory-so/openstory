@@ -9,6 +9,9 @@
  */
 
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
+import { resolveUpscaleModel } from '@/models/resolve-asset-models';
+import { computeShotImageSceneHash } from '@/cast/server/workflows/sheet-snapshots';
+import type { ShotImageInputHash } from '@/shots/input-hash';
 import {
   deductWorkflowCredits,
   extractImageCost,
@@ -41,6 +44,25 @@ import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'workflow', 'shot-variant']);
 
+/**
+ * The input hash a tile picked from this grid carries (#712). Hashed under the
+ * UPSCALE model: the picked tile's version is written with that model, and
+ * staleness re-derives the live hash from the selected version's model.
+ */
+export function tileInputHash(
+  input: Pick<
+    ShotVariantWorkflowInput,
+    'tileHashInput' | 'model' | 'aspectRatio'
+  >
+): Promise<ShotImageInputHash> | null {
+  if (!input.tileHashInput || !input.aspectRatio) return null;
+  return computeShotImageSceneHash(
+    input.tileHashInput,
+    resolveUpscaleModel(input.model || DEFAULT_IMAGE_MODEL),
+    input.aspectRatio
+  );
+}
+
 type PrepResult = {
   params: ImageGenerationParams;
   versionId: string;
@@ -50,6 +72,8 @@ type PrepResult = {
 };
 
 export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariantWorkflowInput> {
+  protected override readonly failureLabel = 'Image generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<ShotVariantWorkflowInput>>,
     step: WorkflowStep,
@@ -92,6 +116,7 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
             description: `Primary source scene — generate ${gridConfig?.count ?? 9} variant shots from this image`,
             role: 'primary',
           },
+          ...(input.referenceImages ?? []),
           ...(input.characterReferences ?? []),
           ...(input.locationReferences ?? []),
           ...(input.elementReferences ?? []),
@@ -142,8 +167,13 @@ export class ShotVariantWorkflow extends OpenStoryWorkflowEntrypoint<ShotVariant
           // Provenance only — the sheet is never selected, but its tiles
           // inherit which prompt the grid was generated from (#1070).
           promptVersionId: input.promptVersionId ?? null,
+          // What a tile picked from this sheet inherits (#712).
+          inputHash: await tileInputHash(input),
           status: 'generating',
           workflowRunId,
+          // A sheet is never the frame's still, so its render never speaks
+          // for the frame's status (#1942).
+          isPrimary: false,
         });
 
         await getGenerationChannel(input.sequenceId).emit(

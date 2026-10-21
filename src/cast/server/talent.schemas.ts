@@ -1,5 +1,5 @@
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
-import { characterBibleEntrySchema } from '@/shots/scene-analysis.schema';
+import { talentSheetMetadataSchema } from '@/shots/scene-analysis.schema';
 import { talent, talentSheets } from '@/platform/server/db/schema';
 import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
 import { z } from 'zod';
@@ -23,6 +23,8 @@ export const SERVER_MANAGED_TALENT_COLUMNS = {
   updatedAt: true,
   isPublic: true,
   isTemplate: true,
+  // The sheet claim (#1113) moves only through claimSheet / its demotes.
+  pendingPromoteSheetId: true,
 } as const;
 
 export type ServerManagedTalentColumn =
@@ -51,7 +53,7 @@ export const updateTalentSchema = createUpdateSchema(talent).omit(
 // Talent sheet schemas
 export const createTalentSheetSchema = createInsertSchema(talentSheets, {
   name: z.string().min(1).max(255),
-  metadata: () => characterBibleEntrySchema.nullish(),
+  metadata: () => talentSheetMetadataSchema.nullish(),
 }).omit({
   id: true,
   createdAt: true,

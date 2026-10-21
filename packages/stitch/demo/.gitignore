@@ -1,0 +1,7 @@
+dist/
+public/*.mp4
+public/*.jpg
+public/line-*.mp3
+*.mp4
+*.gif
+*.webm

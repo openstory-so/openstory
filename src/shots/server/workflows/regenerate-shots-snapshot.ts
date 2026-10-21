@@ -18,7 +18,7 @@ import type { TextToImageModel } from '@/models/models';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   Shot,
   SequenceElement,
   SequenceLocationWithReference,
@@ -54,7 +54,7 @@ export async function buildRegenerateShotSnapshot(params: {
   imagePromptVersionId?: string | null;
   /** The shot's anchor frame, when the caller already resolved it. */
   frameId?: string;
-  characters: CharacterWithSheet[];
+  characters: CastCharacterWithSheet[];
   locations: SequenceLocationWithReference[];
   elements: SequenceElement[];
   imageModel: TextToImageModel;

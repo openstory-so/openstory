@@ -4,6 +4,7 @@ import {
   parseWavHeader,
   pcmToWav,
   trimmedEndSeconds,
+  trimmedStartSeconds,
   wavDurationSeconds,
   wavHeader,
 } from './pad-dialogue-audio';
@@ -178,5 +179,17 @@ describe('trimmedEndSeconds (#1651, #1657)', () => {
     const before = bytes.slice();
     trimmedEndSeconds(bytes, 0, 5, 2);
     expect(bytes).toEqual(before);
+  });
+});
+
+describe('trimmedStartSeconds', () => {
+  it('starts just before the first audible sample (#1802)', () => {
+    const bytes = pcmToWav(new Uint8Array(8000 * 2 * 2), 8000); // 2s silence
+    new DataView(bytes.buffer).setInt16(44 + 8000 * 2, 8000, true); // a click at 1s
+    expect(trimmedStartSeconds(bytes, 0, 2)).toBeCloseTo(0.9, 3);
+  });
+
+  it('keeps a silent window whole', () => {
+    expect(trimmedStartSeconds(wav(1), 0.25, 1)).toBeCloseTo(0.25, 3);
   });
 });

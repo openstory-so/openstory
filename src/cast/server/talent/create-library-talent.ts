@@ -16,7 +16,8 @@ import { getLogger } from '@/platform/logger';
 import { STORAGE_BUCKETS } from '@/platform/server/storage/buckets';
 import type { LibraryTalentSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { computeLibraryTalentSheetHashFromDto } from '@/cast/server/workflows/sheet-snapshots';
-import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
+import type { SheetPayload } from '@/cast/server/workflows/sheet-snapshots';
+import type { TalentSheetMetadata } from '@/shots/scene-analysis.schema';
 import {
   analyzeTalentMediaForTeam,
   sheetMetadataFromAnalysis,
@@ -114,7 +115,7 @@ export async function createLibraryTalent(
   const attachedUrls = attached.map((image) => image.url);
 
   let uploadedSheetUrl: string | undefined;
-  let uploadedSheetMetadata: CharacterBibleEntry | undefined;
+  let uploadedSheetMetadata: TalentSheetMetadata | undefined;
 
   if (attachedUrls.length > 0) {
     const classifiedUrls = input.characterSheetImageUrls;
@@ -179,7 +180,7 @@ export async function createLibraryTalent(
   // otherwise we generate a 4-panel (from reference photos and/or the
   // name + description). The public API defers the billed trigger until
   // the sequence exists (`enqueueSheet: false`).
-  const workflowInput: LibraryTalentSheetWorkflowInput = {
+  const workflowInputFields: SheetPayload<LibraryTalentSheetWorkflowInput> = {
     userId: ctx.user.id,
     teamId: ctx.teamId,
     talentId: newTalent.id,
@@ -190,8 +191,11 @@ export async function createLibraryTalent(
     uploadedSheetUrl,
     uploadedSheetMetadata,
   };
-  workflowInput.snapshotInputHash =
-    await computeLibraryTalentSheetHashFromDto(workflowInput);
+  const workflowInput = {
+    ...workflowInputFields,
+    snapshotInputHash:
+      await computeLibraryTalentSheetHashFromDto(workflowInputFields),
+  };
 
   const deferredSheet: EnqueueLibraryTalentSheetParams = {
     talentId: newTalent.id,
@@ -208,7 +212,10 @@ export async function createLibraryTalent(
   try {
     // Shared with generate-if-missing on later photo drops so parallel
     // finalizes reuse this run instead of billing another 4-panel.
-    sheetWorkflowRunId = await enqueueLibraryTalentSheet(deferredSheet);
+    sheetWorkflowRunId = await enqueueLibraryTalentSheet(
+      ctx.scopedDb,
+      deferredSheet
+    );
   } catch {
     // Talent row + media already exist; enqueue already emitted `failed`.
     // Return them so the dialog can say "added" without claiming a run started.

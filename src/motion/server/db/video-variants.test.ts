@@ -181,6 +181,7 @@ function versionInput(
         durationMs: 3000,
         audioClipIds: [],
         audioSourceKey: null,
+        dialogueKey: null,
         referenceKeys: [],
       },
     ],
@@ -398,6 +399,103 @@ describe('select', () => {
   });
 });
 
+describe('selectIfPendingPromoteIs (#1786)', () => {
+  const claim = (versionId: string | null) =>
+    db
+      .update(renderSegments)
+      .set({ pendingPromoteVersionId: versionId })
+      .where(eq(renderSegments.id, segmentId));
+  const segmentRow = async () => {
+    const [row] = await db
+      .select()
+      .from(renderSegments)
+      .where(eq(renderSegments.id, segmentId));
+    return row;
+  };
+
+  it('promotes and consumes the claim in one write when it still holds it', async () => {
+    const v = await methods.appendVersion(versionInput());
+    await claim(v.id);
+
+    const promoted = await methods.selectIfPendingPromoteIs(shotId, v.id, {
+      actorId: ACTOR,
+    });
+
+    expect(promoted?.id).toBe(v.id);
+    const row = await segmentRow();
+    expect(row?.selectedVideoVersionId).toBe(v.id);
+    expect(row?.pendingPromoteVersionId).toBeNull();
+    const events = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'video.selected'));
+    expect(events).toHaveLength(1);
+  });
+
+  it('a retried promote that already landed reads as won', async () => {
+    const v = await methods.appendVersion(versionInput());
+    await claim(v.id);
+    await methods.selectIfPendingPromoteIs(shotId, v.id, { actorId: ACTOR });
+
+    const retried = await methods.selectIfPendingPromoteIs(shotId, v.id, {
+      actorId: ACTOR,
+    });
+
+    expect(retried?.id).toBe(v.id);
+    expect((await segmentRow())?.selectedVideoVersionId).toBe(v.id);
+  });
+
+  it('a newer kickoff wins: the late completion stays in history', async () => {
+    const late = await methods.appendVersion(versionInput());
+    const newer = await methods.appendVersion(
+      versionInput({ status: 'generating', url: null })
+    );
+    await claim(newer.id);
+
+    expect(
+      await methods.selectIfPendingPromoteIs(shotId, late.id, {
+        actorId: ACTOR,
+      })
+    ).toBeNull();
+    const row = await segmentRow();
+    expect(row?.selectedVideoVersionId).toBeNull();
+    expect(row?.pendingPromoteVersionId).toBe(newer.id);
+  });
+
+  it('a manual select made mid-run wins over the late completion', async () => {
+    const picked = await methods.appendVersion(versionInput());
+    const late = await methods.appendVersion(versionInput());
+    await claim(late.id);
+    // The user picks another clip while the render is still running.
+    await methods.select(shotId, picked.id, { actorId: ACTOR });
+
+    expect(
+      await methods.selectIfPendingPromoteIs(shotId, late.id, {
+        actorId: ACTOR,
+      })
+    ).toBeNull();
+    expect((await segmentRow())?.selectedVideoVersionId).toBe(picked.id);
+  });
+
+  it('a shot re-packed mid-run lands the clip in history instead of throwing', async () => {
+    const v = await methods.appendVersion(versionInput());
+    await claim(v.id);
+    const repacked = generateId();
+    await db
+      .insert(renderSegments)
+      .values([{ id: repacked, sceneId, sequenceId }]);
+    await db
+      .update(shots)
+      .set({ renderSegmentId: repacked })
+      .where(eq(shots.id, shotId));
+
+    expect(
+      await methods.selectIfPendingPromoteIs(shotId, v.id, { actorId: ACTOR })
+    ).toBeNull();
+    expect((await segmentRow())?.selectedVideoVersionId).toBeNull();
+  });
+});
+
 describe('listSelectedModelsBySequence (#1066)', () => {
   it("maps each shot to its SELECTED version's model, not the latest", async () => {
     const first = await methods.appendVersion(
@@ -461,6 +559,7 @@ describe('listSelectedModelsBySequence (#1066)', () => {
             durationMs: 3000,
             audioClipIds: [],
             audioSourceKey: null,
+            dialogueKey: null,
             referenceKeys: [],
           },
         ],
@@ -547,6 +646,7 @@ describe('listLastFailedModelsBySequence (#1066)', () => {
             durationMs: 3000,
             audioClipIds: [],
             audioSourceKey: null,
+            dialogueKey: null,
             referenceKeys: [],
           },
         ],
@@ -621,27 +721,5 @@ describe('batch getters chunk past D1s parameter ceiling (#1019)', () => {
     const primary = await getPrimaryVideoByShotIds(db, allShotIds);
     expect(primary.size).toBe(OVER_ONE_CHUNK);
     expect(primary.get(pastBoundaryId)?.id).toBe(version.id);
-  });
-});
-
-describe('isStale', () => {
-  it('compares the stored input hash; null stored is never stale', async () => {
-    const hashed = await methods.appendVersion(
-      versionInput({ inputHash: videoManifestInputHash('h1') })
-    );
-    expect(await methods.isStale(hashed.id, 'h1')).toBe(false);
-    expect(await methods.isStale(hashed.id, 'h2')).toBe(true);
-
-    const legacy = await methods.appendVersion(
-      versionInput({ inputHash: null })
-    );
-    expect(await methods.isStale(legacy.id, 'anything')).toBe(false);
-  });
-
-  it('treats a null live hash as unknown-not-stale (#1380)', async () => {
-    const hashed = await methods.appendVersion(
-      versionInput({ inputHash: videoManifestInputHash('h1') })
-    );
-    expect(await methods.isStale(hashed.id, null)).toBe(false);
   });
 });

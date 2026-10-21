@@ -26,16 +26,14 @@ describe('pending generate/enhance intent', () => {
   });
 
   it('remembers Generate and Enhance, consumes once, expires, reads legacy timestamps', async () => {
-    const { markPendingIntent, hasPendingGenerate, takePendingIntent } =
+    const { markPendingIntent, takePendingIntent } =
       await import('./pending-generate');
 
-    expect(hasPendingGenerate()).toBe(false);
     markPendingIntent('generate');
     expect(takePendingIntent()).toBe('generate');
     expect(takePendingIntent()).toBeNull();
 
     markPendingIntent('enhance');
-    expect(hasPendingGenerate()).toBe(true);
     expect(takePendingIntent()).toBe('enhance');
 
     localStorage.setItem('openstory:pending-generate', String(Date.now()));

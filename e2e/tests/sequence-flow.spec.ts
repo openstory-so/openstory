@@ -112,8 +112,8 @@ Here's your caffeine fix. How's it going?
       const talentDialog = page.getByRole('dialog');
       await expect(talentDialog).toBeVisible({ timeout: 10000 });
       await expect(
-        talentDialog.getByText('Select Talent for Casting')
-      ).toBeVisible();
+        talentDialog.getByRole('tab', { name: 'Talent' })
+      ).toHaveAttribute('aria-selected', 'true');
 
       // Verify our test talents appear in the dialog (use variable names)
       const firstTalent = testTalents[0];
@@ -128,9 +128,7 @@ Here's your caffeine fix. How's it going?
       await page.getByText(firstTalent.name).click();
 
       // Submit dialog (button text reflects selection count)
-      await talentDialog
-        .getByRole('button', { name: /^Cast \d+ roles?$/i })
-        .click();
+      await talentDialog.getByRole('button', { name: /^Cast \d+$/i }).click();
       await expect(talentDialog).not.toBeVisible();
 
       // Verify submit button is ready (may have different text based on state)
@@ -171,6 +169,73 @@ testWithUser.describe('Variant Selection', () => {
     await cleanupSequenceById(testSequence.id, testSequence.styleId);
   });
 
+  testWithUser(
+    'phone: settings and scenes open as drawers (#2102)',
+    async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`/sequences/${testSequence.id}/scenes`);
+
+      // One crumb on a phone, and it is the sequence title, not "Scenes".
+      await expect(
+        page.getByRole('navigation', { name: 'breadcrumb' })
+      ).toContainText(testSequence.title);
+
+      // Settings: the bottom bar's cog opens the inspector in a drawer.
+      const renameTitle = page.getByRole('button', {
+        name: `Rename sequence ${testSequence.title}`,
+      });
+      await expect(renameTitle).toBeHidden();
+      const drawer = page.getByRole('dialog');
+      // Retried: a click before hydration is dropped.
+      await expect(async () => {
+        await page
+          .getByRole('button', { name: 'Open settings' })
+          .click({ timeout: 1000 });
+        await expect(renameTitle).toBeVisible({ timeout: 1000 });
+      }).toPass({ timeout: 15000 });
+
+      // Popovers work from inside the drawer: rename the sequence...
+      await renameTitle.click();
+      const renamed = `${testSequence.title} renamed`;
+      await page.getByPlaceholder('Sequence title').fill(renamed);
+      await page.keyboard.press('Enter');
+      const renamedTitle = page.getByRole('button', {
+        name: `Rename sequence ${renamed}`,
+      });
+      await expect(renamedTitle).toBeVisible();
+      await expect(page.getByPlaceholder('Sequence title')).toBeHidden();
+
+      // ...and set the target length.
+      const lengthChip = drawer.getByTestId('film-length-chip');
+      await lengthChip.click();
+      await page.getByRole('radio', { name: '30s' }).click();
+      await expect(lengthChip).toHaveText('30s');
+      await page.keyboard.press('Escape');
+      await expect(renamedTitle).toBeVisible();
+
+      await page.keyboard.press('Escape');
+      await expect(renamedTitle).toBeHidden();
+
+      // Scenes: the bar opens the list in a drawer; its footer controls work.
+      await page.getByTestId('mobile-scene-nav').click();
+      await expect(
+        drawer.getByText('Whole sequence', { exact: true })
+      ).toBeVisible();
+      const stopSlider = drawer.getByRole('slider');
+      const before = await stopSlider.getAttribute('aria-valuenow');
+      await stopSlider.press('End');
+      await expect(stopSlider).not.toHaveAttribute(
+        'aria-valuenow',
+        before ?? ''
+      );
+      await expect(
+        drawer.getByText('Whole sequence', { exact: true })
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(drawer).toBeHidden();
+    }
+  );
+
   testWithUser('can select variant from grid', async ({ page }) => {
     // Verify initial state in database
     const shotBefore = await getTestShot(testShot.id);
@@ -184,6 +249,13 @@ testWithUser.describe('Variant Selection', () => {
     await expect(
       page.getByRole('heading', { name: testSequence.title })
     ).toBeVisible({ timeout: 15000 });
+
+    // The title is renamed from sequence settings (#2102), not a title row.
+    await expect(
+      page.getByRole('button', {
+        name: `Rename sequence ${testSequence.title}`,
+      })
+    ).toBeVisible();
 
     // Also wait for the shot thumbnail to be visible
     // Shots load via a separate API call from the sequence data, so needs its own timeout
@@ -408,4 +480,56 @@ testWithUser.describe.skip('Empty States', () => {
       await expect(page.getByText('No talent in library')).toBeVisible();
     }
   );
+});
+
+testWithUser.describe('Theatre stitcher clip language (#1744)', () => {
+  let testSequence: TestSequence;
+
+  testWithUser.beforeEach(async ({ page, testUser }) => {
+    await setupMockRoutes(page);
+    testSequence = await createTestSequence(
+      testUser.teamId,
+      testUser.id,
+      `E2E Theatre Clip Language ${crypto.randomUUID().slice(0, 8)}`
+    );
+    await createTestShot(testSequence.id, 0, {
+      thumbnailUrl:
+        'http://localhost:3020/api/test/image?w=1024&h=576&label=thumb',
+    });
+  });
+
+  testWithUser.afterEach(async () => {
+    await cleanupSequenceById(testSequence.id, testSequence.styleId);
+  });
+
+  testWithUser('stitches stills as clips, not scenes', async ({ page }) => {
+    testWithUser.setTimeout(60_000);
+    await page.goto(`/sequences/${testSequence.id}/scenes`);
+    await expect(
+      page.getByRole('heading', { name: testSequence.title })
+    ).toBeVisible({ timeout: 15_000 });
+
+    const theatrePlayer = page.getByTestId('sequence-player');
+    await expect(theatrePlayer).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/Loading scene \d+ of/)).toHaveCount(0);
+
+    await expect
+      .poll(
+        async () => {
+          const loading = await theatrePlayer.textContent();
+          if (loading?.includes('Loading scene')) {
+            throw new Error(`Theatre still uses scene copy: ${loading}`);
+          }
+          return (await theatrePlayer.getAttribute('data-state')) === 'ready';
+        },
+        {
+          timeout: 30_000,
+          message:
+            'theatre stitcher: sequence-player ready without “Loading scene”',
+        }
+      )
+      .toBe(true);
+
+    await expect(page.getByText(/Loading scene \d+ of/)).toHaveCount(0);
+  });
 });

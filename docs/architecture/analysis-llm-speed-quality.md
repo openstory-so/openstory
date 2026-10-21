@@ -75,7 +75,7 @@ Two different OpenRouter ids:
 | `z-ai/glm-5.3-flash` | Yes         | **Yes** | Yes                                                 |
 | `z-ai/glm-5.3`       | No          | **No**  | Yes (the old “no structured outputs” note is stale) |
 
-Flash already runs the image-conditioned motion path. Full 5.3 would need a vision companion. Today `resolveVisionModel` sends every text-only model to Sonnet 5. A same-family fallback **5.3 → 5.3 Flash** is cheaper and more consistent than Sonnet; it is not wired yet.
+Flash already runs the image-conditioned motion path. Full 5.3 would need a vision companion. Today `resolveVisionModel` sends every text-only model to Sonnet 5.5. A same-family fallback **5.3 → 5.3 Flash** is cheaper and more consistent than Sonnet; it is not wired yet.
 
 ## Reasoning
 

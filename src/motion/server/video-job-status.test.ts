@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as tanstackAi from '@tanstack/ai';
+import { asStub } from '@/test/as-stub';
 
 const mockStatus = vi.fn();
 vi.doMock('@tanstack/ai', () => ({
@@ -8,8 +9,8 @@ vi.doMock('@tanstack/ai', () => ({
 }));
 
 const { getVideoJobStatus } = await import('./video-job-status');
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the wrapper only forwards args; the adapter is mocked away
-const ARGS = { adapter: {}, jobId: 'job' } as never;
+// the wrapper only forwards args; the adapter is mocked away
+const ARGS = asStub<never>({ adapter: {}, jobId: 'job' });
 const call = () => getVideoJobStatus(ARGS);
 
 describe('getVideoJobStatus', () => {

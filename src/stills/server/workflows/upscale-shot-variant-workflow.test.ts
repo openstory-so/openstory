@@ -16,11 +16,7 @@
  * the old video keeps playing and the manifest-staleness system flags it.
  */
 
-import type {
-  Frame,
-  NewFrame,
-  NewFrameVariant,
-} from '@/platform/server/db/schema';
+import type { Frame, NewFrameVariant } from '@/platform/server/db/schema';
 import { frameFixture, frameVariantFixture } from '@/mocks/frame-fixtures';
 import { describe, expect, it } from 'vitest';
 import {
@@ -36,17 +32,9 @@ type PromoteCall = {
   versionId: string;
   actorId: string | null;
 };
-type StatusCall = {
-  frameId: string;
-  data: Pick<
-    Partial<NewFrame>,
-    'imageStatus' | 'imageWorkflowRunId' | 'imageError'
-  >;
-};
 type CallName =
   | 'frameVariants.update'
-  | 'frameVariants.selectIfPendingPromoteIs'
-  | 'frames.setImageGenerationStatus';
+  | 'frameVariants.selectIfPendingPromoteIs';
 
 function buildScopedDbSpy(
   opts: {
@@ -61,12 +49,10 @@ function buildScopedDbSpy(
   scopedDb: PersistUpscaleScopedDb;
   variantUpdates: VariantUpdateCall[];
   promotes: PromoteCall[];
-  statusUpdates: StatusCall[];
   callOrder: CallName[];
 } {
   const variantUpdates: VariantUpdateCall[] = [];
   const promotes: PromoteCall[] = [];
-  const statusUpdates: StatusCall[] = [];
   const callOrder: CallName[] = [];
   // The methods return full rows; the helper only reads truthiness and `.id`,
   // so the defaults carry the rest.
@@ -97,27 +83,20 @@ function buildScopedDbSpy(
         return opts.claimMoved ? null : row(versionId);
       },
     },
-    frames: {
-      setImageGenerationStatus: async (frameId, data) => {
-        statusUpdates.push({ frameId, data });
-        callOrder.push('frames.setImageGenerationStatus');
-        return live;
-      },
-    },
     liveRead: {
       frames: {
         getById: async () => live,
       },
     },
   };
-  return { scopedDb, variantUpdates, promotes, statusUpdates, callOrder };
+  return { scopedDb, variantUpdates, promotes, callOrder };
 }
 
 const NOW = new Date('2026-06-26T00:00:00Z');
 
 describe('persistUpscaleSelection', () => {
   it('completes the version, promotes it through the claim, emits the new still', async () => {
-    const { scopedDb, variantUpdates, promotes, callOrder, statusUpdates } =
+    const { scopedDb, variantUpdates, promotes, callOrder } =
       buildScopedDbSpy();
     const emits: Array<{
       shotId: string;
@@ -175,15 +154,12 @@ describe('persistUpscaleSelection', () => {
         thumbnailUrl: 'https://r2/upscaled.png',
       },
     ]);
-    // Promote path: `select()` mirrors imageStatus from the completed version.
-    expect(statusUpdates).toHaveLength(0);
   });
 
   it('leaves the frame alone when the claim moved (manual selection wins)', async () => {
-    const { scopedDb, variantUpdates, promotes, callOrder, statusUpdates } =
-      buildScopedDbSpy({
-        claimMoved: true,
-      });
+    const { scopedDb, variantUpdates, promotes, callOrder } = buildScopedDbSpy({
+      claimMoved: true,
+    });
     const emits: Array<{
       shotId: string;
       status: string;
@@ -214,14 +190,13 @@ describe('persistUpscaleSelection', () => {
     ]);
     expect(variantUpdates).toHaveLength(1);
     expect(promotes).toHaveLength(1);
-    // Newer kickoff owns pending — don't wipe its generating flag or emit
-    // completed (that would clear the newer overlay on the client).
-    expect(statusUpdates).toHaveLength(0);
+    // Newer kickoff owns pending — don't emit completed (that would clear
+    // the newer overlay on the client).
     expect(emits).toEqual([]);
   });
 
-  it('settles imageStatus back to completed when the claim is gone (history select)', async () => {
-    const { scopedDb, statusUpdates } = buildScopedDbSpy({
+  it('tells the client the still settled when the claim is gone (history select)', async () => {
+    const { scopedDb } = buildScopedDbSpy({
       claimMoved: true,
       liveFrame: {
         pendingPromoteVersionId: null,
@@ -244,16 +219,6 @@ describe('persistUpscaleSelection', () => {
       },
     });
 
-    expect(statusUpdates).toEqual([
-      {
-        frameId: 'anchor-frame-id',
-        data: {
-          imageStatus: 'completed',
-          imageWorkflowRunId: null,
-          imageError: null,
-        },
-      },
-    ]);
     expect(emits).toEqual([{ shotId: 'shot-1', status: 'completed' }]);
   });
 });

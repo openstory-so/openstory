@@ -28,7 +28,7 @@ import type { Resolution } from '@/models/resolutions';
 import { estimateStoryboardCost } from './cost-estimation';
 import type { Microdollars } from './money';
 import { estimateSceneCount } from '@/sequences/time-estimate';
-import { shouldRunStage, type GenerationStage } from '@/sequences/pipeline';
+import { includesStage, type GenerationStage } from '@/sequences/pipeline';
 
 export type StoryboardPreflightInput = {
   script: string;
@@ -40,8 +40,6 @@ export type StoryboardPreflightInput = {
   resolution?: Resolution;
   autoGenerateMotion?: boolean;
   stopAt?: GenerationStage;
-  /** Continue-from: stages before this already ran and are not gated (#1408). */
-  startFrom?: GenerationStage;
   videoModels?: ImageToVideoModel[];
   autoGenerateMusic?: boolean;
   audioModels?: AudioModel[];
@@ -53,7 +51,11 @@ export type StoryboardPreflightInput = {
   draftMotion?: boolean;
   /**
    * The Enhance target when Enhance ran (#1593). Without it the script's own
-   * length is used: its labels, else its text at three words a second.
+   * length is used: its labels, else a word-count ceiling (three words a
+   * second, on the whole script). Accepted for #2077: the shot-list model
+   * times an unlabelled paste later, and this quote runs before that call,
+   * so it cannot yet match the filmed length. A talky scene can run past
+   * the ceiling when its lines need more than three words a second.
    * Values below 5s are treated as auto (same floor as the chip).
    */
   targetDurationSeconds?: number;
@@ -75,8 +77,9 @@ export function estimateStoryboardPreflightCost(
 ): Microdollars {
   const primaryVideo = opts.videoModels?.[0] ?? DEFAULT_VIDEO_MODEL;
   // How long the script plays: the Enhance target when Enhance ran, else its
-  // labels, else the text at three words a second — the rule the scene split
-  // applies to an unlabelled scene (#1593).
+  // labels, else a word-count ceiling (three words a second on the whole
+  // script, front matter included). Accepted for #2077: the shot-list model
+  // times an unlabelled paste later, and this quote runs before that call.
   const labeledSeconds = assessDurationFit(
     opts.script,
     primaryVideo
@@ -111,14 +114,11 @@ export function estimateStoryboardPreflightCost(
     sceneCount = headingCount;
   }
 
-  const startFrom = opts.startFrom ?? 'script';
   const motionOn = opts.stopAt
-    ? shouldRunStage(startFrom, opts.stopAt, 'motion') &&
-      Boolean(opts.videoModels?.length)
+    ? includesStage(opts.stopAt, 'motion') && Boolean(opts.videoModels?.length)
     : Boolean(opts.autoGenerateMotion && opts.videoModels?.length);
   const musicOn = opts.stopAt
-    ? shouldRunStage(startFrom, opts.stopAt, 'music') &&
-      Boolean(opts.audioModels?.length)
+    ? includesStage(opts.stopAt, 'music') && Boolean(opts.audioModels?.length)
     : Boolean(motionOn && opts.autoGenerateMusic && opts.audioModels?.length);
 
   const motionDurations = motionOn
@@ -138,7 +138,6 @@ export function estimateStoryboardPreflightCost(
     estimatedSceneCount: sceneCount,
     autoGenerateMotion: motionOn,
     stopAt: opts.stopAt,
-    startFrom: opts.startFrom,
     videoModels: motionOn ? opts.videoModels : undefined,
     videoDurationSeconds: motionDurations?.perShotSeconds,
     autoGenerateMusic: musicOn,

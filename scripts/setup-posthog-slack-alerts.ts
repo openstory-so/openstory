@@ -1,5 +1,5 @@
 /**
- * #1088 — Wire PostHog → Slack destinations/alerts.
+ * #1088 — Wire PostHog → Slack destinations/alerts (credit purchases: #1856).
  *
  * Creates (idempotent by name) the product-activity Slack destinations and the
  * error-tracking spike alert described in issue #1088, plus the per-exception
@@ -372,25 +372,14 @@ function specs(): DestinationSpec[] {
       ),
     },
     {
-      name: `Product · welcome_card_setup_opened · ${PRODUCT_CHANNEL} (#1667)`,
+      name: `Product · checkout_completed · ${PRODUCT_CHANNEL} (#1856)`,
       type: 'destination',
-      event: 'welcome_card_setup_opened',
+      event: 'checkout_completed',
       channel: PRODUCT_CHANNEL,
-      text: 'Adding a card: {person.properties.email ?? event.distinct_id}',
+      text: 'Credits bought: {person.properties.email ?? event.distinct_id} · {event.properties.amount_usd} USD',
       blocks: productBlocks(
-        '💳 Adding a card',
-        '*{person.properties.email ?? event.distinct_id}* opened Stripe to save a payment method'
-      ),
-    },
-    {
-      name: `Product · welcome_credits_granted · ${PRODUCT_CHANNEL} (#1667)`,
-      type: 'destination',
-      event: 'welcome_credits_granted',
-      channel: PRODUCT_CHANNEL,
-      text: 'Welcome credits: {person.properties.email ?? event.distinct_id}',
-      blocks: productBlocks(
-        '🎁 Welcome credits',
-        '*{person.properties.email ?? event.distinct_id}* saved a card and received {event.properties.amount_usd} USD ({event.properties.source})'
+        '💳 Credits bought',
+        "*{person.properties.email ?? event.distinct_id}* bought {event.properties.amount_usd} USD of credits ({event.properties.method == 'saved_card' ? 'saved card' : 'Stripe checkout'})"
       ),
     },
     {

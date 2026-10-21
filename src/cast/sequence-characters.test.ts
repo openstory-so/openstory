@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { assertTalentAccessible } from './sequence-characters.fn';
+import { assertTalentAccessible } from '@/cast/server/cast-generation';
 
 describe('assertTalentAccessible', () => {
   it('accepts talent owned by the requesting team', () => {

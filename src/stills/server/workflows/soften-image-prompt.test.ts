@@ -7,6 +7,7 @@ import type { ImageGenerationParams } from '@/stills/build-image-request';
 import type { ImageGenerationResult } from '@/stills/server/image-generation';
 import type { ImageWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 /**
  * Real callers upload to the final key here, inside the generating step
@@ -39,10 +40,10 @@ const { generateImageWithContentRetry, persistSoftenedPromptVersion } =
   await import('./soften-image-prompt');
 const { NonRetryableError } = await import('cloudflare:workflows');
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only uses `do`
-const step = {
+// helper only uses `do`
+const step = asStub<WorkflowStep>({
   do: async <T>(_name: string, fn: () => Promise<T>) => fn(),
-} as unknown as WorkflowStep;
+});
 
 const PARAMS: ImageGenerationParams = {
   model: 'nano_banana_2',
@@ -78,6 +79,7 @@ function makeInput(
 ): ImageWorkflowInput {
   return {
     userId: 'u1',
+    variantOnly: false,
     teamId: 't1',
     sequenceId: 'seq_1',
     shotId: 'shot-1',
@@ -97,7 +99,7 @@ function makeScopedDb() {
   }));
   const update = vi.fn(async () => ({ id: 'var-1' }));
   const appendVersion = vi.fn(async () => ({ id: 'var-grok' }));
-  const setPendingPromoteVersionId = vi.fn(async () => undefined);
+  const movePendingPromoteVersionIdIf = vi.fn(async () => undefined);
   const getByIdForFrame = vi.fn(async () => ({
     id: 'fpv-1',
     inputHash: 'hash-1',
@@ -106,17 +108,17 @@ function makeScopedDb() {
   const stub = {
     framePromptVersions: { write },
     frameVariants: { update, appendVersion },
-    frames: { setPendingPromoteVersionId },
+    frames: { movePendingPromoteVersionIdIf },
     claims: { framePromptVersions: { getByIdForFrame } },
     credentials: {},
   };
   return {
-    // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the soften-path surface
-    scopedDb: stub as unknown as WorkflowScopedDb,
+    // stub of the soften-path surface
+    scopedDb: asStub<WorkflowScopedDb>(stub),
     write,
     update,
     appendVersion,
-    setPendingPromoteVersionId,
+    movePendingPromoteVersionIdIf,
     getByIdForFrame,
   };
 }
@@ -185,7 +187,7 @@ describe('generateImageWithContentRetry', () => {
       write,
       update,
       appendVersion,
-      setPendingPromoteVersionId,
+      movePendingPromoteVersionIdIf,
     } = makeScopedDb();
 
     const out = await generateImageWithContentRetry({
@@ -211,8 +213,10 @@ describe('generateImageWithContentRetry', () => {
         workflowRunId: 'run-1',
       })
     );
-    expect(setPendingPromoteVersionId).toHaveBeenCalledWith(
+    // Hands the claim over only while the original row still holds it.
+    expect(movePendingPromoteVersionIdIf).toHaveBeenCalledWith(
       'frame-1',
+      'var-1',
       'var-grok'
     );
     expect(emit).toHaveBeenCalledWith(
@@ -231,13 +235,49 @@ describe('generateImageWithContentRetry', () => {
     expect(out.prompt).toBe('A graphic fight in the alley');
   });
 
+  it('a retried fallback step appends one Grok row, not two (#1786)', async () => {
+    generateImageWithProvider
+      .mockRejectedValueOnce(contentError())
+      .mockRejectedValueOnce(contentError())
+      .mockRejectedValueOnce(contentError())
+      .mockResolvedValueOnce(okResult());
+    let failFallbackEmit = true;
+    emit.mockImplementation(async (_event: string, payload: object) => {
+      if ('modelFallback' in payload && failFallbackEmit) {
+        failFallbackEmit = false;
+        throw new Error('realtime down');
+      }
+    });
+    const { scopedDb, appendVersion, movePendingPromoteVersionIdIf } =
+      makeScopedDb();
+    // helper only uses `do`
+    const retryingStep = asStub<WorkflowStep>({
+      do: async <T>(_name: string, fn: () => Promise<T>) =>
+        fn().catch(async () => fn()),
+    });
+
+    const out = await generateImageWithContentRetry({
+      ...BASE_ARGS,
+      step: retryingStep,
+      scopedDb,
+      input: makeInput(),
+    });
+
+    expect(appendVersion).toHaveBeenCalledTimes(1);
+    expect(appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrimary: true })
+    );
+    expect(movePendingPromoteVersionIdIf).toHaveBeenCalledTimes(2);
+    expect(out.versionId).toBe('var-grok');
+  });
+
   it('does not steal primary promote when the original run was variant-only', async () => {
     generateImageWithProvider
       .mockRejectedValueOnce(contentError())
       .mockRejectedValueOnce(contentError())
       .mockRejectedValueOnce(contentError())
       .mockResolvedValueOnce(okResult());
-    const { scopedDb, appendVersion, setPendingPromoteVersionId } =
+    const { scopedDb, appendVersion, movePendingPromoteVersionIdIf } =
       makeScopedDb();
 
     await generateImageWithContentRetry({
@@ -246,8 +286,11 @@ describe('generateImageWithContentRetry', () => {
       input: makeInput({ variantOnly: true }),
     });
 
-    expect(appendVersion).toHaveBeenCalled();
-    expect(setPendingPromoteVersionId).not.toHaveBeenCalled();
+    // An added model's fallback never speaks for the frame (#1942).
+    expect(appendVersion).toHaveBeenCalledWith(
+      expect.objectContaining({ isPrimary: false })
+    );
+    expect(movePendingPromoteVersionIdIf).not.toHaveBeenCalled();
   });
 
   it('softens and retries on Grok when the fallback also flags', async () => {
@@ -430,7 +473,7 @@ describe('generateImageWithContentRetry', () => {
 });
 
 describe('persistSoftenedPromptVersion', () => {
-  it('writes source softened and stamps the in-flight variant', async () => {
+  it('appends source softened unselected and stamps the in-flight variant', async () => {
     const { scopedDb, write, update } = makeScopedDb();
     await persistSoftenedPromptVersion({
       scopedDb,
@@ -448,6 +491,8 @@ describe('persistSoftenedPromptVersion', () => {
         source: 'softened',
         text: 'A tense alley standoff',
         inputHash: 'hash-1',
+        // History only (#1786): the still carries it in at promote.
+        select: false,
       })
     );
     expect(update).toHaveBeenCalledWith('var-1', {

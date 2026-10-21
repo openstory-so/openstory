@@ -50,6 +50,7 @@ import { passkey as passkeyPlugin } from '@better-auth/passkey';
 
 import { captureProductEvent } from '@/platform/server/observability/product-events';
 import { getLogger } from '@/platform/logger';
+import { formatBetterAuthLog } from './format-better-auth-log';
 
 const logger = getLogger(['openstory', 'auth', 'config']);
 const betterAuthLogger = getLogger(['openstory', 'auth', 'better-auth']);
@@ -117,18 +118,19 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       level: 'warn',
       log: (level, message, ...args) => {
         const props = args.length > 0 ? { args } : {};
+        const visibleMessage = formatBetterAuthLog(message, args);
         switch (level) {
           case 'error':
-            betterAuthLogger.error(message, props);
+            betterAuthLogger.error(visibleMessage, props);
             break;
           case 'warn':
-            betterAuthLogger.warn(message, props);
+            betterAuthLogger.warn(visibleMessage, props);
             break;
           case 'info':
-            betterAuthLogger.info(message, props);
+            betterAuthLogger.info(visibleMessage, props);
             break;
           default:
-            betterAuthLogger.debug(message, props);
+            betterAuthLogger.debug(visibleMessage, props);
         }
       },
     },
@@ -176,6 +178,13 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
     session: {
       expiresIn: 60 * 60 * 24 * 90, // 90 days
       updateAge: 60 * 60 * 24, // Update session daily
+      // The session rides a signed cookie for five minutes (#2082): a
+      // sequence page fires ~40 server fns, and each read `session` then
+      // `user` from the primary before doing anything. A revoked session or
+      // a changed `user.status` is seen within `maxAge`. Compliance
+      // enforcement is read fresh on every write and at most
+      // `TEAM_MEMO_TTL_MS` stale on a GET (`team-memo.ts`).
+      cookieCache: { enabled: true, maxAge: 5 * 60 },
     },
 
     // Account linking configuration
@@ -296,15 +305,13 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
       user: {
         create: {
           after: async (user) => {
-            // Team + owner membership + one-time welcome credit (#1047; preflight
-            // fixed in #1062). The SQL lives in db/scoped so this file never
+            // Team + owner membership (#1047; preflight fixed in #1062). The SQL lives in db/scoped so this file never
             // writes a table directly.
             const team = await createDefaultTeam({
               userId: user.id,
               teamName: user.name
                 ? `${user.name}'s Team`
                 : `Team ${user.id.slice(0, 8)}`,
-              welcomeCredit: true,
             });
 
             // First-time account only — drives #product-alerts via PostHog (#1088).
@@ -384,6 +391,18 @@ export function createAuth(db: ReturnType<typeof getDb> = getDb()) {
  */
 export function getAuth() {
   return (_authInstance ??= createAuth());
+}
+
+/**
+ * The per-isolate Better Auth init promise. `betterAuth()` starts it as
+ * soon as the instance exists; the OAuth provider plugin's `init` reads
+ * `oauth_resource` there, and every `auth.api` / `handler` call awaits the
+ * same promise. The Worker `fetch` handler must `holdInstanceStartup` this
+ * before awaiting it (#2073). Creating it is the start, so call it from the
+ * shared handler, not from one route.
+ */
+export function authStartupPromise(): Promise<unknown> {
+  return getAuth().$context;
 }
 // Type inference for the auth instance with custom fields
 export type Auth = ReturnType<typeof getAuth>;

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TEST_FAL_PRICING } from '@/billing/fal-pricing-fixture';
 import { ZERO_MICROS } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 // Expose the handler so these tests exercise its real credit preflight with
 // an authenticated context, without the server-fn transport or middleware.
@@ -56,17 +57,21 @@ function makeContext(canAfford = false) {
       },
       sequenceVariants: {
         listMusicBySequence: vi.fn(async () => []),
-        upsertMusicPrimary: vi.fn(async () => {}),
+        claimMusic: vi.fn(async () => 'music_row_1'),
+        failMusicClaim: vi.fn(async () => {}),
       },
     },
   };
 }
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- createServerFn mock exposes the handler instead of its transport wrapper
-const addAudioModel = addModelToSequenceFn as unknown as (input: {
-  data: { sequenceId: string; variantType: 'audio'; model: string };
-  context: ReturnType<typeof makeContext>;
-}) => Promise<unknown>;
+// createServerFn mock exposes the handler instead of its transport wrapper
+const addAudioModel =
+  asStub<
+    (input: {
+      data: { sequenceId: string; variantType: 'audio'; model: string };
+      context: ReturnType<typeof makeContext>;
+    }) => Promise<unknown>
+  >(addModelToSequenceFn);
 
 describe('add audio model — music credits', () => {
   beforeEach(() => triggerWorkflow.mockClear());
@@ -86,9 +91,7 @@ describe('add audio model — music credits', () => {
     ).rejects.toThrow('Insufficient credits to add this audio model');
 
     expect(context.scopedDb.billing.createReservation).toHaveBeenCalledTimes(1);
-    expect(
-      context.scopedDb.sequenceVariants.upsertMusicPrimary
-    ).not.toHaveBeenCalled();
+    expect(context.scopedDb.sequenceVariants.claimMusic).not.toHaveBeenCalled();
     expect(triggerWorkflow).not.toHaveBeenCalled();
   });
 
@@ -111,6 +114,8 @@ describe('add audio model — music credits', () => {
         model: 'elevenlabs_music',
         reservationId: 'res_music',
         ownsReservation: true,
+        variantId: 'music_row_1',
+        isPrimary: false,
       }),
       expect.anything()
     );

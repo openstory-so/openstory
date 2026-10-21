@@ -151,7 +151,7 @@ call, R2 upload, cost deduction, failure handling. Steps write the row status tr
   `bun db:generate`.
 - React: TanStack Query + Suspense (no isLoading), shadcn base components, Tailwind layout-only,
   no margins (gap on parent), kebab-case files, named exports, URL-reflected state,
-  keyboard/a11y per CLAUDE.md non-negotiables.
+  keyboard/a11y per AGENTS.md non-negotiables.
 - New routes: regenerate `src/routeTree.gen.ts` (run `bun dev` briefly, or the router codegen)
   and commit it.
-- Unit tests: Vitest, `vi.doMock` + dynamic import pattern per CLAUDE.md; mock `#db-client`.
+- Unit tests: Vitest, `vi.doMock` + dynamic import pattern per AGENTS.md; mock `#db-client`.

@@ -6,8 +6,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CharacterBibleEntry } from '@/shots/scene-analysis.schema';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type { CharacterBibleWorkflowInput } from '@/platform/server/workflow/types';
+import type {
+  CharacterBibleWorkflowInput,
+  CharacterSheetWorkflowInput,
+} from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
+import { asStub } from '@/test/as-stub';
 
 const mockSpawnAndAwaitChild = vi.fn();
 
@@ -29,26 +33,53 @@ class Probe extends CharacterBibleWorkflow {
 
 function makeWorkflow(): Probe {
   type Ctor = ConstructorParameters<typeof Probe>;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- tests construct the entrypoint directly; runImpl never reads ctx
-  const ctx = undefined as unknown as Ctor[0];
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- the binding is only handed to the (mocked) spawn
-  const env = {
+  // tests construct the entrypoint directly; runImpl never reads ctx
+  const ctx = asStub<Ctor[0]>(undefined);
+  // the binding is only handed to the (mocked) spawn
+  const env = asStub<Ctor[1]>({
     CHARACTER_SHEET_WORKFLOW: {},
     CHARACTER_VOICE_WORKFLOW: {},
-  } as unknown as Ctor[1];
+  });
   return new Probe(ctx, env);
 }
 
 function makeStep(): WorkflowStep {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: runImpl only uses `do`
-  return {
+  // minimal WorkflowStep stub: runImpl only uses `do`
+  return asStub<WorkflowStep>({
     do: vi.fn((_name: string, fn: () => Promise<unknown>) => fn()),
-  } as unknown as WorkflowStep;
+  });
 }
 
+// The upsert's row, as a scoped read returns it: wearing its default look,
+// which takes the character's own id (#2015).
 const characterCreate = vi.fn(
-  async (row: { id: string; characterId: string }) => row
+  async (row: {
+    id: string;
+    characterId: string;
+    standardClothing?: string | null;
+    talentId?: string | null;
+  }) => ({
+    ...row,
+    talentId: row.talentId ?? null,
+    selectedBibleVersionId: `bible-${row.id}`,
+    lookId: row.id,
+    lookName: 'Default',
+    looks: [
+      {
+        id: row.id,
+        isDefault: true,
+        lookVersionId: `lookver-${row.id}`,
+        name: 'Default',
+        clothing: row.standardClothing ?? null,
+        styling: null,
+      },
+    ],
+  })
 );
+const claimSheet = vi.fn(async (lookId: string) => ({
+  versionId: `ver-${lookId}`,
+  held: true,
+}));
 const createPendingVoiceClaim = vi.fn(
   async (): Promise<{
     version: { id: string; workflowRunId: string | null };
@@ -61,14 +92,15 @@ const createPendingVoiceClaim = vi.fn(
 const markVoiceClaimTerminal = vi.fn(async () => ({ id: 'husk-1' }));
 
 function makeScopedDb(): WorkflowScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only the scoped-db surface runImpl touches
-  return {
+  // stub covering only the scoped-db surface runImpl touches
+  return asStub<WorkflowScopedDb>({
     characters: {
       create: characterCreate,
       createPendingVoiceClaim,
       markVoiceClaimTerminal,
     },
-  } as unknown as WorkflowScopedDb;
+    characterLooks: { claimSheet },
+  });
 }
 
 const entry = (
@@ -80,12 +112,13 @@ const entry = (
   ethnicity: '',
   physicalDescription: '',
   standardClothing: '',
-  distinguishingFeatures: '',
+  looks: [],
   personality: '',
   movement: '',
   voiceDescription: '',
   voiceOnly: false,
   isPerson: true,
+  rendering: 'Photoreal live action',
   consistencyTag: overrides.characterId,
   ...overrides,
 });
@@ -101,6 +134,7 @@ const narrator = entry({
   personality: 'dry, unhurried, faintly amused',
   voiceOnly: true,
   isPerson: true,
+  rendering: 'Photoreal live action',
 });
 
 function makeEvent(
@@ -115,7 +149,7 @@ function makeEvent(
       characterBible,
       generateVoices: opts.generateVoices ?? false,
       speakingCharacterIds: opts.speakingCharacterIds ?? [],
-      analysisModelId: 'anthropic/claude-sonnet-5',
+      analysisModelId: 'anthropic/claude-sonnet-5.5',
     },
     instanceId: 'run-1',
     workflowName: 'character-bible',
@@ -145,12 +179,14 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
         characterId: 'sam',
         voiceOnly: false,
         isPerson: true,
+        rendering: 'Photoreal live action',
         sheetStatus: 'generating',
       }),
       expect.objectContaining({
         characterId: 'narrator',
         voiceOnly: true,
         isPerson: true,
+        rendering: null,
         sheetStatus: 'completed',
       }),
     ]);
@@ -250,7 +286,13 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
     );
     expect(createPendingVoiceClaim).toHaveBeenCalledWith(
       expect.any(String),
-      'u1'
+      'u1',
+      {
+        activity: {
+          sequenceId: 'seq-1',
+          summary: 'Started a voice for Sam',
+        },
+      }
     );
     expect(mockSpawnAndAwaitChild).toHaveBeenCalledWith(
       expect.anything(),
@@ -347,5 +389,69 @@ describe('CharacterBibleWorkflow voice-only characters', () => {
       'failed',
       'workflow binding missing'
     );
+  });
+});
+
+describe('CharacterBibleWorkflow pipeline sheets are tracked (#1113)', () => {
+  it('claims each sheet and stamps the hash a regenerate of the row would compute', async () => {
+    const { computeCharacterSheetHashFromDto } =
+      await import('./sheet-snapshots');
+    const { characterToBible } =
+      await import('@/cast/server/bibles-from-scoped');
+
+    await makeWorkflow().runBody(makeEvent([sam]), makeStep(), makeScopedDb());
+
+    const [spawnCall] = mockSpawnAndAwaitChild.mock.calls;
+    if (!spawnCall) throw new Error('expected a sheet child');
+    // the mocked spawn's second argument
+    const { childPayload } = asStub<{
+      childPayload: CharacterSheetWorkflowInput;
+    }>(spawnCall[1]);
+    const [row] = characterCreate.mock.calls[0] ?? [];
+    if (!row) throw new Error('expected the character row');
+
+    expect(childPayload.sheetVersionId).toBe(`ver-${row.id}`);
+    expect(childPayload.snapshotInputHash).toBeDefined();
+    // The claim names what the run was snapshotted from, so it is taken only
+    // while that still holds (#1863).
+    expect(childPayload).toMatchObject({
+      lookId: row.id,
+      lookVersionId: `lookver-${row.id}`,
+    });
+    expect(claimSheet).toHaveBeenCalledWith(
+      row.id,
+      expect.objectContaining({
+        lookVersionId: `lookver-${row.id}`,
+        bibleVersionId: `bible-${row.id}`,
+        talentId: null,
+      }),
+      expect.objectContaining({
+        markGenerating: false,
+        activity: expect.objectContaining({
+          sequenceId: 'seq-1',
+          summary: expect.stringContaining('Started a sheet for Sam'),
+        }),
+      })
+    );
+
+    // The staleness check hashes the stored row, not the LLM entry: a
+    // pipeline sheet must not read "stale" the moment it lands.
+    // the insert row plus the read-side sheet fields
+    const stored = asStub<Parameters<typeof characterToBible>[0]>({
+      ...row,
+      lookId: row.id,
+      lookName: 'Default',
+      looks: [],
+      sheetImageUrl: null,
+      sheetImagePath: null,
+      sheetGeneratedAt: null,
+      sheetInputHash: null,
+    });
+    expect(
+      await computeCharacterSheetHashFromDto({
+        ...childPayload,
+        characterMetadata: characterToBible(stored),
+      })
+    ).toBe(childPayload.snapshotInputHash);
   });
 });

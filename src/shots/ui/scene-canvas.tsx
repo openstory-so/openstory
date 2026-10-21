@@ -2,18 +2,17 @@ import { ScenePlayer } from '@/motion/ui/scene-player';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { CanvasMediaStage } from './canvas-media-stage';
 import { ShotDialogueUnderVideo } from './shot-dialogue-readings';
+import { SequenceDialogueLines } from './sequence-dialogue-lines';
 import { ShotMediaDropZone } from './shot-media-drop-zone';
 import { StartingFrameVariants } from './starting-frame-variants';
-import { formatExportProgress } from './sequence-export-actions';
+import { SequenceDownloadMenu } from './sequence-export-actions';
 import { SequencePlayer } from '@/sequences/ui/theatre/sequence-player';
 import type { SequenceExportState } from '@/sequences/ui/theatre/use-sequence-export';
-import { Button } from '@/ui/shadcn/button';
 import { Skeleton } from '@/ui/shadcn/skeleton';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import type { SceneWithScript } from './use-scenes';
 import { useSetSequenceMusic } from '@/sequences/ui/use-sequences';
 import type { TabValue } from './scene-script-prompts';
-import type { TextToImageModel } from '@/models/models';
+import { safeImageToVideoModel, type TextToImageModel } from '@/models/models';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import {
   selectionScope,
@@ -22,12 +21,12 @@ import {
 } from './scene-selection';
 import type { ShotView } from '@/shots/shot-view';
 import type { Sequence } from '@/platform/server/db/schema';
-import { Download, Film, Link, Loader2 } from 'lucide-react';
+import { Film } from 'lucide-react';
 import { useMemo } from 'react';
 import {
   shotIdAtSequenceTime,
-  toPlaybackScenes,
-} from '@/sequences/ui/theatre/playback-scenes';
+  toPlaybackClips,
+} from '@/sequences/ui/theatre/playback-clips';
 
 type SceneCanvasProps = {
   selection: SceneSelection;
@@ -47,6 +46,8 @@ type SceneCanvasProps = {
   progressMessage?: React.ReactNode;
   retry?: { attempt: number; maxAttempts?: number };
   onSelectShot?: (shotId: string) => void;
+  /** A scene title in the dialogue list was clicked. */
+  onSelectScene?: (sceneId: string) => void;
   /** Scene-level image model (#909) used to generate starting-frame variants. */
   sceneImageModel?: TextToImageModel;
   /** Shots with an in-flight scene-variants generation (#882). */
@@ -63,84 +64,8 @@ type SceneCanvasProps = {
   onAutoPlayConsumed?: () => void;
   /** The shot under the sequence player's playhead (#1771). */
   onPlayingShot?: (shotId: string | undefined) => void;
-};
-
-/**
- * Download + Copy on the theatre player. Icon-only so they fit the existing
- * overlay row (music + mixed-res). Desktop also has a labeled Export menu in
- * the Canvas/Script toggle trailing slot; mobile keeps these overlay icons
- * at the 44px hit target.
- */
-const TheatreShareOverlay: React.FC<{
-  sequenceExport: SequenceExportState;
-}> = ({ sequenceExport }) => {
-  const running = sequenceExport.isRunning;
-  const progressLabel = formatExportProgress(sequenceExport.progress);
-  const pending =
-    !running && !sequenceExport.canExport && !sequenceExport.freshExportUrl;
-  const wait = running
-    ? progressLabel
-    : pending
-      ? `Export · ${sequenceExport.clipsReady} of ${sequenceExport.clipsTotal} clips ready`
-      : null;
-  const downloadLabel =
-    wait ??
-    (sequenceExport.freshExportUrl
-      ? 'Download MP4'
-      : 'Export and download MP4');
-  const copyLabel =
-    wait ??
-    (sequenceExport.freshExportUrl
-      ? 'Copy video link'
-      : 'Export and copy video link');
-  return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
-              aria-label={downloadLabel}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.download}
-            >
-              {running ? (
-                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
-              ) : (
-                <Download className="h-5 w-5 md:h-4 md:w-4" />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{downloadLabel}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-11 w-11 bg-black/50 text-white hover:bg-black/70 md:h-8 md:w-8"
-              aria-label={copyLabel}
-              aria-busy={running}
-              disabled={pending}
-              onClick={sequenceExport.copyLink}
-            >
-              {running ? (
-                <Loader2 className="h-5 w-5 animate-spin md:h-4 md:w-4" />
-              ) : (
-                <Link className="h-5 w-5 md:h-4 md:w-4" />
-              )}
-            </Button>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{copyLabel}</TooltipContent>
-      </Tooltip>
-    </>
-  );
+  /** The shot under the sequence player's playhead — its lines are marked. */
+  playingShotId?: string;
 };
 
 export const SceneCanvas: React.FC<SceneCanvasProps> = ({
@@ -158,6 +83,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   progressMessage,
   retry,
   onSelectShot,
+  onSelectScene,
   sceneImageModel,
   regeneratingSceneVariants,
   onGenerateSceneVariantsStart,
@@ -166,6 +92,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   autoPlay = false,
   onAutoPlayConsumed,
   onPlayingShot,
+  playingShotId,
 }) => {
   const scope = selectionScope(selection);
   const scopedShots = useMemo(
@@ -173,8 +100,8 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     [selection, shots]
   );
 
-  const playbackScenes = useMemo(
-    () => toPlaybackScenes(scopedShots, aspectRatio),
+  const playbackClips = useMemo(
+    () => toPlaybackClips(scopedShots, aspectRatio),
     [scopedShots, aspectRatio]
   );
   const draftLabel = useMemo(
@@ -246,7 +173,12 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         aspectRatio={aspectRatio}
         below={
           selectedShot ? (
-            <ShotDialogueUnderVideo shot={selectedShot} />
+            <ShotDialogueUnderVideo
+              shot={selectedShot}
+              videoModel={safeImageToVideoModel(
+                selectedShot.video?.model ?? sequence?.videoModel
+              )}
+            />
           ) : undefined
         }
       >
@@ -265,7 +197,7 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
     );
   }
 
-  if (playbackScenes.length === 0) {
+  if (playbackClips.length === 0) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 py-16">
         <Film className="h-8 w-8 text-muted-foreground" />
@@ -282,11 +214,24 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
   }
 
   return (
-    <CanvasMediaStage aspectRatio={aspectRatio}>
+    <CanvasMediaStage
+      aspectRatio={aspectRatio}
+      below={
+        <SequenceDialogueLines
+          sequenceId={sequence.id}
+          shots={scopedShots}
+          sequenceShots={shots}
+          scenes={scenes}
+          playingShotId={playingShotId}
+          onSelectShot={onSelectShot}
+          onSelectScene={onSelectScene}
+        />
+      }
+    >
       <SequencePlayer
-        scenes={playbackScenes}
+        clips={playbackClips}
         musicUrl={scope === 'sequence' ? (sequence.musicUrl ?? null) : null}
-        musicLoudnessGainDb={null}
+        musicGainDb={null}
         musicEnabled={scope === 'sequence' ? sequence.includeMusic : false}
         onMusicEnabledChange={(enabled) => setMusicEnabled.mutate(enabled)}
         aspectRatio={aspectRatio}
@@ -295,14 +240,22 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         sequenceId={sequence.id}
         autoPlay={autoPlay}
         onAutoPlayConsumed={onAutoPlayConsumed}
-        onTimeUpdate={(time, clock) =>
-          onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, clock))
+        onTimeUpdate={(time, offsets) =>
+          onPlayingShot?.(shotIdAtSequenceTime(scopedShots, time, offsets))
         }
         draftLabel={draftLabel}
-        playlistUrl={scope !== 'sequence' ? null : sequenceExport.playbackUrl}
         overlayActions={
           scope === 'sequence' ? (
-            <TheatreShareOverlay sequenceExport={sequenceExport} />
+            <SequenceDownloadMenu
+              sequenceExport={sequenceExport}
+              draftLabel={draftLabel}
+              variant="overlay"
+              publish={{
+                teamId: sequence.teamId,
+                sequenceId: sequence.id,
+                defaultTitle: sequence.title,
+              }}
+            />
           ) : undefined
         }
       />

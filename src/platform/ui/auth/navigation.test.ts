@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getRedirectFromParams, sanitizeAuthRedirect } from './navigation';
+import { sanitizeAuthRedirect } from './navigation';
 
 describe('sanitizeAuthRedirect', () => {
   it('defaults empty to home', () => {
@@ -41,20 +41,5 @@ describe('sanitizeAuthRedirect', () => {
     // Absolute URLs collapse to path on *this* origin after OAuth — never
     // navigates the browser to evil.example.
     expect(sanitizeAuthRedirect('https://evil.example/phish')).toBe('/phish');
-  });
-});
-
-describe('getRedirectFromParams', () => {
-  it('reads redirectTo and sanitizes hash', () => {
-    expect(getRedirectFromParams({ redirectTo: '/?style=noir#compose' })).toBe(
-      '/?style=noir'
-    );
-    expect(
-      getRedirectFromParams(new URLSearchParams('redirectTo=%2Fgallery%23x'))
-    ).toBe('/gallery');
-  });
-
-  it('defaults when missing', () => {
-    expect(getRedirectFromParams({})).toBe('/');
   });
 });

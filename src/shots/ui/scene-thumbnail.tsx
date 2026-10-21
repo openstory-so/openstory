@@ -58,7 +58,9 @@ type SceneThumbnailProps = {
  *  5. loader / skeleton / failed
  *
  * 3 above 4 is the point: reference-only renders no still, so the preview is
- * a composition the finished clip does not have.
+ * a composition the finished clip does not have. Callers pass no clip while
+ * the sketch is newer than it (`shownClipUrl`, #2111): then the sketch is the
+ * shot as written and the clip is not.
  */
 export function chooseThumbnailSource(input: {
   thumbnailUrl?: string | null;
@@ -126,21 +128,20 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
         <BlobLoaderContainer size="sm" className="absolute inset-0" />
       )}
 
-      {showVideoFrame &&
-        !showOverlay && (
-          // `#t=` pins the poster to this shot's window in a packed clip
-          // (t=0.001 for the first member); `preload="metadata"` keeps it to
-          // headers plus that frame rather than the whole clip.
-          // Muted + playsInline + no controls: this is a thumbnail, not a player.
-          <video
-            src={videoPosterSrc(videoUrl ?? '', videoStartSeconds)}
-            className="h-full w-full object-cover"
-            preload="metadata"
-            muted
-            playsInline
-            aria-label={alt}
-          />
-        )}
+      {showVideoFrame && !showOverlay && (
+        // `#t=` pins the poster to this shot's window in a packed clip
+        // (t=0.001 for the first member); `preload="metadata"` keeps it to
+        // headers plus that frame rather than the whole clip.
+        // Muted + playsInline + no controls: this is a thumbnail, not a player.
+        <video
+          src={videoPosterSrc(videoUrl ?? '', videoStartSeconds)}
+          className="h-full w-full object-cover"
+          preload="metadata"
+          muted
+          playsInline
+          aria-label={alt}
+        />
+      )}
 
       {displayUrl && !showOverlay && (
         <AppImage

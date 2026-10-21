@@ -5,6 +5,8 @@
  * with the real migrations.
  */
 
+import { persistSceneLooks } from '@/sequences/server/scene-persistence';
+import { dbSceneId } from '@/shots/scene-id';
 import type { Database } from '@/platform/server/db/client';
 import { generateId } from '@/platform/id';
 import {
@@ -26,6 +28,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createScenesMethods } from './scenes';
+import { createSceneScriptVersionsMethods } from './scene-script-versions';
 import { createShotsMethods } from './shots';
 
 let client: Client;
@@ -78,11 +81,17 @@ async function seedScene(
 ): Promise<{ scene: SceneRow; sceneShots: Shot[] }> {
   const sceneMethods = createScenesMethods(db);
   const shotMethods = createShotsMethods(db);
-  const scene = await sceneMethods.create({
-    sequenceId,
-    orderIndex,
-    title: `Scene ${orderIndex}`,
-  });
+  const scene = await sceneMethods.create(
+    { sequenceId, orderIndex },
+    {
+      title: `Scene ${orderIndex}`,
+      location: null,
+      timeOfDay: null,
+      storyBeat: null,
+      continuity: null,
+    },
+    { createdBy: null }
+  );
   const sceneShots: Shot[] = [];
   for (let n = 1; n <= shotCount; n++) {
     sceneShots.push(
@@ -90,6 +99,18 @@ async function seedScene(
     );
   }
   return { scene, sceneShots };
+}
+
+/** `edit` with a narrative patch only, expecting it to land. */
+async function editNarrative(
+  sceneMethods: ReturnType<typeof createScenesMethods>,
+  sceneId: SceneRow['id'],
+  narrative: Parameters<typeof sceneMethods.edit>[1]['narrative'],
+  opts: { actorId: string }
+): Promise<SceneRow> {
+  const result = await sceneMethods.edit(sceneId, { narrative }, opts);
+  if (result.status === 'conflict') throw new Error('unexpected conflict');
+  return result.scene;
 }
 
 async function eventKinds(): Promise<string[]> {
@@ -314,15 +335,12 @@ describe('re-analysis revival + shot soft-delete details', () => {
     const sceneMethods = createScenesMethods(db);
     const { scene } = await seedScene(0, 0);
     await sceneMethods.softDeleteCascade(scene.id, { actorId });
-    await sceneMethods.upsert({
-      sequenceId,
-      orderIndex: 0,
-      title: 'Re-split scene',
-    });
+    await sceneMethods.upsert({ sequenceId, orderIndex: 0 });
     const live = await sceneMethods.listBySequence(sequenceId);
     expect(live).toHaveLength(1);
     expect(live[0]?.id).toBe(scene.id);
-    expect(live[0]?.title).toBe('Re-split scene');
+    // The narrative moves only with a script version (#1600), not the upsert.
+    expect(live[0]?.title).toBe('Scene 0');
   });
 
   it('shots.upsert on a deleted (sceneId, shotNumber) slot revives it', async () => {
@@ -368,5 +386,228 @@ describe('re-analysis revival + shot soft-delete details', () => {
     const restored = await shotMethods.restore(shot.id, { actorId });
     expect(restored.deletedAt).toBeNull();
     expect(restored.shotNumber).toBe(1);
+  });
+});
+
+describe('narrative writes carry the live script (#1600)', () => {
+  it('versions scene lighting and palette overrides and allows clearing them', async () => {
+    const sceneMethods = createScenesMethods(db);
+    const { scene } = await seedScene(0);
+    const continuity = {
+      characterTags: ['jack'],
+      environmentTag: 'diner',
+      elementTags: [],
+      colorPalette: 'sepia',
+      lightingSetup: 'moonlight',
+      styleTag: '',
+    };
+    const edited = await editNarrative(
+      sceneMethods,
+      scene.id,
+      {
+        location: 'Diner',
+        timeOfDay: 'night',
+        continuity,
+      },
+      { actorId }
+    );
+    expect(edited).toMatchObject({
+      location: 'Diner',
+      timeOfDay: 'night',
+      continuity,
+    });
+    const cleared = await editNarrative(
+      sceneMethods,
+      scene.id,
+      {
+        continuity: { ...continuity, colorPalette: '', lightingSetup: '' },
+      },
+      { actorId }
+    );
+    expect(cleared.selectedScriptVersionId).not.toBe(
+      edited.selectedScriptVersionId
+    );
+    expect(cleared).toMatchObject({
+      location: 'Diner',
+      timeOfDay: 'night',
+      continuity: {
+        characterTags: ['jack'],
+        environmentTag: 'diner',
+        colorPalette: '',
+        lightingSetup: '',
+      },
+    });
+  });
+
+  it("writes analysed look picks onto the scene ROWS, not the analysis scenes' ids (#2015)", async () => {
+    const sceneMethods = createScenesMethods(db);
+    const { scene: first } = await seedScene(0);
+    const { scene: second } = await seedScene(1);
+    const continuity = {
+      characterTags: ['mia'],
+      environmentTag: '',
+      lightingSetup: '',
+      styleTag: '',
+    };
+    // Analysis scenes carry the ids the parser mints (`scene_1`, …), which
+    // are never the rows' ULIDs: the rows are found by position.
+    const analysed = [
+      { sceneId: 'scene_1', continuity },
+      {
+        sceneId: 'scene_2',
+        continuity: { ...continuity, characterLooks: { mia: 'look-gala' } },
+      },
+    ].map((scene, index) => ({
+      ...scene,
+      sceneNumber: index + 1,
+      originalScript: { extract: '', dialogue: [] },
+    }));
+
+    await persistSceneLooks({ scenes: sceneMethods }, sequenceId, analysed);
+
+    expect(
+      (await sceneMethods.getById(second.id))?.continuity?.characterLooks
+    ).toEqual({ mia: 'look-gala' });
+    // A scene with no pick is not rewritten.
+    expect((await sceneMethods.getById(first.id))?.continuity).toBeNull();
+  });
+
+  it('a continuity write to a scene that is not there throws', async () => {
+    await expect(
+      createScenesMethods(db).updateContinuity(
+        dbSceneId(generateId()),
+        {
+          characterTags: [],
+          environmentTag: '',
+          lightingSetup: '',
+          styleTag: '',
+        },
+        { actorId }
+      )
+    ).rejects.toThrow('not found');
+  });
+
+  it('a continuity rescan keeps the selected script and the other fields; a narrative edit keeps the tags', async () => {
+    const sceneMethods = createScenesMethods(db);
+    const { scene } = await seedScene(0);
+    const edited = generateId();
+    await db.insert(sceneScriptVersions).values({
+      id: edited,
+      sceneId: scene.id,
+      content: { extract: 'Edited text.', dialogue: [] },
+      title: 'Scene 0',
+      location: 'INT. DINER',
+      source: 'edit',
+    });
+    await db
+      .update(scenes)
+      .set({ selectedScriptVersionId: edited })
+      .where(eq(scenes.id, scene.id));
+    const continuity = {
+      characterTags: ['jack'],
+      environmentTag: 'diner',
+      colorPalette: 'warm',
+      lightingSetup: 'neon',
+      styleTag: 'noir',
+    };
+
+    await sceneMethods.updateContinuity(scene.id, continuity, { actorId });
+    await editNarrative(
+      sceneMethods,
+      scene.id,
+      { timeOfDay: 'night' },
+      { actorId }
+    );
+
+    const live = await sceneMethods.getById(scene.id);
+    expect(live).toMatchObject({
+      title: 'Scene 0',
+      location: 'INT. DINER',
+      timeOfDay: 'night',
+      continuity,
+    });
+    const [selected] = await db
+      .select()
+      .from(sceneScriptVersions)
+      .where(eq(sceneScriptVersions.id, live?.selectedScriptVersionId ?? ''));
+    expect(selected).toMatchObject({
+      content: { extract: 'Edited text.' },
+      hasNarrative: true,
+      source: 'edit',
+      createdBy: actorId,
+    });
+    expect(
+      Math.abs((selected?.createdAt.getTime() ?? 0) - Date.now())
+    ).toBeLessThan(60_000);
+  });
+});
+
+describe('scene edit: script text + guard (#1459)', () => {
+  async function sceneWithScript() {
+    const sceneMethods = createScenesMethods(db);
+    const { scene } = await seedScene(0);
+    const dialogue = [{ character: 'ADA', line: 'Hello.', tone: 'warm' }];
+    await createSceneScriptVersionsMethods(db).write({
+      sceneId: scene.id,
+      content: { extract: 'Old text.', dialogue },
+      narrative: {
+        title: scene.title,
+        location: null,
+        timeOfDay: null,
+        storyBeat: null,
+        continuity: null,
+      },
+      source: 'edit',
+    });
+    const live = await sceneMethods.getById(scene.id);
+    if (!live?.selectedScriptVersionId) throw new Error('no selected script');
+    return { sceneMethods, scene: live, dialogue };
+  }
+
+  it('replaces the extract in one new version, keeping dialogue and narrative', async () => {
+    const { sceneMethods, scene, dialogue } = await sceneWithScript();
+    const result = await sceneMethods.edit(
+      scene.id,
+      { extract: 'New text.', narrative: { storyBeat: 'turn' } },
+      { actorId, expectedScriptVersionId: scene.selectedScriptVersionId }
+    );
+    if (result.status !== 'updated') throw new Error(result.status);
+    expect(result.scene.selectedScriptVersionId).not.toBe(
+      scene.selectedScriptVersionId
+    );
+    expect(result.scene).toMatchObject({ title: 'Scene 0', storyBeat: 'turn' });
+    const selected = await createSceneScriptVersionsMethods(db).getSelected(
+      scene.id
+    );
+    expect(selected?.content).toEqual({ extract: 'New text.', dialogue });
+    expect(selected?.createdBy).toBe(actorId);
+    expect(await eventKinds()).toContain('scene.updated');
+  });
+
+  it('writes nothing when the scene no longer selects the expected version', async () => {
+    const { sceneMethods, scene } = await sceneWithScript();
+    const before = await db.select().from(sceneScriptVersions);
+    const result = await sceneMethods.edit(
+      scene.id,
+      { extract: 'Stale edit.', narrative: { title: 'Stale' } },
+      { actorId, expectedScriptVersionId: generateId() }
+    );
+    expect(result.status).toBe('conflict');
+    expect(await db.select().from(sceneScriptVersions)).toHaveLength(
+      before.length
+    );
+    expect(await eventKinds()).not.toContain('scene.updated');
+    expect((await sceneMethods.getById(scene.id))?.title).toBe('Scene 0');
+  });
+
+  it('is unchanged, with no version or event, when nothing moved', async () => {
+    const { sceneMethods, scene } = await sceneWithScript();
+    const result = await sceneMethods.edit(
+      scene.id,
+      { narrative: {} },
+      { actorId, expectedScriptVersionId: scene.selectedScriptVersionId }
+    );
+    expect(result.status).toBe('unchanged');
+    expect(await eventKinds()).not.toContain('scene.updated');
   });
 });

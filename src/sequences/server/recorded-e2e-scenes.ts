@@ -4,6 +4,7 @@
  * visual/motion/music aimock matchers in lockstep with slice-derived metadata.
  */
 
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,7 @@ import {
 import { attachShotLists } from '@/shots/shot-list-pass';
 import { shotListPassResultSchema } from '@/shots/shot-list.schema';
 import type {
+  CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
@@ -25,6 +27,7 @@ import {
   type SceneSplittingScene,
 } from './streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
+import { bibleFromWire } from '@/cast/bible-looks';
 import { buildCastCharacterBible } from '@/cast/character-prompt';
 
 const OPENROUTER_DIR = resolve(
@@ -84,7 +87,24 @@ function block(source: string, tag: string): string {
 // ("Your clip duration labels sum to …") whose answer replaces the first.
 // The app strips the enhancer's closing `TOTAL: <sum>s` line before the
 // script is saved (enhance-script-turns.ts), so the split never sees it.
-function recordedEnhancedScript(): string {
+type Recording = 'original' | 'current';
+
+const currentFiles: Record<string, string> = {
+  'script-enhance': 'script-enhance__40651532',
+  'script-analyze': 'script-analyze__6a9632fc',
+  'script-bibles': 'script-bibles__f82b8cf7',
+  'script-shot-list': 'script-shot-list__853d9e62',
+};
+
+function recordingFile(stage: string, recording: Recording): string {
+  return `${stage}/${recording === 'current' ? (currentFiles[stage] ?? stage) : stage}.json`;
+}
+
+function recordedEnhancedScript(recording: Recording): string {
+  if (recording === 'current')
+    return stripTotalLine(
+      responseContent(recordingFile('script-enhance', recording))
+    );
   const correction = loadOpenrouterStage('script-enhance').find((file) =>
     file.fixtures[0]?.match.userMessage?.startsWith(
       'Your clip duration labels sum to'
@@ -105,41 +125,41 @@ function recordedSceneIds(): string[] {
 }
 
 /** The recorded split, sliced locally: what the shot-list call was handed. */
-export function recordedSplitScenes(): {
+export function recordedSplitScenes(recording: Recording = 'original'): {
   script: string;
   assembled: ReturnType<typeof assembleScenes>;
 } {
-  const script = recordedEnhancedScript();
+  const script = recordedEnhancedScript(recording);
   const split = sceneSplitScenesResultSchema.parse(
-    parseJson(responseContent('script-analyze/script-analyze.json'))
+    parseJson(responseContent(recordingFile('script-analyze', recording)))
   );
   const ids = recordedSceneIds();
   const assembled = assembleScenes(script, split, (index) => {
-    const id = ids[index];
+    const id = recording === 'current' ? `scene_${index + 1}` : ids[index];
     if (!id) throw new Error(`No recorded scene id for index ${index}`);
     return id;
   });
   return { script, assembled };
 }
 
-export function replayRecordedE2eScenes(): {
+export function replayRecordedE2eScenes(recording: Recording = 'original'): {
   script: string;
   scenes: SceneSplittingScene[];
-  characterBible: z.infer<
-    typeof sceneSplitBiblesResultSchema
-  >['characterBible'];
+  characterBible: CharacterBibleEntry[];
+  /** The bible before casting: what the split holds when it fires previews. */
+  splitCharacterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
 } {
-  const { script, assembled } = recordedSplitScenes();
+  const { script, assembled } = recordedSplitScenes(recording);
 
   const bibles = sceneSplitBiblesResultSchema.parse(
-    parseJson(responseContent('script-bibles/script-bibles.json'))
+    parseJson(responseContent(recordingFile('script-bibles', recording)))
   );
 
   const sceneIdForLine = (lineNumber: number): string =>
     assembled.scenes[
-      sceneIndexForLine(script, assembled.resolution.offsets, lineNumber)
+      sceneIndexForLine(script, assembled.sceneOffsets, lineNumber)
     ]?.sceneId ?? '';
 
   const locationBible: LocationBibleEntry[] = bibles.locationBible.map(
@@ -150,6 +170,7 @@ export function replayRecordedE2eScenes(): {
         text: entry.firstMention.text,
         lineNumber: entry.firstMention.lineNumber,
       },
+      rendering: PHOTOREAL_RENDERING,
     })
   );
   const elementBible: ElementBibleEntry[] = bibles.elementBible.map(
@@ -163,8 +184,17 @@ export function replayRecordedE2eScenes(): {
     })
   );
 
+  // The recording predates looks (#2015): every character parses to none
+  // and gets its default look here, as the live join does.
+  const analysed = bibleFromWire(
+    bibles.characterBible,
+    sceneIdForLine,
+    script.split('\n').length,
+    new Map(),
+    PHOTOREAL_RENDERING
+  );
   const { scenes: tagged } = reconcileSceneTags(assembled.scenes, {
-    characterBible: bibles.characterBible,
+    characterBible: analysed.characterBible,
     locationBible,
     elementBible,
   });
@@ -175,7 +205,7 @@ export function replayRecordedE2eScenes(): {
   const scenes = attachShotLists(
     tagged,
     shotListPassResultSchema.parse(
-      parseJson(responseContent('script-shot-list/script-shot-list.json'))
+      parseJson(responseContent(recordingFile('script-shot-list', recording)))
     ),
     []
   );
@@ -194,7 +224,7 @@ export function replayRecordedE2eScenes(): {
     })
     .parse(parseJson(responseContent('talent-cast/talent-cast.json')));
   const characterBible = buildCastCharacterBible(
-    bibles.characterBible,
+    analysed.characterBible,
     talentCast.matches.map((match) => ({
       characterId: match.characterId,
       talentName: 'Sienna Blake',
@@ -207,6 +237,7 @@ export function replayRecordedE2eScenes(): {
     script,
     scenes,
     characterBible,
+    splitCharacterBible: analysed.characterBible,
     locationBible,
     elementBible,
   };

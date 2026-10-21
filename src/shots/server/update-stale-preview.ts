@@ -14,7 +14,12 @@ import {
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
 type FalPricingMap = Record<string, EffectiveFalPricing>;
-import { safeAudioModel, safeImageToVideoModel } from '@/models/models';
+import {
+  DEFAULT_IMAGE_MODEL,
+  safeAudioModel,
+  safeImageToVideoModel,
+  safeTextToImageModel,
+} from '@/models/models';
 import { estimateTtsCost } from '@/billing/elevenlabs-pricing';
 import { addMicros, ZERO_MICROS, type Microdollars } from '@/billing/money';
 import { ttsCharacterCount } from '@/motion/dialogue-tts';
@@ -63,7 +68,8 @@ export function buildUpdateStalePreview(
   const videos = plan.targets.filter((t) => t.regenVideo);
   const music = plan.music;
 
-  const promptsCost = estimateLLMCost(visual.length + motion.length);
+  const rewrites = plan.targets.filter((t) => t.rewriteSpec === true);
+  const promptsCost = estimateLLMCost(rewrites.length);
   const imagesCost = sum(
     images.map((t) =>
       estimateImageCost(t.imageModel, plan.aspectRatio, 1, {
@@ -72,6 +78,24 @@ export function buildUpdateStalePreview(
       })
     )
   );
+  // Sheets and element references ride on the images level (#1819): a
+  // stale sheet is an image, and the stills made from it wait for it.
+  const references = plan.references;
+  const sheetCount = references
+    ? references.characterSheets.length +
+      references.lookSheetsAfterDefault.length +
+      references.locationSheets.length +
+      (references.elementSheets?.entries.length ?? 0)
+    : 0;
+  const sheetsCost =
+    sheetCount > 0
+      ? estimateImageCost(
+          safeTextToImageModel(plan.sequence.imageModel, DEFAULT_IMAGE_MODEL),
+          '16:9',
+          sheetCount,
+          { pricing }
+        )
+      : ZERO_MICROS;
   const videoModel = safeImageToVideoModel(plan.sequence.videoModel);
   // Dialogue is recorded once per SCENE before the renders (#1657), so it is
   // priced per scene: the whole conversation, on the earliest depth that needs
@@ -79,12 +103,12 @@ export function buildUpdateStalePreview(
   // render records it. An upper bound — a scene whose clips still match its
   // lines is not recorded again.
   const dialogueShotIds = new Set(dialogues.map((t) => t.shotId));
-  const recordingChars = { dialogue: 0, video: 0 };
-  for (const job of plan.dialogueRecording?.scenes ?? []) {
+  const speechChars = { dialogue: 0, video: 0 };
+  for (const job of plan.dialogueSpeech?.scenes ?? []) {
     const level = job.voiced.some((line) => dialogueShotIds.has(line.shotId))
       ? 'dialogue'
       : 'video';
-    recordingChars[level] += ttsCharacterCount(job.voiced);
+    speechChars[level] += ttsCharacterCount(job.voiced);
   }
   const videosCost = sum(
     videos.map((t) =>
@@ -124,14 +148,14 @@ export function buildUpdateStalePreview(
     musicTrack: music?.regenTrack ?? false,
     costByLevel: {
       prompts: promptsCost,
-      images: imagesCost,
+      images: addMaybe(imagesCost, sheetsCost),
       dialogue:
-        recordingChars.dialogue > 0
-          ? estimateTtsCost(recordingChars.dialogue)
+        speechChars.dialogue > 0
+          ? estimateTtsCost(speechChars.dialogue)
           : ZERO_MICROS,
       video:
-        recordingChars.video > 0
-          ? addMaybe(videosCost, estimateTtsCost(recordingChars.video))
+        speechChars.video > 0
+          ? addMaybe(videosCost, estimateTtsCost(speechChars.video))
           : videosCost,
       music: musicCost,
     },

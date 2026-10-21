@@ -25,14 +25,14 @@ const voiced = (
 const clip = (
   id: string,
   lines: SceneVoicedLine[],
-  recordingId?: string
+  speechId?: string
 ): MotionAudioClip => ({
   id,
   url: `/r2/${id}.wav`,
   token: 'DIALOGUE',
   durationSeconds: 2,
   sourceKey: dialogueClipSourceKey(lines),
-  ...(recordingId ? { recordingId } : {}),
+  ...(speechId ? { speechId } : {}),
 });
 
 describe('collectDialogueResults', () => {
@@ -117,7 +117,7 @@ describe('planSceneAdoption', () => {
     expect(plan.kept).toEqual({ 'shot-b': [kept] });
   });
 
-  test('keeps a matching clip from before recordings (no recordingId)', () => {
+  test('keeps a matching clip from before recordings (no speechId)', () => {
     const plan = planSceneAdoption({ voiced: lines, forceAdoptShotIds: [] }, [
       { id: 'shot-a', audioClips: [clip('c1', shotLines('shot-a'))] },
       { id: 'shot-b', audioClips: [clip('c2', shotLines('shot-b'))] },

@@ -30,10 +30,10 @@ describe('getMaxOutputTokens', () => {
 
   it('clamps the default analysis model instead of sending 500k', () => {
     // The exact prod bug: half of a 1M context window.
-    expect(Math.floor(getContextWindow('anthropic/claude-opus-5') * 0.5)).toBe(
-      500_000
-    );
-    expect(getMaxOutputTokens('anthropic/claude-opus-5')).toBe(128_000);
+    expect(
+      Math.floor(getContextWindow('anthropic/claude-opus-5.5') * 0.5)
+    ).toBe(500_000);
+    expect(getMaxOutputTokens('anthropic/claude-opus-5.5')).toBe(128_000);
   });
 
   it('keeps the fraction when it is below the ceiling', () => {

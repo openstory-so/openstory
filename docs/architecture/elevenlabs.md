@@ -54,16 +54,22 @@ playing the older model's audio.
 Native music returns inline bytes, so `generateMusic` parks the MP3 in R2
 before the workflow step returns (Cloudflare Workflows' 1 MiB `step.do` cap).
 
-**Character voices (#1553).** `sequences.generateVoices` (Generate dialog
-"Voices" switch, off by default) is the sequence default; `characters.useVoice`
-overrides it per character (NULL = inherit) — resolve with `usesVoice()`.
-The launcher refuses the flag when `isElevenLabsConfigured()` is false and
-the Generate dialog hides the switch (`getVoiceDesignAvailableFn`).
+**Character voices (#1553).** `sequences.generateVoices` is the sequence
+default; `characters.useVoice` overrides it per character (NULL = inherit) —
+resolve with `usesVoice()`. Voices are on wherever voice design is configured.
+There is no `voices` field on the public API or MCP, and no sequence switch
+(#2067). A row stored off (the old API default) is still on: Continue asks
+for voices and caps the run at Dialogue. A voice is turned off on the
+character. The launcher refuses the flag when `isElevenLabsConfigured()` is
+false.
 In-flight Voice Design is a stills-style husk (#1715): a
 `character_voice_versions` row with `status: 'generating'` (no `voiceId` /
 previews yet) and `characters.pendingPromoteVoiceVersionId` pointing at it.
-`generateCharacterVoiceFn` and `CharacterBibleWorkflow` insert the husk
-before trigger / spawn; a second Generate while live no-ops. The current
+`generateCharacterVoiceFn`, `CharacterBibleWorkflow` and a continue's
+references wave (`UpdateStaleShotsWorkflow`, #1818 — every speaking
+character that `usesVoice()` and has no voice gets one before its dialogue
+records, #1780 §4) insert the husk before trigger / spawn; a second Generate
+while live no-ops. The current
 saved voice stays until the husk promotes (do not release first). The child
 stamps `workflowRunId` from `event.instanceId` on its first step so reconcile
 can verify the child (bible insert has no run id). Persist completes that
@@ -94,7 +100,7 @@ runs for each such character that resolves true and has no `voiceId` yet.
 A failed voice child is logged and the run continues — that character's
 lines just have no designed voice for TTS. The LLM drafts `voiceDescription` when empty
 (`phase/voice-design-chat`), Voice Design's previews are parked in R2
-(`characters.voicePreviews`, AUDIO bucket) and the first is saved as the
+(the selected voice version's `previews`, AUDIO bucket) and the first is saved as the
 voice; "Use" on another take saves it instead (`chooseCharacterVoiceTakeFn`,
 which writes the new id then releases the old, and moves the take to the
 front — while `voiceId` is set, `voicePreviews[0]` is the saved voice; a gone
@@ -107,9 +113,13 @@ succeeds (or ElevenLabs says it already did / the preview aged out) the
 take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
 **account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
 character at cast / save-to-library) and freed only through
-`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over both tables,
-**provider delete first, row write second** so a failed delete stays
-retryable; `heldBy: 1` when the caller's own row still holds the id) on
+`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over characters'
+current voice versions and `talent.voiceId`; a character holds its voice
+until it is deleted, #2017, so removing it from a sequence or archiving a
+sequence releases nothing, **provider delete first, row write second** so a
+failed delete stays retryable; `heldBy` is the caller's own reference — the
+character's current pointer, counted exactly by
+`characters.getOwnVoiceHolds`) on
 character soft-delete, per-character switch-off, choose-take, recast to a
 talent with a different voice, sequence archive (before the status flip, so
 a failed release is retryable), talent delete and regenerate — never a bare
@@ -120,8 +130,12 @@ in-run gate the real speaking count. **Voices are versioned (#1657):** every
 `updateVoice` write appends a `character_voice_versions` row with an explicit `source`
 ('analysis' | 'generated' | 'library' | 'user-edit' | 'disabled' |
 'removed' — never inferred from which columns moved) and moves
-`characters.selectedVoiceVersionId`, the only selection pointer, whose values
-the voice columns mirror. `createdBy` is the person whose action made the
+`characters.selectedVoiceVersionId`, the only selection pointer. The voice
+IS that row (#1788): `characters` has no voice columns except `useVoice`;
+every scoped read joins the selected version and re-adds `voiceId` /
+`voiceDescription` / `voicePreviews` under those names. A cast's talent
+voice only fills what the selected version lacks, as a new 'library' (or
+'analysis', description only) version. `createdBy` is the person whose action made the
 version — required on `updateVoice` so no writer forgets it, null when nobody
 did (the cast-records seed). 'removed' means the character dropped its voice id;
 only `releasedAt` means the ElevenLabs slot was actually freed.
@@ -143,24 +157,47 @@ of a reply the model never heard — the call speaks the whole conversation.
 What is KEPT is narrow, so one edit disturbs one shot: only a shot whose
 working-set clip no longer matches its lines (`matchingDialogueClips` empty →
 `adoptShotIds`) adopts the new audio; every other shot keeps the section it
-had, so nothing of theirs goes stale. Three tables, all append-only:
+had, so nothing of theirs goes stale. **A voice is the exception (#1802):**
+a voice change dates the whole scene (`voiceMovedShotIds`). A shot reads out
+of date, and is adopted by its scene's next speech though its own key still
+matches, when its speech was spoken by a voice the cast no longer uses, or
+predates the current voice of anyone who speaks in its scene — a speech can
+leave a scene-mate out (Seed and ElevenLabs voices never share a call).
+Speakers are read off the speeches' per-turn `voiceId`, mapped to characters
+through their voice history. `loadVoiceMovedShotIds` feeds every job builder (`sceneDialogueJobs`
+→ `forceAdoptShotIds`, `snapshotBatchDialogue` counts their clips as not
+matching) and the media staleness verdict. A line edit stays narrow.
+"Regenerate" on a scene in the dialogue list (`regenerateShotDialogueFn`,
+`scope: 'scene'`) forces every voiced shot in the scene. Cut clips carry the
+section's `source`, so the list can mark the user's own take. Three tables,
+all append-only:
 
 - `shot_dialogue_versions` — the authored lines, one selected row per shot.
-- `dialogue_recordings` — one row per ElevenLabs call, the **whole file** as
-  it came back (`storageKey`, `url`, `durationSeconds`, per-turn `turns`,
-  `inputHash` = `recordingKey` = ordered voiced turns with shot ids + voice
+- `dialogue_speeches` — a **speech** (#1913): one row per synthesis call,
+  the **whole file** as it came back (`storageKey`, `url`, `durationSeconds`,
+  per-turn `turns`,
+  `inputHash` = `speechKey` = ordered voiced turns with shot ids + voice
   ids + the words + tone + TTS model + stability). Each turn also stamps its `voiceId` and
   `ttsModel` in the clear — the hash cannot be read back. No selected flag, no
   per-shot copies, never joined or concatenated.
 - `shot_dialogue_sections` — a time range (`fromSeconds`–`toSeconds`) of a
-  recording, one selected row per shot. A recording inserts a row for EVERY
-  shot it spoke: `source: 'recorded'` and selected for the shots it was made
+  speech, one selected row per shot. A speech inserts a row for EVERY
+  shot it spoke: `source: 'generated'` and selected for the shots it was made
   for, `source: 'context'` and unselected for the shots that were only spoken
   so the others had something to answer. Section rows hold no URL. CHECK
   constraints hold the shape:
   `from_seconds >= 0 AND to_seconds > from_seconds`, a discarded row cannot be
-  selected, and `dialogue_recordings.duration_seconds > 0`; `appendRecording`
-  refuses a section that ends past its recording.
+  selected, and `dialogue_speeches.duration_seconds > 0`; `appendSpeech`
+  refuses a section that ends past its speech.
+
+Naming (#1913): a **speech** is the uncut file one synthesis call returns; a
+**recording** is what a user captures at the mic (#1802). New speeches are
+stored under `dialogue-speeches/`; files written before the rename stay
+under `dialogue-recordings/`, and stored keys are not rewritten. The #1913
+migration renamed `source: 'recorded'` to `'generated'` and the clip JSON key
+`recordingId` to `speechId`; until no pre-rename run can be in flight,
+`cutSpanningSection` also reads a clip's old `recordingId`, and the motion
+batch / Update-all workflows read a payload's old `dialogueRecording`.
 
 Picking a context reading ("promote") is the same `selectSection` as picking
 an older reading — there is no second code path.
@@ -168,16 +205,16 @@ an older reading — there is no second code path.
 matches the shot's lines and one longer than `dialogueFitBudget` allows, then
 cuts, then `selectSection` moves the pointer and writes `shots.audioClips` in
 one batch.
-`appendRecording` is one batch (recording, clear the adopting shots' selected
+`appendSpeech` is one batch (speech, clear the adopting shots' selected
 sections, insert all sections) with ids generated inside the workflow step
 and `onConflictDoNothing`, so a replay is idempotent.
 `discardShotDialogueSectionFn` → `discardSection` soft-discards a reading
 (`discardedAt`; the list omits it, select refuses it). Discarding the shot's
 CURRENT reading clears `shots.audioClips` in the same batch — a shot must not
 keep audio cut from a reading that is gone — so the next render records. The
-recording file stays: other shots may hold sections of it.
+speech file stays: other shots may hold sections of it.
 `regenerateShotDialogueFn` ("Regenerate dialogue" / "Generate dialogue" in the readings
-list) is the on-demand recording: it builds the shot's scene job with
+list) is the on-demand speech: it builds the shot's scene job with
 `sceneDialogueJobs`, sets `forceAdoptShotIds: [shotId]` so
 `planSceneAdoption` adopts the shot even though its clip still matches, and
 triggers `DialogueAudioWorkflow` with its own reservation
@@ -198,24 +235,22 @@ so every voice or reading change also invalidates `segmentKeys.list`.
 counts a stale still: the rail dots, the scene/sequence summary and the confirm
 all see them. Dialogue is its own cascade depth between images and video, so a
 voice change can be re-recorded without paying to re-render the clips; the
-confirm names the two costs separately. A scene's recording is priced once, on
+confirm names the two costs separately. A scene's speech is priced once, on
 the earliest depth that needs it: dialogue when a shot in it re-records, video
-when only a render does (#1740). The run counts each target whose recording
+when only a render does (#1740). The run counts each target whose speech
 came back (`dialogues`), never its neighbours, and a dialogue-only target left
 without audio — child failed, or the balance gate refused — fails at stage
-`dialogue`; a target with a video render left to run falls back to recording
-itself there instead (`dialogueTargetOutcome`). Smart retry records each scene once
+`dialogue`; a target with a video render left to run is handed to the normal
+motion path, which records its scene before fanout and blocks the video if a
+take is still missing. Smart retry records each scene once
 (`snapshotBatchDialogue`) before it fans out, the same as Generate all motion
 and Update Stale. A conversation over `DIALOGUE_TAKE_CHUNK_CHARS` (2,000)
 splits at a **shot boundary**, never inside a shot (`chunkTakeLines`); each
-chunk is its own recording, and only chunks holding an adopting shot are
-recorded at all. `recordDialogue` (`src/motion/server/record-dialogue.ts`) is
-the one entry: `DialogueAudioWorkflow` calls it per scene, and motion's
-fallback (clip missing, or the voice/lines moved since) calls it with
-`lines: input.dialogueContext` — the `contextWindow` snapshotted at the
-trigger, the shot's own turns plus whole neighbouring shots grown outward
-while under the chunk limit — and `adoptShotIds: [shotId]`, so it records the
-window and keeps only its own shot.
+chunk is its own speech, and only chunks holding an adopting shot are
+recorded at all. `generateDialogueSpeech` (`src/motion/server/generate-dialogue-speech.ts`) is
+the one entry: `DialogueAudioWorkflow` calls it per scene. Motion workflows
+only accept matching recorded clips in their payload; they never synthesize
+speech or continue without a take for every voiced shot.
 
 **The shot is the one source of lines, and the only place they are written.**
 What a shot says is resolved by ONE ladder — `resolveShotDialogue`
@@ -228,41 +263,45 @@ What a shot says is resolved by ONE ladder — `resolveShotDialogue`
    from before #1657 have one; **nothing writes that column any more**;
 3. else the lines the script stamps onto it (`deriveShotDialogueLines`).
 
-Every reader goes through it — render triggers, the recording context
+Every reader goes through it — render triggers, the speech context
 (`dialogueContextFor`), the staleness read (`loadLiveShotInputs`), the prompt
 preview, the reading-select guard and the UI (`ShotView.dialogue`) — so the
 recording, the prompt text and the panel cannot disagree. It is enforced at
 one seam: `motionPromptFromVersion(version, dialogue)` takes the resolved
 dialogue as a REQUIRED argument, so no builder can assemble a prompt around a
 row's own copy. A workflow cannot read the node, so its form of the ladder is
-fed from the payload (`dialogueLinesByShotId`; a continue snapshots EVERY shot
-resolved in `refreshCheckpointFromCast`), and the motion-prompt LLM's own
-`dialogue` output is never a source of lines. Before a pre-#1657 shot's
+fed from the payload (`dialogueLinesByShotId`, or each Update-all / continue
+target's `dialogue`, resolved at the click), and the motion-prompt LLM's own
+`dialogue` output is never a source of lines. The motion prompt is written from
+the resolved lines too (#1784): its payload snapshots them as `dialogue`, and
+`sceneWithShotDialogue` puts them in place of the script's in both what the LLM
+reads and what the motion hash covers, so a line edit re-stales the prompt. Before a pre-#1657 shot's
 selected prompt row is superseded, `promoteLegacyDialogue`
 (`shot-prompt-versions.ts`) moves its lines — and any voice bound to them —
 onto a `shot_dialogue_versions` row, so rung 2 is never stranded.
 
 **Recorded once per scene, everywhere.** The `dialogue` stage is not the only
 caller. Every batch-style trigger — Generate all motion, add-a-video-model,
-Update Stale — snapshots `snapshotBatchDialogue` (`src/shots/server/shot-dialogue.ts`):
-each shot's `voicedLines`, its matching clips and its fallback
-`dialogueContext`, plus `dialogueRecording` — ONE `DialogueAudioSceneJob` per
-scene that holds a shot with no matching clip — and `ttsChars` priced per scene.
-`MotionBatchWorkflow.recordScenesOnce` and `UpdateStaleShotsWorkflow` run
-`DialogueAudioWorkflow` over those jobs BEFORE they fan out, and the children
-only attach. Without it a recast (the voice id is in the clip key, so every
-shot the character speaks in loses its clip at once) recorded the scene once
-per speaking shot. Never fatal: a scene that cannot be recorded leaves its
-shots to record themselves in context. Smart retry and single-shot Generate
-still record per shot — they start one motion run per shot, with no parent to
-record first.
+single-shot Generate, smart retry, Update Stale — snapshots
+`snapshotBatchDialogue` (`src/shots/server/shot-dialogue.ts`): each shot's
+`voicedLines`, its matching clips and `dialogueSpeech` — ONE
+`DialogueAudioSceneJob` per scene that holds a shot with no matching clip —
+and `ttsChars` priced per scene. `MotionBatchWorkflow.recordScenesOnce` and
+`UpdateStaleShotsWorkflow` run `DialogueAudioWorkflow` over those jobs BEFORE
+they fan out. The parent checks every voiced shot has its exact matching take;
+a failed speech or partial result blocks motion for any shot still missing
+audio. The `MotionWorkflow` child repeats that check before reserving credits
+or submitting a video, so malformed or older payloads cannot render silently.
+Without scene-wide speech a recast (the voice id is in the clip key, so
+every shot the character speaks in loses its clip at once) would record the
+scene once per speaking shot.
 
-**Claims — a recording lands like every other generation (#1085 pattern).**
+**Claims — a speech lands like every other generation (#1085 pattern).**
 `shot_dialogue_claims`, one row per shot about to take new audio; a reading
-cannot be its own placeholder because a section needs a recording and a range.
-`recordDialogue` is the single owner:
+cannot be its own placeholder because a section needs a speech and a range.
+`generateDialogueSpeech` is the single owner:
 
-- **Claim** (`claimRecording`, first step, before anything is spent): a
+- **Claim** (`claimSpeech`, first step, before anything is spent): a
   `generating` row per adopting shot. The live unique index
   `(shot_id, pending_source_key)` makes a second run for the same shot and the
   same words stand down — it adopts only the shots it claimed, and with none
@@ -272,17 +311,17 @@ cannot be its own placeholder because a section needs a recording and a range.
   restoring them (`selectVersion`) nulls `pendingSourceKey`. The run finishes;
   it can no longer take the selection. `cancelShotDialogueClaimFn` does the
   same on request — it does not stop the run, which records for other shots.
-- **Complete** (`appendRecording`): one transaction. Every reading lands
+- **Complete** (`appendSpeech`): one transaction. Every reading lands
   unselected; then, per adopting shot, clear-selected → select → write
   `shots.audioClips` → complete the claim, each carrying the same
   `claimIsLive` predicate, so there is no gap between checking the claim and
   acting on it and the pointer and the clip can never disagree.
-  `shots.setAudioClips` is gone: `appendRecording`, `selectSection` and
+  `shots.setAudioClips` is gone: `appendSpeech`, `selectSection` and
   `discardSection` are the only writers of a shot's dialogue clip, and each
   moves the pointer in the same batch. A demoted or cancelled claim's reading
-  is kept, unselected, pickable later. `recordDialogue` returns clips only for
-  PROMOTED shots; `MotionWorkflow` then renders from the shot's live clips
-  (`dialogue-audio-from-shot`) and fails the shot only if it has none.
+  is kept, unselected, pickable later. `generateDialogueSpeech` returns clips only for
+  PROMOTED shots; the parent attaches those clips to the snapshotted shot
+  payload and blocks fanout if a voiced shot has no matching take.
 - **Fail**: the recorder fails its own claims when it gives up
   (`fail-claims` step); `reconcileDialogueClaimsPass` (the 5-minute sweep)
   fails the claims of a run that died.
@@ -292,17 +331,18 @@ The panel shows a claim as "Generating…" with Cancel
 realtime `dialogue-audio` event refreshes both).
 
 **Going back.** `listShotDialogueVersionsFn` / `selectShotDialogueVersionFn`
-(the History list in the prompt editor) re-point the selected version, and
+(the History list under the shot's video) re-point the selected version, and
 that is the whole change: every reader follows the pointer. The current
 reading stops matching (the next render records), and a reading of the
 restored wording becomes usable again — `sourceKey` finds it.
 
-`shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; the prompt
-editor appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
+`shot_dialogue_versions` is the authored node. The shot-list pass seeds a `prompt` row per shot; a line edit
+appends `user-edit` (`scopedDb.shotDialogue.write`, which returns the
 selected row unchanged when the lines are identical). The lines are edited in
-place (#1773) — character, words, tone — in the shot's Dialogue section and,
-for every shot of the scene, under the Script tab (`ShotDialogueLines`,
-`saveShotDialogueFn`): the edit writes only that shot's version, never the
+place (#1773) — character, words, tone — in the shot's dialogue under its
+video and,
+for every shot of the scene, under the Script tab and the sequence player
+(`DialogueLineRows`, `saveShotDialogueFn`): the edit writes only that shot's version, never the
 motion prompt. History labels a version whose words match the one before it
 "Audio source changed", not "Edited": only the voice binding moved. The save touches one
 shot's row, so it cannot drop a concurrent edit to another shot — the
@@ -323,14 +363,14 @@ stored.
 section is materialised by `cutAudioSection`
 (`src/motion/server/cut-audio-section.ts`) and `shots.audioClips` (the working
 set, shape unchanged) holds that URL; the clip's `id` IS its
-`shot_dialogue_sections.id` and it stamps `recordingId`. The cut **never
-loads the recording**: a ranged read of the first 4 KiB parses the PCM header
+`shot_dialogue_sections.id` and it stamps `speechId`. The cut **never
+loads the speech**: a ranged read of the first 4 KiB parses the PCM header
 (`parseWavHeader`), the byte range is frame-snapped from the section's times,
 and the output is a new 44-byte header, the ranged body from R2 as a stream
 (`readStorageStream`), then silence in ≤16 KiB blocks — wrapped in
 `FixedLengthStream` since the total is known and `r2.put` rejects an
 unknown-length stream. The key is deterministic
-(`…/dialogue-sections/<recordingId>_<fromMs>_<toMs>_<minMs>.wav`), so an
+(`…/dialogue-sections/<speechId>_<fromMs>_<toMs>_<minMs>.wav`), so an
 existing file is returned without re-cutting and a replay or a re-select is
 free. **Padding to the provider floor (H3 Max 2s) happens at cut time**,
 which is why the floor is in the key: the same section cut for a model with a
@@ -338,8 +378,8 @@ different floor is a different file. The tail trim is **measured once at
 record time** (`trimmedEndSeconds`, in place, no copy) and stored as the
 section's `toSeconds`, so the cut is pure arithmetic. The silence between two
 turns belongs to the shot about to speak (`shotSliceWindows`). Bytes never
-cross a `step.do` (#1645): the recording step uploads the whole WAV and
-returns `{ recordingId, storageKey, turns, windows }`; each adopting shot is
+cross a `step.do` (#1645): the generating step uploads the whole WAV and
+returns `{ speechId, storageKey, turns, windows }`; each adopting shot is
 cut in its own step.
 
 **Relation to #1577** (`@BEACH:3-8`, a section of a clip or audio element per
@@ -351,8 +391,9 @@ re-record, so it is DATA on the shot (`shot_dialogue_sections`), never
 `@TOKEN:3-8` prompt text that would re-stale the prompt each time. Recordings
 are not `sequence_elements` rows either: nobody binds or names one.
 
-Motion attaches the stored clip and stamps it onto
-`shot_prompt_versions.audioClips` (provenance of the render). Tone maps to v3
+Motion attaches the stored clip and records its id on the video manifest's
+`audioClipIds` (provenance of the render; `shot_prompt_versions.audioClips` is
+dead since #1786). Tone maps to v3
 audio tags on each turn. User-bound `voiceToken` elements already ride as
 `@AudioN` and are not re-synthesised. The clip binds as `DIALOGUE` /
 `@Audio1`. Voice ids + lines + tone + TTS model fold into the **video
@@ -364,7 +405,12 @@ dialogue clip, the section id, which is the selection pointer
 `audioSourceKey` cannot express — and `referenceKeys`
 (`character:<id>:<sheetVersionId|url>`, `location:…`, `element:…` for every
 reference the render was sent, `src/motion/reference-provenance.ts`), dropped
-from the hash body when null or empty so no stored digest moves.
+from the hash body when null or empty so no stored digest moves. `dialogueKey`
+(#1784) records every line the render prompt quoted, voiced or not — an
+audio-capable model splices unvoiced lines into its prompt too, and
+`audioSourceKey` is null on a model without dialogue-audio input — so any line
+edit re-stales the clip. It is null when nothing was quoted, and absent on older
+manifests, which are not compared.
 `isSelectedVersionStale` compares them against live identity:
 `audioClipsMoved` reads the manifest's `audioClipIds` against the shot's
 working-set clip ids (`audioClipIdsByShot`, from `shots.audioClips`) and
@@ -377,12 +423,12 @@ dependency graph. Shot duration is raised to cover the audio.
 
 **Fitting the section to the clip (#1651).** v3 takes no target or maximum
 duration, so length is discovered, not requested. The ladder runs **per
-adopting shot over the wide recording** (#1657): a section whose padded
+adopting shot over the wide speech** (#1657): a section whose padded
 length is over its shot's limit sends THAT shot's turns to the rewrite
 (`shortenDialogueLines`, `src/motion/server/fit-dialogue-clip.ts`) and the
 chunk is re-recorded, because the other shots' delivery is not independent of
 it. Shots that are only context are never checked — their audio is not being
-kept. Only the final attempt's recordings get rows. The rungs:
+kept. Only the final attempt's speeches get rows. The rungs:
 `convertWithTimestamps` returns per-turn voice segments (the character
 alignment is never read) → `trimmedEndSeconds` pulls the section's end back to
 whichever is LATER of the last audible sample and the end of the shot's last
@@ -401,13 +447,13 @@ measure); `targetSeconds` is
 what a rewrite aims at, the SHOT's own length when shorter, so the reading
 fits the cut rather than stretching it. Speech between the two is kept — the
 clip stretches. A rewritten reading records its delivered wording on the
-section and its clip as `spokenLines` (and on the recording as
+section and its clip as `spokenLines` (and on the speech as
 `turns[].spokenText`) while `sourceKey` keeps keying the AUTHORED lines, so
 nothing re-records and no digest moves; the manifest's `audioSourceKey` is
 built from the authored lines for the same reason (#1671). Motion reads the
 delivered wording back with `withSpokenText` before assembling, because the
 prompt drives lip movement. Seedance is the exception (BytePlus guidance): a
-line on the conversation recording is not repeated in the prompt at all, or
+line on the conversation speech is not repeated in the prompt at all, or
 the model re-voices it over the track — `buildSeedancePrompt` names the clip
 as the master audio track and points the speakers at it for lip-sync, in
 speaking order. Other models still get the words. `maxCombined` is checked across files in
@@ -422,24 +468,70 @@ JSON carries the audio refs for paste-into-Videos. Models with no audio
 reference slot (Grok, Omni Flash, Kling) still get a section and a cut clip
 in References; motion just does not bind it.
 
-Out of scope here: voice cloning from an uploaded sample, realtime/agents,
-auditioning/regenerating a single line from the scene panel.
+**The shot's dialogue lives under its video (#1802).** The audio source
+(Generated / Video model / an audio element — a write of the lines, so it
+needs no motion prompt), readings and history are in
+`ShotDialogueUnderVideo`; the Video tab has none of it. Every list of lines
+— the shot's, the Script tab's, and `SequenceDialogueLines` under the
+player with a sequence or scenes on the canvas — is `DialogueLineRows`
+(`dialogue-lines.tsx`): speaker and words, with Edit beside every line (and
+Record beside each voiced one, once `MIC_TAKES_ENABLED`). The tone shows only
+in the edit form. Play dialogue (`useDialoguePlayer`) plays the shot's audio,
+a scene's one speech when the scene is one take, or else its shots'
+`audioClips` back to back, and marks the shot being heard. Per shot, not per
+word — no word timings are stored.
+
+**A line at the mic (#1802).** Record is behind `MIC_TAKES_ENABLED` (off)
+until the Seed voice-change prompt is reliable; the server fn and workflow
+ship. Record beside a line records it in the browser, plays it back, and on "Use"
+sends it as 16-bit mono PCM (`recordShotDialogueLineFn`, parked in R2 under
+`dialogue-takes/`). `DialogueTakeWorkflow` turns it into the speaker's voice
+with the user's delivery kept: an ElevenLabs voice goes through **Voice
+Changer** (`eleven_multilingual_sts_v2`, `removeBackgroundNoise`, $0.12/min
+on the card as `elevenlabs-voice-changer`); a Seed voice is sent to Seed
+Audio with the take as `@Audio2` (see `seed-voices.md`; the prompt is still
+experimental). The converted line is **spliced into the shot's current
+reading** — that line's turn window is replaced, the shot's other lines keep
+their delivery — and the file is its own `dialogue_speeches` row
+(`inputHash: mic:<id>`), only this shot's turns re-timed onto it. Provider
+speeches are still never joined; this is a file we made, from a ranged read
+of one section. The reading lands through a claim as `source: 'mic'`
+("Your take"), selected. A shot with two or more voiced lines needs a current
+reading that still matches its lines; a one-line shot without one takes the
+line as the whole recording. The take is trimmed to its speech at both ends
+(`trimmedStartSeconds` / `trimmedEndSeconds`, Scribe's span for Seed), and a
+result over `dialogueFitBudget`'s limit fails rather than being rewritten.
+`recordShotDialogueLineFn` refuses, before reserving credits, a silent take
+(`isSilentWav`), a shot with a live dialogue claim (the take's claim would
+collide with it), and a take whose estimated length cannot fit. The run
+charges only after its own fit check, and its unclear-line flags follow the
+spliced speech's turns: the taken line is clean, the others keep theirs.
+
+Out of scope here: voice cloning from an uploaded sample, realtime/agents.
 
 **Continuous preview playback (#1690).** The existing scene/sequence player
-includes every shot before rendering is complete. `toPlaybackScenes` uses
+includes every shot before rendering is complete. `toPlaybackClips` uses
 rendered clips where available and still entries elsewhere, preferring the
 selected still with the storyboard preview as fallback. A still plays its
-selected `shots.audioClips` and holds for their actual combined duration;
-without audio it holds for `durationMs` (3 seconds for legacy missing
-durations). The Mediabunny canvas source yields timed still frames on the same
+selected `shots.audioClips` from the start of the shot and holds for the
+longer of the shot (`durationMs`, 3 seconds when that is missing) and the
+clips' combined duration. A short take no longer rushes the picture.
+`shotIdAtSequenceTime` reads the stitcher's measured offsets, so the
+highlighted shot follows that hold. The Mediabunny canvas source yields timed still frames on the same
 timeline as video frames; it does not encode temporary videos. PCM dialogue
 cut files are decoded with `AudioBufferSink` and scheduled on the existing
 audio clock, so pause, seeking, volume and music work across both kinds of
-entry. Rendered clips use only their embedded audio. Theatre play does not
-show lines on screen. Image failures fall back to the preview, then a
+entry. Rendered clips use only their embedded audio. Every entry also carries
+the shot's lines as subtitles (`shotCues`): each timed line for the time its
+reading spoke it. Wording is `spokenLines` when the take has them, otherwise
+the written line. A line the reading did not time — every line when there is
+no reading yet, or a line added after it — shares one cue across the whole
+shot, even when other lines are timed. The timing is `ShotView.dialogueTiming` (#1853), derived on
+read from the selected section and its speech's turns (`sectionLineTiming`,
+`getSelectedSectionsBySequence`) — never stored on the clip, so every reading
+ever cut is timed. Image failures fall back to the preview, then a
 placeholder, preserving the shot's timeline slot. Hard cuts have no
-cross-fades. Mixed previews bypass the cached exported MP4; export continues
-to require rendered videos. There is no separate animatic button, dialog, or
+cross-fades. There is no separate animatic button, dialog, or
 playback mode.
 
 While that player runs, the shot list marks the shot under the playhead and
@@ -450,4 +542,4 @@ player. `shotIdAtSequenceTime` maps the playhead to a shot from the
 stitcher's measured scene offsets; inside a packed clip, and on HLS (which
 reports only the total), shots split the scene by their own `durationMs`.
 
-**Ark refuses a recording (#1756).** Seedance 2.5 moderates reference audio on input (`InputAudioSensitiveContentDetected` on the `content[]` slot the clip rode in). That is the recording itself, so `MotionWorkflow`'s rescue does NOT soften the prompt for it (`flaggedInputs().audioInput`) and the terminal message names the dialogue recording and the three ways to send different audio: set the shot's dialogue audio to **Video model** (the lines ride in the prompt, no audio input), **Regenerate dialogue** for another reading, or change the lines in the script. Ark's output-side refusal (`AudioSensitiveContentDetected.PolicyViolation`, "Output audio has sensitive content") is the generated speech and still softens. There is no switch to turn either filter off.
+**Ark refuses a speech (#1756).** Seedance 2.5 moderates reference audio on input (`InputAudioSensitiveContentDetected` on the `content[]` slot the clip rode in). That is the speech itself, so `MotionWorkflow`'s rescue does NOT soften the prompt for it (`flaggedInputs().audioInput`) and the terminal message names the generated dialogue and the three ways to send different audio: set the shot's dialogue audio to **Video model** (the lines ride in the prompt, no audio input), **Regenerate dialogue** for another reading, or change the lines in the script. Ark's output-side refusal (`AudioSensitiveContentDetected.PolicyViolation`, "Output audio has sensitive content") is the generated speech and still softens. There is no switch to turn either filter off.

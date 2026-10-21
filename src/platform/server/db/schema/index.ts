@@ -46,6 +46,8 @@ import { frameVariants } from './frame-variants';
 import { framePromptVersions } from './frame-prompt-versions';
 import { sequenceEvents } from './sequence-events';
 
+import { characterLooks, characterLookVersions } from './character-looks';
+import { sequenceCast } from './sequence-cast';
 import { characterSheetVariants } from './character-sheet-variants';
 
 import { locationSheetVariants } from './location-sheet-variants';
@@ -58,21 +60,27 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
+import { stitches } from './stitches';
+import { sequenceStyleVersions } from './sequence-style-versions';
 
 import { characters } from './characters';
 import { characterVoiceVersions } from './character-voice-versions';
+import {
+  characterBibleVersions,
+  locationBibleVersions,
+} from './bible-versions';
 import { shotDialogueVersions } from './shot-dialogue-versions';
-import { dialogueRecordings } from './dialogue-recordings';
+import { shotSpecVersions } from './shot-spec-versions';
+import { dialogueSpeeches } from './dialogue-speeches';
 import { shotDialogueSections } from './shot-dialogue-sections';
 import { shotDialogueClaims } from './shot-dialogue-claims';
 
-// Location Library (team-level templates)
-import { locationLibrary } from './location-library';
-
-// Sequence Locations (script-extracted)
-import { sequenceLocations } from './sequence-locations';
-
-import { locationSheets } from './location-sheets';
+// Locations (the team's places) and the links sequences hold to them
+import {
+  locationReferencePhotos,
+  locations,
+  sequenceLocationLinks,
+} from './locations';
 
 // Sequence Elements (user-uploaded reference images)
 import { sequenceElements } from './sequence-elements';
@@ -145,17 +153,26 @@ export { teamInvitations, teamMembers, teams };
 // Sequences
 export { sequences };
 
-export type { NewSequence, Sequence } from './sequences';
+export type { NewSequence, Sequence, SequenceRecord } from './sequences';
 
 // Scenes (narrative units; each owns an ordered list of shots)
 export { scenes };
 
-export type { DbSceneId, NewScene, SceneRow } from './scenes';
+export type {
+  DbSceneId,
+  LegacySceneNarrativeColumn,
+  NewScene,
+  SceneRecord,
+  SceneRow,
+} from './scenes';
 
 // Scene script versions (per-scene script history; #1030)
 export { sceneScriptVersions };
 
+export { SCENE_NARRATIVE_FIELDS } from './scene-script-versions';
+
 export type {
+  SceneNarrative,
   SceneScriptVersion,
   SceneScriptSource,
 } from './scene-script-versions';
@@ -164,7 +181,8 @@ export type {
 export { shots };
 export {
   shotDialogueVersions,
-  dialogueRecordings,
+  shotSpecVersions,
+  dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
 };
@@ -174,11 +192,9 @@ export type {
   ShotDialogueSource,
   ShotDialogueVersion,
 } from './shot-dialogue-versions';
-export type {
-  DialogueRecording,
-  DialogueRecordingTurn,
-} from './dialogue-recordings';
+export type { DialogueSpeech, DialogueSpeechTurn } from './dialogue-speeches';
 export type { ShotDialogueSection } from './shot-dialogue-sections';
+export type { ShotSpecSource, ShotSpecVersion } from './shot-spec-versions';
 export type { ShotDialogueClaim } from './shot-dialogue-claims';
 
 export type { NewShot, Shot } from './shots';
@@ -265,7 +281,6 @@ export { locationSheetVariants };
 
 export type {
   LocationSheetVariant,
-  LocationSheetVariantParentType,
   NewLocationSheetVariant,
 } from './location-sheet-variants';
 
@@ -307,10 +322,54 @@ export type {
 // Sequence exports (container-rendered MP4 snapshots)
 export { sequenceExports };
 
+// Shared stitches from the stitch CLI (#2127)
+export { stitches };
+export type { Stitch } from './stitches';
+
+// Sequence style history (#1600)
+export { sequenceStyleVersions };
+
+export type {
+  SequenceStyleSource,
+  SequenceStyleVersion,
+} from './sequence-style-versions';
+
 export type { SequenceExport } from './sequence-exports';
 
 // Characters (scripted roles)
 export { characters, characterVoiceVersions };
+
+// Bible history (#1600)
+export { characterBibleVersions, locationBibleVersions };
+
+// Character looks (#2015)
+export { characterLooks, characterLookVersions };
+export { DEFAULT_LOOK_NAME, LOOK_FIELDS } from './character-looks';
+export type {
+  CharacterLook,
+  CharacterLookMinimal,
+  CharacterLookRow,
+  CharacterLookVersion,
+  LookDefinition,
+  LookVersionSource,
+} from './character-looks';
+
+// Sequence cast (#2017)
+export { sequenceCast };
+export type { SequenceCastRow } from './sequence-cast';
+
+export {
+  CHARACTER_BIBLE_FIELDS,
+  LOCATION_BIBLE_FIELDS,
+} from './bible-versions';
+
+export type {
+  BibleVersionSource,
+  CharacterBible,
+  CharacterBibleVersion,
+  LocationBible,
+  LocationBibleVersion,
+} from './bible-versions';
 
 export type {
   CharacterVoiceVersionSource,
@@ -320,6 +379,16 @@ export type {
 export type {
   CharacterWithSheet,
   Character,
+  CharacterRow,
+  CharacterVoice,
+  LegacyCharacterBibleColumn,
+  LegacyCharacterSheetColumn,
+  CharacterCast,
+  CharacterLink,
+  CastCharacter,
+  CastCharacterWithSheet,
+  CastCharacterWithTalent,
+  CharacterWornLook,
   CharacterMinimal,
   CharacterWithTalent,
   VoicePreview,
@@ -328,26 +397,24 @@ export type {
   SheetStatus,
 } from './characters';
 
-// Location Library (team-level templates)
-export { locationLibrary };
-
-export type { LibraryLocation, NewLibraryLocation } from './location-library';
-
-// Sequence Locations (extracted from script)
-export { sequenceLocations };
+// Locations (the team's places) and the links sequences hold to them
+export { locations, sequenceLocationLinks, locationReferencePhotos };
 
 export type {
+  LegacyLocationBibleColumn,
+  Location,
+  LocationLink,
+  LocationReferencePhoto,
+  LocationRow,
+  LocationWithReference,
   NewSequenceLocation,
+  NewTeamLocation,
   ReferenceStatus,
-  SequenceLocationWithReference,
   SequenceLocation,
+  SequenceLocationLinkRow,
   SequenceLocationMinimal,
-} from './sequence-locations';
-
-// Location Sheets (location-specific variations for library locations)
-export { locationSheets };
-
-export type { LocationSheet, NewLocationSheet } from './location-sheets';
+  SequenceLocationWithReference,
+} from './locations';
 
 // Sequence Elements (per-sequence uploaded reference images)
 export { sequenceElements };
@@ -375,7 +442,14 @@ export type {
 // Library Resources
 export { audio, StyleSampleVideoSchema, styles, vfx };
 
-export type { Audio, NewStyle, Style, StyleConfig, Vfx } from './libraries';
+export type {
+  Audio,
+  NewStyle,
+  StoredStyleConfig,
+  Style,
+  StyleConfig,
+  Vfx,
+} from './libraries';
 
 // Credits, Transactions, and Billing
 export { creditReservations, credits, transactions };
@@ -482,7 +556,7 @@ export const schema = {
   sceneScriptVersions,
   shots,
   shotDialogueVersions,
-  dialogueRecordings,
+  dialogueSpeeches,
   shotDialogueSections,
   shotDialogueClaims,
   shotVariants,
@@ -501,19 +575,22 @@ export const schema = {
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
   sequenceExports,
+  sequenceStyleVersions,
+  stitches,
 
   // Characters (scripted roles extracted from script)
   characters,
   characterVoiceVersions,
+  characterBibleVersions,
+  locationBibleVersions,
+  characterLooks,
+  characterLookVersions,
+  sequenceCast,
 
-  // Location Library (team-level templates)
-  locationLibrary,
-
-  // Sequence Locations (extracted from script)
-  sequenceLocations,
-
-  // Location Sheets (location-specific variations for library locations)
-  locationSheets,
+  // Locations and the links sequences hold to them
+  locations,
+  sequenceLocationLinks,
+  locationReferencePhotos,
 
   // Sequence Elements (user-uploaded reference images)
   sequenceElements,

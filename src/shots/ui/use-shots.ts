@@ -45,6 +45,12 @@ type SelectVariantInput = {
   variantIndex: number;
 };
 
+/**
+ * Editor fallback while realtime is down or a clip is still rendering.
+ * 2s kept a 2–3s server fn in flight for the whole render (#1795).
+ */
+export const EDITOR_FALLBACK_POLL_MS = 8_000;
+
 // Query keys
 export const shotKeys = {
   all: ['shots'] as const,
@@ -72,6 +78,17 @@ export const shotKeys = {
    */
   dialogueClaims: (shotId: string) =>
     [...shotKeys.dialogueSections(shotId), 'claims'] as const,
+  /**
+   * Every shot's recordings in flight, by shot (#2082): one call for a
+   * scene's Regenerate button. Under `dialogueSectionsAll` for the same
+   * reason as `dialogueClaims`.
+   */
+  dialogueClaimsBySequence: (sequenceId: string) =>
+    [
+      ...shotKeys.dialogueSectionsAll(),
+      'claims-by-sequence',
+      sequenceId,
+    ] as const,
   /** One shot's authored dialogue versions (#1657). */
   dialogueVersions: (shotId: string) =>
     [...shotKeys.all, 'dialogue-versions', shotId] as const,
@@ -254,10 +271,12 @@ export function useShotsBySequence(
     },
     staleTime: options?.staleTime ?? 30_000, // Realtime events update the cache; polling is a fallback
     // Callers pass an explicit refetchInterval when needed (e.g. scenes-view
-    // passes 2000 when realtime has failed). No default polling — realtime
-    // events keep the cache fresh via updateQueryCacheFromEvent.
+    // passes EDITOR_FALLBACK_POLL_MS when realtime has failed). No default
+    // polling — realtime events keep the cache fresh via updateQueryCacheFromEvent.
     refetchInterval: options?.refetchInterval ?? false,
-    refetchOnMount: 'always', // Always refetch on mount to ensure fresh data
+    // Respect staleTime. 'always' refetched getShotsFn on every remount,
+    // including while the previous response was still the fresh one (#1795).
+    refetchOnMount: true,
     refetchOnWindowFocus: true, // Refetch when window regains focus
     enabled: !!sequenceId,
   });
@@ -528,7 +547,8 @@ export function useSelectFrameImageVersion() {
                 ? {
                     ...f,
                     image: f.image ? { ...f.image, url } : null,
-                    frame: { ...f.frame, imageStatus: 'completed' as const },
+                    imageStatus: 'completed' as const,
+                    imageError: null,
                     video: null,
                     videoStatus: 'pending' as const,
                   }

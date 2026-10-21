@@ -86,8 +86,21 @@ export function liveReferenceIdentity(input: {
  */
 export function referenceKeysMoved(
   stamped: readonly string[] | undefined,
-  live: ReadonlyMap<string, string>
+  live: ReadonlyMap<string, string>,
+  /**
+   * Entities a render of this shot would be sent now (`kind:entityId`, from
+   * `resolveShotReferences`). A stamped key for an entity that still exists
+   * but is outside the set was attached by a render that read the scene
+   * roster (#2012); a re-render would not send it, so its moving does not
+   * stale the clip. A stamped entity that is gone always does.
+   */
+  referenced: ReadonlySet<string>
 ): boolean {
   if (!stamped) return false;
-  return stamped.some((key) => live.get(referenceEntityKey(key)) !== key);
+  return stamped.some((key) => {
+    const entity = referenceEntityKey(key);
+    const now = live.get(entity);
+    if (now === undefined) return true;
+    return referenced.has(entity) && now !== key;
+  });
 }

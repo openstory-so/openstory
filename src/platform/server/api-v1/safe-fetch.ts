@@ -32,8 +32,11 @@ import {
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20 MB
 
-/** Wall-clock budget for one image fetch, including redirect hops. */
+/** Wall-clock budget per hop until the response headers arrive; the body is unbounded. */
 export const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
+/** Wall-clock budget for reading a 2xx body (a 500 MB clip at ~1 MB/s). */
+export const MEDIA_BODY_TIMEOUT_MS = 10 * 60_000;
 
 /** Max 3xx hops; each hop is re-checked by {@link assertSafeImageUrl}. */
 export const MAX_IMAGE_REDIRECTS = 3;
@@ -141,15 +144,15 @@ export function assertSafeImageUrl(
 }
 
 /**
- * Fetch a caller-supplied image URL safely. Validates the host, follows a
- * bounded number of redirects to hosts that still pass {@link assertSafeImageUrl},
- * enforces an image Content-Type from the response, and caps size.
- * Returns the bytes, the validated content type, and its file extension.
+ * Open a caller-supplied URL safely: validate the host, follow a bounded
+ * number of redirects to hosts that still pass {@link assertSafeImageUrl},
+ * and return the final 2xx response with its body unread. The caller checks
+ * the content type and size.
  */
-async function fetchSafeImage(
+export async function openSafeUrl(
   rawUrl: string,
   label: string = DEFAULT_IMAGE_LABEL
-): Promise<{ bytes: Uint8Array; contentType: string; extension: string }> {
+): Promise<Response> {
   let current = rawUrl;
 
   for (let hops = 0; hops <= MAX_IMAGE_REDIRECTS; hops++) {
@@ -163,11 +166,19 @@ async function fetchSafeImage(
       throw error;
     }
 
+    // The budget covers connect, redirect and headers only: an aborted fetch
+    // signal also tears down the response body, which a caller may stream
+    // into a bucket for far longer than the budget (a 500 MB clip).
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(new DOMException('timeout', 'TimeoutError')),
+      IMAGE_FETCH_TIMEOUT_MS
+    );
     let res: Response;
     try {
       res = await fetch(url, {
         redirect: 'manual',
-        signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS),
+        signal: controller.signal,
       });
     } catch (error) {
       throw fetchFailed(
@@ -175,6 +186,8 @@ async function fetchSafeImage(
         rawUrl,
         isTimeoutError(error) ? 'timeout' : undefined
       );
+    } finally {
+      clearTimeout(timer);
     }
 
     if (REDIRECT_STATUSES.has(res.status)) {
@@ -190,35 +203,63 @@ async function fetchSafeImage(
     }
 
     if (!res.ok) {
+      void res.body?.cancel();
       throw fetchFailed(label, rawUrl);
     }
-
-    const contentType =
-      (res.headers.get('content-type') ?? '')
-        .split(';')[0]
-        ?.trim()
-        .toLowerCase() ?? '';
-    const extension = ALLOWED_IMAGE_TYPES[contentType];
-    if (!extension) {
-      throw new ValidationError(
-        `${label} must be a PNG, JPEG, WebP, GIF, or AVIF.`
-      );
-    }
-
-    const declaredLength = Number(res.headers.get('content-length'));
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
-      throw new ValidationError(`${label} is too large (max 20 MB).`);
-    }
-
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength > MAX_IMAGE_BYTES) {
-      throw new ValidationError(`${label} is too large (max 20 MB).`);
-    }
-
-    return { bytes, contentType, extension };
+    // The body gets its own, longer budget: a host that trickles a 500 MB
+    // clip for hours would otherwise hold the request open for good. Once
+    // the body is consumed the abort is a no-op.
+    setTimeout(
+      () => controller.abort(new DOMException('timeout', 'TimeoutError')),
+      MEDIA_BODY_TIMEOUT_MS
+    );
+    return res;
   }
 
   throw fetchFailed(label, rawUrl, 'redirect blocked');
+}
+
+/** A response's media type, lower-cased and without parameters. */
+export function responseContentType(res: Response): string {
+  return (
+    (res.headers.get('content-type') ?? '')
+      .split(';')[0]
+      ?.trim()
+      .toLowerCase() ?? ''
+  );
+}
+
+/**
+ * Fetch a caller-supplied image URL safely ({@link openSafeUrl}), enforce an
+ * image Content-Type from the response, and cap size. Returns the bytes, the
+ * validated content type, and its file extension.
+ */
+async function fetchSafeImage(
+  rawUrl: string,
+  label: string = DEFAULT_IMAGE_LABEL
+): Promise<{ bytes: Uint8Array; contentType: string; extension: string }> {
+  const res = await openSafeUrl(rawUrl, label);
+  const contentType = responseContentType(res);
+  const extension = ALLOWED_IMAGE_TYPES[contentType];
+  if (!extension) {
+    void res.body?.cancel();
+    throw new ValidationError(
+      `${label} must be a PNG, JPEG, WebP, GIF, or AVIF.`
+    );
+  }
+
+  const declaredLength = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) {
+    void res.body?.cancel();
+    throw new ValidationError(`${label} is too large (max 20 MB).`);
+  }
+
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new ValidationError(`${label} is too large (max 20 MB).`);
+  }
+
+  return { bytes, contentType, extension };
 }
 
 export type IngestedImage = {

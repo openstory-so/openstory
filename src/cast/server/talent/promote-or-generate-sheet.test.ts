@@ -5,6 +5,7 @@ import {
   libraryTalentGenerateDedupId,
   libraryTalentUploadDedupId,
 } from './library-talent-sheet-dedup';
+import { asStub } from '@/test/as-stub';
 
 type TriggerOptions = { deduplicationId?: string };
 
@@ -21,7 +22,13 @@ const mockEmit = vi.fn();
 
 vi.doMock('@/platform/server/workflow/client', () => ({
   triggerWorkflow: mockTriggerWorkflow,
+  triggerWorkflowRun: async (
+    ...args: Parameters<typeof mockTriggerWorkflow>
+  ) => ({ workflowRunId: await mockTriggerWorkflow(...args), reused: false }),
 }));
+const sheetClaim = {
+  claimSheet: vi.fn(async () => true),
+};
 vi.doMock('@/platform/realtime', () => ({
   getTalentChannel: () => ({ emit: mockEmit }),
 }));
@@ -64,12 +71,13 @@ function talentRow(opts: {
 }
 
 function scopedDb(row: ReturnType<typeof talentRow>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub covering only getWithRelations
-  return {
+  // stub covering only getWithRelations
+  return asStub<ScopedDb>({
     talent: {
+      ...sheetClaim,
       getWithRelations: vi.fn(async () => row),
     },
-  } as unknown as ScopedDb;
+  });
 }
 
 function lastTrigger() {

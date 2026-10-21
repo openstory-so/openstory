@@ -17,6 +17,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import type { Frame, Shot } from '@/platform/server/db/schema';
+import { asStub } from '@/test/as-stub';
 
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: async () => ({}),
@@ -32,6 +33,7 @@ const { prepareShotImageWorkflowInput } = await import('./shot-image-input');
 const FRAME_ID = 'frm_1';
 
 function makeScopedDb() {
+  const writePrompt = vi.fn(async () => ({ id: 'fpv_user_edit' }));
   const getSelectedPrompt = vi.fn(async () => ({
     id: 'fpv_selected',
     text: 'Stored prompt',
@@ -39,24 +41,31 @@ function makeScopedDb() {
   const getSelectedVariant = vi.fn(async () => ({ model: 'flux_2_max' }));
   const getLastFailed = vi.fn(async () => ({ model: 'seedream_v5' }));
   const stub = {
-    framePromptVersions: { getSelected: getSelectedPrompt },
+    framePromptVersions: { getSelected: getSelectedPrompt, write: writePrompt },
     frameVariants: {
       getSelected: getSelectedVariant,
       getLastFailed,
     },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal stub: the mocks above remove every other scopedDb consumer
-  const scopedDb = stub as unknown as Parameters<
-    typeof prepareShotImageWorkflowInput
-  >[0]['scopedDb'];
-  return { scopedDb, getSelectedPrompt, getSelectedVariant, getLastFailed };
+  // minimal stub: the mocks above remove every other scopedDb consumer
+  const scopedDb =
+    asStub<Parameters<typeof prepareShotImageWorkflowInput>[0]['scopedDb']>(
+      stub
+    );
+  return {
+    scopedDb,
+    getSelectedPrompt,
+    getSelectedVariant,
+    getLastFailed,
+    writePrompt,
+  };
 }
 
 function baseArgs(scopedDb: ReturnType<typeof makeScopedDb>['scopedDb']) {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `id` is read off the shot on this path
-  const shot = { id: 'sht_1' } as unknown as Shot;
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only `id` is read off the frame
-  const frame = { id: FRAME_ID } as unknown as Frame;
+  // only `id` is read off the shot on this path
+  const shot = asStub<Shot>({ id: 'sht_1' });
+  // only `id` is read off the frame
+  const frame = asStub<Frame>({ id: FRAME_ID });
   return {
     scopedDb,
     sequence: {
@@ -150,9 +159,9 @@ describe('prepareShotImageWorkflowInput still reads what it does consume', () =>
   });
 
   it('a claimed user edit reads the selection to check it is not a no-op edit', async () => {
-    const { scopedDb, getSelectedPrompt } = makeScopedDb();
+    const { scopedDb, getSelectedPrompt, writePrompt } = makeScopedDb();
 
-    await prepareShotImageWorkflowInput({
+    const input = await prepareShotImageWorkflowInput({
       ...baseArgs(scopedDb),
       promptOverride: 'Hand-typed prompt',
       promptVersionOverride: 'fpv_from_caller',
@@ -161,6 +170,14 @@ describe('prepareShotImageWorkflowInput still reads what it does consume', () =>
     });
 
     expect(getSelectedPrompt).toHaveBeenCalledWith(FRAME_ID);
+    // The edit lands at the click, and the run renders from that row (#1786).
+    expect(writePrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Hand-typed prompt',
+        source: 'user-edit',
+      })
+    );
+    expect(input.promptVersionId).toBe('fpv_user_edit');
   });
 
   it('an override naming a retired model still falls through to the variant reads', async () => {
@@ -173,10 +190,10 @@ describe('prepareShotImageWorkflowInput still reads what it does consume', () =>
       ...baseArgs(scopedDb),
       promptOverride: 'Prompt resolved by the caller',
       promptVersionOverride: 'fpv_from_caller',
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- simulating an id retired from the catalog since the row was written
-      modelOverride: 'model_retired_from_catalog' as Parameters<
-        typeof prepareShotImageWorkflowInput
-      >[0]['modelOverride'],
+      // simulating an id retired from the catalog since the row was written
+      modelOverride: asStub<
+        Parameters<typeof prepareShotImageWorkflowInput>[0]['modelOverride']
+      >('model_retired_from_catalog'),
     });
 
     expect(getSelectedVariant).toHaveBeenCalledWith(FRAME_ID);

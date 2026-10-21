@@ -8,6 +8,7 @@ import type { AutoStyleResponse } from '@/look/auto-style';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
+import { asStub } from '@/test/as-stub';
 
 const durableLLMCallCf = vi.fn();
 vi.doMock('@/models/server/llm-call-helper', () => ({ durableLLMCallCf }));
@@ -19,10 +20,10 @@ vi.doMock('@/platform/realtime', () => ({
 
 const { deriveAutoStyle } = await import('./auto-style-step');
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: the step only uses `do`
-const step = {
+// minimal WorkflowStep stub: the step only uses `do`
+const step = asStub<WorkflowStep>({
   do: async <T>(_name: string, fn: () => Promise<T>) => fn(),
-} as unknown as WorkflowStep;
+});
 
 const RESPONSE: AutoStyleResponse = {
   name: 'Rain-slick Neon Noir',
@@ -49,8 +50,8 @@ function makeScopedDb(bound: boolean, stillSelected = true) {
     styles: { setGeneratedForSequence },
     sequences: { snapshotAutoStyle },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- only the two writes the step performs
-  const scopedDb = stub as unknown as WorkflowScopedDb;
+  // only the two writes the step performs
+  const scopedDb = asStub<WorkflowScopedDb>(stub);
   return { scopedDb, setGeneratedForSequence, snapshotAutoStyle };
 }
 
@@ -60,7 +61,7 @@ const PARAMS = {
   styleId: 'style_auto',
   script: 'INT. HALLWAY — NIGHT',
   aspectRatio: '16:9' as const,
-  analysisModelId: 'anthropic/claude-sonnet-5' as const,
+  analysisModelId: 'anthropic/claude-sonnet-5.5' as const,
 };
 
 describe('deriveAutoStyle', () => {
@@ -94,7 +95,7 @@ describe('deriveAutoStyle', () => {
     expect(callConfig).toMatchObject({
       name: 'automatic-style',
       promptName: 'phase/automatic-style-chat',
-      modelId: 'anthropic/claude-sonnet-5',
+      modelId: 'anthropic/claude-sonnet-5.5',
       promptVariables: {
         script: 'INT. HALLWAY — NIGHT',
         categories: expect.stringContaining('film, commercial'),

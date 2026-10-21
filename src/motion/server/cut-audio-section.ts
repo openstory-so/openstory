@@ -1,19 +1,20 @@
 /**
- * Cut one section of a dialogue recording to its own file (#1657).
+ * Cut one section of a dialogue speech to its own file (#1657).
  *
- * A shot's reading is a time range of a recording (`shot_dialogue_sections`),
+ * A shot's reading is a time range of a speech (`shot_dialogue_sections`),
  * but a video model needs a file URL — so the selected section is materialised
- * here. The file is a CACHE: its key is derived from the recording and the
+ * here. The file is a CACHE: its key is derived from the speech and the
  * range, so cutting the same section twice is a 4 KiB ranged header read plus
  * a `head`, and nothing but `shots.audioClips` ever holds its URL.
  *
- * It never loads the recording. The header comes from a 4 KiB ranged read,
+ * It never loads the speech. The header comes from a 4 KiB ranged read,
  * the byte range is arithmetic, and the samples go from one R2 object to the
  * other as a stream — a fresh 44-byte header, the ranged body, then silence
  * up to the provider's floor in small blocks. Peak memory is the header plus
- * one block, whatever the recording weighs.
+ * one block, whatever the speech weighs.
  */
 
+import { clipSpeechId } from '@/shots/shot-dialogue';
 import {
   AUDIO_MIN_PAD_SLACK_SECONDS,
   parseWavHeader,
@@ -27,6 +28,7 @@ import {
 } from '@/platform/server/storage/buckets';
 import { fileExists, readStorageObject, readStorageStream } from '#storage';
 import { uploadResponse } from '@/platform/server/storage/upload-response';
+import type { MotionAudioClip } from '@/platform/server/db/schema';
 
 /** Enough for any header ElevenLabs writes (`fmt `, optional `LIST`, `data`). */
 const HEADER_PROBE_BYTES = 4096;
@@ -34,9 +36,9 @@ const HEADER_PROBE_BYTES = 4096;
 const PAD_BLOCK_BYTES = 16 * 1024;
 
 export type CutAudioSectionInput = {
-  /** `<bucket>/<path>` of the whole recording (`dialogue_recordings.storageKey`). */
+  /** `<bucket>/<path>` of the whole speech (`dialogue_speeches.storageKey`). */
   storageKey: string;
-  recordingId: string;
+  speechId: string;
   teamId: string;
   sequenceId: string;
   fromSeconds: number;
@@ -57,7 +59,7 @@ export async function cutAudioSection(
   input: CutAudioSectionInput
 ): Promise<CutAudioSection> {
   const ms = (seconds: number) => Math.round(seconds * 1000);
-  const path = `${input.teamId}/${input.sequenceId}/dialogue-sections/${input.recordingId}_${ms(input.fromSeconds)}_${ms(input.toSeconds)}_${ms(input.minDurationSeconds ?? 0)}.wav`;
+  const path = `${input.teamId}/${input.sequenceId}/dialogue-sections/${input.speechId}_${ms(input.fromSeconds)}_${ms(input.toSeconds)}_${ms(input.minDurationSeconds ?? 0)}.wav`;
 
   const probe = await readStorageObject(input.storageKey, {
     offset: 0,
@@ -65,7 +67,7 @@ export async function cutAudioSection(
   });
   if (!probe) {
     throw new Error(
-      `Dialogue recording ${input.storageKey} is missing from storage`
+      `Dialogue speech ${input.storageKey} is missing from storage`
     );
   }
   const fmt = parseWavHeader(probe.bytes);
@@ -101,7 +103,7 @@ export async function cutAudioSection(
     path: buildR2Key(STORAGE_BUCKETS.AUDIO, path),
     durationSeconds: dataBytes / bytesPerSecond,
   };
-  // The key names the recording and the range, so a file that is there IS
+  // The key names the speech and the range, so a file that is there IS
   // this cut — and its length is the arithmetic above, no read needed.
   if (await fileExists(STORAGE_BUCKETS.AUDIO, path)) return cut;
 
@@ -111,12 +113,12 @@ export async function cutAudioSection(
   });
   if (!source) {
     throw new Error(
-      `Dialogue recording ${input.storageKey} is missing from storage`
+      `Dialogue speech ${input.storageKey} is missing from storage`
     );
   }
   if (source.size !== sectionBytes) {
     throw new Error(
-      `Dialogue recording ${input.storageKey} is shorter than its header says (${source.size} of ${sectionBytes} bytes)`
+      `Dialogue speech ${input.storageKey} is shorter than its header says (${source.size} of ${sectionBytes} bytes)`
     );
   }
 
@@ -170,4 +172,88 @@ function composeWav(
     },
     cancel: (reason) => reader.cancel(reason),
   });
+}
+
+/**
+ * A packed clip's dialogue is one longer section of the scene's speech
+ * (#1794): from the first member's start to the last member's end. Sending
+ * each member's own section instead plays the overlap between neighbours
+ * twice, and counts it twice against the model's combined cap. The longer
+ * section is never longer than the speech, which was fit to the cap.
+ *
+ * Only the wire changes — each shot keeps its own clip. Consecutive clips
+ * from one speech are spanned; a run whose sections cannot be read, or
+ * are not in speech order, is sent as it was.
+ */
+export async function cutSpanningSection(
+  clips: readonly MotionAudioClip[],
+  input: {
+    teamId: string;
+    sequenceId: string;
+    minDurationSeconds?: number;
+    getSection: (id: string) => Promise<{
+      fromSeconds: number;
+      toSeconds: number;
+      speech: { storageKey: string };
+    } | null>;
+  }
+): Promise<MotionAudioClip[]> {
+  const out: MotionAudioClip[] = [];
+  for (const run of sharedSpeechRuns(clips)) {
+    const first = run[0];
+    const speechId = first && clipSpeechId(first);
+    if (run.length < 2 || !first || !speechId) {
+      out.push(...run);
+      continue;
+    }
+    const sections = await Promise.all(
+      run.map((clip) => input.getSection(clip.id))
+    );
+    const ordered = sections.every(
+      (section, at) =>
+        section &&
+        (at === 0 ||
+          section.fromSeconds >= (sections[at - 1]?.fromSeconds ?? 0))
+    );
+    const head = sections[0];
+    const tail = sections.at(-1);
+    if (!ordered || !head || !tail) {
+      out.push(...run);
+      continue;
+    }
+    const cut = await cutAudioSection({
+      storageKey: head.speech.storageKey,
+      speechId,
+      teamId: input.teamId,
+      sequenceId: input.sequenceId,
+      fromSeconds: head.fromSeconds,
+      toSeconds: tail.toSeconds,
+      minDurationSeconds: input.minDurationSeconds,
+    });
+    out.push({
+      id: run.map((clip) => clip.id).join('+'),
+      url: cut.url,
+      token: first.token,
+      durationSeconds: cut.durationSeconds,
+      speechId,
+    });
+  }
+  return out;
+}
+
+/** Consecutive clips cut from the same speech, in order. */
+function sharedSpeechRuns(
+  clips: readonly MotionAudioClip[]
+): MotionAudioClip[][] {
+  const runs: MotionAudioClip[][] = [];
+  for (const clip of clips) {
+    const last = runs.at(-1);
+    const speechId = clipSpeechId(clip);
+    if (last?.[0] && speechId && clipSpeechId(last[0]) === speechId) {
+      last.push(clip);
+    } else {
+      runs.push([clip]);
+    }
+  }
+  return runs;
 }

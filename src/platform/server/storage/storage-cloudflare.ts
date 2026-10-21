@@ -320,7 +320,7 @@ export async function readStorageObject(
 
 /**
  * A byte range of a storage object as a STREAM, by key (`<bucket>/<path>`). For a consumer that pipes the bytes somewhere else
- * (cutting a section out of a dialogue recording) and must never hold the
+ * (cutting a section out of a dialogue speech) and must never hold the
  * object in memory. `size` is the length of what `body` will deliver.
  */
 export async function readStorageStream(

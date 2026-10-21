@@ -66,13 +66,20 @@ export const TALENT_CASE = {
       physicalDescription:
         '5\'6", lean, shoulder-length dark brown hair, olive-tan skin, dark brown eyes.',
       standardClothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
-      distinguishingFeatures:
-        'Signature glossy coral lipstick, gold hoop earrings.',
+      looks: [
+        {
+          lookId: 'default',
+          name: 'Default',
+          clothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
+          styling: 'Signature glossy coral lipstick, gold hoop earrings.',
+        },
+      ],
       personality: 'Sharp, self-possessed, performs ease for the camera.',
       movement: 'Quick precise hands, chin up, never hurries her feet.',
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'scarlett_vega',
     },
     {
@@ -82,15 +89,22 @@ export const TALENT_CASE = {
       gender: 'Male',
       ethnicity: 'White',
       physicalDescription:
-        '6\'1", broad-shouldered, salt-and-pepper stubble, short grey-brown hair.',
+        '6\'1", broad-shouldered, salt-and-pepper stubble, short grey-brown hair, a scar through the left eyebrow.',
       standardClothing: 'Navy chore coat over a faded tee, work jeans.',
-      distinguishingFeatures:
-        'Scar through the left eyebrow, scuffed silver watch.',
+      looks: [
+        {
+          lookId: 'default',
+          name: 'Default',
+          clothing: 'Navy chore coat over a faded tee, work jeans.',
+          styling: 'Scuffed silver watch.',
+        },
+      ],
       personality: 'Guarded, dry, slow to trust.',
       movement: 'Heavy deliberate stride, favours the left knee.',
       voiceDescription: '',
       voiceOnly: false,
       isPerson: true,
+      rendering: 'Photoreal live action',
       consistencyTag: 'jack_cole',
     },
   ] satisfies CharacterBibleEntry[],
@@ -123,14 +137,12 @@ export const LOCATION_CASE = {
       locationId: 'loc_office',
       name: 'INT. MODERN OFFICE - DAY',
       type: 'interior',
-      timeOfDay: 'day',
       description:
         'Open-plan glass office with white desks, monitor glow, city view through floor-to-ceiling windows.',
       architecturalStyle: 'Contemporary glass-and-steel corporate',
       keyFeatures: 'Glass walls, white desks, skyline view',
-      colorPalette: 'white, cool grey, skyline blue',
-      lightingSetup: 'Daylight through floor-to-ceiling glass',
       ambiance: 'Bright, professional, hushed',
+      rendering: 'Photoreal live action',
       consistencyTag: 'office_modern_glass',
       firstMention: {
         text: 'INT. MODERN OFFICE - DAY',
@@ -142,14 +154,12 @@ export const LOCATION_CASE = {
       locationId: 'loc_park',
       name: 'EXT. CITY PARK - LATE AFTERNOON',
       type: 'exterior',
-      timeOfDay: 'late afternoon',
       description:
         'A downtown park with gravel paths, plane trees, and a stone fountain in warm low sun.',
       architecturalStyle: 'Municipal park landscape',
       keyFeatures: 'Gravel paths, plane trees, stone fountain',
-      colorPalette: 'warm green, stone, late-afternoon gold',
-      lightingSetup: 'Low sun through plane trees',
       ambiance: 'Open, warm, public',
+      rendering: 'Photoreal live action',
       consistencyTag: 'park_city_afternoon',
       firstMention: {
         text: 'EXT. CITY PARK - LATE AFTERNOON',
@@ -161,14 +171,12 @@ export const LOCATION_CASE = {
       locationId: 'loc_subway',
       name: 'INT. SUBWAY PLATFORM - NIGHT',
       type: 'interior',
-      timeOfDay: 'night',
       description:
         'Deep underground express platform: tiled columns, yellow edge strip, a dark tunnel mouth.',
       architecturalStyle: 'Early 20th-century mass-transit',
       keyFeatures: 'Tiled columns, yellow platform edge, tunnel mouth',
-      colorPalette: 'institutional green, white tile, yellow strip',
-      lightingSetup: 'Overhead fluorescents, train-strobe reflections',
       ambiance: 'Loud, rushing, subterranean',
+      rendering: 'Photoreal live action',
       consistencyTag: 'subway_platform_night',
       firstMention: {
         text: 'INT. SUBWAY PLATFORM - NIGHT',
@@ -217,8 +225,6 @@ export type EvalGold = {
   aspectRatio: '16:9';
   /** Scene used for visual + motion (dialogue beat, not the title card). */
   focusScene: Scene;
-  sceneBefore: Scene | null;
-  sceneAfter: Scene | null;
   startingFrameDataUri: string;
   screenplayHeadingStarts: number[];
 };
@@ -264,8 +270,6 @@ export function loadEvalGold(): EvalGold {
     styleConfig: style,
     aspectRatio: '16:9',
     focusScene,
-    sceneBefore: sceneAt(scenes, focusIndex - 1),
-    sceneAfter: sceneAt(scenes, focusIndex + 1),
     startingFrameDataUri,
     screenplayHeadingStarts: headingStarts(replayed.script),
   };

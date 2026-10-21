@@ -1,0 +1,1 @@
+ALTER TABLE `scene_script_versions` ADD `narrative_backfilled` integer DEFAULT true NOT NULL;

@@ -1045,15 +1045,17 @@ export async function runProdSetup(mode: ProdSetupMode) {
     process.exit(0);
   });
 
-  function checkCancel<T>(value: T | symbol): T {
-    // isCancel is `value is typeof CANCEL_SYMBOL` (a unique symbol), which
-    // does not exclude the rest of `symbol` from `T | symbol`.
-    if (p.isCancel(value) || typeof value === 'symbol') {
-      saveProgress();
-      p.cancel(`Setup cancelled. Progress saved to ${ENV_FILENAME}`);
-      process.exit(0);
-    }
-    return value;
+  // @clack/prompts >=1.8.1 types a cancel as `T | unique symbol`, which a
+  // `T | symbol` parameter infers straight into T; exclude it explicitly.
+  function isAnswer<T>(value: T): value is Exclude<T, symbol> {
+    return typeof value !== 'symbol';
+  }
+
+  function checkCancel<T>(value: T): Exclude<T, symbol> {
+    if (isAnswer(value)) return value;
+    saveProgress();
+    p.cancel(`Setup cancelled. Progress saved to ${ENV_FILENAME}`);
+    process.exit(0);
   }
 
   // --pr-preview: push secrets to GitHub staging environment for PR previews
@@ -1645,7 +1647,6 @@ export async function runProdSetup(mode: ProdSetupMode) {
         'Events to enable:',
         '  - checkout.session.completed',
         '  - checkout.session.expired',
-        '  - setup_intent.succeeded',
         '  - payment_intent.succeeded',
         '  - payment_intent.payment_failed',
         '  - payment_intent.canceled',

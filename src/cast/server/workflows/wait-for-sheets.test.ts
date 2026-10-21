@@ -1,9 +1,9 @@
 /**
  * Tests for the matching-workflow sheet-wait helpers.
  *
- * These close the race where a newly-added talent/location's sheet generation
- * (fire-and-forget `/library-talent-sheet` / `/library-location-sheet`) hasn't
- * finished when `talent-matching` / `location-matching` reads the row. The wait
+ * These close the race where a newly-added talent's sheet generation
+ * (fire-and-forget `/library-talent-sheet`) hasn't finished when
+ * `talent-matching` reads the row. The wait
  * must: short-circuit when everything is already ready, poll across durable
  * steps until pending entities become ready, and give up (best-effort) after a
  * bounded number of attempts so a failed sheet can't stall the pipeline.
@@ -12,11 +12,8 @@
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { WorkflowStep } from 'cloudflare:workers';
 import { describe, expect, test, vi } from 'vitest';
-import {
-  waitForElementVision,
-  waitForLocationReferences,
-  waitForTalentSheets,
-} from './wait-for-sheets';
+import { waitForElementVision, waitForTalentSheets } from './wait-for-sheets';
+import { asStub } from '@/test/as-stub';
 
 /**
  * Minimal `step` stub. `do` runs the durable callback once (one engine
@@ -29,27 +26,21 @@ function fakeStep(): {
 } {
   const doSpy = vi.fn((_name: string, fn: () => Promise<unknown>) => fn());
   const sleepSpy = vi.fn(async () => undefined);
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal WorkflowStep stub: helper only uses `do` and `sleep`
-  const step = { do: doSpy, sleep: sleepSpy } as unknown as WorkflowStep;
+  // minimal WorkflowStep stub: helper only uses `do` and `sleep`
+  const step = asStub<WorkflowStep>({ do: doSpy, sleep: sleepSpy });
   return { step, doSpy, sleepSpy };
 }
 
 /** ScopedDb stub exposing only `talent.getByIds`. */
 function talentDb(getByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reaches scopedDb.talent.getByIds
-  return { talent: { getByIds } } as unknown as ScopedDb;
-}
-
-/** ScopedDb stub exposing only `locations.getByIds`. */
-function locationDb(getByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reaches scopedDb.locations.getByIds
-  return { locations: { getByIds } } as unknown as ScopedDb;
+  // helper only reaches scopedDb.talent.getByIds
+  return asStub<ScopedDb>({ talent: { getByIds } });
 }
 
 /** ScopedDb stub exposing `sequenceElements.listByIds`. */
 function elementDb(listByIds: ReturnType<typeof vi.fn>): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only reaches scopedDb.sequenceElements.listByIds
-  return { sequenceElements: { listByIds } } as unknown as ScopedDb;
+  // helper only reaches scopedDb.sequenceElements.listByIds
+  return asStub<ScopedDb>({ sequenceElements: { listByIds } });
 }
 
 describe('waitForTalentSheets', () => {
@@ -201,59 +192,6 @@ describe('waitForTalentSheets', () => {
   });
 });
 
-describe('waitForLocationReferences', () => {
-  test('returns ready immediately for no ids', async () => {
-    const { step } = fakeStep();
-    const getByIds = vi.fn();
-
-    const result = await waitForLocationReferences(
-      step,
-      locationDb(getByIds),
-      []
-    );
-
-    expect(result).toMatchObject({ ready: true, pendingIds: [], rows: [] });
-    expect(getByIds).not.toHaveBeenCalled();
-  });
-
-  test('short-circuits when every location has a reference image', async () => {
-    const { step, sleepSpy } = fakeStep();
-    const getByIds = vi.fn(async () => [
-      { id: 'l1', referenceImageUrl: 'https://cdn/l1.png' },
-    ]);
-
-    const result = await waitForLocationReferences(step, locationDb(getByIds), [
-      'l1',
-    ]);
-
-    expect(result).toMatchObject({ ready: true, pendingIds: [] });
-    expect(getByIds).toHaveBeenCalledTimes(1);
-    expect(sleepSpy).not.toHaveBeenCalled();
-  });
-
-  test('polls until the reference image is written, returning the resolved rows', async () => {
-    const { step, sleepSpy } = fakeStep();
-    const getByIds = vi
-      .fn()
-      .mockResolvedValueOnce([{ id: 'l1', referenceImageUrl: null }])
-      .mockResolvedValueOnce([
-        { id: 'l1', referenceImageUrl: 'https://cdn/l1.png' },
-      ]);
-
-    const result = await waitForLocationReferences(step, locationDb(getByIds), [
-      'l1',
-    ]);
-
-    expect(result).toMatchObject({
-      ready: true,
-      pendingIds: [],
-      rows: [{ id: 'l1', referenceImageUrl: 'https://cdn/l1.png' }],
-    });
-    expect(getByIds).toHaveBeenCalledTimes(2);
-    expect(sleepSpy).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe('waitForElementVision', () => {
   test('short-circuits without polling when no element is in flight', async () => {
     const { step, sleepSpy } = fakeStep();
@@ -296,6 +234,12 @@ describe('waitForElementVision', () => {
     expect(listByIds).toHaveBeenNthCalledWith(1, ['e1', 'e2']);
     expect(listByIds).toHaveBeenLastCalledWith(['e2']);
     expect(sleepSpy).toHaveBeenCalledTimes(1);
+    // Every element the wait read, the in-flight one at its final poll —
+    // the caller loads these instead of reading again (#1113).
+    expect(result.rows).toEqual([
+      { id: 'e1', visionStatus: 'completed' },
+      { id: 'e2', visionStatus: 'completed' },
+    ]);
   });
 
   test('scans only the trigger-time set, never the live sequence', async () => {

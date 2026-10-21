@@ -140,12 +140,14 @@ function variantInput(
   overrides: Partial<Omit<NewFrameVariant, 'inputHash'>> & {
     inputHash?: ShotImageInputHash | null;
   } = {}
-): Omit<NewFrameVariant, 'inputHash'> & {
+): Omit<NewFrameVariant, 'inputHash' | 'isPrimary'> & {
   inputHash?: ShotImageInputHash | null;
+  isPrimary: boolean;
 } {
   return {
     frameId,
     sequenceId,
+    isPrimary: true,
     kind: 'model',
     model: 'nano_banana_2',
     status: 'completed',
@@ -248,10 +250,9 @@ describe('frameVariants.select', () => {
       .from(frames)
       .where(eq(frames.id, frameId));
     if (!frame) throw new Error('test setup: refresh failed');
-    // #1067: selecting moves the POINTER (plus the primary-render status);
-    // the url/path/model/hash are read off the version, never copied down.
+    // #1067: selecting moves the POINTER; the url/path/model/hash are read
+    // off the version, never copied down.
     expect(frame.selectedImageVersionId).toBe(v2.id);
-    expect(frame.imageStatus).toBe('completed');
     const selected = await m.getSelected(frameId);
     expect(selected?.url).toBe('https://cdn/v2.png');
     expect(selected?.storagePath).toBe('r2/v2.png');
@@ -531,6 +532,111 @@ describe('frameVariants.selectIfPendingPromoteIs (#1070)', () => {
     expect(frame?.pendingPromoteVersionId).toBe(newer.id);
   });
 
+  it('a manual pick made mid-run wins over the late completion (#1786)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const picked = await m.appendVersion(variantInput());
+    const late = await m.appendVersion(variantInput());
+    await db
+      .update(frames)
+      .set({ pendingPromoteVersionId: late.id })
+      .where(eq(frames.id, frameId));
+    await m.select(frameId, picked.id, { actorId: null });
+
+    expect(
+      await m.selectIfPendingPromoteIs(frameId, late.id, { actorId: null })
+    ).toBeNull();
+    const [frame] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    expect(frame?.selectedImageVersionId).toBe(picked.id);
+  });
+
+  it('a won promote mirrors the still and restores its prompt (#1786)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const [prompt] = await db
+      .insert(framePromptVersions)
+      .values({ frameId, text: 'Softened prompt', source: 'softened' })
+      .returning();
+    if (!prompt) throw new Error('test setup: prompt insert failed');
+    const v = await m.appendVersion(
+      variantInput({ promptVersionId: prompt.id })
+    );
+    await db
+      .update(frames)
+      .set({ pendingPromoteVersionId: v.id })
+      .where(eq(frames.id, frameId));
+
+    await m.selectIfPendingPromoteIs(frameId, v.id, { actorId: null });
+
+    const [frame] = await db
+      .select()
+      .from(frames)
+      .where(eq(frames.id, frameId));
+    expect(frame?.selectedImageVersionId).toBe(v.id);
+    expect(frame?.selectedImagePromptVersionId).toBe(prompt.id);
+    expect(frame?.pendingPromoteVersionId).toBeNull();
+  });
+
+  it('a retried promote that already landed reads as won, with one event (#1786)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const v = await m.appendVersion(variantInput());
+    await db
+      .update(frames)
+      .set({ pendingPromoteVersionId: v.id })
+      .where(eq(frames.id, frameId));
+
+    await m.selectIfPendingPromoteIs(frameId, v.id, { actorId: null });
+    const retried = await m.selectIfPendingPromoteIs(frameId, v.id, {
+      actorId: null,
+    });
+
+    expect(retried?.id).toBe(v.id);
+    const events = await db
+      .select()
+      .from(sequenceEvents)
+      .where(eq(sequenceEvents.kind, 'image.selected'));
+    expect(events).toHaveLength(1);
+  });
+
+  it('a lost promote writes no event and keeps a queued prompt regeneration (#1786)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const [prompt] = await db
+      .insert(framePromptVersions)
+      .values({ frameId, text: 'Pinned prompt', source: 'ai-generated' })
+      .returning();
+    if (!prompt) throw new Error('test setup: prompt insert failed');
+    const late = await m.appendVersion(
+      variantInput({ promptVersionId: prompt.id })
+    );
+    const newer = await m.appendVersion(variantInput());
+    const [queued] = await db
+      .insert(framePromptVersions)
+      .values({
+        frameId,
+        text: '',
+        source: 'ai-generated',
+        status: 'generating',
+        pendingInputHash: 'regen-hash',
+      })
+      .returning();
+    if (!queued) throw new Error('test setup: regeneration insert failed');
+    await db
+      .update(frames)
+      .set({ pendingPromoteVersionId: newer.id })
+      .where(eq(frames.id, frameId));
+
+    expect(
+      await m.selectIfPendingPromoteIs(frameId, late.id, { actorId: null })
+    ).toBeNull();
+    expect(await db.select().from(sequenceEvents)).toHaveLength(0);
+    const [regen] = await db
+      .select()
+      .from(framePromptVersions)
+      .where(eq(framePromptVersions.id, queued.id));
+    expect(regen?.pendingInputHash).toBe('regen-hash');
+  });
+
   it('does not select when no promote claim is held at all', async () => {
     const m = createFrameVariantsMethods(db);
     const v = await m.appendVersion(variantInput());
@@ -773,25 +879,6 @@ describe('frameVariants.listLastFailedModelsBySequence (#1066)', () => {
   });
 });
 
-describe('frameVariants.isStale', () => {
-  it('throws when the version does not exist', async () => {
-    const m = createFrameVariantsMethods(db);
-    await expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
-  });
-
-  it('null stored hash → not stale; match → not stale; differ → stale', async () => {
-    const m = createFrameVariantsMethods(db);
-    const noHash = await m.appendVersion(variantInput({ inputHash: null }));
-    expect(await m.isStale(noHash.id, 'anything')).toBe(false);
-
-    const hashed = await m.appendVersion(
-      variantInput({ inputHash: shotImageInputHash('h-match') })
-    );
-    expect(await m.isStale(hashed.id, 'h-match')).toBe(false);
-    expect(await m.isStale(hashed.id, 'h-new')).toBe(true);
-  });
-});
-
 describe('frameVariants pending claims (#1085)', () => {
   it('createPendingClaim + listLiveClaims only surface claim rows', async () => {
     const m = createFrameVariantsMethods(db);
@@ -804,18 +891,22 @@ describe('frameVariants pending claims (#1085)', () => {
       })
     );
     const direct = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
       workflowRunId: 'run-claim',
+      actorId: null,
     });
     const chained = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-dep',
       workflowRunId: 'run-chain',
+      actorId: null,
     });
 
     const live = await m.listLiveClaims(frameId);
@@ -827,10 +918,12 @@ describe('frameVariants pending claims (#1085)', () => {
   it('claimForGeneration returns null after markTerminal (cancel wins)', async () => {
     const m = createFrameVariantsMethods(db);
     const claim = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
     await m.markTerminal(claim.id, 'cancelled', 'Cancelled by user');
 
@@ -850,10 +943,12 @@ describe('frameVariants pending claims (#1085)', () => {
   it('completeIfLive returns null when cancelled mid-flight (no resurrection)', async () => {
     const m = createFrameVariantsMethods(db);
     const claim = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
     await m.claimForGeneration(claim.id, {
       workflowRunId: 'run-1',
@@ -877,10 +972,12 @@ describe('frameVariants pending claims (#1085)', () => {
   it('completeIfLive completes a live claim in place', async () => {
     const m = createFrameVariantsMethods(db);
     const claim = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
     await m.claimForGeneration(claim.id, {
       workflowRunId: 'run-1',
@@ -901,22 +998,28 @@ describe('frameVariants pending claims (#1085)', () => {
   it('cancelByDependency cancels only live dependents of that prompt version', async () => {
     const m = createFrameVariantsMethods(db);
     const dep = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-1',
+      actorId: null,
     });
     const other = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-other',
+      actorId: null,
     });
     const direct = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'img-hash',
+      actorId: null,
     });
 
     const cascaded = await m.cancelByDependency(
@@ -942,19 +1045,23 @@ describe('frameVariants pending claims (#1085)', () => {
     const m = createFrameVariantsMethods(db);
     // Direct claim already holds the live hash slot.
     const holder = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       pendingInputHash: 'shared-hash',
       workflowRunId: 'run-holder',
+      actorId: null,
     });
     // Chained claim starts with null hash (excluded from unique index).
     const chained = await m.createPendingClaim({
+      isPrimary: true,
       frameId,
       sequenceId,
       model: 'nano_banana_2',
       dependsOnVersionId: 'fpv-1',
       workflowRunId: 'run-chain',
+      actorId: null,
     });
 
     // Stamping the shared hash onto the chained row hits the partial unique index.
@@ -1034,6 +1141,61 @@ describe("frameVariants kind: 'preview' (#1101)", () => {
       .from(frameVariants)
       .where(eq(frameVariants.frameId, frameId));
     expect(rows).toHaveLength(1);
+  });
+
+  it('opens a row before it renders and lands it in place (#1152)', async () => {
+    const m = createFrameVariantsMethods(db);
+    const open = {
+      frameId,
+      sequenceId,
+      model: 'flux_2_turbo',
+      promptHash: 'scene-text-hash',
+      workflowRunId: 'run-preview-2',
+    };
+    await m.openPreview(open);
+    // A step retry opens nothing new.
+    await m.openPreview(open);
+    const opened = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.frameId, frameId));
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({ kind: 'preview', status: 'generating' });
+    // Not a claim: the claim readers never see it.
+    expect(await m.listLiveClaims(frameId)).toEqual([]);
+    // Nor a projected preview until it lands.
+    expect(await m.getLatestPreview(frameId)).toBeNull();
+
+    const landed = await m.recordPreview({
+      ...open,
+      url: '/r2/p.png',
+      storagePath: 'p.png',
+    });
+    expect(landed.id).toBe(opened[0]?.id);
+    expect(landed).toMatchObject({ status: 'completed', url: '/r2/p.png' });
+    expect((await m.getLatestPreview(frameId))?.id).toBe(landed.id);
+  });
+
+  it('a preview that fails leaves a failed record, not a gap (#1149, #1152)', async () => {
+    const m = createFrameVariantsMethods(db);
+    await m.openPreview({
+      frameId,
+      sequenceId,
+      model: 'flux_2_turbo',
+      promptHash: null,
+      workflowRunId: 'run-preview-3',
+    });
+    await m.markFailedByWorkflowRun('run-preview-3', 'content flagged');
+    const [row] = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.frameId, frameId));
+    expect(row).toMatchObject({
+      kind: 'preview',
+      status: 'failed',
+      error: 'content flagged',
+    });
+    expect(await m.getLatestPreview(frameId)).toBeNull();
   });
 
   it("can never become the frame's still — select rejects it", async () => {
@@ -1244,5 +1406,163 @@ describe('frameVariants.getSelectedByFrameIds (#1322)', () => {
     for (const id of ids) expect(byFrame.get(id)?.frameId).toBe(id);
     expect(select).toHaveBeenCalledTimes(3);
     select.mockRestore();
+  });
+});
+
+describe('frameVariants primary still status (#1942)', () => {
+  it('reads the newest primary non-preview row, skipping added models and previews', async () => {
+    const m = createFrameVariantsMethods(db);
+    const primary = await m.appendVersion(
+      variantInput({ status: 'failed', url: null, error: 'boom' })
+    );
+    await m.appendVersion(variantInput({ isPrimary: false }));
+    await m.appendVersion(variantInput({ kind: 'preview', url: 'p' }));
+
+    expect((await m.getPrimary(frameId))?.id).toBe(primary.id);
+    const byFrame = await m.getPrimaryByFrameIds([frameId]);
+    expect(byFrame.get(frameId)?.id).toBe(primary.id);
+  });
+
+  // One case per `select` batch branch: each must carry `retireFailures`.
+  it.each([
+    { linkedPrompt: false, heldPromote: false },
+    { linkedPrompt: true, heldPromote: false },
+    { linkedPrompt: false, heldPromote: true },
+    { linkedPrompt: true, heldPromote: true },
+  ])(
+    'a pick takes earlier failures out of the race (%o)',
+    async ({ linkedPrompt, heldPromote }) => {
+      const m = createFrameVariantsMethods(db);
+      let promptVersionId: string | null = null;
+      if (linkedPrompt) {
+        const [prompt] = await db
+          .insert(framePromptVersions)
+          .values({
+            frameId,
+            text: 'Wide shot',
+            source: 'ai-generated',
+            inputHash: 'prompt-hash',
+            analysisModel: 'claude',
+          })
+          .returning();
+        promptVersionId = prompt?.id ?? null;
+      }
+      const good = await m.appendVersion(variantInput({ promptVersionId }));
+      const failed = await m.appendVersion(
+        variantInput({ status: 'failed', url: null, error: 'boom' })
+      );
+      if (heldPromote) {
+        await db
+          .update(frames)
+          .set({ pendingPromoteVersionId: 'in-flight-ver' })
+          .where(eq(frames.id, frameId));
+      }
+      expect((await m.getPrimary(frameId))?.id).toBe(failed.id);
+
+      await m.select(frameId, good.id, { actorId: null });
+
+      expect((await m.getPrimary(frameId))?.id).toBe(good.id);
+      expect((await m.getById(failed.id))?.status).toBe('failed');
+    }
+  );
+
+  it('an upload after a failure is the newest primary row, completed', async () => {
+    const m = createFrameVariantsMethods(db);
+    await m.appendVersion(
+      variantInput({ status: 'failed', url: null, error: 'boom' })
+    );
+    const upload = await m.appendUploadedVersion({
+      frameId,
+      sequenceId,
+      model: 'user_upload',
+      url: '/r2/up.png',
+      storagePath: 'up.png',
+      inputHash: null,
+      promptVersionId: null,
+      promptText: null,
+      actorId: null,
+    });
+    const primary = (await m.getPrimaryByFrameIds([frameId])).get(frameId);
+    expect(primary?.id).toBe(upload.id);
+    expect(primary?.status).toBe('completed');
+  });
+
+  it('a preview never speaks for the frame, opened or recorded', async () => {
+    const m = createFrameVariantsMethods(db);
+    const preview = {
+      frameId,
+      sequenceId,
+      model: 'flux_2_turbo',
+      promptHash: null,
+      workflowRunId: 'run-preview',
+    };
+    await m.openPreview(preview);
+    const opened = await db
+      .select()
+      .from(frameVariants)
+      .where(eq(frameVariants.frameId, frameId));
+    expect(opened.map((row) => row.isPrimary)).toEqual([false]);
+    const recorded = await m.recordPreview({
+      ...preview,
+      workflowRunId: 'run-preview-2',
+      url: '/r2/p.png',
+      storagePath: 'p.png',
+    });
+    expect(recorded.isPrimary).toBe(false);
+  });
+
+  it('failUnclaimed fails only a claim no run holds', async () => {
+    const m = createFrameVariantsMethods(db);
+    const claim = await m.createPendingClaim({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      isPrimary: true,
+      actorId: null,
+    });
+    const failed = await m.failUnclaimed(claim.id, 'never started');
+    expect(failed).toMatchObject({ status: 'failed', error: 'never started' });
+    // Already terminal: nothing to fail.
+    expect(await m.failUnclaimed(claim.id, 'again')).toBeNull();
+
+    const held = await m.createPendingClaim({
+      frameId,
+      sequenceId,
+      model: 'nano_banana_2',
+      isPrimary: true,
+      actorId: null,
+    });
+    await m.claimForGeneration(held.id, {
+      workflowRunId: 'child-run',
+      model: 'nano_banana_2',
+    });
+    expect(await m.failUnclaimed(held.id, 'timed out')).toBeNull();
+    expect((await m.getById(held.id))?.status).toBe('generating');
+  });
+
+  it('markFailedByWorkflowRun counts rows, so only a rowless run returns 0', async () => {
+    const m = createFrameVariantsMethods(db);
+    await m.appendVersion(
+      variantInput({ status: 'generating', url: null, workflowRunId: 'run-a' })
+    );
+    expect(await m.markFailedByWorkflowRun('run-a', 'boom')).toBe(1);
+    // Already terminal: still accounted for.
+    expect(await m.markFailedByWorkflowRun('run-a', 'boom')).toBe(1);
+    expect(await m.markFailedByWorkflowRun('run-none', 'boom')).toBe(0);
+  });
+
+  it('a failed upscale can leave the race so the shot keeps its still', async () => {
+    const m = createFrameVariantsMethods(db);
+    const still = await m.appendVersion(variantInput());
+    await m.appendVersion(
+      variantInput({
+        kind: 'framing',
+        status: 'generating',
+        url: null,
+        workflowRunId: 'run-up',
+      })
+    );
+    await m.markFailedByWorkflowRun('run-up', 'boom', { isPrimary: false });
+    expect((await m.getPrimary(frameId))?.id).toBe(still.id);
   });
 });

@@ -30,6 +30,8 @@ function makeShot(overrides: Partial<Shot> = {}): Shot {
     durationMs: 3000,
     useStartFrame: null,
     selectedMotionPromptVersionId: null,
+    selectedSpecVersionId: null,
+    pendingSpecVersionId: null,
     audioClips: null,
     renderSegmentId: null,
     deletedAt: null,
@@ -177,15 +179,6 @@ describe('buildShotImageWorkflowInput — sceneId + core shape', () => {
     expect(typeof input?.snapshotInputHash).toBe('string');
     expect(input?.snapshotInputHash?.length).toBeGreaterThan(0);
   });
-
-  it('never records a user edit — this builder serves the add-model path', async () => {
-    const input = await buildShotImageWorkflowInput({
-      ...baseOpts,
-      shot: makeShot(),
-      imagePrompt: 'P',
-    });
-    expect(input?.userEditProvenance).toBeUndefined();
-  });
 });
 
 describe('buildShotImageWorkflowInput — reference images', () => {
@@ -209,6 +202,10 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetStatus: 'completed',
       sheetInputHash: 'hash-jack',
       selectedSheetVersionId: null,
+      // Wearing its default look (#2015).
+      lookId: 'default-look',
+      lookName: 'Default',
+      looks: [],
       physicalDescription: 'tall',
       voiceOnly: false,
       isPerson: true,
@@ -245,6 +242,10 @@ describe('buildShotImageWorkflowInput — reference images', () => {
       sheetStatus: 'completed',
       sheetInputHash: 'hash-scarlett',
       selectedSheetVersionId: null,
+      // Wearing its default look (#2015).
+      lookId: 'default-look',
+      lookName: 'Default',
+      looks: [],
       physicalDescription: 'red coat',
       voiceOnly: false,
       isPerson: true,

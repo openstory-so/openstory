@@ -1,7 +1,7 @@
 /**
  * Scene Script Tab
  * Edits the scene script extract. Duration is NOT edited here — it is a video
- * parameter (hashed only by `computeShotVideoInputHash`) and lives per-shot,
+ * parameter (compared only through the render manifest) and lives per-shot,
  * so it sits on the Motion tab next to the model that defines its legal values
  * and the segment it feeds. See `ShotDurationField`.
  */
@@ -28,6 +28,8 @@ type SceneScriptTabProps = {
   mentionItems?: MentionItem[];
   /** Rename the target a pill points at (#1475); see `MarkdownEditor`. */
   onMentionRename?: (item: MentionItem, name: string) => void;
+  /** Time of day, lighting and palette (#1929) — a slot, below the script. */
+  setting?: React.ReactNode;
   /** The scene's shots' lines, editable (#1773) — a slot, rendered below the script. */
   dialogue?: React.ReactNode;
 };
@@ -43,6 +45,7 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
   onCopy,
   mentionItems,
   onMentionRename,
+  setting,
   dialogue,
 }) => {
   const { ref: editorRef, voice } = useEditorDictation();
@@ -134,6 +137,8 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
           Saving will mark the image and motion prompts as stale.
         </p>
       )}
+
+      {setting}
 
       {dialogue}
     </div>

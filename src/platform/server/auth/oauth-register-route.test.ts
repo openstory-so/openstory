@@ -7,9 +7,11 @@ const handler = vi.fn(
 );
 const pruneOrphanedOAuthClients = vi.fn();
 const scheduleFlushAnalytics = vi.fn();
+const waitUntil = vi.fn();
 
 vi.doMock('cloudflare:workers', () => ({
   env: { DEVICE_LOGIN_RATE_LIMITER: { limit } },
+  waitUntil,
 }));
 vi.doMock('./config', () => ({
   getAuth: () => ({ handler }),
@@ -49,11 +51,18 @@ describe('POST /api/auth/oauth2/register', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('prunes orphans then registers when the limiter allows it', async () => {
+  it('registers and prunes orphans in the background', async () => {
     const res = await register();
     expect(res.status).toBe(201);
     expect(pruneOrphanedOAuthClients).toHaveBeenCalled();
+    expect(waitUntil).toHaveBeenCalled();
     expect(handler).toHaveBeenCalled();
+  });
+
+  it('answers without waiting for the prune (#2138)', async () => {
+    pruneOrphanedOAuthClients.mockReturnValueOnce(new Promise(() => {}));
+    const res = await register();
+    expect(res.status).toBe(201);
   });
 
   it('still registers when prune throws', async () => {

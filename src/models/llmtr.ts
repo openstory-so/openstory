@@ -38,14 +38,21 @@ import type { TokenUsage } from '@tanstack/ai';
 export const LLMTR_BASE_URL = 'https://llmtr.com/v1';
 
 /**
- * Registry ids LLMTR does not carry. Absence is a routing decision, not an
+ * Registry ids LLMTR does not carry or whose support is unverified. Absence is a routing decision, not an
  * alias: substituting a neighbour would silently change the model the caller
  * asked for. A new `AnalysisModelId` that is in neither this list nor
  * {@link LLMTR_TEXT_MODELS} is a compile error.
  *
  * Re-check against https://llmtr.com/v1/models when the registry changes.
+ * If support or pricing cannot be verified, leave the id unmapped; LLMTR
+ * must not block model upgrades. Existing OpenRouter/fal resolution applies.
  */
 export const LLMTR_UNMAPPED_MODEL_IDS = [
+  'anthropic/claude-opus-5.5', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6.1-sol', // LLMTR support and pricing not yet verified.
+  'openai/gpt-6-luna', // LLMTR support and pricing not yet verified.
+  'x-ai/grok-4.7', // LLMTR support and pricing not yet verified.
+  'anthropic/claude-sonnet-5.5', // LLMTR support and pricing not yet verified.
   'anthropic/claude-opus-5-fast',
   'deepseek/deepseek-v3.2',
   'bytedance-seed/seed-2.0-mini',
@@ -67,11 +74,9 @@ type LlmtrMappedId = Exclude<
  */
 export const LLMTR_TEXT_MODELS = {
   'anthropic/claude-fable-5.1': 'anthropic/claude-fable-5.1',
-  'anthropic/claude-opus-5': 'anthropic/claude-opus-5',
   'google/gemini-3.8-flash': 'google/gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
   'openai/gpt-6-astra': 'openai/gpt-6-astra',
-  'openai/gpt-5.6-sol': 'openai/gpt-5.6-sol',
   'openai/gpt-5.5': 'openai/gpt-5.5',
   'anthropic/claude-opus-4.8': 'anthropic/claude-opus-4.8',
   'x-ai/grok-4.20': 'xai/grok-4.20-0309-reasoning',
@@ -79,9 +84,6 @@ export const LLMTR_TEXT_MODELS = {
   'z-ai/glm-5.3-flash': 'zai/glm-5.3-flash',
   'openai/gpt-5.6-terra': 'openai/gpt-5.6-terra',
   'deepseek/deepseek-v4-pro-0813': 'deepseek/deepseek-v4-pro-0813',
-  'anthropic/claude-sonnet-5': 'anthropic/claude-sonnet-5',
-  'x-ai/grok-4.6': 'xai/grok-4.6',
-  'openai/gpt-5.6-luna': 'openai/gpt-5.6-luna',
   'openai/gpt-5.4-mini': 'openai/gpt-5.4-mini',
   'openai/gpt-5.4-nano': 'openai/gpt-5.4-nano',
   'mistralai/mistral-small-2603': 'mistral/mistral-small-latest',
@@ -112,7 +114,6 @@ export function llmtrTextModel(model: string): LlmtrTextModel | undefined {
  * changes.
  */
 export const LLMTR_RESPONSES_ONLY_MODEL_IDS = [
-  'xai/grok-4.6',
   'xai/grok-4.20-0309-reasoning',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
 
@@ -135,13 +136,12 @@ export function llmtrCompatibleApi(
 
 /**
  * The LLMTR catalog ids that are NOT valid OpenRouter slugs. Identity
- * mappings share OpenRouter's spelling; these four are the renamed set
+ * mappings share OpenRouter's spelling; these three are the renamed set
  * (`xai/` not `x-ai/`, etc.). `llmtr.test.ts` asserts this list equals the
  * renamed entries of {@link LLMTR_TEXT_MODELS}.
  */
 export const LLMTR_ONLY_MODEL_IDS = [
   'mistral/mistral-small-latest',
-  'xai/grok-4.6',
   'xai/grok-4.20-0309-reasoning',
   'zai/glm-5.3-flash',
 ] as const satisfies ReadonlyArray<LlmtrTextModel>;
@@ -168,11 +168,9 @@ const LLMTR_TEXT_RATES: Record<
   { input: number; output: number }
 > = {
   'anthropic/claude-fable-5.1': { input: 10, output: 50 },
-  'anthropic/claude-opus-5': { input: 5, output: 25 },
   'google/gemini-3.8-flash': { input: 0.75, output: 3.75 },
   'google/gemini-3.1-pro-preview': { input: 2, output: 12 },
   'openai/gpt-6-astra': { input: 10, output: 50 },
-  'openai/gpt-5.6-sol': { input: 4, output: 20 },
   'openai/gpt-5.5': { input: 5, output: 30 },
   'anthropic/claude-opus-4.8': { input: 5, output: 25 },
   'xai/grok-4.20-0309-reasoning': { input: 1.25, output: 2.5 },
@@ -180,9 +178,6 @@ const LLMTR_TEXT_RATES: Record<
   'zai/glm-5.3-flash': { input: 0.075, output: 0.25 },
   'openai/gpt-5.6-terra': { input: 2, output: 12 },
   'deepseek/deepseek-v4-pro-0813': { input: 1.32, output: 3.96 },
-  'anthropic/claude-sonnet-5': { input: 2, output: 10 },
-  'xai/grok-4.6': { input: 2, output: 6 },
-  'openai/gpt-5.6-luna': { input: 0.2, output: 1.2 },
   'openai/gpt-5.4-mini': { input: 0.75, output: 4.5 },
   'openai/gpt-5.4-nano': { input: 0.2, output: 1.25 },
   'mistral/mistral-small-latest': { input: 0.15, output: 0.6 },

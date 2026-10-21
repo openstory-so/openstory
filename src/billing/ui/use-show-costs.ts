@@ -8,8 +8,8 @@
  * **Default ON** (product default for transparent pricing). Bump the storage
  * key when that default changes so prior localStorage snapshots are ignored.
  *
- * Module store + useSyncExternalStore so welcome dialog, billing settings,
- * CreditBalancePill, and ActionCost stay in sync without a reload.
+ * Module store + useSyncExternalStore so billing settings, CreditBalancePill,
+ * and ActionCost stay in sync without a reload.
  */
 
 import { useCallback, useSyncExternalStore } from 'react';

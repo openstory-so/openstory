@@ -121,13 +121,10 @@ describe('frames.update', () => {
       orderIndex: 0,
       role: 'first',
     });
-    // Seed the pointer + the frame-owned lifecycle as the select path would.
+    // Seed the pointer as the select path would.
     await db
       .update(frames)
-      .set({
-        selectedImageVersionId: 'ver-1',
-        imageStatus: 'completed',
-      })
+      .set({ selectedImageVersionId: 'ver-1' })
       .where(eq(frames.id, frame.id));
 
     await m.update(frame.id, { orderIndex: 2, role: 'key' });
@@ -141,7 +138,6 @@ describe('frames.update', () => {
     expect(refreshed.role).toBe('key');
     // Selection-owned columns untouched.
     expect(refreshed.selectedImageVersionId).toBe('ver-1');
-    expect(refreshed.imageStatus).toBe('completed');
   });
 
   it('throws on a missing frame by default, returns undefined when opted out', async () => {
@@ -204,35 +200,69 @@ describe('frames.resolveCurrent', () => {
   });
 });
 
-describe('frames.isStale', () => {
-  it('throws when the frame does not exist', async () => {
+describe('frames.movePendingPromoteVersionIdIf (#1786)', () => {
+  const setup = async () => {
     const m = createFramesMethods(db);
-    await expect(m.isStale(generateId(), 'h')).rejects.toThrow(/not found/);
+    const frame = await m.upsert({
+      shotId,
+      sequenceId,
+      orderIndex: 0,
+      role: 'first',
+    });
+    const [a, b, c] = await db
+      .insert(frameVariants)
+      .values(
+        ['a', 'b', 'c'].map((model) => ({
+          frameId: frame.id,
+          sequenceId,
+          kind: 'model' as const,
+          model,
+          status: 'generating' as const,
+        }))
+      )
+      .returning();
+    if (!a || !b || !c) throw new Error('test setup: variants missing');
+    return { m, frameId: frame.id, a, b, c };
+  };
+  const claimOf = async (frameId: string) =>
+    (await db.select().from(frames).where(eq(frames.id, frameId)))[0]
+      ?.pendingPromoteVersionId;
+
+  it('hands the claim over while the original still holds it', async () => {
+    const { m, frameId, a, b } = await setup();
+    await m.setPendingPromoteVersionId(frameId, a.id);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      true
+    );
+    expect(await claimOf(frameId)).toBe(b.id);
   });
 
-  it('null stored hash → not stale; match → not stale; differ → stale', async () => {
-    const m = createFramesMethods(db);
-    const a = await m.create({ shotId, sequenceId, orderIndex: 0 });
-    // No selected version at all → no opinion, so not stale.
-    expect(await m.isStale(a.id, 'anything')).toBe(false);
+  it('a retried handover finds the claim already moved and reports it moved', async () => {
+    const { m, frameId, a, b } = await setup();
+    await m.setPendingPromoteVersionId(frameId, a.id);
+    await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      true
+    );
+    expect(await claimOf(frameId)).toBe(b.id);
+  });
 
-    // The hash lives on the SELECTED version now (#1067), not the frame.
-    const versionId = generateId();
-    await db.insert(frameVariants).values({
-      id: versionId,
-      frameId: a.id,
-      sequenceId,
-      kind: 'model',
-      model: 'm1',
-      status: 'completed',
-      inputHash: 'h-match',
-    });
-    await db
-      .update(frames)
-      .set({ selectedImageVersionId: versionId })
-      .where(eq(frames.id, a.id));
-    expect(await m.isStale(a.id, 'h-match')).toBe(false);
-    expect(await m.isStale(a.id, 'h-new')).toBe(true);
+  it('a newer kickoff made mid-run keeps its claim', async () => {
+    const { m, frameId, a, b, c } = await setup();
+    await m.setPendingPromoteVersionId(frameId, c.id);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      false
+    );
+    expect(await claimOf(frameId)).toBe(c.id);
+  });
+
+  it('a manual select that cleared the claim is not re-taken', async () => {
+    const { m, frameId, a, b } = await setup();
+    await m.setPendingPromoteVersionId(frameId, null);
+    expect(await m.movePendingPromoteVersionIdIf(frameId, a.id, b.id)).toBe(
+      false
+    );
+    expect(await claimOf(frameId)).toBeNull();
   });
 });
 

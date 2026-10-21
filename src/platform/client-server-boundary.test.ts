@@ -47,6 +47,7 @@ import {
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const SRC = resolve(__dirname, '..', '..');
 
@@ -225,8 +226,8 @@ export function clientRetainedImports(source: string): string[] {
     // parseAst and babel-dead-code-elimination resolve different @babel/parser
     // copies; TS 7 hits excessive stack depth comparing the File types.
     const referenced = findReferencedIdentifiers(
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- duplicate @babel/parser File types
-      ast as Parameters<typeof findReferencedIdentifiers>[0]
+      // duplicate @babel/parser File types
+      asStub<Parameters<typeof findReferencedIdentifiers>[0]>(ast)
     );
     for (const node of walkAst(ast.program)) {
       if (node.type !== 'CallExpression') continue;

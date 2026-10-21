@@ -18,7 +18,6 @@ import {
   createSequenceSchema,
   REFERENCE_ONLY_MODEL_ERROR,
   REFERENCE_ONLY_REQUIRES_MOTION_ERROR,
-  updateSequenceSchema,
 } from '@/sequences/server/sequence.schemas';
 
 const xaiKeyDb = {
@@ -158,7 +157,7 @@ describe('estimateVideoCost', () => {
 
 describe('isBatchMotionEligible', () => {
   const refOnlyShot = {
-    frame: { imageStatus: 'pending' as const },
+    imageStatus: 'pending' as const,
     image: null,
     videoStatus: 'pending' as const,
   };
@@ -174,7 +173,7 @@ describe('isBatchMotionEligible', () => {
   it('still requires a completed still on the image-to-video path', () => {
     expect(
       isBatchMotionEligible(
-        { ...refOnlyShot, frame: { imageStatus: 'completed' }, image: null },
+        { ...refOnlyShot, imageStatus: 'completed', image: null },
         false
       )
     ).toBe(false);
@@ -182,7 +181,7 @@ describe('isBatchMotionEligible', () => {
       isBatchMotionEligible(
         {
           ...refOnlyShot,
-          frame: { imageStatus: 'completed' },
+          imageStatus: 'completed',
           image: { url: 'https://x/a.png' },
         },
         false
@@ -254,13 +253,5 @@ describe('sequence schemas', () => {
         generateStartFrames: false,
       }).success
     ).toBe(true);
-  });
-
-  it('refuses to update generateStartFrames on an existing sequence', () => {
-    // Toggling it past the create-time model gate rewrites what every already
-    // rendered shot means — on, approved stills are dropped from the request
-    // while their prompts still assume one.
-    const parsed = updateSequenceSchema.parse({ generateStartFrames: true });
-    expect(Object.keys(parsed)).not.toContain('generateStartFrames');
   });
 });

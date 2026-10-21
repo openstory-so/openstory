@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from '@/billing/fal-pricing-fixture';
-import { TURBO_DEFAULT_IMAGE } from '@/models/generation-mode';
-import { SIGNUP_GRANT_MICROS } from '@/billing/constants';
 import { buildFilmCostExamples } from './film-cost-examples';
-import { micros, microsToUsd } from '@/billing/money';
+import { micros } from '@/billing/money';
 
 describe('buildFilmCostExamples', () => {
   it('returns null when the default image model has no pricing signal', () => {
@@ -47,23 +45,4 @@ describe('buildFilmCostExamples', () => {
     expect(motion.breakdown.some((line) => /refs/i.test(line))).toBe(true);
     expect(motion.breakdown.some((line) => /6 × 5s/i.test(line))).toBe(true);
   });
-
-  // Skipped while free credits are off (#1529).
-  it.skipIf(SIGNUP_GRANT_MICROS <= 0)(
-    'keeps the full stills+motion+music tier within the welcome grant under fixture pricing',
-    () => {
-      const result = buildFilmCostExamples(FAL_PRICING);
-      expect(result).not.toBeNull();
-      if (!result) return;
-
-      const full = result.examples.find((e) => e.id === 'with-motion-music');
-      expect(full).toBeDefined();
-      if (!full) return;
-
-      expect(
-        full.costMicros,
-        `with-motion-music ($${microsToUsd(full.costMicros).toFixed(2)} with ${TURBO_DEFAULT_IMAGE}) should fit in welcome grant ($${microsToUsd(SIGNUP_GRANT_MICROS)})`
-      ).toBeLessThanOrEqual(SIGNUP_GRANT_MICROS);
-    }
-  );
 });

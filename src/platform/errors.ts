@@ -61,15 +61,6 @@ export class ValidationError extends OpenStoryError {
   }
 }
 
-/** This Stripe card fingerprint already unlocked the welcome grant on another team. */
-export class WelcomeCardAlreadyClaimedError extends OpenStoryError {
-  constructor(
-    message: string = 'This card has already been used to claim welcome credits'
-  ) {
-    super(message, 'WELCOME_CARD_ALREADY_CLAIMED', 409);
-  }
-}
-
 export class AuthenticationError extends OpenStoryError {
   constructor(message: string, details?: Record<string, unknown>) {
     super(message, 'AUTHENTICATION_ERROR', 401, details);
@@ -82,6 +73,27 @@ export class NotFoundError extends OpenStoryError {
     details?: Record<string, unknown>
   ) {
     super(message, 'NOT_FOUND', 404, details);
+  }
+}
+
+/** An OAuth token without the scope this operation needs (RFC 6750 insufficient_scope). */
+export class InsufficientScopeError extends OpenStoryError {
+  constructor(scope: string) {
+    super(
+      `This token requires the ${scope} scope.`,
+      'INSUFFICIENT_SCOPE',
+      403,
+      {
+        scope,
+      }
+    );
+  }
+}
+
+/** The target moved since the caller read it (stale read-then-edit). */
+export class ConflictError extends OpenStoryError {
+  constructor(message: string, details?: Record<string, unknown>) {
+    super(message, 'CONFLICT', 409, details);
   }
 }
 
@@ -143,10 +155,6 @@ export function isInsufficientCreditsError(error: unknown): boolean {
   return errorCode(error) === 'INSUFFICIENT_CREDITS';
 }
 
-export function isWelcomeCardAlreadyClaimedError(error: unknown): boolean {
-  return errorCode(error) === 'WELCOME_CARD_ALREADY_CLAIMED';
-}
-
 /**
  * 401/403 — the caller lacks a session or permission. Structural (`statusCode`
  * survives the server-fn boundary via the adapter below) so it also matches
@@ -157,6 +165,15 @@ export function isAuthError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const status = (error as { statusCode?: unknown }).statusCode;
   return status === 401 || status === 403;
+}
+
+/**
+ * 401 only — no session, or one the server no longer accepts. Signing in fixes
+ * it, which a 403 (a permission failure) never does.
+ */
+export function isUnauthenticatedError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  return (error as { statusCode?: unknown }).statusCode === 401;
 }
 
 /**

@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type {
-  CharacterWithSheet,
+  CastCharacterWithSheet,
   SequenceElement,
   SequenceLocationWithReference,
   Shot,
@@ -30,9 +30,9 @@ const NEW_SHEET_URL = 'https://example.com/jack-recast.png';
 const NEW_SHEET_HASH = 'jack-hash-v2';
 
 function makeCharacter(
-  overrides: Partial<CharacterWithSheet> = {}
-): CharacterWithSheet {
-  const character: CharacterWithSheet = {
+  overrides: Partial<CastCharacterWithSheet> = {}
+): CastCharacterWithSheet {
+  const character: CastCharacterWithSheet = {
     id: 'c1',
     sequenceId: 'seq1',
     characterId: 'jack',
@@ -42,11 +42,12 @@ function makeCharacter(
     ethnicity: null,
     physicalDescription: null,
     standardClothing: null,
-    distinguishingFeatures: null,
+    legacyDistinguishingFeatures: null,
     personality: null,
     movement: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: null,
     voiceDescription: null,
     voicePreviews: null,
@@ -54,11 +55,22 @@ function makeCharacter(
     consistencyTag: 'jack-the-pi',
     sheetImageUrl: 'https://example.com/jack-old.png',
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetStatus: 'completed',
     sheetGeneratedAt: NOW,
     sheetError: null,
     sheetInputHash: 'jack-hash-v1',
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
+    // Cast in its sequence (#2017).
+    castId: 'cast-1',
+    teamId: 'team-1',
+    selectedBibleVersionId: 'bible-1',
+    pendingPromoteSheetVersionId: null,
     selectedVoiceVersionId: null,
     pendingPromoteVoiceVersionId: null,
     talentId: null,
@@ -77,26 +89,30 @@ function makeLocation(
 ): SequenceLocationWithReference {
   const location: SequenceLocationWithReference = {
     id: 'l1',
+    teamId: 'team-1',
+    legacyLibraryReferenceHash: null,
+    linkId: 'link-1',
+    attached: false,
     sequenceId: 'seq1',
     locationId: 'docks',
-    libraryLocationId: null,
     name: 'The Docks',
     type: 'exterior',
-    timeOfDay: 'dusk',
     description: 'A weathered pier',
     architecturalStyle: null,
     keyFeatures: null,
-    colorPalette: null,
-    lightingSetup: null,
     ambiance: null,
+    rendering: 'Photoreal live action',
     consistencyTag: 'the-docks',
     referenceImageUrl: 'https://example.com/docks-old.png',
     referenceImagePath: null,
+    referencePortraitUrl: null,
     referenceStatus: 'completed',
     referenceGeneratedAt: NOW,
     referenceError: null,
     referenceInputHash: 'docks-hash-v1',
     selectedReferenceVersionId: null,
+    selectedBibleVersionId: null,
+    pendingPromoteReferenceVersionId: null,
     firstMentionSceneId: null,
     firstMentionText: null,
     firstMentionLine: null,
@@ -115,6 +131,8 @@ const SHOT: Shot = {
   durationMs: 3000,
   useStartFrame: null,
   selectedMotionPromptVersionId: null,
+  selectedSpecVersionId: null,
+  pendingSpecVersionId: null,
   audioClips: null,
   renderSegmentId: null,
   deletedAt: null,
@@ -304,11 +322,12 @@ describe('mergeRecastSheetIntoSnapshots', () => {
       name: 'Narrator',
       voiceOnly: true,
       isPerson: true,
+      rendering: 'Photoreal live action',
       sheetImageUrl: null,
       sheetInputHash: null,
       consistencyTag: 'narrator',
     });
-    const build = (jack: CharacterWithSheet) =>
+    const build = (jack: CastCharacterWithSheet) =>
       buildRegenerateShotSnapshot({
         ...BUILD_DEFAULTS,
         characters: [jack, narrator],

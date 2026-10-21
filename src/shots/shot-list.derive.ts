@@ -1,28 +1,29 @@
+import { sceneDirection } from './scene-direction';
 /**
  * Shot-list prompt derivation (#908)
  * ============================================================================
  *
  * Single source of truth: a shot's start-frame visual prompt and motion prompt
- * are ASSEMBLED from the parent scene's shared context plus the shot's own
- * structured fields — never re-authored per shot by the LLM. Keeping the
- * derivation here (one place) is the structural fix for adjacent-clip drift:
+ * are ASSEMBLED from the parent scene's shared context plus the shot's spec —
+ * never re-authored per shot by the LLM. Analysis calls it today; spec
+ * edits and rebuilds will (#1915 part 2). Keeping the derivation here (one
+ * place) is the structural fix for adjacent-clip drift:
  * every shot in a scene inherits the same location / lighting / palette
  * / style truth verbatim.
  *
  *   start-frame visual prompt = scene context + shot framing/start-state
- *   motion prompt             = shot action + camera movement + sound cue
+ *   motion prompt             = shot action + direction + camera movement
+ *                               + sound cue
  *                               (reference-only prefixes unique framing;
  *                               scene lighting/palette/look stay on the scene)
  *
- * The derived shapes are the existing `VisualPrompt` / `MotionPrompt` types so
- * downstream image/motion workflows consume them unchanged. Each shot is
- * persisted as a `Scene` row (shots.metadata is `$type<Scene>()`); the
- * scene-level shared fields are persisted separately to the `scenes` table.
+ * Text is derived when a prompt version is written, never at render time: the
+ * version stores it and records the `specVersionId` it came from.
  */
 
 import type { StyleConfig } from '@/platform/server/db/schema/libraries';
-import type { MotionPrompt, VisualPrompt } from './scene-analysis.schema';
-import type { SceneWithShots, ShotSpec } from './shot-list.schema';
+import type { MotionAudio } from './scene-analysis.schema';
+import type { StoredShotSpec } from './shot-list.schema';
 
 /** Join non-empty parts with a separator, dropping blanks. */
 function joinParts(parts: ReadonlyArray<string>, sep = ', '): string {
@@ -33,159 +34,87 @@ function joinParts(parts: ReadonlyArray<string>, sep = ', '): string {
 }
 
 /**
- * Scene-level shared truth, stated once and reused by every shot's derived
- * prompt. Pulled from the scene's `continuity` + `metadata` + the style config
- * so the LLM never re-derives it per shot.
+ * The scene fields derivation reads: an analysis scene or a D1 scene row.
+ * Everything else about the scene reaches the video through the packed
+ * header, not through the shot's text.
  */
-function sceneContextParts(
-  scene: SceneWithShots,
-  styleConfig: StyleConfig
-): string[] {
-  const { continuity, metadata } = scene;
-  const multipleLocations = continuity.environmentTag.includes(',');
-  return [
-    multipleLocations ? '' : metadata.location,
-    metadata.timeOfDay,
-    // A multi-location scene's roster is not a single shot's background.
-    multipleLocations ? '' : continuity.environmentTag,
-    continuity.lightingSetup,
-    continuity.colorPalette,
-    // Cast belongs to the shot's framing, not the scene-wide roster. Appending
-    // that roster here puts later arrivals and off-camera listeners in every
-    // start frame, overriding the subjectStartState above.
-    // Style is the single look authored for the whole sequence.
-    styleConfig.look.artStyle,
-    continuity.styleTag,
-  ].filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
-}
+export type DeriveScene = Parameters<typeof sceneDirection>[0] & {
+  continuity?: { environmentTag?: string | null } | null;
+};
 
 /**
- * Derive the start-frame visual prompt for one shot.
- *
- * fullPrompt = scene context (authored once) + the shot's framing/start-state.
- * Internal building block of `deriveShots` (covered through it).
+ * Scene-level shared truth, stated once and reused by every shot's derived
+ * prompt, so the LLM never re-derives it per shot.
  */
-function deriveVisualPrompt(
-  scene: SceneWithShots,
-  shot: ShotSpec,
+function sceneContextParts(
+  scene: DeriveScene,
   styleConfig: StyleConfig
-): VisualPrompt {
-  const { framing } = shot;
-  const sceneParts = sceneContextParts(scene, styleConfig);
+): string[] {
+  const direction = sceneDirection(scene, styleConfig);
+  const environmentTag = scene.continuity?.environmentTag ?? '';
+  const multipleLocations = environmentTag.includes(',');
+  return [
+    multipleLocations ? '' : direction.location,
+    direction.timeOfDay,
+    // A multi-location scene's roster is not a single shot's background.
+    multipleLocations ? '' : environmentTag,
+    direction.lightingSetup,
+    direction.colorPalette,
+    // Cast belongs to the shot's framing, not the scene-wide roster. Appending
+    // that roster here puts later arrivals and off-camera listeners in every
+    // start frame, overriding the shot's framing.subjectStartState.
 
-  const fullPrompt = joinParts([
+    // Style is the single look authored for the whole sequence.
+    direction.look,
+  ];
+}
+
+function framingParts(spec: StoredShotSpec): string[] {
+  const { framing } = spec;
+  return [
     framing.shotSize,
     framing.angle,
     framing.subjectStartState,
     framing.composition,
-    ...sceneParts,
-  ]);
-
-  return { fullPrompt };
+  ];
 }
 
-/** Options for {@link deriveMotionPrompt} / {@link deriveShots}. */
-export type DeriveShotPromptOptions = {
-  /**
-   * Prefix the shot's unique framing onto the motion prompt. Reference-only
-   * has no still, so the opening frame has to live in prose — but only the
-   * per-shot framing (size, angle, start state, composition). Scene lighting /
-   * palette / look stay on the scene and are attached once at assemble time
-   * (#1510 packed header). Default false (image-to-video: the still is the
-   * opening frame).
-   */
-  referenceOnly?: boolean;
-};
+/** Start-frame text: the shot's framing, then the scene context. */
+export function deriveStillPrompt(
+  spec: StoredShotSpec,
+  scene: DeriveScene,
+  styleConfig: StyleConfig
+): string {
+  return joinParts([
+    ...framingParts(spec),
+    ...sceneContextParts(scene, styleConfig),
+  ]);
+}
 
 /**
- * Derive the motion prompt for one shot.
- *
- * fullPrompt = the shot's action + its single camera move (with pacing adverb)
- * + the sound cue. Reference-only also prefixes unique framing. Model-agnostic:
- * no vendor syntax — `assembleMotionPrompt` adapts per model at render time.
- * Scene context is never copied in: that is the packed prompt header.
+ * Motion text: action, direction and camera move, plus the sound cue as
+ * audio direction. Reference-only has no still, so the opening frame lives
+ * in prose — but only the shot's own framing: scene lighting / palette / look
+ * attach once at assemble time (#1510 packed header). Model-agnostic: no
+ * vendor syntax; `buildMotionShotPrompt` adapts per model at render time.
  */
 export function deriveMotionPrompt(
-  scene: SceneWithShots,
-  shot: ShotSpec,
-  options?: DeriveShotPromptOptions
-): MotionPrompt {
-  const { action, cameraMovement, soundCue, framing } = shot;
+  spec: StoredShotSpec,
+  options: { referenceOnly: boolean }
+): { text: string; audio: MotionAudio } {
+  const { action, direction, cameraMovement, soundCue } = spec;
   const cameraPhrase = joinParts(
     [cameraMovement.pacing, cameraMovement.move],
     ' '
   );
-
-  const motion = joinParts([action, `Camera: ${cameraPhrase}`], '. ');
-  const framingPrefix = options?.referenceOnly
-    ? joinParts([
-        framing.shotSize,
-        framing.angle,
-        framing.subjectStartState,
-        framing.composition,
-      ])
-    : '';
-  const fullPrompt = framingPrefix
-    ? joinParts([framingPrefix, motion], '. ')
-    : motion;
-
-  // Dialogue presence is a scene-level hint; the start-frame visual carries the
-  // performance, the motion prompt carries the move + sound. The lines are the
-  // scene's `originalScript` ones, already filtered to this shot by the caller
-  // (`sceneForShot` → `dialogueForShot`, #1585).
+  const motion = joinParts(
+    [action, direction, cameraPhrase ? `Camera: ${cameraPhrase}` : ''],
+    '. '
+  );
   return {
-    fullPrompt,
-    dialogue: scene.dialoguePresent
-      ? {
-          presence: true,
-          lines: scene.originalScript.dialogue,
-        }
-      : { presence: false, lines: [] },
-    audio: soundCue.trim().length
-      ? { ambientSound: soundCue, soundEffects: [] }
-      : { ambientSound: '', soundEffects: [] },
+    text: options.referenceOnly
+      ? joinParts([joinParts(framingParts(spec)), motion], '. ')
+      : motion,
+    audio: { ambientSound: soundCue.trim(), soundEffects: [] },
   };
-}
-
-/**
- * A derived shot ready to persist: the per-shot `Scene` metadata object plus
- * the shot-level columns (`shotNumber`, `durationMs`) that live on the `shots`
- * table rather than inside the JSON. `shotNumber` stays OUT of the `Scene`
- * metadata — it is a `shots` column (#907).
- *
- * The derived prompts ride alongside (not inside `metadata`): visual/motion
- * prompts persist to `frame_prompt_versions` / `shot_prompt_versions` now, not
- * `scene.prompts` (#713) — the caller writes them through those scoped helpers.
- */
-export type DerivedShot = {
-  shotNumber: number;
-  durationMs: number;
-  visualPrompt: VisualPrompt;
-  motionPrompt: MotionPrompt;
-};
-
-/**
- * Convert one analysis scene into the per-shot rows persisted to the `shots`
- * table: the shot's own duration and derived prompts. Scene context is NOT
- * copied onto the shot — it resolves through `sceneId`.
- *
- * Returned shots are ordered by `shotNumber`. The caller persists each with
- * its `shotNumber` and a `sceneId` linking back to the `scenes` row.
- */
-export function deriveShots(
-  scene: SceneWithShots,
-  styleConfig: StyleConfig,
-  options?: DeriveShotPromptOptions
-): DerivedShot[] {
-  const ordered = [...scene.shots].sort((a, b) => a.shotNumber - b.shotNumber);
-  return ordered.map((shot) => {
-    const visual = deriveVisualPrompt(scene, shot, styleConfig);
-    const motion = deriveMotionPrompt(scene, shot, options);
-    return {
-      shotNumber: shot.shotNumber,
-      durationMs: Math.round(shot.durationSeconds * 1000),
-      visualPrompt: visual,
-      motionPrompt: motion,
-    };
-  });
 }

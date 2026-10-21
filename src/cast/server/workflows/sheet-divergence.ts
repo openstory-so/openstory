@@ -1,229 +1,91 @@
 /**
- * Sheet workflow divergence routing.
+ * Reporting a parked sheet (#1113).
  *
- * Helpers for the character/location/talent sheet workflows to decide, at
- * write time, whether the freshly generated artifact is convergent (apply as
- * primary) or divergent (save to a `*_sheet_variants` table without
- * disturbing the live entity).
- *
- * The decision is a hash comparison: callers pass the `snapshotInputHash`
- * computed when the workflow was triggered (frozen on the payload)
- * and the `currentInputHash` recomputed from live scoped-DB state at write
- * time. If they differ, the inputs changed mid-flight — the result belongs
- * in a variants row, and the UI is notified via `stale:detected`.
+ * A sheet run whose claim was revoked mid-flight (an input edit, a newer
+ * kickoff, the user picking a sheet) parks its result as a divergent variant
+ * instead of landing it. Character and sequence-location sheets park inside
+ * their land batch (`src/cast/server/db/sheet-claims.ts`), so the helpers
+ * for them only notify the UI via `stale:detected`. Talent results live
+ * outside the versions table, so their helper still inserts the divergent
+ * row, then notifies.
  */
 
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import type { SheetLanding } from '@/cast/server/db/sheet-claims';
+import type { getLogger } from '@/platform/logger';
 import type {
   CharacterSheetInputHash,
-  LibraryLocationReferenceInputHash,
   LocationSheetInputHash,
   TalentSheetInputHash,
 } from '@/shots/input-hash';
-import type { LocationSheetVariantParentType } from '@/platform/server/db/schema';
 // `ScopedDb` is imported for type extraction only; the helpers themselves
 // take a narrower `SheetDivergenceScopedDb` shape (defined below).
-import {
-  getGenerationChannel,
-  getLocationChannel,
-  getTalentChannel,
-} from '@/platform/realtime';
+import { getGenerationChannel, getTalentChannel } from '@/platform/realtime';
 
 // Subset of ScopedDb used by the helpers below. Defined structurally so the
 // full ScopedDb is assignable (production passes it directly) and tests can
 // build a minimal mock without `as any`. The return type is narrowed to
 // `{ id: string }` because that's all these helpers consume from the row.
-type CharInsertArgs = Parameters<
-  ScopedDb['characterSheetVariants']['insertDivergent']
->[0];
-type LocInsertArgs = Parameters<
-  ScopedDb['locationSheetVariants']['insertDivergent']
->[0];
 type TalInsertArgs = Parameters<
   ScopedDb['talentSheetVariants']['insertDivergent']
 >[0];
 export type SheetDivergenceScopedDb = {
-  characterSheetVariants: {
-    insertDivergent: (values: CharInsertArgs) => Promise<{ id: string }>;
-  };
-  locationSheetVariants: {
-    insertDivergent: (values: LocInsertArgs) => Promise<{ id: string }>;
-  };
   talentSheetVariants: {
     insertDivergent: (values: TalInsertArgs) => Promise<{ id: string }>;
   };
 };
 
-export type SheetDivergenceDecision<H extends string = string> =
-  | { kind: 'convergent' }
-  | { kind: 'divergent'; snapshotInputHash: H; currentInputHash: string };
-
-export function decideSheetDivergence<H extends string>(
-  snapshotInputHash: H | null | undefined,
-  currentInputHash: string | null | undefined
-): SheetDivergenceDecision<H> {
-  // Either side missing → can't prove divergence; treat as convergent. Matches
-  // the project-wide "null hash = unknown, never stale" policy applied to
-  // pre-hash-tracking rows (see workflow/types.ts on `RegenerateShotSnapshot`).
-  if (!snapshotInputHash || !currentInputHash) {
-    return { kind: 'convergent' };
-  }
-  if (snapshotInputHash === currentInputHash) {
-    return { kind: 'convergent' };
-  }
-  return {
-    kind: 'divergent',
-    snapshotInputHash,
-    currentInputHash,
-  };
-}
-
-export type SaveDivergentCharacterSheetArgs = {
-  scopedDb: SheetDivergenceScopedDb;
-  characterId: string;
-  /** Required: character sheet workflows are sequence-scoped. */
-  sequenceId: string;
-  model: string;
-  url: string;
-  storagePath?: string;
-  workflowRunId?: string;
-  snapshotInputHash: CharacterSheetInputHash;
-};
-
-export async function saveDivergentCharacterSheet({
-  scopedDb,
-  characterId,
-  sequenceId,
-  model,
-  url,
-  storagePath,
-  workflowRunId,
-  snapshotInputHash,
-}: SaveDivergentCharacterSheetArgs): Promise<string> {
-  const variant = await scopedDb.characterSheetVariants.insertDivergent({
-    characterId,
-    model,
-    url,
-    storagePath: storagePath ?? null,
-    workflowRunId: workflowRunId ?? null,
-    status: 'completed',
-    generatedAt: new Date(),
-    inputHash: snapshotInputHash,
-    divergedAt: new Date(),
-  });
-  await getGenerationChannel(sequenceId).emit('generation.stale:detected', {
-    entityType: 'character',
-    entityId: characterId,
+/** A sheet run parked its result: tell the UI that started it. */
+export async function reportParkedSheet(args: {
+  /**
+   * The sequence's channel, or the character's or location's own
+   * (`castChannelId`, `locationChannelId`).
+   */
+  channelId: string;
+  entityType: 'character' | 'location';
+  entityId: string;
+  versionId: string;
+  snapshotInputHash: CharacterSheetInputHash | LocationSheetInputHash;
+}): Promise<void> {
+  await getGenerationChannel(args.channelId).emit('generation.stale:detected', {
+    entityType: args.entityType,
+    entityId: args.entityId,
     artifact: 'sheet',
-    snapshotInputHash,
-    divergedVariantId: variant.id,
+    snapshotInputHash: args.snapshotInputHash,
+    divergedVariantId: args.versionId,
   });
-  return variant.id;
 }
+
+export type SheetRunOutcome =
+  | { kind: 'convergent'; versionId: string }
+  | { kind: 'divergent'; versionId: string };
 
 /**
- * Discriminated parent for location sheets: a single variants table services
- * both sequence-scoped locations and library locations, so callers must pass
- * the parent kind alongside its id. The kind also drives realtime channel
- * routing — sequence locations notify via the sequence channel, library
- * locations via the per-location channel.
- *
- * Discriminator strings are pinned to `LocationSheetVariantParentType` via
- * `Extract<…>`. The bidirectional enum-coverage assert below converts
- * enum drift in either direction (DB enum gains/loses a value, or this
- * union does) into a TS error in this file — without it, `Extract<X, 'a'>`
- * resolves to `'a'` regardless of new enum members and the drift goes
- * undetected.
+ * Land a sequence sheet run through the claim its trigger took (#1113):
+ * `land` promotes only while the claim still names `versionId`, else parks it;
+ * a park is logged and reported to the sequence's UI.
  */
-type LocationSheetParent =
-  | {
-      type: Extract<LocationSheetVariantParentType, 'sequence_location'>;
-      id: string;
-      sequenceId: string;
-    }
-  | {
-      type: Extract<LocationSheetVariantParentType, 'library_location'>;
-      id: string;
-    };
-
-// Bidirectional enum-coverage check: every parent kind maps to a union
-// branch and every union branch's discriminator is a known parent kind. If
-// either side gains a value not present in the other, this constant fails
-// to type-check with a "Type 'never' is not assignable to type 'true'" error.
-type _LocationSheetParentCoversEnum =
-  LocationSheetVariantParentType extends LocationSheetParent['type']
-    ? LocationSheetParent['type'] extends LocationSheetVariantParentType
-      ? true
-      : never
-    : never;
-const _locationSheetParentCoversEnum: _LocationSheetParentCoversEnum = true;
-void _locationSheetParentCoversEnum;
-
-export type SaveDivergentLocationSheetArgs = {
-  scopedDb: SheetDivergenceScopedDb;
-  parent: LocationSheetParent;
-  model: string;
-  url: string;
-  storagePath?: string;
-  workflowRunId?: string;
-  snapshotInputHash: LocationSheetInputHash | LibraryLocationReferenceInputHash;
-};
-
-export async function saveDivergentLocationSheet({
-  scopedDb,
-  parent,
-  model,
-  url,
-  storagePath,
-  workflowRunId,
-  snapshotInputHash,
-}: SaveDivergentLocationSheetArgs): Promise<string> {
-  const parentType: LocationSheetVariantParentType = parent.type;
-  const variant = await scopedDb.locationSheetVariants.insertDivergent({
-    parentType,
-    parentId: parent.id,
-    model,
-    url,
-    storagePath: storagePath ?? null,
-    workflowRunId: workflowRunId ?? null,
-    status: 'completed',
-    generatedAt: new Date(),
-    inputHash: snapshotInputHash,
-    divergedAt: new Date(),
-  });
-
-  switch (parent.type) {
-    case 'library_location':
-      await getLocationChannel(parent.id).emit('generation.stale:detected', {
-        entityType: 'library-location',
-        entityId: parent.id,
-        artifact: 'sheet',
-        snapshotInputHash,
-        divergedVariantId: variant.id,
-      });
-      break;
-    case 'sequence_location':
-      await getGenerationChannel(parent.sequenceId).emit(
-        'generation.stale:detected',
-        {
-          entityType: 'location',
-          entityId: parent.id,
-          artifact: 'sheet',
-          snapshotInputHash,
-          divergedVariantId: variant.id,
-        }
-      );
-      break;
-    default: {
-      // Exhaustive guard — adding a new parent kind without a routing case
-      // here triggers a TS error rather than a silent fall-through.
-      const _exhaustive: never = parent;
-      throw new Error(
-        `Unhandled location sheet parent: ${JSON.stringify(_exhaustive)}`
-      );
-    }
+export async function landSheetRun(
+  args: Parameters<typeof reportParkedSheet>[0] & {
+    land: () => Promise<SheetLanding>;
+    logger: ReturnType<typeof getLogger>;
+    logTag: string;
+    claimed: boolean;
+    storagePath: string;
   }
-  return variant.id;
+): Promise<SheetRunOutcome> {
+  const { land, logger, logTag, claimed, storagePath, ...report } = args;
+  if ((await land()) === 'promoted') {
+    return { kind: 'convergent', versionId: report.versionId };
+  }
+  logger.warn(`${logTag} claim moved; sheet parked`, {
+    entityId: report.entityId,
+    versionId: report.versionId,
+    claimed,
+    storagePath,
+  });
+  await reportParkedSheet(report);
+  return { kind: 'divergent', versionId: report.versionId };
 }
 
 export type SaveDivergentTalentSheetArgs = {

@@ -2,6 +2,8 @@
  * Payload and result types for the Cloudflare Workflows entrypoints.
  */
 
+import type { VoiceProvider } from '@/cast/seed-voice';
+import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
 import type {
   AUDIO_MODELS,
   IMAGE_MODELS,
@@ -9,45 +11,54 @@ import type {
   ImageToVideoModel,
   TextToImageModel,
 } from '@/models/models';
-import type { VoiceProvider } from '@/cast/seed-voice';
 import type { AnalysisModelId } from '@/models/models.config';
+import type { Resolution } from '@/models/resolutions';
 import type { VoicedDialogueLine } from '@/motion/dialogue-tts';
-import type { SceneVoicedLine } from '@/shots/shot-dialogue';
+import type {
+  CharacterMinimal,
+  GeneratedAssetActivity,
+  GeneratedAssetInput,
+  MotionAudioClip,
+  SequenceElementMinimal,
+  SequenceLocationMinimal,
+  StyleConfig,
+} from '@/platform/server/db/schema';
+import type { ShotDialogueLine } from '@/platform/server/db/schema/shot-dialogue-versions';
+import type { VideoManifest } from '@/platform/server/db/schema/video-variants';
+import type { GenerationStage } from '@/sequences/pipeline';
+import type { musicDesignResultSchema } from '@/sequences/response-schemas';
+import type {
+  CharacterSheetInputHash,
+  LegacyStylingParts,
+  LocationSheetInputHash,
+  ShotImageInputHash,
+  TalentSheetInputHash,
+} from '@/shots/input-hash';
+import type {
+  DialogueTakeBase,
+  DialogueTakeLine,
+} from '@/motion/server/record-dialogue-take';
 import type {
   AssemblableMotionPrompt,
   CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
   MotionAudio,
+  MotionDialogue,
   MotionPrompt,
   Scene,
-  VisualPrompt,
+  TalentSheetMetadata,
 } from '@/shots/scene-analysis.schema';
-import type {
-  CharacterSheetInputHash,
-  LibraryLocationReferenceInputHash,
-  LocationSheetInputHash,
-  ShotImageInputHash,
-  TalentSheetInputHash,
-} from '@/shots/input-hash';
-
-/**
- * Structured audio direction carried forward onto a user-edit motion prompt
- * version. (Not the dialogue, #1657: what a shot says lives on the shot's
- * dialogue version, not on a prompt row.) Captured at trigger time from the version
- * being edited and threaded through the workflow input, so the workflow does
- * NOT re-read the DB to find it — that read would be racy (concurrent
- * append-only version writes) and replay-unsafe (after the user-edit row is
- * written, the selection pointer moves to it). #713/#991.
- */
-type PriorMotionDirection = {
-  audio?: MotionAudio | null;
-};
+import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
+import type { SceneVoicedLine } from '@/shots/shot-dialogue';
+import type { StoredShotSpec } from '@/shots/shot-list.schema';
+import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
+import type { StudioCreateInput } from '@/studio/schema';
+import { z } from 'zod';
 
 /**
  * The upstream state a user-edited prompt was authored against, captured at
- * trigger time. Same discipline as {@link PriorMotionDirection}, and for the
- * same reason: derived in-workflow it would hash whatever the DB says at
+ * trigger time: derived later it would hash whatever the DB says at
  * execution (or at retry), stamping the edit with inputs the user never saw and
  * leaving staleness permanently reading fresh.
  *
@@ -58,27 +69,19 @@ export type UserEditProvenance = {
   inputHash: string | null;
   analysisModel: string | null;
 };
-import type { AspectRatio, ImageSize } from '@/models/aspect-ratios';
-import type { Resolution } from '@/models/resolutions';
-import type { VideoManifest } from '@/platform/server/db/schema/video-variants';
-import type {
-  CharacterMinimal,
-  GeneratedAssetActivity,
-  GeneratedAssetInput,
-  MotionAudioClip,
-  SequenceElementMinimal,
-  SequenceLocationMinimal,
-  StyleConfig,
-} from '@/platform/server/db/schema';
-import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
-import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
-import type { StudioCreateInput } from '@/studio/schema';
-import type {
-  GenerationCheckpoint,
-  GenerationStage,
-} from '@/sequences/pipeline';
-import { z } from 'zod';
-import type { musicDesignResultSchema } from '@/sequences/response-schemas';
+
+/**
+ * Before #1786 the RUN wrote the user's edit, so its payload carried it. A run
+ * queued before that deploy still carries these fields and nothing else holds
+ * the typed prompt, so the run writes the edit as it used to. New triggers
+ * write the edit at the click and never set them. Drop once no pre-#1786 run
+ * can still be in flight.
+ */
+type PreClickEditPayload = {
+  userEditProvenance?: UserEditProvenance;
+  userEditText?: string;
+  priorMotion?: { audio?: MotionAudio | null };
+};
 
 /**
  * Base workflow context that includes authentication
@@ -104,10 +107,26 @@ export interface UserWorkflowContext {
 export interface SequenceWorkflowContext extends UserWorkflowContext {
   sequenceId?: string;
 }
+
+/**
+ * One cast character as the trigger found it (#2050): the bible entry as
+ * the sequence casts her (`charactersToBible`, look ids are `character_looks`
+ * ids), frozen for the whole run. `shared` says the library or another
+ * sequence holds her too: analysis then links to her and adds looks, and
+ * never rewrites her bible or looks. A character only this sequence holds is
+ * still this sequence's to rewrite on re-analysis.
+ */
+export type AttachedCastSnapshot = {
+  /** `characters.id`. */
+  id: string;
+  shared: boolean;
+  entry: CharacterBibleEntry;
+};
 /**
  * Image generation workflow input
  */
-export interface ImageWorkflowInput extends SequenceWorkflowContext {
+export interface ImageWorkflowInput
+  extends SequenceWorkflowContext, PreClickEditPayload {
   prompt: string;
   style?: Record<string, unknown> | unknown[];
   model?: keyof typeof IMAGE_MODELS;
@@ -162,14 +181,6 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
   /** Hash over `(prompt, model, aspectRatio, sceneSnapshot)`; validated at start. */
   snapshotInputHash?: ShotImageInputHash;
   /**
-   * Present when `prompt` is a real user edit (typed in the UI, and different
-   * from the prompt version currently selected) — absent on auto paths
-   * (storyboard generation, smart-retry, preview, scene split). Presence IS the
-   * instruction to append a `user-edit` prompt version; the payload carries the
-   * provenance so the workflow never re-derives it. @see UserEditProvenance
-   */
-  userEditProvenance?: UserEditProvenance;
-  /**
    * Variant-only mode (#547). When true, the run NEVER touches the live primary
    * `shots.*` image/video columns — it writes only this model's
    * `shot_variants` row. (See `persistImageResult`'s `variantOnly` branch and
@@ -180,7 +191,7 @@ export interface ImageWorkflowInput extends SequenceWorkflowContext {
    * happens later via an explicit "Set". Skips divergence detection entirely
    * (there is no primary to protect).
    */
-  variantOnly?: boolean;
+  variantOnly: boolean;
   /**
    * Pre-created pending `frame_variants` claim row to complete in place
    * (#1085). When set, `set-generating-status` transitions THIS row to
@@ -218,13 +229,32 @@ export interface ShotVariantWorkflowInput extends SequenceWorkflowContext {
   /** The `frame_prompt_versions` row `scenePrompt` was read from, snapshotted
    * at the trigger — stamped on the sheet version for provenance (#1070). */
   promptVersionId?: string | null;
+  /** Already ordered still references, frozen by the shared plan executor. */
+  referenceImages?: ReferenceImageDescription[];
   /** Character reference sheets for visual consistency */
   characterReferences?: ReferenceImageDescription[];
   /** Location reference images for environment consistency */
   locationReferences?: ReferenceImageDescription[];
   /** Element reference images (uploaded logos/products) for identity consistency */
   elementReferences?: ReferenceImageDescription[];
+  /**
+   * What a tile picked from this grid is judged by (#712): the prompt and
+   * reference-sheet hashes the grid was generated against, snapshotted at the
+   * trigger. The run hashes it and stamps the sheet; a picked tile copies that
+   * stamp, so it reads stale after a prompt edit like any other still. Null
+   * when the trigger had no visual prompt.
+   */
+  tileHashInput: StillHashInput | null;
 }
+
+/** The {@link ShotImageSceneSnapshot} fields a still's input hash covers. */
+export type StillHashInput = Pick<
+  ShotImageSceneSnapshot,
+  | 'visualPrompt'
+  | 'characterSheetHashes'
+  | 'locationSheetHashes'
+  | 'elementReferenceHashes'
+>;
 
 export interface ShotVariantWorkflowResult {
   variantImageUrl: string;
@@ -266,6 +296,8 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    * late and are read live; which elements exist must not.
    */
   elementIds: string[];
+  /** The sequence's live cast at the trigger (#2050); see {@link AttachedCastSnapshot}. */
+  cast: AttachedCastSnapshot[];
   /**
    * Provenance for the music prompt this run may write, snapshotted from the
    * sequence row by `triggerStoryboard`. Threaded down analyze-script →
@@ -292,11 +324,12 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    */
   stopAt: GenerationStage;
   /**
-   * Continue-from-DAG: skip earlier phases and hydrate from `checkpoint`.
-   * Storyboard must pass `resume: true` so it does not wipe existing shots.
+   * A continue (#1818): the generation plan's units up to the stop, frozen
+   * at the click as an Update-all plan. The storyboard runs them through
+   * `UpdateStaleShotsWorkflow` instead of analyze-script — only the units,
+   * inputs read from D1 at the trigger. Requires `resume`.
    */
-  startFrom?: GenerationStage;
-  checkpoint?: GenerationCheckpoint;
+  plan?: UpdateStalePlan;
   /** Skip poster + shot delete — this run continues an existing pipeline. */
   resume?: boolean;
   musicModel?: keyof typeof AUDIO_MODELS;
@@ -337,6 +370,11 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
    */
   generateVoices?: boolean;
   /**
+   * The Music switch (`sequences.includeMusic`), snapshotted by the
+   * launcher. Off, a run to Music makes no track.
+   */
+  includeMusic: boolean;
+  /**
    * Shot ids the user routed to Grok on leftover packs (sum under the
    * packing model's min). Snap-to-min is the default; this is the
    * stop-and-pick override. Omitted when the leftover dropdown is not
@@ -354,6 +392,7 @@ export interface StoryboardWorkflowInput extends SequenceWorkflowContext {
 export type StoryboardTriggerInput = Omit<
   StoryboardWorkflowInput,
   | 'stopAt'
+  | 'includeMusic'
   | 'title'
   | 'script'
   | 'userCountry'
@@ -364,6 +403,7 @@ export type StoryboardTriggerInput = Omit<
   | 'imageModel'
   | 'videoModel'
   | 'elementIds'
+  | 'cast'
   | 'musicPromptSource'
   | 'suggestedTalent'
   | 'suggestedLocations'
@@ -394,6 +434,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   imageModel: TextToImageModel;
   /** @see StoryboardWorkflowInput.elementIds — passed straight through. */
   elementIds: string[];
+  /** @see StoryboardWorkflowInput.cast — passed straight through. */
+  cast: AttachedCastSnapshot[];
   /** @see StoryboardWorkflowInput.musicPromptSource — passed straight through. */
   musicPromptSource: 'ai-generated' | 'regenerated';
   /** Multiple image models for variant generation (first is primary) */
@@ -404,8 +446,6 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   autoGenerateMotion?: boolean;
   autoGenerateMusic?: boolean;
   stopAt: GenerationStage;
-  startFrom?: GenerationStage;
-  checkpoint?: GenerationCheckpoint;
   musicModel?: keyof typeof AUDIO_MODELS;
   /** Multiple audio models for variant generation (first is primary) */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -428,6 +468,8 @@ export interface AnalyzeScriptWorkflowInput extends SequenceWorkflowContext {
   referenceOnly: boolean;
   /** @see StoryboardWorkflowInput.generateVoices — passed straight through. */
   generateVoices?: boolean;
+  /** @see StoryboardWorkflowInput.includeMusic — passed straight through. */
+  includeMusic: boolean;
   /** @see StoryboardWorkflowInput.leftoverGrokShotIds — passed straight through. */
   leftoverGrokShotIds?: string[];
 }
@@ -444,6 +486,8 @@ export type SceneSplitWorkflowInput = SequenceWorkflowContext & {
   userCountry?: string;
   /** User-uploaded elements to make the model aware of uppercase tokens */
   elements?: SequenceElementMinimal[];
+  /** @see StoryboardWorkflowInput.cast — the `<CAST>` block the bibles call reads. */
+  cast: AttachedCastSnapshot[];
   /**
    * Clip grid for the shot-list pass (#1593): caps how many shots a scene's
    * label can hold and spreads the label over them. Absent → no cap, an even
@@ -464,11 +508,18 @@ export type SceneSplitWorkflowResult = {
   title: string;
   shotMapping: ShotMapping;
   characterBible: CharacterBibleEntry[];
+  /**
+   * The look each scene dresses a character in, where it is not the default
+   * (#2015): scene id → (character tag → look id). The look ids are the bible
+   * entries' slugs; analyze-script swaps them for `character_looks.id` once
+   * the cast is persisted and writes them onto the scenes.
+   */
+  sceneLooks: Record<string, Record<string, string>>;
   locationBible: LocationBibleEntry[];
   elementBible: ElementBibleEntry[];
   /**
    * The `shot_dialogue_versions` row seeded (or already selected) for each
-   * shot with lines (#1657), so a fresh run's recordings can name the version
+   * shot with lines (#1657), so a fresh run's speeches can name the version
    * they spoke instead of only a continue's.
    */
   dialogueVersionIdByShotId: Record<string, string>;
@@ -511,7 +562,7 @@ export interface ElementSheetWorkflowResult {
  * motion (#1554, #1657). The
  * scene's conversation is recorded whole so every turn is acted in context,
  * but only the shots whose clip no longer matches their lines adopt the new
- * audio — each as a section of the recording, cut to a file and persisted on
+ * audio — each as a section of the speech, cut to a file and persisted on
  * `shots.audioClips` so motion only attaches it.
  */
 export interface DialogueAudioSceneJob {
@@ -546,6 +597,34 @@ export interface DialogueAudioWorkflowInput extends UserWorkflowContext {
   analysisModelId?: AnalysisModelId;
 }
 
+/**
+ * One line performed at the mic, in the speaker's voice (#1802). Everything
+ * the run needs is snapshotted here: the line, the key of the shot's lines,
+ * and the shot's current reading the line is spliced into (null: the shot
+ * has one voiced line and no current reading that matches its lines, so the
+ * take is the whole recording).
+ */
+export interface DialogueTakeWorkflowInput extends UserWorkflowContext {
+  sequenceId: string;
+  shotId: string;
+  /** `<bucket>/<path>` of the user's take (a PCM WAV). */
+  takeStorageKey: string;
+  line: DialogueTakeLine;
+  /** `dialogueClipSourceKey` of the shot's AUTHORED voiced lines. */
+  sourceKey: string;
+  /** The `shot_dialogue_versions` row spoken; null when derived. */
+  dialogueVersionId: string | null;
+  base:
+    | (DialogueTakeBase & {
+        spokenLines: { index: number; text: string }[] | null;
+      })
+    | null;
+  /** Provider per-file floor (H3 Max 2s). */
+  minDurationSeconds: number;
+  /** Longest clip the sequence's model carries (`dialogueAudioMaxSeconds`). */
+  maxDurationSeconds: number;
+}
+
 export interface DialogueAudioWorkflowResult {
   clipsByShotId: Record<string, MotionAudioClip[]>;
 }
@@ -553,7 +632,8 @@ export interface DialogueAudioWorkflowResult {
 /**
  * Motion generation workflow input
  */
-export interface MotionWorkflowInput extends SequenceWorkflowContext {
+export interface MotionWorkflowInput
+  extends SequenceWorkflowContext, PreClickEditPayload {
   shotId?: string;
   /**
    * The shot's scene, pinned at the trigger. Storyboard pins the analysis
@@ -565,11 +645,10 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
   sceneId?: string | null;
   /**
    * The motion prompt version this clip renders from, recorded in the render
-   * manifest. Pinned at the trigger because the workflow cannot re-read it: on
-   * the `userEditProvenance` path this very run repoints
-   * `shots.selectedMotionPromptVersionId`, so a live read would describe a
-   * different prompt than the one submitted. On that path the id of the version
-   * written by the run itself wins. Absent falls back to the live selection.
+   * manifest. Pinned at the trigger because the workflow cannot re-read it: the
+   * selection can move while the run renders. A user edit
+   * is written by the trigger at the click (#1786) and this is its id. Absent
+   * falls back to the live selection.
    */
   motionPromptVersionId?: string | null;
   /**
@@ -595,6 +674,15 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * credits were reserved.
    */
   referenceOnly: boolean;
+  /**
+   * The trigger's edit decision (#2036): whole seconds of the longest
+   * attached clip when it held credits for a Seedance 2.5 edit
+   * (`seedanceEditSeconds`), null when it did not. The submit sends
+   * `duration: -1` only when this is set, so an edit never goes out on a hold
+   * sized for the shot. Required: a trigger that forgot it would send every
+   * edit at the shot's length.
+   */
+  seedanceEditSeconds: number | null;
   prompt: string;
   model?: keyof typeof IMAGE_TO_VIDEO_MODELS;
   duration?: number;
@@ -628,28 +716,6 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   generateAudio?: boolean;
   /**
-   * Present when `prompt` is a real user edit (typed in the UI, and different
-   * from the prompt version currently selected) — absent on auto paths (batch
-   * generation, smart-retry) where `prompt` came from `resolveMotionPrompt` and
-   * may include model-specific dialogue/audio assembly. Presence IS the
-   * instruction to append a `user-edit` prompt version. @see UserEditProvenance
-   */
-  userEditProvenance?: UserEditProvenance;
-  /**
-   * With `userEditProvenance`: the text the user typed, persisted as the
-   * `user-edit` version. `prompt` is that text after model assembly (dialogue
-   * tags, audio direction) — storing it would double-assemble on the next run.
-   */
-  userEditText?: string;
-  /**
-   * Only meaningful when `userEditedPrompt`: the audio direction of the
-   * version being edited, captured at trigger time so the recorded user-edit
-   * version carries it forward (audio-capable models still get enrichment after
-   * a raw-text edit). Threaded in instead of re-read in-workflow — see
-   * {@link PriorMotionDirection}.
-   */
-  priorMotion?: PriorMotionDirection;
-  /**
    * The scene's title, for the stored video's human-readable filename. Passed
    * in rather than read at upload time — a workflow has no reason to reach for
    * scene data, and the name should reflect the scene as it was when the render
@@ -671,29 +737,23 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    */
   referenceImages?: ReferenceImageDescription[];
   /**
-   * Dialogue lines to synthesise before submit (#1554). Snapshotted at the
-   * trigger from the shot's dialogue + each speaker's `voiceId` — the run
-   * must not re-read characters. Empty / omitted = voiceless shot.
+   * Spoken lines for which the upstream dialogue stage generated audio
+   * (#1554). Snapshotted with each speaker's `voiceId`; empty / omitted means
+   * the shot does not require dialogue audio.
    */
   voicedLines?: VoicedDialogueLine[];
   /**
-   * Dialogue clips already synthesised in the `dialogue` stage (#1554).
-   * When present, motion attaches them and does not call ElevenLabs.
-   * Snapshotted at the trigger from `shots.audioClips`.
+   * Dialogue clips synthesised before the motion workflow starts (#1554).
+   * Required to match `voicedLines` whenever that list is non-empty.
    */
   audioClips?: MotionAudioClip[];
   /**
-   * The conversation around this shot (#1657), snapshotted at the trigger
-   * when the shot has voiced lines and no matching clip. Motion's fallback
-   * records it and keeps only this shot's section.
-   */
-  dialogueContext?: SceneVoicedLine[];
-  /**
-   * Structured motion prompt so the TTS step can re-assemble with audio
-   * tokens after the clips exist. Absent on paths that only pass `prompt`.
+   * Structured motion prompt so render assembly can bind the resolved audio
+   * lines after the clips have been generated upstream. Absent on paths that
+   * only pass `prompt`.
    */
   motionPrompt?: AssemblableMotionPrompt;
-  /** Scene character tags, for per-model re-assembly after TTS. */
+  /** Scene character tags, for per-model prompt assembly. */
   characterTags?: string[];
   /**
    * Variant-only mode (#547). When true, the run NEVER touches the legacy
@@ -713,7 +773,7 @@ export interface MotionWorkflowInput extends SequenceWorkflowContext {
    * Scene look for the packed prompt header (environment first, once).
    * Snapshotted at the trigger — the run must not re-read the scene.
    */
-  packedScene?: PackedMotionSceneHeader;
+  packedScene: PackedMotionSceneHeader;
   /**
    * This shot belongs to a 2+ shot scene. A 1-shot job (Grok, or a tile
    * that did not pack) still prepends the packed environment so lighting /
@@ -753,19 +813,70 @@ type PackedMotionCoveredShot = {
 /**
  * Character sheet generation workflow input
  */
-export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
+export interface CharacterSheetWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  /**
+   * The sequence the sheet was asked from, for its events and the run's
+   * storage path; null from the Characters page (#2017), where the run
+   * reports on the character's own channel (`castChannelId`).
+   */
+  sequenceId: string | null;
   /** sequence_characters.id */
   characterDbId: string;
+  /**
+   * The look this sheet draws (#2015) — one run makes one look's sheet. A run
+   * without one is failed on arrival (`assertQueuedWithLooks`).
+   */
+  lookId: string;
+  /**
+   * The `character_look_versions` row the look was read from, snapshotted at
+   * the trigger and stamped on the sheet's version row. The claim is taken
+   * only while the look still points at it.
+   */
+  lookVersionId: string;
+  /**
+   * The look's hair / makeup / injury notes as `effectiveStyling` resolves
+   * them (#2065); null when it has none.
+   */
+  lookStyling: string | null;
+  /**
+   * Set only by the payload seam (`foldLegacyFeaturesInPayload`), on a run
+   * queued before #2065: the look's styling and the bible's features as
+   * they were queued, which is what its `snapshotInputHash` was stamped
+   * from. Optional because no trigger writes it. Delete with
+   * `LEGACY_HASH_UNTIL`.
+   */
+  queuedLegacyStyling?: LegacyStylingParts;
+  /**
+   * The default look's selected sheet, which a look other than the default
+   * is drawn from, and only from. Null exactly when this look IS the
+   * default: a non-default look with no face is refused at the trigger.
+   * Snapshotted at the trigger, or (a look whose default sheet the same run
+   * makes) from that run's landed sheet. `versionId` is the selected
+   * version, or the look's id when the pointer is still null (the #1419
+   * row); it joins the sheet hash.
+   */
+  face: { url: string; versionId: string } | null;
+  /**
+   * The cast talent at the snapshot; null when not cast. The claim is taken
+   * only while the character is still cast with it.
+   */
+  talentId: string | null;
   /** Character name for logging */
   characterName: string;
-  /** Character metadata from script analysis */
+  /**
+   * The character's bible at the trigger. `standardClothing` is the LOOK's
+   * clothing (#2015), not a field of the bible.
+   */
   characterMetadata: CharacterBibleEntry;
   /** Image model to use (defaults to nano_banana_2) */
   imageModel?: TextToImageModel;
   /** Reference image URL (e.g., from talent sheet) for recasting */
   referenceImageUrl?: string;
   /** Talent metadata from talent sheet (for appearance overrides when recasting) */
-  talentMetadata?: CharacterBibleEntry;
+  talentMetadata?: TalentSheetMetadata;
   /** Talent description to include in prompt */
   talentDescription?: string;
   /**
@@ -774,8 +885,6 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * `shouldReuseTalentSheet`.
    */
   reuseTalentSheet?: boolean;
-  /** Sequence style config to apply to the character sheet */
-  styleConfig?: StyleConfig;
   /**
    * Snapshot of the upstream talent sheet's `input_hash` at trigger time.
    * `null` when the character has no talent assignment, or when the talent
@@ -783,8 +892,27 @@ export interface CharacterSheetWorkflowInput extends SequenceWorkflowContext {
    * docs/architecture/workflow-snapshots-and-content-hash-staleness.md.
    */
   talentSheetInputHash?: string | null;
+  /**
+   * The cast talent's own `description` (#1785), hashed in place of
+   * `talentDescription`, which each path words differently for the prompt.
+   * `null` when not cast or blank. Snapshot pattern only.
+   */
+  castTalentDescription: string | null;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash?: CharacterSheetInputHash;
+  snapshotInputHash: CharacterSheetInputHash;
+  /**
+   * The sheet claim (#1113): the id this run's version row will carry, taken at the trigger
+   * (`characterLooks.claimSheet`). The run lands only while the claim still names it,
+   * else it parks as divergent. Absent only on a run queued before #1113,
+   * which lands unconditionally.
+   */
+  sheetVersionId: string;
+  /**
+   * The bible version `characterMetadata` was read from (#1600), stamped on
+   * the sheet's version row so it records what it was made from. Null for a
+   * row with no bible version yet, and absent on a run queued before #1600.
+   */
+  bibleVersionId: string | null;
 }
 
 /**
@@ -849,11 +977,13 @@ export type RegenerateShotSnapshot = {
  * and `depth` are inputs to that computation and don't outlive it.
  *
  * Nothing downstream needs run-start freshness: the spawn-time guards (claim
- * hashes, in-flight checks, the music `musicPromptInputHash` re-check) already
+ * hashes, in-flight checks, the music claim) already
  * absorb drift that happens after plan time, so they absorb the trigger→start
  * gap on the same terms.
  */
 export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
+  /** Fresh handoff announces each phase in order; existing continue keeps its schedule. */
+  freshRun?: boolean;
   sequenceId: string;
   /**
    * The frozen regeneration plan. Optional only because an instance queued by
@@ -861,6 +991,13 @@ export interface UpdateStaleShotsWorkflowInput extends SequenceWorkflowContext {
    * such a run with a validation error rather than silently doing nothing.
    */
   plan?: UpdateStalePlan;
+  /**
+   * Run as a storyboard continue (#1818): emit the banner's phase events.
+   * Update all runs without the banner.
+   */
+  announcePhases?: boolean;
+  /** @see StoryboardWorkflowInput.leftoverGrokShotIds — a continue passes it through. */
+  leftoverGrokShotIds?: string[];
 }
 
 export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
@@ -895,8 +1032,14 @@ export interface RegenerateShotsWorkflowInput extends SequenceWorkflowContext {
  * Recast character workflow input
  * Orchestrates character sheet generation + shot regeneration for recast
  */
-export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
-  /** Character database ID */
+export interface RecastCharacterWorkflowInput
+  extends
+    SequenceWorkflowContext,
+    Pick<
+      CharacterSheetWorkflowInput,
+      'lookId' | 'lookVersionId' | 'lookStyling' | 'talentId'
+    > {
+  /** Character database ID. The sheet redrawn is its default look's (#2015). */
   characterDbId: string;
   /** Character name for logging */
   characterName: string;
@@ -907,7 +1050,7 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
   /** Reference image URL from talent sheet */
   referenceImageUrl?: string;
   /** Talent metadata for appearance overrides */
-  talentMetadata?: CharacterBibleEntry;
+  talentMetadata?: TalentSheetMetadata;
   /** Talent description */
   talentDescription?: string;
   /**
@@ -921,8 +1064,12 @@ export interface RecastCharacterWorkflowInput extends SequenceWorkflowContext {
    * different talent identity than the one the user recast to.
    */
   talentSheetInputHash: string | null;
-  /** Sequence style config to apply to the character sheet */
-  styleConfig?: StyleConfig;
+  /** The cast talent's own description; see `CharacterSheetWorkflowInput`. */
+  castTalentDescription: string | null;
+  /** The sheet claim for the child; see `CharacterSheetWorkflowInput`. */
+  sheetVersionId: string;
+  /** See `CharacterSheetWorkflowInput.bibleVersionId`. */
+  bibleVersionId: string | null;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
   resolution?: Resolution;
@@ -951,7 +1098,7 @@ export type TalentCharacterMatch = {
   /** Talent's default sheet image URL for reference */
   sheetImageUrl: string;
   /** Talent sheet metadata for appearance blending */
-  sheetMetadata?: CharacterBibleEntry;
+  sheetMetadata?: TalentSheetMetadata;
   /** Talent library description, snapshotted at match time for reuse checks. */
   talentDescription?: string;
   // Talent performance (#1561) from the trigger-time snapshot; `''` = library
@@ -968,6 +1115,12 @@ export type TalentCharacterMatch = {
    * `isPerson: true` at insert (#1682). Absent on pre-stamp checkpoints.
    */
   hasSignedRelease?: boolean;
+  /**
+   * The matched default sheet's `input_hash`, so a pipeline character sheet
+   * is stamped with the same hash a regenerate would (#1113). Absent on
+   * pre-#1113 checkpoints.
+   */
+  sheetInputHash?: string | null;
 };
 
 /**
@@ -1045,8 +1198,12 @@ export interface CharacterBibleWorkflowInput extends SequenceWorkflowContext {
  * the bible workflow and triggered directly by "Generate voice" on the
  * character card.
  */
-export interface CharacterVoiceWorkflowInput extends SequenceWorkflowContext {
-  sequenceId: string;
+export interface CharacterVoiceWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  /** As on {@link CharacterSheetWorkflowInput}: null from the Characters page. */
+  sequenceId: string | null;
   characterDbId: string;
   characterBible: CharacterBibleEntry;
   /** The stored description; empty = draft one from the bible first. */
@@ -1093,145 +1250,47 @@ type ShotMapping = Array<{
   shotNumber?: number;
 }>;
 
-export interface FramePromptBatchWorkflowInput extends SequenceWorkflowContext {
-  scenes: Scene[];
-  aspectRatio: AspectRatio;
-  characterBible: CharacterBibleEntry[];
-  locationBible: LocationBibleEntry[];
-  /**
-   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
-   * at destructure and hashed a different shape than verify (#1616).
-   */
-  elementBible: ElementBibleEntry[];
-  styleConfig: StyleConfig;
-  analysisModelId: AnalysisModelId;
-  /** Maps sceneId to shotId for DB persistence after visual prompt generation */
-  shotMapping?: ShotMapping;
-}
-
 /**
- * Visual prompt workflow result. The generated prompts are persisted to
- * `frame_prompt_versions` by the per-scene child, but are ALSO returned in
- * memory so the parent pipeline (analyze-script) threads them straight to the
- * next phase rather than re-reading the DB mirror — versions are append-only
- * and concurrent runs may have repointed the mirror, so a DB read is racy
- * (#713/#991). Keyed by `sceneId`.
+ * Rewrite shot (#1923). One LLM call refills this shot's stored spec.
+ * Everything the call needs is on the payload: the run does not read D1.
  */
-export interface FramePromptBatchWorkflowResult {
-  scenes: Scene[];
-  visualPromptsBySceneId: Record<string, VisualPrompt>;
-}
-
-export interface FramePromptWorkflowInput extends SequenceWorkflowContext {
-  scene: Scene;
-  sceneBefore?: Scene;
-  sceneAfter?: Scene;
-  aspectRatio: AspectRatio;
-  characterBible: CharacterBibleEntry[];
-  locationBible: LocationBibleEntry[];
-  /**
-   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
-   * at destructure and hashed a different shape than verify (#1616).
-   */
-  elementBible: ElementBibleEntry[];
-  styleConfig: StyleConfig;
-  analysisModelId: AnalysisModelId;
-  shotId?: string;
-  /**
-   * Anchor frame id for `shotId`, resolved by the caller and passed in so the
-   * workflow never reads the DB (#991). The visual prompt is persisted ONLY when
-   * this is a real id, so it is REQUIRED (not optional): every trigger must
-   * consciously resolve it — pass `null` only when the shot genuinely has no
-   * anchor frame (the workflow logs + skips persistence). Leaving it off was a
-   * silent "prompt never saved" bug, so the compiler now demands it.
-   */
+export interface ShotSpecRewriteWorkflowInput extends SequenceWorkflowContext {
+  shotId: string;
   frameId: string | null;
-  /**
-   * Stream incremental `fullPrompt` deltas over the per-shot realtime
-   * channel while the LLM generates. Set by the explicit "Regenerate Prompt"
-   * button so the active viewer sees the prompt fill in live; left unset by
-   * script-analysis / auto-staleness paths so we don't burn realtime
-   * publishes on workflows nobody is watching.
-   */
-  emitStreaming?: boolean;
-  /**
-   * Pre-created pending `frame_prompt_versions` row to complete in place
-   * (#1085). Set by enqueue points that claim their targets up front
-   * (regenerateShotPromptFn, UpdateStaleShotsWorkflow); absent on the
-   * analysis-pipeline path, which still appends on completion.
-   */
-  targetVersionId?: string;
-}
-
-export interface MotionPromptBatchWorkflowInput extends SequenceWorkflowContext {
-  scenes: Scene[];
-  aspectRatio: AspectRatio;
-  characterBible: CharacterBibleEntry[];
-  locationBible: LocationBibleEntry[];
-  /**
-   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
-   * at destructure and hashed a different shape than verify (#1616).
-   */
-  elementBible: ElementBibleEntry[];
-  styleConfig: StyleConfig;
-  analysisModelId: AnalysisModelId;
-  shotMapping?: ShotMapping;
-  /**
-   * Rendered starting-shot image URL per scene (`sceneId` → primary
-   * `thumbnailUrl`), captured at trigger time so the per-scene motion-prompt
-   * children never look it up mid-run (#929). Absent / null entry → that scene
-   * had no rendered still and falls back to the text-only motion path.
-   */
-  startingFrameImageUrls?: Record<string, string | null>;
-  /**
-   * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}).
-   * The batch's "every scene must have a rendered still" guard is lifted here:
-   * in this mode a missing still is the design, not a failed image.
-   * Required — omitting it defaulted to `false` before the hasher ran (#1616).
-   */
+  /** `shots.pendingSpecVersionId` this run holds. */
+  claimId: string;
+  visualClaimId: string | null;
+  motionClaimId: string | null;
+  visualWritten: boolean;
+  motionWritten: boolean;
   referenceOnly: boolean;
-}
-
-export interface MotionPromptWorkflowInput extends SequenceWorkflowContext {
   scene: Scene;
-  sceneBefore?: Scene;
-  sceneAfter?: Scene;
-  aspectRatio: AspectRatio;
+  /** Other shots in the scene. This shot is not in the list. */
+  siblingSpecs: Array<{ shotNumber: number | null; spec: StoredShotSpec }>;
   characterBible: CharacterBibleEntry[];
   locationBible: LocationBibleEntry[];
-  /**
-   * Required (`[]` if the sequence has none). Omitting it defaulted to `[]`
-   * at destructure and hashed a different shape than verify (#1616).
-   */
   elementBible: ElementBibleEntry[];
   styleConfig: StyleConfig;
+  aspectRatio: AspectRatio;
   analysisModelId: AnalysisModelId;
-  shotId?: string;
+  lines: Array<{ character: string; line: string; tone: string }>;
   /**
-   * Rendered starting-shot image URL, captured at trigger time (#929). The
-   * motion prompt is conditioned on this exact still (vision input) and the
-   * URL is its staleness identity — it must be PASSED IN, never looked up
-   * inside the workflow, so a concurrent re-render can't swap it mid-run. Null
-   * / absent → no still available, text-only motion path.
+   * Currency hash of the inputs this rewrite is written FROM, snapshotted
+   * at the click. Stamped on the new spec row.
    */
-  startingFrameImageUrl?: string | null;
-  /**
-   * Reference-only mode: this sequence renders straight to video from the
-   * cast / location / element sheets and never generates a start frame, so the
-   * prompt is written against a different template — one that composes the
-   * opening frame in words instead of animating a still. Distinct from a
-   * merely absent `startingFrameImageUrl`, which means "no still YET".
-   * Required — omitting it defaulted to `false` before the hasher ran (#1616).
-   */
-  referenceOnly: boolean;
-  /** See {@link FramePromptWorkflowInput.emitStreaming}. */
+  specInputHash: string;
+  currentSpec: StoredShotSpec | null;
+  dialogue: MotionDialogue;
+  /** Manual regenerate streams completion onto the shot prompt channel. */
   emitStreaming?: boolean;
-  /**
-   * Pre-created pending `shot_prompt_versions` row (motion) to complete in
-   * place (#1085). See {@link FramePromptWorkflowInput.targetVersionId}.
-   */
-  targetVersionId?: string;
 }
+
+export interface ShotSpecRewriteWorkflowResult {
+  specVersionId: string | null;
+  visualVersionId: string | null;
+  motionVersionId: string | null;
+}
+
 /**
  * Workflow result types
  */
@@ -1243,6 +1302,8 @@ export interface MotionWorkflowResult {
 export interface CharacterSheetWorkflowResult {
   sheetImageUrl: string;
   characterDbId?: string;
+  /** The look the sheet is of (#2015). */
+  lookId: string;
   sheetImagePath?: string;
   /**
    * The live `character_sheet_variants` row selected on a convergent write.
@@ -1335,9 +1396,16 @@ export interface LibraryTalentSheetWorkflowInput extends UserWorkflowContext {
    */
   uploadedSheetUrl?: string;
   /** Appearance metadata extracted from the uploaded sheet, when available. */
-  uploadedSheetMetadata?: CharacterBibleEntry;
+  uploadedSheetMetadata?: TalentSheetMetadata;
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash?: TalentSheetInputHash;
+  snapshotInputHash: TalentSheetInputHash;
+  /**
+   * The sheet claim (#1113): the id of the `talent_sheets` row this run writes, taken at the trigger
+   * (`talent.claimSheet`). The run lands only while the claim still names it,
+   * else it parks as divergent. Absent only on a run queued before #1113,
+   * which lands unconditionally.
+   */
+  sheetId: string;
 }
 
 export interface LibraryTalentSheetWorkflowResult {
@@ -1349,31 +1417,41 @@ export interface LibraryTalentSheetWorkflowResult {
 }
 
 /**
- * Location sheet generation workflow input
+ * Location sheet generation workflow input. `sequenceId` is null for a run
+ * started from the Locations page (#1695): it stores under the team and
+ * reports on the location's own channel.
  */
-export interface LocationSheetWorkflowInput extends SequenceWorkflowContext {
+export interface LocationSheetWorkflowInput extends Omit<
+  SequenceWorkflowContext,
+  'sequenceId'
+> {
+  sequenceId: string | null;
   /** locations.id */
   locationDbId: string;
   /** Location name for logging */
   locationName: string;
-  /** Location metadata from script analysis */
+  /** The location's bible, `rendering` included. */
   locationMetadata: LocationBibleEntry;
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Reference image URL (e.g., from library location) for overrides */
-  referenceImageUrl?: string;
-  /** Library location description for overrides */
-  libraryLocationDescription?: string;
-  /** Sequence style config to apply to the location sheet */
-  styleConfig?: StyleConfig;
   /**
-   * Snapshot of the parent library location's `reference_input_hash` at
-   * trigger time. `null` when the sheet has no library-location reference,
-   * or when the library row predates hash tracking.
+   * The photos uploaded as input for this location, snapshotted at the
+   * trigger. `[]` when it has none and the sheet is drawn from the bible.
    */
-  libraryLocationReferenceHash?: string | null;
+  referencePhotoUrls: string[];
   /** Hash over the inlined DTO; validated by the snapshot middleware. */
-  snapshotInputHash?: LocationSheetInputHash;
+  snapshotInputHash: LocationSheetInputHash;
+  /**
+   * The reference claim (#1113): the id this run's version row will carry, taken at the trigger
+   * (`locations.claimReference`). The run lands only while the claim still names it,
+   * else it parks as divergent.
+   */
+  referenceVersionId: string;
+  /**
+   * The bible version `locationMetadata` was read from (#1600); see
+   * `CharacterSheetWorkflowInput.bibleVersionId`.
+   */
+  bibleVersionId: string | null;
 }
 
 export interface LocationSheetWorkflowResult {
@@ -1391,44 +1469,6 @@ export interface LocationSheetWorkflowResult {
 }
 
 /**
- * Library location sheet generation workflow input
- * Generates a 3x3 grid reference sheet from user-uploaded reference images
- */
-export interface LibraryLocationSheetWorkflowInput extends UserWorkflowContext {
-  /** locations.id */
-  locationDbId: string;
-  /** Location name for prompt */
-  locationName: string;
-  /** Location description for prompt */
-  locationDescription?: string;
-  /** Reference image URLs (user uploads) */
-  referenceImageUrls: string[];
-  /** Sequence ID (library sequence) for storage path */
-  sequenceId: string;
-  /** Image model to use */
-  imageModel?: TextToImageModel;
-  /**
-   * Hash over the inlined DTO at trigger time. The final reference write is
-   * gated on it: if the location was renamed/re-described mid-run the sheet is
-   * parked as a divergent variant instead of becoming the live reference.
-   */
-  snapshotInputHash?: LibraryLocationReferenceInputHash;
-}
-
-export interface LibraryLocationSheetWorkflowResult {
-  /** Generated sheet image URL */
-  sheetImageUrl: string;
-  /** Storage path */
-  sheetImagePath?: string;
-  /** Generated preview image URL */
-  previewImageUrl?: string;
-  /** Preview storage path */
-  previewImagePath?: string;
-  /** Location ID */
-  locationDbId: string;
-}
-
-/**
  * Location bible generation workflow input
  * Generates reference sheets for all locations in a sequence
  */
@@ -1438,26 +1478,26 @@ export interface LocationBibleWorkflowInput extends UserWorkflowContext {
   locationBible: LocationBibleEntry[];
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Library location matches for locations that should use library references */
-  libraryLocationMatches?: LibraryLocationMatch[];
-  /** Sequence style config to apply to location sheets */
-  styleConfig?: StyleConfig;
+  /**
+   * Script locations matching bound to a team location: the sequence links
+   * to that location and no sheet is drawn here (#1695).
+   */
+  libraryLocationMatches: LibraryLocationMatch[];
 }
 
 /**
- * Library location match result
+ * A script location matching bound to one of the team's locations the writer
+ * picked (#1695). The sequence links to that location: nothing is copied and
+ * no sheet is drawn.
  */
 export type LibraryLocationMatch = {
   /** Location ID from LocationBibleEntry.locationId */
   locationId: string;
-  /** Library location database ID */
+  /** The team location's id (`locations.id`). */
   libraryLocationId: string;
-  /** Library location name */
   libraryLocationName: string;
-  /** Library location reference image URL */
-  referenceImageUrl: string;
-  /** Library location description for prompt enhancement */
-  description?: string;
+  /** That location's sheet, for the progress stream; null while none has landed. */
+  referenceImageUrl: string | null;
 };
 
 /**
@@ -1480,41 +1520,24 @@ export interface LocationMatchingWorkflowOutput {
   matches: LibraryLocationMatch[];
 }
 /**
- * Recast location workflow input
- * Orchestrates location sheet generation + shot regeneration for recast
+ * Recast location workflow input. A recast re-points the sequence's link at
+ * another of the team's locations (done at the trigger, #1695); this run
+ * re-renders the shots set there. No sheet is drawn.
  */
 export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
-  /** Location database ID */
+  /** The location the sequence now uses (`locations.id`). */
   locationDbId: string;
   /** Location name for logging */
   locationName: string;
-  /** Location metadata from script analysis */
-  locationMetadata: LocationBibleEntry;
   /** Image model to use */
   imageModel?: TextToImageModel;
-  /** Reference image URL from library location */
-  referenceImageUrl?: string;
-  /** Library location description */
-  libraryLocationDescription?: string;
-  /** The library location this recast binds the sequence location to. */
-  libraryLocationId: string;
-  /**
-   * That library location's `reference_input_hash`, resolved at trigger time.
-   * The workflow used to re-derive it two DB reads deep, minutes later.
-   */
-  libraryLocationReferenceHash: string | null;
-  /** Sequence style config to apply to the location sheet */
-  styleConfig?: StyleConfig;
   /** Aspect ratio (frozen at trigger time, replaces a live sequence read). */
   aspectRatio: AspectRatio;
   resolution?: Resolution;
   /**
    * Per-shot regenerate-shots snapshots for the shots this location appears
-   * in, resolved at trigger time. The scope of the regeneration IS this list —
-   * there is no separate `affectedShotIds`. The recast location's own
-   * reference enters as a sentinel (see `recast-snapshot.ts`) because the
-   * awaited child has not generated it yet; the workflow substitutes it in
-   * memory.
+   * in, resolved at trigger time, after the link moved. The scope of the
+   * regeneration IS this list — there is no separate `affectedShotIds`.
    */
   shotSnapshots: RegenerateShotSnapshot[];
   /** Batch hash over `shotSnapshots` as sent (payload tamper check). */
@@ -1522,16 +1545,19 @@ export interface RecastLocationWorkflowInput extends SequenceWorkflowContext {
 }
 
 /**
- * Compact scene summary passed to the music workflow for AI prompt generation
+ * One scene as the music LLM reads it, and as its prompt hash covers it.
+ * Built only by `src/audio/server/workflows/music-scene-summaries.ts`, from
+ * the scene row and its shots' durations, so the stamp and the verify
+ * cannot drift (#1783).
  */
 export type MusicSceneSummary = {
   sceneId: string;
   title: string;
   storyBeat: string;
+  /** The scene's shot durations, summed. */
   durationSeconds: number;
   location: string;
   timeOfDay: string;
-  visualSummary: string;
 };
 
 /**
@@ -1552,6 +1578,20 @@ export interface MusicPromptWorkflowInput extends SequenceWorkflowContext {
    * that predate it fall back to an in-workflow lookup.
    */
   promptSource?: 'ai-generated' | 'regenerated';
+
+  /**
+   * The audio model a failed prompt is recorded against (#1115): with no
+   * claim to fail, the failure lands as a failed primary track row, so the
+   * sequence reads `failed` rather than silently `pending`. Every trigger
+   * sets it; optional only for payloads queued before #1115 deployed.
+   */
+  musicModel?: string;
+
+  /**
+   * The track claim a parent took before this prompt (update-stale's
+   * regeneration). A failed prompt fails that row instead of generating one.
+   */
+  musicVariantId?: string;
 }
 
 export type MusicPromptWorkflowResult = z.infer<typeof musicDesignResultSchema>;
@@ -1569,13 +1609,18 @@ export interface MusicWorkflowInput extends SequenceWorkflowContext {
   /** Audio model to use */
   model?: keyof typeof AUDIO_MODELS;
   /**
-   * Whether this model owns the live `sequences.music*` columns (#546). In a
-   * multi-model fan-out only the primary (audioModels[0]) writes the shared
-   * sequence row + drives `musicStatus`; secondary models persist only their
-   * own `sequence_music_variants` row and emit model-scoped events. Defaults
-   * to true for single-model / legacy callers that don't set it.
+   * Whether this run's track may take the sequence's pointer (#546, #1115).
+   * In a multi-model fan-out only the primary (audioModels[0]) claims it and
+   * drives the music status; secondary models open their own row only.
+   * Defaults to true for single-model / legacy callers that don't set it.
    */
   isPrimary?: boolean;
+  /**
+   * The `sequence_music_variants` row the trigger opened with its claim
+   * (#1115). Absent when the run opens its own (a pipeline child, or a
+   * payload queued before the claim).
+   */
+  variantId?: string;
 }
 
 export interface MusicWorkflowResult {
@@ -1596,7 +1641,7 @@ export interface MusicWorkflowResult {
  * shots of one scene are ONE ElevenLabs call acted as one conversation — not N
  * overlapping windows, each billed in full.
  */
-export type BatchDialogueRecording = {
+export type BatchDialogueSpeech = {
   scenes: DialogueAudioSceneJob[];
   /** See `DialogueAudioWorkflowInput`. */
   minDurationSeconds?: number;
@@ -1605,8 +1650,14 @@ export type BatchDialogueRecording = {
 };
 
 export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
-  /** See {@link BatchDialogueRecording}. Absent when no shot needs a recording. */
-  dialogueRecording?: BatchDialogueRecording;
+  /** See {@link BatchDialogueSpeech}. Absent when no shot needs a speech. */
+  dialogueSpeech?: BatchDialogueSpeech;
+  /**
+   * @deprecated The pre-#1913 name of `dialogueSpeech`, on a batch queued
+   * before the deploy. `MotionBatchWorkflow` reads it as a fallback.
+   */
+  // ponytail: delete once no pre-#1913 motion batch can be in flight.
+  dialogueRecording?: BatchDialogueSpeech;
   /** Per-shot motion inputs (ordered by scene) */
   shots: Array<{
     shotId: string;
@@ -1615,13 +1666,15 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     /** Persisted clip membership — packing keeps this group on regenerate. */
     renderSegmentId?: string | null;
     /** See `MotionWorkflowInput.packedScene`. */
-    packedScene?: PackedMotionSceneHeader;
+    packedScene: PackedMotionSceneHeader;
     /** See `MotionWorkflowInput.attachSceneHeader`. */
     attachSceneHeader?: boolean;
     /** The start frame. Absent only when `referenceOnly` is set. */
     imageUrl?: string;
     /** See `MotionWorkflowInput.referenceOnly`. Required for the same reason. */
     referenceOnly: boolean;
+    /** See `MotionWorkflowInput.seedanceEditSeconds`. Decided for `model`. */
+    seedanceEditSeconds: number | null;
     /** See `MotionWorkflowInput.frameVersionId`. */
     frameVersionId?: string | null;
     /** See `MotionWorkflowInput.motionPromptVersionId`. */
@@ -1636,7 +1689,7 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     /**
      * Structured motion prompt (#545). When present, `motion-batch` assembles
      * a model-specific prompt for each model in `videoModels` via
-     * `assembleMotionPrompt`. Absent on manual single-model paths, which pass
+     * `buildMotionShotPrompt`. Absent on manual single-model paths, which pass
      * a pre-assembled `prompt` instead. Carries only the assemblable fields
      * (fullPrompt + dialogue/audio) — sourced from the shot's selected motion
      * `shot_prompt_versions` row, not `metadata.prompts.motion` (#713).
@@ -1657,26 +1710,22 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
     draft?: boolean;
     /** See `MotionWorkflowInput.generateAudio`. */
     generateAudio?: boolean;
-    /** See `MotionWorkflowInput.userEditProvenance`. */
-    userEditProvenance?: UserEditProvenance;
-    /** See `MotionWorkflowInput.userEditText`. */
-    userEditText?: string;
     /** See `MotionWorkflowInput.sceneTitle`. */
     sceneTitle?: string;
     /** See `MotionWorkflowInput.sequenceTitle`. */
     sequenceTitle?: string;
-    /** See `MotionWorkflowInput.priorMotion`. */
-    priorMotion?: PriorMotionDirection;
     /** See `MotionWorkflowInput.referenceImages` (#873). */
     referenceImages?: ReferenceImageDescription[];
     /** See `MotionWorkflowInput.voicedLines`. */
     voicedLines?: VoicedDialogueLine[];
     /** See `MotionWorkflowInput.audioClips`. */
     audioClips?: MotionAudioClip[];
-    /** See `MotionWorkflowInput.dialogueContext`. */
-    dialogueContext?: SceneVoicedLine[];
     /** See `MotionWorkflowInput.coveredShots`. */
     coveredShots?: PackedMotionCoveredShot[];
+    /** Only a batch queued before #1786; see {@link PreClickEditPayload}. */
+    userEditProvenance?: PreClickEditPayload['userEditProvenance'];
+    userEditText?: PreClickEditPayload['userEditText'];
+    priorMotion?: PreClickEditPayload['priorMotion'];
   }>;
   /**
    * Video models to generate for every shot (#545). First is primary (its
@@ -1696,9 +1745,8 @@ export interface BatchMotionMusicWorkflowInput extends SequenceWorkflowContext {
   };
   /**
    * Audio models to generate for the sequence (#546). First is primary (its
-   * track also lands on the live `sequences.music*` columns); the rest are
-   * alternates stored as separate primary rows in `sequence_music_variants`
-   * keyed by (sequenceId, model). When absent, falls back to `music.model`
+   * track takes the sequence's music pointer through the claim, #1115); the
+   * rest land as their own `sequence_music_variants` rows. When absent, falls back to `music.model`
    * (single-model behaviour). Each model reuses `music.prompt/tags/duration`.
    */
   audioModels?: (keyof typeof AUDIO_MODELS)[];
@@ -1803,26 +1851,20 @@ export interface MotionMusicPromptsWorkflowInput extends SequenceWorkflowContext
   /**
    * Rendered starting-shot image URL per scene (`sceneId` → primary
    * `thumbnailUrl`), captured by analyze-script after shot images render and
-   * threaded down to the per-scene motion-prompt children (#929). See
-   * {@link MotionPromptBatchWorkflowInput.startingFrameImageUrls}.
+   * Kept on the payload for runs queued before prompts were derived (#1923).
+   * Music does not read it.
    */
   startingFrameImageUrls?: Record<string, string | null>;
-  /**
-   * Visual prompt text per scene (`sceneId` → `frame.imagePrompt`), used as the
-   * music prompt's visual grounding. The structured visual prompt moved off
-   * `scene.prompts` to `frame_prompt_versions` (#713), so analyze-script (which
-   * loaded the mirror) threads it here rather than via `scene.prompts.visual`.
-   */
-  visualSummaryBySceneId?: Record<string, string>;
   /** @see StoryboardWorkflowInput.musicPromptSource — passed to the music-prompt child. */
   musicPromptSource: 'ai-generated' | 'regenerated';
   /**
-   * Reference-only mode (see {@link MotionPromptWorkflowInput.referenceOnly}),
-   * forwarded to the motion-prompt batch. Music is unaffected — it has never
-   * depended on the still. Required — omitting it defaulted to `false` before
-   * the hasher ran (#1616).
+   * Whether the sequence renders without start frames. Music does not read
+   * it. Required — omitting it defaulted to `false` before the hasher ran
+   * (#1616).
    */
   referenceOnly: boolean;
+  /** Shot lines snapshotted for a pre-#1923 motion batch. Music does not read them. */
+  dialogueLinesByShotId?: Record<string, ShotDialogueLine[]>;
 }
 
 export interface MotionMusicPromptsWorkflowResult {
@@ -1872,6 +1914,29 @@ export interface ElementVisionWorkflowInput extends SequenceWorkflowContext {
    * script-wide cascade is skipped.
    */
   token: string;
+}
+
+/**
+ * Sheet portrait workflow input: the square portrait of a sheet version that
+ * was saved without one (an upload). Everything the run needs is here; it
+ * reads nothing.
+ */
+export interface SheetPortraitWorkflowInput extends SequenceWorkflowContext {
+  /** Whose sheet it is, for the prompt, the row and the event. */
+  subject:
+    | { kind: 'character'; characterId: string; lookId: string }
+    | { kind: 'location'; locationId: string };
+  /** The sheet version row the portrait is written on. */
+  versionId: string;
+  sheetUrl: string;
+  /** The folder the sheet is stored under; the portrait goes beside it. */
+  storageDir: string;
+}
+
+export interface SheetPortraitWorkflowResult {
+  versionId: string;
+  /** Null when the draw failed: the tile keeps cropping the sheet. */
+  portraitUrl: string | null;
 }
 
 export interface ElementVisionWorkflowResult {

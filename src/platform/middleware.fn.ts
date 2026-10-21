@@ -27,7 +27,6 @@ import {
   createSystemAdminScopedDb,
   getSequenceByIdUnscoped,
   getUserTeamMembership,
-  resolveUserTeam,
   type ScopedDb,
 } from '@/platform/server/db/scoped';
 import {
@@ -35,6 +34,7 @@ import {
   restrictionNotice,
 } from '@/platform/server/compliance/enforcement';
 import { loadComplianceState } from '@/platform/server/compliance/generation-gate';
+import { resolveTeamAndCompliance } from '@/platform/server/auth/team-memo';
 import {
   AccountRestrictedError,
   AuthenticationError,
@@ -98,8 +98,6 @@ export const EXPECTED_REJECTION_CODES = new Set([
   // Upload-rights gate (#1581): the client is supposed to attest first; a
   // miss is a 400 the user can complete, not a fault.
   'ATTESTATION_REQUIRED',
-  // Same Stripe card already unlocked the welcome grant on another team.
-  'WELCOME_CARD_ALREADY_CLAIMED',
 ]);
 const serverFnLogger = getLogger(['openstory', 'serverFn']);
 
@@ -254,9 +252,12 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         }
       }
 
+      const resolved = oauth?.teamId
+        ? null
+        : await resolveTeamAndCompliance(principal.user.id, request.method);
       const team = oauth?.teamId
         ? await getUserTeamMembership(principal.user.id, oauth.teamId)
-        : await resolveUserTeam(principal.user.id);
+        : resolved?.team;
 
       if (!team) {
         throw authErrorResponse(
@@ -268,10 +269,9 @@ export const authWithTeamRequestMiddleware = createMiddleware().server(
         );
       }
 
-      const compliance = await loadComplianceState(
-        principal.user.id,
-        team.teamId
-      );
+      const compliance =
+        resolved?.compliance ??
+        (await loadComplianceState(principal.user.id, team.teamId));
       if (!compliance.enforcement.canAccess) {
         throw authErrorResponse(
           403,
@@ -352,13 +352,16 @@ const analyticsFlushMiddleware = createMiddleware({ type: 'function' })
 export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
   .middleware([analyticsFlushMiddleware])
   .server(async ({ next, context }) => {
-    const team = await resolveUserTeam(context.user.id);
+    const request = getRequest();
+    const { team, compliance } = await resolveTeamAndCompliance(
+      context.user.id,
+      request.method
+    );
 
-    if (!team) {
+    if (!team || !compliance) {
       throw new Error('No team found for user');
     }
 
-    const compliance = await loadComplianceState(context.user.id, team.teamId);
     if (!compliance.enforcement.canAccess) {
       throw new AccountRestrictedError(
         restrictionNotice(compliance.enforcement) ??
@@ -374,7 +377,6 @@ export const authWithTeamMiddleware = createMiddleware({ type: 'function' })
     // Server fns: GET stays readable under account_suspended; POST/PUT/etc.
     // are writes. `getComplianceStatusFn` uses authMiddleware only so a
     // terminated account can still see the restriction banner.
-    const request = getRequest();
     if (request.method !== 'GET') {
       assertCanWrite(compliance.enforcement);
     }
@@ -419,29 +421,54 @@ export const sequenceAccessMiddleware = createMiddleware({ type: 'function' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema })))
   .server(async ({ next, context, data }) => {
-    let sequence = await context.scopedDb.sequences.getById(data.sequenceId);
-    let { teamId, scopedDb } = context;
-
-    if (!sequence && isSystemAdmin(context.user.email)) {
-      sequence = await getSequenceByIdUnscoped(data.sequenceId);
-      if (sequence) {
-        teamId = sequence.teamId;
-        scopedDb = createScopedDb(sequence.teamId, context.user.id);
-      }
-    }
-
-    if (!sequence) {
-      throw new NotFoundError('Sequence not found');
-    }
-
-    return next({
-      context: {
-        sequence,
-        teamId,
-        scopedDb,
-      },
-    });
+    return next({ context: await loadSequence(context, data.sequenceId) });
   });
+
+/**
+ * Cast access (#2017): the sequence a character is worked on through, or
+ * none (`sequenceId: null`) when the work is done from the Characters page.
+ * `context.sequence` is then null, and the team is the caller's own.
+ */
+export const castAccessMiddleware = createMiddleware({ type: 'function' })
+  .middleware([authWithTeamMiddleware])
+  .validator(zodValidator(z.looseObject({ sequenceId: ulidSchema.nullable() })))
+  .server(async ({ next, context, data }) => {
+    const loaded: {
+      sequence: Sequence | null;
+      teamId: string;
+      scopedDb: ScopedDb;
+    } =
+      data.sequenceId === null
+        ? { sequence: null, teamId: context.teamId, scopedDb: context.scopedDb }
+        : await loadSequence(context, data.sequenceId);
+    return next({ context: loaded });
+  });
+
+/** The sequence, scoped to its team; a system admin reaches any team's. */
+async function loadSequence(
+  context: {
+    scopedDb: ScopedDb;
+    teamId: string;
+    user: { id: string; email: string };
+  },
+  sequenceId: string
+) {
+  let sequence = await context.scopedDb.sequences.getById(sequenceId);
+  let { teamId, scopedDb } = context;
+
+  if (!sequence && isSystemAdmin(context.user.email)) {
+    sequence = await getSequenceByIdUnscoped(sequenceId);
+    if (sequence) {
+      teamId = sequence.teamId;
+      scopedDb = createScopedDb(sequence.teamId, context.user.id);
+    }
+  }
+
+  if (!sequence) {
+    throw new NotFoundError('Sequence not found');
+  }
+  return { sequence, teamId, scopedDb };
+}
 
 /**
  * Team member access middleware

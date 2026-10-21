@@ -12,6 +12,10 @@
 
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { Shot } from '@/platform/server/db/schema';
+import {
+  canonicalStoredShotSpec,
+  type StoredShotSpec,
+} from '@/shots/shot-list.schema';
 
 /** Whole-token regex. Boundaries are anything that isn't `[A-Za-z0-9_]`. */
 function tokenRegex(token: string): RegExp {
@@ -40,6 +44,30 @@ function textContainsToken(text: string, token: string): boolean {
  * referenced it. The scene's script text is rewritten separately, on its
  * selected `scene_script_versions` row.
  */
+/** Rewrite an element token through a stored shot spec. A chained move stays one string. */
+export function renameTokenInSpec(
+  spec: StoredShotSpec,
+  oldToken: string,
+  newToken: string
+): StoredShotSpec {
+  const text = (value: string) => replaceTokenInText(value, oldToken, newToken);
+  return canonicalStoredShotSpec({
+    framing: {
+      shotSize: text(spec.framing.shotSize),
+      angle: text(spec.framing.angle),
+      composition: text(spec.framing.composition),
+      subjectStartState: text(spec.framing.subjectStartState),
+    },
+    action: text(spec.action),
+    cameraMovement: {
+      move: text(spec.cameraMovement.move),
+      pacing: text(spec.cameraMovement.pacing),
+    },
+    direction: text(spec.direction),
+    soundCue: text(spec.soundCue),
+  });
+}
+
 export function renameTokenInContinuity(
   continuity: NonNullable<Scene['continuity']>,
   oldToken: string,

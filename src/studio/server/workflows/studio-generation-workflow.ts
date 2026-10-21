@@ -6,7 +6,8 @@
  * Ark, and billed fal units work the same way as sequences.
  *
  *   1. set-running
- *   2. generate-image, or submit/poll video (retried on a content flag)
+ *   2. generate-image, or submit/poll video (retried on a content flag;
+ *      one new job after Ark's InternalServiceError, #2036)
  *   3. capture credits against the run envelope from reported units
  *   4. upload outputs to R2
  *   5. record-video-observation (clips only; stills record inside generateImage)
@@ -23,6 +24,12 @@ import {
   isContentRejectionError,
 } from '@/models/content-rejection';
 import { extractFalErrorMessage } from '@/models/fal-error';
+import {
+  explainSeedanceFailure,
+  isSeedanceInternalServiceError,
+  seedanceSubmitRefusal,
+  SEEDANCE_INTERNAL_BACKOFF,
+} from '@/motion/seedance-edit';
 import { IMAGE_TO_VIDEO_MODELS } from '@/models/models';
 import type { MediaVia } from '@/models/via';
 import { ZERO_MICROS } from '@/billing/money';
@@ -79,6 +86,8 @@ function classifyMotionFailure(message: string): StudioPollOutcome {
 }
 
 export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<StudioGenerationWorkflowInput> {
+  protected override readonly failureLabel = 'Studio generation';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
     step: WorkflowStep,
@@ -127,7 +136,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           }),
         },
         {
-          scopedDb: scopedDb.credentials,
+          credentials: scopedDb.credentials,
           observability: {
             observationName: 'studio-image',
             tags: ['studio', 'image'],
@@ -221,11 +230,16 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
     let videoUrl = '';
     let billedUsage: TokenUsage | undefined;
     let lastRejection: string | null = null;
+    let seedanceInternalRetried = false;
     let succeededJob: Awaited<ReturnType<typeof submitStudioVideoJob>> | null =
       null;
 
     for (let attempt = 0; attempt < MAX_MOTION_ATTEMPTS; attempt++) {
-      const tag = attempt === 0 ? '' : `-retry-${attempt}`;
+      let retrySeedanceInternal = false;
+      let internalError = '';
+      const tag =
+        (attempt === 0 ? '' : `-retry-${attempt}`) +
+        (seedanceInternalRetried ? '-internal' : '');
       // Register the user's stills with BytePlus before the submit step
       // (#1519) — see MotionWorkflow for why this sits outside it.
       const submitVia = await step.do(`resolve-video-via${tag}`, () =>
@@ -257,10 +271,11 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
             referenceVideos: input.referenceVideos,
             referenceAudio: input.referenceAudio,
             startImageUrl: input.startImageUrl,
+            sourceVideoUrl: input.sourceVideoUrl,
             endImageUrl: input.endImageUrl,
             draft: input.draft,
             finalFromDraftTaskId: event.payload.finalFromDraftTaskId,
-            scopedDb: scopedDb.credentials,
+            credentials: scopedDb.credentials,
           });
           return { ok: true as const, job };
         } catch (error) {
@@ -269,6 +284,14 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
               ok: false as const,
               rejection: extractFalErrorMessage(error),
             };
+          }
+          const providerMessage = extractFalErrorMessage(error);
+          const refusal = seedanceSubmitRefusal(providerMessage, submitVia);
+          if (refusal) {
+            logger.warn(
+              `[StudioGenerationWorkflow] Ark refused the submit for ${assetId}: ${providerMessage}`
+            );
+            throw new NonRetryableError(refusal);
           }
           if (
             error instanceof Error &&
@@ -300,7 +323,8 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         }
 
         const poll = await step.do(
-          `video-poll-batch-${attempt}-${batch}`,
+          // The suffix keeps the second job's polls apart from the first's.
+          `video-poll-batch-${attempt}-${batch}${seedanceInternalRetried ? '-internal' : ''}`,
           async (): Promise<StudioPollOutcome> => {
             const deadline = Date.now() + POLL_BATCH_DURATION_MS;
             while (Date.now() < deadline) {
@@ -382,13 +406,41 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
           break;
         }
         if (poll.kind === 'failed') {
-          throw new NonRetryableError(poll.error);
+          // One new job, not a Cloudflare retry of the failed task (#2036).
+          if (
+            !seedanceInternalRetried &&
+            isSeedanceInternalServiceError(poll.error, job.via)
+          ) {
+            retrySeedanceInternal = true;
+            internalError = poll.error;
+            break;
+          }
+          const explained = explainSeedanceFailure(poll.error, job.via);
+          if (explained) {
+            logger.warn(
+              `[StudioGenerationWorkflow] Ark job ${job.jobId} failed for ${assetId}: ${poll.error}`
+            );
+          }
+          throw new NonRetryableError(explained ?? poll.error);
         }
       }
 
       if (videoUrl) {
         succeededJob = job;
         break;
+      }
+      if (retrySeedanceInternal) {
+        seedanceInternalRetried = true;
+        logger.warn(
+          `[StudioGenerationWorkflow] Ark job ${job.jobId} failed for ${assetId}; submitting one new job: ${internalError}`
+        );
+        await step.sleep(
+          'seedance-internal-backoff',
+          SEEDANCE_INTERNAL_BACKOFF
+        );
+        // Keeps the new job off the content-flag budget.
+        attempt -= 1;
+        continue;
       }
       if (rejected) {
         lastRejection = rejected;
@@ -462,6 +514,31 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
       );
     }
 
+    const videoUpload = await step.do('upload-video', async () => {
+      const googleKey =
+        job.via === 'google'
+          ? await scopedDb.credentials.resolveOptionalKey('google')
+          : undefined;
+      try {
+        return await uploadStudioVideo({
+          videoUrl,
+          teamId,
+          assetId,
+          googleApiKey: googleKey?.key,
+        });
+      } catch (error) {
+        // The storage error names the R2 key: log it, show the user a line.
+        logger.warn(
+          `[StudioGenerationWorkflow] Upload failed for ${assetId}: ${error instanceof Error ? error.message : String(error)}`
+        );
+        throw new Error("Couldn't save the video. Try again.", {
+          cause: error,
+        });
+      }
+    });
+
+    // Charge only for a clip the team can see: a failed upload fails the run
+    // and onFailure zeroes the reservation.
     if (videoCost > 0 && !job.usedOwnKey) {
       await step.do('deduct-video-credits', async () => {
         await deductWorkflowCredits({
@@ -480,19 +557,6 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         });
       });
     }
-
-    const videoUpload = await step.do('upload-video', async () => {
-      const googleKey =
-        job.via === 'google'
-          ? await scopedDb.credentials.resolveOptionalKey('google')
-          : undefined;
-      return uploadStudioVideo({
-        videoUrl,
-        teamId,
-        assetId,
-        googleApiKey: googleKey?.key,
-      });
-    });
 
     const outputs: GeneratedAssetOutput[] = [
       { url: videoUpload.url, contentType: videoUpload.contentType },

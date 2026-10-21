@@ -31,8 +31,7 @@ type ProductEventName =
   | 'studio_generation_started'
   | 'studio_generation_completed'
   | 'sequence_content_ready'
-  | 'welcome_card_setup_opened'
-  | 'welcome_credits_granted';
+  | 'gift_code_redeem_failed';
 
 export type CaptureProductEventArgs = {
   distinctId: string;

@@ -24,8 +24,12 @@
  * line when bumping.
  */
 
-import { micros, multiplyMicros, type Microdollars } from './money';
-import { seedDialogueEstimate, seedVoiceEstimate } from './seed-speech-pricing';
+import { addMicros, micros, multiplyMicros, type Microdollars } from './money';
+import {
+  seedAudioCost,
+  seedDialogueEstimate,
+  seedVoiceEstimate,
+} from './seed-speech-pricing';
 import { SEED_VOICE_DEFAULT_TAKES } from '@/cast/seed-voice';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 
@@ -57,8 +61,12 @@ export const ELEVENLABS_SCRIBE_ENDPOINT = 'elevenlabs-scribe';
 /** Voice isolation (#1765): $0.12 per minute, 2026-09-23. */
 export const ELEVENLABS_ISOLATION_ENDPOINT = 'elevenlabs-isolation';
 
+/** Voice Changer — Speech to Speech (#1802): $0.12 per minute, 2026-09-25. */
+export const ELEVENLABS_STS_ENDPOINT = 'elevenlabs-voice-changer';
+
 const SCRIBE_PER_MINUTE = micros(3_667);
 const ISOLATION_PER_MINUTE = micros(120_000);
+const STS_PER_MINUTE = micros(120_000);
 
 /** Scribe for `seconds` of audio. */
 export function scribeCost(seconds: number): Microdollars {
@@ -72,6 +80,11 @@ export function isolationCost(seconds: number): Microdollars {
   return seconds > 0
     ? multiplyMicros(ISOLATION_PER_MINUTE, seconds / 60)
     : micros(0);
+}
+
+/** Voice Changer for `seconds` of input audio. */
+export function speechToSpeechCost(seconds: number): Microdollars {
+  return seconds > 0 ? multiplyMicros(STS_PER_MINUTE, seconds / 60) : micros(0);
 }
 
 /**
@@ -132,6 +145,11 @@ export const ELEVENLABS_RATE_CARD: Record<string, EffectiveFalPricing> = {
     unit: 'minutes',
     typicalUnitsPerCall: 1,
   },
+  [ELEVENLABS_STS_ENDPOINT]: {
+    unitPrice: STS_PER_MINUTE,
+    unit: 'minutes',
+    typicalUnitsPerCall: 1,
+  },
 };
 
 /** True when this id is priced by the card rather than by `model_pricing`. */
@@ -171,6 +189,20 @@ export function estimateTtsCost(characterCount: number): Microdollars {
   const eleven = elevenLabsTtsCost(characterCount);
   const seed = seedDialogueEstimate(characterCount);
   return eleven > seed ? eleven : seed;
+}
+
+/**
+ * Pre-flight for one mic take of `takeSeconds` (#1802). Voice Changer bills
+ * the take's length. Seed bills what it speaks, trailing silence included,
+ * so its line is priced at twice the take plus 5 s, with its Scribe pass.
+ */
+export function estimateDialogueTakeCost(
+  takeSeconds: number,
+  provider: 'seed' | 'elevenlabs'
+): Microdollars {
+  if (provider === 'elevenlabs') return speechToSpeechCost(takeSeconds);
+  const spoken = takeSeconds * 2 + 5;
+  return addMicros(seedAudioCost(spoken), scribeCost(spoken));
 }
 
 /**

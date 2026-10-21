@@ -22,10 +22,11 @@ const PORTRAIT_FILTER_MESSAGE = /may contain real person/i;
 
 /**
  * Thrown when Ark blocks the still. Surfaces on `sequence.statusError` /
- * studio failure banners.
+ * studio failure banners, so it is user copy: the raw Ark error rides on
+ * `cause` and in the logs.
  */
 export const BYTEPLUS_PORTRAIT_FILTER_MESSAGE =
-  'BytePlus Ark blocked a still as a possible real person (photorealistic generated faces trip this too). Seedance only accepts those faces as asset:// IDs from the virtual portrait library — set BYTEPLUS_ACCESS_KEY / BYTEPLUS_SECRET_KEY and check Advanced Creation Rights on the account.';
+  'Seedance blocked an image that may show a real person. Swap or regenerate it.';
 
 /** True when Ark refused the still as a possible real person. */
 export function isBytePlusPortraitFilterError(error: unknown): boolean {

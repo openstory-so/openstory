@@ -9,12 +9,12 @@ import {
   getSequencesFn,
   renameSequenceFn,
   setSequenceTargetDurationFn,
-  setSequenceVideoModelFn,
+  setSequenceModelsFn,
   setSequenceModelFn,
   setSequenceMusicFn,
   unarchiveSequenceFn,
-  type AddModelResult,
 } from '@/sequences/sequences.fn';
+import type { AddModelResult } from '@/sequences/server/sequence-models';
 import type { GenerationStage } from '@/sequences/pipeline';
 import { micros, type Microdollars } from '@/billing/money';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
@@ -29,6 +29,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
 
+import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-sequences']);
@@ -40,61 +41,43 @@ export const sequenceKeys = {
   list: (teamId?: string) => [...sequenceKeys.lists(), teamId] as const,
   details: () => [...sequenceKeys.all, 'detail'] as const,
   detail: (id?: string) => [...sequenceKeys.details(), id] as const,
-  generationSlice: (
-    id: string,
-    startFrom: GenerationStage,
-    stopAt: GenerationStage,
-    generateStartFrames?: boolean,
-    generateVoices?: boolean,
-    draftMotion?: boolean
-  ) =>
+  generationSlice: (id: string, flags: ContinueFlags) =>
     [
       ...sequenceKeys.detail(id),
       'generation-slice',
-      startFrom,
-      stopAt,
-      generateStartFrames,
-      draftMotion,
-      generateVoices,
+      flags.stopAt,
+      flags.generateStartFrames,
+      flags.generateVoices,
+      flags.draftMotion,
     ] as const,
 };
 
-export function useGenerationSliceEstimate(args: {
-  sequenceId: string;
-  startFrom: GenerationStage | null | undefined;
+/** What a continue click sends besides the sequence (#1817). */
+export type ContinueFlags = {
   stopAt: GenerationStage;
-  generateStartFrames?: boolean;
-  generateVoices?: boolean;
-  /** Draft first (#1756): motion priced as 480p drafts. */
-  draftMotion?: boolean;
-  enabled?: boolean;
-}): Microdollars | null | undefined {
+  generateStartFrames: boolean;
+  generateVoices: boolean;
+  draftMotion: boolean;
+};
+
+/** The continue footer's quote: the plan's work up to the stop, priced per unit. */
+export function useGenerationSliceEstimate(
+  args: ContinueFlags & {
+    sequenceId: string;
+    enabled: boolean;
+    /**
+     * The units the footer offers. Keyed on so the quote moves with the
+     * plan — a sheet finishing elsewhere changes the price, not the switches.
+     */
+    workKey: string;
+  }
+): Microdollars | null | undefined {
+  const { sequenceId, enabled, workKey, ...flags } = args;
   const { data } = useQuery({
-    queryKey:
-      args.startFrom == null
-        ? sequenceKeys.generationSlice(args.sequenceId, 'script', args.stopAt)
-        : sequenceKeys.generationSlice(
-            args.sequenceId,
-            args.startFrom,
-            args.stopAt,
-            args.generateStartFrames,
-            args.generateVoices,
-            args.draftMotion
-          ),
-    queryFn: async () => {
-      if (args.startFrom == null) return { estimateMicros: null };
-      return estimateGenerationSliceFn({
-        data: {
-          sequenceId: args.sequenceId,
-          startFrom: args.startFrom,
-          stopAt: args.stopAt,
-          generateStartFrames: args.generateStartFrames,
-          generateVoices: args.generateVoices,
-          draftMotion: args.draftMotion,
-        },
-      });
-    },
-    enabled: Boolean(args.enabled ?? true) && args.startFrom != null,
+    queryKey: [...sequenceKeys.generationSlice(sequenceId, flags), workKey],
+    queryFn: () =>
+      estimateGenerationSliceFn({ data: { sequenceId, ...flags } }),
+    enabled,
     staleTime: 60_000,
   });
   if (data === undefined) return undefined;
@@ -328,9 +311,8 @@ function invalidateSequenceLists(
 
 /**
  * Rename a sequence (#1108 Phase 4) — title-only write via the dedicated
- * `renameSequenceFn` (never `updateSequenceFn`, whose aspect-ratio handling
- * makes it unsafe for partial writes). Refreshes the detail (breadcrumb +
- * header) and the sequences list.
+ * `renameSequenceFn`. Refreshes the detail (breadcrumb + header) and the
+ * sequences list.
  */
 export function useRenameSequence(sequenceId: string) {
   const queryClient = useQueryClient();
@@ -364,41 +346,52 @@ export function useSetSequenceTargetDuration(sequenceId: string) {
   });
 }
 
+/** The sequence's model defaults: the last pick for each kind (#2004). */
+export type SequenceModels = Partial<
+  Record<'analysisModel' | 'imageModel' | 'videoModel' | 'musicModel', string>
+>;
+
 /**
- * Persist the sequence video-model default. Ungenerated shots inherit it,
- * Sequence settings shows it, and the generate-shots picker seeds from it.
- * Optimistic so the inspector and the Video badge move with the click.
+ * Persist the sequence's model defaults. Work not yet made inherits them,
+ * Sequence settings shows them, and the footer pickers seed from them.
+ * Optimistic so the inspector and the badges move with the click; the plan
+ * and the continue quote are re-asked once the pick has saved.
  */
-export function useSetSequenceVideoModel(sequenceId: string) {
+export function useSetSequenceModels(sequenceId: string) {
   const queryClient = useQueryClient();
   const posthog = usePostHog();
 
   return useMutation({
-    scope: { id: `set-sequence-video-model-${sequenceId}` },
-    mutationFn: (videoModel: string) =>
-      setSequenceVideoModelFn({ data: { sequenceId, videoModel } }),
-    onMutate: async (videoModel) => {
+    scope: { id: `set-sequence-models-${sequenceId}` },
+    mutationFn: (models: SequenceModels) =>
+      setSequenceModelsFn({ data: { sequenceId, ...models } }),
+    onMutate: async (models) => {
       const key = sequenceKeys.detail(sequenceId);
       await queryClient.cancelQueries({ queryKey: key });
       const previous = queryClient.getQueryData<Sequence>(key);
       queryClient.setQueryData<Sequence>(key, (old) =>
-        old ? { ...old, videoModel } : old
+        old ? { ...old, ...models } : old
       );
       return { previous };
     },
-    onError: (error, _videoModel, ctx) => {
+    onError: (error, _models, ctx) => {
       if (ctx?.previous) {
         queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
       }
-      toast.error('Could not save the video model.');
+      toast.error('Could not save the model.');
       posthog.captureException(error, { sequence_id: sequenceId });
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
     },
     onSettled: () => {
+      // Also re-asks the continue quote, which is keyed under the detail.
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      // A model is an input to what is owed: prompts are built for one.
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
     },
   });
@@ -453,6 +446,10 @@ export function useSetSequenceMusic(sequenceId: string) {
       // Reconcile against the server's true state once the write settles.
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
+      });
+      // The Music switch decides whether the plan owes a track.
+      void queryClient.invalidateQueries({
+        queryKey: generationPlanKeys.bySequence(sequenceId),
       });
     },
   });

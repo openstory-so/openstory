@@ -28,9 +28,9 @@
  * the proxy lands on the exact same `.wrangler/state` SQLite files that
  * `bun dev` / `wrangler dev` use.
  */
+import JSON5 from 'json5';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import JSON5 from 'json5';
 import { getPlatformProxy, type PlatformProxy } from 'wrangler';
 
 const WRANGLER_CONFIG = fileURLToPath(
@@ -44,12 +44,33 @@ const WRANGLER_CONFIG = fileURLToPath(
  */
 const UNHOSTABLE_KEYS = ['durable_objects', 'workflows', 'migrations'] as const;
 
-type WranglerConfigShape = Record<string, unknown> & {
-  env?: Record<string, Record<string, unknown>>;
-};
+function isObject(value: unknown): value is object {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function toRecord(value: object): Record<string, unknown> {
+  const record: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) record[key] = entry;
+  return record;
+}
 
 function stripUnhostable(block: Record<string, unknown>): void {
   for (const key of UNHOSTABLE_KEYS) delete block[key];
+}
+
+function readEnvBlocks(
+  value: unknown
+): Record<string, Record<string, unknown>> | undefined {
+  if (value === undefined) return undefined;
+  if (!isObject(value)) throw new Error('wrangler env must be an object');
+  const env: Record<string, Record<string, unknown>> = {};
+  for (const [name, block] of Object.entries(toRecord(value))) {
+    if (!isObject(block)) {
+      throw new Error(`wrangler env.${name} must be an object`);
+    }
+    env[name] = toRecord(block);
+  }
+  return env;
 }
 
 /**
@@ -57,17 +78,17 @@ function stripUnhostable(block: Record<string, unknown>): void {
  * return its path. Per-pid filename so concurrent runs don't clobber each other.
  */
 function writeSlimmedConfig(): string {
-  // JSON5 handles wrangler.jsonc's comments + trailing commas. Parsing untyped
-  // config is an inherent type boundary; we only read/delete top-level and
-  // per-env keys on the result.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- JSON parse boundary
-  const config = JSON5.parse(
-    readFileSync(WRANGLER_CONFIG, 'utf8')
-  ) as WranglerConfigShape;
-
+  // JSON5 handles wrangler.jsonc's comments + trailing commas.
+  const parsed: unknown = JSON5.parse(readFileSync(WRANGLER_CONFIG, 'utf8'));
+  if (!isObject(parsed)) {
+    throw new Error('wrangler.jsonc must be a JSON object');
+  }
+  const config = toRecord(parsed);
   stripUnhostable(config);
-  if (config.env) {
-    for (const block of Object.values(config.env)) stripUnhostable(block);
+  const env = readEnvBlocks(config.env);
+  if (env) {
+    for (const block of Object.values(env)) stripUnhostable(block);
+    config.env = env;
   }
 
   const slimmedPath = fileURLToPath(

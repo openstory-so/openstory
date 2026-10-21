@@ -17,7 +17,10 @@ type CanvasViewToggleProps = {
   /** Progressive reveal (#1091): the canvas has nothing to show until the
    *  first shot preview lands, so the item stays disabled during the split. */
   canvasDisabled?: boolean;
-  /** View-scoped action; wraps below the toggle when the preview is narrow. */
+  /**
+   * Sequence actions, right-aligned. The same in both views, so the row does
+   * not shift when the view changes.
+   */
   trailing?: React.ReactNode;
 };
 
@@ -27,7 +30,12 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
   canvasDisabled,
   trailing,
 }) => (
-  <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 px-2 pt-4 md:px-4">
+  // Toggle centred over the preview, actions on the right: the empty first
+  // column balances the last so the toggle does not drift left. The row is
+  // the `viewbar` container: its width, not the screen's, decides whether
+  // the actions have room for labels (the side panels squeeze it).
+  <div className="@container/viewbar grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 pt-4 md:px-4">
+    <div aria-hidden />
     <ToggleGroup
       type="single"
       value={view}
@@ -53,6 +61,8 @@ export const CanvasViewToggle: React.FC<CanvasViewToggleProps> = ({
         Script
       </ToggleGroupItem>
     </ToggleGroup>
-    <div className="flex min-w-0 justify-end">{trailing}</div>
+    <div className="flex min-w-0 items-center justify-end gap-1">
+      {trailing}
+    </div>
   </div>
 );

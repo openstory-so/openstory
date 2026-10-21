@@ -22,6 +22,7 @@ import {
   BYTEPLUS_PORTRAIT_FILTER_MESSAGE,
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
+import { ARK_AUTO_DURATION } from '@/motion/seedance-edit';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
@@ -57,17 +58,21 @@ import type { AspectRatio } from '@/models/aspect-ratios';
 import type { Resolution } from '@/models/resolutions';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
-import { MOTION_TRANSFORMS } from '@/motion/server/endpoint-map';
+import { applyMotionTransform } from '@/motion/server/endpoint-map';
 import {
   ensureExternallyFetchableUrls,
   toDataOrCdnUrl,
 } from '@/platform/server/storage/external-url';
 import {
   buildStudioVideoInput,
+  snapStudioVideoDuration,
+  studioBillableSeconds,
+  studioEditPrompt,
   studioReferenceEndpoint,
   studioVideoEndpointId,
   studioVideoResolution,
   tagStudioReferences,
+  type StudioDuration,
   type StudioVideoMode,
   type StudioVideoRequest,
 } from '@/studio/text-to-video';
@@ -87,14 +92,16 @@ import {
 } from '@/motion/server/video-storage';
 
 type StudioVideoJobOptions = {
-  scopedDb?: CredentialScopedDb;
+  credentials?: CredentialScopedDb;
   prompt: string;
   model: ImageToVideoModel;
-  duration?: number;
+  duration?: StudioDuration;
   aspectRatio?: AspectRatio;
   resolution?: Resolution;
   generateAudio?: boolean;
   mode?: StudioVideoMode;
+  /** Edit mode (#1925): the clip being rewritten. */
+  sourceVideoUrl?: string;
   referenceImages?: string[];
   referenceVideos?: string[];
   referenceAudio?: string[];
@@ -117,24 +124,24 @@ export type StudioVideoJobSubmission = {
 };
 
 async function resolveFalKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey> {
-  if (scopedDb) return scopedDb.resolveKey('fal');
+  if (credentials) return credentials.resolveKey('fal');
   return { key: getEnv().FAL_KEY, source: 'platform' };
 }
 
 async function resolveOptionalXaiKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('xai');
+  if (credentials) return credentials.resolveOptionalKey('xai');
   const platformKey = getEnv().XAI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
 
 async function resolveOptionalFalKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('fal');
+  if (credentials) return credentials.resolveOptionalKey('fal');
   const platformKey = getEnv().FAL_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -148,9 +155,9 @@ function createNativeVideoAdapter(apiKey: string) {
 }
 
 async function resolveOptionalGoogleKey(
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ): Promise<ResolvedApiKey | undefined> {
-  if (scopedDb) return scopedDb.resolveOptionalKey('google');
+  if (credentials) return credentials.resolveOptionalKey('google');
   const platformKey = getEnv().GEMINI_API_KEY;
   return platformKey ? { key: platformKey, source: 'platform' } : undefined;
 }
@@ -214,15 +221,16 @@ async function buildStudioImageModeInput(
   // against (`MOTION_TRANSFORMS`), so field names, duration encoding and
   // prompt limits come from the generated schemas.
   const endpointId = IMAGE_TO_VIDEO_MODELS[modelKey].id;
-  const transform = MOTION_TRANSFORMS[endpointId];
   const stored = [options.startImageUrl, options.endImageUrl].filter(
     (url): url is string => Boolean(url)
   );
   const urls = await ensureExternallyFetchableUrls(stored, falApiKey);
   const resolution = studioVideoResolution(modelKey, options.resolution);
-  const { prompt, ...modelOptions } = transform.parse({
+  const snapped = snapStudioVideoDuration(options.duration, modelKey);
+  const duration = studioBillableSeconds(snapped, modelKey);
+  const { prompt, ...modelOptions } = applyMotionTransform(endpointId, {
     prompt: options.prompt,
-    duration: options.duration,
+    duration,
     aspectRatio: options.aspectRatio,
     imageUrl: urls[0],
     ...(urls[1] && { end_image_url: urls[1] }),
@@ -235,8 +243,13 @@ async function buildStudioImageModeInput(
     endpointId,
     built: {
       prompt: typeof prompt === 'string' ? prompt : options.prompt,
-      duration: options.duration ?? 5,
-      modelOptions,
+      duration,
+      auto: snapped === 'auto',
+      // The transform snaps to seconds; fal's Seedance schemas take 'auto'.
+      modelOptions:
+        snapped === 'auto'
+          ? { ...modelOptions, duration: 'auto' }
+          : modelOptions,
     },
   };
 }
@@ -246,8 +259,15 @@ async function submitFalStudioVideoJob(
   modelKey: ImageToVideoModel,
   mode: StudioVideoMode
 ): Promise<StudioVideoJobSubmission> {
+  // No fal fallback (#1925): an edit is an Ark task. Seedance 2.5 is only
+  // offered where Ark is claimed, so this is a BYOK-fal team or a bug.
+  if (mode === 'edit') {
+    throw new Error(
+      `Editing a video needs the BytePlus route, but ${IMAGE_TO_VIDEO_MODELS[modelKey].name} is routed to fal for this team`
+    );
+  }
   if (mode !== 'text') {
-    const key = await resolveFalKey(options.scopedDb);
+    const key = await resolveFalKey(options.credentials);
     const { endpointId, built } = await buildStudioImageModeInput(
       options,
       modelKey,
@@ -277,7 +297,7 @@ async function submitFalStudioVideoJob(
     resolution: options.resolution,
     generateAudio: options.generateAudio,
   });
-  const key = await resolveFalKey(options.scopedDb);
+  const key = await resolveFalKey(options.credentials);
   const endpointId = studioVideoEndpointId(modelKey);
   const job = await generateVideo({
     adapter: falVideo(endpointId, { apiKey: key.key }),
@@ -315,18 +335,32 @@ function urlPart(
  * user supplied that may be a face. `noPersonImages` (ledger stills whose
  * ledger verdict is `none`, snapshotted at the trigger)
  * are marked `plain` and go as fetchable URLs so they do not spend
- * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Videos and
- * audio are not assets.
+ * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Reference
+ * clips and audio are not assets; the source of an edit is (#1925).
  */
 export function arkStillsForStudio(
   options: Pick<
     StudioVideoJobOptions,
-    'mode' | 'referenceImages' | 'startImageUrl' | 'endImageUrl'
+    | 'mode'
+    | 'referenceImages'
+    | 'startImageUrl'
+    | 'endImageUrl'
+    | 'sourceVideoUrl'
   >,
   noPersonImages: string[]
 ): ArkStill[] {
   const noPerson = new Set(noPersonImages);
   const mode = options.mode ?? 'text';
+  // The clip an edit rewrites (#1925) is Seedance output, and Ark's filter
+  // refuses a lifelike face in it — generated or not — unless it is in the
+  // portrait library. So it is always registered, as a Video asset. No
+  // sign-off is asked: every still that made the clip passed the likeness
+  // gate when it was generated.
+  if (mode === 'edit') {
+    return options.sourceVideoUrl
+      ? [{ storedUrl: options.sourceVideoUrl, slot: 'library', kind: 'Video' }]
+      : [];
+  }
   const stills: ArkStill[] =
     mode === 'reference'
       ? (options.referenceImages ?? []).map((storedUrl) => ({
@@ -350,8 +384,26 @@ async function buildStudioBytePlusPrompt(
 ) {
   if (mode === 'text') return promptText;
 
+  // The source clip is the only media: Ark reads it as `@Video1`.
+  if (mode === 'edit') {
+    if (!options.sourceVideoUrl) {
+      throw new Error('Studio edit needs a source video');
+    }
+    return [
+      { type: 'text' as const, content: promptText },
+      {
+        type: 'video' as const,
+        // Registered by the workflow (`arkStillsForStudio`); a miss throws.
+        source: {
+          type: 'url' as const,
+          value: arkUrlFor(options.arkAssets, options.sourceVideoUrl),
+        },
+      },
+    ];
+  }
+
   if (mode === 'reference') {
-    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    const falKey = await resolveOptionalFalKey(options.credentials);
     const images = (options.referenceImages ?? []).map((url) =>
       urlPart(url, 'reference', options.arkAssets)
     );
@@ -430,10 +482,10 @@ export async function submitStudioVideoJob(
   // Same claim order as sequence motion: xAI, then Google, then Ark, then
   // fal.
   const xaiKey = isNativeGrokVideoModel(modelKey)
-    ? await resolveOptionalXaiKey(options.scopedDb)
+    ? await resolveOptionalXaiKey(options.credentials)
     : undefined;
   const googleKey = isNativeGeminiVideoModel(modelKey)
-    ? await resolveOptionalGoogleKey(options.scopedDb)
+    ? await resolveOptionalGoogleKey(options.credentials)
     : undefined;
   let via: MediaVia;
   if (xaiKey) {
@@ -441,7 +493,7 @@ export async function submitStudioVideoJob(
   } else if (googleKey) {
     via = 'google';
   } else if (isNativeBytePlusVideoModel(modelKey) && isBytePlusConfigured()) {
-    const falKey = await resolveOptionalFalKey(options.scopedDb);
+    const falKey = await resolveOptionalFalKey(options.credentials);
     via = claimBytePlusVia({
       native: true,
       usingOwnFalKey: falKey?.source === 'team',
@@ -637,9 +689,11 @@ export async function submitStudioVideoJob(
         };
       }
       const promptText =
-        mode === 'reference'
-          ? tagStudioReferences(options.prompt, modelKey)
-          : options.prompt;
+        mode === 'edit'
+          ? studioEditPrompt(tagStudioReferences(options.prompt, modelKey))
+          : mode === 'reference'
+            ? tagStudioReferences(options.prompt, modelKey)
+            : options.prompt;
       const built = buildStudioVideoInput({
         prompt: promptText,
         model: modelKey,
@@ -667,6 +721,10 @@ export async function submitStudioVideoJob(
             ...(arkSize && { size: arkSize }),
             modelOptions: {
               watermark: false,
+              // Sent verbatim, over the snapped generic `duration`: the model
+              // picks the length. An edit requires it (#1925), and
+              // `createStudioAssets` snaps every edit to auto (#2036).
+              ...(built.auto && { duration: ARK_AUTO_DURATION }),
               ...(draft && { draft: true }),
               ...(options.generateAudio !== undefined && {
                 generate_audio: options.generateAudio,
@@ -701,12 +759,12 @@ export async function submitStudioVideoJob(
 
 export async function pollStudioVideoJob(
   job: Pick<StudioVideoJobSubmission, 'jobId' | 'via' | 'endpointId'>,
-  scopedDb?: CredentialScopedDb
+  credentials?: CredentialScopedDb
 ) {
   const via = assertMediaVia(job.via);
   switch (via) {
     case 'xai': {
-      const key = await resolveOptionalXaiKey(scopedDb);
+      const key = await resolveOptionalXaiKey(credentials);
       if (!key) {
         throw new Error(
           `Studio video job ${job.jobId} was submitted to xAI but no xAI key is available to poll it`
@@ -718,7 +776,7 @@ export async function pollStudioVideoJob(
       });
     }
     case 'fal': {
-      const key = await resolveFalKey(scopedDb);
+      const key = await resolveFalKey(credentials);
       return getVideoJobStatus({
         adapter: falVideo(job.endpointId, {
           apiKey: key.key,
@@ -731,7 +789,7 @@ export async function pollStudioVideoJob(
       });
     }
     case 'google': {
-      const key = await resolveOptionalGoogleKey(scopedDb);
+      const key = await resolveOptionalGoogleKey(credentials);
       if (!key) {
         throw new Error(
           `Studio video job ${job.jobId} was submitted to Google but no Google key is available to poll it`

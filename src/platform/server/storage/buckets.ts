@@ -15,6 +15,8 @@ export const STORAGE_BUCKETS = {
   TALENT: 'talent',
   VFX: 'vfx',
   ELEMENTS: 'elements',
+  /** Shared stitches (#2127): `<teamId>/<stitchId>/<file>`; the CLI names `<n>.<ext>`, `create_stitch` a ULID. */
+  STITCHES: 'stitches',
 } as const;
 
 export type StorageBucket =
@@ -152,6 +154,21 @@ export function toShareableUrl(url: string, origin: string): string {
     return `${origin.replace(/\/$/, '')}${url}`;
   }
   return url;
+}
+
+/**
+ * The stored `/r2/<key>` form of a URL `toShareableUrl` handed out (origin or
+ * CDN), so a URL an agent read back can be used where a stored one is
+ * expected. Anything else comes back unchanged.
+ */
+export function fromShareableUrl(url: string): string {
+  const key = r2KeyFromUrl(url);
+  if (key !== null) return `${R2_SERVE_PREFIX}${key}`;
+  const domain = getEnv().R2_PUBLIC_STORAGE_DOMAIN;
+  const cdn = domain ? `https://${domain}/` : null;
+  return cdn && url.startsWith(cdn)
+    ? `${R2_SERVE_PREFIX}${url.slice(cdn.length)}`
+    : url;
 }
 
 export function getPathFromUrl(url: string, bucket: StorageBucket): string {

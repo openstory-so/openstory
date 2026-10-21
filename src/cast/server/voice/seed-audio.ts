@@ -2,10 +2,11 @@
  * Seed Audio 1.0 on BytePlus Seed Speech (#1765) — one non-streaming call:
  * a text prompt, up to three reference clips (`@Audio1`…), one WAV back.
  *
- * Seed sometimes speaks invented words, so every take is transcribed
- * (`take-check.ts`) and the transcription's word timings — not Seed's own
- * subtitles, which only align the script and never show an invented word —
- * are what a take is split and trimmed by.
+ * Every take is transcribed and each line found in what was heard
+ * (`take-check.ts`); the transcription's word timings are what a take is
+ * split and trimmed by. Not Seed's own subtitles: they run adjacent lines
+ * together into one timed word, so a line break inside a take is lost
+ * (#1803: off by up to 2.3 s).
  *
  * Limits (all seen in testing): 3 references, each ≤ 30 s and ≤ 10 MB; 120 s
  * of audio; a 3,000-character prompt; a per-account QPS cap, paced by the
@@ -100,8 +101,8 @@ export type CheckedTake = SeedAudioResult & {
 };
 
 /**
- * One Seed take, transcribed and held against the parts it was asked to say
- * in order. Seed sometimes speaks invented words, so no take is used unchecked.
+ * One Seed take, transcribed, with where each of the parts it was asked to
+ * say was spoken, in order.
  */
 export async function recordCheckedTake(input: {
   seedKey: string;

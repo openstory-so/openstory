@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { CharacterWithSheet } from '@/platform/server/db/schema';
+import type { CastCharacterWithSheet } from '@/platform/server/db/schema';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { enqueueCharacterVoiceDesign } from './enqueue-character-voice';
+import { asStub } from '@/test/as-stub';
 
 function character(
-  overrides: Partial<CharacterWithSheet> = {}
-): CharacterWithSheet {
+  overrides: Partial<CastCharacterWithSheet> = {}
+): CastCharacterWithSheet {
   return {
     id: 'char-1',
     sequenceId: 'seq-1',
@@ -17,11 +18,12 @@ function character(
     ethnicity: null,
     physicalDescription: null,
     standardClothing: null,
-    distinguishingFeatures: null,
+    legacyDistinguishingFeatures: null,
     personality: null,
     movement: null,
     voiceOnly: false,
     isPerson: true,
+    rendering: 'Photoreal live action',
     voiceId: 'voice-old',
     voiceDescription: 'Warm alto',
     voicePreviews: null,
@@ -35,11 +37,22 @@ function character(
     sheetStatus: 'completed',
     sheetError: null,
     selectedSheetVersionId: null,
+    // Wearing its default look (#2015).
+    lookId: 'default-look',
+    lookName: 'Default',
+    looks: [],
+    styling: null,
+    // Cast in its sequence (#2017).
+    castId: 'cast-1',
+    teamId: 'team-1',
+    selectedBibleVersionId: 'bible-1',
+    pendingPromoteSheetVersionId: null,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
     sheetImageUrl: null,
     sheetImagePath: null,
+    sheetPortraitUrl: null,
     sheetGeneratedAt: null,
     sheetInputHash: null,
     ...overrides,
@@ -62,8 +75,8 @@ function makeScopedDb(overrides: {
   const markVoiceClaimTerminal = vi.fn(async () => ({}));
   const stampVoiceClaimWorkflowRunId = vi.fn(async () => ({}));
   const releaseCharacterVoice = vi.fn();
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub of the enqueue surface
-  const scopedDb = {
+  // stub of the enqueue surface
+  const scopedDb = asStub<ScopedDb>({
     teamId: 'team-1',
     characters: {
       listLiveVoiceClaims,
@@ -71,7 +84,7 @@ function makeScopedDb(overrides: {
       markVoiceClaimTerminal,
       stampVoiceClaimWorkflowRunId,
     },
-  } as unknown as ScopedDb;
+  });
   return {
     scopedDb,
     listLiveVoiceClaims,
@@ -89,12 +102,18 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
       trigger,
     });
-    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1');
+    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1', {
+      activity: {
+        sequenceId: 'seq-1',
+        summary: 'Started a voice for Maya',
+      },
+    });
     expect(trigger).toHaveBeenCalledWith(
       expect.objectContaining({
         characterDbId: 'char-1',
@@ -114,6 +133,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -133,6 +153,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -152,6 +173,7 @@ describe('enqueueCharacterVoiceDesign', () => {
       enqueueCharacterVoiceDesign({
         scopedDb,
         character: character(),
+        sequenceId: 'seq-1',
         userId: 'user-1',
         analysisModel: null,
         takes: 2,
@@ -177,6 +199,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -187,7 +210,12 @@ describe('enqueueCharacterVoiceDesign', () => {
       'failed',
       'Voice design never started'
     );
-    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1');
+    expect(createPendingVoiceClaim).toHaveBeenCalledWith('char-1', 'user-1', {
+      activity: {
+        sequenceId: 'seq-1',
+        summary: 'Started a voice for Maya',
+      },
+    });
     expect(trigger).toHaveBeenCalledWith(
       expect.objectContaining({ targetVersionId: 'husk-1' })
     );
@@ -212,6 +240,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,
@@ -240,6 +269,7 @@ describe('enqueueCharacterVoiceDesign', () => {
     const result = await enqueueCharacterVoiceDesign({
       scopedDb,
       character: character(),
+      sequenceId: 'seq-1',
       userId: 'user-1',
       analysisModel: null,
       takes: 2,

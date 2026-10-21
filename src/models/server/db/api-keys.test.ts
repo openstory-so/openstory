@@ -71,7 +71,7 @@ vi.doMock('@/platform/server/crypto/api-key-encryption', async () => {
 });
 
 // Dynamic import so the mocks above apply to the module-under-test (and its
-// crypto dependency) — see CLAUDE.md module-mocking pattern.
+// crypto dependency) — see AGENTS.md module-mocking pattern.
 const { createApiKeysMethods, createApiKeysReadMethods } =
   await import('./api-keys');
 
@@ -490,7 +490,7 @@ describe('resolveLlmKey (issue #895 — fal key covers LLM calls)', () => {
 });
 
 describe('resolveLlmKey — LLMTR gateway', () => {
-  const CARRIED = 'anthropic/claude-sonnet-5';
+  const CARRIED = 'anthropic/claude-fable-5.1';
   const NOT_CARRIED = 'anthropic/claude-opus-5-fast';
 
   it('prefers a team LLMTR key over the team OpenRouter key for a carried model', async () => {
@@ -534,7 +534,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     const scope = createApiKeysMethods(db, teamId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.20')).toEqual({
       key: 'llmtr-team',
       source: 'team',
       via: 'llmtr',
@@ -558,7 +558,7 @@ describe('resolveLlmKey — LLMTR gateway', () => {
     const scope = createApiKeysMethods(db, teamId, userId);
     await scope.saveKey({ provider: 'llmtr', apiKey: 'llmtr-team' });
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toEqual({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toEqual({
       key: 'platform-xai',
       source: 'platform',
       via: 'xai',
@@ -644,7 +644,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     await scope.saveKey({ provider: 'openrouter', apiKey: 'sk-team-or' });
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'xai-team',
       source: 'team',
       via: 'xai',
@@ -657,7 +657,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
 
     expect(
-      await scope.resolveLlmKey('anthropic/claude-sonnet-5')
+      await scope.resolveLlmKey('anthropic/claude-sonnet-5.5')
     ).toMatchObject({ key: 'sk-team-or', via: 'openrouter' });
   });
 
@@ -672,7 +672,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     testEnv.XAI_API_KEY = 'platform-xai';
     const scope = createApiKeysReadMethods(db, teamId);
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'platform-xai',
       source: 'platform',
       via: 'xai',
@@ -682,7 +682,7 @@ describe('native xAI key resolution (issue #1167)', () => {
   it('falls through to OpenRouter for a Grok model with no xAI key anywhere', async () => {
     const scope = createApiKeysReadMethods(db, teamId);
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       key: 'platform-openrouter-key',
       via: 'openrouter',
     });
@@ -693,7 +693,7 @@ describe('native xAI key resolution (issue #1167)', () => {
     await scope.saveKey({ provider: 'xai', apiKey: 'xai-team' });
     await scope.markKeyInvalid('xai', 'revoked');
 
-    expect(await scope.resolveLlmKey('x-ai/grok-4.6')).toMatchObject({
+    expect(await scope.resolveLlmKey('x-ai/grok-4.7')).toMatchObject({
       via: 'openrouter',
     });
   });
@@ -720,7 +720,7 @@ describe('native Google key resolution', () => {
     await scope.saveKey({ provider: 'google', apiKey: 'google-team' });
 
     expect(
-      await scope.resolveLlmKey('anthropic/claude-sonnet-5')
+      await scope.resolveLlmKey('anthropic/claude-sonnet-5.5')
     ).toMatchObject({ key: 'sk-team-or', via: 'openrouter' });
   });
 
@@ -829,5 +829,60 @@ describe('resolveKey elevenlabs (platform-only, #1552)', () => {
       key: 'el-platform',
       source: 'platform',
     });
+  });
+});
+
+describe('upload_post (social publishing, #1267)', () => {
+  it('resolves only the team key — there is no platform fallback', async () => {
+    const read = createApiKeysReadMethods(db, teamId);
+    expect(await read.resolveOptionalKey('upload_post')).toBeUndefined();
+    expect(await read.hasUsableKey('upload_post')).toBe(false);
+
+    const scope = createApiKeysMethods(db, teamId, userId);
+    await scope.saveKey({ provider: 'upload_post', apiKey: 'up-team' });
+
+    expect(await scope.resolveOptionalKey('upload_post')).toEqual({
+      key: 'up-team',
+      source: 'team',
+    });
+    expect(await scope.hasUsableKey('upload_post')).toBe(true);
+  });
+
+  it('validates against /me with the Apikey scheme', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      const auth = new Headers(init?.headers).get('Authorization');
+      return new Response('{}', { status: auth === 'Apikey good' ? 200 : 401 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const scope = createApiKeysReadMethods(db, teamId);
+      expect(await scope.validateKey('upload_post', 'good')).toEqual({
+        valid: true,
+      });
+      expect(await scope.validateKey('upload_post', 'bad')).toEqual({
+        valid: false,
+        error: 'Invalid Upload-Post API key',
+      });
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+        'https://api.upload-post.com/api/uploadposts/me'
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('throws on an outage rather than calling the key invalid', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 }))
+    );
+    try {
+      const scope = createApiKeysReadMethods(db, teamId);
+      await expect(scope.validateKey('upload_post', 'good')).rejects.toThrow(
+        /unavailable \(503\)/
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

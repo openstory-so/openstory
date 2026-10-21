@@ -1,7 +1,10 @@
 /**
  * The `+` panel for the studio composer (#1274): a left nav of sources
- * (Generations / Sequences / Cast / Locations / Audio), a tile grid on the
- * right with multi-select ticks, and Upload in the corner. Sequences drill
+ * (Generations / Uploads / Sequences / Cast / Locations / Audio / Draw), a
+ * tile grid on the right with multi-select ticks, and Upload in the corner.
+ * Draw swaps the grid for a freehand canvas whose PNG goes through the same
+ * upload as a picked file, so it is offered only while an image slot is free.
+ * Sequences drill
  * in: pick a sequence, then any of its shots (stills and clips), elements,
  * cast, or locations. Picking hands back stored URLs + labels + kind; the
  * composer decides whether they become `@ImageN` / `@VideoN` / `@AudioN`,
@@ -10,6 +13,7 @@
 
 import { AppImage } from '@/ui/shadcn/app-image';
 import { Button } from '@/ui/shadcn/button';
+import { StudioDrawingCanvas } from './studio-drawing-canvas';
 import {
   Dialog,
   DialogContent,
@@ -21,10 +25,9 @@ import {
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
-import {
-  useLibraryLocations,
-  useSequenceLocations,
-} from '@/cast/ui/use-sequence-locations';
+import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
+import { useTeamLocationList } from '@/cast/ui/use-team-locations';
+import { useAuthSession } from '@/platform/ui/auth/session-query';
 import {
   useSequencesWithShots,
   type SequenceWithShots,
@@ -49,6 +52,7 @@ import {
   Sparkles,
   Upload,
   Users,
+  PencilRuler,
 } from 'lucide-react';
 import type { StudioReferenceKind } from '@/studio/schema';
 import { useMemo, useRef, useState } from 'react';
@@ -61,6 +65,8 @@ export type StudioReference = {
   kind: StudioReferenceKind;
   /** Still to show for a video tile. */
   posterUrl?: string;
+  /** Browser-measured length; null or unset when unknown, which is not blocked. */
+  durationSeconds?: number | null;
   /**
    * Name this reference keeps in the prompt (#1748). Talent, locations and
    * elements are people and places, so `@Sienna Blake` reads where `@Image3`
@@ -91,7 +97,9 @@ type Source =
   | 'sequences'
   | 'cast'
   | 'locations'
-  | 'audio';
+  | 'audio'
+  | 'draw';
+type LibrarySource = Exclude<Source, 'audio' | 'draw'>;
 
 const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
   { key: 'generations', label: 'Generations', icon: Sparkles },
@@ -100,9 +108,10 @@ const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
   { key: 'cast', label: 'Talent', icon: Users },
   { key: 'locations', label: 'Locations', icon: MapPin },
   { key: 'audio', label: 'Audio', icon: AudioLines },
+  { key: 'draw', label: 'Draw', icon: PencilRuler },
 ];
 
-const EMPTY: Record<Exclude<Source, 'audio'>, string> = {
+const EMPTY: Record<LibrarySource, string> = {
   generations:
     'No generations yet — make an image or clip and it shows up here.',
   uploads: 'Nothing uploaded yet — anything you upload or paste lands here.',
@@ -114,11 +123,11 @@ const EMPTY: Record<Exclude<Source, 'audio'>, string> = {
 function shotReferences(sequence: SequenceWithShots): StudioReference[] {
   return sequence.shots.flatMap((shot, index) => {
     const label = `${sequence.title} · shot ${index + 1}`;
-    const still = shot.image?.url;
+    const still = shot.imageUrl;
     const stillOk = still && isBrowserDisplayableStillUrl(still);
     const refs: StudioReference[] = [];
     if (stillOk) refs.push({ url: still, label, kind: 'image' });
-    const clip = shot.video?.url;
+    const clip = shot.videoUrl;
     if (clip && shot.videoStatus === 'completed') {
       refs.push({
         url: clip,
@@ -134,7 +143,9 @@ function shotReferences(sequence: SequenceWithShots): StudioReference[] {
 /** The team's pickable media, as flat `{ url, label, kind }` rows per source. */
 export function useStudioLibrary(): StudioLibrary {
   const { data: talent } = useTalent();
-  const { data: locations } = useLibraryLocations();
+  // The team's locations (#1695); the ones with a sheet are offered below.
+  const { data: session } = useAuthSession();
+  const { data: locations } = useTeamLocationList(!!session);
   const { data: sequences } = useSequencesWithShots();
   const images = useStudioAssets({ activity: 'image' });
   const videos = useStudioAssets({ activity: 'video' });
@@ -415,7 +426,11 @@ export function StudioReferencePicker({
   const [sequenceId, setSequenceId] = useState<string | null>(null);
   const [pending, setPending] = useState<StudioReference[]>([]);
   const { data: sequences } = useSequencesWithShots();
-  const sources = SOURCES.filter((s) => s.key !== 'audio' || slots.audio > 0);
+  const sources = SOURCES.filter(
+    (s) =>
+      (s.key !== 'audio' || slots.audio > 0) &&
+      (s.key !== 'draw' || slots.image > 0)
+  );
   const openSequence = sequenceId
     ? sequences.find((s) => s.id === sequenceId)
     : undefined;
@@ -483,15 +498,17 @@ export function StudioReferencePicker({
               }
             }}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInput.current?.click()}
-          >
-            <Upload aria-hidden="true" />
-            {source === 'audio' ? 'Upload audio' : 'Upload'}
-          </Button>
+          {source !== 'draw' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInput.current?.click()}
+            >
+              <Upload aria-hidden="true" />
+              {source === 'audio' ? 'Upload audio' : 'Upload'}
+            </Button>
+          )}
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1">
@@ -514,7 +531,7 @@ export function StudioReferencePicker({
               >
                 <Icon aria-hidden="true" />
                 {label}
-                {key !== 'audio' && (
+                {key !== 'audio' && key !== 'draw' && (
                   <span className="ml-auto font-mono text-xs text-muted-foreground">
                     {library[key].length}
                   </span>
@@ -524,7 +541,15 @@ export function StudioReferencePicker({
           </nav>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {source === 'audio' ? (
+            {source === 'draw' ? (
+              <StudioDrawingCanvas
+                onCancel={close}
+                onSubmit={(file) => {
+                  onUpload([file]);
+                  close();
+                }}
+              />
+            ) : source === 'audio' ? (
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted-foreground">
                   MP3 or WAV, up to {slots.audio} more. Seedance: 15 seconds
@@ -600,7 +625,7 @@ export function StudioReferencePicker({
           </div>
         </div>
 
-        {multiple && (
+        {multiple && source !== 'draw' && (
           <DialogFooter className="mx-0 mb-0 border-t px-4 py-3">
             <Button type="button" variant="ghost" onClick={close}>
               Cancel

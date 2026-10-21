@@ -56,6 +56,8 @@ type ImageChildOutput = {
 };
 
 export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<RegenerateShotsWorkflowInput> {
+  protected override readonly failureLabel = 'Regeneration';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RegenerateShotsWorkflowInput>>,
     step: WorkflowStep,
@@ -138,6 +140,7 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
 
         const childPayload: ImageWorkflowInput = {
           userId: input.userId,
+          variantOnly: false,
           teamId,
           sequenceId,
           shotId: snapshot.shotId,
@@ -255,6 +258,12 @@ export class RegenerateShotsWorkflow extends OpenStoryWorkflowEntrypoint<Regener
                 aspectRatio,
                 resolution,
                 model: imageModel,
+                tileHashInput: {
+                  visualPrompt: snapshot.imagePrompt,
+                  characterSheetHashes: snapshot.characterSheetHashes,
+                  locationSheetHashes: snapshot.locationSheetHashes,
+                  elementReferenceHashes: snapshot.elementReferenceHashes,
+                },
               },
               {
                 // Dedupe: a retry of this step.do mustn't re-fire variants.

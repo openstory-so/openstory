@@ -13,8 +13,6 @@ import { z } from 'zod';
 const searchSchema = z.object({
   style: z.string().optional(),
   prefill: z.enum(['style']).optional(),
-  welcome_setup: z.enum(['success', 'canceled']).optional(),
-  session_id: z.string().max(256).optional(),
 });
 
 /**

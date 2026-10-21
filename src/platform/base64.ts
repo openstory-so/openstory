@@ -6,11 +6,10 @@
  * buffer with no intermediate string. The chunked fallback keeps the same
  * memory shape: it never builds a binary string as long as the payload.
  *
- * ponytail: the fallback exists for Node 24 (the pinned engine, which lacks
- * the natives) and older browsers; delete it once both are past.
+ * ponytail: the fallback exists for older browsers that lack the natives.
  */
 
-/** The lib types claim the natives always exist; Node 24 has neither. */
+/** Older browsers may lack the natives even when the lib types include them. */
 const NATIVE: boolean = 'fromBase64' in Uint8Array;
 
 /** base64 characters per `atob` — a multiple of 4, so no group is split. */

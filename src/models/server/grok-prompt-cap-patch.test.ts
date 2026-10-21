@@ -1,16 +1,16 @@
 /**
- * `@tanstack/ai-grok` carries a stale 4000-character prompt check named after
- * `grok-2-image-1212`, and it runs on EVERY image call — `generateImages` and
- * `editImages` both call `validatePrompt` before any model branching — so it
- * also rejects the Imagine models we actually use, for which xAI documents no
- * cap (#1754). `patches/` removes it.
+ * `@tanstack/ai-grok` used to carry a stale 4000-character prompt check named
+ * after `grok-2-image-1212`, and it ran on EVERY image call — `generateImages`
+ * and `editImages` both call `validatePrompt` before any model branching — so
+ * it also rejected the Imagine models we actually use, for which xAI documents
+ * no cap (#1754). We patched it out under `patches/` until upstream dropped it
+ * in 0.19 (the patch is gone with it).
  *
- * The patch is keyed to an exact version, so an ai-grok bump drops it
- * silently: that is how #1640's dependency bump put the throw back, and a
- * record run then failed every character and location sheet before a request
- * left the process. This test fails instead. When it does, copy the patch to
- * the new version and update `patchedDependencies` — or delete both if
- * upstream gates the check on the model.
+ * #1640's dependency bump once put the throw back silently, and a record run
+ * then failed every character and location sheet before a request left the
+ * process. This test fails instead if an ai-grok bump reintroduces it — then
+ * re-create the patch for the new version (`bun patch`) and wire it through
+ * `patchedDependencies`.
  *
  * It reads the installed file rather than importing it: the package's
  * `exports` map has no entry for that path, and the only public route to

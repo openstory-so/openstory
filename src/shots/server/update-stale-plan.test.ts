@@ -1,3 +1,16 @@
+import type { StyleConfig } from '@/look/style-config';
+const styleConfig: StyleConfig = {
+  version: 2,
+  look: {
+    mood: 'quiet',
+    artStyle: 'watercolour',
+    lighting: 'soft light',
+    colorPalette: ['silver', 'blue'],
+    colorGrading: 'cool shadows',
+  },
+  motion: { camera: 'locked' },
+  references: [],
+};
 /**
  * `computePlan` decides what "Update all" (#1077) regenerates — and therefore
  * what the user is billed for. These cover the gating rules that are cheap to
@@ -12,53 +25,60 @@ import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { ShotStalenessResult } from './shot-staleness';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { asStub } from '@/test/as-stub';
 
 const FRESH: ShotStalenessResult = {
   thumbnail: 'fresh',
   visualPrompt: 'fresh',
   motionPrompt: 'fresh',
+  spec: 'fresh',
   causes: [],
   liveHashes: {
     thumbnail: 'live-thumb',
     visualPrompt: 'live-visual',
     motionPrompt: 'live-motion',
+    spec: 'live-spec',
   },
 };
 
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub; computePlan only reads sceneId off the scene
-const scene = { sceneId: 'scene-1' } as unknown as Scene;
+// test stub; computePlan only reads sceneId off the scene
+const scene = asStub<Scene>({
+  sceneId: 'scene-1',
+  metadata: { title: 'Scene 1' },
+  originalScript: { extract: '' },
+});
 
 function makeShot(overrides: Partial<Shot> = {}): Shot {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Shot stub exposing only what computePlan reads
-  return {
+  // minimal Shot stub exposing only what computePlan reads
+  return asStub<Shot>({
     id: 'shot-1',
     sceneId: 'scene-1',
     ...overrides,
-  } as unknown as Shot;
+  });
 }
 
 function makeFrame(overrides: Partial<Frame> = {}): Frame {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal Frame stub exposing only what computePlan reads
-  return {
+  // minimal Frame stub exposing only what computePlan reads
+  return asStub<Frame>({
     id: 'frame-1',
     shotId: 'shot-1',
     // The still lives on the selected version (#1067); a set pointer is what
     // "this shot already has an image" means. Null it for a still-less shot.
     selectedImageVersionId: 'fv-1',
     ...overrides,
-  } as unknown as Frame;
+  });
 }
 
 /** The selected `frame_variants` row `getSelectedByFrameIds` would return. */
 function makeSelectedImage(frame: Frame): FrameVariant {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- minimal FrameVariant stub exposing only what computePlan reads
-  return {
+  // minimal FrameVariant stub exposing only what computePlan reads
+  return asStub<FrameVariant>({
     id: frame.selectedImageVersionId,
     frameId: frame.id,
     url: `https://example.com/${frame.id}.jpg`,
     model: 'nano_banana_2',
     inputHash: 'stored-thumb',
-  } as unknown as FrameVariant;
+  });
 }
 
 /** Staleness keyed by shot id; anything unlisted reads fresh. */
@@ -82,7 +102,7 @@ vi.doMock('./prompt-context', () => ({
       characterBible: [],
       locationBible: [],
       elementBible: [],
-      styleConfig: {},
+      styleConfig,
       analysisModel: 'x',
     })
   ),
@@ -94,17 +114,19 @@ const realMusicSummaries =
   await import('@/audio/server/workflows/music-scene-summaries');
 vi.doMock('@/audio/server/workflows/music-scene-summaries', () => ({
   ...realMusicSummaries,
-  buildMusicSceneSummaries: vi.fn(() => [
-    {
-      sceneId: 'scene-1',
-      title: 'Scene 1',
-      storyBeat: 'beat',
-      durationSeconds: 10,
-      location: 'here',
-      timeOfDay: 'day',
-      visualSummary: 'summary',
-    },
-  ]),
+  musicSceneSummariesFromRows: vi.fn(() => ({
+    sceneSummaries: [
+      {
+        sceneId: 'scene-1',
+        title: 'Scene 1',
+        storyBeat: 'beat',
+        durationSeconds: 10,
+        location: 'here',
+        timeOfDay: 'day',
+      },
+    ],
+    legacyShotSummaries: [],
+  })),
 }));
 const realInputHash = await import('@/shots/input-hash');
 vi.doMock('@/shots/input-hash', () => ({
@@ -115,9 +137,14 @@ vi.doMock('@/shots/input-hash', () => ({
   ),
 }));
 
-const { computePlan, claimTargets, findTargetMissingStartFrameMode } =
-  await import('./update-stale-plan');
+const {
+  computePlan,
+  claimTargets,
+  findTargetMissingStartFrameMode,
+  siblingPrompts,
+} = await import('./update-stale-plan');
 type PlanTarget = import('./update-stale-plan').PlanTarget;
+type PlanUnitRef = import('@/sequences/generation-plan').PlanUnitRef;
 
 type VideoFixture = {
   segments?: Array<{
@@ -150,8 +177,10 @@ function buildScopedDb(
   frames: Frame[],
   opts: {
     video?: VideoFixture;
+    visualPrompts?: Map<string, { text: string }>;
+    motionPrompts?: Map<string, { text: string }>;
     sequence?: Record<string, unknown>;
-    /** The completed primary `sequence_music_variants` row, if any (#1657). */
+    /** The selected `sequence_music_variants` row, if any (#1657, #1115). */
     musicPrimary?: Record<string, unknown>;
   } = {}
 ): ScopedDb {
@@ -164,6 +193,7 @@ function buildScopedDb(
           title: 'Sequence 1',
           aspectRatio: '16:9',
           styleId: 'st-1',
+          styleConfig,
           imageModel: 'nano_banana_2',
           videoModel: 'kling_v3_pro',
           analysisModel: null,
@@ -176,6 +206,7 @@ function buildScopedDb(
           ...opts.sequence,
         }),
     },
+    scenes: { listBySequence: () => Promise.resolve([]) },
     shots: {
       listBySequence: () => Promise.resolve(shots),
       ensureAnchorFrames: () => Promise.resolve(undefined),
@@ -200,16 +231,20 @@ function buildScopedDb(
         ),
     },
     framePromptVersions: {
-      getSelectedByFrameIds: () => Promise.resolve(new Map()),
+      getSelectedByFrameIds: () =>
+        Promise.resolve(opts.visualPrompts ?? new Map()),
     },
     shotPromptVersions: {
-      getSelectedMotionByShots: () => Promise.resolve(new Map()),
+      getSelectedMotionByShots: () =>
+        Promise.resolve(opts.motionPrompts ?? new Map()),
     },
     characters: {
-      listWithSheets: () => Promise.resolve([]),
       list: () => Promise.resolve([]),
     },
-    sequenceLocations: { listWithReferences: () => Promise.resolve([]) },
+    locations: {
+      list: () => Promise.resolve([]),
+      listWithReferences: () => Promise.resolve([]),
+    },
     sequenceElements: { list: () => Promise.resolve([]) },
     styles: { getById: () => Promise.resolve(null) },
     renderSegments: {
@@ -219,226 +254,45 @@ function buildScopedDb(
       listBySequence: () => Promise.resolve(opts.video?.versions ?? []),
     },
     sequenceMusicPromptVersions: {
-      getLatest: () => Promise.resolve(null),
+      getSelected: () => Promise.resolve(null),
     },
     sequenceVariants: {
-      getMusicPrimary: () => Promise.resolve(opts.musicPrimary ?? null),
+      getMusicById: () => Promise.resolve(opts.musicPrimary ?? null),
+    },
+    shotSpecVersions: {
+      getSelectedByShotIds: () => Promise.resolve(new Map()),
     },
   });
 }
 
 /** Minimal ScopedDb stub exposing only the namespaces computePlan touches. */
 function asScopedDb<T>(stub: T): ScopedDb {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub
-  return stub as unknown as ScopedDb;
+  // test stub
+  return asStub<ScopedDb>(stub);
 }
 
+/** Every shot owes a visual prompt unless a test names its units. */
 const plan = (
   shots: Shot[],
   frames: Frame[],
-  scope: {
-    sceneId?: string;
-    shotId?: string;
-    depth?: 'prompts' | 'images' | 'dialogue' | 'video' | 'music';
+  opts: {
+    units?: PlanUnitRef[];
     db?: ScopedDb;
+    renderOptions?: Parameters<typeof computePlan>[0]['renderOptions'];
   } = {}
 ) =>
   computePlan({
-    scopedDb: scope.db ?? buildScopedDb(shots, frames),
+    scopedDb: opts.db ?? buildScopedDb(shots, frames),
     sequenceId: 'seq-1',
-    ...scope,
+    units:
+      opts.units ?? shots.map((s) => ({ kind: 'prompt:visual', id: s.id })),
+    userId: 'u1',
+    renderOptions: opts.renderOptions,
   });
 
 beforeEach(() => stalenessByShot.clear());
 
-describe('computePlan — what gets regenerated', () => {
-  it('targets nothing when every artifact reads fresh', async () => {
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toEqual([]);
-    expect(result.skipped).toEqual([]);
-  });
-
-  it("depth 'prompts' never renders: a stale visual prompt leaves even a stale image alone", async () => {
-    stalenessByShot.set('shot-1', {
-      ...FRESH,
-      visualPrompt: 'stale',
-      thumbnail: 'stale',
-    });
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'prompts',
-    });
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: true,
-      regenMotion: false,
-      regenImage: false,
-      regenVideo: false,
-    });
-  });
-
-  it("depth 'dialogue' (default) cascades: a regenerating visual prompt re-renders its currently-fresh image", async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: true,
-      regenImage: true,
-    });
-  });
-
-  it('never renders a first still: a stale thumbnail on a shot with no image is not a target', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, thumbnail: 'stale' });
-    const result = await plan(
-      [makeShot()],
-      [makeFrame({ selectedImageVersionId: null })]
-    );
-    expect(result.targets).toEqual([]);
-  });
-
-  it('re-renders a stale thumbnail when an image already exists', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, thumbnail: 'stale' });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets[0]).toMatchObject({
-      regenImage: true,
-      regenVisual: false,
-    });
-  });
-
-  it('reports a shot whose staleness could not be computed instead of dropping it', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'unknown' });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toEqual([]);
-    expect(result.skipped).toEqual([
-      { shotId: 'shot-1', reason: 'staleness-unknown' },
-    ]);
-  });
-
-  it('reports a shot with no anchor frame rather than silently skipping it', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
-    const result = await plan([makeShot()], []);
-    expect(result.targets).toEqual([]);
-    expect(result.skipped).toEqual([
-      { shotId: 'shot-1', reason: 'no-anchor-frame' },
-    ]);
-  });
-
-  it('reports a shot still awaiting script analysis', async () => {
-    const result = await plan([makeShot({ sceneId: null })], [makeFrame()]);
-    expect(result.skipped).toEqual([{ shotId: 'shot-1', reason: 'no-scene' }]);
-  });
-});
-
-describe("computePlan — depth 'video' (#1085)", () => {
-  /** One shot, one segment, one selected completed video whose manifest may
-   * or may not match the shot's current pointers. */
-  const videoShot = () =>
-    makeShot({
-      orderIndex: 0,
-      renderSegmentId: 'seg-1',
-      selectedMotionPromptVersionId: 'mpv-1',
-      // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- stub
-    } as Partial<Shot>);
-  const videoFixture = (opts?: {
-    manifestMotionId?: string;
-    selected?: boolean;
-    generating?: boolean;
-  }): VideoFixture => ({
-    segments: [
-      {
-        id: 'seg-1',
-        sceneId: 'scene-1',
-        selectedVideoVersionId: (opts?.selected ?? true) ? 'vv-1' : null,
-      },
-    ],
-    versions: [
-      {
-        id: 'vv-1',
-        renderSegmentId: 'seg-1',
-        model: 'kling',
-        status: 'completed',
-        url: 'https://example.com/v.mp4',
-        createdAt: new Date(0),
-        manifest: [
-          {
-            shotId: 'shot-1',
-            motionPromptVersionId: opts?.manifestMotionId ?? 'mpv-1',
-            frameVersionId: 'fv-1',
-          },
-        ],
-      },
-      ...(opts?.generating
-        ? [
-            {
-              id: 'vv-2',
-              renderSegmentId: 'seg-1',
-              model: 'kling',
-              status: 'generating',
-              url: null,
-              createdAt: new Date(0),
-              manifest: [],
-            },
-          ]
-        : []),
-    ],
-    segFrames: [
-      { shotId: 'shot-1', role: 'first', selectedImageVersionId: 'fv-1' },
-    ],
-  });
-  const videoDb = (opts?: Parameters<typeof videoFixture>[0]) =>
-    buildScopedDb([videoShot()], [makeFrame()], { video: videoFixture(opts) });
-
-  it('re-renders an existing video when its motion prompt regenerates in this run', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
-    const result = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb(),
-    });
-    expect(result.targets[0]).toMatchObject({
-      regenMotion: true,
-      regenVideo: true,
-    });
-  });
-
-  it("depth 'images' never touches video even with a stale upstream", async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
-    const result = await plan([videoShot()], [makeFrame()], {
-      depth: 'images',
-      db: videoDb(),
-    });
-    expect(result.targets[0]).toMatchObject({ regenVideo: false });
-  });
-
-  it('re-renders a video whose manifest already diverged, with no other stale artifact', async () => {
-    const result = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb({ manifestMotionId: 'mpv-0' }),
-    });
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0]).toMatchObject({
-      regenVisual: false,
-      regenMotion: false,
-      regenImage: false,
-      regenVideo: true,
-    });
-  });
-
-  it('never renders a FIRST video, and leaves an in-flight render alone', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
-    const noVideo = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb({ selected: false }),
-    });
-    expect(noVideo.targets[0]).toMatchObject({ regenVideo: false });
-
-    const inFlight = await plan([videoShot()], [makeFrame()], {
-      depth: 'video',
-      db: videoDb({ generating: true }),
-    });
-    expect(inFlight.targets[0]).toMatchObject({ regenVideo: false });
-  });
-});
-
-describe("computePlan — depth 'dialogue' (#1703)", () => {
+describe('computePlan — a dialogue unit (#1703, #1780 §6)', () => {
   const staleAudio: Shot['audioClips'] = [
     {
       id: 'clip-1',
@@ -463,16 +317,15 @@ describe("computePlan — depth 'dialogue' (#1703)", () => {
         getSelectedBySequence: () => Promise.resolve([voicedVersion]),
       },
       characters: {
-        listWithSheets: () => Promise.resolve([]),
         list: () =>
           Promise.resolve([{ name: 'Woman', voiceId: 'voice-woman' }]),
       },
     });
   }
 
-  it('re-records stale dialogue without re-rendering video', async () => {
+  it('re-records the reading without re-rendering video', async () => {
     const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'dialogue',
+      units: [{ kind: 'dialogue', id: 'shot-1' }],
       db: withVoices(voiceDb()),
     });
     expect(result.targets).toHaveLength(1);
@@ -480,158 +333,50 @@ describe("computePlan — depth 'dialogue' (#1703)", () => {
       regenDialogue: true,
       regenVideo: false,
     });
-    expect(result.dialogueRecording?.scenes).toHaveLength(1);
+    expect(result.dialogueSpeech?.scenes).toHaveLength(1);
   });
 
-  it("depth 'images' never records dialogue even when the reading is stale", async () => {
+  it('records a FIRST reading when the plan owes one', async () => {
     const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'images',
-      db: withVoices(voiceDb()),
-    });
-    expect(result.targets).toEqual([]);
-    expect(result.dialogueRecording).toBeNull();
-  });
-
-  it('never creates a FIRST recording', async () => {
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'dialogue',
+      units: [{ kind: 'dialogue', id: 'shot-1' }],
       db: withVoices(voiceDb([])),
     });
-    expect(result.targets).toEqual([]);
-    expect(result.dialogueRecording).toBeNull();
-  });
-});
-
-describe("computePlan — depth 'music' (#1085)", () => {
-  it("is null below depth 'music'", async () => {
-    const result = await plan([makeShot()], [makeFrame()], { depth: 'video' });
-    expect(result.music).toBeNull();
-  });
-
-  it('regenerates a stale music prompt and cascades onto an existing track', async () => {
-    const db = buildScopedDb([makeShot()], [makeFrame()], {
-      sequence: {
-        musicPromptInputHash: 'old-music-hash',
-        musicUrl: 'https://example.com/m.mp3',
-        musicStatus: 'completed',
-      },
-    });
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db,
-    });
-    expect(result.music).toMatchObject({ regenPrompt: true, regenTrack: true });
-    // The children's inputs are frozen with the decision that hashed them.
-    expect(result.music?.sceneSummaries).toHaveLength(1);
-    expect(result.music?.promptSource).toBe('ai-generated');
-    expect(result.music?.durationSeconds).toBe(10);
-  });
-
-  it('never creates a first prompt or track (untracked / no music)', async () => {
-    const untracked = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-    });
-    expect(untracked.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: false,
-    });
-
-    const promptOnly = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db: buildScopedDb([makeShot()], [makeFrame()], {
-        sequence: { musicPromptInputHash: 'old-music-hash', musicUrl: null },
-      }),
-    });
-    expect(promptOnly.music).toMatchObject({
-      regenPrompt: true,
-      regenTrack: false,
-    });
-  });
-
-  it('regenerates a track stale on its own hash, fresh prompt and all (#1657)', async () => {
-    const trackSequence = {
-      musicPromptInputHash: 'live-music-hash',
-      musicUrl: 'https://example.com/m.mp3',
-      musicStatus: 'completed',
-      musicModel: 'elevenlabs_music',
-      musicPrompt: 'warm analogue synth pad',
-      musicTags: 'ambient, instrumental',
-    };
-    const primary = {
-      status: 'completed',
-      model: 'elevenlabs_music',
-      inputHash: 'hash-of-the-prompt-this-track-was-rendered-from',
-    };
-    const stale = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db: buildScopedDb([makeShot()], [makeFrame()], {
-        sequence: trackSequence,
-        musicPrimary: primary,
-      }),
-    });
-    expect(stale.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: true,
-      durationSeconds: 10,
-    });
-
-    // The same row, stamped with the digest the live inputs produce: fresh.
-    const fresh = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db: buildScopedDb([makeShot()], [makeFrame()], {
-        sequence: trackSequence,
-        musicPrimary: {
-          ...primary,
-          // Real digest (the mock above only replaces the PROMPT hash fns).
-          inputHash: await realInputHash.computeSequenceMusicInputHash({
-            prompt: trackSequence.musicPrompt,
-            tags: trackSequence.musicTags,
-            durationSeconds: 10,
-            audioModel: 'elevenlabs_music',
-          }),
-        },
-      }),
-    });
-    expect(fresh.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: false,
-    });
-  });
-
-  it('leaves a fresh music prompt and its track alone', async () => {
-    const db = buildScopedDb([makeShot()], [makeFrame()], {
-      sequence: {
-        musicPromptInputHash: 'live-music-hash',
-        musicUrl: 'https://example.com/m.mp3',
-        musicStatus: 'completed',
-      },
-    });
-    const result = await plan([makeShot()], [makeFrame()], {
-      depth: 'music',
-      db,
-    });
-    expect(result.music).toMatchObject({
-      regenPrompt: false,
-      regenTrack: false,
-    });
-  });
-});
-
-describe("computePlan — 'updating' dedup (#1085)", () => {
-  it('does not target an artifact already covered by a live claim', async () => {
-    stalenessByShot.set('shot-1', {
-      ...FRESH,
-      visualPrompt: 'updating',
-      motionPrompt: 'stale',
-    });
-    const result = await plan([makeShot()], [makeFrame()]);
-    expect(result.targets).toHaveLength(1);
     expect(result.targets[0]).toMatchObject({
-      regenVisual: false,
-      regenMotion: true,
+      regenDialogue: true,
+      motionRender: {
+        packedScene: {
+          colorPalette: 'silver, blue',
+          look: 'watercolour, cool shadows',
+        },
+      },
     });
+    expect(result.dialogueSpeech?.scenes).toHaveLength(1);
+  });
+});
+describe('computePlan — what cannot be planned is reported', () => {
+  it('a shot whose staleness could not be computed is skipped, not dropped', async () => {
+    stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'unknown' });
+    const result = await plan([makeShot()], [makeFrame()]);
+    expect(result.targets).toEqual([]);
+    expect(result.skipped).toEqual([
+      { shotId: 'shot-1', reason: 'staleness-unknown' },
+    ]);
   });
 
+  it('a shot with no anchor frame', async () => {
+    const result = await plan([makeShot()], []);
+    expect(result.skipped).toEqual([
+      { shotId: 'shot-1', reason: 'no-anchor-frame' },
+    ]);
+  });
+
+  it('a shot still awaiting script analysis', async () => {
+    const result = await plan([makeShot({ sceneId: null })], [makeFrame()]);
+    expect(result.skipped).toEqual([{ shotId: 'shot-1', reason: 'no-scene' }]);
+  });
+});
+
+describe('computePlan — claim hashes (#1085)', () => {
   it('carries the live hashes the claim rows will be stamped with', async () => {
     stalenessByShot.set('shot-1', { ...FRESH, visualPrompt: 'stale' });
     const result = await plan([makeShot()], [makeFrame()]);
@@ -669,6 +414,72 @@ describe('computePlan — per-shot start-frame mode', () => {
   });
 });
 
+describe("computePlan — a continue's units (#1818)", () => {
+  const units = (
+    ...list: Array<[PlanUnitRef['kind'], string]>
+  ): PlanUnitRef[] => list.map(([kind, id]) => ({ kind, id }));
+
+  it('takes its flags from the units, not the staleness cascade', async () => {
+    // Everything reads fresh; the plan still owes a prompt and a first clip.
+    const result = await computePlan({
+      scopedDb: buildScopedDb(
+        [makeShot(), makeShot({ id: 'shot-2' })],
+        [makeFrame(), makeFrame({ id: 'frame-2', shotId: 'shot-2' })]
+      ),
+      sequenceId: 'seq-1',
+      userId: 'u1',
+      units: units(['prompt:visual', 'shot-1'], ['clip', 'shot-1']),
+    });
+    expect(result.targets.map((t) => t.shotId)).toEqual(['shot-1']);
+    expect(result.targets[0]).toMatchObject({
+      regenVisual: true,
+      regenImage: false,
+      regenVideo: true,
+      // No video yet: the continue renders the first one.
+      createsVideo: true,
+      // shot-2 shares its scene: the clip renders alone, so it carries the
+      // scene header a packed clip would state once.
+      attachSceneHeader: true,
+    });
+  });
+
+  it('renders a first still at the sequence model, which Update all never does', async () => {
+    const result = await computePlan({
+      scopedDb: buildScopedDb(
+        [makeShot()],
+        [makeFrame({ selectedImageVersionId: null })],
+        { sequence: { imageModel: 'nano_banana_2_lite' } }
+      ),
+      sequenceId: 'seq-1',
+      userId: 'u1',
+      units: units(['prompt:visual', 'shot-1'], ['still', 'shot-1']),
+    });
+    expect(result.targets[0]).toMatchObject({
+      regenVisual: true,
+      regenImage: true,
+      imageModel: 'nano_banana_2_lite',
+      // A one-shot scene keeps the LLM prompt path, byte-identical.
+      attachSceneHeader: false,
+    });
+  });
+
+  it('owes music from the units alone — a first prompt and track included', async () => {
+    const result = await computePlan({
+      scopedDb: buildScopedDb([makeShot()], [makeFrame()]),
+      sequenceId: 'seq-1',
+      userId: 'u1',
+      units: units(['prompt:music', 'seq-1'], ['music', 'seq-1']),
+    });
+    expect(result.targets).toEqual([]);
+    expect(result.music).toMatchObject({
+      regenPrompt: true,
+      regenTrack: true,
+      promptSource: 'ai-generated',
+    });
+    expect(result.music?.sceneSummaries.length).toBeGreaterThan(0);
+  });
+});
+
 describe('claimTargets (#1085)', () => {
   type PendingRow = { id: string; workflowRunId: string | null };
 
@@ -678,8 +489,6 @@ describe('claimTargets (#1085)', () => {
     return {
       shotId: 'shot-1',
       frameId: 'frame-1',
-      beforeShotId: null,
-      afterShotId: null,
       startingFrameImageUrl: null,
       usesStartFrame: true,
       durationMs: null,
@@ -688,6 +497,12 @@ describe('claimTargets (#1085)', () => {
       visualPromptVersionId: null,
       regenVisual: false,
       regenMotion: false,
+      rewriteSpec: false,
+      specVersionId: null,
+      spec: null,
+      specInputHash: null,
+      visualWritten: false,
+      motionWritten: false,
       regenImage: false,
       regenDialogue: false,
       visualLiveHash: 'vh',
@@ -695,6 +510,16 @@ describe('claimTargets (#1085)', () => {
       imageLiveHash: 'ih',
       imageModel: 'nano_banana_2',
       regenVideo: false,
+      createsVideo: false,
+      staleVideoVersionId: null,
+      referenceIds: [],
+      attachSceneHeader: false,
+      motionRender: {
+        packedScene: {},
+        description: '',
+        selectedModel: null,
+        characterLooks: null,
+      },
       dialogue: { presence: false, lines: [] },
       dialogueContext: [],
       ...overrides,
@@ -746,6 +571,7 @@ describe('claimTargets (#1085)', () => {
   it('creates one pending row per artifact and chains the image onto the visual claim', async () => {
     const { db, created } = buildClaimDb({});
     const result = await claimTargets({
+      actorId: 'user_1',
       scopedDb: db,
       targets: [
         makeTarget({ regenVisual: true, regenMotion: true, regenImage: true }),
@@ -773,6 +599,7 @@ describe('claimTargets (#1085)', () => {
   it('direct image regen (prompt fresh) claims with the image live hash', async () => {
     const { db, created } = buildClaimDb({});
     await claimTargets({
+      actorId: 'user_1',
       scopedDb: db,
       targets: [makeTarget({ regenImage: true })],
       sequenceId: 'seq-1',
@@ -789,6 +616,7 @@ describe('claimTargets (#1085)', () => {
       existingVisual: { id: 'fpv-prior', workflowRunId: 'run-1' },
     });
     const result = await claimTargets({
+      actorId: 'user_1',
       scopedDb: db,
       targets: [makeTarget({ regenVisual: true })],
       sequenceId: 'seq-1',
@@ -804,6 +632,7 @@ describe('claimTargets (#1085)', () => {
       existingVisual: { id: 'fpv-foreign', workflowRunId: 'other-run' },
     });
     const result = await claimTargets({
+      actorId: 'user_1',
       scopedDb: db,
       targets: [makeTarget({ regenVisual: true, regenImage: true })],
       sequenceId: 'seq-1',
@@ -848,6 +677,7 @@ describe('claimTargets (#1085)', () => {
     });
 
     const result = await claimTargets({
+      actorId: 'user_1',
       scopedDb: db,
       targets: [makeTarget({ regenVisual: true })],
       sequenceId: 'seq-1',
@@ -878,6 +708,7 @@ describe('claimTargets (#1085)', () => {
 
     await expect(
       claimTargets({
+        actorId: 'user_1',
         scopedDb: db,
         targets: [makeTarget({ regenVisual: true })],
         sequenceId: 'seq-1',
@@ -908,6 +739,7 @@ describe('claimTargets (#1085)', () => {
     });
 
     const result = await claimTargets({
+      actorId: 'user_1',
       scopedDb: db,
       targets: [makeTarget({ regenVisual: true, regenMotion: true })],
       sequenceId: 'seq-1',
@@ -924,63 +756,22 @@ describe('claimTargets (#1085)', () => {
   });
 });
 
-describe('computePlan — scope', () => {
-  const shots = [
-    makeShot({ id: 'shot-1', sceneId: 'scene-1' }),
-    makeShot({ id: 'shot-2', sceneId: 'scene-1' }),
-    makeShot({ id: 'shot-3', sceneId: 'scene-2' }),
-  ];
-  const frames = [
-    makeFrame({ id: 'f1', shotId: 'shot-1' }),
-    makeFrame({ id: 'f2', shotId: 'shot-2' }),
-    makeFrame({ id: 'f3', shotId: 'shot-3' }),
-  ];
-  const allStale = () => {
-    for (const id of ['shot-1', 'shot-2', 'shot-3'])
-      stalenessByShot.set(id, { ...FRESH, visualPrompt: 'stale' });
-  };
-
-  it('covers every shot when neither sceneId nor shotId is given', async () => {
-    allStale();
-    const result = await plan(shots, frames);
-    expect(result.targets.map((t) => t.shotId)).toEqual([
-      'shot-1',
-      'shot-2',
-      'shot-3',
-    ]);
-  });
-
-  it('limits to one scene', async () => {
-    allStale();
-    const result = await plan(shots, frames, { sceneId: 'scene-1' });
-    expect(result.targets.map((t) => t.shotId)).toEqual(['shot-1', 'shot-2']);
-  });
-
-  it('lets shotId win over sceneId — a one-shot update never widens', async () => {
-    allStale();
-    const result = await plan(shots, frames, {
-      sceneId: 'scene-1',
-      shotId: 'shot-3',
-    });
-    expect(result.targets.map((t) => t.shotId)).toEqual(['shot-3']);
-  });
-});
-
 describe('computePlan — durable step-result size', () => {
   it('keeps scene bodies out of the plan (1 MiB step-result cap)', async () => {
-    stalenessByShot.set('shot-1', { ...FRESH, motionPrompt: 'stale' });
     const result = await plan(
       [makeShot({ id: 'shot-0' }), makeShot(), makeShot({ id: 'shot-2' })],
-      [makeFrame()]
+      [makeFrame()],
+      { units: [{ kind: 'prompt:motion', id: 'shot-1' }] }
     );
     const target = result.targets[0];
     expect(target).toBeDefined();
     // Neighbours are carried as ids, resolved to scenes per shot at spawn time.
-    expect(target).toMatchObject({
-      beforeShotId: 'shot-0',
-      afterShotId: 'shot-2',
+    expect(target).toMatchObject({});
+    expect(target).not.toHaveProperty('scene');
+    expect(target?.motionRender).toMatchObject({
+      sceneId: 'scene-1',
+      packedScene: {},
     });
-    expect(JSON.stringify(target)).not.toContain('sceneId');
   });
 });
 
@@ -991,8 +782,8 @@ describe('findTargetMissingStartFrameMode', () => {
   // would SUCCEED — rewriting prompts with the wrong template and re-rendering
   // every clip with no start frame, billed, silently.
   const target = (over: Record<string, unknown>) =>
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- shape drift is the thing under test
-    ({ shotId: 'shot-1', ...over }) as PlanTarget;
+    // shape drift is the thing under test
+    asStub<PlanTarget>({ shotId: 'shot-1', ...over });
 
   it('passes a plan whose targets all carry the flag', () => {
     expect(
@@ -1023,5 +814,95 @@ describe('findTargetMissingStartFrameMode', () => {
 
   it('passes an empty plan', () => {
     expect(findTargetMissingStartFrameMode({ targets: [] })).toBeNull();
+  });
+});
+
+describe('computePlan — persisted clip membership', () => {
+  it('freezes fresh siblings without adding their prompt or still work', async () => {
+    const result = await plan(
+      [
+        makeShot({ id: 'a', renderSegmentId: 'segment' }),
+        makeShot({ id: 'b', renderSegmentId: 'segment' }),
+      ],
+      [
+        makeFrame({ id: 'fa', shotId: 'a' }),
+        makeFrame({ id: 'fb', shotId: 'b' }),
+      ],
+      { units: [{ kind: 'clip', id: 'a' }] }
+    );
+    expect(result.targets.map((target) => target.shotId)).toEqual(['a', 'b']);
+    expect(result.targets[1]).toMatchObject({
+      regenVideo: true,
+      regenVisual: false,
+      regenImage: false,
+      regenMotion: false,
+      motionRender: { renderSegmentId: 'segment', siblingShotIds: ['a', 'b'] },
+    });
+  });
+});
+
+describe('fresh plan model choices', () => {
+  it('freezes model variants and claims the first image at its requested model', async () => {
+    const result = await plan(
+      [makeShot()],
+      [makeFrame({ selectedImageVersionId: null })],
+      {
+        units: [{ kind: 'still', id: 'shot-1' }],
+        renderOptions: {
+          imageModels: ['seedream_v5', 'nano_banana_2'],
+          videoModels: ['seedance_v2', 'kling_v3_pro'],
+          audioModels: ['elevenlabs_music'],
+        },
+      }
+    );
+    expect(result.targets[0]?.imageModel).toBe('seedream_v5');
+    expect(result.renderOptions).toEqual({
+      imageModels: ['seedream_v5', 'nano_banana_2'],
+      videoModels: ['seedance_v2', 'kling_v3_pro'],
+      audioModels: ['elevenlabs_music'],
+    });
+  });
+});
+
+describe('saved sibling direction snapshots', () => {
+  it('carries visual and motion framing from the same scene while excluding the target and other scenes', async () => {
+    const shots = [
+      makeShot(),
+      makeShot({ id: 'sibling' }),
+      makeShot({ id: 'other', sceneId: 'elsewhere' }),
+    ];
+    const frames = [
+      makeFrame(),
+      makeFrame({ id: 'sibling-frame', shotId: 'sibling' }),
+      makeFrame({ id: 'other-frame', shotId: 'other' }),
+    ];
+    const plan = await computePlan({
+      scopedDb: buildScopedDb(shots, frames, {
+        visualPrompts: new Map([
+          ['frame-1', { text: 'Target' }],
+          ['sibling-frame', { text: 'Close-up of the listener' }],
+          ['other-frame', { text: 'Another room' }],
+        ]),
+        motionPrompts: new Map([
+          ['shot-1', { text: 'Target' }],
+          ['sibling', { text: 'Listener turns toward camera' }],
+          ['other', { text: 'Other action' }],
+        ]),
+      }),
+      sequenceId: 'seq-1',
+      userId: 'user',
+      units: [
+        { kind: 'prompt:visual', id: 'shot-1' },
+        { kind: 'prompt:motion', id: 'shot-1' },
+      ],
+    });
+    // One copy per scene, not per target (#1903): the other scene is absent.
+    expect(Object.keys(plan.scenePrompts)).toEqual(['scene-1']);
+    const [target] = plan.targets;
+    if (!target) throw new Error('expected a target');
+    expect(siblingPrompts(plan, target)).toEqual({
+      visual: [{ shotId: 'sibling', text: 'Close-up of the listener' }],
+      motion: [{ shotId: 'sibling', text: 'Listener turns toward camera' }],
+    });
   });
 });

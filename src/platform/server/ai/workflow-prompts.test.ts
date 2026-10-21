@@ -43,6 +43,13 @@ describe('scene-splitting-boundaries-chat — shots vs scenes (#1486)', () => {
     expect(system).toContain('Cut to...');
     expect(system).toMatch(/same scene/i);
   });
+
+  it('leaves front matter out of the scenes (#2077)', () => {
+    expect(system).toContain('Front matter is not a scene');
+    expect(system).toContain('A script with no scene headings is all story');
+    expect(system).not.toContain('Scene 1 always starts at the very top');
+    expect(system).not.toContain('do not skip a title line');
+  });
 });
 
 describe('scene-shot-list-chat', () => {
@@ -62,6 +69,13 @@ describe('scene-shot-list-chat', () => {
     expect(system).toContain(
       'the system divides it across the scene\x27s shots'
     );
+    expect(system).toContain('A scene with NO `duration:` line');
+    expect(system).toContain('Do not stretch the scene to its word count');
+    expect(system).toContain(
+      'dialogue at {{dialogueWordsPerSecond}} words a second'
+    );
+    expect(system).toContain('action about a third as long as saying it');
+    expect(system).toContain('sluglines and speaker names take no time');
     expect(system).not.toContain('hits the target running time');
     expect(system).not.toContain('A scene with no internal cut is ONE shot');
     expect(prompt?.[1]?.content).toContain('{{scenes}}');
@@ -105,4 +119,25 @@ describe('script/enhance — two levels (#1486)', () => {
       'Each shot becomes one still image that is then animated into a short clip'
     );
   });
+});
+
+describe('location identity is independent of scene time', () => {
+  it.each(['phase/scene-bibles-chat', 'phase/location-extraction-chat'])(
+    '%s extracts one physical place for day and night scenes',
+    (name) => {
+      const system = WORKFLOW_CHAT_PROMPTS[name]?.[0]?.content ?? '';
+      expect(system).toContain(
+        'Name the physical place without a time-of-day suffix'
+      );
+      expect(system).toContain('both become "OFFICE"');
+      expect(system).toContain('Keep time of day on the scene');
+      expect(system).toContain(
+        'Preserve genuine place-name words such as "Night Owl Cafe"'
+      );
+      expect(system).not.toContain(
+        'Extract the location name exactly as written'
+      );
+      expect(system).not.toContain('Name as written in the script');
+    }
+  );
 });

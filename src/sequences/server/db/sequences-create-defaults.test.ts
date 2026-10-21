@@ -2,6 +2,7 @@
  * Scoped `sequences.create` must write app-level model defaults, not the
  * stale SQL column literals (#1116 / imageModel+videoModel pattern).
  */
+import { clearVersionRows } from '@/platform/server/test/clear-version-rows';
 
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { DEFAULT_IMAGE_MODEL, DEFAULT_VIDEO_MODEL } from '@/models/models';
@@ -33,6 +34,7 @@ afterAll(() => {
 });
 
 beforeEach(async () => {
+  await clearVersionRows(db);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -86,6 +88,7 @@ describe('sequences.create model defaults', () => {
   it('substitutes app-level defaults when models are omitted', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({
+      generationStopAt: 'images',
       title: 'omitted',
       styleId,
     });
@@ -97,6 +100,7 @@ describe('sequences.create model defaults', () => {
   it('persists an explicit analysisModel', async () => {
     const methods = createSequencesMethods(db, teamId, userId);
     const created = await methods.create({
+      generationStopAt: 'images',
       title: 'explicit',
       styleId,
       analysisModel: 'anthropic/claude-sonnet-4.6',

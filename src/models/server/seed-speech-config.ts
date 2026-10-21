@@ -7,7 +7,7 @@
  * `scopedDb.credentials.resolveKey('seed-speech')`.
  *
  * A Seed voice also needs ElevenLabs — voice isolation cleans its reference
- * clips and Scribe transcribes every take for the invented-words check — so
+ * clips and Scribe transcribes every take to find its lines — so
  * `isSeedVoiceConfigured` asks for both.
  */
 

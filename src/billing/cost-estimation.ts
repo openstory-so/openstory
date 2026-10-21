@@ -30,11 +30,8 @@ import {
   type StudioVideoMode,
 } from '@/studio/text-to-video';
 import { getLogger } from '@/platform/logger';
-import {
-  shouldRunStage,
-  stageIndex,
-  type GenerationStage,
-} from '@/sequences/pipeline';
+import { includesStage, type GenerationStage } from '@/sequences/pipeline';
+import type { PlanUnitKind } from '@/sequences/generation-plan';
 import { reportFlooredEstimate } from './billing-observability';
 import {
   estimateTtsCost,
@@ -68,7 +65,9 @@ type GateOperation =
   | 'batch-motion'
   | 'motion'
   | 'motion-workflow'
+  | 'sheet-portrait'
   | 'shot-image'
+  | 'shot-preview'
   | 'shot-variants'
   | 'smart-retry:image'
   | 'smart-retry:motion'
@@ -324,8 +323,6 @@ export type StoryboardCostOpts = {
   autoGenerateMotion?: boolean;
   /** How far the run will go (#1408). Overrides auto-generate flags. */
   stopAt?: GenerationStage;
-  /** Continue-from: skip stages before this (#1408). */
-  startFrom?: GenerationStage;
   /**
    * Video models for per-shot motion (#545). Each is priced from its own
    * parameters — a uniform multiplier would mis-estimate a mixed selection.
@@ -363,15 +360,11 @@ export type StoryboardCostOpts = {
 function estimateRunsStage(
   opts: Pick<
     StoryboardCostOpts,
-    'startFrom' | 'stopAt' | 'autoGenerateMotion' | 'autoGenerateMusic'
+    'stopAt' | 'autoGenerateMotion' | 'autoGenerateMusic'
   >,
   stage: GenerationStage
 ): boolean {
-  const startFrom = opts.startFrom ?? 'script';
-  if (opts.stopAt) {
-    return shouldRunStage(startFrom, opts.stopAt, stage);
-  }
-  if (stageIndex(stage) < stageIndex(startFrom)) return false;
+  if (opts.stopAt) return includesStage(opts.stopAt, stage);
   if (stage === 'motion') return Boolean(opts.autoGenerateMotion);
   if (stage === 'music') return Boolean(opts.autoGenerateMusic);
   return true;
@@ -538,4 +531,91 @@ export function estimateStoryboardCost(opts: StoryboardCostOpts): Microdollars {
     addMicros(llmCost, addMicros(sheetCost, addMicros(voiceCost, ttsCost))),
     estimateStoryboardRenderCost(opts)
   );
+}
+
+/**
+ * A run priced on the generation plan's units (#1817): what the plan says is
+ * missing or stale up to the stop, one line per kind. No stage guesses — a
+ * References continue for two hand-added characters prices two sheets, not
+ * a heuristic cast. A shot rewrite is one LLM call. Rebuilding a still or
+ * motion prompt from the spec is free. Music prompts stay one call each.
+ */
+export function estimatePlanCost(opts: {
+  counts: Record<PlanUnitKind, number>;
+  imageModel: TextToImageModel;
+  imageModelCount?: number;
+  aspectRatio: AspectRatio;
+  resolution?: Resolution;
+  videoModels: readonly ImageToVideoModel[];
+  videoDurationSeconds: number;
+  /** Reference-only clips price on the reference-to-video route. */
+  referenceOnly: boolean;
+  draftMotion: boolean;
+  audioModels: readonly AudioModel[];
+  audioDurationSeconds: number;
+  pricing: FalPricingMap;
+}): Microdollars {
+  const { counts, pricing } = opts;
+  const prompts = counts.spec + counts['prompt:music'];
+  let total = addMicros(
+    estimateLLMCost(prompts),
+    addMicros(
+      estimateReferenceSheetCost({
+        imageModel: opts.imageModel,
+        characterSheets: counts['sheet:character'],
+        locationSheets: counts['sheet:location'],
+        elementSheets: counts['ref:element'],
+        pricing,
+      }),
+      addMicros(
+        multiplyMicros(VOICE_ESTIMATE_COST, counts.voice),
+        estimateTtsCost(counts.dialogue * TYPICAL_DIALOGUE_CHARS_PER_SHOT)
+      )
+    )
+  );
+  if (counts.still > 0) {
+    total = addMicros(
+      total,
+      multiplyMicros(
+        gateEstimate(
+          estimateImageCost(opts.imageModel, opts.aspectRatio, counts.still, {
+            pricing,
+            resolution: opts.resolution,
+          }),
+          { model: opts.imageModel, operation: 'storyboard:shot-images' },
+          counts.still
+        ),
+        opts.imageModelCount ?? 1
+      )
+    );
+  }
+  if (counts.clip > 0) {
+    for (const model of opts.videoModels) {
+      const perClip = gateEstimate(
+        estimateVideoCost(model, opts.videoDurationSeconds, {
+          pricing,
+          resolution:
+            opts.draftMotion && supportsDraftMode(model)
+              ? DRAFT_RESOLUTION
+              : opts.resolution,
+          hasReferenceImages: true,
+          referenceOnly: opts.referenceOnly,
+        }),
+        { model, operation: 'storyboard:motion' }
+      );
+      total = addMicros(total, multiplyMicros(perClip, counts.clip));
+    }
+  }
+  if (counts.music > 0) {
+    for (const model of opts.audioModels) {
+      total = addMicros(
+        total,
+        gateEstimate(
+          estimateAudioCost(model, opts.audioDurationSeconds, { pricing }),
+          { model, operation: 'storyboard:music' }
+        )
+      );
+    }
+  }
+  return total;
 }

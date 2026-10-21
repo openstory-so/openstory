@@ -1,4 +1,3 @@
-import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import {
@@ -11,6 +10,7 @@ import {
   musicReadSchema,
   inspectMusic,
   frameReadSchema,
+  withImageAttempts,
   segmentReadSchema,
   shotMembershipSchema,
   exportReadSchema,
@@ -30,10 +30,9 @@ import { composeSequenceScriptFromDb } from '@/shots/server/scene-script';
 import { readPage } from '@/platform/server/read-page';
 import { NotFoundError } from '@/platform/errors';
 import {
-  registerProductionRead,
+  productionRead,
   collectionInput,
   sequenceInput,
-  type ReadToolContextFactory,
 } from '../tool-context';
 
 const documentInput = textWindowInput.extend({
@@ -62,13 +61,8 @@ const versionIdSchema = z
     { message: 'Invalid version ID' }
   );
 
-export function registerProductionReads(
-  server: McpServer,
-  context: ReadToolContextFactory
-) {
-  registerProductionRead(
-    server,
-    context,
+export const productionReadTools = [
+  productionRead(
     'get_sequence_settings',
     'Read sequence settings, pipeline stage, target duration, model defaults and effective style snapshot.',
     sequenceInput,
@@ -76,10 +70,8 @@ export function registerProductionReads(
     async (input, { scopedDb, origin }) => ({
       settings: await readSequenceSettings(scopedDb, input.sequenceId, origin),
     })
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_sequence_script',
     'Read the original or composed script in text windows. Composed uses active selected scene scripts and falls back to the original before scene scripts exist. Continue with nextOffset and revision; offsets are UTF-16 units.',
     sequenceInput.extend({
@@ -108,24 +100,25 @@ export function registerProductionReads(
         document: await readDocument(text, input, 'text'),
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_sequence_music',
-    'Inspect current sequence music, enabled state, prompt, tags and generation result. Use list_versions kind music or music_prompt for histories; music selection is matched by output URL and model, not a stored version pointer.',
+    'Inspect current sequence music, enabled state, prompt, tags and generation result. model is the one the selected track was made with; variantId and promptVersionId are the selected rows in list_versions kind music and music_prompt.',
     sequenceInput,
     z.object({ music: musicReadSchema }),
-    async (input, { scopedDb, origin }) => ({
-      music: inspectMusic(
-        await productionAccess(scopedDb).sequence(input.sequenceId),
-        origin
-      ),
-    })
-  );
-  registerProductionRead(
-    server,
-    context,
+    async (input, { scopedDb, origin }) => {
+      const sequence = await productionAccess(scopedDb).sequence(
+        input.sequenceId
+      );
+      const track = sequence.selectedMusicVariantId
+        ? await scopedDb.sequenceVariants.getMusicById(
+            sequence.selectedMusicVariantId
+          )
+        : null;
+      return { music: inspectMusic(sequence, track, origin) };
+    }
+  ),
+  productionRead(
     'list_frames',
     'Page every frame role for a shot by frame ID. orderIndex defines frame order; no missing frame is created. Use list_versions for image and visual_prompt histories.',
     collectionInput.extend({ shotId: ulidSchema }),
@@ -138,31 +131,27 @@ export function registerProductionReads(
         (next) => scopedDb.frames.listByShot(input.shotId, next)
       );
       return {
-        frames: page.items.map((row) =>
+        frames: (await withImageAttempts(scopedDb, page.items)).map((row) =>
           projectRead(frameReadSchema, row, origin)
         ),
         nextCursor: page.nextCursor,
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_frame',
     'Inspect a frame by database frameId, including role, selections, pending promotion and current image attempt.',
     sequenceInput.extend({ frameId: ulidSchema }),
     z.object({ frame: frameReadSchema }),
-    async (input, { scopedDb, origin }) => ({
-      frame: projectRead(
-        frameReadSchema,
+    async (input, { scopedDb, origin }) => {
+      const [frame] = await withImageAttempts(scopedDb, [
         await productionAccess(scopedDb).frame(input.sequenceId, input.frameId),
-        origin
-      ),
-    })
-  );
-  registerProductionRead(
-    server,
-    context,
+      ]);
+      if (!frame) throw new NotFoundError('Frame not found');
+      return { frame: projectRead(frameReadSchema, frame, origin) };
+    }
+  ),
+  productionRead(
     'list_render_segments',
     'Page render segments by database ID, optionally within one scene. Each segment owns its video selection; use get_render_segment for member shots.',
     collectionInput.extend({ sceneId: ulidSchema.optional() }),
@@ -190,10 +179,8 @@ export function registerProductionReads(
         nextCursor: page.nextCursor,
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_render_segment',
     'Inspect a render segment and page its current member shots by ID. shotNumber determines playback order. Use list_versions kind video for historical render manifests.',
     collectionInput.extend({ segmentId: ulidSchema }),
@@ -225,12 +212,10 @@ export function registerProductionReads(
         nextCursor: page.nextCursor,
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'list_versions',
-    'Page production history by version ID, oldest ID first. entityId is a frame for image/visual_prompt, segment for video, character for character_sheet, sequence location for location_sheet, shot for motion_prompt, scene for scene_script, or sequenceId for music/music_prompt. Discarded versions are opt-in. get_version reads full content.',
+    'Page production history by version ID, oldest ID first. entityId is a frame for image/visual_prompt, segment for video, character for character_sheet, location for location_sheet (the team’s history, the same from every sequence that uses it), shot for motion_prompt, scene for scene_script, or sequenceId for music/music_prompt. Discarded versions are opt-in. get_version reads full content.',
     collectionInput.extend({
       kind: versionKindSchema,
       entityId: ulidSchema,
@@ -238,10 +223,8 @@ export function registerProductionReads(
     }),
     z.object({ versions: z.array(versionSummarySchema), ...continuation }),
     (input, { scopedDb, origin }) => listVersions(scopedDb, input, origin)
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_version',
     'Read one production version as a JSON document in bounded text windows, including prompts, audio, render manifests and provenance. Parent IDs follow list_versions. Concatenate document.text using nextOffset and revision before parsing JSON. Discarded versions remain addressable.',
     versionInput.extend({ versionId: versionIdSchema, ...documentInput.shape }),
@@ -262,10 +245,8 @@ export function registerProductionReads(
         document: await readDocument(JSON.stringify(version), input, 'json'),
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_shot_audio',
     'Read the shot working dialogue audio clips as a paged JSON document with playable URLs. Historical clips consumed by a render live in its motion_prompt version and video manifest. Continue using nextOffset and revision.',
     sequenceInput.extend({ shotId: ulidSchema, ...documentInput.shape }),
@@ -285,10 +266,8 @@ export function registerProductionReads(
         document: await readDocument(JSON.stringify(clips), input, 'json'),
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'list_exports',
     'Page all existing sequence exports by ID, including processing and failed exports. Reads never enqueue, reuse or reconcile render work; sourceShotsHash identifies the exported cut.',
     collectionInput,
@@ -308,25 +287,26 @@ export function registerProductionReads(
         nextCursor: page.nextCursor,
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_export_status',
-    'Inspect one existing export by exportId, with its status, source cut, duration and media URL. Does not start or reconcile an export.',
-    sequenceInput.extend({ exportId: ulidSchema }),
-    z.object({ export: exportReadSchema }),
+    'Inspect one export by exportId (from start_export), or the newest export when exportId is omitted (null when there is none): processing/ready/failed, error, source cut, duration and media URL. Use list_exports to page older ones. Does not start or reconcile an export.',
+    sequenceInput.extend({ exportId: ulidSchema.optional() }),
+    z.object({ export: exportReadSchema.nullable() }),
     async (input, { scopedDb, origin }) => {
       await productionAccess(scopedDb).sequence(input.sequenceId);
-      const row = await scopedDb.sequenceExports.getById(input.exportId);
+      const row = input.exportId
+        ? await scopedDb.sequenceExports.getById(input.exportId)
+        : ((
+            await scopedDb.sequenceExports.listAllBySequence(input.sequenceId)
+          )[0] ?? null);
+      if (!input.exportId && !row) return { export: null };
       if (row?.sequenceId !== input.sequenceId)
         throw new NotFoundError('Export not found in this sequence.');
       return { export: projectRead(exportReadSchema, row, origin) };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'list_sequence_events',
     'Page sequence activity by event ID, oldest first. Optional target type/ID filters are bound to the cursor; historical events may reference removed entities. Use get_sequence_event for change details.',
     collectionInput.extend({
@@ -369,10 +349,8 @@ export function registerProductionReads(
         nextCursor: page.nextCursor,
       };
     }
-  );
-  registerProductionRead(
-    server,
-    context,
+  ),
+  productionRead(
     'get_sequence_event',
     'Read an activity event and its change details as a bounded JSON document. Continue using nextOffset and revision.',
     sequenceInput.extend({ eventId: ulidSchema, ...documentInput.shape }),
@@ -391,5 +369,5 @@ export function registerProductionReads(
         ),
       };
     }
-  );
-}
+  ),
+];

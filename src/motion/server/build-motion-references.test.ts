@@ -20,6 +20,10 @@ const character = (
   sheetStatus: 'completed',
   sheetInputHash: 'hash',
   selectedSheetVersionId: null,
+  // Wearing its default look (#2015).
+  lookId: 'default-look',
+  lookName: 'Default',
+  looks: [],
   physicalDescription: `${name} is tall`,
   voiceOnly: false,
   isPerson: true,

@@ -62,7 +62,8 @@ export function scoreSceneSplit(opts: {
   const { script, result } = opts;
   const resolution = resolveBoundaries(script, result.boundaries);
   const slices = sliceScenes(script, resolution.offsets);
-  const partitionValid = slices.join('') === script;
+  const start = resolution.offsets[0] ?? 0;
+  const partitionValid = slices.join('') === script.slice(start);
   const n = resolution.offsets.length;
   const dropped = resolution.dropped.length;
   const repairs = resolution.repairs;

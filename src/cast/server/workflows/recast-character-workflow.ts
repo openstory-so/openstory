@@ -23,7 +23,10 @@ import type {
 } from '@/platform/server/workflow/types';
 import { computeRegenerateShotsBatchHash } from '@/shots/server/workflows/regenerate-shots-snapshot';
 import { mergeRecastSheetIntoSnapshots } from './recast-snapshot';
-import { computeCharacterSheetHashFromDto } from './sheet-snapshots';
+import {
+  computeCharacterSheetHashFromDto,
+  assertQueuedWithLooks,
+} from './sheet-snapshots';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
 import { getLogger } from '@/platform/logger';
@@ -139,12 +142,15 @@ async function regenerateShots(
 }
 
 export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastCharacterWorkflowInput> {
+  protected override readonly failureLabel = 'Recast';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<RecastCharacterWorkflowInput>>,
     step: WorkflowStep,
     _scopedDb: WorkflowScopedDb
   ): Promise<RecastCharacterWorkflowResult> {
     const input = event.payload;
+    assertQueuedWithLooks(input);
 
     // Step 1: Build the character-sheet payload. Captured into a const so the
     // spawn below reuses the cached step result on replay instead of
@@ -156,11 +162,22 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
         logger.info(
           `[RecastCharacterWorkflow:cf] Starting recast for ${input.characterName} with ${input.shotSnapshots.length} affected shots`
         );
-        const partial: CharacterSheetWorkflowInput = {
+        const partialFields: Omit<
+          CharacterSheetWorkflowInput,
+          'snapshotInputHash'
+        > = {
           characterDbId: input.characterDbId,
+          lookId: input.lookId,
+          lookVersionId: input.lookVersionId,
+          lookStyling: input.lookStyling,
+          // A recast redraws the default look, which has no face to be drawn
+          // from: it is the face.
+          face: null,
+          talentId: input.talentId,
           characterName: input.characterName,
           characterMetadata: input.characterMetadata,
-          sequenceId: input.sequenceId,
+          // A recast runs through a sequence (its shots are re-rendered).
+          sequenceId: input.sequenceId ?? null,
           teamId: input.teamId,
           userId: input.userId,
           imageModel: input.imageModel,
@@ -168,11 +185,18 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
           talentMetadata: input.talentMetadata,
           talentDescription: input.talentDescription,
           reuseTalentSheet: input.reuseTalentSheet,
-          styleConfig: input.styleConfig,
           talentSheetInputHash: input.talentSheetInputHash,
+          castTalentDescription: input.castTalentDescription,
+          // The claim recastCharacterFn took (#1113).
+          sheetVersionId: input.sheetVersionId,
+          // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #1600
+          bibleVersionId: input.bibleVersionId ?? null,
         };
-        partial.snapshotInputHash =
-          await computeCharacterSheetHashFromDto(partial);
+        const partial = {
+          ...partialFields,
+          snapshotInputHash:
+            await computeCharacterSheetHashFromDto(partialFields),
+        };
         return partial;
       }
     );
@@ -211,8 +235,7 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
       input,
       {
         imageUrl: sheetImageUrl,
-        inputHash:
-          sheetResult.sheetVersionId ?? sheetPayload.snapshotInputHash ?? null,
+        inputHash: sheetResult.sheetVersionId ?? sheetPayload.snapshotInputHash,
       }
     );
 
@@ -227,12 +250,21 @@ export class RecastCharacterWorkflow extends OpenStoryWorkflowEntrypoint<RecastC
   protected override async onFailure({
     event,
     error,
+    scopedDb,
   }: {
     event: Readonly<WorkflowEvent<RecastCharacterWorkflowInput>>;
     error: string;
     scopedDb: WorkflowScopedDb;
   }): Promise<void> {
     const input = event.payload;
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: the run `assertQueuedWithLooks` just failed names no look
+    if (!input.lookId) {
+      // No sheet child was spawned to clear the claim the trigger took.
+      await scopedDb.characterLooks.failSheetClaimByVersion(
+        input.sheetVersionId,
+        error
+      );
+    }
 
     await getGenerationChannel(input.sequenceId).emit(
       'generation.recast:failed',

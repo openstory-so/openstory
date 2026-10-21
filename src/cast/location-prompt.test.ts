@@ -2,13 +2,10 @@
  * Tests for location prompt building functions
  */
 
-import { migrateStyleConfigV1ToV2 } from '@/look/style-config';
+import { PHOTOREAL_RENDERING } from '@/cast/rendering';
 import { describe, expect, it } from 'vitest';
 import type { LocationBibleEntry } from '@/shots/scene-analysis.schema';
-import type {
-  SequenceLocationMinimal,
-  StyleConfig,
-} from '@/platform/server/db/schema';
+import type { SequenceLocationMinimal } from '@/platform/server/db/schema';
 import {
   buildLocationDescription,
   buildLocationReferenceImages,
@@ -20,14 +17,12 @@ const mockLocationEntry: LocationBibleEntry = {
   locationId: 'loc_001',
   name: 'INT. OFFICE - DAY',
   type: 'interior',
-  timeOfDay: 'day',
   description:
     'A modern corporate office with glass walls and open floor plan.',
   architecturalStyle: 'Contemporary minimalist',
   keyFeatures: 'Floor-to-ceiling windows, standing desks, plants',
-  colorPalette: 'Neutral grays, whites, green accents from plants',
-  lightingSetup: 'Natural daylight streaming through windows',
   ambiance: 'Professional, focused, modern',
+  rendering: PHOTOREAL_RENDERING,
   consistencyTag: 'office_modern_glass',
   firstMention: {
     sceneId: 'scene_001',
@@ -144,99 +139,81 @@ describe('location-prompt', () => {
     });
   });
 
-  describe('buildLocationSheetPrompt with styleConfig', () => {
-    const animatedStyle: StyleConfig = migrateStyleConfigV1ToV2({
-      mood: 'Whimsical, playful, and colorful',
-      artStyle:
-        'Stylized 3D animation with exaggerated proportions and rich textures.',
-      lighting:
-        'Soft global illumination with warm key lights and cool fill. Bounced light creates depth.',
-      colorPalette: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'],
-      cameraWork:
-        'Smooth dollies and gentle crane movements. Wide establishing shots with shallow depth of field on details.',
-      referenceFilms: [
-        'heartfelt balloon-house adventure animation',
-        'gourmet rat-chef kitchen animation',
-        'vibrant land-of-the-dead family animation',
-      ],
-      colorGrading:
-        'Saturated and warm with a slight bloom. Shadows are never pure black.',
+  describe('buildLocationSheetPrompt rendering', () => {
+    const animated: LocationBibleEntry = {
+      ...mockLocationEntry,
+      rendering: '3D animated, Pixar-like',
+    };
+
+    it('photoreal adds no rendering section', () => {
+      const result = buildLocationSheetPrompt(mockLocationEntry, []);
+      expect(result.prompt).not.toContain('[RENDERING]');
+      expect(result.prompt).not.toContain(PHOTOREAL_RENDERING);
     });
 
-    it('without styleConfig produces no style direction section', () => {
-      const result = buildLocationSheetPrompt(mockLocationEntry);
+    it('another rendering is named', () => {
+      const result = buildLocationSheetPrompt(animated, []);
+      expect(result.prompt).toContain('[RENDERING]');
+      expect(result.prompt).toContain(
+        'Render this location as 3D animated, Pixar-like.'
+      );
+    });
+
+    it('takes nothing else from a style', () => {
+      const result = buildLocationSheetPrompt(animated, []);
       expect(result.prompt).not.toContain('[STYLE DIRECTION]');
+      expect(result.prompt).not.toContain('[COLOR PALETTE]');
     });
 
-    it('with styleConfig includes style direction section', () => {
-      const result = buildLocationSheetPrompt(
-        mockLocationEntry,
-        undefined,
-        animatedStyle
-      );
-
-      expect(result.prompt).toContain('[STYLE DIRECTION]');
-      expect(result.prompt).toContain('Stylized 3D animation');
-      expect(result.prompt).toContain('Whimsical, playful');
-      expect(result.prompt).toContain('heartfelt balloon-house adventure');
-    });
-
-    it('with styleConfig preserves location-specific attributes', () => {
-      const result = buildLocationSheetPrompt(
-        mockLocationEntry,
-        undefined,
-        animatedStyle
-      );
-
+    it('keeps the location-specific attributes', () => {
+      const result = buildLocationSheetPrompt(animated, []);
       expect(result.prompt).toContain('Contemporary minimalist');
       expect(result.prompt).toContain('Floor-to-ceiling windows');
       expect(result.prompt).toContain('[GRID LAYOUT');
-    });
-
-    it('with styleConfig and library overrides composes correctly', () => {
-      const result = buildLocationSheetPrompt(
-        mockLocationEntry,
-        {
-          description: 'A sleek tech startup',
-          referenceImageUrl: 'https://example.com/lib.png',
-        },
-        animatedStyle
-      );
-
-      expect(result.prompt).toContain('[STYLE DIRECTION]');
-      expect(result.prompt).toContain('Stylized 3D animation');
-      expect(result.prompt).toContain('A sleek tech startup');
-      expect(result.referenceUrls).toContain('https://example.com/lib.png');
     });
   });
 
   describe('buildLocationSheetPrompt', () => {
     it('should build a prompt for location reference generation', () => {
-      const result = buildLocationSheetPrompt(mockLocationEntry);
+      const result = buildLocationSheetPrompt(mockLocationEntry, []);
 
       expect(result.prompt).toContain('INT. OFFICE');
       expect(result.prompt).toContain('Interior');
       expect(result.prompt).toContain('Contemporary minimalist');
       expect(result.prompt).toContain('Floor-to-ceiling windows');
       expect(result.referenceUrls).toHaveLength(0);
+      expect(result.prompt).not.toContain('Reference Images');
     });
 
-    it('should include library overrides when provided', () => {
-      const result = buildLocationSheetPrompt(mockLocationEntry, {
-        description: 'A sleek tech startup office',
-        referenceImageUrl: 'https://example.com/library-office.png',
-      });
+    it('photos produce the reference instruction and are sent in order', () => {
+      const photos = [
+        'https://example.com/photo-a.png',
+        'https://example.com/photo-b.png',
+      ];
+      const result = buildLocationSheetPrompt(mockLocationEntry, photos);
 
-      expect(result.prompt).toContain('A sleek tech startup office');
-      expect(result.referenceUrls).toHaveLength(1);
-      expect(result.referenceUrls[0]).toBe(
-        'https://example.com/library-office.png'
+      expect(result.prompt).toContain('IMPORTANT - Reference Images:');
+      expect(result.prompt).toContain(
+        "Use the provided reference images as the definitive source for this location's appearance."
       );
+      expect(result.referenceUrls).toEqual(photos);
+      // The bible still describes the place: photos do not replace it.
+      expect(result.prompt).toContain('A modern corporate office');
     });
 
-    it('should include time of day in prompt', () => {
-      const result = buildLocationSheetPrompt(mockLocationEntry);
-      expect(result.prompt).toContain('DAY');
+    it('a place with photos and no description is drawn from the photos', () => {
+      const result = buildLocationSheetPrompt(
+        { ...mockLocationEntry, description: '' },
+        ['https://example.com/photo-a.png']
+      );
+      expect(result.prompt).toContain('Derive from the references');
+    });
+
+    it('renders the place in neutral light without a time-of-day label', () => {
+      const result = buildLocationSheetPrompt(mockLocationEntry, []);
+      expect(result.prompt).toContain('Neutral, even light');
+      expect(result.prompt).not.toContain('DAY - DAY');
+      expect(result.prompt).not.toContain('[COLOR PALETTE]');
     });
 
     it('should handle exterior locations', () => {
@@ -245,7 +222,7 @@ describe('location-prompt', () => {
         type: 'exterior',
         name: 'EXT. PARK - AFTERNOON',
       };
-      const result = buildLocationSheetPrompt(exteriorEntry);
+      const result = buildLocationSheetPrompt(exteriorEntry, []);
       expect(result.prompt).toContain('Exterior');
     });
   });

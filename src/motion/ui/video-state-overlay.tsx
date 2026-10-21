@@ -1,9 +1,10 @@
 import { BlobLoader } from '@/ui/shadcn/blob-loader';
 import {
-  CONTENT_REJECTION_USER_HINT,
+  contentRejectionHint,
   CONTENT_REJECTION_USER_TITLE,
   isContentRejectionError,
 } from '@/models/content-rejection';
+import { seedanceUserFacingError } from '@/motion/seedance-edit';
 import { cn } from '@/ui/utils';
 import { AlertCircle, Info, Loader2 } from 'lucide-react';
 
@@ -63,6 +64,9 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
   const contentBlocked =
     (imageFailed && isContentRejectionError(imageError)) ||
     (videoFailed && isContentRejectionError(videoError));
+  const seedanceMessage = seedanceUserFacingError(
+    videoFailed ? videoError : imageError
+  );
   const retryMessage = retry
     ? retry.maxAttempts
       ? `Retrying (${retry.attempt}/${retry.maxAttempts})…`
@@ -124,14 +128,14 @@ export const VideoStateOverlay: React.FC<VideoStateOverlayProps> = ({
                 {CONTENT_REJECTION_USER_TITLE}
               </p>
               <p className="max-w-xs text-center text-xs text-muted-foreground">
-                {CONTENT_REJECTION_USER_HINT}
+                {contentRejectionHint(videoFailed ? videoError : imageError)}
               </p>
             </>
           ) : (
             <>
               <AlertCircle className="h-8 w-8 text-destructive" />
-              <p className="text-sm font-medium text-destructive">
-                Generation failed
+              <p className="max-w-xs text-center text-sm font-medium text-destructive">
+                {seedanceMessage ?? 'Generation failed'}
               </p>
             </>
           ))}

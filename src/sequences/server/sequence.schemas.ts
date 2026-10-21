@@ -27,7 +27,7 @@ import {
   unusableReferenceLines,
 } from '@/motion/reference-support';
 import { ulidSchemaOptional } from '@/platform/server/schemas/id.schemas';
-import { createInsertSchema, createUpdateSchema } from 'drizzle-orm/zod';
+import { createInsertSchema } from 'drizzle-orm/zod';
 import { draftElementUploadSchema } from '@/cast/draft-element-upload';
 import { z } from 'zod';
 
@@ -75,20 +75,18 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     imageModel: true, // Omit - will use imageModel field in extend
     videoModel: true, // Omit - will use videoModel field in extend
     workflow: true, // Omit - set by workflow, not user
-    // Copied from the style row on create — clients send styleId only.
-    styleConfig: true,
-    // Music fields - managed by workflow, not user input
-    musicUrl: true,
-    musicPath: true,
-    musicStatus: true,
-    musicGeneratedAt: true,
-    musicError: true,
+    // Copied from the style row on create — clients send styleId only. The
+    // snapshot is a version row now (#1600); these are its pointer and the
+    // legacy column.
+    legacyStyleConfig: true,
+    selectedStyleVersionId: true,
+    // Music pointers - moved by the music claim lifecycle, not user input
+    // (#1115); the model is set from `musicModel` in the extend.
     musicModel: true,
-    musicPrompt: true,
-    musicTags: true,
+    selectedMusicVariantId: true,
+    selectedMusicPromptVersionId: true,
+    pendingPromoteMusicVariantId: true,
     generationStopAt: true,
-    pipelineStage: true,
-    generationCheckpoint: true,
   })
   .extend({
     // Accept array of models for multi-model sequence creation
@@ -143,9 +141,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // both read the parsed value, and leaving it `undefined` would make "off"
     // indistinguishable from "unset".
     generateStartFrames: z.boolean().default(false).optional(),
-    // Design an ElevenLabs voice per speaking character (#1553). Off by
-    // default: each saved voice is an account-wide slot.
-    generateVoices: z.boolean().default(false).optional(),
+    // Design a voice per speaking character (#1553). Omitted = on wherever
+    // voice design is configured (#2004) — `createSequences` decides.
+    generateVoices: z.boolean().optional(),
     // Render motion as Ark drafts (#1756); off by default.
     draftMotion: z.boolean().default(false).optional(),
     // Music model selection (model key, not full ID) — primary / first of audioModels
@@ -174,6 +172,9 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation
     suggestedLocationIds: z.array(z.string()).optional(),
+    // Team characters the script references with `@` (#2050): cast into
+    // the new sequence before analysis runs, so analysis reads them.
+    castCharacterIds: z.array(z.string()).optional(),
     // Draft element uploads: images already at a permanent key, waiting for a
     // sequence to point rows at them (#1471). One schema, shared with the
     // localStorage draft and the public API — see `draftElementUploadSchema`.
@@ -283,58 +284,5 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     const flags = flagsFromStopAt(stopAt);
     return { ...data, stopAt, ...flags };
   });
-
-export const updateSequenceSchema = createUpdateSchema(sequences, {
-  title: (schema) => schema.min(1), // drizzle-zod auto-applies max from varchar(500)
-  script: (schema) => schema.min(10).max(10000), // Business rule: meaningful scripts
-  analysisModel: (schema) =>
-    schema.refine(isValidAnalysisModelId, {
-      message: 'Invalid analysis model',
-    }),
-  imageModel: (schema) =>
-    schema.refine((val) => validImageModelKeys.includes(val), {
-      message: 'Invalid image model',
-    }),
-  videoModel: (schema) =>
-    schema.refine((val) => validVideoModelKeys.includes(val), {
-      message: 'Invalid video model',
-    }),
-  aspectRatio: aspectRatioSchema.optional(),
-  resolution: resolutionSchema.optional(),
-}).omit({
-  id: true,
-  teamId: true,
-  status: true,
-  createdAt: true,
-  updatedAt: true,
-  createdBy: true,
-  updatedBy: true,
-  workflow: true, // Set by workflow, not user
-  workflowRunId: true, // Set at workflow trigger time, not user
-  // Set at creation only. Toggling it on an existing sequence bypasses the
-  // model refine below AND rewrites what every already-rendered shot means:
-  // on, the stills the user approved are silently dropped from the request
-  // while their prompts still assume one; off, no shot has a still and batch
-  // motion finds nothing eligible. Regenerate instead of toggling.
-  generateStartFrames: true,
-  // Chip-only write (`setSequenceTargetDurationFn`). The general update
-  // path must not set it: no 5s floor, and it is not an aspect-ratio-style
-  // regenerate trigger.
-  targetDurationSeconds: true,
-  // Copied from the style row on styleId change — clients send styleId only.
-  styleConfig: true,
-  // Music fields - managed by workflow, not user input
-  musicUrl: true,
-  musicPath: true,
-  musicStatus: true,
-  musicGeneratedAt: true,
-  musicError: true,
-  musicModel: true,
-  musicPrompt: true,
-  musicTags: true,
-  generationStopAt: true,
-  pipelineStage: true,
-  generationCheckpoint: true,
-});
 
 export type CreateSequenceInput = z.infer<typeof createSequenceSchema>;

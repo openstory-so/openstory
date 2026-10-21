@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { usdToMicros } from '@/billing/money';
+import { asStub } from '@/test/as-stub';
 
 const sendSequenceReadyEmail = vi.fn();
 vi.doMock('./sequence-ready-email', () => ({
@@ -33,8 +34,8 @@ function makeScopedDb(opts: { claim: boolean }) {
       billing: { getBalance },
     },
   };
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- helper only touches the claim + liveRead surface
-  const scopedDb = stub as unknown as WorkflowScopedDb;
+  // helper only touches the claim + liveRead surface
+  const scopedDb = asStub<WorkflowScopedDb>(stub);
   return { scopedDb, claimReadyEmailSend, releaseReadyEmailSend };
 }
 

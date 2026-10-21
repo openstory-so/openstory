@@ -1,0 +1,335 @@
+/**
+ * Claim discipline: every generation domain lands through a claim (#1130).
+ *
+ * The contract (docs/architecture/workflow-snapshots-and-content-hash-staleness.md
+ * § The claim contract): a run's result reaches a selection pointer only
+ * through a claim the trigger took, a completion that consumes that claim in
+ * one guarded UPDATE, and a failure that clears the claim only while it still
+ * holds it. Each domain below names the three `scopedDb` methods that do that,
+ * plus the unguarded selector a workflow must never call instead.
+ *
+ * What makes this a wiring test rather than a list: the domains are not typed
+ * in by hand. Every schema table that a workflow writes results into (it has a
+ * `…WorkflowRunId` column) or that holds generated history (`*_variants`,
+ * `*_versions`) must be owned by a claim domain or sit on `EXCEPTIONS` with a
+ * reason. Add a generated table without either and this fails; drop one of a
+ * domain's claim methods and this fails; call a domain's unguarded selector
+ * from a workflow and this fails.
+ */
+
+import { globSync, readFileSync } from 'node:fs';
+import { getTableColumns, getTableName, is } from 'drizzle-orm';
+import { SQLiteTable } from 'drizzle-orm/sqlite-core';
+import { describe, expect, test, vi } from 'vitest';
+import * as schema from '@/platform/server/db/schema';
+import type { ScopedDb } from '@/platform/server/db/scoped';
+
+/** `domain.method` on `ScopedDb`, so a rename is also a type error. */
+type ScopedMethod = {
+  [D in keyof ScopedDb]: `${D}.${keyof ScopedDb[D] & string}`;
+}[keyof ScopedDb];
+
+type ClaimDomain = {
+  /** Tables whose rows this domain generates or whose pointer it moves. */
+  tables: readonly string[];
+  /** Takes the claim at the trigger (last kickoff wins). A domain with a
+   * conditional twin names both. */
+  claim: ScopedMethod | readonly [ScopedMethod, ...ScopedMethod[]];
+  /** Clears the claim on failure ONLY if this run still holds it. */
+  clear: ScopedMethod;
+  /** Moves the pointer and consumes the claim in one guarded UPDATE. A domain
+   * with two ways to land (a drawn row, an existing row pointed at) names both. */
+  promote: ScopedMethod | readonly [ScopedMethod, ...ScopedMethod[]];
+  /** The user's selector: moves the pointer unconditionally. Never from a run. */
+  userSelect: ScopedMethod;
+};
+
+const CLAIM_DOMAINS: Record<string, ClaimDomain> = {
+  // The canonical shape: a pointer claim on the parent row. Previews
+  // (`frame_variants.kind = 'preview'`, #1101) share the table but are never
+  // selectable, so they never take a claim — enforced at the select doors.
+  stills: {
+    tables: ['frame_variants', 'frames'],
+    claim: 'frames.setPendingPromoteVersionId',
+    clear: 'frames.clearPendingPromoteVersionIdIf',
+    promote: 'frameVariants.selectIfPendingPromoteIs',
+    userSelect: 'frameVariants.select',
+  },
+  video: {
+    tables: ['video_variants', 'render_segments'],
+    claim: 'renderSegments.setPendingPromoteVersionId',
+    clear: 'renderSegments.clearPendingPromoteVersionIdIf',
+    promote: 'videoVariants.selectIfPendingPromoteIs',
+    userSelect: 'videoVariants.select',
+  },
+  // Sheets (#1113): pointer claims on the parent row naming the id the run's
+  // result will carry. The row is appended at completion (no pending row),
+  // so a claim miss parks it as divergent in the same batch. A character's
+  // sheets belong to its looks (#2015): the pointer and the claim are on
+  // `character_looks`, and the claim is taken only while the look version,
+  // the bible version and the talent are still the ones the run was
+  // snapshotted from (#1863).
+  'character sheets': {
+    tables: ['character_sheet_variants', 'character_looks'],
+    claim: 'characterLooks.claimSheet',
+    clear: 'characterLooks.failSheetClaim',
+    promote: 'characterSheetVariants.promoteIfPending',
+    userSelect: 'characterSheetVariants.select',
+  },
+  // A location is the team's (#1695): the pointer and the claim are on its
+  // own row, whichever sequence (or none) started the run. The bible parent
+  // claims through the conditional twin (#1863): taken only while the bible
+  // version its upsert returned still holds.
+  'location sheets': {
+    tables: ['location_sheet_variants'],
+    claim: ['locations.claimReference', 'locations.claimReferenceIfUnmoved'],
+    clear: 'locations.failReferenceClaim',
+    promote: 'locationSheetVariants.promoteIfPending',
+    userSelect: 'locationSheetVariants.select',
+  },
+  'talent sheets': {
+    tables: ['talent_sheets', 'talent_sheet_variants'],
+    claim: 'talent.claimSheet',
+    clear: 'talent.clearSheetClaimIf',
+    promote: 'talent.landSheet',
+    userSelect: 'talentSheetVariants.promoteAtomically',
+  },
+  // Pointer claim, taken together with the generating husk (#1715).
+  voices: {
+    tables: ['character_voice_versions'],
+    claim: 'characters.createPendingVoiceClaim',
+    clear: 'characters.markVoiceClaimTerminal',
+    promote: 'characters.promoteVoiceClaimIfPending',
+    userSelect: 'characters.selectVoiceVersion',
+  },
+  // Prompts dialect: the claim is the pending row itself (live status +
+  // `pendingInputHash`), not a pointer column. Same five rules (#1085/#1095).
+  'image prompts': {
+    tables: ['frame_prompt_versions'],
+    claim: 'framePromptVersions.createPending',
+    clear: 'framePromptVersions.markTerminal',
+    promote: 'framePromptVersions.completePendingAiVersion',
+    userSelect: 'framePromptVersions.select',
+  },
+  'motion prompts': {
+    tables: ['shot_prompt_versions'],
+    claim: 'shotPromptVersions.createPending',
+    clear: 'shotPromptVersions.markTerminal',
+    promote: 'shotPromptVersions.completePendingAiVersion',
+    userSelect: 'shotPromptVersions.select',
+  },
+  // Claims-table dialect (#1657): a recording's section rows cannot be their
+  // own placeholder, so the claim is a `shot_dialogue_claims` row.
+  dialogue: {
+    tables: [
+      'shot_dialogue_claims',
+      'dialogue_speeches',
+      'shot_dialogue_sections',
+    ],
+    claim: 'shotDialogue.claimSpeech',
+    clear: 'shotDialogue.failClaims',
+    promote: 'shotDialogue.appendSpeech',
+    userSelect: 'shotDialogue.selectSection',
+  },
+  // Pointer claim on the sequence, taken with the track's pending row
+  // (#1115). An added model's row opens with no claim and never selects.
+  music: {
+    tables: ['sequence_music_variants'],
+    claim: 'sequenceVariants.claimMusic',
+    clear: 'sequenceVariants.failMusicClaim',
+    promote: 'sequenceVariants.completeMusicClaim',
+    userSelect: 'sequenceVariants.selectMusic',
+  },
+  // Pointer claim (#1923). Analysis still seeds v1 through `write` (pinned
+  // below). Rewrite shot is the async generation into the table.
+  'shot specs': {
+    tables: ['shot_spec_versions'],
+    claim: 'shotSpecVersions.claim',
+    clear: 'shotSpecVersions.clearClaimIf',
+    promote: 'shotSpecVersions.promoteIfPending',
+    userSelect: 'shotSpecVersions.select',
+  },
+};
+
+/**
+ * Generated tables that are NOT on the claim flow, and why. Shrinking this is
+ * the goal; growing it is a reviewed act.
+ */
+const EXCEPTIONS: Record<string, string> = {
+  // The music prompt run appends and selects with no claim, like the
+  // pipeline's image/motion prompt passes (#1115); its call site is pinned in
+  // UNCLAIMED_CALL_SITES.
+  sequence_music_prompt_versions:
+    'music prompt: appended and selected, no claim',
+  // `sequences.workflowRunId` is the pipeline's run slot
+  // (`sequences.claimWorkflowSlot`), not a selection.
+  sequences: 'run slot, not a selection pointer',
+  // Every studio run is its own asset; nothing selects between them.
+  generated_assets: 'no selection pointer',
+  // An export is a file per request; nothing selects between them.
+  sequence_exports: 'no selection pointer',
+  // A compliance record of a generation, not a generation result.
+  content_provenance: 'audit record, not a result',
+  // Legacy per-model outputs; no workflow writes it since #990 (video moved to
+  // `video_variants`). Read and discard only.
+  shot_variants: 'legacy, no workflow writes it',
+  // Authored, not generated: split seeds a scene's script and each shot's
+  // lines in the run that (re)creates them, and a re-analysis replaces the
+  // selection by design — its output IS the new source. User edits append.
+  scene_script_versions: 'authored; re-analysis replaces by design',
+  shot_dialogue_versions: 'authored; re-analysis replaces by design',
+  // Bible history (#1600): authored, not generated. Analysis, a person's
+  // edit and a recast each append; nothing is generated into it async.
+  character_bible_versions: 'authored; analysis and edits append',
+  location_bible_versions: 'authored; analysis and edits append',
+  // Look definitions (#2015): authored like a bible. The look's SHEET is the
+  // generated thing, and it lands through the `character sheets` claim.
+  character_look_versions: 'authored; analysis and edits append',
+  // Style snapshots (#1600): copied from the catalog on create, switch and
+  // automatic derivation; a snapshot, not a generation.
+  sequence_style_versions: 'snapshot of the catalog style; appended on change',
+};
+
+/**
+ * Writers that move a claim domain's pointer with NO claim: `write` /
+ * `writeAiVersion` append and select unless `select: false`, and demote live
+ * claims like a user edit. Each workflow call site is pinned here with why, so
+ * a new unclaimed promote fails the test. Shrinking this is the goal.
+ */
+const UNCLAIMED_WRITERS: readonly ScopedMethod[] = [
+  'framePromptVersions.write',
+  'framePromptVersions.writeAiVersion',
+  'shotPromptVersions.write',
+  'shotPromptVersions.writeAiVersion',
+  'shotSpecVersions.write',
+  'characters.updateVoice',
+  'sequenceMusicPromptVersions.write',
+];
+const UNCLAIMED_CALL_SITES: Record<string, string> = {
+  // Analysis seeds each new shot's spec and the prompts derived from it.
+  'src/shots/server/persist-shot-spec.ts: shotSpecVersions.write':
+    'analysis seeds spec v1, no claim',
+  'src/shots/server/persist-shot-spec.ts: framePromptVersions.write':
+    'analysis persists first derived still prompt, no claim',
+  'src/shots/server/persist-shot-spec.ts: shotPromptVersions.write':
+    'analysis persists first derived motion prompt, no claim',
+  // A run queued before #1786 carries the user's typed edit (drain path);
+  // the other write in motion-workflow passes `select: false`.
+  'src/stills/server/workflows/image-workflow.ts: framePromptVersions.write':
+    'pre-#1786 payload: the user edit, written at run time',
+  'src/motion/server/workflows/motion-workflow.ts: shotPromptVersions.write':
+    'pre-#1786 user edit; the rescue write is select: false',
+  'src/stills/server/workflows/soften-image-prompt.ts: framePromptVersions.write':
+    'select: false, lands unselected (#1786)',
+  // The music prompt pass selects its output with no claim (#1115); a track
+  // regeneration claims the track, not the prompt.
+  'src/audio/server/workflows/music-prompt-workflow.ts: sequenceMusicPromptVersions.write':
+    'music prompt pass, no claim',
+  // A pre-#1715 payload has no husk to claim (drain path).
+  'src/cast/server/workflows/character-voice-workflow.ts: characters.updateVoice':
+    'pre-#1715 payload, no husk',
+};
+
+/** Every table a workflow writes results into or that holds generated history. */
+function generatedTables(): string[] {
+  const names = new Set<string>();
+  for (const value of Object.values(schema)) {
+    if (!is(value, SQLiteTable)) continue;
+    const name = getTableName(value);
+    const runColumn = Object.keys(getTableColumns(value)).some((key) =>
+      /workflowRunId$/i.test(key)
+    );
+    if (runColumn || /_(variants|versions)$/.test(name)) names.add(name);
+  }
+  return [...names].sort();
+}
+
+const WORKFLOW_SOURCES = [
+  ...globSync('src/**/server/workflows/*.ts').filter(
+    (f) => !f.endsWith('.test.ts')
+  ),
+  // A workflow-step helper, not a workflow (#1651, #1657).
+  'src/motion/server/generate-dialogue-speech.ts',
+  // Analysis's spec-and-prompts step (#1915).
+  'src/shots/server/persist-shot-spec.ts',
+].sort();
+
+describe('claim discipline (#1130)', () => {
+  test('every generated table is owned by a claim domain or excepted', () => {
+    const owned = Object.values(CLAIM_DOMAINS).flatMap((d) => d.tables);
+    const covered = new Set([...owned, ...Object.keys(EXCEPTIONS)]);
+    const uncovered = generatedTables().filter((t) => !covered.has(t));
+    expect(
+      uncovered,
+      'A generated table has no claim surface. Give it claim/clear/promote ' +
+        'and add it to CLAIM_DOMAINS, or add it to EXCEPTIONS with a reason.'
+    ).toEqual([]);
+  });
+
+  test('no table is both claimed and excepted, and no entry is stale', () => {
+    const generated = new Set(generatedTables());
+    const owned = Object.values(CLAIM_DOMAINS).flatMap((d) => d.tables);
+    expect(owned.filter((t) => t in EXCEPTIONS)).toEqual([]);
+    // A domain may own a pointer table the scan does not see (render_segments
+    // has no run column); an exception must name a table the scan does see.
+    expect(Object.keys(EXCEPTIONS).filter((t) => !generated.has(t))).toEqual(
+      []
+    );
+  });
+
+  test('every claim domain exposes claim, clear and promote', async () => {
+    vi.doMock('#db-client', () => ({ getDb: () => ({}) }));
+    const { createScopedDb } = await import('@/platform/server/db/scoped');
+    const scopedDb = createScopedDb('team', 'user');
+
+    const missing: string[] = [];
+    for (const [name, domain] of Object.entries(CLAIM_DOMAINS)) {
+      for (const role of ['claim', 'clear', 'promote', 'userSelect'] as const) {
+        for (const spelled of [domain[role]].flat()) {
+          const [module = '', method = ''] = spelled.split('.');
+          const methods: unknown = Reflect.get(scopedDb, module);
+          const fn: unknown =
+            typeof methods === 'object' && methods !== null
+              ? Reflect.get(methods, method)
+              : undefined;
+          if (typeof fn !== 'function') {
+            missing.push(`${name}.${role}: ${spelled}`);
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+  }, 20_000); // Cold import of the whole scoped-db graph.
+
+  test('no workflow promotes through a user selector', () => {
+    const offenders: string[] = [];
+    for (const path of WORKFLOW_SOURCES) {
+      const source = readFileSync(path, 'utf8');
+      for (const domain of Object.values(CLAIM_DOMAINS)) {
+        if (source.includes(`.${domain.userSelect}(`)) {
+          offenders.push(`${path}: ${domain.userSelect}`);
+        }
+      }
+    }
+    expect(
+      offenders,
+      'A run moved a selection pointer without consuming its claim. Use the ' +
+        "domain's promote method; a claim miss lands in history."
+    ).toEqual([]);
+  });
+
+  test('every unclaimed pointer write from a workflow is pinned', () => {
+    const found: string[] = [];
+    for (const path of WORKFLOW_SOURCES) {
+      const source = readFileSync(path, 'utf8');
+      for (const method of UNCLAIMED_WRITERS) {
+        if (source.includes(`.${method}(`)) found.push(`${path}: ${method}`);
+      }
+    }
+    expect(
+      found.sort(),
+      'A run moves a selection pointer with no claim. Take a claim, pass ' +
+        '`select: false`, or pin the call site in UNCLAIMED_CALL_SITES.'
+    ).toEqual(Object.keys(UNCLAIMED_CALL_SITES).sort());
+  });
+});

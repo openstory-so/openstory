@@ -1,3 +1,5 @@
+import type { StyleConfig } from '@/look/style-config';
+import { buildPackedMotionPrompt } from '@/motion/server/build-motion-render';
 /**
  * Assembled request the scene editor's optimised-prompt inspector shows
  * (#1242). Same builders submit uses, so the JSON cannot drift — but the
@@ -36,12 +38,12 @@ import type { Resolution } from '@/models/resolutions';
 import { buildBytePlusImageRequest } from '@/stills/build-byteplus-image-request';
 import { buildImageRequest } from '@/stills/build-image-request';
 import {
-  assemblePackedMotionPrompt,
   packedPromptFitsLimit,
   packedSceneFromScene,
   type PackedMotionPromptShot,
-} from '@/motion/server/assemble-motion-prompt';
+} from '@/motion/server/build-motion-render';
 import { buildBytePlusVideoRequest } from '@/motion/server/build-byteplus-video-request';
+import { seedanceEditSeconds } from '@/motion/seedance-edit';
 import { buildGeminiVideoRequest } from '@/motion/server/build-gemini-video-request';
 import { buildGrokVideoRequest } from '@/motion/server/build-grok-video-request';
 import { buildMotionRequest } from '@/motion/server/build-model-input';
@@ -49,7 +51,6 @@ import {
   buildMotionReferenceImages,
   buildShotImageReferenceImages,
 } from '@/motion/server/build-motion-references';
-import { resolveMotionPrompt } from '@/motion/server/resolve-motion-prompt';
 import { formatShotSpan } from '@/shots/scene-segments';
 import {
   missingVoiceLines,
@@ -147,6 +148,7 @@ export type PackedPreviewMember = {
 type SceneReferenceInput = {
   continuity?: {
     characterTags?: string[];
+    characterLooks?: Record<string, string>;
     elementTags?: string[] | null;
     environmentTag?: string | null;
     lightingSetup?: string;
@@ -268,6 +270,7 @@ function absolutizeRefs<T extends { referenceImageUrl: string }>(
 }
 
 export function buildShotPromptPreview(input: {
+  styleConfig: StyleConfig;
   imageModel: TextToImageModel;
   videoModel: ImageToVideoModel;
   imagePrompt: string;
@@ -330,7 +333,7 @@ export function buildShotPromptPreview(input: {
   const isPacked = packedMembers.length > 1;
   const packedFirst = packedMembers[0];
   const packed = isPacked
-    ? assemblePackedMotionPrompt({
+    ? buildPackedMotionPrompt({
         shots: packedMembers.map((member): PackedMotionPromptShot => ({
           durationSeconds: Math.max(
             1,
@@ -343,20 +346,27 @@ export function buildShotPromptPreview(input: {
         })),
         model: input.videoModel,
         generateAudio: input.generateAudio,
-        scene: packedSceneFromScene(input.scene),
+        scene: packedSceneFromScene(input.scene, input.styleConfig),
       })
     : null;
   const assembledMotionPrompt = packed
     ? packed.prompt
-    : resolveMotionPrompt(
-        {
-          motionPrompt,
-          characterTags: input.scene?.continuity?.characterTags,
-          description: input.scene?.originalScript?.extract ?? null,
+    : motionPrompt || input.scene?.originalScript?.extract
+      ? buildPackedMotionPrompt({
+          shots: [
+            {
+              durationSeconds: (input.shotDurationMs ?? 3000) / 1000,
+              motionPrompt: motionPrompt ?? undefined,
+              prompt: input.scene?.originalScript?.extract,
+              characterTags: input.scene?.continuity?.characterTags,
+              attachSceneHeader: true,
+            },
+          ],
+          model: input.videoModel,
           generateAudio: input.generateAudio,
-        },
-        input.videoModel
-      );
+          scene: packedSceneFromScene(input.scene, input.styleConfig),
+        }).prompt
+      : '';
   const motionUsesStartFrame = packedFirst
     ? packedFirst.usesStartFrame
     : input.usesStartFrame;
@@ -431,11 +441,11 @@ export function buildShotPromptPreview(input: {
       packedPromptOverflow
     ),
     motionUnusable: [
-      ...unusableShotReferenceLines(
-        input.videoModel,
-        motionRefs,
-        motionUsesStartFrame
-      ),
+      ...unusableShotReferenceLines(input.videoModel, motionRefs, {
+        hasStartFrame: motionUsesStartFrame,
+        prompt: assembledMotionPrompt,
+        onArk: byteplusEnabled,
+      }),
       ...missingVoiceLines(
         input.videoModel,
         input.motionPrompt?.dialogue,
@@ -583,6 +593,13 @@ function buildMotionPreview(input: {
             ? input.generateAudio
             : undefined,
           referenceImages: input.referenceImages,
+          // What a trigger would decide for this prompt (#2036).
+          heldSeedanceEditSeconds: seedanceEditSeconds({
+            model: input.model,
+            onArk: true,
+            prompt: modelPrompt,
+            references: input.referenceImages,
+          }),
         },
         input.model
       );

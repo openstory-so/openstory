@@ -182,7 +182,7 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
     const references = createInitialState({ stopAt: 'references' });
     expect(references.phases.map((p) => p.shortName)).toEqual([
       'Casting',
-      'References',
+      'Sheets & Voices',
     ]);
 
     const next = apply(references, {
@@ -192,7 +192,7 @@ describe('generationStreamReducer — stop-at banner (#1408)', () => {
 
     expect(next.phases.map((p) => p.shortName)).toEqual([
       'Casting',
-      'References',
+      'Sheets & Voices',
       'Motion & Music',
     ]);
     expect(next.phases.map((p) => p.status)).toEqual([
@@ -215,7 +215,7 @@ describe('progress phases in reference-only', () => {
     // images event at all, so the chip would sit pending until motion swept it.
     expect(shortNames({ stopAt: 'music', referenceOnly: true })).toEqual([
       'Casting',
-      'References',
+      'Sheets & Voices',
       'Motion & Music',
     ]);
 
@@ -229,13 +229,13 @@ describe('progress phases in reference-only', () => {
   it('leaves the image-rendering modes alone', () => {
     expect(shortNames({ stopAt: 'music' })).toEqual([
       'Casting',
-      'References',
+      'Sheets & Voices',
       'Images',
       'Motion & Music',
     ]);
     expect(shortNames({ stopAt: 'music', generateVoices: true })).toEqual([
       'Casting',
-      'References',
+      'Sheets & Voices',
       'Images',
       'Dialogue',
       'Motion & Music',
@@ -302,7 +302,7 @@ describe('continue after a finished run', () => {
     expect(next.phases.every((p) => p.status === 'pending')).toBe(true);
     expect(next.phases.map((p) => p.shortName)).toEqual([
       'Casting',
-      'References',
+      'Sheets & Voices',
       'Images',
       'Motion & Music',
     ]);

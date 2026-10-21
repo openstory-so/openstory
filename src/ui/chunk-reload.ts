@@ -34,6 +34,20 @@ export function isReloadPending(): boolean {
   return reloadPending;
 }
 
+/**
+ * A failed lazy import that got past the reload above: the retry window was
+ * already spent, or the import is not one Vite wraps. Same prefixes the
+ * router's own `isModuleNotFoundError` matches (Chrome, Firefox, Safari).
+ */
+export function isStaleChunkError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.message.startsWith('Failed to fetch dynamically imported module') ||
+    error.message.startsWith('error loading dynamically imported module') ||
+    error.message.startsWith('Importing a module script failed')
+  );
+}
+
 function tryReload(reason: string, err?: unknown): boolean {
   const now = Date.now();
   try {

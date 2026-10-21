@@ -1,11 +1,13 @@
 import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
-import { ActionCost } from '@/billing/ui/action-cost';
+import { InButtonCost } from '@/billing/ui/action-cost';
 import { useVoiceDesignAvailable } from '@/cast/ui/use-voice-design-available';
-import { useViaAvailability } from '@/models/ui/use-via-availability';
+import {
+  useViaAvailability,
+  viaAvailabilityQueryOptions,
+} from '@/models/ui/use-via-availability';
 import { DRAFT_FINAL_RESOLUTION } from '@/motion/draft-mode';
-import { useWelcomeCreditsGate } from '@/billing/ui/welcome-credits-dialog';
 import { PremiumCard } from '@/ui/cards/premium-card';
 import {
   ElementSelector,
@@ -13,12 +15,24 @@ import {
 } from '@/cast/ui/element/element-selector';
 import { GenerateSequenceIcon } from '@/ui/icons/generate-sequence-icon';
 import { LocationSuggestionSelector } from '@/cast/ui/location-library/location-suggestion-selector';
-import { buildMentionItems } from '@/shots/ui/prompt-mention/mention-items';
+import {
+  buildMentionItems,
+  libraryCharacterIdOf,
+  libraryLocationIdOf,
+  libraryLocationMentionItems,
+  libraryMentionItems,
+  type MentionItem,
+} from '@/shots/ui/prompt-mention/mention-items';
+import {
+  useAttachLibraryCharacter,
+  useLibraryCharacters,
+} from '@/cast/ui/use-team-characters';
 import { GenerationStopAlert } from '@/sequences/ui/generation/generation-stop-alert';
 import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
 import { StyleSelector } from '@/look/ui/style-selector';
 import { TalentSuggestionSelector } from '@/cast/ui/talent/talent-suggestion-selector';
+import { CastSelector } from '@/cast/ui/cast-selector';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,7 +62,10 @@ import { useAutoScroll } from '@/ui/use-auto-scroll';
 import { BILLING_BALANCE_KEY } from '@/billing/ui/use-billing-balance';
 import { BILLING_TRANSACTIONS_KEY } from '@/billing/ui/use-billing-balance-realtime';
 import { useBillingGate } from '@/billing/ui/use-billing-gate';
-import { useGenerationSettings } from '@/sequences/ui/use-generation-settings';
+import {
+  NEW_SEQUENCE_VIDEO_MODEL,
+  useGenerationSettings,
+} from '@/sequences/ui/use-generation-settings';
 import {
   allowsUnfundedGeneration,
   DEFAULT_GENERATION_STOP_AT,
@@ -63,7 +80,11 @@ import {
   useSequenceElements,
   type DraftElementUpload,
 } from '@/cast/ui/use-sequence-elements';
-import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
+import {
+  useAttachLocation,
+  useSequenceLocations,
+} from '@/cast/ui/use-sequence-locations';
+import { useTeamLocationList } from '@/cast/ui/use-team-locations';
 import { TARGET_DURATION_PRESETS } from '@/sequences/ui/target-duration-chip';
 import {
   useRecommendedStyles,
@@ -72,6 +93,7 @@ import {
 } from '@/look/ui/use-styles';
 import { AUTO_STYLE_ID } from '@/look/auto-style';
 import { errorMessage } from '@/platform/errors';
+import { toast } from 'sonner';
 import {
   assessDurationFit,
   briefRequestsUnrenderableText,
@@ -79,7 +101,7 @@ import {
   TITLE_CARD_NOTE,
 } from '@/models/enhance-duration';
 import { toEnhanceInputs } from '@/models/enhance-inputs';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
   parkCreatingSequence,
@@ -90,6 +112,7 @@ import {
   DEFAULT_MUSIC_MODEL,
   DEFAULT_VIDEO_MODEL,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   safeAudioModel,
   safeImageToVideoModel,
   safeTextToImageModel,
@@ -101,6 +124,7 @@ import {
 } from '@/models/models';
 import {
   applyGenerationMode,
+  TURBO_DEFAULT_VIDEO,
   type GenerationMode,
 } from '@/models/generation-mode';
 import {
@@ -270,6 +294,9 @@ export const ScriptView: FC<{
   const isEditing = !!sequence?.id;
   const voiceDesignAvailable = useVoiceDesignAvailable();
   const viaAvailability = useViaAvailability();
+  // Observes the cache only: unanswered for a visitor and while it loads.
+  const viasKnown =
+    useQuery({ ...viaAvailabilityQueryOptions, enabled: false }).data != null;
   const { data: composedScriptData } = useComposedScript(sequence?.id);
   const composedScript = composedScriptData?.script;
   // Analyzed sequences derive the document from scene versions (#1030), so the
@@ -358,7 +385,6 @@ export const ScriptView: FC<{
     videoModels: ImageToVideoModel[];
     stopAt: GenerationStage;
     generateStartFrames: boolean;
-    generateVoices: boolean;
     draftMotion: boolean;
     audioModels: AudioModel[];
   }>(() => ({
@@ -382,9 +408,6 @@ export const ScriptView: FC<{
     generateStartFrames: isEditing
       ? sequence.generateStartFrames
       : savedSettings.generateStartFrames,
-    generateVoices: isEditing
-      ? sequence.generateVoices
-      : savedSettings.generateVoices,
     draftMotion: isEditing ? sequence.draftMotion : savedSettings.draftMotion,
     audioModels:
       isEditing && sequence.musicModel
@@ -398,10 +421,13 @@ export const ScriptView: FC<{
     videoModels,
     stopAt,
     generateStartFrames,
-    generateVoices,
     draftMotion,
     audioModels,
   } = genSettings;
+  // Not a choice (#2004): every new sequence records dialogue wherever this
+  // deployment can design a voice. A character is turned off on the character.
+  const generateVoices =
+    voiceDesignAvailable !== false && savedSettings.generateVoices;
   // Draft first (#1756) is offered while a chosen model has a draft mode and
   // this team reaches Ark (a team on its own fal key does not, and a draft
   // submit there refuses). The remembered setting is kept either way; only
@@ -451,9 +477,15 @@ export const ScriptView: FC<{
   const [selections, setSelections] = useState({
     talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
+    // Team characters picked for a sequence that does not exist yet, in the
+    // cast picker or with `@` (#2050): create casts every one.
+    castCharacterIds: [] as string[],
   });
-  const { talentIds: selectedTalentIds, locationIds: selectedLocationIds } =
-    selections;
+  const {
+    talentIds: selectedTalentIds,
+    locationIds: selectedLocationIds,
+    castCharacterIds,
+  } = selections;
   const [draftElements, setDraftElements] = useState<DraftElementUpload[]>([]);
   const [isElementBusy, setIsElementBusy] = useState(false);
   const elementSelectorRef = useRef<ElementSelectorHandle>(null);
@@ -627,6 +659,18 @@ export const ScriptView: FC<{
   // state instead (#1079). Always defined — the editor's mention extension is
   // registered at init and can't be enabled later.
   const mentionSequenceId = sequence?.id;
+  const { requireAuth, isAuthenticated } = useAuthGate();
+  // Team characters not cast here are offered too, and attach on pick
+  // (#2050): straight onto the sequence when there is one, else onto the
+  // draft, which create casts before analysis.
+  const { data: libraryCharacters, isError: libraryCharactersFailed } =
+    useLibraryCharacters(isAuthenticated);
+  const attachLibraryCharacter = useAttachLibraryCharacter();
+  // The team's locations, the same way (#1695): a pick links the sequence
+  // to one, or goes onto the draft's suggested locations.
+  const { data: teamLocations, isError: teamLocationsFailed } =
+    useTeamLocationList(isAuthenticated);
+  const attachLocation = useAttachLocation();
   const { data: mentionElements } = useSequenceElements(mentionSequenceId);
   const { data: mentionCharacters } = useSequenceCharacters(
     mentionSequenceId ?? ''
@@ -634,34 +678,107 @@ export const ScriptView: FC<{
   const { data: mentionLocations } = useSequenceLocations(
     mentionSequenceId ?? ''
   );
-  const mentionItems = useMemo(
-    () =>
-      mentionSequenceId
-        ? buildMentionItems({
-            characters: mentionCharacters ?? [],
-            elements: mentionElements ?? [],
-            locations: mentionLocations ?? [],
-          })
-        : buildMentionItems({
-            characters: [],
-            elements: draftElements.map((el) => ({
-              id: el.tempPath,
-              token: el.token,
-              description: el.description,
-              imageUrl: el.tempPublicUrl,
-              consistencyTag: el.consistencyTag,
-              kind: elementKindFromFilename(el.filename) ?? 'image',
-            })),
-            locations: [],
-          }),
-    [
-      mentionSequenceId,
-      mentionCharacters,
-      mentionElements,
-      mentionLocations,
-      draftElements,
-    ]
-  );
+  const mentionItems = useMemo(() => {
+    const library = libraryCharacters ?? [];
+    const libraryRows = library.map((c) => ({
+      id: c.id,
+      name: c.name,
+      sheetImageUrl: c.sheetImageUrl,
+    }));
+    // On the create screen a picked team character is the cast, whether or
+    // not the script names her yet.
+    const draftCast = libraryRows
+      .filter((c) => castCharacterIds.includes(c.id))
+      .map((c) => ({ ...c, characterId: c.id, consistencyTag: null }));
+    const cast = mentionSequenceId ? (mentionCharacters ?? []) : draftCast;
+    const items = mentionSequenceId
+      ? buildMentionItems({
+          characters: cast,
+          elements: mentionElements ?? [],
+          locations: mentionLocations ?? [],
+        })
+      : buildMentionItems({
+          characters: cast,
+          elements: draftElements.map((el) => ({
+            id: el.tempPath,
+            token: el.token,
+            description: el.description,
+            imageUrl: el.tempPublicUrl,
+            consistencyTag: el.consistencyTag,
+            kind: elementKindFromFilename(el.filename) ?? 'image',
+          })),
+          locations: [],
+        });
+    return [
+      ...items,
+      ...libraryMentionItems(libraryRows, new Set(cast.map((c) => c.id))),
+      // A draft has no locations of its own yet, so every team location is
+      // offered; picking one twice is the same pick.
+      ...libraryLocationMentionItems(
+        teamLocations ?? [],
+        new Set((mentionLocations ?? []).map((l) => l.id))
+      ),
+    ];
+  }, [
+    mentionSequenceId,
+    mentionCharacters,
+    mentionElements,
+    mentionLocations,
+    draftElements,
+    libraryCharacters,
+    castCharacterIds,
+    teamLocations,
+  ]);
+
+  // A picked library row inserts her name as a cast row would; the attach
+  // runs beside it. A refused attach (a live cast member already has the
+  // name) leaves the name as prose and says why.
+  const onMentionSelect = (item: MentionItem): MentionItem => {
+    const locationId = libraryLocationIdOf(item);
+    if (locationId) {
+      if (mentionSequenceId) {
+        attachLocation.mutate(
+          { sequenceId: mentionSequenceId, locationId },
+          {
+            onError: (error) =>
+              toast.error(`Could not add ${item.label}`, {
+                description: errorMessage(error),
+              }),
+          }
+        );
+      } else {
+        setSelections((s) =>
+          s.locationIds.includes(locationId)
+            ? s
+            : { ...s, locationIds: [...s.locationIds, locationId] }
+        );
+      }
+      // Its name in capitals, as a scene heading reads.
+      const { pickOnly: _pickOnly, ...picked } = item;
+      return picked;
+    }
+    const characterId = libraryCharacterIdOf(item);
+    if (!characterId) return item;
+    if (mentionSequenceId) {
+      attachLibraryCharacter.mutate(
+        { sequenceId: mentionSequenceId, characterId },
+        {
+          onError: (error) =>
+            toast.error(`Could not add ${item.label}`, {
+              description: errorMessage(error),
+            }),
+        }
+      );
+    } else {
+      setSelections((s) =>
+        s.castCharacterIds.includes(characterId)
+          ? s
+          : { ...s, castCharacterIds: [...s.castCharacterIds, characterId] }
+      );
+    }
+    const { pickOnly: _pickOnly, ...picked } = item;
+    return { ...picked, section: 'cast' };
+  };
 
   // Renaming a draft element rewrites its token references in the script so
   // the tile name and what the analyser will see stay in sync (the persisted
@@ -708,6 +825,10 @@ export const ScriptView: FC<{
         draft.selectedLocationIds.length > 0
           ? draft.selectedLocationIds
           : s.locationIds,
+      castCharacterIds:
+        draft.castCharacterIds.length > 0
+          ? draft.castCharacterIds
+          : s.castCharacterIds,
     }));
     if (draft.elementUploads.length > 0) {
       setDraftElements(draft.elementUploads);
@@ -750,7 +871,6 @@ export const ScriptView: FC<{
         videoModels: savedSettings.videoModels,
         stopAt: savedSettings.stopAt,
         generateStartFrames: savedSettings.generateStartFrames,
-        generateVoices: savedSettings.generateVoices,
         draftMotion: savedSettings.draftMotion,
         audioModels: savedSettings.audioModels,
       });
@@ -781,6 +901,7 @@ export const ScriptView: FC<{
       sampleStyleId,
       selectedTalentIds,
       selectedLocationIds,
+      castCharacterIds,
       elementUploads: draftElements,
     });
   }, [
@@ -791,15 +912,27 @@ export const ScriptView: FC<{
     styleId,
     selectedTalentIds,
     selectedLocationIds,
+    castCharacterIds,
     draftElements,
     saveDraft,
   ]);
 
   // Auto-fallback motion models when style changes away from a required
   // category — any selected model whose requiredStyleCategory no longer matches
-  // is swapped for the default; the result is deduped.
+  // is swapped for the default; the result is deduped. A new sequence also
+  // swaps the Seedance 2.5 default for the Turbo one where this team cannot
+  // reach BytePlus (#2004) — only once the server has answered, so the
+  // conservative stand-in is never remembered as their pick.
   useEffect(() => {
     const coerced = videoModels.map((m) => {
+      if (
+        !isEditing &&
+        viasKnown &&
+        m === NEW_SEQUENCE_VIDEO_MODEL &&
+        !isOfferedVideoModel(m, viaAvailability)
+      ) {
+        return TURBO_DEFAULT_VIDEO;
+      }
       const model = IMAGE_TO_VIDEO_MODELS[m];
       return 'requiredStyleCategory' in model &&
         model.requiredStyleCategory !== styleCategory
@@ -813,7 +946,7 @@ export const ScriptView: FC<{
     ) {
       updateGen('videoModels', deduped);
     }
-  }, [styleCategory, videoModels]);
+  }, [styleCategory, videoModels, isEditing, viasKnown, viaAvailability]);
 
   const [targetDuration, setTargetDuration] = useState(30);
   // Only Enhance sets the sequence's target (#1593): a pasted script's length
@@ -846,7 +979,6 @@ export const ScriptView: FC<{
   ) => setEnhanceUI((s) => ({ ...s, [key]: value }));
 
   const navigate = useNavigate();
-  const { requireAuth, isAuthenticated } = useAuthGate();
   const { needsBillingSetup, showGate } = useBillingGate();
 
   // Style recommendations. We rank a *snapshot* of the script (not the live
@@ -912,15 +1044,10 @@ export const ScriptView: FC<{
   const executeRegeneration = (
     run: Pick<
       typeof genSettings,
-      'stopAt' | 'generateStartFrames' | 'generateVoices' | 'videoModels'
+      'stopAt' | 'generateStartFrames' | 'videoModels'
     > = genSettings
   ) => {
-    const {
-      stopAt: runUntil,
-      generateStartFrames,
-      generateVoices,
-      videoModels,
-    } = run;
+    const { stopAt: runUntil, generateStartFrames, videoModels } = run;
     if (needsBillingSetup && !allowsUnfundedGeneration(runUntil)) {
       showGate();
       return;
@@ -944,7 +1071,10 @@ export const ScriptView: FC<{
       autoGenerateMusic: flags.autoGenerateMusic,
       generateStartFrames,
       generateVoices,
-      draftMotion: draftFirst,
+      // The choice, gated on the route only: a sequence started on a model
+      // without a draft mode still drafts once one is picked. The server
+      // ignores it for a model that has none.
+      draftMotion: draftMotion && viaAvailability.byteplus,
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
       targetDurationSeconds: enhancedTarget ?? undefined,
@@ -952,6 +1082,9 @@ export const ScriptView: FC<{
         selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
       suggestedLocationIds:
         selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
+      // Every pick is cast; the picker shows each one, a deleted one included.
+      castCharacterIds:
+        castCharacterIds.length > 0 ? castCharacterIds : undefined,
       elementUploads:
         draftElements.length > 0
           ? draftElements.map((el) => ({
@@ -979,13 +1112,10 @@ export const ScriptView: FC<{
 
   const requestGenerate = () => {
     // Remembered paid stop + no credits: open the slider instead of firing
-    // Generate (the credit gate still runs on confirm). Same when Voices is
-    // on but this deployment cannot design one (#1553): the launcher would
-    // refuse, and the dialog is the only place the flag can be turned off.
+    // Generate (the credit gate still runs on confirm).
     if (
       savedSettings.rememberStopAt &&
-      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt)) &&
-      !(generateVoices && voiceDesignAvailable === false)
+      !(needsBillingSetup && !allowsUnfundedGeneration(stopAt))
     ) {
       executeRegeneration();
       return;
@@ -1189,18 +1319,39 @@ export const ScriptView: FC<{
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
   const referenceCount =
     selectedTalentIds.length +
+    (isEditing ? 0 : castCharacterIds.length) +
     selectedLocationIds.length +
     (isEditing ? 0 : draftElements.length);
   const referenceSelectors = (
     <>
-      <TalentSuggestionSelector
-        selectedTalentIds={selectedTalentIds}
-        onSelectionChange={(v) =>
-          setSelections((s) => ({ ...s, talentIds: v }))
-        }
-        disabled={loading}
-      />
+      {/* A sequence that exists is cast on its Cast tab and with `@`; only
+          its talent suggestions are edited here. */}
+      {isEditing ? (
+        <TalentSuggestionSelector
+          selectedTalentIds={selectedTalentIds}
+          onSelectionChange={(v) =>
+            setSelections((s) => ({ ...s, talentIds: v }))
+          }
+          disabled={loading}
+        />
+      ) : (
+        <CastSelector
+          characters={isAuthenticated ? libraryCharacters : []}
+          signedOut={!isAuthenticated}
+          failed={libraryCharactersFailed}
+          selectedIds={castCharacterIds}
+          onSelectionChange={(v) =>
+            setSelections((s) => ({ ...s, castCharacterIds: v }))
+          }
+          selectedTalentIds={selectedTalentIds}
+          onTalentChange={(v) => setSelections((s) => ({ ...s, talentIds: v }))}
+          disabled={loading}
+        />
+      )}
       <LocationSuggestionSelector
+        locations={isAuthenticated ? teamLocations : []}
+        signedOut={!isAuthenticated}
+        failed={teamLocationsFailed}
         selectedLocationIds={selectedLocationIds}
         onSelectionChange={(v) =>
           setSelections((s) => ({ ...s, locationIds: v }))
@@ -1234,7 +1385,6 @@ export const ScriptView: FC<{
   // enhance nudge, billing gate, generation — continues without a second
   // click. Covers both the in-dialog OTP sign-in (no remount) and the OAuth
   // round-trip (fresh mount). Ref'd so the effect calls the fresh closure.
-  const { blocking: welcomeCreditsBlocking } = useWelcomeCreditsGate();
   const handleSubmitRef = useRef(handleSubmit);
   handleSubmitRef.current = handleSubmit;
   const handleEnhanceRef = useRef(handleEnhance);
@@ -1244,10 +1394,6 @@ export const ScriptView: FC<{
     if (isEditing || loading || !isAuthenticated) return;
     if (resumeTriedRef.current) return;
     if (!draftLoaded || !isReady || isSubmitting || isEnhancing) return;
-    // Let the welcome-credits moment finish first — its "Keep creating"
-    // dismiss is what hands the flow back to us, instead of the nudge
-    // stacking on top of the gift dialog.
-    if (welcomeCreditsBlocking) return;
     resumeTriedRef.current = true;
     const intent = takePendingIntent();
     if (intent === 'generate') void handleSubmitRef.current();
@@ -1260,7 +1406,6 @@ export const ScriptView: FC<{
     isReady,
     isSubmitting,
     isEnhancing,
-    welcomeCreditsBlocking,
   ]);
 
   const scriptValue = script ?? baseScript ?? '';
@@ -1483,10 +1628,13 @@ export const ScriptView: FC<{
             </SheetTrigger>
             <SheetContent side="bottom" className="px-4 pb-6">
               <SheetHeader className="px-0">
-                <SheetTitle>Talent, locations & elements</SheetTitle>
+                <SheetTitle>
+                  {isEditing ? 'Talent' : 'Cast'}, locations & elements
+                </SheetTitle>
                 <SheetDescription>
-                  Pre-cast talent, pin locations, or add reference images.
-                  Anything you skip is extracted from the script.
+                  {isEditing ? 'Pre-cast talent' : 'Cast characters or talent'},
+                  pin locations, or add reference images. Anything you skip is
+                  extracted from the script.
                 </SheetDescription>
               </SheetHeader>
               <div className="flex flex-col items-start gap-3">
@@ -1540,6 +1688,7 @@ export const ScriptView: FC<{
               disabled={loading || isDerivedScript}
               showCharacterCount={false}
               mentionItems={mentionItems}
+              onMentionSelect={onMentionSelect}
             />
           </div>
           {enhanceError && (
@@ -1647,47 +1796,51 @@ export const ScriptView: FC<{
                 <Button
                   type="submit"
                   disabled={isDisabled}
-                  className="group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden"
+                  className={cn(
+                    'group relative px-6 bg-linear-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground font-semibold tracking-wide shadow-lg shadow-primary/20 hover:shadow-primary/30 overflow-hidden',
+                    // Logged-out front page: this button is the sign-in control.
+                    !isAuthenticated &&
+                      'motion-safe:animate-pulse motion-safe:hover:animate-none'
+                  )}
                 >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    {isSubmitting || isElementBusy ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <GenerateSequenceIcon className="size-4" />
-                    )}
-                    {isSubmitting
-                      ? 'Generating…'
-                      : isElementBusy
-                        ? 'Analyzing elements…'
-                        : isEditing
-                          ? 'Generate Copy'
-                          : 'Generate'}
+                  <span className="relative z-10">
+                    <InButtonCost
+                      estimate={isAuthenticated ? storyboardCostEstimate : null}
+                      hideLoggedOutPrice
+                      amountWidth={
+                        includesStage(stopAt, 'motion') ? 'double' : 'single'
+                      }
+                    >
+                      {isSubmitting || isElementBusy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <GenerateSequenceIcon className="size-4" />
+                      )}
+                      {isSubmitting
+                        ? 'Generating…'
+                        : isElementBusy
+                          ? 'Analyzing elements…'
+                          : !isAuthenticated
+                            ? 'Sign in to Generate'
+                            : isEditing
+                              ? 'Generate Copy'
+                              : 'Generate'}
+                    </InButtonCost>
                   </span>
                   {/* Shine effect */}
                   <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
                 </Button>
               </div>
-              {/* The estimate only exists client-side (pricing query), so it
-                  pops in after the SSR paint — reserve its line so the footer
-                  doesn't grow and shift the page (#1187). */}
-              <div className="min-h-4">
-                <ActionCost
-                  estimate={storyboardCostEstimate}
-                  align="end"
-                  prefix={
-                    <button
-                      type="button"
-                      className="underline underline-offset-2 hover:text-foreground"
-                      onClick={() => {
-                        setStopAlertMode('edit');
-                        setShowStopAlert(true);
-                      }}
-                    >
-                      {generateScopeLabel}
-                    </button>
-                  }
-                />
-              </div>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground sm:text-right"
+                onClick={() => {
+                  setStopAlertMode('edit');
+                  setShowStopAlert(true);
+                }}
+              >
+                {generateScopeLabel}
+              </button>
               <span className="hidden text-xs text-muted-foreground sm:block sm:text-right">
                 {isEditing
                   ? analysisModels.length === 1
@@ -1825,7 +1978,6 @@ export const ScriptView: FC<{
         onConfirm={({
           stopAt: nextStopAt,
           generateStartFrames: nextStartFrames,
-          generateVoices: nextVoices,
           draftMotion: nextDraft,
           remember,
         }) => {
@@ -1833,7 +1985,6 @@ export const ScriptView: FC<{
             {
               ...genSettings,
               stopAt: nextStopAt,
-              generateVoices: nextVoices,
               draftMotion: nextDraft,
             },
             nextStartFrames

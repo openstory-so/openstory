@@ -203,7 +203,7 @@ export const apikey = snakeCase.table(
 // (= `@better-auth/oauth-provider`). Ported from `bun auth:generate`; field
 // names must match the plugins' schemas exactly. The generated FKs into
 // `user` / `session` are deliberately NOT declared: a cascade edge into a
-// long-lived parent is the #612 trap (see CLAUDE.md), and the api-key table
+// long-lived parent is the #612 trap (see AGENTS.md), and the api-key table
 // takes the same stance. The plugins join by value, not by constraint.
 // FKs *between* the OAuth tables are kept (cascade from `oauth_client`), so
 // pruning a registered client takes its tokens and consents with it.

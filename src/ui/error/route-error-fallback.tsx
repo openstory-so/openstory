@@ -1,11 +1,12 @@
 import { Alert, AlertDescription, AlertTitle } from '@/ui/shadcn/alert';
 import { Button } from '@/ui/shadcn/button';
+import { AppUpdatedNotice, isAppUpdatedError } from './app-updated-notice';
 import { DefaultNotFound } from './default-not-found';
-import { useRouter } from '@tanstack/react-router';
+import { Navigate, useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
 import { AlertCircle } from 'lucide-react';
 
-import { errorCode } from '@/platform/errors';
+import { errorCode, isUnauthenticatedError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ui', 'error', 'route-error-fallback']);
@@ -36,6 +37,17 @@ export const RouteErrorFallback: React.FC<RouteErrorFallbackProps> = ({
 }) => {
   const router = useRouter();
   const is404 = isNotFoundError(error);
+
+  if (isAppUpdatedError(error)) {
+    return <AppUpdatedNotice />;
+  }
+
+  // A session that expired under an open tab still passes the route guard
+  // from the cache; the server fn is what says no (#2034).
+  const { pathname, href } = router.state.location;
+  if (isUnauthenticatedError(error) && !pathname.startsWith('/login')) {
+    return <Navigate to="/login" search={{ redirectTo: href }} replace />;
+  }
 
   logger.error(`[RouteError:${heading}]`, { err: error });
 

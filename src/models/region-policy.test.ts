@@ -39,7 +39,7 @@ describe('regionFallbackModel', () => {
     expect(regionFallbackModel('anthropic/claude-opus-5-fast')).toBe(
       REGION_FALLBACK_MODEL
     );
-    expect(regionFallbackModel('anthropic/claude-sonnet-5')).toBe(
+    expect(regionFallbackModel('anthropic/claude-sonnet-5.5')).toBe(
       REGION_FALLBACK_MODEL
     );
   });
@@ -57,31 +57,31 @@ describe('regionFallbackModel', () => {
 
 describe('resolveModelForCountry', () => {
   it('swaps Anthropic models for blocked countries', () => {
-    expect(resolveModelForCountry('anthropic/claude-opus-5', 'CN')).toBe(
+    expect(resolveModelForCountry('anthropic/claude-opus-5.5', 'CN')).toBe(
       REGION_FALLBACK_MODEL
     );
   });
 
   it('keeps non-Anthropic models even in blocked countries', () => {
-    expect(resolveModelForCountry('x-ai/grok-4.6', 'CN')).toBe('x-ai/grok-4.6');
+    expect(resolveModelForCountry('x-ai/grok-4.7', 'CN')).toBe('x-ai/grok-4.7');
   });
 
   it('passes through outside blocked countries and without a header', () => {
-    expect(resolveModelForCountry('anthropic/claude-opus-5', 'US')).toBe(
-      'anthropic/claude-opus-5'
+    expect(resolveModelForCountry('anthropic/claude-opus-5.5', 'US')).toBe(
+      'anthropic/claude-opus-5.5'
     );
-    expect(resolveModelForCountry('anthropic/claude-opus-5', null)).toBe(
-      'anthropic/claude-opus-5'
+    expect(resolveModelForCountry('anthropic/claude-opus-5.5', null)).toBe(
+      'anthropic/claude-opus-5.5'
     );
   });
 });
 
 describe('isRegionBlockedModel', () => {
   it('blocks only Anthropic models in blocked countries', () => {
-    expect(isRegionBlockedModel('anthropic/claude-opus-5', 'CN')).toBe(true);
-    expect(isRegionBlockedModel('x-ai/grok-4.6', 'CN')).toBe(false);
-    expect(isRegionBlockedModel('anthropic/claude-opus-5', 'US')).toBe(false);
-    expect(isRegionBlockedModel('anthropic/claude-opus-5', undefined)).toBe(
+    expect(isRegionBlockedModel('anthropic/claude-opus-5.5', 'CN')).toBe(true);
+    expect(isRegionBlockedModel('x-ai/grok-4.7', 'CN')).toBe(false);
+    expect(isRegionBlockedModel('anthropic/claude-opus-5.5', 'US')).toBe(false);
+    expect(isRegionBlockedModel('anthropic/claude-opus-5.5', undefined)).toBe(
       false
     );
   });
@@ -96,16 +96,16 @@ describe('withRegionFallback', () => {
       )
       .mockResolvedValueOnce('ok');
     await expect(
-      withRegionFallback('anthropic/claude-opus-5', run)
+      withRegionFallback('anthropic/claude-opus-5.5', run)
     ).resolves.toBe('ok');
-    expect(run).toHaveBeenNthCalledWith(1, 'anthropic/claude-opus-5');
+    expect(run).toHaveBeenNthCalledWith(1, 'anthropic/claude-opus-5.5');
     expect(run).toHaveBeenNthCalledWith(2, REGION_FALLBACK_MODEL);
   });
 
   it('rethrows non-region errors untouched', async () => {
     const run = vi.fn().mockRejectedValue(new Error('402 out of credits'));
     await expect(
-      withRegionFallback('anthropic/claude-opus-5', run)
+      withRegionFallback('anthropic/claude-opus-5.5', run)
     ).rejects.toThrow('402 out of credits');
     expect(run).toHaveBeenCalledTimes(1);
   });

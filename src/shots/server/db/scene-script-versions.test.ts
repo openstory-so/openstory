@@ -22,6 +22,14 @@ let teamId = '';
 let sequenceId = '';
 let sceneId = dbSceneId('');
 
+const NO_NARRATIVE = {
+  title: null,
+  location: null,
+  timeOfDay: null,
+  storyBeat: null,
+  continuity: null,
+};
+
 async function seedScene(orderIndex = 0) {
   sceneId = dbSceneId(generateId());
   await db.insert(scenes).values({ id: sceneId, sequenceId, orderIndex });
@@ -78,6 +86,7 @@ describe('sceneScriptVersions.write', () => {
     const version = await methods.write({
       sceneId,
       content: { extract: 'Scene one.', dialogue: [] },
+      narrative: NO_NARRATIVE,
       source: 'split',
     });
 
@@ -90,6 +99,7 @@ describe('sceneScriptVersions.write', () => {
     const edit = await methods.write({
       sceneId,
       content: { extract: 'Edited scene.', dialogue: [] },
+      narrative: NO_NARRATIVE,
       source: 'edit',
     });
     const [sceneAfterEdit] = await db
@@ -110,11 +120,13 @@ describe('sceneScriptVersions.write', () => {
     await methods.write({
       sceneId,
       content: { extract: 'Scene one.', dialogue: [] },
+      narrative: NO_NARRATIVE,
       source: 'split',
     });
     await methods.write({
       sceneId: scene2Id,
       content: { extract: 'Scene two.', dialogue: [] },
+      narrative: NO_NARRATIVE,
       source: 'split',
     });
 
@@ -137,11 +149,13 @@ describe('sceneScriptVersions.seedSplitVersions', () => {
       {
         sceneId,
         content: { extract: 'Scene one.', dialogue: [] },
+        narrative: NO_NARRATIVE,
         createdAt,
       },
       {
         sceneId: scene2Id,
         content: { extract: 'Scene two.', dialogue: [] },
+        narrative: NO_NARRATIVE,
         createdAt,
       },
     ];
@@ -177,6 +191,7 @@ describe('sceneScriptVersions.seedSplitVersions', () => {
       {
         sceneId,
         content: { extract: 'Scene one.', dialogue: [] },
+        narrative: NO_NARRATIVE,
         createdAt: new Date(),
       },
     ];
@@ -199,18 +214,24 @@ describe('sceneScriptVersions.updateSplitContent', () => {
       {
         sceneId,
         content: { extract: 'Scene one.', dialogue: [] },
+        narrative: NO_NARRATIVE,
         createdAt: new Date(),
       },
     ]);
     const userVersion = await methods.write({
       sceneId,
       content: { extract: 'Scene one, edited.', dialogue: [] },
+      narrative: NO_NARRATIVE,
       source: 'edit',
     });
 
     const line = { character: 'Lena', line: 'Steady.', tone: '' };
     await methods.updateSplitContent([
-      { sceneId, content: { extract: 'Scene one.', dialogue: [line] } },
+      {
+        sceneId,
+        content: { extract: 'Scene one.', dialogue: [line] },
+        narrative: NO_NARRATIVE,
+      },
     ]);
 
     const [split] = await db
@@ -236,8 +257,104 @@ describe('sceneScriptVersions.updateSplitContent', () => {
     const methods = createSceneScriptVersionsMethods(db);
     await expect(
       methods.updateSplitContent([
-        { sceneId, content: { extract: 'x', dialogue: [] } },
+        {
+          sceneId,
+          content: { extract: 'x', dialogue: [] },
+          narrative: NO_NARRATIVE,
+        },
       ])
     ).rejects.toThrow(/updated 0\/1 split versions/);
+  });
+
+  it('lands the analysis on a hand-added scene, which has no split row; a replay adds nothing', async () => {
+    const methods = createSceneScriptVersionsMethods(db);
+    await methods.write({
+      sceneId,
+      content: { extract: '', dialogue: [] },
+      narrative: NO_NARRATIVE,
+      source: 'edit',
+    });
+    const seed = {
+      sceneId,
+      content: { extract: 'Analysed.', dialogue: [] },
+      narrative: { ...NO_NARRATIVE, title: 'Entrance' },
+    };
+
+    await methods.updateSplitContent([seed]);
+    await methods.updateSplitContent([seed]);
+
+    expect(await methods.getSelected(sceneId)).toMatchObject({
+      source: 'split',
+      title: 'Entrance',
+      content: { extract: 'Analysed.' },
+    });
+    expect(await methods.listByScene(sceneId)).toHaveLength(2);
+  });
+});
+
+describe('scene narrative on script versions (#1600)', () => {
+  const narrative = {
+    title: 'Entrance',
+    location: 'INT. OFFICE - DAY',
+    timeOfDay: 'day',
+    storyBeat: 'introduction',
+    continuity: null,
+  };
+
+  it('a re-analysis puts its narrative on top of a user-edited script', async () => {
+    const methods = createSceneScriptVersionsMethods(db);
+    await methods.seedSplitVersions([
+      {
+        sceneId,
+        content: { extract: 'Scene one.', dialogue: [] },
+        narrative,
+        createdAt: new Date(),
+      },
+    ]);
+    const userVersion = await methods.write({
+      sceneId,
+      content: { extract: 'Scene one, edited.', dialogue: [] },
+      narrative,
+      source: 'edit',
+    });
+
+    await methods.updateSplitContent([
+      {
+        sceneId,
+        content: { extract: 'Scene one.', dialogue: [] },
+        narrative: { ...narrative, timeOfDay: 'night' },
+      },
+    ]);
+
+    const selected = await methods.getSelected(sceneId);
+    expect(selected?.id).not.toBe(userVersion.id);
+    expect(selected).toMatchObject({
+      source: 'split',
+      timeOfDay: 'night',
+      content: { extract: 'Scene one, edited.' },
+    });
+  });
+
+  it('an identical re-analysis narrative appends nothing', async () => {
+    const methods = createSceneScriptVersionsMethods(db);
+    await methods.seedSplitVersions([
+      {
+        sceneId,
+        content: { extract: 'Scene one.', dialogue: [] },
+        narrative,
+        createdAt: new Date(),
+      },
+    ]);
+    const userVersion = await methods.write({
+      sceneId,
+      content: { extract: 'Scene one, edited.', dialogue: [] },
+      narrative,
+      source: 'edit',
+    });
+    await methods.updateSplitContent([
+      { sceneId, content: { extract: 'Scene one.', dialogue: [] }, narrative },
+    ]);
+    expect((await methods.getSelected(sceneId))?.id).toBe(userVersion.id);
+    expect(await methods.listByScene(sceneId)).toHaveLength(2);
   });
 });

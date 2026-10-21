@@ -46,7 +46,7 @@ function hostnameFromHostHeader(host: string): string {
   return (host.split(':')[0] ?? host).toLowerCase();
 }
 
-function isLoopbackOrBareIp(hostname: string): boolean {
+export function isLoopbackOrBareIp(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||

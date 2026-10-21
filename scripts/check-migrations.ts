@@ -313,7 +313,12 @@ function main(): void {
     console.log(
       '  1. Refactor the schema change to use ALTER TABLE column ops,'
     );
-    console.log('  2. Apply manually via `wrangler d1` after a snapshot,');
+    console.log(
+      '  2. Make it safe for the automatic path and prove it first (never apply'
+    );
+    console.log(
+      '     a migration to production by hand): AGENTS.md, "D1 table-rebuild trap",'
+    );
     console.log(
       '  3. Or pass --allow-destructive if data loss is intentional.'
     );

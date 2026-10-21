@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VideoManifestEntry } from '@/platform/server/db/schema';
 import { computeVideoManifestInputHash } from './input-hash';
+import { asStub } from '@/test/as-stub';
 
 const entry = (
   overrides: Partial<VideoManifestEntry> = {}
@@ -19,6 +20,7 @@ const entry = (
   durationMs: 3000,
   audioClipIds: [],
   audioSourceKey: null,
+  dialogueKey: null,
   referenceKeys: [],
   ...overrides,
 });
@@ -112,8 +114,8 @@ describe('computeVideoManifestInputHash', () => {
     const { audioClipIds: _dropped, ...without } = entry();
     expect(() =>
       computeVideoManifestInputHash(
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- incomplete assembler
-        [without] as VideoManifestEntry[],
+        // incomplete assembler
+        asStub<VideoManifestEntry[]>([without]),
         'veo3_1'
       )
     ).toThrow();
@@ -138,8 +140,8 @@ describe('computeVideoManifestInputHash', () => {
     const { audioSourceKey: _dropped, ...without } = entry();
     expect(() =>
       computeVideoManifestInputHash(
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- incomplete assembler
-        [without] as VideoManifestEntry[],
+        // incomplete assembler
+        asStub<VideoManifestEntry[]>([without]),
         'veo3_1'
       )
     ).toThrow();

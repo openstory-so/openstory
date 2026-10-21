@@ -156,8 +156,7 @@ const locationSheetVariantsReadSchema = createSelectSchema(
 )
   .pick({
     id: true,
-    parentType: true,
-    parentId: true,
+    locationId: true,
     model: true,
     url: true,
     status: true,
@@ -389,33 +388,31 @@ const VERSION_KINDS = {
     selected: (row, segment) => row.id === segment.selectedVideoVersionId,
     schema: videoVariantsReadSchema,
   }),
+  // A character's sheets are its looks' (#2015): `entityId` is a look id,
+  // and a character id names its default look.
   character_sheet: versionKind({
-    parent: (access, i) => access.character(i.sequenceId, i.entityId),
-    list: (db, character, options) =>
-      db.characterSheetVariants.listByCharacter(character.id, options),
-    get: async (db, character, id) => {
+    parent: (access, i) => access.look(i.sequenceId, i.entityId),
+    list: (db, look, options) =>
+      db.characterSheetVariants.listByLook(look.id, options),
+    get: async (db, look, id) => {
       const row = await db.characterSheetVariants.getById(id);
-      return row?.characterId === character.id ? row : null;
+      return row && (row.lookId ?? row.characterId) === look.id ? row : null;
     },
-    // A pre-versioning sheet is the row keyed to the character's own id (#1419).
-    selected: (row, character) =>
-      row.id === (character.selectedSheetVersionId ?? character.id),
+    // A pre-versioning sheet is the row keyed to the character's own id
+    // (#1419), which only its default look can be showing.
+    selected: (row, look) =>
+      row.id ===
+      (look.selectedSheetVersionId ??
+        (look.isDefault ? look.characterId : null)),
     schema: characterSheetVariantsReadSchema,
   }),
   location_sheet: versionKind({
     parent: (access, i) => access.location(i.sequenceId, i.entityId),
     list: (db, location, options) =>
-      db.locationSheetVariants.listByParent(
-        'sequence_location',
-        location.id,
-        options
-      ),
+      db.locationSheetVariants.listByLocation(location.id, options),
     get: async (db, location, id) => {
       const row = await db.locationSheetVariants.getById(id);
-      return row?.parentType === 'sequence_location' &&
-        row.parentId === location.id
-        ? row
-        : null;
+      return row?.locationId === location.id ? row : null;
     },
     selected: (row, location) =>
       row.id === (location.selectedReferenceVersionId ?? location.id),
@@ -429,10 +426,7 @@ const VERSION_KINDS = {
       const row = await db.sequenceVariants.getMusicById(id);
       return row?.sequenceId === sequence.id ? row : null;
     },
-    selected: (row, sequence) =>
-      row.url !== null &&
-      row.url === sequence.musicUrl &&
-      row.model === sequence.musicModel,
+    selected: (row, sequence) => row.id === sequence.selectedMusicVariantId,
     schema: sequenceMusicVariantsReadSchema,
   }),
   visual_prompt: versionKind({
@@ -462,7 +456,7 @@ const VERSION_KINDS = {
     get: (db, sequence, id) =>
       db.sequenceMusicPromptVersions.getByIdForSequence(id, sequence.id),
     selected: (row, sequence) =>
-      row.prompt === sequence.musicPrompt && row.tags === sequence.musicTags,
+      row.id === sequence.selectedMusicPromptVersionId,
     schema: sequenceMusicPromptVersionsReadSchema,
   }),
   scene_script: versionKind({

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorkflowStep } from 'cloudflare:workers';
 import type { CredentialScopedDb } from '@/platform/server/db/scoped-workflow';
 import type { AssetPoolLedger } from './byteplus-asset-pool';
+import { asStub } from '@/test/as-stub';
 
 const mockConfig = vi.fn<() => unknown>(() => ({
   accessKey: 'AK',
@@ -60,18 +61,18 @@ function fakeStep() {
       trace.push(`${name}:${ms}`);
     },
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only do/sleep are exercised
-  return { step: step as unknown as WorkflowStep, trace, configs };
+  // only do/sleep are exercised
+  return { step: asStub<WorkflowStep>(step), trace, configs };
 }
 
 const ledger: AssetPoolLedger = {
   claimSlot: async () => ({ kind: 'exhausted' }),
   finalizeSlot: async () => true,
 };
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- only resolveOptionalKey is called
-const credentials = {
+// only resolveOptionalKey is called
+const credentials = asStub<CredentialScopedDb>({
   resolveOptionalKey: async () => undefined,
-} as unknown as CredentialScopedDb;
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -29,11 +29,11 @@
  *     shot's preview fired — the rail fills scene by scene, not all at the end.
  *     Fails the run like the bibles call, and also when a batch omits a scene
  *     (`attachShotLists`): a one-shot fallback would silently leave that
- *     scene on the regex preview, which is empty for prose. Each scene's
- *     shots divide ITS label (#1593): the LLM decides coverage (1..N shots,
- *     within a range the model grid allows) and the label is spread over
- *     them (#1621 — Enhance no longer labels shots itself). No film-wide
- *     target enters the run.
+ *     scene on the regex preview, which is empty for prose. A slice with a
+ *     `Scene N — Xs` label is divided across its shots (#1593, #1621).
+ *     A slice with no label keeps the model's seconds (#2077), raised when
+ *     a shot's lines need longer and capped at the word-count ceiling
+ *     unless those lines need more. No film-wide target enters the run.
  *
  * After the join, scene continuity tags are assigned from bibles ∩ slice
  * (`tag-reconcile.ts`) and bible `firstMention`s get their owning scene id
@@ -57,12 +57,22 @@
  * JSON-stringified around the boundary for CF's `Rpc.Serializable<T>` check.
  */
 
+import { renderingOfStyle } from '@/cast/rendering';
+import {
+  queuedBeforeCast,
+  queuedBeforeLooks,
+} from '@/cast/server/workflows/sheet-snapshots';
+import {
+  applyAttachedCast,
+  castEchoProblem,
+  castTags,
+  formatCastBlock,
+} from '@/cast/attached-cast';
 import {
   callLLMStream,
   llmCostFromUsage,
   PROMPT_REASONING,
 } from '@/models/server/llm-client';
-import { PREVIEW_IMAGE_MODEL } from '@/models/models';
 import { getMaxOutputTokens, SCENE_SPLIT_MODEL } from '@/models/models.config';
 import {
   type SceneSplitBiblesResult,
@@ -97,7 +107,10 @@ import {
   stripCodeFences,
 } from '@/sequences/server/streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
+import { logRunEvent } from '@/sequences/server/db/sequence-events';
+import { bibleFromWire } from '@/cast/bible-looks';
 import type {
+  CharacterBibleEntry,
   ElementBibleEntry,
   LocationBibleEntry,
 } from '@/shots/scene-analysis.schema';
@@ -106,9 +119,9 @@ import { parsePartialJSON, type TokenUsage } from '@tanstack/ai';
 import { deductWorkflowCredits } from '@/billing/server/workflow-deduction';
 import {
   buildSceneInsert,
+  buildSceneNarrative,
   buildSceneShotLinks,
 } from '@/sequences/server/scene-persistence';
-import { aspectRatioToImageSize } from '@/models/aspect-ratios';
 import { generateId } from '@/platform/id';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
 import { durationGridForModel } from '@/motion/snap-duration';
@@ -125,11 +138,10 @@ import {
 import { getGenerationChannel } from '@/platform/realtime';
 import { previewImageDedupId } from '@/platform/server/workflow/dedup-ids';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
-import { triggerWorkflow } from '@/platform/server/workflow/client';
+import { triggerShotPreview } from '@/shots/server/shot-preview';
 import { handleLlmAuthFailure } from '@/platform/server/workflow/llm-auth-failure';
 import { sanitizeFailResponse } from '@/platform/server/workflow/sanitize-fail-response';
 import type {
-  ImageWorkflowInput,
   SceneSplitWorkflowInput,
   SceneSplitWorkflowResult,
 } from '@/platform/server/workflow/types';
@@ -208,7 +220,7 @@ async function persistStreamedScene(
   orderIndex: number
 ): Promise<void> {
   const sceneRow = await scopedDb.scenes.upsert(
-    buildSceneInsert(sequenceId, scene, orderIndex)
+    buildSceneInsert(sequenceId, orderIndex)
   );
   // Seed the split script version as soon as the scene lands so composed
   // script / the Scenes script view have text mid-stream. Idempotent: the
@@ -218,6 +230,7 @@ async function persistStreamedScene(
     {
       sceneId: sceneRow.id,
       content: scene.originalScript,
+      narrative: buildSceneNarrative(scene),
       createdAt: sceneRow.createdAt,
     },
   ]);
@@ -241,6 +254,7 @@ async function triggerPreviewImage({
   parentInstanceId,
   shot,
   scene,
+  characterBible,
   scopedDb,
 }: {
   input: SceneSplitWorkflowInput;
@@ -248,6 +262,7 @@ async function triggerPreviewImage({
   parentInstanceId: string;
   shot: { id: string; frameId: string; shotNumber: number };
   scene: SceneSplittingScene;
+  characterBible: ReadonlyArray<CharacterBibleEntry>;
   scopedDb: WorkflowScopedDb;
 }): Promise<void> {
   const shotText = previewTextForShot(scene, shot.shotNumber);
@@ -257,23 +272,16 @@ async function triggerPreviewImage({
       input.userId,
       input.teamId
     );
-    await triggerWorkflow(
-      '/image',
+    await triggerShotPreview(
       {
         userId: input.userId,
         teamId: input.teamId,
         sequenceId,
-        prompt: buildPreviewPrompt(shotText),
-        model: PREVIEW_IMAGE_MODEL,
-        imageSize: aspectRatioToImageSize(input.aspectRatio),
-        numImages: 1,
         shotId: shot.id,
-        // Without this the run stands down before generating — and before
-        // #1101 it generated, billed, then dropped the preview at
-        // `record-preview-variant` (#1119).
         frameId: shot.frameId,
-        skipStorage: true,
-      } satisfies ImageWorkflowInput,
+        aspectRatio: input.aspectRatio,
+        prompt: buildPreviewPrompt(shotText, characterBible),
+      },
       {
         deduplicationId: previewImageDedupId(parentInstanceId, shot.id),
         enforcement,
@@ -436,6 +444,7 @@ async function persistSceneShots({
   sequenceId,
   parentInstanceId,
   scene,
+  characterBible,
   orderIndex,
   announcedShotIds,
 }: {
@@ -444,11 +453,12 @@ async function persistSceneShots({
   sequenceId: string;
   parentInstanceId: string;
   scene: SceneSplittingScene;
+  characterBible: ReadonlyArray<CharacterBibleEntry>;
   orderIndex: number;
   announcedShotIds?: ReadonlySet<string>;
 }): Promise<SceneSplitWorkflowResult['shotMapping']> {
   const sceneRow = await scopedDb.scenes.upsert(
-    buildSceneInsert(sequenceId, scene, orderIndex)
+    buildSceneInsert(sequenceId, orderIndex)
   );
   const inserts = buildShotInserts(
     sequenceId,
@@ -481,6 +491,7 @@ async function persistSceneShots({
         shotNumber: row.shotNumber ?? 1,
       },
       scene,
+      characterBible,
       scopedDb,
     });
   }
@@ -519,6 +530,8 @@ async function reportDroppedBoundaries(
 }
 
 export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWorkflowInput> {
+  protected override readonly failureLabel = 'Scene split';
+
   protected override async runImpl(
     event: Readonly<WorkflowEvent<SceneSplitWorkflowInput>>,
     step: WorkflowStep,
@@ -527,6 +540,11 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const input = event.payload;
     const { sequenceId, modelId, elements = [] } = input;
     const script = input.script;
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload queued before #2050
+    if (!input.cast) throw queuedBeforeCast();
+    // The attached cast (#2050): the bibles call echoes these ids and look
+    // names. Empty when nothing is cast, and then absent from the message.
+    const castBlock = formatCastBlock(input.cast);
 
     const elementsBlock =
       elements.length > 0
@@ -791,17 +809,20 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           finalBoundaries
         );
 
-        // Slices are adjacent substrings by construction — this assert is a
-        // pure-logic invariant, not an LLM behaviour: a failure means a bug
-        // in boundary-split, so fail loud rather than persist drifted text.
-        if (assembled.slices.join('') !== script) {
+        // Slices are adjacent substrings from the first resolved quote to
+        // the end. A leading gap is front matter the model did not quote
+        // (#2077). A failure means a bug in boundary-split, so fail loud
+        // rather than persist drifted text. The bibles call still receives
+        // the whole guttered script.
+        const covered = script.slice(assembled.sceneOffsets[0] ?? 0);
+        if (assembled.slices.join('') !== covered) {
           throw new NonRetryableError(
-            `[SceneSplitWorkflow:cf] boundary slices do not reassemble the script (${assembled.slices.join('').length} vs ${script.length} chars)`,
+            `[SceneSplitWorkflow:cf] boundary slices do not reassemble the script from the first scene (${assembled.slices.join('').length} vs ${covered.length} chars)`,
             'WorkflowValidationError'
           );
         }
         const scenes = assembled.scenes;
-        const offsets = assembled.resolution.offsets;
+        const offsets = assembled.sceneOffsets;
 
         logger.info(
           `[SceneSplitWorkflow:cf] [Stream:${LOG_NAME}] Complete | ${chunkCount} chunks | ${scenes.length} scenes`
@@ -827,6 +848,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         promptVars: {
           script: gutteredScript,
           elements: elementsBlock,
+          cast: castBlock,
           userCountry: input.userCountry ?? '',
         },
         responseSchema: sceneSplitBiblesResultSchema,
@@ -865,6 +887,32 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
       streamResult.scenes[
         sceneIndexForLine(script, streamResult.offsets, lineNumber)
       ]?.sceneId ?? '';
+    // The cast as bible entries, each with its looks (#2015), and which look
+    // each scene dresses a character in where it is not the default. The
+    // picks are kept beside the scenes, not on them: the ids are slugs until
+    // the cast is persisted, and only persisted ids are stored on a scene.
+    // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a bibles result cached by a run that started before #2015
+    if (biblesResult.characterBible.some((entry) => !entry.looks)) {
+      throw queuedBeforeLooks();
+    }
+    // A shared cast character keeps her pinned bible and looks (#2050); the
+    // model's entry only says which looks she wears and which are new. An
+    // entry that mislabels the cast fails the run here, before anything is
+    // written.
+    const echo = castEchoProblem(biblesResult.characterBible, input.cast);
+    if (echo) throw new NonRetryableError(echo, 'WorkflowValidationError');
+    const wire = bibleFromWire(
+      biblesResult.characterBible,
+      sceneIdForLine,
+      script.split('\n').length,
+      castTags(input.cast),
+      renderingOfStyle(input.styleConfig)
+    );
+    const { characterBible, sceneLooks } = applyAttachedCast(
+      wire.characterBible,
+      wire.sceneLooks,
+      input.cast
+    );
     // sceneId first: downstream prompt interpolation serializes these entries
     // with JSON.stringify, and the aimock fixtures match on that text — keep
     // the key order the old single-call contract produced.
@@ -876,6 +924,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           text: entry.firstMention.text,
           lineNumber: entry.firstMention.lineNumber,
         },
+        // What every place is rendered as (#1695): the sequence style's.
+        rendering: renderingOfStyle(input.styleConfig),
       })
     );
     const elementBible: ElementBibleEntry[] = biblesResult.elementBible.map(
@@ -892,7 +942,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
     const { scenes: reconciledScenes, stats: tagStats } = reconcileSceneTags(
       streamResult.scenes,
       {
-        characterBible: biblesResult.characterBible,
+        characterBible,
         locationBible,
         elementBible,
       }
@@ -953,6 +1003,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
                 sequenceId,
                 parentInstanceId: event.instanceId,
                 scene,
+                characterBible,
                 orderIndex,
                 announcedShotIds: new Set(
                   previous.map((entry) => entry.shotId)
@@ -973,7 +1024,7 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
               promptVars: {
                 scenes: formatScenesForShotListPrompt(batch, clipGrid),
                 style: formatDirectorStyleForShotList(input.styleConfig),
-                characters: formatCastForShotList(biblesResult.characterBible),
+                characters: formatCastForShotList(characterBible),
                 // Placement budget for speech (#1651): a shot's clip has to
                 // hold the lines put in it, or the recorded take overruns the
                 // clip and the model's reference-audio window.
@@ -1069,7 +1120,8 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           scenes: scenesWithShots,
           title: resolvedTitle,
           shotMapping: shotListBatches.flatMap((batch) => batch.shotMapping),
-          characterBible: biblesResult.characterBible,
+          characterBible,
+          sceneLooks,
           locationBible,
           elementBible,
         } satisfies ReconciledSplit);
@@ -1125,12 +1177,13 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
           const scene = reconciled.scenes[index];
           if (!scene) continue;
           const sceneRow = await scopedDb.scenes.upsert(
-            buildSceneInsert(sequenceId, scene, index)
+            buildSceneInsert(sequenceId, index)
           );
           sceneRows.push(sceneRow);
           scriptSeeds.push({
             sceneId: sceneRow.id,
             content: scene.originalScript,
+            narrative: buildSceneNarrative(scene),
             createdAt: sceneRow.createdAt,
           });
         }
@@ -1225,6 +1278,20 @@ export class SceneSplitWorkflow extends OpenStoryWorkflowEntrypoint<SceneSplitWo
         }
         return versionIds;
       });
+      const sceneCount = reconciled.scenes.length;
+      await logRunEvent(
+        step,
+        scopedDb.sequenceEvents,
+        'scene-split-completed',
+        {
+          sequenceId,
+          actorId: input.userId,
+          kind: 'scene-split.completed',
+          targetType: 'sequence',
+          targetId: sequenceId,
+          summary: `Split the script into ${sceneCount} ${sceneCount === 1 ? 'scene' : 'scenes'}`,
+        }
+      );
     }
 
     // Step 5: Deduct credits — one deduction per LLM call.

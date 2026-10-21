@@ -105,10 +105,10 @@ let loggedRetryMode = false;
  * releases. `extendAdapter` widens the factories' typed model union so a
  * registry id that is in NEITHER list is a compile error instead of an
  * unsafe cast. `catalog-lag.test.ts` fails once an `@tanstack/ai-openrouter`
- * bump ships an id below, telling whoever lands that dependency bump (Dependabot)
- * to prune it here. Entries are ADDED by the model-freshness routine (#792) when
- * a text-model bump adopts an id the installed catalog doesn't know yet. Add
- * entries with `createModel` from '@tanstack/ai':
+ * bump ships an id below, telling whoever lands that dependency bump to
+ * prune it here. The model-freshness routine (#792) bumps @tanstack/ai* first
+ * and skips ids it still lacks — it never adds entries here. Add entries with
+ * `createModel` from '@tanstack/ai':
  * `createModel('vendor/model-id', { input: [...], features: [...] })`.
  *
  */
@@ -132,8 +132,8 @@ const createOpenRouterTextExtended = extendAdapter(
   CATALOG_LAG_MODELS
 );
 
-/** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.6` is
- *  in the 0.16 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
+/** {@link CATALOG_LAG_MODELS} for the Grok adapter. Native `grok-4.7` is
+ *  in the 0.20 catalog; `grok-4.20-0309-reasoning` is still lag-bridged.
  *  Same prune contract as the OpenRouter list. */
 const GROK_CATALOG_LAG_MODELS = [
   createModel('grok-4.20-0309-reasoning', {
@@ -148,7 +148,7 @@ const createGrokTextExtended = extendAdapter(
 );
 
 /** {@link CATALOG_LAG_MODELS} for the native Gemini adapter.
- *  `@tanstack/ai-gemini@0.31.2` now ships `gemini-3.8-flash` natively —
+ *  `@tanstack/ai-gemini@0.34.1` ships `gemini-3.8-flash` natively —
  *  nothing currently lags. Prune is the Gemini block in `catalog-lag.test.ts`. */
 export const GEMINI_CATALOG_LAG_MODELS = [] as const;
 

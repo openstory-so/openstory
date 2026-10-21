@@ -2,11 +2,10 @@
  * Scene-row persistence mapping (#908)
  * ============================================================================
  *
- * Maps an analysis `Scene` onto the scene-level columns of the `scenes` table
- * (#907). Scene-level shared truth — location, time of day, story beat, title,
- * continuity, music design — lives on the scene row. The script is not mapped
- * here: it is appended to `scene_script_versions` by the caller (see
- * `sceneScriptVersions.seedSplitVersions`).
+ * Maps an analysis `Scene` onto a `scenes` row (#907) and the narrative its
+ * split script version carries (#1600): location, time of day, story beat,
+ * title and continuity live on the version with the script, which the caller
+ * appends (see `sceneScriptVersions.seedSplitVersions`).
  *
  * Pulled out of the workflow so the column mapping is unit-testable without a
  * full Cloudflare-Workflow harness.
@@ -15,6 +14,7 @@
 import type {
   DbSceneId,
   NewScene,
+  SceneNarrative,
   SceneRow,
 } from '@/platform/server/db/schema';
 import { plainSceneTitle } from '@/platform/markdown-plain';
@@ -31,12 +31,14 @@ import type { Scene } from '@/shots/scene-analysis.schema';
  */
 export function buildSceneInsert(
   sequenceId: string,
-  scene: Scene,
   orderIndex: number
 ): NewScene {
+  return { sequenceId, orderIndex };
+}
+
+/** The narrative an analysis scene's split script version carries (#1600). */
+export function buildSceneNarrative(scene: Scene): SceneNarrative {
   return {
-    sequenceId,
-    orderIndex,
     location: scene.metadata?.location ?? null,
     timeOfDay: scene.metadata?.timeOfDay ?? null,
     storyBeat: scene.metadata?.storyBeat ?? null,
@@ -54,9 +56,7 @@ export function buildSceneInserts(
   sequenceId: string,
   scenes: ReadonlyArray<Scene>
 ): NewScene[] {
-  return scenes.map((scene, index) =>
-    buildSceneInsert(sequenceId, scene, index)
-  );
+  return scenes.map((_scene, index) => buildSceneInsert(sequenceId, index));
 }
 
 /** A shot→scene link to apply via `shots.update`. */
@@ -126,4 +126,35 @@ export function buildSceneShotLinks(
     });
   }
   return { links, unmappedShotIds };
+}
+
+/**
+ * Write the look each scene dresses its characters in (#2015) onto the scene
+ * rows. `scenes` are the analysis scenes in script order; an analysis scene's
+ * `sceneId` is NOT its row's id, so each row is found the way the split
+ * found it: by its position, through the idempotent upsert.
+ */
+export async function persistSceneLooks(
+  scopedDb: {
+    scenes: {
+      upsert: (data: NewScene) => Promise<SceneRow>;
+      updateContinuity: (
+        sceneId: DbSceneId,
+        continuity: NonNullable<SceneNarrative['continuity']>,
+        opts: { actorId: string | null }
+      ) => Promise<void>;
+    };
+  },
+  sequenceId: string,
+  scenes: ReadonlyArray<Scene>
+): Promise<void> {
+  for (const [orderIndex, scene] of scenes.entries()) {
+    if (!scene.continuity?.characterLooks) continue;
+    const row = await scopedDb.scenes.upsert(
+      buildSceneInsert(sequenceId, orderIndex)
+    );
+    await scopedDb.scenes.updateContinuity(row.id, scene.continuity, {
+      actorId: null,
+    });
+  }
 }

@@ -6,9 +6,11 @@
  * `set-generating-status`; these helpers finalize it:
  *
  *   - completed: flip the version to `completed`, log `video.rendered`, and (for
- *     a primary render) repoint the shot's selection via `videoVariants.select`
- *     (which repoints the render segment's selection pointer). A `variantOnly`
- *     render skips the select. Shot-deleted mid-flight skips the select too.
+ *     a primary render) repoint the shot's selection via
+ *     `videoVariants.selectIfPendingPromoteIs` — one guarded UPDATE that only
+ *     lands while this version still holds the segment's promote claim (#1786).
+ *     A `variantOnly` render skips the select. Shot-deleted mid-flight skips
+ *     the select too. A rescued prompt rewrite rides a won promote.
  *   - failed: mark the version failed by workflow run id — the shot's video
  *     status derives from that row since #1067 phase 2d, so nothing is written
  *     to `shots`.
@@ -22,6 +24,7 @@ import {
   persistMotionCompletion,
   persistMotionFailure,
   type PersistMotionScopedDb,
+  rescuedMotionPromptOf,
 } from './motion-workflow-persist';
 
 // `buildMotionGeneratingShotWrite` is gone: the in-flight state is the appended
@@ -36,7 +39,8 @@ const NOW = new Date('2026-06-02T00:00:00Z');
 type CallName =
   | 'videoVariants.update'
   | 'videoVariants.completeIfLive'
-  | 'videoVariants.select'
+  | 'videoVariants.selectIfPendingPromoteIs'
+  | 'shotPromptVersions.selectIfSelectionIs'
   | 'videoVariants.markFailedByWorkflowRun'
   | 'videoVariants.appendVersion'
   | 'videoVariants.getById'
@@ -59,6 +63,8 @@ function buildScopedDbSpy(
     markFailedRows?: number;
     /** Simulate a user cancel winning the race against completion (#1108). */
     completionCancelled?: boolean;
+    /** The shot's live motion-prompt pointer, for the rescue CAS. */
+    selectedMotionPromptVersionId?: string;
   } = {}
 ): {
   scopedDb: PersistMotionScopedDb;
@@ -70,6 +76,7 @@ function buildScopedDbSpy(
   shotUpdates: Array<{ shotId: string; data: Partial<NewShot> }>;
   callOrder: CallName[];
   pendingClears: string[];
+  promptSelects: Array<{ versionId: string; expectedVersionId: string }>;
 } {
   const versionUpdates: Array<{ id: string; data: Partial<NewVideoVariant> }> =
     [];
@@ -84,6 +91,9 @@ function buildScopedDbSpy(
   const shotUpdates: Array<{ shotId: string; data: Partial<NewShot> }> = [];
   const callOrder: CallName[] = [];
   const pendingClears: string[] = [];
+  const promptSelects: Array<{ versionId: string; expectedVersionId: string }> =
+    [];
+  let selectedPrompt = opts.selectedMotionPromptVersionId ?? 'mp-original';
   const segmentId = opts.segmentId ?? 'seg-1';
   // Default: claim matches completionArgs.videoVersionId so primary still promotes.
   let pending =
@@ -135,8 +145,11 @@ function buildScopedDbSpy(
         // Simulate a cancel that won the race when the test asks for it.
         return opts.completionCancelled ? null : { id: versionId };
       },
-      select: async (shotId, versionId, selectOpts) => {
-        callOrder.push('videoVariants.select');
+      selectIfPendingPromoteIs: async (shotId, versionId, selectOpts) => {
+        callOrder.push('videoVariants.selectIfPendingPromoteIs');
+        // The claim check is inside the guarded UPDATE, like the real one.
+        if (pending !== versionId) return null;
+        pending = null;
         selects.push({ shotId, versionId, actorId: selectOpts.actorId });
         return { id: versionId };
       },
@@ -149,6 +162,15 @@ function buildScopedDbSpy(
         callOrder.push('videoVariants.appendVersion');
         appended.push(data);
         return { id: 'vv-appended' };
+      },
+    },
+    shotPromptVersions: {
+      selectIfSelectionIs: async (_shotId, versionId, expectedVersionId) => {
+        callOrder.push('shotPromptVersions.selectIfSelectionIs');
+        if (selectedPrompt !== expectedVersionId) return false;
+        selectedPrompt = versionId;
+        promptSelects.push({ versionId, expectedVersionId });
+        return true;
       },
     },
     renderSegments: {
@@ -180,6 +202,7 @@ function buildScopedDbSpy(
     shotUpdates,
     callOrder,
     pendingClears,
+    promptSelects,
   };
 }
 
@@ -190,6 +213,7 @@ const completionArgs = {
   videoVersionId: 'vv1',
   model: 'veo3',
   upload,
+  rescuedMotionPrompt: null,
 };
 
 describe('persistMotionCompletion', () => {
@@ -213,8 +237,7 @@ describe('persistMotionCompletion', () => {
       'videoVariants.completeIfLive',
       'sequenceEvents.record',
       'shots.getById',
-      'renderSegments.getById',
-      'videoVariants.select',
+      'videoVariants.selectIfPendingPromoteIs',
     ]);
 
     const [versionUpdate] = spy.versionUpdates;
@@ -341,7 +364,8 @@ describe('persistMotionCompletion', () => {
 
     expect(outcome).toEqual({ status: 'completed', videoUrl: upload.url });
     expect(spy.selects).toEqual([]);
-    expect(spy.pendingClears).toEqual(['vv1']);
+    // No read-then-decide: the guarded select itself found the claim gone.
+    expect(spy.callOrder).not.toContain('renderSegments.getById');
     expect(emits).toEqual([
       {
         shotId: 'f1',
@@ -351,6 +375,76 @@ describe('persistMotionCompletion', () => {
         variantOnly: true,
       },
     ]);
+  });
+});
+
+describe('persistMotionCompletion — rescued prompt (#1786)', () => {
+  const rescued = {
+    rescuedMotionPrompt: {
+      fromVersionId: 'mp-original',
+      toVersionId: 'mp-softened',
+    },
+  };
+  const run = (spy: ReturnType<typeof buildScopedDbSpy>) =>
+    persistMotionCompletion({
+      scopedDb: spy.scopedDb,
+      ...completionArgs,
+      ...rescued,
+      actorId: 'user1',
+      emit: async () => {},
+      now: () => NOW,
+    });
+
+  it('a won promote carries the rewrite into the selection', async () => {
+    const spy = buildScopedDbSpy();
+    await run(spy);
+    expect(spy.promptSelects).toEqual([
+      { versionId: 'mp-softened', expectedVersionId: 'mp-original' },
+    ]);
+  });
+
+  it('a user prompt edit made mid-run wins over the rewrite', async () => {
+    const spy = buildScopedDbSpy({
+      selectedMotionPromptVersionId: 'mp-user-edit',
+    });
+    await run(spy);
+    expect(spy.selects).toHaveLength(1);
+    expect(spy.promptSelects).toEqual([]);
+  });
+
+  it('a lost promote leaves the rewrite in history only', async () => {
+    const spy = buildScopedDbSpy({ pendingPromoteVersionId: 'vv-newer' });
+    await run(spy);
+    expect(spy.selects).toEqual([]);
+    expect(spy.callOrder).not.toContain(
+      'shotPromptVersions.selectIfSelectionIs'
+    );
+  });
+});
+
+describe('rescuedMotionPromptOf', () => {
+  const entry = (shotId: string, motionPromptVersionId: string | null) => ({
+    shotId,
+    motionPromptVersionId,
+  });
+
+  it('names the swap for this shot', () => {
+    expect(
+      rescuedMotionPromptOf(
+        'f1',
+        [entry('f0', 'a'), entry('f1', 'mp-1')],
+        [entry('f0', 'mp-2'), entry('f1', 'mp-2')]
+      )
+    ).toEqual({ fromVersionId: 'mp-1', toVersionId: 'mp-2' });
+  });
+
+  it('is null when nothing was rewritten or nothing was pinned', () => {
+    const m = [entry('f1', 'mp-1')];
+    expect(rescuedMotionPromptOf('f1', m, m)).toBeNull();
+    expect(
+      rescuedMotionPromptOf('f1', [entry('f1', null)], [entry('f1', 'x')])
+    ).toBeNull();
+    expect(rescuedMotionPromptOf('f1', undefined, null)).toBeNull();
   });
 });
 

@@ -34,6 +34,7 @@ const {
   carryUploadRights,
   classifyUpload,
   likenessFromLedger,
+  realPersonUrls,
   recordLikenessFinding,
   requireUploadRights,
 } = await import('./upload-rights');
@@ -147,6 +148,30 @@ describe('classifyUpload', () => {
 });
 
 describe('attestUploads', () => {
+  it('lets the user mark a cleared upload as a real person (#1847)', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    await recordLikenessFinding(scopedDb, [url], 'animated', request);
+    expect(await likenessFromLedger(scopedDb, url)).toBe('none');
+
+    await attestUploads(
+      scopedDb,
+      [
+        {
+          url,
+          statementVersion: PORTRAIT_RIGHTS_V1.version,
+          authorizationBasis: 'signed release',
+        },
+      ],
+      request
+    );
+
+    expect(
+      await classifyUpload({ scopedDb, userId: USER_ID, url, request })
+    ).toEqual({ status: 'signed' });
+    expect(await likenessFromLedger(scopedDb, url)).toBe('real');
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
   it('records the portrait statement with the basis; a repeat is a no-op', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     await recordLikenessFinding(scopedDb, [url], 'human', request);
@@ -258,6 +283,33 @@ describe('likenessFromLedger', () => {
     expect(await likenessFromLedger(scopedDb, cleared)).toBe('none');
     expect(await likenessFromLedger(scopedDb, signed)).toBe('real');
     expect(await likenessFromLedger(scopedDb, unknown)).toBeNull();
+  });
+});
+
+describe('realPersonUrls', () => {
+  it('counts a detected, signed or retired-statement row as a real person, and never throws (#2065)', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const at = (name: string) =>
+      `/r2/characters/${TEAM_ID}/uploads/${name}.png`;
+    await recordLikenessFinding(scopedDb, [at('cleared')], 'other', request);
+    await recordLikenessFinding(scopedDb, [at('detected')], 'human', request);
+    // A statement this code no longer writes: fails closed.
+    await scopedDb.compliance.attestations.record({
+      subjectType: 'uploaded_image',
+      subjectId: await sha256Hex(at('retired')),
+      statementVersion: 'asset-warranty-v1',
+      statementSha256: 'x'.repeat(64),
+      depictsRealPerson: false,
+    });
+    await expect(likenessFromLedger(scopedDb, at('retired'))).rejects.toThrow();
+    expect(
+      await realPersonUrls(scopedDb, [
+        at('cleared'),
+        at('detected'),
+        at('retired'),
+        at('unknown'),
+      ])
+    ).toEqual(new Set([at('detected'), at('retired')]));
   });
 });
 

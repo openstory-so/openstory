@@ -1,7 +1,8 @@
+import { playHoverPreview } from '@/ui/play-hover-preview';
 import { ScrollArea } from '@/ui/shadcn/scroll-area';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import type { SceneWithScript } from '@/shots/ui/use-scenes';
-import type { ShotView } from '@/shots/shot-view';
+import type { SequenceListShot } from '@/shots/shot-view';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { stripMarkdown } from '@/platform/markdown-plain';
 import { AppImage } from '@/ui/shadcn/app-image';
@@ -13,17 +14,17 @@ import type { ViewMode } from './eval-view';
  * Get visual prompt from shot - client-safe utility
  * Prioritizes user-updated prompt over AI-generated prompt
  */
-export function getVisualPrompt(shot: ShotView): string | null {
+export function getVisualPrompt(shot: SequenceListShot): string | null {
   // The visual prompt is the anchor frame's selected prompt version (#989/#713).
-  return shot.imagePromptVersion?.text || null;
+  return shot.visualPrompt || null;
 }
 
 /**
  * Get motion prompt from shot - client-safe utility.
  * Projected from the shot's selected motion version (#713).
  */
-export function getMotionPrompt(shot: ShotView): string | null {
-  return shot.motionPrompt?.fullPrompt || null;
+export function getMotionPrompt(shot: SequenceListShot): string | null {
+  return shot.motionPrompt || null;
 }
 
 /**
@@ -36,7 +37,7 @@ export function getSceneScript(
 }
 
 type EvalSceneCellProps = {
-  shot: ShotView | undefined;
+  shot: SequenceListShot | undefined;
   /** The shot's scene — carries the script this cell renders. */
   scene?: SceneWithScript | undefined;
   viewMode: ViewMode;
@@ -97,10 +98,10 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
 
   // Images view
   if (viewMode === 'images') {
-    if (!shot.image?.url) {
+    if (!shot.imageUrl) {
       return (
         <div className="border-b p-2 h-full flex items-center justify-center">
-          {shot.frame.imageStatus === 'generating' ? (
+          {shot.imageStatus === 'generating' ? (
             <Skeleton className="w-full h-full" />
           ) : (
             <div className="text-xs text-muted-foreground text-center">
@@ -120,7 +121,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
         >
           <div className="flex-1 flex items-center justify-center min-h-0">
             <AppImage
-              src={shot.image.url}
+              src={shot.imageUrl}
               alt={`Scene ${sceneNumber}`}
               className="max-w-full max-h-full object-contain rounded-md"
               loading="lazy"
@@ -191,10 +192,10 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
 
   // Motion view (individual shot videos)
   if (viewMode === 'motion') {
-    if (!shot.video?.url) {
+    if (!shot.videoUrl) {
       const isGenerating = shot.videoStatus === 'generating';
 
-      if (shot.image?.url) {
+      if (shot.imageUrl) {
         return (
           <>
             <button
@@ -204,7 +205,7 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
             >
               <div className="relative flex-1 flex items-center justify-center min-h-0">
                 <AppImage
-                  src={shot.image.url}
+                  src={shot.imageUrl}
                   alt={`Scene ${sceneNumber} preview`}
                   className="max-w-full max-h-full object-contain rounded-md opacity-60"
                   loading="lazy"
@@ -259,13 +260,13 @@ export const EvalSceneCell: React.FC<EvalSceneCellProps> = ({
         >
           <div className="flex-1 flex items-center justify-center min-h-0">
             <video
-              src={shot.video.url}
-              poster={shot.image?.url ?? undefined}
+              src={shot.videoUrl}
+              poster={shot.imageUrl ?? undefined}
               className="max-w-full max-h-full object-contain rounded-md"
               muted
               loop
               playsInline
-              onMouseEnter={(e) => void e.currentTarget.play()}
+              onMouseEnter={(e) => playHoverPreview(e.currentTarget)}
               onMouseLeave={(e) => {
                 e.currentTarget.pause();
                 e.currentTarget.currentTime = 0;

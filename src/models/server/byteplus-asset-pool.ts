@@ -215,7 +215,7 @@ export async function createPooledAsset(
       assetId,
     });
     throw new NonRetryableError(
-      'BytePlus registered this image twice at once. Retry the shot.'
+      'BytePlus registered this media twice at once. Retry the shot.'
     );
   }
   reportBytePlusAssetPool({ outcome: 'created', slot: input.slot });

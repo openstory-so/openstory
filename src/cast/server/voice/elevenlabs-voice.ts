@@ -287,9 +287,8 @@ export const SCRIBE_MODEL = 'scribe_v2';
 export type HeardWord = { text: string; start: number; end: number };
 
 /**
- * Scribe transcription with word timings (#1765). The check that a Seed take
- * said the script and nothing else — Seed's own subtitles only align the
- * script, so they can never show an invented word.
+ * Scribe transcription with word timings (#1765): where each line of a Seed
+ * take was spoken (`take-check.ts`).
  */
 export async function transcribeSpeech(
   apiKey: string,

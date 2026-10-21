@@ -47,7 +47,6 @@ type SheetComparisonDialogProps = {
 const ENTITY_LABEL: Record<SheetEntityType, string> = {
   character: 'character sheet',
   location: 'location reference',
-  'library-location': 'location reference',
   talent: 'talent sheet',
 };
 
@@ -64,7 +63,6 @@ function defaultAspectFor(entityType: SheetEntityType): SheetAspectRatio {
       // Sheets surface as portrait/square headshots in the existing UI.
       return 'square';
     case 'location':
-    case 'library-location':
       return 'video';
   }
 }

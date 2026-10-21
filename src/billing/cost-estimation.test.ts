@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { TEST_FAL_PRICING as FAL_PRICING } from './fal-pricing-fixture';
 import {
   DEFAULT_IMAGE_MODEL,
-  PREVIEW_IMAGE_MODEL,
+  SHOT_PREVIEW_IMAGE_MODEL,
   type AudioModel,
   type ImageToVideoModel,
   type TextToImageModel,
@@ -14,6 +14,7 @@ import {
   estimateReferenceSheetCost,
   estimateLLMCost,
   estimateLocationSheetCount,
+  estimatePlanCost,
   estimateStoryboardCost,
   estimateStoryboardRenderCost,
   estimateStudioVideoCost,
@@ -152,26 +153,6 @@ describe('estimateStoryboardCost', () => {
       })
     );
     expect(music).toBeGreaterThan(images);
-  });
-
-  it('startFrom images excludes analysis and sheets', () => {
-    const stills = Number(
-      estimateStoryboardCost({ ...base, stopAt: 'images' })
-    );
-    const continueImages = Number(
-      estimateStoryboardCost({
-        ...base,
-        startFrom: 'images',
-        stopAt: 'images',
-      })
-    );
-    const shotImages = Number(
-      estimateImageCost(IMAGE_MODEL, base.aspectRatio, SCENE_COUNT, {
-        pricing: FAL_PRICING,
-      })
-    );
-    expect(continueImages).toBe(shotImages);
-    expect(stills).toBeGreaterThan(continueImages);
   });
 
   it('adds exactly one extra per-shot image pass per image model', () => {
@@ -756,7 +737,7 @@ describe('estimateReferenceSheetCost', () => {
 describe('preview image vs still cost (#1642)', () => {
   const aspectRatio = '16:9' as const;
   const preview = Number(
-    estimateImageCost(PREVIEW_IMAGE_MODEL, aspectRatio, 1, {
+    estimateImageCost(SHOT_PREVIEW_IMAGE_MODEL, aspectRatio, 1, {
       pricing: FAL_PRICING,
     })
   );
@@ -765,21 +746,86 @@ describe('preview image vs still cost (#1642)', () => {
       pricing: FAL_PRICING,
     })
   );
-  const cheapestStill = Number(
-    estimateImageCost('nano_banana_2_lite', aspectRatio, 1, {
-      pricing: FAL_PRICING,
-    })
-  );
 
-  it('is priced so a krea sketch stays worth firing next to a real still', () => {
+  it('is priced so a sketch stays worth firing next to a real still', () => {
     expect(preview).toBeGreaterThan(0);
     expect(defaultStill).toBeGreaterThan(0);
-    expect(cheapestStill).toBeGreaterThan(0);
-    // Default still (GPT Image 2.5) is the usual generate-time image. A
-    // sketch at more than ~1/5 of that is no longer a cheap rail stand-in.
-    expect(preview).toBeLessThan(defaultStill * 0.2);
-    // Lite is the cheapest picker still. Two sketches would approach it;
-    // that's why we do not re-fire after the visual prompt exists.
-    expect(preview).toBeLessThan(cheapestStill * 0.5);
+    // Default still (GPT Image 2.5) is the usual generate-time image. The
+    // sketch is the cheapest picker still since #2094, so it is fired once
+    // per shot, and again only when a reference-only shot's motion prompt
+    // changes.
+    expect(preview).toBeLessThan(defaultStill * 0.5);
+  });
+});
+
+describe('estimatePlanCost (#1817)', () => {
+  const none = {
+    'sheet:character': 0,
+    'sheet:location': 0,
+    'ref:element': 0,
+    voice: 0,
+    spec: 0,
+    'prompt:visual': 0,
+    still: 0,
+    'prompt:motion': 0,
+    dialogue: 0,
+    clip: 0,
+    'prompt:music': 0,
+    music: 0,
+  };
+  const plan = (counts: Partial<typeof none>) =>
+    Number(
+      estimatePlanCost({
+        counts: { ...none, ...counts },
+        imageModel: IMAGE_MODEL,
+        aspectRatio: '16:9',
+        videoModels: [VIDEO_A],
+        videoDurationSeconds: DURATION,
+        referenceOnly: false,
+        draftMotion: false,
+        audioModels: [AUDIO_A],
+        audioDurationSeconds: 30,
+        pricing: FAL_PRICING,
+      })
+    );
+
+  it('prices nothing when the plan owes nothing', () => {
+    expect(plan({})).toBe(0);
+  });
+
+  it('two missing sheets cost two sheets, not a guessed cast', () => {
+    expect(plan({ 'sheet:character': 2 })).toBe(
+      Number(
+        estimateReferenceSheetCost({
+          imageModel: IMAGE_MODEL,
+          characterSheets: 2,
+          locationSheets: 0,
+          pricing: FAL_PRICING,
+        })
+      )
+    );
+  });
+
+  it('prices each kind on its own line', () => {
+    expect(plan({ still: 3 })).toBe(
+      Number(
+        estimateImageCost(IMAGE_MODEL, '16:9', 3, { pricing: FAL_PRICING })
+      )
+    );
+    expect(plan({ clip: 2 })).toBe(
+      2 *
+        Number(
+          estimateVideoCost(VIDEO_A, DURATION, {
+            pricing: FAL_PRICING,
+            hasReferenceImages: true,
+            referenceOnly: false,
+          })
+        )
+    );
+    expect(plan({ dialogue: 4 })).toBe(
+      Number(estimateTtsCost(4 * TYPICAL_DIALOGUE_CHARS_PER_SHOT))
+    );
+    expect(plan({ 'prompt:visual': 2, 'prompt:motion': 1 })).toBe(0);
+    expect(plan({ spec: 1 })).toBe(Number(estimateLLMCost(1)));
   });
 });

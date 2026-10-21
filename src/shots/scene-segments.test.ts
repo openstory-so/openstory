@@ -11,6 +11,9 @@ import {
   type SequenceSegment,
   type LiveShotInputs,
 } from './scene-segments';
+import { dialogueLinesKey, shotDialogue } from './shot-dialogue';
+import { motionPromptFromVersion } from '@/motion/server/resolve-motion-prompt';
+import { asStub } from '@/test/as-stub';
 
 const shot = (
   id: string,
@@ -18,13 +21,13 @@ const shot = (
   renderSegmentId: string | null,
   durationMs = 3000
 ): ShotView =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- minimal fixture: grouping reads only id/renderSegmentId/shotNumber/durationMs
-  ({
+  // minimal fixture: grouping reads only id/renderSegmentId/shotNumber/durationMs
+  asStub<ShotView>({
     id,
     shotNumber,
     renderSegmentId,
     durationMs,
-  }) as ShotView;
+  });
 
 const segment = (id: string, shotIds: string[]): SequenceSegment => ({
   id,
@@ -273,7 +276,9 @@ const segShot = (
 
 const NO_LOADED = {
   audioSourceKeyByShot: new Map<string, string | null>(),
+  dialogueKeyByShot: new Map<string, string | null>(),
   referenceIdentity: new Map<string, string>(),
+  referencedEntitiesByShot: new Map<string, ReadonlySet<string>>(),
 };
 const motion = new Map([['shot-1', 'mp-1']]);
 const frame = new Map([['shot-1', 'fv-1']]);
@@ -324,6 +329,73 @@ describe('isSelectedVersionStale', () => {
         ]),
       })
     ).toBe(false);
+  });
+
+  it('a clip stamped from the render payload reads fresh against the live key (#1784)', () => {
+    // The render stamps the lines on its motion prompt; the live side keys
+    // the resolver's answer. The same lines must give the same key.
+    const said = shotDialogue([
+      { character: 'Alice', line: 'Stay down.', tone: 'calm', voiceToken: 'A' },
+      { character: 'Bob', line: 'No.', tone: '' },
+    ]);
+    const sent = motionPromptFromVersion(
+      { text: 'She ducks.', audio: null },
+      said
+    );
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: null,
+        dialogueKey: dialogueLinesKey(sent.dialogue),
+      },
+    ]);
+    expect(
+      stale(v, {
+        dialogueKeyByShot: new Map([['shot-1', dialogueLinesKey(said)]]),
+      })
+    ).toBe(false);
+  });
+
+  it('is stale when any line the prompt quoted moved, voiced or not (#1784)', () => {
+    const stamped = 'Alice\tStay down.\t\t';
+    const edited = new Map([['shot-1', 'Alice\tStay up.\t\t']]);
+    // kling_v3_pro splices lines into its prompt but takes no dialogue audio,
+    // so `audioSourceKey` is null and never moves.
+    const v = version('v1', 'seg', 'kling_v3_pro', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        audioSourceKey: null,
+        dialogueKey: stamped,
+      },
+    ]);
+    expect(stale(v, { dialogueKeyByShot: edited })).toBe(true);
+    expect(
+      stale(v, { dialogueKeyByShot: new Map([['shot-1', stamped]]) })
+    ).toBe(false);
+    // A model without audio never quoted a line: it stamps null and stays
+    // fresh whatever the lines say.
+    const silent = version('v1', 'seg', 'grok_imagine_video_1_5', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+        dialogueKey: null,
+      },
+    ]);
+    expect(stale(silent, { dialogueKeyByShot: edited })).toBe(false);
+    // A clip from before #1784 has no key: unknown, never stale.
+    const legacy = version('v1', 'seg', 'kling_v3_pro', [
+      {
+        shotId: 'shot-1',
+        motionPromptVersionId: 'mp-1',
+        frameVersionId: 'fv-1',
+      },
+    ]);
+    expect(stale(legacy, { dialogueKeyByShot: edited })).toBe(false);
   });
 
   it.each(['grok_imagine_video_1_5', 'kling_v3_pro', 'gemini_omni_flash'])(
@@ -690,16 +762,25 @@ describe('isSelectedVersionStale — clips, references, duration (#1657)', () =>
     const v = version('v1', 'seg', 'kling_v3_pro', [
       { ...entry, referenceKeys: ['character:c1:csv-1'] },
     ]);
+    const sendsC1 = new Map([['shot-1', new Set(['character:c1'])]]);
     expect(
       stale(v, {
         referenceIdentity: new Map([['character:c1', 'character:c1:csv-1']]),
+        referencedEntitiesByShot: sendsC1,
       })
     ).toBe(false);
     expect(
       stale(v, {
         referenceIdentity: new Map([['character:c1', 'character:c1:csv-2']]),
+        referencedEntitiesByShot: sendsC1,
       })
     ).toBe(true);
+    // A render of the shot would no longer send c1 (#2012): not compared.
+    expect(
+      stale(v, {
+        referenceIdentity: new Map([['character:c1', 'character:c1:csv-2']]),
+      })
+    ).toBe(false);
   });
 
   it('compares duration snapped on both sides, accepting the audio-raised length', () => {

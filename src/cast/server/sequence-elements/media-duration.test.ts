@@ -19,7 +19,8 @@ vi.doMock('#storage', () => ({
   storageObjectSize: async (key: string) => objects.get(key)?.length ?? null,
 }));
 
-const { measureStoredMediaDuration } = await import('./media-duration');
+const { measureOwnMediaDuration, measureStoredMediaDuration } =
+  await import('./media-duration');
 
 /** A mono 16-bit PCM WAV of `seconds` of silence. */
 function wav(seconds: number, sampleRate = 8000): Uint8Array {
@@ -86,5 +87,32 @@ describe('measureStoredMediaDuration', () => {
     expect(await measureStoredMediaDuration('elements/t/nope.mp4')).toBeNull();
     objects.set('elements/t/notes.mp4', new TextEncoder().encode('not media'));
     expect(await measureStoredMediaDuration('elements/t/notes.mp4')).toBeNull();
+  });
+});
+
+// A hold or a refusal is sized on this one (#2036): "we could not read our
+// own file" must not read as "unknown length".
+describe('measureOwnMediaDuration', () => {
+  it('throws for a missing object and for a failed storage read', async () => {
+    await expect(
+      measureOwnMediaDuration('elements/t/gone.mp4')
+    ).rejects.toThrow(/missing or empty/);
+    objects.set('elements/t/flaky.wav', wav(3));
+    readStorageObject.mockRejectedValueOnce(new Error('R2 is down'));
+    await expect(
+      measureOwnMediaDuration('elements/t/flaky.wav')
+    ).rejects.toThrow('R2 is down');
+    // The lenient reader calls both of those unknown.
+    readStorageObject.mockRejectedValueOnce(new Error('R2 is down'));
+    expect(await measureStoredMediaDuration('elements/t/flaky.wav')).toBeNull();
+  });
+
+  it('answers null only when the container does not say', async () => {
+    objects.set('elements/t/text.mp4', new TextEncoder().encode('not media'));
+    expect(await measureOwnMediaDuration('elements/t/text.mp4')).toBeNull();
+    expect(await measureOwnMediaDuration('elements/t/flaky.wav')).toBeCloseTo(
+      3,
+      2
+    );
   });
 });

@@ -226,6 +226,7 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
               <ElementTokenButton
                 token={element.token}
                 onRename={handleRename}
+                affectedShotCount={affectedShotCount}
               />
             )}
           </div>

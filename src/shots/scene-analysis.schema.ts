@@ -29,6 +29,20 @@ import { z } from 'zod';
 // Descriptions are short labels on purpose: they count toward Anthropic's
 // strict-output grammar budget (#1035), so the vocabulary and format rules
 // live in the `phase/scene-bibles-chat` prompt, which is not budgeted.
+/**
+ * One outfit of a character (#2015). `lookId` is a slug the bibles call makes
+ * up (`gala_gown`); once the cast is persisted it is the `character_looks.id`.
+ */
+const characterLookEntrySchema = z.object({
+  lookId: z.string(),
+  name: z.string(),
+  clothing: z.string(),
+  // Hair, makeup, injuries, accessories; '' when none. On the default look
+  // this holds what the bible called distinguishing features (#2065).
+  styling: z.string(),
+});
+export type CharacterLookEntry = z.infer<typeof characterLookEntrySchema>;
+
 export const characterBibleEntrySchema = z.object({
   characterId: z.string(),
   name: z.string(),
@@ -36,20 +50,37 @@ export const characterBibleEntrySchema = z.object({
   gender: z.string(),
   ethnicity: z.string(),
   physicalDescription: z.string(),
+  // The outfit worn here: the default look's, or — in a shot's prompt context
+  // — the look that shot's scene picks. Always `looks[0].clothing`.
   standardClothing: z.string(),
-  distinguishingFeatures: z.string(),
+  // Every outfit (#2015), the one worn first: the default look off the
+  // bibles call, the scene's pick in a shot's prompt context. An entry stored
+  // before looks parses to none, and `withBibleLooks` gives it a default
+  // look from `standardClothing`. The bibles call sends a leaner shape of
+  // its own (`characterBibleWireEntrySchema`).
+  looks: z.preprocess(
+    (value) => value ?? [],
+    z.array(characterLookEntrySchema)
+  ),
+  // No `distinguishingFeatures` (#2065): a permanent mark is part of
+  // `physicalDescription`, the rest is the default look's `styling`. An
+  // entry written before that is folded at the seam (`foldLegacyFeatures`).
   // Performance (#1561). Guidance lives in the bible prompt (grammar budget).
   personality: z.string(),
   movement: z.string(),
   // Hearable Voice Design brief (#1629). Drafted with the rest of the bible
   // so the Voice field is filled at Script, and Generate uses it as-is.
+  // The brief's shape is in the bibles prompt; the label was trimmed to
+  // make room for looks in the grammar budget (#2015).
   voiceDescription: z.string().meta({
-    description:
-      'Hearable Voice Design brief: Native language, gender, age, Excellent quality, persona, emotion, timbre, pacing. No appearance',
+    description: 'Hearable Voice Design brief. No appearance',
   }),
   // Narrator, radio voice, a caller on the phone: a voice with no face, so no
   // sheet, no talent match, no place in an image prompt (#1585).
   voiceOnly: z.boolean().meta({ description: 'Heard but never seen' }),
+  // What the character is rendered as (#2017), filled from the sequence's
+  // style by `bibleFromWire`, never asked of the model. '' when voice-only.
+  rendering: z.string(),
   // Person vs robot/animal/object. Legal `real` is never a bible fact —
   // it is stamped on the character row from a signed talent or upload (#1682).
   isPerson: z
@@ -89,16 +120,16 @@ export const locationBibleEntrySchema = z.object({
   locationId: z.string(),
   name: z.string().meta({
     description:
-      'As written in the script, or a participant-named physical setting for an unspecified remote video-call location',
+      'Physical place name without slugline markers or a time-of-day suffix (INT. OFFICE - DAY and INT. OFFICE - NIGHT both become OFFICE); time of day belongs to the scene. Preserve genuine place-name words such as Night Owl Cafe. For an unspecified remote video-call location, use a participant-named physical setting',
   }),
   type: z.enum(['interior', 'exterior', 'both']),
-  timeOfDay: z.string(),
   description: z.string(),
   architecturalStyle: z.string(),
   keyFeatures: z.string(),
-  colorPalette: z.string(),
-  lightingSetup: z.string(),
   ambiance: z.string(),
+  // What the place is rendered as (#1695). Never asked of the model: the
+  // wire schema omits it and the analysis fills it from the sequence style.
+  rendering: z.string(),
   consistencyTag: z.string().meta({ description: 'snake_case name slug' }),
   firstMention: firstMentionSchema,
 });
@@ -166,7 +197,7 @@ const visualPromptSchema = z.object({
   }),
 });
 
-// No longer part of `motionPromptSchema` (#1035): `assembleMotionPrompt` uses
+// No longer part of `motionPromptSchema` (#1035): `buildMotionShotPrompt` uses
 // only `fullPrompt`/`dialogue`/`audio`, so the eight camera fields were pure
 // write-only output cost per shot. Kept solely to type old `shot_prompt_versions`
 // rows via `MotionPromptComponents`.
@@ -400,6 +431,13 @@ const continuitySchema = z.object({
     description:
       "Snake_case slug of each character's name as written in the script (e.g., 'GIRL ONE' → 'girl_one'). Optional descriptive context may be appended after the name slug (e.g., 'girl_one_bathroom_morning'). One entry per character appearing in the scene.",
   }),
+  // The look each character wears in this scene (#2015): character tag →
+  // `character_looks.id`. A character with no entry wears its default look,
+  // so a scene stored before looks — which has no map at all — is every
+  // character in its default. Optional, not defaulted: continuity is read
+  // as typed JSON straight off the row (three SQL mappers, no parse seam),
+  // so a `.default({})` here would never run for a stored scene.
+  characterLooks: z.record(z.string(), z.string()).optional(),
   environmentTag: z.string().meta({
     description:
       'Snake_case tag matching the location bible consistencyTag format',
@@ -413,7 +451,10 @@ const continuitySchema = z.object({
     description:
       'UPPERCASE element tokens referenced in this scene (null when none)',
   }),
-  colorPalette: z.string(),
+  colorPalette: z.string().optional().meta({
+    description:
+      'Optional user-authored palette override; leave empty during analysis. The sequence style owns palette.',
+  }),
   lightingSetup: z.string(),
   styleTag: z.string(),
 });
@@ -428,7 +469,6 @@ export const visualPromptResultSchema = z.object({
     description: 'Image generation prompt data',
   }),
 });
-export type VisualPromptResult = z.infer<typeof visualPromptResultSchema>;
 
 // ============================================================================
 // Original Script Schema
@@ -535,6 +575,18 @@ export type Scene = Omit<z.infer<typeof sceneSchema>, 'originalScript'> & {
   shots?: import('./shot-list.schema').ShotSpec[];
 };
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
+
+/**
+ * What a talent sheet's `metadata` holds: a bible entry describing the
+ * TALENT, with the talent's own distinguishing features. Not a character's
+ * (#2065 moved those to the default look); this one stays.
+ */
+export const talentSheetMetadataSchema = characterBibleEntrySchema
+  .omit({ rendering: true })
+  .extend({
+    distinguishingFeatures: z.string(),
+  });
+export type TalentSheetMetadata = z.infer<typeof talentSheetMetadataSchema>;
 // Bible entry types as consumed downstream: firstMention carries the
 // server-derived sceneId (see FirstMentionWithScene). The raw z.infer of the
 // entry schemas is the LLM wire shape only.
@@ -546,7 +598,6 @@ export type ElementBibleEntry = Omit<
   z.infer<typeof elementBibleEntrySchema>,
   'firstMention'
 > & { firstMention: FirstMentionWithScene };
-export type VisualPrompt = z.infer<typeof visualPromptSchema>;
 export type VisualPromptComponents = z.infer<
   typeof visualPromptComponentsSchema
 >;
@@ -577,7 +628,7 @@ export type MotionDialogue = {
   lines: DialogueLine[];
 };
 /**
- * The fields model-specific assembly (`assembleMotionPrompt`) actually consumes:
+ * The fields model-specific assembly (`buildMotionShotPrompt`) actually consumes:
  * the narrative base plus the dialogue/audio direction appended for audio-capable
  * video models. This is what a `shot_prompt_versions` motion row reconstructs to
  * at resolution time (#713). Stored rows and UI overrides may still omit

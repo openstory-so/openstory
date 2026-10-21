@@ -12,6 +12,7 @@ import type { ArtifactStaleness } from '@/shots/server/shot-staleness';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { Shot } from '@/platform/server/db/schema';
 import { loadSequenceSegments } from '@/shots/server/sequence-segments';
+import { loadVoiceMovedShotIds } from '@/shots/server/shot-dialogue';
 import type { StartFrameSequence } from '@/shots/use-start-frame';
 
 export type ShotMediaStaleness = {
@@ -32,11 +33,36 @@ export async function loadShotMediaStaleness(
   sequence: StartFrameSequence & { id: string },
   shots: readonly Shot[]
 ): Promise<Map<string, ShotMediaStaleness>> {
+  const states = await loadShotMediaStates(scopedDb, sequence, shots);
+  return new Map([...states].map(([id, state]) => [id, state.staleness]));
+}
+
+/**
+ * The verdicts plus whether a clip render is in flight — `'updating'` only
+ * covers a re-render, and the generation plan (#1816) needs the first one too.
+ */
+export async function loadShotMediaStates(
+  scopedDb: ScopedDb,
+  sequence: StartFrameSequence & { id: string },
+  shots: readonly Shot[]
+): Promise<
+  Map<string, { staleness: ShotMediaStaleness; clipInFlight: boolean }>
+> {
   const { assembled, versions, live } = await loadSequenceSegments(
     scopedDb,
     sequence,
     shots
   );
+  // A voice change dates every shot recorded alongside it, not just the
+  // speaker's own (#1802).
+  const [voiceMoved, recording] = await Promise.all([
+    loadVoiceMovedShotIds(scopedDb, sequence.id, shots),
+    // A speech in flight that will become the shot's audio: updating, not
+    // stale, so nothing offers to record it again meanwhile.
+    scopedDb.shotDialogue.listShotIdsWithLiveClaim(
+      shots.map((shot) => shot.id)
+    ),
+  ]);
 
   const videoByShot = new Map<
     string,
@@ -55,21 +81,29 @@ export async function loadShotMediaStaleness(
     }
   }
 
-  const byShot = new Map<string, ShotMediaStaleness>();
+  const byShot = new Map<
+    string,
+    { staleness: ShotMediaStaleness; clipInFlight: boolean }
+  >();
   for (const shot of shots) {
     const key = live.audioSourceKeyByShot.get(shot.id) ?? null;
     const video = videoByShot.get(shot.id);
     byShot.set(shot.id, {
-      dialogue: dialogueArtifactStaleness({
-        voiced: key != null,
-        hasAudio: (shot.audioClips?.length ?? 0) > 0,
-        matching: clipsMatchKey(shot.audioClips, key),
-      }),
-      video: videoArtifactStaleness({
-        hasVideo: video?.hasVideo ?? false,
-        alreadyStale: video?.alreadyStale ?? false,
-        generating: video?.generating ?? false,
-      }),
+      clipInFlight: video?.generating ?? false,
+      staleness: {
+        dialogue: dialogueArtifactStaleness({
+          voiced: key != null,
+          hasAudio: (shot.audioClips?.length ?? 0) > 0,
+          matching:
+            clipsMatchKey(shot.audioClips, key) && !voiceMoved.has(shot.id),
+          generating: recording.has(shot.id),
+        }),
+        video: videoArtifactStaleness({
+          hasVideo: video?.hasVideo ?? false,
+          alreadyStale: video?.alreadyStale ?? false,
+          generating: video?.generating ?? false,
+        }),
+      },
     });
   }
   return byShot;
