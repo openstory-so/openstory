@@ -822,7 +822,7 @@ export const SceneScriptPrompts: React.FC<SceneScriptPromptsProps> = ({
   // see `ShotDurationField` on the Motion tab.)
   const saveSceneScript = useSaveSceneScript(sequenceId);
   const handleSaveScript = (nextExtract: string) => {
-    if (!scriptSceneId) return;
+    if (!scriptSceneId || scriptText === undefined) return;
     saveSceneScript.mutate(
       { sceneId: scriptSceneId, extract: nextExtract },
       {

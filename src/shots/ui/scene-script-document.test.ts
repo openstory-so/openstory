@@ -37,11 +37,25 @@ describe('buildScriptBlocks', () => {
     expect(blocks[0]?.extract).toBe('Edited copy.');
   });
 
-  it('renders an empty string rather than dropping a scene with no script', () => {
+  it('keeps a scene with no script and marks it uneditable', () => {
     const blocks = buildScriptBlocks([scene('s1', 0)]);
 
     expect(blocks).toHaveLength(1);
     expect(blocks[0]?.extract).toBe('');
+    expect(blocks[0]?.hasScript).toBe(false);
+  });
+
+  it('keeps an empty saved script editable', () => {
+    const blocks = buildScriptBlocks([
+      {
+        id: dbSceneId('s1'),
+        orderIndex: 0,
+        title: null,
+        script: { extract: '', dialogue: [] },
+      },
+    ]);
+
+    expect(blocks[0]).toMatchObject({ extract: '', hasScript: true });
   });
 });
 

@@ -16,6 +16,7 @@
  * and are deliberately absent here — this pass is edit-in-place only.
  */
 
+import { NO_SCENE_SCRIPT_MESSAGE } from '@/shots/scene-script-message';
 import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
 import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
@@ -37,6 +38,8 @@ export type ScriptBlock = {
   sceneNumber: number;
   title: string;
   extract: string;
+  /** False when the scene has no selected script version (#1793). */
+  hasScript: boolean;
 };
 
 /** The scene fields the document reads — kept minimal so the block builder is
@@ -58,6 +61,7 @@ export function buildScriptBlocks(
       sceneNumber: index + 1,
       title: plainSceneTitle(scene.title),
       extract: scene.script?.extract ?? '',
+      hasScript: scene.script != null,
     }));
 }
 
@@ -108,6 +112,7 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
   const isDirty = draft !== undefined && draft !== block.extract;
 
   const handleSave = () => {
+    if (!block.hasScript) return;
     saveScript.mutate(
       { sceneId: block.sceneId, extract: current },
       {
@@ -157,15 +162,17 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
           </span>
         </button>
 
-        <div className="ml-auto flex items-center gap-2">
-          <VoiceInputButton
-            label="scene script"
-            disabled={saveScript.isPending}
-            {...voice}
-          />
-        </div>
+        {block.hasScript && (
+          <div className="ml-auto flex items-center gap-2">
+            <VoiceInputButton
+              label="scene script"
+              disabled={saveScript.isPending}
+              {...voice}
+            />
+          </div>
+        )}
 
-        {isDirty && (
+        {block.hasScript && isDirty && (
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-muted-foreground lg:inline">
               Saving marks this scene&apos;s prompts as stale.
@@ -192,17 +199,23 @@ const SceneScriptBlock: React.FC<SceneScriptBlockProps> = ({
         )}
       </div>
 
-      <MarkdownEditor
-        id={`scene-script-block-${block.sceneId}`}
-        ref={editorRef}
-        value={current}
-        onValueChange={setDraft}
-        placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"
-        className="min-h-[120px]"
-        disabled={saveScript.isPending}
-        mentionItems={mentionItems}
-        onMentionRename={onMentionRename}
-      />
+      {block.hasScript ? (
+        <MarkdownEditor
+          id={`scene-script-block-${block.sceneId}`}
+          ref={editorRef}
+          value={current}
+          onValueChange={setDraft}
+          placeholder="Enter the script text for this scene… (type @ to insert elements, cast, locations)"
+          className="min-h-[120px]"
+          disabled={saveScript.isPending}
+          mentionItems={mentionItems}
+          onMentionRename={onMentionRename}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          {NO_SCENE_SCRIPT_MESSAGE}
+        </p>
+      )}
     </section>
   );
 };

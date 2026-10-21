@@ -7,6 +7,8 @@
  *   the actor; dialogue is carried from the selected row, and @-mentions in
  *   the new text are rescanned into continuity (#1341).
  * - Unchanged input writes nothing.
+ * - A script edit when the scene has no selected version is a validation
+ *   error and writes nothing (#1793). Analysis creates the first version.
  * - With `expectedScriptVersionId`, an edit made against a version the scene
  *   no longer selects is a conflict and writes nothing.
  */
@@ -26,6 +28,7 @@ import { canonicalBibleTag } from '@/cast/bible-field';
 import { matchCharacterToShotTags } from '@/shots/scene-matching';
 import type { DbSceneId } from '@/shots/scene-id';
 import type { sceneNarrativeFieldsSchema } from '@/shots/scene-narrative';
+import { NO_SCENE_SCRIPT_MESSAGE } from '@/shots/scene-script-message';
 import { rescanContinuityFromPrompt } from './rescan-continuity-from-prompt';
 
 type NarrativeInput = z.output<typeof sceneNarrativeFieldsSchema>;
@@ -133,9 +136,7 @@ export async function updateScene(
       input.sceneId
     );
     if (!selected) {
-      throw new ValidationError(
-        'Scene has no script to edit. Re-run script analysis for this sequence first.'
-      );
+      throw new ValidationError(NO_SCENE_SCRIPT_MESSAGE);
     }
     if (input.scriptExtract !== selected.content.extract) {
       extract = input.scriptExtract;
