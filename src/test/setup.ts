@@ -7,7 +7,7 @@ import { server } from '@/mocks/server';
 
 // Enable API mocking before all tests
 beforeAll(() => {
-  server.listen({ onUnhandledRequest: 'bypass' });
+  server.listen({ onUnhandledFrame: 'bypass' });
 });
 
 // Reset request handlers after each test

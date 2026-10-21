@@ -216,7 +216,8 @@ export async function createSetupCheckoutSession(
   const session = await stripe.checkout.sessions.create({
     mode: 'setup',
     customer: customerId,
-    payment_method_types: ['card'],
+    currency: 'usd',
+    allowed_payment_method_types: ['card'],
     metadata,
     setup_intent_data: { metadata },
     success_url: successUrl,
