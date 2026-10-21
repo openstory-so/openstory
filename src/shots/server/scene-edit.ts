@@ -7,6 +7,9 @@
  *   the actor; dialogue is carried from the selected row, and @-mentions in
  *   the new text are rescanned into continuity (#1341).
  * - Unchanged input writes nothing.
+ * - A script edit when the scene has no selected version writes the first
+ *   version, including an empty extract (#1793). A blank scene can start
+ *   from scratch.
  * - With `expectedScriptVersionId`, an edit made against a version the scene
  *   no longer selects is a conflict and writes nothing.
  */
@@ -132,12 +135,10 @@ export async function updateScene(
     const selected = await scopedDb.sceneScriptVersions.getSelected(
       input.sceneId
     );
-    if (!selected) {
-      throw new ValidationError(
-        'Scene has no script to edit. Re-run script analysis for this sequence first.'
-      );
-    }
-    if (input.scriptExtract !== selected.content.extract) {
+    // No selected row yet: this save is the first script, even when the
+    // text is empty. `scenes.edit` copies dialogue from the selected row
+    // and falls back to an empty list (#1793).
+    if (!selected || input.scriptExtract !== selected.content.extract) {
       extract = input.scriptExtract;
       // Auto-link cast/element/location tags @-mentioned in the script into
       // the scene's continuity (#1341), riding the same version (#1600).

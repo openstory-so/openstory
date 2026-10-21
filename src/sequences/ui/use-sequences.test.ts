@@ -19,17 +19,36 @@ const createSequenceFn = vi.fn<(args: CreateCall) => Promise<unknown[]>>(
 const setSequenceModelsFn = vi.fn<(args: CreateCall) => Promise<unknown>>(
   async () => ({})
 );
+const setSequenceTargetDurationFn = vi.fn<
+  (args: CreateCall) => Promise<unknown>
+>(async () => ({}));
 vi.doMock('@/sequences/sequences.fn', () => ({
   createSequenceFn,
   setSequenceModelsFn,
+  setSequenceTargetDurationFn,
 }));
 // `useMutation` returns its own options object, so `mutationFn` is callable
 // straight off the hook — a pure payload check needs no React renderer. Kept
 // here (not a shared helper) because it is a lie only this file wants.
 const mutationOptions = new WeakMap<object, MutationOptions>();
-type MutationOptions = { mutationFn: (input: unknown) => Promise<unknown> };
+type MutationOptions = {
+  mutationFn: (input: unknown) => Promise<unknown>;
+  onMutate?: (input: unknown) => Promise<unknown>;
+  onError?: (error: unknown, input: unknown, ctx: unknown) => void;
+};
+/** One cache for the whole file, keyed by the serialised query key. */
+const cache = new Map<string, unknown>();
+const queryClient = {
+  getQueryData: (key: readonly unknown[]) => cache.get(JSON.stringify(key)),
+  setQueryData: (key: readonly unknown[], next: unknown) => {
+    const id = JSON.stringify(key);
+    cache.set(id, typeof next === 'function' ? next(cache.get(id)) : next);
+  },
+  cancelQueries: vi.fn(async () => {}),
+  invalidateQueries: vi.fn(),
+};
 vi.doMock('@tanstack/react-query', () => ({
-  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
+  useQueryClient: () => queryClient,
   useMutation: (options: MutationOptions) => {
     const handle = {};
     mutationOptions.set(handle, options);
@@ -40,9 +59,12 @@ vi.doMock('@tanstack/react-query', () => ({
 
 /** The `mutationFn` the hook handed to `useMutation`. */
 function mutationFnOf(hookResult: object): MutationOptions['mutationFn'] {
+  return optionsOf(hookResult).mutationFn;
+}
+function optionsOf(hookResult: object): MutationOptions {
   const options = mutationOptions.get(hookResult);
   if (!options) throw new Error('useMutation was not called by the hook');
-  return options.mutationFn;
+  return options;
 }
 vi.doMock('@posthog/react', () => ({
   usePostHog: () => ({ capture: vi.fn() }),
@@ -52,8 +74,12 @@ vi.doMock('@/platform/ui/auth/session-query', () => ({
   useAuthSession: () => ({ data: null }),
 }));
 
-const { useCreateSequence, useSetSequenceModels } =
-  await import('./use-sequences');
+const {
+  sequenceKeys,
+  useCreateSequence,
+  useSetSequenceModels,
+  useSetSequenceTargetDuration,
+} = await import('./use-sequences');
 
 /** Every field the composer can set, with values distinct from the server defaults. */
 const INPUT = {
@@ -110,6 +136,26 @@ describe('useSetSequenceModels', () => {
 
     expect(setSequenceModelsFn).toHaveBeenCalledWith({
       data: { sequenceId: 'seq_1', videoModel: 'seedance_v2_5' },
+    });
+  });
+});
+
+// #2080: the target chip is a controlled toggle reading this cache, so a click
+// that waits for the server looks like a dead control.
+describe('useSetSequenceTargetDuration', () => {
+  it('shows the pick at once and puts the old target back if the save fails', async () => {
+    const key = sequenceKeys.detail('seq_1');
+    queryClient.setQueryData(key, { id: 'seq_1', targetDurationSeconds: 30 });
+    const options = optionsOf(useSetSequenceTargetDuration('seq_1'));
+
+    const ctx = await options.onMutate?.(60);
+    expect(queryClient.getQueryData(key)).toMatchObject({
+      targetDurationSeconds: 60,
+    });
+
+    options.onError?.(new Error('offline'), 60, ctx);
+    expect(queryClient.getQueryData(key)).toMatchObject({
+      targetDurationSeconds: 30,
     });
   });
 });

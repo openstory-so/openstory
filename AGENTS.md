@@ -398,6 +398,7 @@ bun db:migrate   # Apply migrations to local.db
 **Rules:**
 
 - Never add `"remote": true` to a D1 binding. The placeholder-id strategy is the safety net.
+- `compatibility_date` is `2026-10-08` (#1999), the newest date `workerd@1.20261001.1` (Wrangler 4.147.0) will start. A later date refuses to boot local dev and e2e. Production, test, and PR previews inherit the top-level value. Keep `enable_request_signal` (no default date; realtime disconnect cleanup). Do not add an opt-out flag without the review in `docs/deployment/cloudflare.md`. The log-forwarder Worker keeps its own date.
 - Production deploys run on **Workers Builds** (dashboard-connected to `main`, #900): build command `bun run build` with `CLOUDFLARE_ENV=production` as a build env var, deploy command `bun run deploy:production`. Manual fallback: `bun cf:deploy:prd`. Don't deploy a build made without `CLOUDFLARE_ENV=production` — it bakes the default block (placeholder D1) and fails loudly.
 - PR-preview deploys patch the default block at runtime in `.github/workflows/deploy-cloudflare.yml` and deploy without `--env`. Each PR gets its own real D1 named `openstory-pr-<n>`.
 

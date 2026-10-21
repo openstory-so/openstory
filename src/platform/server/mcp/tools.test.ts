@@ -2257,22 +2257,37 @@ describe('update_scene (#1459)', () => {
     expect(await db.select().from(sceneScriptVersions)).toEqual(before);
   });
 
-  it('reports a scene without a script instead of inventing one', async () => {
+  it('writes the first script when the scene has none', async () => {
     const bare = await addScene(1);
-    const result = await call('update_scene', {
-      sequenceId,
-      sceneId: bare,
-      expectedScriptVersionId: null,
-      scriptExtract: 'New text.',
-    });
-    expect(result).toMatchObject({
-      isError: true,
-      structuredContent: { error: { code: 'VALIDATION_ERROR' } },
+    const written = z
+      .object({
+        sceneId: z.string(),
+        scriptVersionId: z.string(),
+        shotIds: z.array(z.string()),
+        changed: z.literal(true),
+      })
+      .parse(
+        await data('update_scene', {
+          sequenceId,
+          sceneId: bare,
+          expectedScriptVersionId: null,
+          scriptExtract: 'New text.',
+        })
+      );
+    expect(written.sceneId).toBe(bare);
+    expect(written.shotIds).toEqual([]);
+    expect(
+      await data('get_scene', { sequenceId, sceneId: bare })
+    ).toMatchObject({
+      script: {
+        id: written.scriptVersionId,
+        content: { extract: 'New text.', dialogue: [] },
+      },
     });
     const titled = await data('update_scene', {
       sequenceId,
       sceneId: bare,
-      expectedScriptVersionId: null,
+      expectedScriptVersionId: written.scriptVersionId,
       title: 'Named',
     });
     expect(titled).toMatchObject({ changed: true, shotIds: [] });

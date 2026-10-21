@@ -35,7 +35,40 @@ Bindings live in [`wrangler.jsonc`](https://github.com/openstory-so/openstory/bl
 - `R2_PUBLIC_ASSETS_BUCKET` — public assets (served via custom domain)
 - `R2_STORAGE_BUCKET` — private storage for generated media
 
-The Worker entry point is `src/server.ts` with `nodejs_compat` enabled.
+The Worker entry point is `src/server.ts`. `nodejs_compat` is listed and, from compatibility date `2026-08-04`, also on by default.
+
+## Compatibility date
+
+`compatibility_date` is `2026-10-08` (#1999). The production and test env blocks inherit it. PR preview deploys patch the default block in place and keep the date. `src/platform/server/compatibility-date.test.ts` fails if the app Worker declares any other date.
+
+That date is the newest `workerd@1.20261001.1` (Wrangler 4.147.0) will start. A later date, including the calendar day of the change, makes local dev and e2e fail with "the newest date supported by this server binary is 2026-10-08". The flag set matches any date through `2026-11-16`: the last behavior change on or before `2026-10-08` is `durable_object_io_tasks_prevent_eviction` on `2026-10-01`. Move the date forward when a Wrangler upgrade ships a workerd that accepts it.
+
+Two later defaults stay off: `cache_option_preserves_cache_control` and `pipe_to_backward_propagation`, both `2026-11-17`. The log-forwarder Worker in `workers/posthog-log-forwarder/wrangler.jsonc` is a separate script and stays on `2025-11-18`.
+
+`enable_request_signal` stays in `compatibility_flags`. It has no default date. Realtime listens on `request.signal` so a disconnected SSE client drops its Durable Object subscription and heartbeat (`docs/developer-guide/workflow.md`). `nodejs_compat` stays in the list too. At this date Wrangler ignores it as redundant, because `2026-08-04` enables `nodejs_compat` and `nodejs_compat_v2` on its own.
+
+No opt-out flag was added. These are the behavior changes between `2025-11-18` and `2026-10-08` that the code was checked against. Source: [Cloudflare's compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/).
+
+- **`enable_fast_jsg_struct` (`2025-12-03`).** Optional fields on runtime structs are present and `undefined`. Value checks (`value !== undefined`) still work. A presence check (`"key" in obj`) does not. `serveFile` used `"suffix" in range` for `Content-Range`, so a video range request answered `bytes NaN-NaN/…` and the browser reported `MEDIA_ELEMENT_ERROR: Format error`. It now reads `suffix` only when it is a number (`content-range.ts`).
+- **Node stubs (`2025-12-04` through `2026-03-17`).** `node:cluster`, `node:domain`, `node:punycode`, `node:trace_events`, `node:wasi`, `node:dgram`, `node:inspector`, `node:sqlite`, `node:_stream_wrap`, `node:child_process`, `node:perf_hooks`, `node:readline`, `node:repl`, `node:tty`, `node:v8`, and `node:worker_threads` become importable. Application code does not import them. Global Performance classes come with `node:perf_hooks`.
+- **`strip_bom_in_read_all_text` (`2026-01-13`) and `text_decoder_replace_surrogates` / CJK `TextDecoder` (`2026-02-24`, `2026-03-03`).** Text decoding matches the Encoding Standard. No caller depends on a leading BOM or on lone surrogates surviving.
+- **`rpc_params_dup_stubs` (`2026-01-20`).** Stubs passed inside an RPC call are duplicated. The app does not pass RPC stubs as call parameters.
+- **`require_returns_default_export` (`2026-01-22`).** `require()` of an ES module returns its default export, matching Node. The Worker is a Vite bundle.
+- **`fetch_iterable_type_support` (`2026-02-19`).** An array passed as a `fetch` body is streamed. Call sites pass strings, `ReadableStream`s, or `ArrayBuffer`s.
+- **`enable_nodejs_global_timers` (`2026-02-10`).** Inside the isolate, `setTimeout` returns a Node `Timeout`. Server code only waits on the promise. Browser timers are the page's, not the isolate's.
+- **`delete_all_deletes_alarm` (`2026-02-24`).** `storage.deleteAll()` also deletes a Durable Object alarm. Nothing calls `deleteAll()`.
+- **`unhandled_rejection_after_microtask_checkpoint` (`2026-03-03`).** A rejection handled in a later microtask of the same checkpoint is no longer reported as unhandled.
+- **`websocket_close_reason_byte_limit` (`2026-03-03`), `websocket_standard_binary_type` (`2026-03-17`), `web_socket_auto_reply_to_close` (`2026-04-07`).** Close reasons over 123 bytes throw. Binary frames default to `Blob`. A server Close frame completes the handshake. Realtime is SSE, and the Worker has no `WebSocket` message handler. A Durable Object hibernation handler would still receive `ArrayBuffer`.
+- **`encoder_stream_spec_compliant_backpressure` and `writable_stream_spec_compliant_writer` (`2026-03-24`).** `TextEncoderStream` / `TextDecoderStream` start with backpressure, and `WritableStream` writer locks match the streams spec. Uploads `pipeTo` a `FixedLengthStream`. The `2026-11-17` `pipeTo` error-propagation change is not in this date.
+- **`queue_expose_error_codes` (`2026-03-12`).** The app has no Queue binding.
+- **`containers_pid_namespace` (`2026-04-01`).** The video-export container's `node dist/server.js` is PID 1 in its own namespace. It does not read the VM process list or assume another PID. See `docs/architecture/public-api-internals.md`.
+- **`enhanced_error_serialization` (`2026-04-21`).** Errors that cross a serialization boundary keep their own properties. The original stack still does not survive a workflow step boundary (`src/platform/server/workflow/base-workflow.ts`).
+- **`workflows_preserve_non_retryable_error_message` (`2026-05-14`).** A `NonRetryableError` message reaches `onFailure` as thrown. The generic "execution was terminated" replacement is off.
+- **`diagnostics_channel_has_subscribers_getter` (`2026-05-19`) and `throw_on_not_implemented_tls_options` (`2026-06-16`).** `hasSubscribers` is a boolean getter. Unsupported `tls.connect` options throw. Application code uses neither.
+- **`durable_object_io_tasks_prevent_eviction` (`2026-10-01`).** Pending Durable Object I/O, including `waitUntil`, service bindings, and RPC, keeps the object in memory after the client leaves, until the I/O finishes or 15 minutes pass.
+- **Python flags (`python_process_pth_files`, `python_workers_314`).** This Worker is not Python.
+
+`src/platform/server/compatibility-date.test.ts` also checks that `enable_request_signal` is still listed.
 
 ## Build & Deploy
 

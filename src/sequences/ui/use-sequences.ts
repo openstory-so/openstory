@@ -333,12 +333,31 @@ export function useRenameSequence(sequenceId: string) {
 export function useSetSequenceTargetDuration(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    scope: { id: `set-sequence-target-duration-${sequenceId}` },
     mutationFn: (targetDurationSeconds: number | null) =>
       setSequenceTargetDurationFn({
         data: { sequenceId, targetDurationSeconds },
       }),
+    // Optimistic (#2080): the chip's toggle is controlled by this value, so
+    // without it a click shows nothing until the save returns.
+    onMutate: async (targetDurationSeconds) => {
+      const key = sequenceKeys.detail(sequenceId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Sequence>(key);
+      queryClient.setQueryData<Sequence>(key, (old) =>
+        old ? { ...old, targetDurationSeconds } : old
+      );
+      return { previous };
+    },
+    onError: (_error, _target, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(sequenceKeys.detail(sequenceId), ctx.previous);
+      }
+    },
     onSuccess: (updated) => {
       queryClient.setQueryData(sequenceKeys.detail(sequenceId), updated);
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: sequenceKeys.detail(sequenceId),
       });

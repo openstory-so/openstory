@@ -95,6 +95,8 @@ export const SECRETS = {
   OPENROUTER_KEY: { runtime: true, build: false },
   R2_PUBLIC_ASSETS_DOMAIN: { runtime: false, build: false },
   R2_PUBLIC_STORAGE_DOMAIN: { runtime: true, build: false },
+  REVIEW_LOGIN_CODE: { runtime: true, build: false },
+  REVIEW_LOGIN_EMAIL: { runtime: true, build: false },
   STRIPE_PUBLISHABLE_KEY: { runtime: true, build: false },
   STRIPE_SECRET_KEY: { runtime: true, build: false },
   STRIPE_WEBHOOK_SECRET: { runtime: true, build: false },

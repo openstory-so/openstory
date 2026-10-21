@@ -14,6 +14,7 @@ import {
   type StorageFileInfo,
   type UploadResult,
 } from './buckets';
+import { contentRangeHeader } from './content-range';
 
 function getR2Bucket(): R2Bucket {
   // Reach for the binding via `cloudflare:workers` directly so the type
@@ -380,17 +381,7 @@ export async function serveFile(
   // confuses caches and some clients.
   const range = hasRange ? object.range : undefined;
   if (range) {
-    const offset = 'offset' in range ? (range.offset ?? 0) : 0;
-    const length =
-      'suffix' in range
-        ? range.suffix
-        : (('length' in range ? range.length : undefined) ??
-          object.size - offset);
-    const start = 'suffix' in range ? object.size - range.suffix : offset;
-    headers.set(
-      'content-range',
-      `bytes ${start}-${start + length - 1}/${object.size}`
-    );
+    headers.set('content-range', contentRangeHeader(range, object.size));
     return new Response(object.body, { status: 206, headers });
   }
 
