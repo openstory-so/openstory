@@ -2,10 +2,17 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "main": "./src/server.ts",
   "name": "openstory",
-  "compatibility_date": "2025-11-18",
-  // Realtime closes its upstream DO streams on request.signal abort. This
-  // opt-in has no default date: without it, disconnected SSE clients leave
-  // subscriptions and heartbeat timers alive. Inherited by production/test.
+  // 2026-10-21 includes the 2026-08-04 Node.js-compat default and the
+  // 2026-10-01 Durable Object I/O lifetime change. Production and test
+  // inherit this date. Flags that default after it stay off. The review
+  // and the decision to add no opt-out flags are in
+  // docs/deployment/cloudflare.md (#1999).
+  "compatibility_date": "2026-10-21",
+  // nodejs_compat is redundant at this date (Wrangler ignores it) and stays
+  // so the intent is visible. enable_request_signal has no default date:
+  // realtime closes its upstream DO streams on request.signal abort, and
+  // without it disconnected SSE clients leave subscriptions and heartbeat
+  // timers alive. Inherited by production/test.
   "compatibility_flags": ["nodejs_compat", "enable_request_signal"],
   "triggers": {
     // Sweep stuck generating-status rows every 5 minutes (#727) and refresh
