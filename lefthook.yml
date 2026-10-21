@@ -54,14 +54,16 @@ pre-commit:
       # worker-configuration.d.ts is committed (Cloudflare's CI recommendation),
       # so a wrangler.jsonc change must ship the regenerated types with it —
       # stale committed types are how the old cloudflare-env.d.ts rotted.
-      # Regenerate in place and stage, like the format hook. (`wrangler types
-      # --check` would be the natural guard but is broken: it returns 0
-      # against a provably stale file.)
-      # Node, not `bun run --bun`: under Bun, workerd's runtime-type fetch of
-      # http://dummy.com escapes to the network and writes a parking page
-      # into worker-configuration.d.ts.
+      # `wrangler types` writes Env bindings plus the workerd runtime
+      # declarations. Env-only output is ~300 lines (#2053) and typecheck
+      # fails inside the file; under Bun the runtime fetch of http://dummy.com
+      # can also exit 0 with a parking page (workers-sdk #16136). The script
+      # runs on Node (the wrangler bin's shebang — not `bun run --bun`) and
+      # restores the committed file unless the rewrite still has runtime
+      # declarations and is at least half as long. (`wrangler types --check`
+      # returns 0 against a provably stale file, so it is not the guard.)
       glob: 'wrangler.jsonc'
-      run: bun run wrangler types >/dev/null && git add worker-configuration.d.ts
+      run: bun scripts/regen-worker-types.ts && git add worker-configuration.d.ts
     workflow-trigger-safety:
       glob: '.github/workflows/*.{yml,yaml}'
       run: |
