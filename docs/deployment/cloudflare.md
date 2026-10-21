@@ -39,13 +39,15 @@ The Worker entry point is `src/server.ts`. `nodejs_compat` is listed and, from c
 
 ## Compatibility date
 
-`compatibility_date` is `2026-10-21` (#1999). The production and test env blocks inherit it. PR preview deploys patch the default block in place and keep the date. `src/platform/server/compatibility-date.test.ts` fails if the app Worker declares any other date.
+`compatibility_date` is `2026-10-08` (#1999). The production and test env blocks inherit it. PR preview deploys patch the default block in place and keep the date. `src/platform/server/compatibility-date.test.ts` fails if the app Worker declares any other date.
 
-The date is the review cutoff. Two later defaults stay off: `cache_option_preserves_cache_control` and `pipe_to_backward_propagation`, both `2026-11-17`. The log-forwarder Worker in `workers/posthog-log-forwarder/wrangler.jsonc` is a separate script and stays on `2025-11-18`.
+That date is the newest `workerd@1.20261001.1` (Wrangler 4.147.0) will start. A later date, including the calendar day of the change, makes local dev and e2e fail with "the newest date supported by this server binary is 2026-10-08". The flag set matches any date through `2026-11-16`: the last behavior change on or before `2026-10-08` is `durable_object_io_tasks_prevent_eviction` on `2026-10-01`. Move the date forward when a Wrangler upgrade ships a workerd that accepts it.
+
+Two later defaults stay off: `cache_option_preserves_cache_control` and `pipe_to_backward_propagation`, both `2026-11-17`. The log-forwarder Worker in `workers/posthog-log-forwarder/wrangler.jsonc` is a separate script and stays on `2025-11-18`.
 
 `enable_request_signal` stays in `compatibility_flags`. It has no default date. Realtime listens on `request.signal` so a disconnected SSE client drops its Durable Object subscription and heartbeat (`docs/developer-guide/workflow.md`). `nodejs_compat` stays in the list too. At this date Wrangler ignores it as redundant, because `2026-08-04` enables `nodejs_compat` and `nodejs_compat_v2` on its own.
 
-No opt-out flag was added. These are the behavior changes between `2025-11-18` and `2026-10-21` that the code was checked against. Source: [Cloudflare's compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/).
+No opt-out flag was added. These are the behavior changes between `2025-11-18` and `2026-10-08` that the code was checked against. Source: [Cloudflare's compatibility flags](https://developers.cloudflare.com/workers/configuration/compatibility-flags/).
 
 - **`enable_fast_jsg_struct` (`2025-12-03`).** Optional fields on runtime structs are present and `undefined`. Value checks (`value !== undefined`) still work. A presence check (`"key" in obj`) would not.
 - **Node stubs (`2025-12-04` through `2026-03-17`).** `node:cluster`, `node:domain`, `node:punycode`, `node:trace_events`, `node:wasi`, `node:dgram`, `node:inspector`, `node:sqlite`, `node:_stream_wrap`, `node:child_process`, `node:perf_hooks`, `node:readline`, `node:repl`, `node:tty`, `node:v8`, and `node:worker_threads` become importable. Application code does not import them. Global Performance classes come with `node:perf_hooks`.
