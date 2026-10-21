@@ -135,6 +135,31 @@ describe('arkStillsForMotion', () => {
     ]);
   });
 
+  it('registers every reference clip as a Video asset, and no audio (#1930)', () => {
+    expect(
+      arkStillsForMotion({
+        referenceImages: [
+          {
+            referenceImageUrl: 'https://cdn/walk.mp4',
+            description: 'WALK',
+            role: 'element',
+            kind: 'video',
+            token: 'WALK',
+          },
+          {
+            referenceImageUrl: 'https://cdn/line.mp3',
+            description: 'LINE',
+            role: 'element',
+            kind: 'audio',
+            token: 'LINE',
+          },
+        ],
+      })
+    ).toEqual([
+      { storedUrl: 'https://cdn/walk.mp4', slot: 'library', kind: 'Video' },
+    ]);
+  });
+
   it('treats a missing isPerson as a face, including in-flight payloads', () => {
     expect(
       arkStillsForMotion({

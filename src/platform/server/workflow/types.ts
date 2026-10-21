@@ -2049,9 +2049,10 @@ export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
    */
   finalFromDraftTaskId?: string;
   /**
-   * Reference images the likeness ledger cleared as showing no person,
-   * snapshotted at the trigger. BytePlus sends these as plain URLs instead
-   * of spending a CreateAsset on them (`arkStillsForStudio`, #1674).
+   * Reference images and clips the likeness ledger cleared as showing no
+   * person, snapshotted at the trigger. BytePlus sends these as plain URLs
+   * instead of spending a CreateAsset on them (`arkStillsForStudio`, #1674,
+   * #1930). The name predates clips; it rides in-flight payloads.
    */
   noPersonImages: string[];
 }

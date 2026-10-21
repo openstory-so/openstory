@@ -5,7 +5,7 @@ import type { StudioCreateInput } from './schema';
  * (and Ark) sees. Exhaustive over `mode` so a new video mode cannot slip
  * past the gate ungated.
  */
-export function studioReferenceImages(input: StudioCreateInput): string[] {
+function studioReferenceImages(input: StudioCreateInput): string[] {
   if (input.activity === 'image') return input.referenceImages;
   switch (input.mode) {
     case 'reference':

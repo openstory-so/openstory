@@ -618,7 +618,10 @@ describe('submitStudioVideoJob', () => {
           },
           {
             type: 'video',
-            source: { type: 'url', value: 'https://example.com/clip.mp4' },
+            source: {
+              type: 'url',
+              value: 'asset://https://example.com/clip.mp4',
+            },
           },
         ],
       })
@@ -650,6 +653,28 @@ describe('submitStudioVideoJob edit and auto length (#1925)', () => {
       )
     ).toEqual([
       { storedUrl: '/r2/videos/source.mp4', slot: 'library', kind: 'Video' },
+    ]);
+  });
+
+  it('registers reference clips as Video assets, plain when cleared (#1930)', () => {
+    expect(
+      arkStillsForStudio(
+        {
+          mode: 'reference',
+          referenceImages: ['/r2/face.png'],
+          referenceVideos: ['/r2/person.mp4', '/r2/empty-room.mp4'],
+        },
+        ['/r2/empty-room.mp4']
+      )
+    ).toEqual([
+      { storedUrl: '/r2/face.png', slot: 'library' },
+      { storedUrl: '/r2/person.mp4', slot: 'library', kind: 'Video' },
+      {
+        storedUrl: '/r2/empty-room.mp4',
+        slot: 'library',
+        kind: 'Video',
+        plain: true,
+      },
     ]);
   });
 

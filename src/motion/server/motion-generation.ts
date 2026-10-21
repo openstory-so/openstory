@@ -409,13 +409,21 @@ type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
 
 /**
  * Character (and other face-bearing) refs go through ingest — as `asset://`
- * when {@link registersWithArk}, else as `plain`. Location/element sheets
- * and audio/video refs are never ingested. Submit uses the same helper so
- * `arkUrlFor` is not asked for a URL the map does not hold.
+ * when {@link registersWithArk}, else as `plain`. A reference clip is always
+ * registered, as a Video asset (#1930): Ark refuses a lifelike face in a clip
+ * sent as a URL, and a run cannot read the likeness ledger to know a clip
+ * shows none. Location/element sheets and audio are never ingested. Submit
+ * uses the same helper so `arkUrlFor` is not asked for a URL the map does
+ * not hold.
  */
 function arkStillForMotionRef(ref: MotionRef): ArkStill | null {
+  // ponytail: every clip spends a CreateAsset turn; snapshot the ledger
+  // verdict on the ref if clips without a person ever crowd the pool.
+  if (ref.kind === 'video') {
+    return { storedUrl: ref.referenceImageUrl, slot: 'library', kind: 'Video' };
+  }
   if (ref.role === 'location' || ref.role === 'element') return null;
-  if (ref.kind === 'audio' || ref.kind === 'video') return null;
+  if (ref.kind === 'audio') return null;
   return {
     storedUrl: ref.referenceImageUrl,
     slot: 'library',

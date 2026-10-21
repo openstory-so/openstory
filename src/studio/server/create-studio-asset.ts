@@ -31,10 +31,7 @@ import {
   requireUploadRights,
 } from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
-import {
-  studioLikenessMedia,
-  studioReferenceImages,
-} from '@/studio/reference-rights';
+import { studioLikenessMedia } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
@@ -285,7 +282,7 @@ export async function createStudioAssets(
   );
   const noPersonImages: string[] = [];
   if (input.activity === 'video') {
-    for (const url of studioReferenceImages(input)) {
+    for (const url of studioLikenessMedia(input)) {
       if ((await likenessFromLedger(scopedDb, url)) === 'none') {
         noPersonImages.push(url);
       }
