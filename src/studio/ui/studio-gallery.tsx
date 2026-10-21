@@ -86,7 +86,7 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
@@ -787,6 +787,25 @@ export function GenerationDetail({
   );
 }
 
+/**
+ * Justified rows, newest first along the top (#2130). CSS columns filled
+ * top-to-bottom, so a burst of prompts stacked down the first column and
+ * pushed earlier tiles below the fold. Each tile grows by its width/height,
+ * so every tile in a row ends at the same height.
+ */
+const ROW_HEIGHT_REM = 15;
+
+function tileStyle(aspectRatio: string): CSSProperties {
+  const [w = 16, h = 9] = aspectRatio.split(':').map(Number);
+  const ratio = w / h;
+  return { flex: `${ratio} 1 ${ratio * ROW_HEIGHT_REM}rem`, minWidth: 0 };
+}
+
+/** Soaks up the last row's spare width so its tiles keep the row height. */
+function RowFiller() {
+  return <div aria-hidden className="grow-[1000000] basis-0" />;
+}
+
 export function StudioGallery({
   assets,
   isLoading,
@@ -858,13 +877,15 @@ export function StudioGallery({
 
   if (isLoading) {
     return (
-      <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+      <div className="flex flex-wrap gap-4">
         {Array.from({ length: 8 }).map((_, index) => (
           <Skeleton
             key={index}
-            className="mb-4 aspect-video w-full rounded-lg"
+            className="aspect-video rounded-lg"
+            style={tileStyle('16:9')}
           />
         ))}
+        <RowFiller />
       </div>
     );
   }
@@ -900,14 +921,14 @@ export function StudioGallery({
 
   return (
     <>
-      <div className="columns-2 gap-4 md:columns-3 lg:columns-4">
+      <div className="flex flex-wrap gap-4">
         {pending.map((tile) => (
-          <div key={tile.key} className="mb-4 break-inside-avoid">
+          <div key={tile.key} style={tileStyle(tile.aspectRatio)}>
             <PendingCard aspectRatio={tile.aspectRatio} />
           </div>
         ))}
         {assets.map((asset) => (
-          <div key={asset.id} className="mb-4 break-inside-avoid">
+          <div key={asset.id} style={tileStyle(studioAspectRatio(asset))}>
             <StudioCard
               asset={asset}
               onOpen={() => setOpenId(asset.id)}
@@ -915,6 +936,7 @@ export function StudioGallery({
             />
           </div>
         ))}
+        <RowFiller />
       </div>
       {hasNextPage && (
         <div className="flex justify-center">
