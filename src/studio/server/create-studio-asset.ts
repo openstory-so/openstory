@@ -31,7 +31,10 @@ import {
   requireUploadRights,
 } from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
-import { studioReferenceImages } from '@/studio/reference-rights';
+import {
+  studioLikenessMedia,
+  studioReferenceImages,
+} from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
@@ -53,7 +56,7 @@ import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
   studioCanEditSource,
-  studioUsedReferenceVideo,
+  studioUsedUploadedReferenceVideo,
   studioBillableSeconds,
 } from '@/studio/text-to-video';
 import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
@@ -181,16 +184,15 @@ async function requireOwnEditSource(
     throw new NotFoundError('Video to edit not found');
   }
   // An edit registers its source in Ark's portrait library, which vouches
-  // for whoever is in it. Reference clips skip the likeness gate (only stills
-  // are classified), so a clip made from one could put an unsigned real
-  // person there. An edit's own source already passed this check, so the
-  // source alone covers the whole chain (#1925).
-  // ponytail: any reference clip refuses, uploaded or generated — a clip URL
-  // does not say which row made it. Relax once uploaded videos are
-  // classified like stills.
-  if (studioUsedReferenceVideo(source.input)) {
+  // for whoever is in it. Uploaded reference clips are now checked on their
+  // frames (#1930), but clips made before that were not, and a frame grid can
+  // miss a face a full clip shows, so a clip made from an uploaded one is
+  // still never edited. A generated reference clip came from gated inputs.
+  // An edit's own source already passed this check, so the source alone
+  // covers the whole chain (#1925).
+  if (studioUsedUploadedReferenceVideo(source.input)) {
     throw new ValidationError(
-      'This clip was made from a reference video, so it cannot be edited'
+      'This clip was made from an uploaded reference video, so it cannot be edited'
     );
   }
 }
@@ -279,7 +281,7 @@ export async function createStudioAssets(
   // (#1581); library stills passed the same gate when they were saved.
   await requireUploadRights(
     scopedDb,
-    studioReferenceImages(input).filter(needsLikenessCheck)
+    studioLikenessMedia(input).filter(needsLikenessCheck)
   );
   const noPersonImages: string[] = [];
   if (input.activity === 'video') {

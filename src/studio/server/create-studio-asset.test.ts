@@ -588,6 +588,15 @@ describe('createStudioAssets', () => {
     });
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
 
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    await recordLikenessFinding(
+      scopedDb,
+      ['https://example.com/walk.mp4'],
+      'other',
+      {}
+    );
+
     await createStudioAssets(scopedDb, {
       activity: 'video',
       prompt: 'edit the fox turn',
@@ -882,6 +891,14 @@ describe('upload rights gate (#1581)', () => {
         ...video,
         mode: 'frames',
         startImageUrl: uploadUrl,
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    // An uploaded reference clip is checked like a still (#1930).
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`/r2/talent/${TEAM_ID}/uploads/01WALK.mp4`],
       })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
     expect(mockReserveRunCredits).not.toHaveBeenCalled();

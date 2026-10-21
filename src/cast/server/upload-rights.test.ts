@@ -28,6 +28,11 @@ vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/cast/server/talent/analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: mockAnalyze,
 }));
+const mockToCdnUrl = vi.fn((_url: string): string | null => null);
+vi.doMock('@/platform/server/storage/buckets', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  toCdnUrl: mockToCdnUrl,
+}));
 
 const {
   attestUploads,
@@ -144,6 +149,44 @@ describe('classifyUpload', () => {
     await expect(requireUploadRights(scopedDb, [url])).rejects.toBeInstanceOf(
       AttestationRequiredError
     );
+  });
+
+  it('judges a clip on a Cloudflare grid of its frames (#1930)', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mp4`;
+    const cdn = `https://storage.openstory.so/talent/${TEAM_ID}/uploads/01CLIP.mp4`;
+    mockToCdnUrl.mockReturnValueOnce(cdn);
+    verdict('human');
+
+    const rights = await classifyUpload({
+      scopedDb,
+      userId: USER_ID,
+      url: clip,
+      request,
+    });
+    expect(rights).toEqual({ status: 'needs_portrait' });
+    expect(mockAnalyze).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imageUrls: [
+          `https://assets.openstory.so/cdn-cgi/media/mode=spritesheet,time=0s,imageCount=6,width=1024/${cdn}`,
+        ],
+      })
+    );
+    // The verdict is keyed by the clip's own URL, so the gate reads it.
+    await expect(requireUploadRights(scopedDb, [clip])).rejects.toThrow(
+      AttestationRequiredError
+    );
+  });
+
+  it('refuses a clip it cannot transform, and records nothing', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mov`;
+
+    await expect(
+      classifyUpload({ scopedDb, userId: USER_ID, url: clip, request })
+    ).rejects.toThrow('can’t be checked for a real person');
+    expect(mockAnalyze).not.toHaveBeenCalled();
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
   });
 });
 

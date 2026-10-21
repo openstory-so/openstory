@@ -37,7 +37,7 @@ async function triggerElementVision(params: {
 
 /**
  * Prove a client-supplied element key may back a row: inside the team's
- * namespace, actually present in R2, and — for an image — cleared or signed
+ * namespace, actually present in R2, and — for an image or a clip — cleared or signed
  * on the likeness ledger (#1581). The existence check is not paranoia —
  * the move it replaced (#1471) was the only thing proving the object existed,
  * and without it a row can point at a permanent 404 that nothing surfaces
@@ -63,9 +63,9 @@ async function assertElementUploadAttachable(params: {
       `Element "${filename}" is no longer available in storage. Re-upload it and try again.`
     );
   }
-  // An unknown extension predates #1559 and was an image; a clip or an audio
-  // file has no likeness to check.
-  if ((elementKindFromFilename(filename) ?? 'image') === 'image') {
+  // An unknown extension predates #1559 and was an image. A clip is checked
+  // on its frames (#1930); an audio file has no likeness to check.
+  if ((elementKindFromFilename(filename) ?? 'image') !== 'audio') {
     await requireUploadRights(scopedDb, [elementImageUrlFromPath(path)]);
   }
 }

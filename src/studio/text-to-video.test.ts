@@ -13,7 +13,7 @@ import {
   studioBillableSeconds,
   studioCanEditSource,
   studioEditPrompt,
-  studioUsedReferenceVideo,
+  studioUsedUploadedReferenceVideo,
   studioCombinedRefCap,
   studioSupportsEndFrame,
   studioSupportsMode,
@@ -377,12 +377,27 @@ describe('auto length and edit (#1925)', () => {
     expect(studioCanEditSource(undefined)).toBe(false);
   });
 
-  it('flags a run that took reference clips', () => {
-    expect(studioUsedReferenceVideo({ referenceVideos: ['/r2/a.mp4'] })).toBe(
-      true
+  it('flags a run that took an uploaded reference clip', () => {
+    expect(
+      studioUsedUploadedReferenceVideo({
+        referenceVideos: ['/r2/talent/team1/uploads/a.mp4'],
+      })
+    ).toBe(true);
+    expect(
+      studioUsedUploadedReferenceVideo({
+        referenceVideos: ['https://example.com/a.mp4'],
+      })
+    ).toBe(true);
+    // A clip the studio generated passed through gated inputs.
+    expect(
+      studioUsedUploadedReferenceVideo({
+        referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
+      })
+    ).toBe(false);
+    expect(studioUsedUploadedReferenceVideo({ referenceVideos: [] })).toBe(
+      false
     );
-    expect(studioUsedReferenceVideo({ referenceVideos: [] })).toBe(false);
-    expect(studioUsedReferenceVideo({})).toBe(false);
+    expect(studioUsedUploadedReferenceVideo({})).toBe(false);
   });
 
   it('offers edit on Seedance 2.5 only', () => {

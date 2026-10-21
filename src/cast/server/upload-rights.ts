@@ -1,8 +1,9 @@
 /**
  * Upload rights gate (#1180, #1581) — the server half.
  *
- * One ledger row per uploaded image, keyed by the SHA-256 of its stored URL
- * under the `uploaded_image` subject type:
+ * One ledger row per uploaded image or clip, keyed by the SHA-256 of its
+ * stored URL under the `uploaded_image` subject type (a clip is judged on a
+ * grid of its frames, #1930):
  *
  *  - {@link classifyUpload} runs the likeness classifier once and records its
  *    verdict (`likeness-cleared-v1` / `likeness-detected-v1`);
@@ -19,6 +20,7 @@
  * off the client.
  */
 
+import { elementKindFromFilename } from '@/cast/element-kind';
 import type { Likeness } from '@/cast/likeness';
 import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
 import type { TalentSubjectKind } from '@/cast/subject-kind';
@@ -31,7 +33,9 @@ import {
   type AttestationStatement,
 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
-import { AttestationRequiredError } from '@/platform/errors';
+import { AttestationRequiredError, ValidationError } from '@/platform/errors';
+import { toCdnUrl } from '@/platform/server/storage/buckets';
+import { videoSpritesheetUrl } from '@/look/cloudflare-video';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadAttestation } from '@/platform/server/db/schema/compliance';
 
@@ -117,6 +121,24 @@ export async function recordLikenessFinding(
 }
 
 /**
+ * What the classifier looks at: the still itself, or for a clip a Cloudflare
+ * grid of its frames (#1930). A clip off our zone (local dev's `/r2`, a raw
+ * URL elsewhere) cannot be transformed, so it is refused, never waved through.
+ */
+function classifierImageUrl(url: string): string {
+  if (elementKindFromFilename(new URL(url, 'http://x').pathname) !== 'video') {
+    return url;
+  }
+  const sheet = videoSpritesheetUrl(toCdnUrl(url) ?? url);
+  if (!sheet) {
+    throw new ValidationError(
+      'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
+    );
+  }
+  return sheet;
+}
+
+/**
  * The rights for one upload: what the ledger already says, or one vision
  * call whose verdict is written so the next ask is free. Never defaults to
  * human, never defaults to cleared: a classifier failure throws and leaves
@@ -135,7 +157,7 @@ export async function classifyUpload(opts: {
   const analysis = await analyzeTalentMediaForTeam({
     scopedDb: opts.scopedDb,
     userId: opts.userId,
-    imageUrls: [opts.url],
+    imageUrls: [classifierImageUrl(opts.url)],
     filenames: opts.filename ? [opts.filename] : undefined,
     idempotencyKey: `likeness:${opts.url}`,
   });
@@ -182,13 +204,13 @@ export async function requireUploadRights(
     const row = await latestRow(scopedDb, url);
     if (!row) {
       throw new AttestationRequiredError(
-        'This image has not been checked for a real person yet'
+        'This upload has not been checked for a real person yet'
       );
     }
     const rights = rightsFromRow(row);
     if (rights.status === 'needs_portrait') {
       throw new AttestationRequiredError(
-        'Confirm the rights to this person’s likeness before using the image'
+        'Confirm the rights to this person’s likeness before using the upload'
       );
     }
     result.set(url, { depictsRealPerson: rights.status === 'signed' });
@@ -265,7 +287,7 @@ export async function carryUploadRights(
   const row = await latestRow(scopedDb, fromUrl);
   if (!row) {
     throw new AttestationRequiredError(
-      'This image has not been checked for a real person yet'
+      'This upload has not been checked for a real person yet'
     );
   }
   await scopedDb.compliance.attestations.record({

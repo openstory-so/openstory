@@ -59,6 +59,23 @@ export function videoPosterUrl(src: string, width = 640): string | undefined {
 }
 
 /**
+ * One JPEG grid of `count` frames sampled across the clip (its first minute,
+ * Cloudflare's spritesheet default). The likeness gate reads a clip through
+ * this (#1930). `undefined` for non-transformable sources.
+ */
+export function videoSpritesheetUrl(
+  src: string,
+  count = 6,
+  width = 1024
+): string | undefined {
+  if (!isTransformableVideoUrl(src)) return undefined;
+  return buildMediaUrl(
+    `mode=spritesheet,time=0s,imageCount=${count},width=${width}`,
+    src
+  );
+}
+
+/**
  * A downscaled, re-encoded MP4 sized to `width` — much smaller than the master
  * clip for grid-cell playback. Returns the original URL unchanged for
  * non-transformable sources.

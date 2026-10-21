@@ -81,7 +81,7 @@ import {
 import { useAttestUploads, useUploadRights } from '@/cast/ui/use-upload-rights';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { isInsufficientCreditsError } from '@/platform/errors';
-import { studioReferenceImages } from '@/studio/reference-rights';
+import { studioLikenessMedia } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
@@ -663,11 +663,11 @@ export function StudioComposer({
   // --- rights (#1581) ---------------------------------------------------------
   // Same rule the server gate applies: uploads and raw URLs get checked,
   // library rows do not. Logged out, nothing is asked until sign-in.
-  const tiles = [...references, startFrame, endFrame].filter(
+  const tiles = [...references, ...videoRefs, startFrame, endFrame].filter(
     (r): r is StudioReference => r !== null
   );
   const gatedUrls = [
-    ...new Set(studioReferenceImages(buildInput()).filter(needsLikenessCheck)),
+    ...new Set(studioLikenessMedia(buildInput()).filter(needsLikenessCheck)),
   ];
   const rights = useUploadRights(
     gatedUrls.map((url) => ({
@@ -725,7 +725,9 @@ export function StudioComposer({
       return url === startFrame?.url ? 'Start frame' : 'End frame';
     }
     const index = references.findIndex((r) => r.url === url);
-    return index >= 0 ? `@Image${index + 1}` : url;
+    if (index >= 0) return `@Image${index + 1}`;
+    const clip = videoRefs.findIndex((r) => r.url === url);
+    return clip >= 0 ? `@Video${clip + 1}` : url;
   };
   const badges = (urls: string[]) => urls.map(badgeFor).join(', ');
   const confirmRights = () => {
@@ -1316,6 +1318,8 @@ export function StudioComposer({
                     key={`${reference.url}-${index}`}
                     reference={reference}
                     badge={`@Video${index + 1}`}
+                    checking={checking.has(reference.url)}
+                    realPerson={realPersonToggle(reference.url)}
                     onRemove={() => removeReference('video', index)}
                   />
                 ))}

@@ -1008,7 +1008,13 @@ export async function storeUpload(
     }
   }
 
-  if (!stored.mediaType.startsWith('image/')) {
+  // A clip is checked where it can become a reference (#1930): an element or
+  // a Studio reference. A shot's own clip is the output, not a reference.
+  const checked =
+    stored.mediaType.startsWith('image/') ||
+    (stored.mediaType.startsWith('video/') &&
+      (use === 'element' || use === 'studio'));
+  if (!checked) {
     return { ...stored, rights: 'not_checked' };
   }
   // The likeness gate (#1581), as the editor's `classifyUploadFn` and the
@@ -1024,7 +1030,7 @@ export async function storeUpload(
   if (rights.status === 'needs_portrait') {
     if (!args.portraitAttestation) {
       throw new AttestationRequiredError(
-        'This image shows a real person: send portraitAttestation (the portrait-rights statement version and your authorization basis) to upload it.'
+        'This upload shows a real person: send portraitAttestation (the portrait-rights statement version and your authorization basis) to upload it.'
       );
     }
     await attestUploads(
