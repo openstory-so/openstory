@@ -39,8 +39,8 @@ type MutationOptions = {
 /** One cache for the whole file, keyed by the serialised query key. */
 const cache = new Map<string, unknown>();
 const queryClient = {
-  getQueryData: (key: unknown[]) => cache.get(JSON.stringify(key)),
-  setQueryData: (key: unknown[], next: unknown) => {
+  getQueryData: (key: readonly unknown[]) => cache.get(JSON.stringify(key)),
+  setQueryData: (key: readonly unknown[], next: unknown) => {
     const id = JSON.stringify(key);
     cache.set(id, typeof next === 'function' ? next(cache.get(id)) : next);
   },
