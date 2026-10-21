@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { dbSceneId } from '@/shots/scene-id';
-import { NO_SCENE_SCRIPT_MESSAGE } from '@/shots/scene-script-message';
 import { SceneScriptDocument } from './scene-script-document';
 import { SceneScriptTab } from './scene-script-tab';
 import type { SceneWithScript } from './use-scenes';
@@ -33,12 +32,12 @@ function scene(script: SceneWithScript['script']): SceneWithScript {
 }
 
 describe('script editing when a scene has no script', () => {
-  it('hides the inspector editor', () => {
+  it.each([undefined, ''])('keeps the inspector editor (%j)', (scriptText) => {
     const html = renderToStaticMarkup(
       <SceneScriptTab
         sceneId="scene-1"
-        scriptText={undefined}
-        editedScript={undefined}
+        scriptText={scriptText}
+        editedScript="A first line"
         onEditedScriptChange={vi.fn()}
         isSaving={false}
         onSave={vi.fn()}
@@ -49,33 +48,15 @@ describe('script editing when a scene has no script', () => {
       />
     );
 
-    expect(html).toContain(NO_SCENE_SCRIPT_MESSAGE);
+    expect(html).toContain('<textarea');
+    expect(html).toContain('Save</button>');
+    expect(html).toContain('Dictate script');
     expect(html).toContain('Lighting');
     expect(html).toContain('Lines');
-    expect(html).not.toContain('<textarea');
-    expect(html).not.toContain('Save</button>');
-    expect(html).not.toContain('Dictate script');
+    expect(html).not.toContain('Scene has no script');
   });
 
-  it('still edits a saved empty script', () => {
-    const html = renderToStaticMarkup(
-      <SceneScriptTab
-        sceneId="scene-1"
-        scriptText=""
-        editedScript={undefined}
-        onEditedScriptChange={vi.fn()}
-        isSaving={false}
-        onSave={vi.fn()}
-        isCopied={false}
-        onCopy={vi.fn()}
-      />
-    );
-
-    expect(html).toContain('<textarea');
-    expect(html).not.toContain(NO_SCENE_SCRIPT_MESSAGE);
-  });
-
-  it('hides the script-document editor', () => {
+  it('keeps the script-document editor', () => {
     const html = renderToStaticMarkup(
       <SceneScriptDocument
         sequenceId="sequence-1"
@@ -85,10 +66,9 @@ describe('script editing when a scene has no script', () => {
       />
     );
 
-    expect(html).toContain(NO_SCENE_SCRIPT_MESSAGE);
+    expect(html).toContain('<textarea');
+    expect(html).toContain('Dictate script');
     expect(html).toContain('Garage');
-    expect(html).not.toContain('<textarea');
-    expect(html).not.toContain('Save</button>');
-    expect(html).not.toContain('Dictate script');
+    expect(html).not.toContain('Scene has no script');
   });
 });

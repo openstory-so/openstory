@@ -6,7 +6,6 @@
  * and the segment it feeds. See `ShotDurationField`.
  */
 
-import { NO_SCENE_SCRIPT_MESSAGE } from '@/shots/scene-script-message';
 import { Button } from '@/ui/shadcn/button';
 import type { MentionItem } from '@/shots/ui/prompt-mention/mention-items';
 import { MarkdownEditor } from '@/ui/text-editor/markdown-editor';
@@ -18,8 +17,6 @@ type SceneScriptTabProps = {
   /** The scene being edited — absent when the selection resolves to no single
    *  scene, which disables the editor rather than writing to a guessed target. */
   sceneId: string | undefined;
-  /** Selected script extract. `undefined` means this scene has no script
-   *  version, so the editor is not shown. `''` is a saved empty script. */
   scriptText: string | undefined;
   editedScript: string | undefined;
   onEditedScriptChange: (value: string | undefined) => void;
@@ -66,20 +63,6 @@ export const SceneScriptTab: React.FC<SceneScriptTabProps> = ({
         Select a single scene to edit its script, or use the Script view to edit
         them all in one document.
       </p>
-    );
-  }
-
-  // No selected version: saving would throw. Say so instead of offering an
-  // editor that fails on Save (#1793). Dialogue and setting still edit.
-  if (scriptText === undefined) {
-    return (
-      <div className="flex flex-col gap-3">
-        <p className="py-6 text-center text-sm text-muted-foreground">
-          {NO_SCENE_SCRIPT_MESSAGE}
-        </p>
-        {setting}
-        {dialogue}
-      </div>
     );
   }
 

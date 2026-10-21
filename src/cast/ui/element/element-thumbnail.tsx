@@ -121,11 +121,10 @@ export const ElementThumbnail: React.FC<ElementThumbnailProps> = ({
         <p className="text-xs text-muted-foreground">
           {`Audio${length ? ` · ${length}` : ''}`}
         </p>
-        {playing !== undefined &&
-          url && (
-            // eslint-disable-next-line jsx-a11y/media-has-caption -- a user-uploaded voice line; no caption track exists
-            <audio ref={audioRef} src={url} preload="none" />
-          )}
+        {playing !== undefined && url && (
+          // eslint-disable-next-line jsx-a11y/media-has-caption -- a user-uploaded voice line; no caption track exists
+          <audio ref={audioRef} src={url} preload="none" />
+        )}
       </div>
     );
   }

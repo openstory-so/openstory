@@ -1,13 +1,8 @@
-import { ValidationError } from '@/platform/errors';
 import {
   getComposedScriptFn,
   getScenesFn,
   updateSceneScriptFn,
 } from '@/shots/scenes.fn';
-import {
-  cachedSceneHasNoScript,
-  NO_SCENE_SCRIPT_MESSAGE,
-} from '@/shots/scene-script-message';
 import type { Scene } from '@/shots/scene-analysis.schema';
 import type { SceneRow } from '@/platform/server/db/schema';
 import { sceneFacetKeys } from './use-scene-facets';
@@ -66,23 +61,14 @@ export function useScenesBySequence(sequenceId?: string) {
 export function useSaveSceneScript(sequenceId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { sceneId: string; extract: string }) => {
-      // The scene list already knows there is nothing to edit. Skip the
-      // server fn so this does not show up as a route failure (#1793).
-      const cached = queryClient.getQueryData<SceneWithScript[]>(
-        sceneKeys.list(sequenceId)
-      );
-      if (cachedSceneHasNoScript(cached, input.sceneId)) {
-        throw new ValidationError(NO_SCENE_SCRIPT_MESSAGE);
-      }
-      return updateSceneScriptFn({
+    mutationFn: async (input: { sceneId: string; extract: string }) =>
+      updateSceneScriptFn({
         data: {
           sequenceId,
           sceneId: input.sceneId,
           extract: input.extract,
         },
-      });
-    },
+      }),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: shotKeys.list(sequenceId) }),

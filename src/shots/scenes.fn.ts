@@ -97,8 +97,8 @@ export const updateSceneScriptFn = createServerFn({ method: 'POST' })
 /**
  * Create a scene by hand (no storyboard run), appended at the end of the
  * sequence, with an optional first shot. The scene starts script-less.
- * Script analysis creates the first version; `updateSceneScriptFn` only
- * edits a version that already exists (#1793).
+ * Saving in the editor writes the first script via `updateSceneScriptFn`,
+ * including an empty one (#1793).
  */
 export const createSceneFn = createServerFn({ method: 'POST' })
   .middleware([sequenceAccessMiddleware])
