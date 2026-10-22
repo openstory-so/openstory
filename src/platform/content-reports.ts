@@ -39,7 +39,7 @@ export const CONTENT_REPORT_TARGET_TYPES = [
   'music_variant',
   'sequence_export',
   'generated_asset',
-  'talent',
+  'talent', // old rows only; new reports exclude it (content-reports.fn.ts)
   'sequence_element',
   'style',
   'user',

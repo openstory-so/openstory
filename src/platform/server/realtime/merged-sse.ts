@@ -21,7 +21,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 const PROGRESS_SUBJECT_KEYS = [
   'shotId',
-  'talentId',
   'locationId',
   'sceneId',
   'characterId',

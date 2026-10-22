@@ -1,6 +1,6 @@
 /**
  * Auth-aware query for data that has both a public (anonymous) and a
- * team-scoped (authenticated) variant — talent, styles.
+ * team-scoped (authenticated) variant — styles.
  *
  * Only a *settled* null session counts as anonymous: while the session is
  * loading the query waits, and a failed session lookup surfaces as a query

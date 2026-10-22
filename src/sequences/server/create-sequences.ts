@@ -161,7 +161,6 @@ export const createSequences = createServerOnlyFn(
       musicModel,
       audioModels: audioModelsInput,
       targetDurationSeconds,
-      suggestedTalentIds,
       suggestedLocationIds,
       castCharacterIds,
       elementUploads,
@@ -390,9 +389,6 @@ export const createSequences = createServerOnlyFn(
               generateStartFrames,
               generateVoices,
               targetDurationSeconds,
-              suggestedTalentIds: suggestedTalentIds?.length
-                ? suggestedTalentIds
-                : undefined,
               suggestedLocationIds: suggestedLocationIds?.length
                 ? suggestedLocationIds
                 : undefined,
@@ -453,7 +449,6 @@ export const createSequences = createServerOnlyFn(
               stopAt,
               musicModel: primaryAudioModel,
               audioModels,
-              suggestedTalentIds,
               suggestedLocationIds,
             };
 

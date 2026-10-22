@@ -1,6 +1,6 @@
 /**
  * Scoped Characters Sub-module
- * Character CRUD, sheet generation, talent assignment, and shot-character matching.
+ * Character CRUD, sheet generation, and shot-character matching.
  *
  * A character belongs to the team; a sequence uses it through a cast link
  * (#2017). Every sequence read here comes through that link and returns the
@@ -11,7 +11,6 @@
 import {
   and,
   asc,
-  count,
   desc,
   eq,
   exists,
@@ -39,10 +38,8 @@ import type {
   LegacyCharacterBibleColumn,
   LegacyCharacterSheetColumn,
   LookVersionSource,
-  CharacterWithTalent,
   CastCharacter,
   CastCharacterWithSheet,
-  CastCharacterWithTalent,
   Shot,
   NewCharacter,
   SheetStatus,
@@ -62,7 +59,6 @@ import {
   sequenceCast,
   sequences,
   shots,
-  talent,
 } from '@/platform/server/db/schema';
 import { identityToken, nextIdentityToken } from '@/cast/bible-field';
 import { renderingFor } from '@/cast/rendering';
@@ -278,7 +274,6 @@ const castColumns = {
   characterId: sequenceCast.scriptCharacterId,
   selectedBibleVersionId: characters.selectedBibleVersionId,
   selectedVoiceVersionId: characters.selectedVoiceVersionId,
-  talentId: characterBibleVersions.talentId,
   deletedAt: sequenceCast.removedAt,
 };
 
@@ -289,7 +284,6 @@ const castColumns = {
 const ownColumns = {
   selectedBibleVersionId: characters.selectedBibleVersionId,
   selectedVoiceVersionId: characters.selectedVoiceVersionId,
-  talentId: characterBibleVersions.talentId,
   deletedAt: characters.deletedAt,
 };
 
@@ -385,7 +379,7 @@ const LIVE_VOICE_CLAIM_STATUSES = [
  * - A voice whose provider holds no slot is left out: that is
  *   `voiceProviderOf`'s call, not a prefix read here.
  * - "Still pointed at" is `getVoiceReferenceCount`'s rule: another
- *   character's selected version, or a talent.
+ *   character's selected version.
  */
 export async function voiceIdsHeldOnlyBy(
   db: Database,
@@ -419,11 +413,7 @@ export async function voiceIdsHeldOnlyBy(
     .where(
       sql`NOT (${where}) and ${inArray(characterVoiceVersions.voiceId, theirs)}`
     );
-  const onTalent = await db
-    .select({ voiceId: talent.voiceId })
-    .from(talent)
-    .where(inArray(talent.voiceId, theirs));
-  const kept = new Set([...onSurvivors, ...onTalent].map((row) => row.voiceId));
+  const kept = new Set(onSurvivors.map((row) => row.voiceId));
   return ids.filter((id) => !kept.has(id));
 }
 
@@ -686,32 +676,12 @@ export function createCharactersMethods(db: Database, teamId: string) {
       )
     )[0] ?? null;
 
-  /** The talent a character wears, for {@link getWithTalent}. */
-  const talentOf = async (
-    talentId: string | null
-  ): Promise<CastCharacterWithTalent['talent']> => {
-    if (!talentId) return null;
-    const [row] = await db
-      .select({
-        id: talent.id,
-        name: talent.name,
-        imageUrl: talent.imageUrl,
-        isHuman: talent.isHuman,
-      })
-      .from(talent)
-      .where(eq(talent.id, talentId));
-    return row ?? null;
-  };
-
   /**
    * The one writer of a bible (#1600): the statements that append a version
    * row and make it the character's current one, for the caller's own
-   * `db.batch`. The version carries the cast talent, so every caller says
-   * who plays the character: a new `talentId` is a recast,
-   * `existing.talentId` keeps the cast. A change to a field the sheets read,
-   * or of the talent, revokes the in-flight sheet claim of every look of
-   * the character (#1113, #2015) in the same batch. Empty when nothing
-   * moved.
+   * `db.batch`. A change to a field the sheets read revokes the in-flight
+   * sheet claim of every look of the character (#1113, #2015) in the same
+   * batch. Empty when nothing moved.
    *
    * The legacy features text (#2065) is carried to the new version as it
    * is: an edit to the age must not move it, or drop it. Only the default
@@ -725,27 +695,22 @@ export function createCharactersMethods(db: Database, teamId: string) {
     existing: CharacterBible & {
       legacyDistinguishingFeatures: string | null;
       id: string;
-      talentId: string | null;
     },
     patch: Partial<CharacterBible>,
     opts: {
       source: BibleVersionSource;
       createdBy: string | null;
-      talentId: string | null;
     }
   ) => {
     const before = pickCharacterBible(existing);
     const after = mergeBible(before, patch);
     const moved = characterBibleChanged(before, after);
-    const { talentId } = opts;
-    const talentMoved = talentId !== existing.talentId;
-    if (moved.length === 0 && !talentMoved) {
-      return { moved, talentMoved, versionId: null, statements: [] };
+    if (moved.length === 0) {
+      return { moved, versionId: null, statements: [] };
     }
     const versionId = generateId();
     return {
       moved,
-      talentMoved,
       /** The version appended; the event names the move from → to. */
       versionId,
       statements: [
@@ -757,7 +722,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
             existing.legacyDistinguishingFeatures === null
               ? null
               : sql`CASE WHEN EXISTS (SELECT 1 FROM ${characters} c JOIN ${characterBibleVersions} cur ON cur.id = c.selected_bible_version_id WHERE c.id = ${existing.id} AND cur.distinguishing_features IS NULL) THEN NULL ELSE ${existing.legacyDistinguishingFeatures} END`,
-          talentId,
           source: opts.source,
           createdBy: opts.createdBy,
         }),
@@ -765,7 +729,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
           .update(characters)
           .set({ selectedBibleVersionId: versionId, updatedAt: new Date() })
           .where(eq(characters.id, existing.id)),
-        ...(touchesSheet(moved) || talentMoved
+        ...(touchesSheet(moved)
           ? [demoteCharacterSheetClaims(db, eq(characters.id, existing.id))]
           : []),
       ],
@@ -860,10 +824,9 @@ export function createCharactersMethods(db: Database, teamId: string) {
   };
 
   /**
-   * Every row holding a provider voice id: a character whose current voice
-   * version names it, and a talent's own column. The one list behind
-   * `getVoiceReferenceCount` and `getOwnVoiceHolds`, so the release rule and
-   * a caller's "my own references" cannot drift apart.
+   * Every character whose current voice version names a provider voice id.
+   * The one list behind `getVoiceReferenceCount` and `getOwnVoiceHolds`, so
+   * the release rule and a caller's "my own references" cannot drift apart.
    */
   const voiceReferences = async (voiceId: string) => {
     const current = await db
@@ -874,11 +837,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
       )
       .where(eq(characterVoiceVersions.voiceId, voiceId));
-    const [tal] = await db
-      .select({ n: count() })
-      .from(talent)
-      .where(eq(talent.voiceId, voiceId));
-    return { current, talents: tal?.n ?? 0 };
+    return { current };
   };
 
   /** The live shots whose scene tags this character, optionally in one look. */
@@ -983,14 +942,11 @@ export function createCharactersMethods(db: Database, teamId: string) {
     }));
   };
 
-  type BibleWriteOpts = { actorId: string | null } & (
-    | { /** A person's form or API edit. */ source: 'edit' }
-    | {
-        /** A talent cast; `talentId` null uncasts. */
-        source: 'recast';
-        talentId: string | null;
-      }
-  );
+  type BibleWriteOpts = {
+    actorId: string | null;
+    /** A person's form or API edit. */
+    source: 'edit';
+  };
 
   // `updateBible`'s doc is on the method below; these are its two shapes.
   async function updateBible(
@@ -1024,7 +980,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
       const statements: BatchItem<'sqlite'>[] = bibleWrite(current, bibleData, {
         source: opts.source,
         createdBy: opts.actorId,
-        talentId: opts.source === 'recast' ? opts.talentId : current.talentId,
       }).statements;
       if (standardClothing !== undefined) {
         const defaultLook = current.looks.find((look) => look.isDefault);
@@ -1078,7 +1033,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
     const { statements, versionId } = bibleWrite(existing, bibleData, {
       source: opts.source,
       createdBy: opts.actorId,
-      talentId: opts.source === 'recast' ? opts.talentId : existing.talentId,
     });
     // Clothing is the default look's (#2015): the same edit, written as a
     // look version.
@@ -1102,7 +1056,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
         kind: 'character.updated',
         targetType: 'character',
         targetId: id,
-        summary: `${opts.source === 'recast' ? 'Recast' : 'Edited'} character ${data.name ?? existing.name}`,
+        summary: `Edited character ${data.name ?? existing.name}`,
         data: {
           prevState: prev,
           // The version move, null when no version was appended.
@@ -1114,9 +1068,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
       }),
       ...statements,
       ...look.statements,
-      ...(opts.source === 'recast'
-        ? [demoteCharacterSheetClaims(db, eq(characters.id, id))]
-        : []),
     ]);
     // `voiceDescription` is the selected voice version's, so an edit to it
     // is a voice write and belongs in the voice history (#1657). Only when it
@@ -1156,20 +1107,16 @@ export function createCharactersMethods(db: Database, teamId: string) {
       await currentOf(id),
 
     /**
-     * One character with its talent, as a sequence casts it or, from no
-     * sequence (null), at its current version (#2017). Null when gone.
+     * One character, as a sequence casts it or, from no sequence (null), at
+     * its current version (#2017). Null when gone.
      */
-    getWithTalent: async (
+    getCastOrCurrent: async (
       sequenceId: string | null,
       id: string
-    ): Promise<CharacterWithTalent | null> => {
-      const character =
-        sequenceId === null
-          ? await currentOf(id)
-          : await castOf(sequenceId, id);
-      if (!character) return null;
-      return { ...character, talent: await talentOf(character.talentId) };
-    },
+    ): Promise<CharacterWithSheet | CastCharacterWithSheet | null> =>
+      sequenceId === null
+        ? await currentOf(id)
+        : ((await castOf(sequenceId, id)) ?? null),
 
     /**
      * Make a character with no sequence (#2065, the Characters page): one
@@ -1203,7 +1150,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
           id: versionId,
           characterId: id,
           ...bible,
-          talentId: null,
           source: 'edit',
           createdBy: opts.createdBy,
         }),
@@ -1392,51 +1338,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
           asc(characterBibleVersions.id)
         ),
 
-    listWithTalent: async (
-      sequenceId: string
-    ): Promise<CastCharacterWithTalent[]> => {
-      const results = await db
-        .select({
-          character: characterColumns,
-          talent: {
-            id: talent.id,
-            name: talent.name,
-            imageUrl: talent.imageUrl,
-            isHuman: talent.isHuman,
-          },
-        })
-        .from(sequenceCast)
-        .innerJoin(characters, eq(characters.id, sequenceCast.characterId))
-        .leftJoin(
-          characterBibleVersions,
-          eq(characterBibleVersions.id, characters.selectedBibleVersionId)
-        )
-        .leftJoin(talent, eq(characterBibleVersions.talentId, talent.id))
-        .leftJoin(
-          characterSheetVariants,
-          eq(characterSheetVariants.id, legacyLiveSheetVersionId)
-        )
-        .leftJoin(
-          characterVoiceVersions,
-          eq(characterVoiceVersions.id, characters.selectedVoiceVersionId)
-        )
-        .where(
-          and(
-            inTeam,
-            eq(sequenceCast.sequenceId, sequenceId),
-            isNull(sequenceCast.removedAt)
-          )
-        );
-
-      const resolved = await resolveCastLooks(
-        results.map((row) => row.character)
-      );
-      return resolved.map((character, index) => {
-        const cast = results[index]?.talent;
-        return { ...character, talent: cast?.id ? cast : null };
-      });
-    },
-
     /** These characters as `sequenceId` casts them. */
     getByIds: async (
       sequenceId: string,
@@ -1481,7 +1382,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * `(sequenceId, characterId)`. The bible lands as a version row (#1600),
      * appended only when a field moved, so an identical re-analysis adds no
      * history and keeps an in-flight sheet claim. A move of a field the
-     * sheets read, or of the cast talent, revokes every look's (#1113).
+     * sheets read revokes every look's (#1113).
      *
      * `standardClothing` and `sheetStatus` are its default look's (#2015): a
      * new character gets one, under the character's own id, and a re-analysis
@@ -1542,7 +1443,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         voiceDescription: incomingVoiceDescription,
         sequenceId,
         characterId: _scriptCharacterId,
-        talentId,
         ...row
       } = data;
       const look = {
@@ -1562,7 +1462,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
           { ...look, sequenceId }
         );
         // A field left out keeps its value, as the column upsert did.
-        // A talent left out keeps the cast; null uncasts.
         // A re-analysis may turn not-a-person into a person, never the
         // reverse (#2065): the script's guess does not undo what the row
         // says, and over-registering is the safe direction. Decided here,
@@ -1574,10 +1473,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
             ...bibleOf(data),
             ...(existing.isPerson ? { isPerson: true } : {}),
           },
-          {
-            ...opts,
-            talentId: talentId === undefined ? existing.talentId : talentId,
-          }
+          opts
         );
         await db.batch([
           // A re-analysis re-extracting a removed character revives it — the
@@ -1643,7 +1539,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
             id: versionId,
             characterId: id,
             ...bible,
-            talentId: talentId ?? null,
             source: opts.source,
             createdBy: opts.createdBy,
           }),
@@ -1676,8 +1571,8 @@ export function createCharactersMethods(db: Database, teamId: string) {
       // The voice the cast arrived with fills only what the character does
       // not already have (#1553): re-writing a voice would orphan an
       // ElevenLabs slot. What lands is a history row (#1657) — the ORIGINAL
-      // one for a new character, so the analysed / talent-copied voice can be
-      // selected back — and an identical re-upsert appends nothing.
+      // one for a new character, so the analysed voice can be selected back —
+      // and an identical re-upsert appends nothing.
       const voicePatch: CharacterVoiceUpdate = {
         ...(!character.voiceId && incomingVoiceId
           ? { voiceId: incomingVoiceId }
@@ -1690,7 +1585,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
         await updateVoice(
           character.id,
           voicePatch,
-          // A voice id only ever arrives as the cast talent's copy.
           voicePatch.voiceId ? 'library' : 'analysis',
           // Seeded by the cast-records step, not by a person.
           null,
@@ -1854,7 +1748,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
     /**
      * Rows (any team — the id is the ElevenLabs account's) still pointing at
      * a voice ({@link voiceReferences}): a character's current version
-     * (#1788), a talent's own column. A character's current pointer counts
+     * (#1788). A character's current pointer counts
      * whether or not a sequence casts it: a soft-remove stamps the link and
      * THEN releases (provider first, row second), so a current pointer still
      * holding an id is a release that failed, and the voice it names is
@@ -1863,7 +1757,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
      */
     getVoiceReferenceCount: async (voiceId: string): Promise<number> => {
       const refs = await voiceReferences(voiceId);
-      return refs.current.length + refs.talents;
+      return refs.current.length;
     },
 
     /**
@@ -2196,11 +2090,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * fields, for undo/audit) in one `db.batch()`. Staleness follows purely by
      * derivation: the sheet hash and the prompt hashes embed these fields, so
      * verifies flip to 'stale' with no flag written here.
-     *
-     * A recast is the same write (#2017): ONE version carrying the new talent
-     * and the appearance copied from it. The cast talent feeds every look's
-     * sheet, so a recast revokes the sheet claims even when the talent did
-     * not move (#1113, #2015).
      *
      * `sequenceId` null is an edit made from no sequence (#2065, the
      * Characters page): the same write with no event, returning the

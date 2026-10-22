@@ -6,19 +6,18 @@ describe('library search memory', () => {
     vi.stubGlobal('window', undefined);
     const { librarySearchFor, rememberLibrarySearch } =
       await import('./library-search');
-    rememberLibrarySearch({ tab: 'talent', q: 'secret' });
-    expect(librarySearchFor('talent')).toEqual({ tab: 'talent' });
+    rememberLibrarySearch({ q: 'secret' });
+    expect(librarySearchFor()).toEqual({});
     vi.unstubAllGlobals();
   });
 
-  it('returns a tab to its last search in the browser', async () => {
+  it('returns the last search in the browser', async () => {
     vi.resetModules();
     vi.stubGlobal('window', {});
     const { librarySearchFor, rememberLibrarySearch } =
       await import('./library-search');
-    rememberLibrarySearch({ tab: 'talent', q: 'blonde' });
-    expect(librarySearchFor('talent')).toEqual({ tab: 'talent', q: 'blonde' });
-    expect(librarySearchFor('characters')).toEqual({});
+    rememberLibrarySearch({ q: 'blonde' });
+    expect(librarySearchFor()).toEqual({ q: 'blonde' });
     vi.unstubAllGlobals();
   });
 });

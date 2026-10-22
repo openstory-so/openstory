@@ -22,6 +22,16 @@ describe('apiCreateSequenceSchema', () => {
     );
   });
 
+  it('refuses reference images on an inline character rather than dropping them (#2135)', () => {
+    const result = apiCreateSequenceSchema.safeParse({
+      script: 'A valid length script here.',
+      characters: [
+        { name: 'Ada', referenceImageUrls: ['https://cdn.example/a.png'] },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects music without motion', () => {
     const result = apiCreateSequenceSchema.safeParse({
       script: 'A valid length script here.',

@@ -28,11 +28,7 @@ import {
   NotFoundError,
   ValidationError,
 } from '@/platform/errors';
-import {
-  characterSheetTalentHashFields,
-  locationSheetBibleFields,
-} from '@/cast/server/workflows/sheet-snapshots';
-import { resolveCastTalent } from '@/cast/server/sheets/character-sheet-trigger';
+import { locationSheetBibleFields } from '@/cast/server/workflows/sheet-snapshots';
 import { toLocationMetadata } from '@/cast/server/sheets/location-sheet-trigger';
 import {
   loadShotPromptContext,
@@ -533,7 +529,7 @@ export async function setSequenceMusicFromUpload(
 
 /**
  * Finalize an uploaded character sheet: append a completed version, select it,
- * stamp parent + version with the CURRENT bible + talent sheet + style + model
+ * stamp parent + version with the CURRENT bible + style + model
  * hash, and log a `sheet.uploaded` event. No generation is triggered. Stills
  * re-stale because they hash the new selected version id.
  */
@@ -574,7 +570,6 @@ export async function setCharacterSheetFromUpload(
   // No image model drew an upload, and the sheet is shared by sequences
   // with different ones (#2017): it is stamped with the upload marker, which
   // the verify reads off the live version (`uploadedCharacterSheetHashMatchesStored`).
-  const cast = await resolveCastTalent(scopedDb, character.talentId);
   const imageModel = USER_UPLOAD_MODEL;
   const inputHash = await computeCharacterSheetInputHash({
     characterBible: {
@@ -589,8 +584,8 @@ export async function setCharacterSheetFromUpload(
     },
     styling: character.styling,
     faceSheetVersionId: face === null ? null : face.versionId,
-    talentSheetHash: cast.talentSheetInputHash ?? null,
-    talent: characterSheetTalentHashFields(cast),
+    talentSheetHash: null,
+    talent: null,
     // The current shape reads no style (#2017).
     styleConfigHash: null,
     imageModel,
@@ -1008,7 +1003,13 @@ export async function storeUpload(
     }
   }
 
-  if (!stored.mediaType.startsWith('image/')) {
+  // A clip is checked where it can become a reference (#1930): an element or
+  // a Studio reference. A shot's own clip is the output, not a reference.
+  const checked =
+    stored.mediaType.startsWith('image/') ||
+    (stored.mediaType.startsWith('video/') &&
+      (use === 'element' || use === 'studio'));
+  if (!checked) {
     return { ...stored, rights: 'not_checked' };
   }
   // The likeness gate (#1581), as the editor's `classifyUploadFn` and the
@@ -1024,7 +1025,7 @@ export async function storeUpload(
   if (rights.status === 'needs_portrait') {
     if (!args.portraitAttestation) {
       throw new AttestationRequiredError(
-        'This image shows a real person: send portraitAttestation (the portrait-rights statement version and your authorization basis) to upload it.'
+        'This upload shows a real person: send portraitAttestation (the portrait-rights statement version and your authorization basis) to upload it.'
       );
     }
     await attestUploads(

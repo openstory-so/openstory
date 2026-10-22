@@ -120,7 +120,6 @@ const lookChanged = (before: LookDefinition, after: LookDefinition) =>
 export type LookSheetSnapshot = {
   lookVersionId: string;
   bibleVersionId: string | null;
-  talentId: string | null;
 };
 
 /**
@@ -761,8 +760,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
           styling: look.styling.trim() || null,
         };
         if (index === 0) {
-          // Clothing is the character upsert's: a talent match may have
-          // kept the role's wardrobe, and that write already landed.
+          // Clothing is the character upsert's: analysis already wrote the
+          // default look's wardrobe. This pass renames it and sets styling.
           await write(defaultLook, {
             name: definition.name,
             styling: definition.styling,
@@ -1230,8 +1229,8 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
      * will carry and point the claim at it. Last kickoff wins.
      *
      * Taken only while the inputs the run was snapshotted from still hold —
-     * the look's current version, the character's current bible version,
-     * and that bible version's talent (#1863). An edit that landed between
+     * the look's current version and the character's current bible version.
+     * An edit that landed between
      * the snapshot and this write found no claim to revoke, so the claim is
      * not taken and the run parks its sheet as divergent. The id is
      * returned either way: the run still needs one.
@@ -1279,8 +1278,7 @@ export function createCharacterLooksMethods(db: Database, teamId: string) {
                   // oxlint-disable-next-line typescript-eslint/no-unnecessary-condition -- runtime guard: a payload frozen before #1600
                   snapshot.bibleVersionId === undefined
                     ? undefined
-                    : sql`${characters.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`,
-                  sql`(SELECT ${characterBibleVersions.talentId} FROM ${characterBibleVersions} WHERE ${characterBibleVersions.id} = ${characters.selectedBibleVersionId}) IS ${snapshot.talentId}`
+                    : sql`${characters.selectedBibleVersionId} IS ${snapshot.bibleVersionId}`
                 )
               )}`
           )

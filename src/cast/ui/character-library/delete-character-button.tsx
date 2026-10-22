@@ -77,7 +77,7 @@ export const DeleteCharacterButton: React.FC<{
                     });
                     void navigate({
                       to: '/characters',
-                      search: librarySearchFor('characters'),
+                      search: librarySearchFor(),
                     });
                   },
                   onError: (error) =>

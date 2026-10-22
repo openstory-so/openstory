@@ -4,10 +4,11 @@
  * to the shared `createSequences` core:
  *
  *   ingest hosted refs (no DB) → enhance (optional) →
- *   insert talents/locations without billed sheets →
+ *   insert team characters/locations without billed sheets →
  *   validate via createSequenceSchema → createSequences →
- *   enqueue sheets → response. On failure after insert, the inline talent
- *   and team locations are deleted so a hung fetch cannot leave charged sheets.
+ *   enqueue location sheets → response. On failure after insert, the inline
+ *   characters and team locations are deleted so a hung fetch cannot leave
+ *   charged sheets. A character's sheet is drawn with the sequence.
  *
  * Returns the created sequence ids + workflow run ids (generation is async) and
  * the enhanced script when enhancement ran.
@@ -22,6 +23,7 @@ import { isShortScript } from '@/models/should-enhance';
 import { DEFAULT_RESOLUTION } from '@/models/resolutions';
 import { DEFAULT_ASPECT_RATIO } from '@/models/aspect-ratios';
 import type { ScopedDb } from '@/platform/server/db/scoped';
+import { createTeamCharacter } from '@/cast/server/cast-edit';
 import {
   createTeamLocation,
   triggerTeamLocationSheet,
@@ -35,11 +37,6 @@ import {
   STORAGE_BUCKETS,
   type StorageBucket,
 } from '@/platform/server/storage/buckets';
-import { createLibraryTalent } from '@/cast/server/talent/create-library-talent';
-import {
-  enqueueLibraryTalentSheet,
-  type EnqueueLibraryTalentSheetParams,
-} from '@/cast/server/talent/enqueue-library-talent-sheet';
 import { SEQUENCE_STATUSES } from '@/platform/server/db/schema/sequences';
 import { createSequenceLink } from './discovery';
 import {
@@ -54,9 +51,9 @@ import { apiStopAt } from './input-schema';
 import { sequenceStateResourceSchema } from './state';
 import {
   ingestElements,
+  resolveCharacterIds,
   resolveLocationIds,
   resolveStyle,
-  resolveTalentIds,
 } from './resolve';
 import { ingestImageToBucket } from './safe-fetch';
 import { resolveApiVideoDefaults } from './video-defaults';
@@ -134,10 +131,6 @@ export const oneShotWaitResultSchema = z
 export type OneShotResult = z.infer<typeof oneShotResultSchema>;
 export type OneShotWaitResult = z.infer<typeof oneShotWaitResultSchema>;
 
-type CharacterCreate = Exclude<
-  NonNullable<ApiCreateSequenceInput['characters']>[number],
-  string
->;
 type LocationCreate = Exclude<
   NonNullable<ApiCreateSequenceInput['locations']>[number],
   string
@@ -202,25 +195,6 @@ async function requireIngestedImageRights(
   }
 }
 
-async function ingestInlineCharacterImages(
-  items: ApiCreateSequenceInput['characters'],
-  teamId: string
-): Promise<Map<CharacterCreate, string[]>> {
-  const map = new Map<CharacterCreate, string[]>();
-  await Promise.all(
-    inlineCreates<CharacterCreate>(items).map(async (item) => {
-      const urls = await ingestReferenceImages(
-        item.referenceImageUrls,
-        STORAGE_BUCKETS.TALENT,
-        teamId,
-        (index) => `Character "${item.name}" reference image #${index + 1}`
-      );
-      map.set(item, urls);
-    })
-  );
-  return map;
-}
-
 async function ingestInlineLocationImages(
   items: ApiCreateSequenceInput['locations'],
   teamId: string
@@ -242,18 +216,19 @@ async function ingestInlineLocationImages(
 
 async function rollbackInlineCreates(
   ctx: OneShotContext,
-  talentIds: string[],
+  characterIds: string[],
   locationIds: string[]
 ): Promise<void> {
   const results = await Promise.allSettled([
-    ...talentIds.map((id) => ctx.scopedDb.talent.delete(id)),
-    // Nothing uses a location this request made, so the team delete holds.
+    // Nothing uses a character or location this request made, so the team
+    // delete holds.
+    ...characterIds.map((id) => ctx.scopedDb.characters.softDeleteForTeam(id)),
     ...locationIds.map((id) => ctx.scopedDb.locations.softDeleteForTeam(id)),
   ]);
   for (const result of results) {
     if (result.status === 'rejected') {
       logger.warn(
-        'Failed to roll back an inline talent or location after create failure',
+        'Failed to roll back an inline character or location after create failure',
         {
           err: result.reason,
         }
@@ -274,28 +249,17 @@ export async function runOneShotCreate(
     input.enhance === 'always' ||
     (input.enhance === 'auto' && isShortScript(input.script));
 
-  const [
-    style,
-    elementUploads,
-    ingestedCharacters,
-    ingestedLocations,
-    videoDefaults,
-  ] = await Promise.all([
-    // No style (or "auto") is Match script, the app's default (#1213).
-    input.style && input.style !== AUTO_STYLE_ID
-      ? resolveStyle(ctx.scopedDb, input.style)
-      : null,
-    ingestElements(ctx.teamId, input.elements),
-    ingestInlineCharacterImages(input.characters, ctx.teamId),
-    ingestInlineLocationImages(input.locations, ctx.teamId),
-    resolveApiVideoDefaults(ctx.scopedDb),
-  ]);
+  const [style, elementUploads, ingestedLocations, videoDefaults] =
+    await Promise.all([
+      // No style (or "auto") is Match script, the app's default (#1213).
+      input.style && input.style !== AUTO_STYLE_ID
+        ? resolveStyle(ctx.scopedDb, input.style)
+        : null,
+      ingestElements(ctx.teamId, input.elements),
+      ingestInlineLocationImages(input.locations, ctx.teamId),
+      resolveApiVideoDefaults(ctx.scopedDb),
+    ]);
   await requireIngestedImageRights(ctx, [
-    ...inlineCreates<CharacterCreate>(input.characters).map((item) => ({
-      label: `Character "${item.name}"`,
-      urls: ingestedCharacters.get(item) ?? [],
-      attestation: item.portraitAttestation,
-    })),
     ...inlineCreates<LocationCreate>(input.locations).map((item) => ({
       label: `Location "${item.name}"`,
       urls: ingestedLocations.get(item) ?? [],
@@ -333,33 +297,30 @@ export async function runOneShotCreate(
   // 2. Insert inline cast + locations without triggering billed sheets.
   //    Sheets enqueue only after `createSequences` succeeds so a later
   //    failure cannot charge the team for work that produced no sequence.
-  const createdTalentIds: string[] = [];
+  const createdCharacterIds: string[] = [];
   const createdLocationIds: string[] = [];
-  const deferredTalentSheets: EnqueueLibraryTalentSheetParams[] = [];
 
   try {
-    const [
-      { talentIds: suggestedTalentIds, castCharacterIds },
-      suggestedLocationIds,
-    ] = await Promise.all([
-      resolveTalentIds(
+    const [castCharacterIds, suggestedLocationIds] = await Promise.all([
+      resolveCharacterIds(
         {
-          talent: ctx.scopedDb.talent,
           characters: ctx.scopedDb.characters,
-          createTalent: async (item) => {
-            const { talent, deferredSheet } = await createLibraryTalent(
+          createCharacter: async (item) => {
+            // The sequence draws the character's sheet.
+            const character = await createTeamCharacter(
+              ctx.scopedDb,
+              { userId: ctx.user.id },
               {
                 name: item.name,
-                description: item.description,
-                isHuman: item.isHuman,
-                referenceImageUrls: ingestedCharacters.get(item) ?? [],
-                enqueueSheet: false,
-              },
-              ctx
+                physicalDescription: item.description,
+                isPerson: item.isHuman,
+                rendering: renderingOfStyle(
+                  style ? parseStyleConfig(style.config) : null
+                ),
+              }
             );
-            createdTalentIds.push(talent.id);
-            if (deferredSheet) deferredTalentSheets.push(deferredSheet);
-            return talent;
+            createdCharacterIds.push(character.id);
+            return character;
           },
         },
         input.characters
@@ -417,9 +378,6 @@ export async function runOneShotCreate(
       audioModels: input.audioModels,
       // Only Enhance sets the target (#1593); a verbatim script is auto.
       targetDurationSeconds: enhancedScript ? input.targetSeconds : undefined,
-      suggestedTalentIds: suggestedTalentIds.length
-        ? suggestedTalentIds
-        : undefined,
       suggestedLocationIds: suggestedLocationIds.length
         ? suggestedLocationIds
         : undefined,
@@ -435,12 +393,9 @@ export async function runOneShotCreate(
 
     // Sequence rows exist — now it's safe to bill sheet generation. Failures
     // here must not fail the create: the client already has sequence ids, and
-    // the storyboard wait-for-sheets gate will surface a missing sheet.
-    await Promise.allSettled([
-      ...deferredTalentSheets.map((sheet) =>
-        enqueueLibraryTalentSheet(ctx.scopedDb, sheet)
-      ),
-      ...createdLocationIds.map((locationId) =>
+    // the generation plan owes a missing sheet, so the run draws it.
+    await Promise.allSettled(
+      createdLocationIds.map((locationId) =>
         triggerTeamLocationSheet(ctx.scopedDb, {
           userId: ctx.user.id,
           teamId: ctx.teamId,
@@ -451,8 +406,8 @@ export async function runOneShotCreate(
             locationId,
           });
         })
-      ),
-    ]);
+      )
+    );
 
     return {
       sequences: entries.map(({ sequence, workflowRunId }) => {
@@ -478,7 +433,7 @@ export async function runOneShotCreate(
       },
     };
   } catch (error) {
-    await rollbackInlineCreates(ctx, createdTalentIds, createdLocationIds);
+    await rollbackInlineCreates(ctx, createdCharacterIds, createdLocationIds);
     throw error;
   }
 }

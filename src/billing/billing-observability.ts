@@ -77,6 +77,8 @@ export type BillingDriftContext = {
   endpointId: string;
   chargedMicros: number;
   billedMicros: number;
+  /** `source.hash` of the card that estimated this endpoint, when we have one. */
+  rateCardHash?: string;
 };
 
 /**
@@ -96,6 +98,7 @@ export function reportBillingDrift(ctx: BillingDriftContext): void {
       charged_micros: ctx.chargedMicros,
       billed_micros: ctx.billedMicros,
       delta_micros: ctx.billedMicros - ctx.chargedMicros,
+      ...(ctx.rateCardHash != null && { rate_card_hash: ctx.rateCardHash }),
     },
   });
 }

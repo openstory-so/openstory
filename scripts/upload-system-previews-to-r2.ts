@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Upload System Talent & Location Preview Images to R2 Public Bucket
+ * Upload location preview images to the R2 public bucket.
  *
- * Reads generated images from preview/talent/ and preview/locations/,
+ * Reads generated images from preview/locations/,
  * processes to WebP, and uploads to R2 public assets bucket.
  *
  * Usage:
@@ -103,68 +103,10 @@ async function dirExists(dirPath: string): Promise<boolean> {
   }
 }
 
-async function processTalent(): Promise<number> {
-  const talentDir = path.join(PREVIEW_DIR, 'talent');
-  if (!(await dirExists(talentDir))) {
-    console.log(
-      '  No talent previews found. Run generate-system-previews.ts first.'
-    );
-    return 0;
-  }
-
-  const entries = await readdir(talentDir, { withFileTypes: true });
-  const talentDirs = entries.filter((e) => e.isDirectory());
-  let uploaded = 0;
-
-  for (const dir of talentDirs) {
-    const talentPath = path.join(talentDir, dir.name);
-    const files = await readdir(talentPath);
-
-    // Only process source files from generate script (headshot.webp, sheet.webp)
-    const sourceFiles = files.filter(
-      (f) => f === 'headshot.webp' || f === 'sheet.webp'
-    );
-
-    for (const file of sourceFiles) {
-      const localPath = path.join(talentPath, file);
-      const baseName = file.replace('.webp', '');
-
-      // Upload original
-      await uploadToR2(localPath, `talent/${dir.name}/${file}`);
-      uploaded++;
-
-      // Upload resized thumbnail (for headshots)
-      if (baseName === 'headshot') {
-        const thumbBuffer = await processImage(localPath, THUMBNAIL_SIZE);
-        const thumbPath = path.join(talentPath, 'thumbnail.webp');
-        await writeFile(thumbPath, thumbBuffer);
-        await uploadToR2(thumbPath, `talent/${dir.name}/thumbnail.webp`);
-        uploaded++;
-      }
-
-      // Upload preview size
-      const previewBuffer = await processImage(localPath, PREVIEW_SIZE);
-      const previewPath = path.join(talentPath, `${baseName}-preview.webp`);
-      await writeFile(previewPath, previewBuffer);
-      await uploadToR2(
-        previewPath,
-        `talent/${dir.name}/${baseName}-preview.webp`
-      );
-      uploaded++;
-
-      console.log(`  ✅ ${dir.name}/${file}`);
-    }
-  }
-
-  return uploaded;
-}
-
 async function processLocations(): Promise<number> {
   const locationsDir = path.join(PREVIEW_DIR, 'locations');
   if (!(await dirExists(locationsDir))) {
-    console.log(
-      '  No location previews found. Run generate-system-previews.ts first.'
-    );
+    console.log('  No location previews found under preview/locations.');
     return 0;
   }
 
@@ -222,19 +164,15 @@ async function main() {
   if (isDryRun) console.log('   Mode: DRY RUN\n');
   else console.log('');
 
-  console.log('👤 Processing talent...');
-  const talentCount = await processTalent();
-
-  console.log('\n📍 Processing locations...');
+  console.log('📍 Processing locations...');
   const locationCount = await processLocations();
 
   console.log(
-    `\n🎉 Done: ${talentCount + locationCount} files ${isDryRun ? 'would be ' : ''}uploaded`
+    `\n🎉 Done: ${locationCount} files ${isDryRun ? 'would be ' : ''}uploaded`
   );
 
-  if (!isDryRun && talentCount + locationCount > 0) {
+  if (!isDryRun && locationCount > 0) {
     console.log('\nPublic URLs:');
-    console.log(`  Talent:    ${R2_CONFIG.url}/talent/{name}/thumbnail.webp`);
     console.log(
       `  Locations: ${R2_CONFIG.url}/locations/{name}/thumbnail.webp`
     );

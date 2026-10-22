@@ -40,94 +40,11 @@ On a small brick comedy-club stage she lifts the mic, leans in, and the room's l
 
 export const PROSE_GOLD_BEATS = 9;
 
-export type TalentRow = {
-  id: string;
-  name: string;
-  description: string | null;
-  defaultSheet: { metadata?: CharacterBibleEntry | null } | null;
-};
-
 export type LocationRow = {
   id: string;
   name: string;
   description: string | null;
   referenceImageUrl: string | null;
-};
-
-/** Unambiguous 2×2 casting case with one clear pairing per talent. */
-export const TALENT_CASE = {
-  characters: [
-    {
-      characterId: 'char_scarlett_vega',
-      name: 'SCARLETT VEGA',
-      age: '27',
-      gender: 'Female',
-      ethnicity: 'Latina',
-      physicalDescription:
-        '5\'6", lean, shoulder-length dark brown hair, olive-tan skin, dark brown eyes.',
-      standardClothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
-      looks: [
-        {
-          lookId: 'default',
-          name: 'Default',
-          clothing: 'Fitted black turtleneck, dark jeans, scuffed boots.',
-          styling: 'Signature glossy coral lipstick, gold hoop earrings.',
-        },
-      ],
-      personality: 'Sharp, self-possessed, performs ease for the camera.',
-      movement: 'Quick precise hands, chin up, never hurries her feet.',
-      voiceDescription: '',
-      voiceOnly: false,
-      isPerson: true,
-      rendering: 'Photoreal live action',
-      consistencyTag: 'scarlett_vega',
-    },
-    {
-      characterId: 'char_jack_cole',
-      name: 'JACK COLE',
-      age: '44',
-      gender: 'Male',
-      ethnicity: 'White',
-      physicalDescription:
-        '6\'1", broad-shouldered, salt-and-pepper stubble, short grey-brown hair, a scar through the left eyebrow.',
-      standardClothing: 'Navy chore coat over a faded tee, work jeans.',
-      looks: [
-        {
-          lookId: 'default',
-          name: 'Default',
-          clothing: 'Navy chore coat over a faded tee, work jeans.',
-          styling: 'Scuffed silver watch.',
-        },
-      ],
-      personality: 'Guarded, dry, slow to trust.',
-      movement: 'Heavy deliberate stride, favours the left knee.',
-      voiceDescription: '',
-      voiceOnly: false,
-      isPerson: true,
-      rendering: 'Photoreal live action',
-      consistencyTag: 'jack_cole',
-    },
-  ] satisfies CharacterBibleEntry[],
-  talent: [
-    {
-      id: 'talent_sienna',
-      name: 'Sienna Blake',
-      description:
-        'Young adult woman, golden blonde, beach-tanned, wide smile. Product-ad and rom-com lead energy.',
-      defaultSheet: { metadata: null },
-    },
-    {
-      id: 'talent_marcus',
-      name: 'Marcus Hale',
-      description:
-        'Man in his mid-forties, broad build, salt-and-pepper stubble, weathered face. Character-actor presence.',
-      defaultSheet: { metadata: null },
-    },
-  ] satisfies TalentRow[],
-  gold: [
-    { talentId: 'talent_sienna', characterId: 'char_scarlett_vega' },
-    { talentId: 'talent_marcus', characterId: 'char_jack_cole' },
-  ],
 };
 
 /** Two obvious matches and one distractor that must stay unmatched. */

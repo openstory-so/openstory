@@ -9,7 +9,7 @@ import type {
 } from '@/sequences/response-schemas';
 import type { AutoStyleResponse } from '@/look/auto-style';
 import { z } from 'zod';
-import { LOCATION_CASE, PROSE_GOLD_BEATS, TALENT_CASE } from './fixtures';
+import { LOCATION_CASE, PROSE_GOLD_BEATS } from './fixtures';
 
 export const judgeSchema = z.object({
   score: z.number(),
@@ -149,29 +149,6 @@ export function scoreBibles(
       elements: result.elementBible.length,
       tagOk: Number(tagOk.toFixed(3)),
     },
-  };
-}
-
-export function scoreTalent(
-  matches: Array<{ characterId: string; talentId: string }>
-): {
-  quality: number;
-  details: Record<string, number>;
-} {
-  const gold = new Map(
-    TALENT_CASE.gold.map((g) => [g.talentId, g.characterId])
-  );
-  const predicted = new Map(matches.map((m) => [m.talentId, m.characterId]));
-  let correct = 0;
-  for (const [talentId, characterId] of gold) {
-    if (predicted.get(talentId) === characterId) correct++;
-  }
-  const recall = correct / gold.size;
-  const prec = matches.length === 0 ? 0 : correct / matches.length;
-  const f1 = prec + recall === 0 ? 0 : (2 * prec * recall) / (prec + recall);
-  return {
-    quality: pct({ w: 1, v: f1 }),
-    details: { correct, predicted: matches.length, f1: Number(f1.toFixed(3)) },
   };
 }
 

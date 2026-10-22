@@ -65,7 +65,6 @@ export const fixtureSequence: Sequence = {
   targetDurationSeconds: null,
   posterUrl: null,
   readyEmailSentAt: null,
-  suggestedTalentIds: null,
   suggestedLocationIds: null,
   musicPromptInputHash:
     '60d6365089ac968e73546fb2b9330ca73d60b38d96279af1556d047b18271174',

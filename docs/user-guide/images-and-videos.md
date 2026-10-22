@@ -33,7 +33,7 @@ Each still is stored as its own item. Sign in first — generate is gated behind
    - **Text to video** — prompt only
    - **Reference to video** — attach stills (Seedance 9 + 3 clips + 3 audio, Grok Imagine 7, Kling 4). Each becomes `@Image1`… / `@Video1`… / `@Audio1`… Type `@` in the prompt to point at one, or at anything in your library — a cast headshot, a location, a generation — and it is attached for you.
    - **Image to video** — a start frame, plus an optional end frame on models that take one (Kling, Seedance)
-3. Add references with the dashed tile. The picker lists your **Generations** (stills and clips), **Sequences** — open one to pick its shots, elements, cast, or locations — **Talent**, **Locations**, and **Audio** uploads. Or drag images onto the prompt bar.
+3. Add references with the dashed tile. The picker lists your **Generations** (stills and clips), **Uploads**, **Sequences** — open one to pick its shots, elements, cast, or locations — **Characters**, **Locations**, and **Audio**, or **Draw** a sketch. Or drag images onto the prompt bar.
 4. Write the prompt, **Shuffle** a sample, or **Draft prompt** — which looks at what you attached and writes a prompt that uses the tokens. Open the settings chip for model, aspect ratio, every duration the model accepts, and native audio.
 5. Press the arrow
 

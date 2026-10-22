@@ -20,6 +20,9 @@ describe('needsLikenessCheck', () => {
     expect(needsLikenessCheck('/r2/locations/team1/library/a.png')).toBe(false);
     expect(needsLikenessCheck('/r2/elements/team1/seq1/a.png')).toBe(false);
     expect(
+      needsLikenessCheck('/r2/teams/t/studio/a/video.mp4/../../x.mp4')
+    ).toBe(true);
+    expect(
       needsLikenessCheck('/r2/thumbnails/teams/t/studio/a/image.png')
     ).toBe(false);
     expect(

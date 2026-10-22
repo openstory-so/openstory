@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-5s): Image 2 twists up the coral bullet and applies it in the mirror.. Keep the reflection and lipstick application legible in the same frame.. Camera: smooth, energetic handheld drift\n\noverall_soundscape: Soft twist of the lipstick tube.\n\nShot 2 (5-9s): Image 2 grins at the bright colour against her black collar.. Catch the grin as a fresh, confident reveal.. Camera: snappy quick push-in\n\nImage 2 says: <d>[English] One shade. Whole city.</d>\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/202e467749d7a342171ada1f48855d8ead65f91acf53291f5817ceb59cb37aa7.mp4",
+            "content_type": "video/mp4",
+            "file_name": "HH5dCFug4OPs2UpGqD4ac_minimax-h3.mp4",
+            "file_size": 9538730
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, featuring short black bob hair, wearing a black turtleneck sweater and gold hoop earrings.\n<Subject 2> is the woman in <Image 2>, sharing the same appearance, hair, and attire as <Subject 1>.\n<Subject 3> is the coral lipstick shown in <Image 3>, a slim matte-finish bullet in a vibrant coral shade.\n\nsummary:\n[reference generation + audio reuse] The target video starts from <Image 1> to show <Subject 2> applying <Subject 3> in a mirror, followed by a close-up reveal and spoken dialogue.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 1]): fully_preserved - establishes the starting composition.\n<Subject 2 (appears in [Shot 1], [Shot 2]): fully_preserved - maintains facial features and black turtleneck throughout.\n<Subject 3 (appears in [Shot 1]): fully_preserved - consistent lipstick color and tube design.\n\ndetailed_description:\nThe video is styled as modern social-first product photography with a tactile, editorial energy. The lighting is bright natural morning light with airy, lifted shadows and a slight warmth in the highlights. The color palette relies on crisp whites, neutrals, and a singular pop of coral from the product.\n\n[Shot 1] At 00:00.000, the video begins with <Image 1>. <Subject 2> stands in front of a sleek bathroom mirror. She reaches up with her hand to hold <Subject 3>. She twists the base of the lipstick, extending the coral bullet with a tactile mechanical click. She then carefully applies the coral lipstick to her lower lip. The reflection in the mirror is clear and legible, showing the precision of the application. The camera performs a smooth, energetic handheld drift, creating a sense of intimate, realistic morning preparation.\n\n[Shot 2] At 00:05.000, the shot cuts to a snappy quick push-in on <Subject 2>. She looks into the mirror reflection and breaks into a fresh, confident grin, showcasing the vibrant color of the lipstick contrasting sharply against her black turtleneck. <Subject 2> looks directly toward her reflection and speaks clearly: <d>[English] One shade. Whole city.</d>\n\noverall_soundscape:\nThe audio features the distinct, soft mechanical twist of the lipstick tube opening, followed by the subtle sound of the product against skin and the ambient silence of a quiet apartment.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1834927897,
+          "timings": {
+            "inference": 8.402033702004701
+          }
+        },
+        "status": 200,
+        "billableUnits": 14.6304
+      }
+    }
+  ]
+}

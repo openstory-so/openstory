@@ -1,8 +1,9 @@
 /**
  * Upload rights gate (#1180, #1581) — the server half.
  *
- * One ledger row per uploaded image, keyed by the SHA-256 of its stored URL
- * under the `uploaded_image` subject type:
+ * One ledger row per uploaded image or clip, keyed by the SHA-256 of its
+ * stored URL under the `uploaded_image` subject type (a clip is judged by Gemini
+ * watching all of it, #1930):
  *
  *  - {@link classifyUpload} runs the likeness classifier once and records its
  *    verdict (`likeness-cleared-v1` / `likeness-detected-v1`);
@@ -15,12 +16,16 @@
  *  - {@link carryUploadRights} re-keys the row when a finalize moves the
  *    object, so the library URL is covered by the same evidence.
  *
- * `depictsRealPerson` on a talent row is derived from this ledger, never taken
+ * `depictsRealPerson` on a character is derived from this ledger, never taken
  * off the client.
  */
 
 import type { Likeness } from '@/cast/likeness';
-import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+import {
+  analyzeTalentClipForTeam,
+  analyzeTalentMediaForTeam,
+} from '@/cast/server/talent/analyze-talent-media';
+import type { TalentVisionResult } from '@/cast/server/talent-vision';
 import type { TalentSubjectKind } from '@/cast/subject-kind';
 import type { PortraitAttestation, UploadRights } from '@/cast/upload-rights';
 import {
@@ -31,7 +36,12 @@ import {
   type AttestationStatement,
 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
-import { AttestationRequiredError } from '@/platform/errors';
+import { AttestationRequiredError, ValidationError } from '@/platform/errors';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  getExtensionFromUrl,
+  getMimeTypeFromExtension,
+} from '@/platform/server/storage/file';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadAttestation } from '@/platform/server/db/schema/compliance';
 
@@ -40,8 +50,21 @@ export type LikenessRequestContext = {
   userAgent?: string | null;
 };
 
+/**
+ * All the gate reads: the newest ledger row for a URL. Narrow so a workflow
+ * can ask through `scopedDb.liveRead` (#1930).
+ */
+export type UploadRightsReader = {
+  compliance: {
+    attestations: Pick<
+      ScopedDb['compliance']['attestations'],
+      'listForSubject'
+    >;
+  };
+};
+
 async function latestRow(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReader,
   url: string
 ): Promise<UploadAttestation | undefined> {
   const [latest] = await scopedDb.compliance.attestations.listForSubject(
@@ -117,6 +140,52 @@ export async function recordLikenessFinding(
 }
 
 /**
+ * One classifier call for the upload: Claude on a still, Gemini watching the
+ * whole clip (#1930). A clip that is not this team's stored object is
+ * refused, never waved through.
+ */
+function analyzeUpload(opts: {
+  scopedDb: ScopedDb;
+  userId: string;
+  url: string;
+  filename?: string;
+}): Promise<TalentVisionResult> {
+  const filenames = opts.filename ? [opts.filename] : undefined;
+  const idempotencyKey = `likeness:${opts.url}`;
+  // Routed on the stored file's type: a clip that reached the still
+  // classifier could be cleared on bytes it cannot read.
+  const mimeType = getMimeTypeFromExtension(getExtensionFromUrl(opts.url));
+  if (mimeType.startsWith('image/')) {
+    return analyzeTalentMediaForTeam({
+      scopedDb: opts.scopedDb,
+      userId: opts.userId,
+      imageUrls: [opts.url],
+      filenames,
+      idempotencyKey,
+    });
+  }
+  if (!mimeType.startsWith('video/')) {
+    throw new ValidationError(
+      'Only an image or a video clip can be checked for a real person.'
+    );
+  }
+  const key = r2KeyFromUrl(opts.url);
+  // Only this team's own objects: the check streams the bytes to Gemini.
+  if (key === null || !key.split('/').includes(opts.scopedDb.teamId)) {
+    throw new ValidationError(
+      'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
+    );
+  }
+  return analyzeTalentClipForTeam({
+    scopedDb: opts.scopedDb,
+    userId: opts.userId,
+    key,
+    mimeType,
+    idempotencyKey,
+  });
+}
+
+/**
  * The rights for one upload: what the ledger already says, or one vision
  * call whose verdict is written so the next ask is free. Never defaults to
  * human, never defaults to cleared: a classifier failure throws and leaves
@@ -132,13 +201,7 @@ export async function classifyUpload(opts: {
 }): Promise<UploadRights> {
   const existing = await latestRow(opts.scopedDb, opts.url);
   if (existing) return rightsFromRow(existing);
-  const analysis = await analyzeTalentMediaForTeam({
-    scopedDb: opts.scopedDb,
-    userId: opts.userId,
-    imageUrls: [opts.url],
-    filenames: opts.filename ? [opts.filename] : undefined,
-    idempotencyKey: `likeness:${opts.url}`,
-  });
+  const analysis = await analyzeUpload(opts);
   await recordLikenessFinding(
     opts.scopedDb,
     [opts.url],
@@ -174,7 +237,7 @@ export async function attestUploads(
  * a real person, so a caller can derive `isHuman` from the ledger.
  */
 export async function requireUploadRights(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReader,
   urls: string[]
 ): Promise<Map<string, { depictsRealPerson: boolean }>> {
   const result = new Map<string, { depictsRealPerson: boolean }>();
@@ -182,13 +245,13 @@ export async function requireUploadRights(
     const row = await latestRow(scopedDb, url);
     if (!row) {
       throw new AttestationRequiredError(
-        'This image has not been checked for a real person yet'
+        'This upload has not been checked for a real person yet'
       );
     }
     const rights = rightsFromRow(row);
     if (rights.status === 'needs_portrait') {
       throw new AttestationRequiredError(
-        'Confirm the rights to this person’s likeness before using the image'
+        'Confirm the rights to this person’s likeness before using the upload'
       );
     }
     result.set(url, { depictsRealPerson: rights.status === 'signed' });
@@ -265,7 +328,7 @@ export async function carryUploadRights(
   const row = await latestRow(scopedDb, fromUrl);
   if (!row) {
     throw new AttestationRequiredError(
-      'This image has not been checked for a real person yet'
+      'This upload has not been checked for a real person yet'
     );
   }
   await scopedDb.compliance.attestations.record({
@@ -278,4 +341,18 @@ export async function carryUploadRights(
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
   });
+}
+
+/**
+ * {@link carryUploadRights} for a copy: an unchecked source stays unchecked
+ * rather than failing the copy, and every use still asks the gate.
+ */
+export async function carryUploadRightsIfChecked(
+  scopedDb: ScopedDb,
+  fromUrl: string,
+  toUrl: string
+): Promise<void> {
+  if (await latestRow(scopedDb, fromUrl)) {
+    await carryUploadRights(scopedDb, fromUrl, toUrl);
+  }
 }

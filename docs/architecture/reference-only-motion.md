@@ -155,10 +155,7 @@ two things. A credits-short run now fails in seconds instead of after a full
 set of sheets is paid for. And the counts stop being guesses: pre-flight only
 has a script, so it uses the `estimate*SheetCount(sceneCount)` heuristics
 (capped at 3), while the in-run gate knows the bibles and the casting result —
-one sheet per bible entry, minus the characters whose matched talent sheet is
-reused. That reuse test is `reusesTalentSheet`, shared with
-`character-bible-workflow` so the gate cannot count a sheet the run does not
-generate; a reused sheet is a storage copy with no provider cost. Every
+one sheet per bible entry, as `character-bible-workflow` fans out. Every
 location is billed either way — a library match supplies a reference image, but
 the styled sheet is still generated.
 

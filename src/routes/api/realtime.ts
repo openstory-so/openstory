@@ -17,7 +17,7 @@ const logger = getLogger(['openstory', 'realtime', 'merged']);
 
 /**
  * SSE subscription. One request fans out to one Durable Object per channel.
- * Billing is a separate request so a large talent or sequence frame cannot
+ * Billing is a separate request so a large character or sequence frame cannot
  * fill this queue. A full queue sheds a frame and keeps the response open.
  *
  * Two streams stay under the browser's six-connection cap. One EventSource

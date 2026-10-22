@@ -168,8 +168,6 @@ export const createSequenceSchema = createInsertSchema(sequences, {
     // requireCredits stay aligned before Scene N headings exist (#1140).
     // No ceiling: a pasted feature script is as long as it is.
     targetDurationSeconds: z.number().min(5).optional(),
-    // Suggested talent IDs for AI-assisted casting during generation
-    suggestedTalentIds: z.array(z.string()).optional(),
     // Suggested location IDs for visual consistency during generation
     suggestedLocationIds: z.array(z.string()).optional(),
     // Team characters the script references with `@` (#2050): cast into

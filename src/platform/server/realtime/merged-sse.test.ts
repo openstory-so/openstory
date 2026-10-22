@@ -207,17 +207,27 @@ describe('coalesceKeyForSsePayload', () => {
     const sheet = coalesceKeyForSsePayload(
       JSON.stringify({
         id: '7',
-        event: 'talent.sheet:progress',
-        channel: 'talent:1',
-        data: { talentId: '1', status: 'generating', activity: 'sheet' },
+        event: 'generation.character-sheet:progress',
+        channel: 'seq',
+        data: {
+          characterId: '1',
+          lookId: '1',
+          status: 'generating',
+          activity: 'sheet',
+        },
       })
     );
     const portrait = coalesceKeyForSsePayload(
       JSON.stringify({
         id: '8',
-        event: 'talent.sheet:progress',
-        channel: 'talent:1',
-        data: { talentId: '1', status: 'generating', activity: 'portrait' },
+        event: 'generation.character-sheet:progress',
+        channel: 'seq',
+        data: {
+          characterId: '1',
+          lookId: '1',
+          status: 'generating',
+          activity: 'portrait',
+        },
       })
     );
     expect(sheet).not.toBe(portrait);

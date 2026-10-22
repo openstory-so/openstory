@@ -163,7 +163,7 @@ describe('buildPreviewPrompt', () => {
     expect(prompt).not.toContain('Radio:');
   });
 
-  it('drops the reference-image instruction a cast talent carries', () => {
+  it('drops a stored likeness instruction from the preview', () => {
     const prompt = buildPreviewPrompt('Mina waits.', [
       character({ physicalDescription: REFERENCE_LIKENESS_INSTRUCTION }),
     ]);

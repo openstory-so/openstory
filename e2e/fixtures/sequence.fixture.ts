@@ -105,13 +105,30 @@ export async function createTestShot(
 }
 
 /**
- * Create a test character for a sequence (for recast testing)
+ * The team character the full-sequence e2e casts as SCARLETT. No sheet: the
+ * run draws it.
+ */
+export async function createScarlettCharacter(
+  teamId: string
+): Promise<{ id: string; name: string }> {
+  const res = await fetch('http://localhost:3020/api/test/character', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamId, preset: 'scarlett' }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create Scarlett via API: ${res.status}`);
+  }
+  return z.object({ id: z.string(), name: z.string() }).parse(await res.json());
+}
+
+/**
+ * Create a test character for a sequence.
  */
 export async function createTestCharacter(
   sequenceId: string,
   characterId: string,
   name: string,
-  talentId: string | null = null,
   options: {
     sheetImageUrl?: string;
     sheetStatus?: 'pending' | 'generating' | 'completed' | 'failed';
@@ -124,7 +141,6 @@ export async function createTestCharacter(
       sequenceId,
       characterId,
       name,
-      talentId,
       ...options,
     }),
   });
@@ -211,7 +227,6 @@ export async function getTestShot(shotId: string): Promise<{
 export async function getTestCharacter(characterId: string): Promise<{
   id: string;
   name: string;
-  talentId: string | null;
   sheetStatus: string | null;
 } | null> {
   const res = await fetch(
@@ -222,7 +237,6 @@ export async function getTestCharacter(characterId: string): Promise<{
     .object({
       id: z.string(),
       name: z.string(),
-      talentId: z.string().nullable(),
       sheetStatus: z.string().nullable(),
     })
     .parse(await res.json());

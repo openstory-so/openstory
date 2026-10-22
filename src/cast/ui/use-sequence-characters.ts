@@ -13,9 +13,7 @@ import {
   createSequenceCharacterFn,
   getCharacterFn,
   getCharacterSheetStalenessFn,
-  getShotIdsForCharacterFn,
   getSequenceCharactersFn,
-  recastCharacterFn,
   regenerateCharacterSheetFn,
   assignCharacterVoiceFn,
   chooseCharacterVoiceTakeFn,
@@ -29,7 +27,6 @@ import {
   updateSequenceCharacterFn,
 } from '@/cast/sequence-characters.fn';
 import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
-import { saveCharacterAsTalentFn } from '@/cast/talent.fn';
 import { shotStalenessNamespace } from '@/shots/ui/use-shot-staleness';
 import { segmentKeys } from '@/shots/ui/use-segments';
 import { shotKeys } from '@/shots/ui/use-shots';
@@ -56,8 +53,6 @@ export const sequenceCharacterKeys = {
       scope(sequenceId),
       characterId,
     ] as const,
-  shotsForCharacter: (sequenceId: string, characterId: string) =>
-    [...sequenceCharacterKeys.all, 'shots', sequenceId, characterId] as const,
   voiceVersions: (sequenceId: string | null, characterId: string) =>
     [
       ...sequenceCharacterKeys.all,
@@ -100,53 +95,12 @@ export function useSequenceCharacters(sequenceId: string) {
     queryFn: async () => {
       return getSequenceCharactersFn({ data: { sequenceId } });
     },
-    // Sheets, voices and recasts live on the row, and realtime is the only
+    // Sheets and voices live on the row, and realtime is the only
     // other refresh — one dropped event held a stale cast for minutes (#1822).
     // Same freshness as the shot list.
     staleTime: 30_000,
     refetchOnWindowFocus: true,
     enabled: !!sequenceId,
-  });
-}
-
-/**
- * Save a sequence's character as a new talent (what "Add to Library" did
- * before the library flag, #2017).
- */
-export function useSaveCharacterAsTalent() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: { globalError: true },
-    mutationFn: (data: { sequenceId: string | null; characterId: string }) =>
-      saveCharacterAsTalentFn({ data }),
-    onSuccess: () => {
-      // Invalidate talent queries to refresh library
-      void queryClient.invalidateQueries({ queryKey: ['talent'] });
-    },
-  });
-}
-
-/**
- * Hook to get the count of shots containing a character
- * Used to show affected shots before recasting
- */
-export function useShotIdsForCharacter(
-  sequenceId: string | null,
-  characterId: string
-) {
-  return useQuery({
-    queryKey: sequenceCharacterKeys.shotsForCharacter(
-      sequenceId ?? '',
-      characterId
-    ),
-    queryFn: () => {
-      if (sequenceId === null) throw new Error('No sequence');
-      return getShotIdsForCharacterFn({ data: { sequenceId, characterId } });
-    },
-    // No sequence, no shots (#2017).
-    enabled: sequenceId !== null && !!characterId,
-    staleTime: 60 * 1000, // 1 minute
   });
 }
 
@@ -343,7 +297,7 @@ export function useSelectCharacterVoiceVersion() {
   });
 }
 
-/** Manual character create (#1108 Phase 2) — sheet-less until recast. */
+/** Manual character create (#1108 Phase 2) — sheet-less until its sheet is generated. */
 export function useCreateSequenceCharacter() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -468,29 +422,4 @@ function invalidateCastMembership(
   });
   void queryClient.invalidateQueries({ queryKey: ['scene-facets'] });
   void queryClient.invalidateQueries({ queryKey: shotStalenessNamespace });
-}
-
-/**
- * Hook for recasting a character with a talent from the library
- */
-export function useRecastCharacter() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: { globalError: true },
-    mutationFn: (data: {
-      sequenceId: string | null;
-      characterId: string;
-      talentId: string;
-    }) => recastCharacterFn({ data }),
-    onSuccess: () => {
-      // Invalidate shots that contain this character
-      void queryClient.invalidateQueries({ queryKey: ['shots'] });
-      void queryClient.invalidateQueries({ queryKey: ['team-characters'] });
-      // Returned: pending until the character is re-read as `generating`.
-      return queryClient.invalidateQueries({
-        queryKey: sequenceCharacterKeys.all,
-      });
-    },
-  });
 }

@@ -2,13 +2,13 @@
  * Resolvers that turn the public API's human-friendly references into the
  * concrete ids / uploads `createSequences` expects:
  *   - style:   id | name | slug  → styleId (auto-pick a default when omitted)
- *   - character: id | name     → castCharacterIds (a team character, #2050), else suggestedTalentIds (talent)
+ *   - character: id | name     → castCharacterIds (a team character)
  *   - location:id | name         → suggestedLocationIds (a team location, #1695)
  *   - element: hosted URL        → ingested DraftElementUploadInput
  *
- * Every lookup goes through a team-scoped read (styles and talent: team-owned
- * + public; characters and locations: the team's only), so a caller can never
- * resolve another team's private entry.
+ * Every lookup goes through a team-scoped read (styles: team-owned + public;
+ * characters and locations: the team's only), so a caller can never resolve
+ * another team's private entry.
  */
 
 import type { Style } from '@/platform/server/db/schema';
@@ -44,7 +44,7 @@ function matchesRef(ref: string, candidate: { id: string; name: string }) {
 // create-with-ingest path, keeping these resolvers pure and cast-free to test.
 type StyleDeps = { styles: Pick<ScopedDb['styles'], 'list'> };
 
-type TalentCreate = Exclude<
+type CharacterCreate = Exclude<
   NonNullable<ApiCreateSequenceInput['characters']>[number],
   string
 >;
@@ -53,11 +53,9 @@ type LocationCreate = Exclude<
   string
 >;
 
-type TalentResolveDeps = {
-  talent: Pick<ScopedDb['talent'], 'list'>;
-  /** The team library (#2050): a string ref names a team character first. */
+type CharacterResolveDeps = {
   characters: Pick<ScopedDb['characters'], 'listTeam'>;
-  createTalent: (input: TalentCreate) => Promise<{ id: string }>;
+  createCharacter: (input: CharacterCreate) => Promise<{ id: string }>;
 };
 type LocationResolveDeps = {
   locations: Pick<ScopedDb['locations'], 'listTeam'>;
@@ -111,75 +109,64 @@ export async function resolveStyle(
 /**
  * Resolve a mixed list of character items — reference strings (id|name) and
  * inline create objects — into the team characters to cast into the new
- * sequence (`castCharacterIds`, #2050) and the talent ids for
- * `suggestedTalentIds`. A string ref is a team character when one matches
- * by id or name; two team characters of that name is a conflict that asks
- * for the id; otherwise it is talent, as before. Inline creates matching an
- * existing talent name (or a name already created in this list) reuse that
- * id. New names are delegated to `deps.createTalent`.
+ * sequence (`castCharacterIds`). A string names one of the team's characters,
+ * by id then by name; two of that name is a conflict that asks for the id.
+ * An inline create whose name a team character already has is a conflict; a
+ * repeat of an earlier create in this list reuses it. New names are delegated
+ * to `deps.createCharacter`.
  */
-export async function resolveTalentIds(
-  deps: TalentResolveDeps,
+export async function resolveCharacterIds(
+  deps: CharacterResolveDeps,
   items: ApiCreateSequenceInput['characters']
-): Promise<{ talentIds: string[]; castCharacterIds: string[] }> {
-  if (!items || items.length === 0) {
-    return { talentIds: [], castCharacterIds: [] };
-  }
+): Promise<string[]> {
+  if (!items || items.length === 0) return [];
   const { refs, creates } = partition(items);
   const ids: string[] = [];
-  const castCharacterIds: string[] = [];
-  const library = await deps.characters.listTeam();
 
-  const all = await deps.talent.list();
-  const seen = new Map<string, string>();
-  for (const talent of all) {
-    seen.set(talent.id, talent.id);
-    seen.set(slugify(talent.name), talent.id);
-  }
-
-  for (const ref of refs) {
-    const characters = library.filter((c) => matchesRef(ref, c));
-    if (characters.length > 1) {
+  const team = await deps.characters.listTeam();
+  /** The one team character `ref` names, or null; several is a conflict. */
+  const named = (ref: string, matches: typeof team): string | null => {
+    if (matches.length > 1) {
       throw new ConflictError(
-        `"${ref}" names ${characters.length} characters. Use the id: ${characters.map((c) => c.id).join(', ')}.`
+        `"${ref}" names ${matches.length} characters. Use the id: ${matches.map((c) => c.id).join(', ')}.`
       );
     }
-    const [character] = characters;
-    if (character) {
-      // Every team character can be named since #2065, one-offs included, so
-      // a name a talent also has is not guessed at.
-      const talent = all.find((t) => matchesRef(ref, t));
-      if (talent && ref !== character.id) {
-        throw new ConflictError(
-          `"${ref}" names a character and a talent. Use the id: ${character.id} (character) or ${talent.id} (talent).`
-        );
-      }
-      castCharacterIds.push(character.id);
-      continue;
-    }
-    const match = all.find((t) => matchesRef(ref, t));
-    if (!match) {
-      throw new NotFoundError(`No character/talent found matching "${ref}".`);
-    }
-    ids.push(match.id);
-    seen.set(slugify(match.name), match.id);
-  }
-
-  for (const create of creates) {
-    const existingId = seen.get(slugify(create.name));
-    if (existingId) {
-      ids.push(existingId);
-      continue;
-    }
-    const created = await deps.createTalent(create);
-    ids.push(created.id);
-    seen.set(slugify(create.name), created.id);
-  }
-
-  return {
-    talentIds: [...new Set(ids)],
-    castCharacterIds: [...new Set(castCharacterIds)],
+    return matches[0]?.id ?? null;
   };
+
+  for (const ref of refs) {
+    const byId = team.find((c) => c.id === ref);
+    const id =
+      byId?.id ??
+      named(
+        ref,
+        team.filter((c) => matchesRef(ref, c))
+      );
+    if (!id) throw new NotFoundError(`No character found matching "${ref}".`);
+    ids.push(id);
+  }
+
+  const created = new Map<string, string>();
+  for (const create of creates) {
+    const slug = slugify(create.name);
+    const earlier = created.get(slug);
+    if (earlier) {
+      ids.push(earlier);
+      continue;
+    }
+    const taken = team.filter((c) => slugify(c.name) === slug);
+    if (taken.length > 0) {
+      // Reusing it would drop this create's description and person flag.
+      throw new ConflictError(
+        `The team already has a character named "${create.name}". Pass its name or id as a string to cast it: ${taken.map((c) => c.id).join(', ')}.`
+      );
+    }
+    const character = await deps.createCharacter(create);
+    ids.push(character.id);
+    created.set(slug, character.id);
+  }
+
+  return [...new Set(ids)];
 }
 
 /**

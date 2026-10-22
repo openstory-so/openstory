@@ -143,8 +143,6 @@ a stray reader does not compile.
   styling unless already there; blank is ignored), in `cast-edit.ts`.
   Outputs still carry both, derived and marked deprecated:
   `distinguishingFeatures` is the legacy text not yet moved, else null.
-- **A talent's sheet metadata** keeps its own `distinguishingFeatures`
-  (`TalentSheetMetadata`). It describes the talent, not a character.
 - **Later.** After `LEGACY_HASH_UNTIL`: backfill the remaining legacy text
   into the default looks, delete the `pre-2065` shape and the fold seams,
   and drop the column (a native `DROP COLUMN`).
@@ -186,9 +184,9 @@ Claim → demote → guarded promote → fail, on the look
 - A bible edit to a field the sheets read, a recast and a style change demote
   **every** look's claim.
 - The claim is **conditional**: it is taken only while the look's current
-  version, the character's current bible version, and that bible version's
-  talent are still the ones on the payload. A claim that is not taken still
-  returns an id, and the run parks its sheet under it.
+  version and the character's current bible version are still the ones on
+  the payload. A claim that is not taken still returns an id, and the run
+  parks its sheet under it.
 - A run that lost its claim parks its sheet as divergent. A failure clears
   only its own claim.
 - A payload frozen before #1600 names no bible version. Absent is "unknown",
@@ -204,9 +202,8 @@ The References stage makes one sheet per look some scene uses: a
 always, any other once a live scene picks it. A look nobody wears gets a
 sheet only when someone asks. A look other than the
 default is drawn from the default look's sheet: the run draws the person
-from that image and changes the costume, and the talent image is not also
-sent. Talent reuse (`reusesTalentSheet`) applies only to the default look,
-against the talent's default sheet.
+from that image and changes the costume. A character's face is that default
+sheet.
 
 - **The face** is the default look's selected sheet, whatever its last
   attempt did (`populatedDefaultSheet`). A failed or running re-roll leaves
@@ -215,7 +212,7 @@ against the talent's default sheet.
 - **The payload** carries `face: { url, versionId } | null`, required; null
   exactly when the look is the default. The trigger refuses a non-default
   look with no face (`buildRegenerateCharacterSheetPayload`), so no path
-  draws a look from the talent instead. A payload from before the field is
+  draws a look without a face. A payload from before the field is
   failed at the top of `CharacterSheetWorkflow` (`assertQueuedWithFace`).
 - **One run makes every look.** In the plan the default sheet is the look's
   upstream, with the ordinary rules: a default this run makes puts the look
@@ -260,10 +257,10 @@ location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
   portrait, writes it once with `setPortrait` and re-sends the sheet's
   completed event so the tile re-reads. The tile crops the sheet until then.
   A trigger that fails never fails the sheet.
-- **No portrait:** a sheet copied from talent (that path stays free), a
-  library location, an element, a sheet from before portraits, and a draw
-  that failed. A failed draw never fails the sheet. Tiles then crop the
-  sheet as before (`talentSquareImageClassName`).
+- **No portrait:** a sheet copied onto a character by `20261018090430` (that
+  copy stays free), a library location, an element, a sheet from before
+  portraits, and a draw that failed. A failed draw never fails the sheet.
+  Tiles then crop the sheet as before (`sheetSquareImageClassName`).
 - It is charged as its own line ("Sheet portrait"). A hold for the estimate
   is taken before the paid call (its own, not the sheet run's reservation):
   no hold, no call, and the tile crops. A replayed hold that no longer

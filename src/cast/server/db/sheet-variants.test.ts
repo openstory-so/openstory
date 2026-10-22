@@ -1,7 +1,6 @@
 /**
  * Schema-level acceptance tests for `insertDivergent` on
- * `character_sheet_variants`, `location_sheet_variants`, and
- * `talent_sheet_variants`.
+ * `character_sheet_variants` and `location_sheet_variants`.
  *
  * The three tables share a partial-index split (primary vs divergent on
  * `divergedAt`) and a parallel race-tolerance helper. The tests pin the
@@ -22,7 +21,6 @@ import { generateId } from '@/platform/id';
 import {
   characterSheetInputHash,
   locationSheetInputHash,
-  talentSheetInputHash,
 } from '@/shots/input-hash';
 import {
   characterLooks,
@@ -32,9 +30,6 @@ import {
   locations,
   sequences,
   styles,
-  talent,
-  talentSheetVariants,
-  talentSheets,
   teams,
   user,
 } from '@/platform/server/db/schema';
@@ -46,7 +41,6 @@ import { createCharacterSheetVariantsMethods } from './character-sheet-variants'
 import { createCharactersMethods } from './characters';
 import { createLocationSheetVariantsMethods } from './location-sheet-variants';
 import { createLocationsMethods } from './locations';
-import { createTalentSheetVariantsMethods } from './talent-sheet-variants';
 
 let client: Client;
 let db: Database;
@@ -55,18 +49,13 @@ const team = { id: '', name: 'T', slug: 't' };
 const userRow = { id: '', name: 'U', email: 'u@example.com' };
 let sequenceId = '';
 let characterId = '';
-let talentId = '';
-let talentSheetId = '';
 
 async function seed() {
   await db.delete(characterSheetVariants);
   await clearVersionRows(db);
   await db.delete(locationSheetVariants);
-  await db.delete(talentSheetVariants);
-  await db.delete(talentSheets);
   await db.delete(characters);
   await db.delete(locations);
-  await db.delete(talent);
   await db.delete(sequences);
   await db.delete(styles);
   await db.delete(teams);
@@ -110,23 +99,6 @@ async function seed() {
     { source: 'analysis', createdBy: null }
   );
   characterId = character.id;
-  const [talentRow] = await db
-    .insert(talent)
-    .values({ teamId: team.id, name: 'Talent A' })
-    .returning();
-  if (!talentRow) throw new Error('test setup: talent insert returned nothing');
-  talentId = talentRow.id;
-  const [sheet] = await db
-    .insert(talentSheets)
-    .values({
-      talentId,
-      name: 'Default',
-      imageUrl: 'https://example.com/sheet.png',
-    })
-    .returning();
-  if (!sheet)
-    throw new Error('test setup: talentSheets insert returned nothing');
-  talentSheetId = sheet.id;
 }
 
 /** One of the team's locations, in no sequence. */
@@ -296,34 +268,6 @@ describe('location-sheet-variants insertDivergent', () => {
   });
 });
 
-describe('talent-sheet-variants insertDivergent', () => {
-  it('is idempotent on (talentSheetId, model, inputHash)', async () => {
-    const methods = createTalentSheetVariantsMethods(db, team.id);
-    const divergedAt = new Date('2026-04-29T00:00:00Z');
-
-    const first = await methods.insertDivergent({
-      talentSheetId,
-      model: 'flux-pro',
-      url: 'https://example.com/divergent.png',
-      status: 'completed',
-      inputHash: talentSheetInputHash('hash-snap'),
-      divergedAt,
-    });
-    const second = await methods.insertDivergent({
-      talentSheetId,
-      model: 'flux-pro',
-      url: 'https://example.com/divergent.png',
-      status: 'completed',
-      inputHash: talentSheetInputHash('hash-snap'),
-      divergedAt,
-    });
-
-    expect(second.id).toBe(first.id);
-    const rows = await db.select().from(talentSheetVariants);
-    expect(rows).toHaveLength(1);
-  });
-});
-
 describe('character-sheet-variants discard / undiscard / promote', () => {
   it('discard sets discardedAt and undiscard clears it', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
@@ -445,58 +389,10 @@ describe('location-sheet-variants discard', () => {
   });
 });
 
-describe('talent-sheet-variants discard / promote', () => {
-  it('promoteAtomically writes onto talent_sheets and discards the variant', async () => {
-    const methods = createTalentSheetVariantsMethods(db, team.id);
-    const divergedAt = new Date('2026-04-29T00:00:00Z');
-    const variant = await methods.insertDivergent({
-      talentSheetId,
-      model: 'flux-pro',
-      url: 'https://example.com/promoted.png',
-      storagePath: '/r2/promoted.png',
-      status: 'completed',
-      inputHash: talentSheetInputHash('hash-promoted'),
-      divergedAt,
-    });
-
-    await methods.promoteAtomically(
-      talentSheetId,
-      {
-        imageUrl: variant.url,
-        imagePath: variant.storagePath,
-        inputHash: variant.inputHash,
-      },
-      variant.id
-    );
-
-    const [updatedSheet] = await db
-      .select()
-      .from(talentSheets)
-      .where(eq(talentSheets.id, talentSheetId));
-    if (!updatedSheet)
-      throw new Error('test setup: updatedSheet select returned nothing');
-    expect(updatedSheet.imageUrl).toBe('https://example.com/promoted.png');
-    expect(updatedSheet.inputHash).toBe('hash-promoted');
-
-    const after = await methods.getById(variant.id);
-    expect(after?.discardedAt).not.toBeNull();
-  });
-});
-
 describe('sheet-variants list filters and empty-input short-circuits', () => {
   it('character listDivergentActiveByCharacters returns [] for empty input (no SQL roundtrip)', async () => {
     const methods = createCharacterSheetVariantsMethods(db, team.id);
     expect(await methods.listDivergentActiveByCharacters([])).toEqual([]);
-  });
-
-  it('talent listDivergentActiveByTalents returns [] for empty input', async () => {
-    const methods = createTalentSheetVariantsMethods(db, team.id);
-    expect(await methods.listDivergentActiveByTalents([])).toEqual([]);
-  });
-
-  it('talent listDivergentActiveByTalentSheets returns [] for empty input', async () => {
-    const methods = createTalentSheetVariantsMethods(db, team.id);
-    expect(await methods.listDivergentActiveByTalentSheets([])).toEqual([]);
   });
 
   it('location listDivergentActiveByLocations lists only the locations asked for', async () => {
@@ -609,63 +505,6 @@ describe('sheet-variants list filters and empty-input short-circuits', () => {
 
     const allDivergent = await methods.listDivergentByCharacter(characterId);
     expect(allDivergent).toHaveLength(2);
-  });
-});
-
-// Negative-case coverage for promoteAtomically. The contract is that a
-// failed pre-check must throw before the batch runs, so the live primary is
-// not updated and the variant is not soft-deleted. These pin that contract.
-
-describe('talent-sheet-variants promoteAtomically negative cases', () => {
-  it('throws when the talent sheet does not exist; variant is not soft-deleted', async () => {
-    const methods = createTalentSheetVariantsMethods(db, team.id);
-    const variant = await methods.insertDivergent({
-      talentSheetId,
-      model: 'flux-pro',
-      url: 'https://example.com/x.png',
-      status: 'completed',
-      inputHash: talentSheetInputHash('h'),
-      divergedAt: new Date('2026-04-29T00:00:00Z'),
-    });
-
-    await expect(
-      methods.promoteAtomically(
-        generateId(),
-        {
-          imageUrl: variant.url,
-          imagePath: null,
-          inputHash: variant.inputHash,
-        },
-        variant.id
-      )
-    ).rejects.toThrow(/not found/);
-
-    const after = await methods.getById(variant.id);
-    expect(after?.discardedAt).toBeNull();
-  });
-
-  it('throws when the variant does not exist; talent_sheets is not updated', async () => {
-    const methods = createTalentSheetVariantsMethods(db, team.id);
-    await expect(
-      methods.promoteAtomically(
-        talentSheetId,
-        {
-          imageUrl: 'https://example.com/new.png',
-          imagePath: null,
-          inputHash: 'h',
-        },
-        generateId()
-      )
-    ).rejects.toThrow(/not found/);
-
-    const [sheet] = await db
-      .select()
-      .from(talentSheets)
-      .where(eq(talentSheets.id, talentSheetId));
-    if (!sheet)
-      throw new Error('test setup: talentSheets select returned nothing');
-    expect(sheet.imageUrl).toBe('https://example.com/sheet.png');
-    expect(sheet.inputHash).toBeNull();
   });
 });
 

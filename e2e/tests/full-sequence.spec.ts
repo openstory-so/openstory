@@ -27,15 +27,12 @@ import {
 } from '../fixtures/location.fixture';
 import {
   cleanupSequenceById,
+  createScarlettCharacter,
   createTestStyle,
   getTestSequenceShots,
   getTestSequenceStatus,
   getTestShot,
 } from '../fixtures/sequence.fixture';
-import {
-  getSystemTalentByName,
-  type TestTalent,
-} from '../fixtures/talent.fixture';
 import {
   fillScriptEditor,
   openComposerReference,
@@ -128,20 +125,13 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   // running near their limit plus setup.
   testWithUser.setTimeout(1_800_000);
 
-  let testTalents: TestTalent[] = [];
   let testLocation: TestLocation | null = null;
+  let scarlett: { id: string; name: string } | null = null;
   let styleId: string | null = null;
   let createdSequenceId: string | null = null;
 
   testWithUser.beforeEach(async ({ testUser }) => {
-    // Pull seeded system talent rather than fabricating ones with
-    // placeholder URLs — workflows need real R2 reference images for
-    // character matching and sheet rendering. The seed runs in
-    // e2e/start-webserver.ts before Workerd starts.
-    testTalents = [
-      await getSystemTalentByName('Sienna Blake'),
-      await getSystemTalentByName('Jude Calloway'),
-    ];
+    scarlett = await createScarlettCharacter(testUser.teamId);
     // Locations belong to the team (#1695), so the one the recorded
     // location match names is made for this test's own team.
     testLocation = await createSunlitLoftLocation(testUser.teamId);
@@ -154,9 +144,8 @@ testWithUser.describe('Full Sequence Pipeline', () => {
     }
     // After the sequence: a location a sequence links to cannot be deleted.
     if (testLocation) await cleanupLocationById(testLocation.id);
-    // System talent is shared and seeded — never delete it.
-    testTalents = [];
     testLocation = null;
+    scarlett = null;
     styleId = null;
     createdSequenceId = null;
   });
@@ -222,7 +211,7 @@ CORAL — A CITY LAUNCH
 
 INT. DOWNTOWN APARTMENT BATHROOM - MORNING
 
-Hard light off white tile. SCARLETT,
+Hard light off white tile. SCARLETT (22),
 a city influencer in a black turtleneck,
 unboxes a coral lipstick and turns it slowly to camera.
 
@@ -267,20 +256,27 @@ SUPER:  CORAL.  OUT NOW.
         { timeout: t(60_000) }
       );
 
-      // 5. Pick talent.
-      await openComposerReference(page, 'Talent');
-      const talentDialog = page.getByRole('dialog');
-      await expect(talentDialog).toBeVisible({ timeout: 10_000 });
-      const firstTalent = testTalents[0];
-      if (!firstTalent) {
-        throw new Error('test setup: expected at least one test talent');
+      // 5. Cast Scarlett, a team character with no sheet yet (#2135): the
+      // run binds the script's SCARLETT to her and draws her sheet.
+      if (!scarlett) throw new Error('scarlett not initialised');
+      const castButton = page.getByRole('button', {
+        name: 'Cast',
+        exact: true,
+      });
+      if (!(await castButton.isVisible())) {
+        await page.getByRole('button', { name: 'References' }).click();
       }
-      await page.getByText(firstTalent.name).click();
-      await page.getByRole('button', { name: 'Cast 1', exact: true }).click();
-      await expect(talentDialog).not.toBeVisible();
+      await castButton.click();
+      const castDialog = page.getByRole('dialog');
+      await expect(castDialog).toBeVisible({ timeout: 10_000 });
+      await castDialog.getByRole('button', { name: scarlett.name }).click();
+      await castDialog
+        .getByRole('button', { name: 'Cast 1', exact: true })
+        .click();
+      await expect(castDialog).not.toBeVisible();
 
       // 6. Pick location.
-      await openComposerReference(page, 'Locations');
+      await openComposerReference(page);
       const locationDialog = page.getByRole('dialog');
       await expect(locationDialog).toBeVisible({ timeout: 10_000 });
       if (!testLocation) throw new Error('testLocation not initialised');

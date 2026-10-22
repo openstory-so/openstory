@@ -127,7 +127,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     kind: 'input',
     band: 'bibles',
     summary:
-      'Extracted from the script at the Script stage, rewritten by casting when a talent is matched, then yours to edit. Every change is a version. The character belongs to the team (#2017): every sequence that casts it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved since the version live when it was made. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.',
+      "Extracted from the script at the Script stage, then yours to edit. The character's face, sheet and voice live on the character. Every change is a version. The character belongs to the team (#2017): every sequence that casts it reads its current version, so an edit from any sequence re-stales the shots of every sequence by derivation, and a stale shot names the field that moved since the version live when it was made. A voice-only character (a narrator) has a row but never a sheet. What a character wears is its looks, not the bible.",
     counts: [
       'Age, gender, ethnicity',
       'Physical description, permanent marks included',
@@ -135,12 +135,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Personality and movement (motion prompt only)',
       'Consistency tag (sheet only)',
     ],
-    ignored: [
-      'Name',
-      'First mention',
-      'The talent id itself (its look is copied into the fields above, and those count)',
-      'Voice description',
-    ],
+    ignored: ['Name', 'First mention', 'Voice description'],
   },
   {
     id: 'look',
@@ -158,26 +153,6 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     ignored: [
       'Name',
       'A look no scene wears: it reaches no shot, and gets a sheet only when asked for one',
-    ],
-  },
-  {
-    id: 'talent',
-    optional: 'when a character is cast as library talent',
-    label: 'Talent',
-    kind: 'input',
-    band: 'library',
-    summary:
-      'A library person. Cast onto a character automatically at the Script stage or by hand; casting copies their look, performance and voice onto the character bible once. The character sheet keeps reading the talent: its description and default sheet are in the sheet hash, so editing either re-stales the cast character sheet.',
-    counts: [
-      'Description (talent sheet and cast character sheet)',
-      'Reference photos',
-      'The default talent sheet image and look (cast character sheet)',
-    ],
-    ignored: [
-      'Name',
-      {
-        gap: 'A redesigned talent voice never reaches a cast character: the id is copied once at cast, and talent voices have no history to select from',
-      },
     ],
   },
   {
@@ -290,7 +265,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     band: 'settings',
     summary: 'The model that renders sheets and stills.',
     counts: [
-      'Model id, for a talent sheet and an uploaded sheet (which has no model of its own)',
+      'Model id, for a character sheet and an uploaded sheet (which has no model of its own)',
     ],
     ignored: [
       'Switching model: a still or generated sheet is checked against the model that rendered it, so the switch applies to the next render',
@@ -408,35 +383,18 @@ export const GRAPH_NODES: readonly GraphNode[] = [
   },
   // --- References ----------------------------------------------------------
   {
-    id: 'talentSheet',
-    versionedIn: 'talent_sheet_variants',
-    optional: 'when a character is cast as library talent',
-    label: 'Talent sheet',
-    kind: 'artifact',
-    band: 'references',
-    summary:
-      'The talent as a sequence sees it. A cast character usually reuses this sheet as its own and always draws from it, so "the talent changed" means "the selected talent sheet changed".',
-    counts: ['Talent description', 'Reference photo hashes', 'Image model'],
-    ignored: [
-      'Talent name',
-      'Nothing reports a talent sheet stale: its hash reaches a sequence only through the character sheet',
-    ],
-    storedAs: 'talent_sheets.inputHash',
-  },
-  {
     id: 'characterSheet',
     versionedIn: 'character_sheet_variants',
     label: 'Character sheet',
     kind: 'artifact',
     band: 'references',
     summary:
-      "Turnaround sheet for one look of a character (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The sheet is the look's, so every sequence that casts the character shares it (#2017). The default look's first sheet may be the talent sheet reused. Every other look is drawn from the default look's completed sheet and hashes that sheet's selected version. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
+      "Turnaround sheet for one look of a character (#2015): one sheet per look some scene wears, and the character's own sheet is its default look's. The face, the sheet and the voice live on the character. The sheet is the look's, so every sequence that casts the character shares it (#2017). Every look other than the default is drawn from the default look's completed sheet and hashes that sheet's selected version. A run holds a claim on its look: an edit to anything the sheet reads revokes it, so the run parks its result instead of landing it.",
     counts: [
       'Character bible (age, gender, ethnicity, description, consistency tag)',
       "The look's clothing, and its styling once set. The default look's styling holds what the bible called distinguishing features (#2065)",
       "The default look's sheet version, on every other look",
-      'Talent sheet hash, when cast',
-      "The talent's description and default sheet image and look, when cast",
+      'talentSheetHash: null, kept so stored digests still verify',
       'Image model it was rendered with',
     ],
     ignored: [
@@ -539,7 +497,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
     counts: [
       'Scene extract, heading, time of day, story beat',
       'Style config',
-      "Character, location and element bibles this prompt's own text names, or the scene continuity tags while it is unwritten (#2012). Stamped from the text being written. As cast, so a talent match moves nothing afterwards",
+      "Character, location and element bibles this prompt's own text names, or the scene continuity tags while it is unwritten (#2012). Stamped from the text being written",
       "The shot's framing and start state, on a multi-shot scene",
       'Aspect ratio',
       'Script model it was written with',
@@ -730,12 +688,6 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: 'the bibles call extracts the cast at the Script stage',
   },
   {
-    from: 'talent',
-    to: 'character',
-    tracking: 'seeded',
-    note: 'casting copies the talent look, performance and voice onto the bible',
-  },
-  {
     from: 'script',
     to: 'location',
     tracking: 'seeded',
@@ -760,8 +712,6 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     note: "the shot-list call assigns every spoken line to a shot and seeds that shot's lines with it",
   },
   // References
-  { from: 'talent', to: 'talentSheet', tracking: 'hash' },
-  { from: 'imageModel', to: 'talentSheet', tracking: 'hash' },
   { from: 'character', to: 'characterSheet', tracking: 'hash' },
   {
     from: 'look',
@@ -775,31 +725,12 @@ export const GRAPH_EDGES: readonly GraphEdge[] = [
     tracking: 'seeded',
     note: 'the bibles call writes the outfit a character first appears in as its default look',
   },
-  {
-    from: 'talentSheet',
-    to: 'characterSheet',
-    tracking: 'hash',
-    note: 'the talent sheet hash is folded into the character sheet hash',
-  },
   { from: 'style', to: 'characterSheet', tracking: 'hash' },
-  {
-    from: 'talent',
-    to: 'characterSheet',
-    tracking: 'hash',
-    note: "the talent's description and default sheet image and look, read by the sheet prompt",
-  },
   {
     from: 'character',
     to: 'voice',
     tracking: 'untracked',
     note: 'the voice description is drafted from the bible once',
-  },
-  {
-    from: 'talent',
-    to: 'voice',
-    tracking: 'untracked',
-    gap: true,
-    note: 'a library voice is copied onto the character at cast, not designed — and redesigning the talent voice later reaches nothing, since talent voices have no version history',
   },
   {
     from: 'imageModel',

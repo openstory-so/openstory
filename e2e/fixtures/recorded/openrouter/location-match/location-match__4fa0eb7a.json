@@ -1,0 +1,52 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Match the following library locations to extracted script locations. The user specifically selected these 1 library locations for visual consistency.\n\nEXTRACTED LOCATIONS FROM SCRIPT (4 total):\n- Location ID: downtown_apartment_bathroom\n  Name: Downtown Apartment Bathroom\n  Type: interior\n  Description: A compact apartment bathroom with white tiled walls and a sink crowded with everyday morning toiletries and small personal items. The sink and mirror form the central grooming area, with a window providing daylight. The room feels lived-in and practical rather than lavish.\n  Architectural Style: Contemporary urban apartment bathroom with simple, utilitarian finishes.\n  Key Features: White tile, a crowded sink, a mirror above the sink, a window, and ordinary grooming items.\n  Ambiance: Private, familiar, and briskly lived-in; an everyday personal space.\n\n- Location ID: downtown_apartment_elevator\n  Name: Downtown Apartment Elevator\n  Type: interior\n  Description: A small residential elevator with brushed-steel walls and a mirror that reflects its occupants. The narrow floor area and close-set walls make the space feel confined; elevator doors open directly onto the building lobby.\n  Architectural Style: Modern urban residential elevator with minimal, hard-wearing finishes.\n  Key Features: Brushed-steel wall panels, a mirror, a narrow cabin, and doors opening onto the lobby.\n  Ambiance: Enclosed and functional, with a brief, slightly jostling ride shared by residents.\n\n- Location ID: manhattan_crosswalk\n  Name: Manhattan Crosswalk\n  Type: exterior\n  Description: A busy Manhattan street crossing bordered by shops and pale stone buildings. The broad intersection carries dense pedestrian traffic, with a curb where commuters wait for the signal and a shop window that reflects passersby. Vehicles move through the intersection beside the crossing.\n  Architectural Style: Dense metropolitan streetscape with mixed commercial frontage and urban stone buildings.\n  Key Features: Marked crosswalk, curb, shop window, pale stone façades, traffic lanes, and pedestrian signal.\n  Ambiance: Crowded, brisk, and continually in motion.\n\n- Location ID: downtown_rooftop\n  Name: Downtown Rooftop\n  Type: exterior\n  Description: An open downtown rooftop with a table used as a casual workspace for photography. Contact sheets and a camera share the tabletop with paper cups; the exposed roof provides an unobstructed view toward passing trains in the distance. Wind can move lightweight papers across the table.\n  Architectural Style: Functional urban rooftop with a simple, informal gathering area.\n  Key Features: Rooftop table, camera, contact sheets, paper cups, open-air setting, and distant elevated train line.\n  Ambiance: Casual and companionable, with an exposed, breezy rooftop feel.\n\nLIBRARY LOCATIONS TO MATCH (1 selected by user):\n- Library Location ID: 01M5H32A3SV2DBBMC35J31DRZT\n  Name: Sunlit Loft Studio\n  Description: Airy industrial loft with exposed brick, massive arched windows flooding warm natural light, a velvet couch, scattered art supplies, and hanging plants. Creative, intimate, and effortlessly photogenic.\n  Has Reference Image: yes\n\nREQUIREMENTS:\n- Match library locations to script locations based on semantic similarity (name, description, type)\n- Each library location can only match ONE script location\n- Each script location can only have ONE library location match\n- Only match if there's reasonable similarity (confidence > 0.5)\n- Consider: location type (interior/exterior), setting, atmosphere, visual characteristics\n- Note: More extracted locations than library locations. Some locations will remain unmatched.\n\nMATCHING EXAMPLES:\n- \"INT. OFFICE\" should match library locations like \"Corporate Office\", \"Modern Office\", etc.\n- \"EXT. PARK\" should match \"City Park\", \"Garden\", etc.\n- Consider architectural style and ambiance when matching\n- If no good match exists, don't force a match\n\nRespond with up to 1 matches, only including high-confidence matches.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"matches\":[]}",
+        "usage": {
+          "prompt_tokens": 1330,
+          "completion_tokens": 74,
+          "total_tokens": 1404,
+          "cost": 0.000203175,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1327,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000203175,
+            "upstream_inference_prompt_cost": 0.000166175,
+            "upstream_inference_completions_cost": 0.000037
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 60,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1055,
+        "interChunkDelaysMs": [
+          454, 383, 417, 155, 96, 0, 0, 0, 83, 0, 0, 0, 39, 0, 0, 0, 47, 0, 0,
+          0, 43, 1, 0, 0, 41, 0, 0, 0, 44, 1, 0, 0, 56, 0, 0, 1, 169, 1, 0, 0,
+          2, 0, 0, 0, 23, 0, 0, 0, 46, 0, 0, 0, 46, 0, 0, 0, 58, 1, 0, 0, 74, 0,
+          0, 0, 50, 0, 0, 0, 50, 0, 1, 0, 48, 0, 0, 0, 123, 0, 0, 0, 10, 0, 0,
+          0, 65, 0, 0, 0, 42, 0, 1, 0, 64, 0, 8, 50, 0, 20, 0, 52, 1, 2
+        ],
+        "totalDurationMs": 3923
+      },
+      "metadata": {
+        "systemHash": "a5e654be"
+      }
+    }
+  ]
+}

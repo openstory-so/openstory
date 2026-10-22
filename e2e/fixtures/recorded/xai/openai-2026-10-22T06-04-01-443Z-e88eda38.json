@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium close-up, slightly above, Scarlett (Image 1)'S FRIEND holds the lipstick near her lips and looks toward the camera screen; Scarlett (Image 1) sits beside her., Scarlett (Image 1)'S FRIEND is reflected in the camera’s dark screen, with the lipstick and her hand in the foreground., EXT. DOWNTOWN ROOFTOP — LATE AFTERNOON, downtown_rooftop (Image 3), Natural, even lighting, #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8, Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.\nImage 2 (character): Scarlett's Friend - An adult friend of Scarlett",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/41fe9e4352bdf8a967e4d892a05ce8ad02de26022199af3486282b3f2da1cab6.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

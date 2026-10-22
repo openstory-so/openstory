@@ -35,7 +35,7 @@ import { useViaAvailability } from '@/models/ui/use-via-availability';
 import {
   STUDIO_EDIT_MODEL,
   studioCanEditSource,
-  studioUsedReferenceVideo,
+  studioUsedUploadedReferenceVideo,
 } from '@/studio/text-to-video';
 import {
   useDeleteStudioAsset,
@@ -1001,7 +1001,7 @@ export function StudioGallery({
               onEdit={
                 canEdit &&
                 studioCanEditSource(openAsset.input.videoModel) &&
-                !studioUsedReferenceVideo(openAsset.input)
+                !studioUsedUploadedReferenceVideo(openAsset.input)
                   ? (prompt, draft) => {
                       edit.mutate(
                         { id: openAsset.id, prompt, draft },

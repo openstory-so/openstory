@@ -1,4 +1,5 @@
 import { copyFile } from '#storage';
+import { carryUploadRightsIfChecked } from '@/cast/server/upload-rights';
 import { generateId } from '@/platform/id';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import {
@@ -48,6 +49,11 @@ export async function copySequenceElements(params: {
       await copyFile(STORAGE_BUCKETS.ELEMENTS, sourceRelative, targetRelative);
 
       publicUrl = getPublicUrl(STORAGE_BUCKETS.ELEMENTS, targetRelative);
+      // The ledger is keyed by URL: the copy keeps the source's verdict,
+      // or a checked clip would be refused by the motion run (#1930).
+      if (source.imageUrl && source.kind !== 'audio') {
+        await carryUploadRightsIfChecked(scopedDb, source.imageUrl, publicUrl);
+      }
     }
 
     const carryVision = source.visionStatus === 'completed';

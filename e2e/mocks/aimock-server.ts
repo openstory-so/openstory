@@ -94,7 +94,6 @@ const STAGE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
   ['Cover each scene.', 'script-shot-list'],
   ["Rewrite this shot's spec.", 'shot-spec-rewrite'],
   ['Match the following library locations', 'location-match'],
-  ['Cast the following talent', 'talent-cast'],
   ['Generate the visual prompt for the starting frame', 'visual-prompts'],
   ['Generate the motion prompt for this scene', 'motion-prompts'],
   ['Classify music design for each scene', 'music-design'],

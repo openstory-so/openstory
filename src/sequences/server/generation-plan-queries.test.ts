@@ -118,10 +118,7 @@ const LOADERS: Record<
       await scopedDb.shots.listBySequence(sequence.id)
     ),
   getSequenceCharactersFn: async (scopedDb, sequence) =>
-    personLocksOf(
-      scopedDb,
-      await scopedDb.characters.listWithTalent(sequence.id)
-    ),
+    personLocksOf(scopedDb, await scopedDb.characters.list(sequence.id)),
   getScenesFn: (scopedDb, sequence) =>
     loadSceneContextBySequence(scopedDb, sequence.id),
   getSceneFacetMapsFn: (scopedDb, sequence) =>

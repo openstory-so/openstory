@@ -41,7 +41,8 @@ export const submitContentReportFn = createServerFn({ method: 'POST' })
   .validator(
     zodValidator(
       z.object({
-        targetType: z.enum(CONTENT_REPORT_TARGET_TYPES),
+        // `'talent'` stays readable on old rows; a new report cannot name it.
+        targetType: z.enum(CONTENT_REPORT_TARGET_TYPES).exclude(['talent']),
         /** An id, a URL, or a trace id — whatever the reporter has. */
         targetId: z.string().min(1).max(1000),
         reason: z.enum(CONTENT_REPORT_REASONS),

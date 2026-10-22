@@ -15,9 +15,7 @@ function makeState(
     shots: new Map(),
     isComplete: false,
     isFailed: false,
-    talentMatches: [],
     locationMatches: [],
-    unusedTalent: null,
     shotRetries: new Map(),
     ...overrides,
   };

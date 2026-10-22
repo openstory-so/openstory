@@ -1,3 +1,4 @@
+import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { describe, expect, test } from 'vitest';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import {
@@ -6,6 +7,52 @@ import {
   type EffectiveFalPricing,
 } from './fal-cost';
 import { micros, usdToMicros, ZERO_MICROS } from './money';
+
+const resolutionCard: RateCard = {
+  inputs: {
+    resolution: {
+      param: 'resolution',
+      bound: 'request',
+      kind: 'enum',
+      values: ['1K', '2K'],
+      default: '1K',
+    },
+    num_images: {
+      param: 'num_images',
+      bound: 'request',
+      kind: 'number',
+      default: 1,
+    },
+  },
+  tables: { multiplier: { '1K': 1, '2K': 1.5 } },
+  price: {
+    '*': [
+      { var: 'num_images' },
+      0.08,
+      { lookup: { table: 'multiplier', keys: [{ var: 'resolution' }] } },
+    ],
+  },
+  examples: [],
+  source: {
+    url: 'https://fal.ai/models/fal-ai/nano-banana-2/llms.txt',
+    hash: 'card-hash',
+    extractedAt: '2026-10-22T00:00:00.000Z',
+  },
+};
+
+const durationUsageCard: RateCard = {
+  inputs: {
+    duration: { param: 'duration', bound: 'usage', kind: 'number' },
+  },
+  tables: {},
+  price: { '*': [{ var: 'duration' }, 0.02] },
+  examples: [],
+  source: {
+    url: 'https://example.test/h3',
+    hash: 'duration-hash',
+    extractedAt: '2026-10-22T00:00:00.000Z',
+  },
+};
 
 const usd = (n: number) => usdToMicros(n);
 
@@ -90,6 +137,82 @@ describe('falCostFromUnits', () => {
 });
 
 describe('estimateFalCost', () => {
+  test('a stored card prices the request, ahead of historical typical units', () => {
+    const nano = PRICING['fal-ai/nano-banana-2'];
+    if (!nano) throw new Error('fixture');
+    const live = {
+      ...PRICING,
+      'fal-ai/nano-banana-2': { ...nano, rateCard: resolutionCard },
+    };
+    // One image at 1K is the card's $0.08. Historical typical units (1.5)
+    // would price the same ask at $0.12.
+    expect(
+      estimateFalCost('fal-ai/nano-banana-2', { numImages: 1 }, live)
+    ).toBe(micros(80_000));
+    expect(
+      estimateFalCost(
+        'fal-ai/nano-banana-2',
+        { request: { resolution: '2K', num_images: 1 } },
+        live
+      )
+    ).toBe(micros(120_000));
+  });
+
+  test('a usage-bound duration is priced from usage, including when the caller put it on the request', () => {
+    const veo = PRICING['fal-ai/veo3.1/image-to-video'];
+    if (!veo) throw new Error('fixture');
+    const live = {
+      ...PRICING,
+      'fal-ai/veo3.1/image-to-video': { ...veo, rateCard: durationUsageCard },
+    };
+    expect(
+      estimateFalCost(
+        'fal-ai/veo3.1/image-to-video',
+        { usage: { duration: 6 } },
+        live
+      )
+    ).toBe(micros(120_000));
+    expect(
+      estimateFalCost(
+        'fal-ai/veo3.1/image-to-video',
+        { request: { duration: 6 } },
+        live
+      )
+    ).toBe(micros(120_000));
+  });
+
+  test('a card that refuses returns null and does not use historical typical units', () => {
+    const gpt = PRICING['openai/gpt-image-2'];
+    if (!gpt) throw new Error('fixture');
+    const live = {
+      ...PRICING,
+      'openai/gpt-image-2': {
+        ...gpt,
+        rateCard: { ...resolutionCard, price: 0 },
+      },
+    };
+    expect(
+      estimateFalCost('openai/gpt-image-2', { numImages: 1 }, live)
+    ).toBeNull();
+  });
+
+  test('an observed median outranks the card', () => {
+    const live = {
+      ...PRICING,
+      'fal-ai/nano-banana-2': {
+        unitPrice: micros(80_000),
+        unit: 'images',
+        typicalUnitsPerCall: 1.5,
+        observed: { medianUnits: 2, sampleCount: MIN_OBSERVED_SAMPLES },
+        rateCard: resolutionCard,
+      },
+    };
+    // 2 units × $0.08, not the card's $0.08 default.
+    expect(
+      estimateFalCost('fal-ai/nano-banana-2', { numImages: 1 }, live)
+    ).toBe(micros(160_000));
+  });
+
   test('per-image uses typicalUnitsPerCall × numImages (nano-banana historical 1.5×)', () => {
     // unitPrice $0.08, typicalUnitsPerCall 1.5 → $0.12 each, $0.24 for 2.
     expect(

@@ -207,10 +207,7 @@ export const sequences = snakeCase.table(
     // from live rows (#1816, #1819).
     generationStopAt: text().$type<GenerationStage>(),
 
-    // Suggested talent/location IDs used during generation (for pre-populating the UI)
-    suggestedTalentIds: text({
-      mode: 'json',
-    }).$type<string[]>(),
+    // Suggested location IDs used during generation (for pre-populating the UI)
     suggestedLocationIds: text({
       mode: 'json',
     }).$type<string[]>(),

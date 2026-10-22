@@ -41,7 +41,7 @@ import { Link } from '@tanstack/react-router';
 import { Film, Mic, Trash2, User } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { talentSquareImageClassName } from '@/cast/talent-preview';
+import { sheetSquareImageClassName } from '@/cast/sheet-tile';
 import { cn } from '@/ui/utils';
 import { AppImage } from '@/ui/shadcn/app-image';
 
@@ -157,7 +157,7 @@ const CastCard: React.FC<CastCardProps> = ({
               width={160}
               height={160}
               className={cn(
-                talentSquareImageClassName(!character.sheetPortraitUrl),
+                sheetSquareImageClassName(!character.sheetPortraitUrl),
                 'transition-transform duration-500 group-hover:scale-105'
               )}
             />

@@ -24,7 +24,7 @@ export async function loadSceneFacets(scopedDb: ScopedDb, sequence: Sequence) {
     await Promise.all([
       scopedDb.shots.listBySequence(sequence.id),
       scopedDb.locations.list(sequence.id),
-      scopedDb.characters.listWithTalent(sequence.id),
+      scopedDb.characters.list(sequence.id),
       scopedDb.sequenceElements.list(sequence.id),
       loadSceneContextBySequence(scopedDb, sequence.id),
       scopedDb.frames.listAnchorsBySequence(sequence.id),

@@ -181,7 +181,8 @@ export type NewContentProvenance = InferInsertModel<typeof contentProvenance>;
 /**
  * What kind of upload the row is about. Since #1581 every user-supplied
  * image is keyed by `uploaded_image` (the SHA-256 of its stored URL) and only
- * a real person's likeness is signed for; the other values predate that and
+ * a real person's likeness is signed for (an uploaded clip uses the same type,
+ * #1930); the other values predate that and
  * are kept so old rows still read as evidence.
  */
 const ATTESTATION_SUBJECT_TYPES = [

@@ -1,7 +1,25 @@
-import { LIBRARY_GRID_CLASS } from '@/cast/ui/talent-library/talent-library-list';
+import { Card } from '@/ui/shadcn/card';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type React from 'react';
 import { useCallback, useState, useSyncExternalStore } from 'react';
+
+/** Characters and locations lay out on the same grid. */
+const LIBRARY_GRID_CLASS =
+  'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4';
+
+export const LibraryGridSkeleton: React.FC = () => (
+  <div className={LIBRARY_GRID_CLASS}>
+    {[1, 2, 3, 4, 5, 6].map((n) => (
+      <Card key={`skeleton-${n}`} className="overflow-hidden animate-pulse">
+        <div className="aspect-square bg-muted" />
+        <div className="p-4">
+          <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+          <div className="h-3 bg-muted rounded w-1/2" />
+        </div>
+      </Card>
+    ))}
+  </div>
+);
 
 const subscribeToResize = (onChange: () => void) => {
   window.addEventListener('resize', onChange);

@@ -12,21 +12,6 @@ export type SheetProgressActivity = z.infer<typeof sheetProgressActivitySchema>;
  * - generation.* - Events for the overall generation process
  */
 export const realtimeSchema = {
-  // Talent library events
-  talent: {
-    // Sheet generation progress
-    'sheet:progress': z.object({
-      talentId: z.string(),
-      status: z.enum(['generating', 'sheet_ready', 'completed', 'failed']),
-      /** What the run is actually doing. Omitted on older events → sheet. */
-      activity: sheetProgressActivitySchema.optional(),
-      sheetId: z.string().optional(),
-      sheetImageUrl: z.string().optional(),
-      headshotImageUrl: z.string().optional(),
-      error: z.string().optional(),
-    }),
-  },
-
   // Team billing ledger updates (#1090). Channel `billing:${teamId}`; the
   // credit-balance pill subscribes only while visible so idle sessions pay no
   // SSE cost. Payload is enough to patch the balance query; clients refetch it
@@ -361,22 +346,6 @@ export const realtimeSchema = {
       ),
     }),
 
-    // Talent matching events (during sequence generation)
-    'talent:matched': z.object({
-      matches: z.array(
-        z.object({
-          characterId: z.string(),
-          characterName: z.string(),
-          talentId: z.string(),
-          talentName: z.string(),
-        })
-      ),
-    }),
-    'talent:unmatched': z.object({
-      unusedTalentIds: z.array(z.string()),
-      unusedTalentNames: z.array(z.string()),
-    }),
-
     // Poster image ready (sequence-level preview from script)
     'poster:ready': z.object({
       posterUrl: z.string(),
@@ -400,7 +369,7 @@ export const realtimeSchema = {
     // helpers in `sheet-divergence.ts` and `regenerate-shots-workflow.ts` are
     // the sole emit sites). A flat `z.object` here would let consumers redeclare
     // the payload locally with a wider `entityType: string`, which is what
-    // masked the round-1 talent-channel routing bug.
+    // masked a routing bug where consumers widened entityType to string.
     'stale:detected': z.discriminatedUnion('entityType', [
       z.object({
         entityType: z.literal('shot'),
@@ -418,13 +387,6 @@ export const realtimeSchema = {
       }),
       z.object({
         entityType: z.literal('location'),
-        entityId: z.string(),
-        artifact: z.literal('sheet'),
-        snapshotInputHash: z.string(),
-        divergedVariantId: z.string(),
-      }),
-      z.object({
-        entityType: z.literal('talent'),
         entityId: z.string(),
         artifact: z.literal('sheet'),
         snapshotInputHash: z.string(),
@@ -475,7 +437,6 @@ export type WorkflowRun = z.infer<
 >;
 
 export const realtimeLeaves = {
-  'talent.sheet:progress': realtimeSchema.talent['sheet:progress'],
   'billing.balance:updated': realtimeSchema.billing['balance:updated'],
   'shotPrompt.streaming': realtimeSchema.shotPrompt.streaming,
   'shotPrompt.completed': realtimeSchema.shotPrompt.completed,
@@ -518,8 +479,6 @@ export const realtimeLeaves = {
   'generation.replace-element:failed':
     realtimeSchema.generation['replace-element:failed'],
   'generation.location:matched': realtimeSchema.generation['location:matched'],
-  'generation.talent:matched': realtimeSchema.generation['talent:matched'],
-  'generation.talent:unmatched': realtimeSchema.generation['talent:unmatched'],
   'generation.poster:ready': realtimeSchema.generation['poster:ready'],
   'generation.style:ready': realtimeSchema.generation['style:ready'],
   'generation.stale:detected': realtimeSchema.generation['stale:detected'],
@@ -557,8 +516,6 @@ type LeafParsers = {
 // One function per leaf. Indexing the schema map and calling `.safeParse`
 // widens every leaf into one union, and Zod then collapses the outputs.
 const leafParsers: LeafParsers = {
-  'talent.sheet:progress': (data) =>
-    parseWith(realtimeLeaves['talent.sheet:progress'], data),
   'billing.balance:updated': (data) =>
     parseWith(realtimeLeaves['billing.balance:updated'], data),
   'shotPrompt.streaming': (data) =>
@@ -621,10 +578,6 @@ const leafParsers: LeafParsers = {
     parseWith(realtimeLeaves['generation.replace-element:failed'], data),
   'generation.location:matched': (data) =>
     parseWith(realtimeLeaves['generation.location:matched'], data),
-  'generation.talent:matched': (data) =>
-    parseWith(realtimeLeaves['generation.talent:matched'], data),
-  'generation.talent:unmatched': (data) =>
-    parseWith(realtimeLeaves['generation.talent:unmatched'], data),
   'generation.poster:ready': (data) =>
     parseWith(realtimeLeaves['generation.poster:ready'], data),
   'generation.style:ready': (data) =>

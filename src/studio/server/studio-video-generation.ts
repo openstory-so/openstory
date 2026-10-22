@@ -331,18 +331,19 @@ function urlPart(
 }
 
 /**
- * The stills a BytePlus studio submit needs registered: every image the
- * user supplied that may be a face. `noPersonImages` (ledger stills whose
- * ledger verdict is `none`, snapshotted at the trigger)
- * are marked `plain` and go as fetchable URLs so they do not spend
- * CreateAsset turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Reference
- * clips and audio are not assets; the source of an edit is (#1925).
+ * The media a BytePlus studio submit needs registered: every image and
+ * reference clip the user supplied that may show a face. `noPersonImages`
+ * (media whose ledger verdict is `none`, snapshotted at the trigger) are
+ * marked `plain` and go as fetchable URLs so they do not spend CreateAsset
+ * turns (`BYTEPLUS_ASSET_WRITE_QPM`, #1674, #1682). Reference clips are
+ * Video assets (#1930), as is the source of an edit (#1925); audio is not.
  */
 export function arkStillsForStudio(
   options: Pick<
     StudioVideoJobOptions,
     | 'mode'
     | 'referenceImages'
+    | 'referenceVideos'
     | 'startImageUrl'
     | 'endImageUrl'
     | 'sourceVideoUrl'
@@ -363,10 +364,17 @@ export function arkStillsForStudio(
   }
   const stills: ArkStill[] =
     mode === 'reference'
-      ? (options.referenceImages ?? []).map((storedUrl) => ({
-          storedUrl,
-          slot: 'library',
-        }))
+      ? [
+          ...(options.referenceImages ?? []).map((storedUrl): ArkStill => ({
+            storedUrl,
+            slot: 'library',
+          })),
+          ...(options.referenceVideos ?? []).map((storedUrl): ArkStill => ({
+            storedUrl,
+            slot: 'library',
+            kind: 'Video',
+          })),
+        ]
       : mode === 'frames'
         ? [options.startImageUrl, options.endImageUrl]
             .filter((url): url is string => Boolean(url))
@@ -407,15 +415,14 @@ async function buildStudioBytePlusPrompt(
     const images = (options.referenceImages ?? []).map((url) =>
       urlPart(url, 'reference', options.arkAssets)
     );
-    const videos = await Promise.all(
-      (options.referenceVideos ?? []).map(async (url) => ({
-        type: 'video' as const,
-        source: {
-          type: 'url' as const,
-          value: await toArkFetchableUrl(url, falKey?.key),
-        },
-      }))
-    );
+    // Registered by the workflow like the stills (`arkStillsForStudio`).
+    const videos = (options.referenceVideos ?? []).map((url) => ({
+      type: 'video' as const,
+      source: {
+        type: 'url' as const,
+        value: arkUrlFor(options.arkAssets, url),
+      },
+    }));
     const audios = await Promise.all(
       (options.referenceAudio ?? []).map(async (url) => ({
         type: 'audio' as const,

@@ -332,36 +332,6 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
-  // ---- Talent ----
-  talent: {
-    team: r.one.teams({ from: r.talent.teamId, to: r.teams.id }),
-    createdByUser: r.one.user({
-      from: r.talent.createdBy,
-      to: r.user.id,
-    }),
-    sheets: r.many.talentSheets(),
-    media: r.many.talentMedia(),
-  },
-  talentSheets: {
-    talent: r.one.talent({
-      from: r.talentSheets.talentId,
-      to: r.talent.id,
-    }),
-    variants: r.many.talentSheetVariants(),
-  },
-  talentSheetVariants: {
-    talentSheet: r.one.talentSheets({
-      from: r.talentSheetVariants.talentSheetId,
-      to: r.talentSheets.id,
-    }),
-  },
-  talentMedia: {
-    talent: r.one.talent({
-      from: r.talentMedia.talentId,
-      to: r.talent.id,
-    }),
-  },
-
   // ---- Libraries ----
   styles: {
     team: r.one.teams({ from: r.styles.teamId, to: r.teams.id }),

@@ -33,9 +33,6 @@ import {
   sequences,
   session,
   styles,
-  talent,
-  talentMedia,
-  talentSheets,
   teamMembers,
   teams,
   user,
@@ -81,13 +78,6 @@ export type CreatedTestShot = {
   id: string;
   sequenceId: string;
   orderIndex: number;
-};
-
-export type CreatedTestTalent = {
-  id: string;
-  teamId: string;
-  name: string;
-  defaultSheetId: string;
 };
 
 /**
@@ -449,99 +439,6 @@ export async function createTestShot(
 }
 
 /**
- * Create test talent + default sheet.
- */
-export async function createTestTalent(
-  teamId: string,
-  name: string
-): Promise<CreatedTestTalent> {
-  const db = getDb();
-  const now = new Date();
-  const talentId = generateId();
-  const sheetId = generateId();
-
-  await db.insert(talent).values({
-    id: talentId,
-    teamId,
-    name,
-    isInTeamLibrary: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await db.insert(talentSheets).values({
-    id: sheetId,
-    talentId,
-    name: 'Default',
-    imageUrl: `http://localhost:3020/api/test/image?w=512&h=512&label=sheet`,
-    imagePath: `talent/${name.toLowerCase().replace(/\s+/g, '-')}/sheet.webp`,
-    isDefault: true,
-    source: 'manual_upload',
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  return { id: talentId, teamId, name, defaultSheetId: sheetId };
-}
-
-/**
- * Create test talent with reference media (multiple media items).
- */
-export async function createTestTalentWithMedia(
-  teamId: string,
-  name: string,
-  mediaCount = 2
-): Promise<{
-  id: string;
-  name: string;
-  teamId: string;
-  sheetId: string;
-  mediaIds: string[];
-}> {
-  const db = getDb();
-  const now = new Date();
-  const talentId = generateId();
-  const sheetId = generateId();
-
-  await db.insert(talent).values({
-    id: talentId,
-    teamId,
-    name,
-    isInTeamLibrary: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  await db.insert(talentSheets).values({
-    id: sheetId,
-    talentId,
-    name: 'Default',
-    imageUrl: `http://localhost:3020/api/test/image?w=512&h=512&label=sheet`,
-    isDefault: true,
-    source: 'manual_upload',
-    createdAt: now,
-    updatedAt: now,
-  });
-
-  const mediaIds: string[] = [];
-  for (let i = 0; i < mediaCount; i++) {
-    const mediaId = generateId();
-    mediaIds.push(mediaId);
-    await db.insert(talentMedia).values({
-      id: mediaId,
-      talentId,
-      type: 'image',
-      url: `http://localhost:3020/api/test/image?w=400&h=400&label=media`,
-      path: `${teamId}/${talentId}/${mediaId}.jpg`,
-      createdAt: now,
-      updatedAt: now,
-    });
-  }
-
-  return { id: talentId, name, teamId, sheetId, mediaIds };
-}
-
-/**
  * Create a test location for a team, with a completed sheet. It is in no
  * sequence: a test picks it, and analysis links it.
  */
@@ -617,13 +514,66 @@ export async function createSunlitLoftTestLocation(teamId: string) {
 }
 
 /**
+ * The team character the full-sequence e2e casts as the script's SCARLETT
+ * (#2135). No sequence and no sheet: the run casts her and draws the sheet.
+ */
+export async function createScarlettTestCharacter(teamId: string) {
+  const db = getDb();
+  const now = new Date();
+  const id = generateId();
+  const name = 'Scarlett';
+  await db.insert(characters).values({
+    id,
+    teamId,
+    legacyName: name,
+    selectedBibleVersionId: id,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(characterLooks).values({
+    id,
+    characterId: id,
+    isDefault: true,
+    sortOrder: 0,
+    selectedLookVersionId: id,
+    sheetStatus: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(characterLookVersions).values({
+    id,
+    lookId: id,
+    name: DEFAULT_LOOK_NAME,
+    clothing:
+      'Black fitted turtleneck, slim black trousers, small gold hoop earrings.',
+    styling: null,
+    source: 'edit',
+    createdAt: now,
+  });
+  await db.insert(characterBibleVersions).values({
+    id,
+    characterId: id,
+    name,
+    age: '22',
+    gender: 'Woman',
+    physicalDescription:
+      'A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob.',
+    voiceOnly: false,
+    rendering: 'Photoreal live action',
+    isPerson: false,
+    source: 'edit',
+    createdAt: now,
+  });
+  return { id, name };
+}
+
+/**
  * Create a test character for a sequence.
  */
 export async function createTestCharacter(
   sequenceId: string,
   characterId: string,
   name: string,
-  talentId: string | null = null,
   options: {
     sheetImageUrl?: string;
     sheetStatus?: 'pending' | 'generating' | 'completed' | 'failed';
@@ -698,7 +648,6 @@ export async function createTestCharacter(
     // backfill wrote this for every old row.
     rendering: 'Photoreal live action',
     isPerson: true,
-    talentId,
     source: 'backfill',
     createdAt: now,
   });
@@ -747,43 +696,6 @@ export async function cleanupSequenceById(
 }
 
 /**
- * Clean up test talent (and cascaded sheets/media) for a team.
- */
-export async function cleanupTestTalent(teamId: string): Promise<void> {
-  const db = getDb();
-  await db.delete(talent).where(eq(talent.teamId, teamId));
-}
-
-/**
- * Clean up a specific talent by ID (cascades to sheets/media).
- */
-export async function cleanupTalentById(talentId: string): Promise<void> {
-  const db = getDb();
-  await db.delete(talent).where(eq(talent.id, talentId));
-}
-
-/**
- * Find and clean up talent by team + name (for UI-created test entities).
- *
- * Specs share one team, so a by-name cleanup must never widen to the whole
- * team: doing so deletes talent that other parallel workers created mid-test
- * and their list assertions then fail on missing rows (#827).
- */
-export async function cleanupTalentByName(
-  teamId: string,
-  name: string
-): Promise<void> {
-  const db = getDb();
-  const [created] = await db
-    .select({ id: talent.id })
-    .from(talent)
-    .where(and(eq(talent.teamId, teamId), eq(talent.name, name)));
-  if (created) {
-    await db.delete(talent).where(eq(talent.id, created.id));
-  }
-}
-
-/**
  * Clean up a team's locations.
  */
 export async function cleanupTestLocations(teamId: string): Promise<void> {
@@ -812,48 +724,6 @@ export async function cleanupLocationByName(
   await deleteTestLocations(
     and(eq(locations.teamId, teamId), inArray(locations.id, named))
   );
-}
-
-/**
- * Look up a seeded system talent by name (isPublic + default sheet).
- */
-export async function getSystemTalentByName(name: string): Promise<{
-  id: string;
-  name: string;
-  teamId: string;
-  sheetId: string;
-}> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(talent)
-    .where(and(eq(talent.name, name), eq(talent.isPublic, true)))
-    .limit(1);
-  const found = rows[0];
-  if (!found) {
-    throw new Error(
-      `System talent "${name}" not found in test DB — was \`bun scripts/seed.ts --test\` run during global setup?`
-    );
-  }
-  const sheets = await db
-    .select()
-    .from(talentSheets)
-    .where(
-      and(eq(talentSheets.talentId, found.id), eq(talentSheets.isDefault, true))
-    )
-    .limit(1);
-  const defaultSheet = sheets[0];
-  if (!defaultSheet) {
-    throw new Error(
-      `System talent "${name}" has no default sheet — re-run seed`
-    );
-  }
-  return {
-    id: found.id,
-    name: found.name,
-    teamId: found.teamId,
-    sheetId: defaultSheet.id,
-  };
 }
 
 /**
@@ -1040,7 +910,6 @@ export async function getTestShot(shotId: string): Promise<{
 export async function getTestCharacter(characterId: string): Promise<{
   id: string;
   name: string;
-  talentId: string | null;
   sheetStatus: string | null;
 } | null> {
   const db = getDb();
@@ -1048,7 +917,6 @@ export async function getTestCharacter(characterId: string): Promise<{
     .select({
       id: characters.id,
       name: characterBibleVersions.name,
-      talentId: characterBibleVersions.talentId,
       sheetStatus: characterLooks.sheetStatus,
     })
     .from(characters)

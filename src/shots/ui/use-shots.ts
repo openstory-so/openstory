@@ -126,7 +126,10 @@ export function useSequenceVideoModels(sequenceId?: string) {
 
 // All video ShotVariant rows for a sequence (#545). Used by the scenes view to
 // resolve each shot's displayed video through the active model's variant.
-export function useSequenceVideoVariants(sequenceId?: string) {
+export function useSequenceVideoVariants(
+  sequenceId?: string,
+  options?: { refetchInterval?: number | false }
+) {
   return useQuery<ShotVariant[]>({
     queryKey: ['sequence-video-variants', sequenceId ?? ''],
     queryFn: async () => {
@@ -135,7 +138,50 @@ export function useSequenceVideoVariants(sequenceId?: string) {
     },
     enabled: !!sequenceId,
     staleTime: 30_000,
+    refetchInterval: options?.refetchInterval ?? false,
   });
+}
+
+/** Cache stamp: keep polling video variants until this time. */
+export function sequenceVideoVariantsDiscoverUntilKey(sequenceId: string) {
+  return ['sequence-video-variants-discover-until', sequenceId] as const;
+}
+
+/**
+ * How long to poll after "add a video model" before a generating row exists.
+ * The trigger returns first; `set-generating-status` writes the row later.
+ */
+export const VIDEO_VARIANT_DISCOVERY_MS = 60_000;
+
+type VideoVariantPollRow = Pick<
+  ShotVariant,
+  'variantType' | 'status' | 'discardedAt' | 'divergedAt'
+>;
+
+// Primary `videoStatus` starts the poll before a variant row exists.
+// An added model never flips that flag (`variantOnly`), so a pending or
+// generating video row keeps the poll on, and the discovery window covers
+// the gap before that row is written (#1381).
+export function sequenceVideoVariantsRefetchInterval(input: {
+  shotsGenerating: boolean;
+  variants: readonly VideoVariantPollRow[] | undefined;
+  discoverUntilMs?: number | null;
+  nowMs?: number;
+}): number | false {
+  if (input.shotsGenerating) return EDITOR_FALLBACK_POLL_MS;
+  const inFlight = input.variants?.some(
+    (variant) =>
+      variant.variantType === 'video' &&
+      variant.discardedAt == null &&
+      variant.divergedAt == null &&
+      (variant.status === 'pending' || variant.status === 'generating')
+  );
+  if (inFlight) return EDITOR_FALLBACK_POLL_MS;
+  const now = input.nowMs ?? Date.now();
+  if (input.discoverUntilMs != null && now < input.discoverUntilMs) {
+    return EDITOR_FALLBACK_POLL_MS;
+  }
+  return false;
 }
 
 // All image FrameVariant (kind:'model') rows for a sequence (#547/#989), each

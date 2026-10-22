@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. medium close-up. slightly above. SCARLETT'S FRIEND is reflected in the camera’s dark screen, with the lipstick and her hand in the foreground. SCARLETT'S FRIEND holds the lipstick near her lips and looks toward the camera screen; SCARLETT sits beside her. Then: SCARLETT'S FRIEND applies the colour and checks her grin in the camera screen. Camera: gentle push-in, brisk. Keep the screen reflection crisp and the rooftop background soft. Characters: Scarlett: Woman, 22, A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob, wearing Black fitted turtleneck, slim black trousers, small gold hoop earrings. Scarlett's Friend: Unspecified, Adult, unspecified, An adult friend of Scarlett, seen photographing her on a rooftop and later trying the lipstick. Facial features, build, hair, skin tone, and other distinguishing traits are not specified. No permanent marks are described, wearing Clothing is not specified. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/6f47450f57e62655a4b9ac2a833161301555aba4ddabf8e6a1f7cdf683a7184a.png",
+              "content_type": "image/png",
+              "file_name": "l3_O_54KI16gyZNZbp5Jv_WYfDKxFp.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042126
+      }
+    }
+  ]
+}

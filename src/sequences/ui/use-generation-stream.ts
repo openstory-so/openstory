@@ -191,35 +191,6 @@ function mapEventToAction(
         },
       };
 
-    case 'generation.talent:matched':
-      // Trust that the realtime schema enforces proper structure
-      return {
-        type: 'TALENT_MATCHED',
-        payload: {
-          matches: (Array.isArray(data.matches) ? data.matches : []).map(
-            (m: Record<string, unknown>) => ({
-              characterId: asString(m.characterId),
-              characterName: asString(m.characterName),
-              talentId: asString(m.talentId),
-              talentName: asString(m.talentName),
-            })
-          ),
-        },
-      };
-
-    case 'generation.talent:unmatched':
-      return {
-        type: 'TALENT_UNMATCHED',
-        payload: {
-          unusedTalentIds: Array.isArray(data.unusedTalentIds)
-            ? data.unusedTalentIds.map(asString)
-            : [],
-          unusedTalentNames: Array.isArray(data.unusedTalentNames)
-            ? data.unusedTalentNames.map(asString)
-            : [],
-        },
-      };
-
     case 'generation.location:matched':
       return {
         type: 'LOCATION_MATCHED',
@@ -375,8 +346,6 @@ export function useGenerationStream(
       'generation.video:progress',
       'generation.audio:progress',
       'generation.variant-image:progress',
-      'generation.talent:matched',
-      'generation.talent:unmatched',
       'generation.location:matched',
       'generation.character-sheet:progress',
       'generation.character-voice:progress',

@@ -1,19 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { requirePersonEditStillAllowed } from './person-lock';
 
 type Db = Parameters<typeof requirePersonEditStillAllowed>[0];
 
-/** A db where the character's talent is, or is not, a real person. */
-const dbWith = (isHuman: boolean): Db => {
+/** A db whose upload ledger does, or does not, lock the character. */
+const dbWith = (locked: boolean): Db => {
   const stub: unknown = {
-    talent: { getCastIdentity: async () => ({ name: 'Mara', isHuman }) },
-    characterLooks: { listCastSheetUrls: async () => [] },
+    characterLooks: {
+      listCastSheetUrls: async () =>
+        locked
+          ? [{ characterId: 'c1', url: 'https://example.com/face.jpg' }]
+          : [],
+    },
+    compliance: {
+      attestations: {
+        listForSubjects: async (_kind: string, ids: string[]) =>
+          locked
+            ? ids.map((subjectId) => ({
+                subjectId,
+                statementVersion: PORTRAIT_RIGHTS_V1.version,
+              }))
+            : [],
+      },
+    },
   };
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test stub: only the two reads the lock makes
   return stub as Db;
 };
 
-const character = { id: 'c1', talentId: 't1' };
+const character = { id: 'c1' };
 
 describe('requirePersonEditStillAllowed', () => {
   it('puts the character back to a person and refuses when a lock landed after the first check', async () => {
@@ -26,7 +42,7 @@ describe('requirePersonEditStillAllowed', () => {
         character,
         putBack
       )
-    ).rejects.toThrow('Cast with Mara, a real person.');
+    ).rejects.toThrow('Its sheet is an uploaded photo of a real person.');
 
     expect(putBack).toHaveBeenCalledOnce();
   });

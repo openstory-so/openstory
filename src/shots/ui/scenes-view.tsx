@@ -60,6 +60,8 @@ import {
 import { sumShotSeconds } from './scene-group';
 import {
   EDITOR_FALLBACK_POLL_MS,
+  sequenceVideoVariantsDiscoverUntilKey,
+  sequenceVideoVariantsRefetchInterval,
   shotKeys,
   useDiscardVariant,
   useDivergentVariants,
@@ -623,10 +625,6 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
   // Fetch image variants for this sequence (frame_variants kind:'model', #989)
   const { data: imageVariants } = useSequenceImageVariants(sequenceId);
 
-  // Video variants (#545) — per-model coverage and the inspector's
-  // per-model state. The player always shows each shot's current version.
-  const { data: videoVariants } = useSequenceVideoVariants(sequenceId);
-
   // Render segments (#986/#990) — group the shot strip into per-video segments
   // and drive the segment-aware Video tab. Poll while motion is in flight so a
   // freshly-rendered segment's version + staleness land without a manual reload.
@@ -639,6 +637,33 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
     anyVideoGenerating
       ? { refetchInterval: EDITOR_FALLBACK_POLL_MS }
       : undefined
+  );
+
+  // Video variants (#545) — per-model coverage and the inspector's
+  // per-model state. The player always shows each shot's current version.
+  // Poll while a primary render or a variant row is in flight, and for a
+  // short window after adding a model, so coverage can leave `generating`
+  // when a realtime completion event is dropped (#1381). Shot generating
+  // badges follow `videoStatus`, which this query does not write.
+  const { data: discoverUntilMs } = useQuery({
+    queryKey: sequenceVideoVariantsDiscoverUntilKey(sequenceId),
+    queryFn: () => null as number | null,
+    enabled: false,
+  });
+  const cachedVideoVariants = queryClient.getQueryData<ShotVariant[]>([
+    'sequence-video-variants',
+    sequenceId,
+  ]);
+  const videoVariantsInterval = sequenceVideoVariantsRefetchInterval({
+    shotsGenerating: anyVideoGenerating,
+    variants: cachedVideoVariants,
+    discoverUntilMs,
+  });
+  const { data: videoVariants } = useSequenceVideoVariants(
+    sequenceId,
+    videoVariantsInterval === false
+      ? undefined
+      : { refetchInterval: videoVariantsInterval }
   );
 
   const videoVariantsByShot = useMemo(() => {

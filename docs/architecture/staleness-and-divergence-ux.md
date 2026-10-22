@@ -33,7 +33,7 @@ Both are slim, non-modal, sit inline with the artifact they describe, and reuse 
 Props:
 
 - `artifact: 'thumbnail' | 'video' | 'audio' | 'sheet' | 'visual-prompt' | 'motion-prompt' | 'music-prompt'`
-- `entityType: 'shot' | 'character' | 'location' | 'library-location' | 'talent' | 'sequence'` (matches `StalenessEntityType` in `staleness-indicator.tsx` and `realtimeSchema.generation['stale:detected']`)
+- `entityType: 'shot' | 'character' | 'location' | 'library-location' | 'sequence'` (matches `StalenessEntityType` in `staleness-indicator.tsx` and `realtimeSchema.generation['stale:detected']`).
 - `onRegenerate: () => void`
 - `onDismiss?: () => void` — soft-dismiss for this session only; doesn't change DB state.
 - `density?: 'inline' | 'corner-dot'` — `inline` for detail views, `corner-dot` for cards / lists.
@@ -100,7 +100,7 @@ For non-image artifacts (video, audio): same dialog shape, with `<video>` or `<a
 
 ### Promote
 
-Reuses the recast-confirm pattern (`src/cast/ui/talent/recast-confirm-dialog.tsx`):
+Confirm before replacing the live image:
 
 ```
 Promote alternate?
@@ -115,7 +115,7 @@ The "motion video, if any, will be marked stale" copy adapts based on which down
 
 - **Images (#989):** promotion is retired — `buildPromoteUpdate` throws for `variantType === 'image'`. Switching primaries uses `frameVariants.select` (pointer repoint + mirror), not a divergent-alternate promote.
 - **Shot video / audio:** copies the `shot_variants` row's `url` / `storagePath` into `shots.videoUrl` / `audioUrl` (and matching `*InputHash`), clears `divergedAt` or sets `discardedAt`, emits `video:progress` / `audio:progress` with `status: completed`.
-- **Sheets:** copies into the live entity via `characters.updateSheet` / location/talent equivalents; clears the divergent variant row or sets `discardedAt`; `sheet-divergence.ts` already emitted `stale:detected` at insert time.
+- **Sheets:** copies into the live character or location sheet; clears the divergent variant row or sets `discardedAt`; `sheet-divergence.ts` already emitted `stale:detected` at insert time.
 
 ### Discard
 
@@ -130,10 +130,9 @@ One row per `(entityType, artifact)` from the `stale:detected` payload. "Stage" 
 | `shot` / `thumbnail`         | (none — no staleness corner dot on `scene-list-item` today)    | inline banner via `ShotStalenessBanners` / `scene-script-prompts.tsx` image tab | shipped (staleness); image divergence banner retired (#989) |
 | `shot` / `video`             | divergent corner dot when `shot_variants` divergent row exists | inline staleness + divergent banner on motion tab in `scene-script-prompts.tsx` | partial                                                     |
 | `shot` / `audio`             | (none)                                                         | inline banner on (future) audio tab                                             | deferred                                                    |
-| `character` / `sheet`        | corner dot on `talent-card`                                    | inline banner above sheet image in `character-detail-view`                      | shipped                                                     |
+| `character` / `sheet`        | corner dot on the character card                               | inline banner above sheet image in `character-detail-view`                      | shipped                                                     |
 | `location` / `sheet`         | corner dot on `location-card`                                  | inline banner above reference image in `location-detail-view`                   | shipped                                                     |
 | `library-location` / `sheet` | corner dot on `location-library-card`                          | inline banner in `location-library` edit dialog                                 | shipped                                                     |
-| `talent` / `sheet`           | corner dot on `talent-library-card`                            | inline banner in `talent-library` edit dialog                                   | shipped                                                     |
 | `sequence` / video (render)  | (none)                                                         | inline banner when segment video is stale (#990)                                | deferred                                                    |
 | `sequence` / `music`         | (none)                                                         | inline banner in `music-view` + divergent via `stale:detected`                  | partial                                                     |
 | `shot` / `visual-prompt`     | (none)                                                         | staleness corner dot on image-prompt tab (`scene-script-prompts.tsx`)           | shipped                                                     |

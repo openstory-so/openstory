@@ -88,7 +88,7 @@ vi.doMock('@tanstack/ai', () => ({
 // talent-vision (and its transitive `external-url` / `create-adapter` /
 // `@tanstack/ai` imports) resolves. A static import here is hoisted above
 // them and caches the real modules, defeating every mock in this file.
-const { analyzeTalentMedia, TALENT_VISION_MODEL } =
+const { analyzeTalentClip, analyzeTalentMedia, TALENT_VISION_MODEL } =
   await import('./talent-vision');
 
 const IMAGES = ['/r2/team-1/uploads/talent.png'];
@@ -150,5 +150,18 @@ describe('analyzeTalentMedia region fallback', () => {
       '402 Insufficient credits'
     );
     expect(adapterModels).toEqual([TALENT_VISION_MODEL]);
+  });
+});
+
+describe('analyzeTalentClip region fallback', () => {
+  it('refuses a verdict from the fallback model, which never saw the clip (#1930)', async () => {
+    chatBehaviours.push('region-block', 'ok');
+
+    await expect(
+      analyzeTalentClip({
+        clip: { uri: 'https://files.example/abc', mimeType: 'video/mp4' },
+        llmKey: { key: 'k', via: 'google', source: 'platform' },
+      })
+    ).rejects.toThrow(`answered on ${REGION_FALLBACK_MODEL}`);
   });
 });

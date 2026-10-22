@@ -38,7 +38,6 @@ import {
   sequences,
   shots,
   styles,
-  talent,
   teams,
   user,
 } from '@/platform/server/db/schema';
@@ -50,7 +49,6 @@ import {
   updateCharacterLook,
   updateTeamCharacterLook,
 } from '@/cast/server/cast-edit';
-import { personLockOf, personLocksOf } from '@/cast/server/person-lock';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { USER_UPLOAD_MODEL } from '@/shots/user-upload-model';
@@ -310,25 +308,6 @@ describe('cast', () => {
     ).toEqual({ cancelled: false });
   });
 
-  it('refuses to recast a voice-only character', async () => {
-    const characterId = generateId();
-    await castCharacter({
-      rendering: 'Photoreal live action',
-      id: characterId,
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Narrator',
-      voiceOnly: true,
-    });
-    expect(
-      await call('recast_character', {
-        sequenceId,
-        characterId,
-        talentId: generateId(),
-      })
-    ).toMatchObject(refused('VALIDATION_ERROR'));
-  });
-
   /** One of the team's locations, with a completed sheet when `sheet`. */
   async function teamLocation(name: string, sheet: boolean) {
     const id = generateId();
@@ -575,43 +554,5 @@ describe('a character that must be a person is stored as one, on every path (#20
     await selectCharacterSheetVersion(scopedDb, actor(), sequenceId, id, photo);
     expect(await isPersonIn(sequenceId, id)).toBe(true);
     expect(await isPersonNow(id)).toBe(true);
-  });
-
-  it('C6: a talent that went private still locks, in the list and in the edit alike', async () => {
-    const otherTeam = generateId();
-    await db
-      .insert(teams)
-      .values({ id: otherTeam, name: 'O', slug: otherTeam });
-    // Cast while it was public; private now, so the team-scoped talent read
-    // no longer returns it.
-    const [actress] = await db
-      .insert(talent)
-      .values({
-        teamId: otherTeam,
-        name: 'Ada Vale',
-        isHuman: true,
-        isPublic: false,
-      })
-      .returning();
-    if (!actress) throw new Error('talent insert returned nothing');
-    const created = await castCharacter({
-      rendering: 'Photoreal live action',
-      id: generateId(),
-      sequenceId,
-      characterId: 'char_001',
-      name: 'Xan',
-      talentId: actress.id,
-    });
-    expect(await scopedDb.talent.getById(actress.id)).toBeUndefined();
-    const lock = { reason: 'talent', talentName: 'Ada Vale' };
-    const list = await scopedDb.characters.listWithTalent(sequenceId);
-    expect(await personLocksOf(scopedDb, list)).toEqual([lock]);
-    expect(await personLockOf(scopedDb, created)).toEqual(lock);
-    await expect(
-      updateCharacter(scopedDb, actor(), sequenceId, created.id, {
-        isPerson: false,
-        rendering: 'Photoreal live action',
-      })
-    ).rejects.toMatchObject({ code: 'CONFLICT' });
   });
 });

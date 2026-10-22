@@ -52,8 +52,6 @@ import { characterSheetVariants } from './character-sheet-variants';
 
 import { locationSheetVariants } from './location-sheet-variants';
 
-import { talentSheetVariants } from './talent-sheet-variants';
-
 import { shotPromptVersions } from './shot-prompt-versions';
 
 import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
@@ -84,8 +82,6 @@ import {
 
 // Sequence Elements (user-uploaded reference images)
 import { sequenceElements } from './sequence-elements';
-
-import { talent, talentMedia, talentSheets } from './talent';
 
 import { audio, StyleSampleVideoSchema, styles, vfx } from './libraries';
 
@@ -269,7 +265,7 @@ export type {
   SequenceEventData,
 } from './sequence-events';
 
-// Sheet Variants (Stage 2: divergent character/location/talent sheet outputs)
+// Sheet Variants (divergent character/location sheet outputs)
 export { characterSheetVariants };
 
 export type {
@@ -283,13 +279,6 @@ export type {
   LocationSheetVariant,
   NewLocationSheetVariant,
 } from './location-sheet-variants';
-
-export { talentSheetVariants };
-
-export type {
-  NewTalentSheetVariant,
-  TalentSheetVariant,
-} from './talent-sheet-variants';
 
 // Shot Prompt Versions (visual/motion prompt history; renamed from
 // shot_prompt_variants in #988)
@@ -387,10 +376,8 @@ export type {
   CharacterLink,
   CastCharacter,
   CastCharacterWithSheet,
-  CastCharacterWithTalent,
   CharacterWornLook,
   CharacterMinimal,
-  CharacterWithTalent,
   VoicePreview,
   VoicePreviewUnusable,
   NewCharacter,
@@ -425,19 +412,6 @@ export type {
   SequenceElement,
   SequenceElementMinimal,
 } from './sequence-elements';
-
-// Talent Library
-export { talent, talentMedia, talentSheets };
-
-export type {
-  NewTalent,
-  NewTalentMedia,
-  NewTalentSheet,
-  Talent,
-  TalentMediaRecord,
-  TalentSheet,
-  TalentWithSheets,
-} from './talent';
 
 // Library Resources
 export { audio, StyleSampleVideoSchema, styles, vfx };
@@ -570,7 +544,6 @@ export const schema = {
   sequenceEvents,
   characterSheetVariants,
   locationSheetVariants,
-  talentSheetVariants,
   shotPromptVersions,
   sequenceMusicPromptVersions,
   sequenceMusicVariants,
@@ -594,11 +567,6 @@ export const schema = {
 
   // Sequence Elements (user-uploaded reference images)
   sequenceElements,
-
-  // Talent Library
-  talent,
-  talentSheets,
-  talentMedia,
 
   // Libraries
   styles,

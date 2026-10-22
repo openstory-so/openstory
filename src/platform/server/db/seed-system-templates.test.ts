@@ -21,14 +21,11 @@ import {
   appMetadata,
   locations,
   styles,
-  talent,
-  talentSheets,
   teams,
 } from '@/platform/server/db/schema';
 import { relations } from '@/platform/server/db/schema/relations';
 import { ensureSystemTemplatesSeeded } from './seed-system-templates';
 import { DEFAULT_SYSTEM_STYLES } from '@/look/style-templates';
-import { DEFAULT_SYSTEM_TALENT } from '@/cast/server/talent/talent-templates';
 import { createClient, type Client } from '@libsql/client';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/libsql';
@@ -54,9 +51,7 @@ async function getMetaRow(key: string) {
 async function templateCounts() {
   return {
     styles: (await db.select().from(styles)).length,
-    talent: (await db.select().from(talent)).length,
     locations: (await db.select().from(locations)).length,
-    talentSheets: (await db.select().from(talentSheets)).length,
   };
 }
 
@@ -83,10 +78,8 @@ describe('ensureSystemTemplatesSeeded', () => {
 
     const counts = await templateCounts();
     expect(counts.styles).toBe(DEFAULT_SYSTEM_STYLES.length);
-    expect(counts.talent).toBe(DEFAULT_SYSTEM_TALENT.length);
     // Public location templates are gone (#1695): the seed makes none.
     expect(counts.locations).toBe(0);
-    expect(counts.talentSheets).toBe(DEFAULT_SYSTEM_TALENT.length);
 
     expect(await getMetaRow(HASH_KEY)).not.toBeNull();
     expect(await getMetaRow(LOCK_KEY)).toBeNull();
@@ -200,9 +193,10 @@ describe('ensureSystemTemplatesSeeded', () => {
     const brokenClient = createClient({ url: ':memory:' });
     const brokenDb: Database = drizzle({ client: brokenClient, relations });
     await migrate(brokenDb, { migrationsFolder: './drizzle/migrations' });
-    // Talent sheets are the sync's final step (4b) — failing there proves
-    // a partial sync doesn't get marked complete.
-    await brokenClient.execute('DROP TABLE talent_sheets');
+    // Styles are what the sync writes. Failing there proves a partial sync
+    // does not get marked complete.
+    await brokenClient.execute('PRAGMA foreign_keys = OFF');
+    await brokenClient.execute('DROP TABLE styles');
 
     await expect(ensureSystemTemplatesSeeded(brokenDb)).rejects.toThrow();
 

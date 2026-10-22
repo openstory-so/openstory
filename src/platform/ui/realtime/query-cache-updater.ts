@@ -618,8 +618,8 @@ export function updateQueryCacheFromEvent(
       // This handler runs on the sequence channel, so it only fires for
       // entityTypes routed there: `shot`, `character`, `location`. A run
       // started from no sequence reports on the entity's own channel, where
-      // the page that started it listens (`useTalentSheetRealtime`, the
-      // character and location detail views).
+      // the page that started it listens (the character and location
+      // detail views).
       const entityType = getString(data, 'entityType');
       const entityId = getString(data, 'entityId');
       if (!entityId) break;
@@ -717,9 +717,8 @@ export function updateQueryCacheFromEvent(
 
     case 'generation.character-sheet:progress':
     case 'generation.character-voice:progress':
-    case 'generation.talent:matched':
-      // Cast was created / cast / had its sheet generated during a run.
-      // Refresh the character list so the cast grid (TalentView) and the
+      // Cast was created or had its sheet generated during a run.
+      // Refresh the character list so the cast grid and the
       // per-scene cast (SceneCastTab) populate live instead of only after a
       // page refresh. Debounced because character-sheet:progress fires
       // generating + completed for every character. History keys too — the

@@ -23,9 +23,7 @@ a sequence holds a link to it. See `team-locations.md`.
   (`selectedVoiceVersionId`) and its claim, `useVoice`, and `deletedAt`
   (deleted from the team, #2065). Bible versions, looks, sheets and voice
   versions are keyed by the character id.
-- **`character_bible_versions`** carries `talentId`: a recast is a new
-  version with a different talent, and the cast talent is the current
-  version's. It also carries `rendering` (`src/cast/rendering.ts`): what the
+- **`character_bible_versions`** carries `rendering` (`src/cast/rendering.ts`): what the
   character is rendered as, required unless voice-only (`renderingFor`, in
   every bible writer; a CHECK would need a rebuild). Analysis fills it from
   the sequence style's medium, else photoreal (`renderingOfStyle`; never
@@ -70,7 +68,6 @@ change:
 | `castId`                 | the link's own id                          |
 | `selectedBibleVersionId` | `characters.selectedBibleVersionId`        |
 | the bible fields         | that version                               |
-| `talentId`               | that version's `talentId`                  |
 | `selectedVoiceVersionId` | `characters.selectedVoiceVersionId`        |
 | the voice fields         | that version                               |
 | `looks`                  | the character's looks, each with its sheet |
@@ -81,7 +78,7 @@ same from every sequence and from none.
 
 **A method takes `sequenceId` only when the answer or the write is the
 link's.** Reads through the link (`getById`, `getByIds`, `list`,
-`listDeleted`, `listWithTalent`), the link's own writes (`softDelete`,
+`listDeleted`, `list`), the link's own writes (`softDelete`,
 `restore`, `attach`, `create`), and writes that record a sequence event
 (`updateBible`, the look writes, `characterSheetVariants.select`,
 `selectVersion`) take it. A write made from no sequence (the Characters page,
@@ -107,7 +104,7 @@ What follows from one character in two sequences:
   removed look keeps wearing it when the sequence comes back.
 - **The voice is the character's own and is held until the character is
   deleted (decided 2026-10-09).** A provider voice is held while a
-  character's current pointer or a talent names it (`voiceReferences` in
+  character's current pointer names it (`voiceReferences` in
   `characters.ts`, the one list behind `getVoiceReferenceCount` and
   `getOwnVoiceHolds`). Removing a character from a sequence, archiving a
   sequence, or a sequence letting the character go releases nothing.
@@ -122,11 +119,8 @@ What follows from one character in two sequences:
 
 ## Characters page
 
-- **`/characters`** is on the sidebar. Its Characters tab lists the team's
-  characters, all of them; its Talent tab is the talent library.
-  `/talent` redirects to `/characters?tab=talent`; `/talent/$id` is
-  unchanged. Signed out, the page opens on the Talent tab (the public
-  catalogue) and the Characters tab asks to sign in.
+- **`/characters`** is on the sidebar. It lists the team's characters, all
+  of them. Signed out, the page asks to sign in.
 - **The list** is `characters.listTeam`: one grouped read over the cast
   links, with no stored column.
   - Order: the most recently changed sequence casting the character
@@ -145,7 +139,8 @@ What follows from one character in two sequences:
   voice are its own and are all there; only a sequence's own things are not
   (shot count, Remove, "first appears"). See **From no sequence** below.
 - **From no sequence** (#2017). The detail view reads one character
-  (`getCharacterFn` → `characters.getWithTalent(sequenceId | null, id)`),
+  (`getCharacterFn` → `characters.getCurrent` through the cast link, or with
+  `sequenceId` null),
   and every sheet and voice fn it calls takes `sequenceId: ulid | null`
   through `castAccessMiddleware`, which loads `context.sequence` or leaves
   it null. Behind them `requireCharacter(scopedDb, null, id)` reads the
@@ -163,11 +158,11 @@ What follows from one character in two sequences:
     the channel is the sequence's, as before. `CharacterSheetWorkflowInput`
     and `CharacterVoiceWorkflowInput` carry `sequenceId: string | null`.
   - No sequence event is written (the sheet upload, the bible edit).
-  - A recast from no sequence writes the recast bible version and the
-    talent's voice as a recast through a sequence does, then runs a plain
-    sheet run of the default look (`regenerateCharacterSheet`); no shots are
-    re-rendered and `looksLeftStale` is empty. Every sequence that casts
-    the character reads stale from the new version.
+  - Editing the character from no sequence writes the bible version, then
+    runs a plain sheet run of the default look (`regenerateCharacterSheet`)
+    when a sheet is asked for; no shots are re-rendered and
+    `looksLeftStale` is empty. Every sequence that casts the character
+    reads stale from the new version.
   - The voice section's default is on: with no sequence there is no
     `generateVoices` to fall back to, so `useVoice` null reads as on. A
     designed voice is named after the character (`<name> · <id tail>`),
@@ -239,16 +234,13 @@ the script then names her like any cast member.
   screen the pick goes onto the draft (`castCharacterIds`) and
   `createSequences` attaches before the storyboard trigger, so the first
   analysis reads her. The create screen's **Cast** picker
-  (`cast-selector.tsx`) writes the same `castCharacterIds` from its
-  Characters tab, and every id on the draft is cast, named in the script or
-  not; its Talent tab is the talent suggestions (`suggestedTalentIds`),
-  which analysis matches to the script's own characters. A sequence that
-  exists edits only its talent suggestions there. A pick-only row never pills: a plain name is prose
-  until she is attached. The cast panel's **Add Character**
-  attaches with no script change. API: a string in `create_sequence`'s
-  `characters` names a team character first (id or name), then talent. Two
-  characters of one name, or a name a character and a talent share, is a
-  `CONFLICT` that asks for the id. MCP: `add_character_to_sequence`.
+  (`cast-selector.tsx`) writes the same `castCharacterIds`, and every id on
+  the draft is cast, named in the script or not. A pick-only row never
+  pills: a plain name is prose until she is attached. The cast panel's
+  **Add Character** attaches with no script change. API: a string in
+  `create_sequence`'s `characters` names a team character (id or name). Two
+  characters of one name is a `CONFLICT` that asks for the id. MCP:
+  `add_character_to_sequence`.
 - **Detach** is the existing Remove (soft, the link's `removedAt`).
 
 ## Analysis reads the attached cast (#2050)
@@ -273,8 +265,7 @@ the script then names her like any cast member.
   `create-cast-records` skips `characters.create` for her (no bible version)
   and calls `characterLooks.linkFromAnalysis`: a look matched by id or by
   name among her live looks is hers already; a name she lacks becomes a new
-  look; nothing rewritten, nothing removed. She is left out of talent
-  matching: her talent is on her bible version.
+  look; nothing rewritten, nothing removed.
 - **A character analysis made here, that only this sequence has ever cast,**
   is re-analysed as before: bible rewritten, looks synced by name, unused
   analysis-made looks retired.
@@ -302,10 +293,6 @@ the script then names her like any cast member.
   one so dialogue knows who speaks"); scene tags (`reconcileSceneTags`) tag
   both wherever the name appears. A known limit until a scene tag can name
   the cast link; rename one of them.
-- **Save as talent** is what Add to Library did before #2017: it copies the
-  character into a new talent (`saveCharacterAsTalentFn`). It is how a
-  character reaches the recast picker, the new-sequence talent picker and
-  the studio today. Hidden for a talent-cast or voice-only character.
 - **A character the page cannot list** (another team's, deleted, or gone)
   reads "Character not found" with a way back, not an error.
 - MCP: `list_library_characters`.
@@ -313,28 +300,19 @@ the script then names her like any cast member.
 ## Writes
 
 - **New character** (`characters.create`): one batch inserts the character
-  (with the team), its first bible version (with the talent), the cast link,
-  the default look and its first look version.
+  (with the team), its first bible version, the cast link, the default look
+  and its first look version.
 - **New character with no sequence** (`characters.createForTeam`, #2065):
   the same batch without the cast link.
-- **Bible edit** (`bibleWrite`): appends a version carrying the talent, moves
-  the current pointer, and revokes the character's sheet claims when a field
-  the sheets read moved. The same from no sequence, with no event.
-- **Recast** (`updateBible` with `source: 'recast'` and the `talentId`): ONE
-  bible version, by the person who recast, carrying the new talent and the
-  appearance copied from it. The claims are revoked whether or not the
-  talent moved. `bibleWrite` takes the talent as a required argument, so
-  every writer says who plays the character. The recast run redraws the
-  default look's sheet and the launching sequence's shots; every other
-  sequence reads the new version and redraws from its own Update.
+- **Bible edit** (`bibleWrite`): appends a version, moves the current
+  pointer, and revokes the character's sheet claims when a field the sheets
+  read moved. The same from no sequence, with no event.
 - **Look edit** (`lookDefinitionWrite`): appends a look version and moves
   the look's current pointer, revoking the look's sheet claim when clothing
   or styling moved.
 - **Remove / restore**: the link's `removedAt`.
 - **Sheet claim, promote, fail, pick**: on the look. See
   `character-looks.md` § Sheets and claims.
-- **Talent changes** revoke the claims of the characters whose current bible
-  version names that talent (`castOfTalent`).
 - **Deleting a sequence** removes its cast links, then only the characters
   no other sequence ever cast and the writer did not attach
   (`charactersOnlyIn`): an attached character is the team's. No app path
@@ -364,7 +342,7 @@ delete that forgets a child fails instead of taking rows with it.
   - What counts (`voiceIdsHeldOnlyBy`): a voice id on **any** voice version
     of a character being removed, selected or not, that is not released, is
     not a Seed voice (`voiceProviderOf`), and that no surviving row points
-    at (another character's selected version, or a talent). An unselected
+    at (another character's selected version). An unselected
     version with `releasedAt` null is the only record of a slot whose
     provider delete failed, so it counts.
   - The caller reads the ids (`characters.getVoiceIdsToRelease`,
@@ -434,10 +412,21 @@ look's pointer (the reconcile cron promotes a landed claim on
 serves: one redraw, never a wrong sheet. A write it makes after file 3 fails
 on the missing table, in one batch, so nothing is half written.
 
-## Open question
+## Talent tables (#2135)
 
-Deleting a talent sets `character_bible_versions.talent_id` to null on every
-version that named it (`ON DELETE SET NULL`), current and historical alike.
-It rewrites rows that are otherwise append-only, and history loses who
-played the character. Unchanged here; Tom to decide between keeping it, a
-pointer with no FK, or refusing the delete while a version names the talent.
+`20261018090430` copies a talent sheet onto a character that had no live
+sheet of its own, and copies a talent voice onto a character with no
+selected voice. Each new row reuses a ULID the character owns that its table
+does not hold yet (character id, then current bible version, then default
+look version). Old characters often have none free: the face then
+overwrites the character's own dead sheet row, and the voice a released or
+failed voice row. A voice with neither stops the file through a guard,
+because overwriting a live voice would strand its provider slot. The file
+uses plain `__` scratch tables (D1 refuses TEMP tables) and set-based writes
+only (#1019). Voices on talent that is never copied are not freed at the
+provider. `20261018090611` then drops the talent tables. `talent_id` on
+`character_bible_versions` is a foreign key, so that file rebuilds the table
+(copy out, drop, create, copy back) instead of `DROP COLUMN`. A character's
+face, sheet and voice live on the character. A sheet hash still includes `talentSheetHash`
+(null when uncast). Sheets stamped while cast to a talent read stale after
+the drop; the image stays until Update redraws it.

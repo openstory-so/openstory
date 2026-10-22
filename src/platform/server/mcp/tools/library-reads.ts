@@ -57,13 +57,7 @@ const pageSchema = z.object({
 });
 const documentSchema = z.object({ document: documentReadSchema });
 const childLibraryInput = z.strictObject({
-  kind: z.enum([
-    'talent_sheet',
-    'talent_media',
-    'talent_sheet_version',
-    'location_sheet',
-    'location_sheet_version',
-  ]),
+  kind: z.enum(['location_sheet', 'location_sheet_version']),
   parentId: ulidSchema,
 });
 const rootLibraryInput = z.strictObject({
@@ -81,52 +75,26 @@ const libraryKindInput = z.strictObject({
   parentId: ulidSchema.optional(),
 });
 
-const libraryEntryTools = (
-  [
-    {
-      kind: 'talent',
-      list: 'list_talent',
-      get: 'get_talent',
-      label: 'library talent, including public talent',
-    },
-    {
-      kind: 'style',
-      list: 'list_styles',
-      get: 'get_style',
-      label: 'library styles, including public Gallery styles',
-    },
-  ] as const
-).flatMap((entry) => [
-  productionRead(
-    entry.list,
-    `List ${entry.label}. Ascending ID pagination. Use the detail tool for full settings and descriptions, and list_library_resources for sheets, media and versions.`,
-    pageInput,
-    pageSchema,
-    async (input, { scopedDb, origin }) =>
-      projectRead(
-        pageSchema,
-        await (entry.kind === 'style'
-          ? listLook(scopedDb, entry.kind, input)
-          : listCast(scopedDb, entry.kind, input)),
-        origin
-      )
-  ),
-  productionRead(
-    entry.get,
-    `Read ${entry.label} by id as a complete JSON document. Continue with nextOffset and revision. Sheets, media and versions are separately paginated by list_library_resources.`,
-    z.strictObject({ id: ulidSchema, ...documentInput.shape }),
-    documentSchema,
-    async (input, { scopedDb, origin }) => {
-      const data =
-        entry.kind === 'style'
-          ? await readGalleryStyle(scopedDb, input.id, origin)
-          : await readCast(scopedDb, entry.kind, input.id, '', origin);
-      return {
-        document: await readDocument(JSON.stringify(data), input, 'json'),
-      };
-    }
-  ),
-]);
+const listStyles = productionRead(
+  'list_styles',
+  'List library styles, including public Gallery styles. Ascending ID pagination. Use the detail tool for full settings and descriptions, and list_library_resources for sheets and versions.',
+  pageInput,
+  pageSchema,
+  async (input, { scopedDb, origin }) =>
+    projectRead(pageSchema, await listLook(scopedDb, 'style', input), origin)
+);
+const getStyle = productionRead(
+  'get_style',
+  'Read library styles, including public Gallery styles, by id as a complete JSON document. Continue with nextOffset and revision. Sheets and versions are separately paginated by list_library_resources.',
+  z.strictObject({ id: ulidSchema, ...documentInput.shape }),
+  documentSchema,
+  async (input, { scopedDb, origin }) => {
+    const data = await readGalleryStyle(scopedDb, input.id, origin);
+    return {
+      document: await readDocument(JSON.stringify(data), input, 'json'),
+    };
+  }
+);
 const libraryCharactersSchema = z.object({
   items: z.array(
     z.object({
@@ -143,7 +111,7 @@ const libraryCharactersSchema = z.object({
 });
 const listLibraryCharacters = productionRead(
   'list_library_characters',
-  "List the team's characters, every one of them (not talent, which is list_talent). Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
+  "List the team's characters, every one of them. Any of them can be added to a sequence. Ascending ID pagination. Each carries its default look's sheet, the live sequences that cast it (the most recently changed first) and lastUsedAt (null when no sequence casts it). Read one as a sequence casts it with get_character.",
   pageInput,
   libraryCharactersSchema,
   async (input, { scopedDb, origin }) =>
@@ -219,7 +187,7 @@ const listLibraryResourcesInput = z.discriminatedUnion('kind', [
   rootLibraryInput.extend(pageInput.shape),
 ]);
 const listLibraryResourcesDescription =
-  'List talent sheets, reference media and sheet versions, a team location’s uploaded photos and sheet versions, audio or VFX. parentId is required: talent id for talent_sheet/media, sheet id for talent_sheet_version, and location id (list_library_locations) for location_sheet/location_sheet_version. location_sheet is the photos uploaded as input for the location’s sheet, not the sheet; location_sheet_version is the drawn sheets. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
+  'List a team location’s uploaded photos and sheet versions, audio or VFX. parentId is required: location id (list_library_locations) for location_sheet and location_sheet_version. location_sheet is the photos uploaded as input for the location’s sheet, not the sheet; location_sheet_version is the drawn sheets. Audio/VFX have no parent. Includes discarded versions; statuses and divergence markers are preserved.';
 const listLibraryResources = readToolDefinition({
   name: 'list_library_resources',
   description: listLibraryResourcesDescription,
@@ -373,7 +341,8 @@ const listStudioUploads = productionRead(
 );
 
 export const libraryReadTools = [
-  ...libraryEntryTools,
+  listStyles,
+  getStyle,
   listLibraryLocations,
   getLibraryLocation,
   listLibraryCharacters,

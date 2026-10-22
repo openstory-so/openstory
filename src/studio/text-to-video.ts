@@ -15,6 +15,7 @@
  * Client-safe: no env, no adapters.
  */
 
+import { needsLikenessCheck } from '@/cast/upload-rights';
 import {
   IMAGE_TO_VIDEO_MODELS,
   isValidImageToVideoModel,
@@ -258,12 +259,19 @@ export function studioCanEditSource(videoModel: unknown): boolean {
   );
 }
 
-/** Whether a studio run took reference clips; such a clip is never edited. */
-export function studioUsedReferenceVideo(input: {
+/**
+ * Whether a studio run took an uploaded reference clip; such a clip is never
+ * edited (#1925). A generated reference clip came from gated inputs, so it
+ * does not count (#1930).
+ */
+export function studioUsedUploadedReferenceVideo(input: {
   referenceVideos?: unknown;
 }): boolean {
   return (
-    Array.isArray(input.referenceVideos) && input.referenceVideos.length > 0
+    Array.isArray(input.referenceVideos) &&
+    input.referenceVideos.some(
+      (url) => typeof url !== 'string' || needsLikenessCheck(url)
+    )
   );
 }
 

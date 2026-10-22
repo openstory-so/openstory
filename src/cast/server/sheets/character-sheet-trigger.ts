@@ -17,56 +17,7 @@ import { characterToBible } from '@/cast/server/bibles-from-scoped';
 import { resolveSheetImageModel } from '@/cast/sheet-image-model';
 import type { CharacterSheetWorkflowInput } from '@/platform/server/workflow/types';
 import { finishCharacterSheetPayload } from '@/cast/server/workflows/sheet-snapshots';
-import type {
-  CastTalentFields,
-  CharacterSheetDraft,
-} from '@/cast/server/workflows/sheet-snapshots';
-
-const NOT_CAST: CastTalentFields = {
-  referenceImageUrl: undefined,
-  talentMetadata: undefined,
-  talentSheetInputHash: null,
-  castTalentDescription: null,
-};
-
-/**
- * Resolve what a cast talent feeds a character sheet: the default convergent
- * talent sheet (image, look metadata, `input_hash`) and the talent's own
- * description. One resolver for the regenerate/verify payload and the upload
- * stamp, so they cannot drift.
- */
-export async function resolveCastTalent(
-  scopedDb: Pick<ScopedDb, 'talent'>,
-  talentId: string | null
-): Promise<CastTalentFields> {
-  if (!talentId) return NOT_CAST;
-  return castTalentFields(await scopedDb.talent.getWithRelations(talentId));
-}
-
-/** The same fields from a talent row already read (#2082). */
-export function castTalentFields(
-  talent:
-    | Pick<
-        Awaited<ReturnType<ScopedDb['talent']['getWithSheetsByIds']>>[number],
-        'description' | 'sheets'
-      >
-    | undefined
-): CastTalentFields {
-  if (!talent) return NOT_CAST;
-  // Exclude divergent sheets from the fallback identity. A divergent row's
-  // `inputHash` represents the parked workflow's snapshot, not the talent's
-  // current upstream identity — binding a downstream character sheet to it
-  // would fork off a stale lineage from first-time generation onward.
-  const convergentSheets = talent.sheets.filter((s) => !s.divergedAt);
-  const defaultSheet =
-    convergentSheets.find((s) => s.isDefault) ?? convergentSheets[0];
-  return {
-    referenceImageUrl: defaultSheet?.imageUrl ?? undefined,
-    talentMetadata: defaultSheet?.metadata ?? undefined,
-    talentSheetInputHash: defaultSheet?.inputHash ?? null,
-    castTalentDescription: talent.description,
-  };
-}
+import type { CharacterSheetDraft } from '@/cast/server/workflows/sheet-snapshots';
 
 type SheetPayloadParams = {
   scopedDb: ScopedDb;
@@ -86,28 +37,24 @@ type SheetPayloadParams = {
 };
 
 /**
- * The rows a draft reads besides the character: its cast talent and the
- * live sheet version. Read once per sheet by `loadCharacterSheetDraftRows`,
- * or once per sequence by the generation plan (#2082).
+ * The live sheet version a draft reads besides the character. Read once per
+ * sheet by `loadCharacterSheetDraftRows`, or once per sequence by the
+ * generation plan (#2082).
  */
 export type CharacterSheetDraftRows = {
-  cast: CastTalentFields;
   liveVersion: Pick<CharacterSheetVariant, 'model'> | null;
 };
 
 export async function loadCharacterSheetDraftRows(
-  scopedDb: Pick<ScopedDb, 'talent' | 'characterSheetVariants'>,
-  character: Pick<CharacterWithSheet, 'talentId' | 'selectedSheetVersionId'>
+  scopedDb: Pick<ScopedDb, 'characterSheetVariants'>,
+  character: Pick<CharacterWithSheet, 'selectedSheetVersionId'>
 ): Promise<CharacterSheetDraftRows> {
-  const [cast, liveVersion] = await Promise.all([
-    resolveCastTalent(scopedDb, character.talentId),
-    character.selectedSheetVersionId
-      ? scopedDb.characterSheetVariants.getById(
-          character.selectedSheetVersionId
-        )
-      : null,
-  ]);
-  return { cast, liveVersion: liveVersion ?? null };
+  const liveVersion = character.selectedSheetVersionId
+    ? await scopedDb.characterSheetVariants.getById(
+        character.selectedSheetVersionId
+      )
+    : null;
+  return { liveVersion: liveVersion ?? null };
 }
 
 /**
@@ -147,7 +94,7 @@ export async function buildCharacterSheetDraft(
       `${character.name} is voice-only (#1585): heard, never seen, no sheet to generate`
     );
   }
-  const { cast, liveVersion } =
+  const { liveVersion } =
     preloaded ?? (await loadCharacterSheetDraftRows(scopedDb, character));
 
   const draft: CharacterSheetDraft = {
@@ -158,7 +105,6 @@ export async function buildCharacterSheetDraft(
     lookId: look.id,
     lookVersionId: look.lookVersionId,
     lookStyling: look.styling,
-    talentId: character.talentId,
     characterName: character.name,
     // Dressed: `standardClothing` is this look's clothing.
     characterMetadata: characterToBible(character),
@@ -168,10 +114,6 @@ export async function buildCharacterSheetDraft(
       liveVersionModel: liveVersion?.model,
       sequenceImageModel: sequence?.imageModel ?? null,
     }),
-    ...cast,
-    talentDescription: cast.castTalentDescription ?? undefined,
-    // Always generate: reuse would skip the bible edit the user just saved.
-    reuseTalentSheet: false,
   };
   return {
     draft,
@@ -186,7 +128,7 @@ export async function buildCharacterSheetDraft(
  * The payload a sheet run takes, drawn now. A look other than the default is
  * drawn from the default look's selected sheet, and is refused while there
  * is none: every caller that starts a run (regenerate, a plan's references)
- * comes through here, so none can draw a look from the talent instead.
+ * comes through here.
  */
 export async function buildRegenerateCharacterSheetPayload(
   params: SheetPayloadParams

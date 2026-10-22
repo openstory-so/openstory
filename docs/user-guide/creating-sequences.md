@@ -121,9 +121,9 @@ Toggle **Auto-generate music** to automatically create a soundtrack after scene 
 
 Before generating, you can optionally attach resources from your libraries:
 
-### Talent Suggestions
+### Characters
 
-Click the talent icon to attach characters from your **Talent Library**. The AI will use these as visual references when generating character appearances, ensuring consistency with your established character designs.
+Attach team characters before generation when you already know who appears. A character's face, sheet and voice live on the character, and every sequence that casts them shares those. See [Cast](/docs/user-guide/cast).
 
 ### Location Suggestions
 

@@ -69,10 +69,10 @@ import {
   useDraftStudioPrompt,
   useStudioPendingCreates,
   studioUploadKeys,
+  useUploadStudioMedia,
 } from './use-studio-assets';
 import { useQueryClient } from '@tanstack/react-query';
-import { useUploadTalentUserMedia } from '@/cast/ui/use-talent';
-import { PortraitAttestationFields } from '@/cast/ui/talent-library/portrait-attestation-fields';
+import { PortraitAttestationFields } from '@/cast/ui/portrait-attestation-fields';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import {
   needsLikenessCheck,
@@ -81,7 +81,7 @@ import {
 import { useAttestUploads, useUploadRights } from '@/cast/ui/use-upload-rights';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { isInsufficientCreditsError } from '@/platform/errors';
-import { studioReferenceImages } from '@/studio/reference-rights';
+import { studioLikenessMedia } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
@@ -197,7 +197,7 @@ function referenceMentionItem(
   kind: StudioReferenceToken = 'Image'
 ): MentionItem {
   const slot = `${kind}${index + 1}`;
-  // A named reference (talent, location, element) keeps its name in the
+  // A named reference (character, location, element) keeps its name in the
   // prompt (#1748); everything else is spelled by its slot.
   const tag = reference.alias ?? slot;
   return {
@@ -358,7 +358,7 @@ export function StudioComposer({
   const create = useCreateStudioAssets();
   const draft = useDraftStudioPrompt();
   const pendingCreates = useStudioPendingCreates(activity);
-  const upload = useUploadTalentUserMedia();
+  const upload = useUploadStudioMedia();
   const attest = useAttestUploads();
   const queryClient = useQueryClient();
   const library = useStudioLibrary();
@@ -663,11 +663,11 @@ export function StudioComposer({
   // --- rights (#1581) ---------------------------------------------------------
   // Same rule the server gate applies: uploads and raw URLs get checked,
   // library rows do not. Logged out, nothing is asked until sign-in.
-  const tiles = [...references, startFrame, endFrame].filter(
+  const tiles = [...references, ...videoRefs, startFrame, endFrame].filter(
     (r): r is StudioReference => r !== null
   );
   const gatedUrls = [
-    ...new Set(studioReferenceImages(buildInput()).filter(needsLikenessCheck)),
+    ...new Set(studioLikenessMedia(buildInput()).filter(needsLikenessCheck)),
   ];
   const rights = useUploadRights(
     gatedUrls.map((url) => ({
@@ -725,7 +725,9 @@ export function StudioComposer({
       return url === startFrame?.url ? 'Start frame' : 'End frame';
     }
     const index = references.findIndex((r) => r.url === url);
-    return index >= 0 ? `@Image${index + 1}` : url;
+    if (index >= 0) return `@Image${index + 1}`;
+    const clip = videoRefs.findIndex((r) => r.url === url);
+    return clip >= 0 ? `@Video${clip + 1}` : url;
   };
   const badges = (urls: string[]) => urls.map(badgeFor).join(', ');
   const confirmRights = () => {
@@ -888,10 +890,7 @@ export function StudioComposer({
       }
       setUploading((n) => n + 1);
       try {
-        const { url } = await upload.mutateAsync({
-          file,
-          type: kind === 'audio' ? 'recording' : kind,
-        });
+        const { url } = await upload.mutateAsync({ file });
         placeReference(
           { url, label: file.name, kind, durationSeconds },
           target
@@ -1316,6 +1315,8 @@ export function StudioComposer({
                     key={`${reference.url}-${index}`}
                     reference={reference}
                     badge={`@Video${index + 1}`}
+                    checking={checking.has(reference.url)}
+                    realPerson={realPersonToggle(reference.url)}
                     onRemove={() => removeReference('video', index)}
                   />
                 ))}

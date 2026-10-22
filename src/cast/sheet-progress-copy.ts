@@ -16,7 +16,7 @@ export function isSheetProgressStale(
   return now - tsMs > SHEET_PROGRESS_STALE_MS;
 }
 
-/** What the UI should say for an in-flight talent-sheet run. */
+/** What the UI should say for an in-flight character-sheet run. */
 export function sheetProgressCopy(
   activity: SheetProgressActivity,
   variant: 'short' | 'long' = 'short'
@@ -26,7 +26,9 @@ export function sheetProgressCopy(
       ? 'Creating portrait from the uploaded sheet…'
       : 'Creating portrait…';
   }
-  return variant === 'long' ? 'Generating talent sheet…' : 'Generating sheet…';
+  return variant === 'long'
+    ? 'Generating character sheet…'
+    : 'Generating sheet…';
 }
 
 export function parseSheetProgressActivity(

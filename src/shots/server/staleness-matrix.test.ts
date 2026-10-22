@@ -134,7 +134,6 @@ const character = (fields: Partial<CharacterRow>): CharacterRow =>
     voiceOnly: false,
     isPerson: true,
     rendering: 'Photoreal live action',
-    talentId: null,
     sheetStatus: 'completed',
     selectedBibleVersionId: null,
     deletedAt: null,
@@ -1274,19 +1273,6 @@ describe('staleness matrix — the default look owns the features (#2065)', () =
 // payload builder, the writer a Generate click uses.
 // ---------------------------------------------------------------------------
 
-const TALENT = {
-  id: 't-1',
-  description: 'Headshot reference',
-  sheets: [
-    {
-      isDefault: true,
-      divergedAt: null,
-      imageUrl: '/r2/talent-1.png',
-      metadata: null,
-      inputHash: 'talent-sheet-1',
-    },
-  ],
-};
 /** The photos uploaded as input for the beach's sheet (#1695). */
 const PHOTOS = [
   { url: '/r2/beach-photo-a.png' },
@@ -1303,7 +1289,6 @@ type CastWorld = {
   };
   alice: CharacterRow;
   beach: SequenceLocationWithReference;
-  talent: typeof TALENT;
   photos: { url: string }[];
 };
 
@@ -1315,9 +1300,8 @@ const CAST_BASE: CastWorld = {
     styleConfig: STYLE,
     imageModel: DEFAULT_IMAGE_MODEL,
   },
-  alice: { ...ALICE, talentId: 't-1' },
+  alice: ALICE,
   beach: BEACH,
-  talent: TALENT,
   photos: PHOTOS,
 };
 
@@ -1333,7 +1317,6 @@ function castDb(world: CastWorld) {
       getCurrent: () => Promise.resolve(world.beach),
       listPhotos: () => Promise.resolve(world.photos),
     },
-    talent: { getWithRelations: () => Promise.resolve(world.talent) },
     // The live sheet pins the model it was drawn with.
     characterSheetVariants: {
       getById: () => Promise.resolve({ model: DEFAULT_IMAGE_MODEL }),
@@ -1441,35 +1424,6 @@ const SHEET_MATRIX: SheetRow[] = [
     mutation: 'Alice made voice-only (no sheet to be stale)',
     apply: (w) => ({ ...w, alice: { ...w.alice, voiceOnly: true } }),
     character: 'untracked',
-    location: 'fresh',
-  },
-  {
-    mutation: "cast talent's sheet regenerated",
-    apply: (w) => ({
-      ...w,
-      talent: {
-        ...w.talent,
-        sheets: [
-          {
-            isDefault: true,
-            divergedAt: null,
-            imageUrl: '/r2/talent-2.png',
-            metadata: null,
-            inputHash: 'talent-sheet-2',
-          },
-        ],
-      },
-    }),
-    character: 'stale',
-    location: 'fresh',
-  },
-  {
-    mutation: "cast talent's description edited",
-    apply: (w) => ({
-      ...w,
-      talent: { ...w.talent, description: 'Full body reference' },
-    }),
-    character: 'stale',
     location: 'fresh',
   },
   {
@@ -1583,10 +1537,6 @@ describe('staleness matrix — reference sheets', () => {
   });
 
   describe('the default look owns the features (#2065)', () => {
-    const cast = (row: CharacterRow): CharacterRow => ({
-      ...row,
-      talentId: 't-1',
-    });
     const db = (row: CharacterRow) =>
       asStub<ScopedDb>({
         ...castDb(CAST_BASE),
@@ -1638,7 +1588,7 @@ describe('staleness matrix — reference sheets', () => {
       '4a: the default look’s sheet, with $name, stamped before #2065 → fresh',
       async ({ own }) => {
         const row = await stampBefore2065(
-          cast(aliceWithFeatures(own)),
+          aliceWithFeatures(own),
           'c-alice',
           own
         );
@@ -1661,7 +1611,7 @@ describe('staleness matrix — reference sheets', () => {
 
     it('4a: another look’s sheet stamped before #2065 → fresh', async () => {
       const row = await stampBefore2065(
-        cast(aliceWithFeatures('hair pinned up', [BRUISED_GALA])),
+        aliceWithFeatures('hair pinned up', [BRUISED_GALA]),
         GALA.id,
         'split lip'
       );
@@ -1670,12 +1620,12 @@ describe('staleness matrix — reference sheets', () => {
 
     it('4b: the default look’s styling edited → its old sheet is stale, a new one fresh', async () => {
       const before = await stampBefore2065(
-        cast(aliceWithFeatures('hair pinned up')),
+        aliceWithFeatures('hair pinned up'),
         'c-alice',
         'hair pinned up'
       );
       const oldStamp = before.sheetInputHash;
-      const after = cast(aliceMoved('hair down, no scar'));
+      const after = aliceMoved('hair down, no scar');
       expect(
         await verdictOf(stamped(after, 'c-alice', oldStamp), 'c-alice')
       ).toBe('stale');

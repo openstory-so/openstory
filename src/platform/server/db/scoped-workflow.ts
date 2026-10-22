@@ -208,8 +208,6 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
    * those numbers are this run's own writes, not knowable at the trigger.
    */
   shots: Pick<ScopedDb['shots'], 'getById' | 'getByIds' | 'listBySequence'>;
-  /** `getByIds`: wait-for-sheets polling. */
-  talent: Pick<ScopedDb['talent'], 'getByIds'>;
   /** Spawn-time billing guards — video has no claim rows to hold the slot. */
   videoVariants: Pick<
     ScopedDb['videoVariants'],
@@ -219,7 +217,17 @@ type WorkflowLiveReads = Pick<ScopedDb, 'teamId' | 'userId'> & {
    * Spawn-time enforcement — a ban applied after the parent started must
    * stop work that has not started yet. Same class as a billing guard.
    */
-  compliance: Pick<ScopedDb['compliance'], 'listEnforcementFor'>;
+  compliance: Pick<ScopedDb['compliance'], 'listEnforcementFor'> & {
+    /**
+     * The likeness ledger, before a reference clip reaches a model (#1930).
+     * Same class: a clip attached before the check has no row, and every
+     * trigger lands in the run, so the run asks.
+     */
+    attestations: Pick<
+      ScopedDb['compliance']['attestations'],
+      'listForSubject'
+    >;
+  };
 };
 
 export type WorkflowScopedDb = WorkflowDomains & {

@@ -55,7 +55,6 @@ export const settingsSchema = createSelectSchema(sequences)
   .extend({
     createdAt: readDate,
     updatedAt: readDate,
-    suggestedTalentIds: z.array(z.string()).nullable(),
     suggestedLocationIds: z.array(z.string()).nullable(),
     style: z.object({
       id: z.string().nullable(),

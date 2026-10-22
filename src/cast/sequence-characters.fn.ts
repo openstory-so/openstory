@@ -1,6 +1,6 @@
 /**
  * Sequence Characters Server Functions
- * Functions for sequence-specific character (talent) operations
+ * Functions for sequence-specific character operations
  */
 
 import { createServerFn } from '@tanstack/react-start';
@@ -41,25 +41,23 @@ import type { SheetStaleness } from '@/cast/server/sheets/sheet-staleness';
 
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import type {
-  CastCharacterWithTalent,
-  CharacterWithTalent,
+  CastCharacterWithSheet,
+  CharacterWithSheet,
 } from '@/platform/server/db/schema';
 import type { PersonLock } from './likeness';
 import { personLocksOf } from '@/cast/server/person-lock';
 import {
   cancelCharacterVoice,
   generateCharacterVoice,
-  recastCharacter,
   regenerateCharacterSheet,
 } from '@/cast/server/cast-generation';
 import {
-  authWithTeamMiddleware,
   castAccessMiddleware,
   sequenceAccessMiddleware,
 } from '@/platform/middleware.fn';
 
 /** A cast member as the cast panel reads it. */
-export type SequenceCharacter = CastCharacterWithTalent & {
+export type SequenceCharacter = CastCharacterWithSheet & {
   /** Why it must stay a person; null leaves `isPerson` editable. */
   personLock: PersonLock | null;
 };
@@ -68,7 +66,7 @@ export type SequenceCharacter = CastCharacterWithTalent & {
  * One character as its detail page reads it (#2017): through a sequence,
  * or from none, when it is the same character without the link.
  */
-export type CharacterDetail = CharacterWithTalent & {
+export type CharacterDetail = CharacterWithSheet & {
   personLock: PersonLock | null;
 };
 
@@ -82,7 +80,7 @@ export const getCharacterFn = createServerFn({ method: 'GET' })
   .middleware([castAccessMiddleware])
   .validator(zodValidator(castCharacterInput))
   .handler(async ({ context, data }): Promise<CharacterDetail | null> => {
-    const character = await context.scopedDb.characters.getWithTalent(
+    const character = await context.scopedDb.characters.getCastOrCurrent(
       context.sequence?.id ?? null,
       data.characterId
     );
@@ -93,11 +91,11 @@ export const getCharacterFn = createServerFn({ method: 'GET' })
     return { ...character, personLock };
   });
 
-/** Get all characters for a sequence with their assigned talent */
+/** Get all characters for a sequence with their sheets. */
 export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
-    const characters = await context.scopedDb.characters.listWithTalent(
+    const characters = await context.scopedDb.characters.list(
       context.sequence.id
     );
     // Why `isPerson` cannot be turned off, for the bible form (#2065).
@@ -114,8 +112,8 @@ export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
 
 /**
  * Create a character by hand (no storyboard run) — starts sheet-less
- * (`sheetStatus: 'pending'`); the sheet comes later via the existing recast /
- * sheet workflows. `characterId` is a shortened name (`char_maya`) in the
+ * (`sheetStatus: 'pending'`); the sheet comes later via the sheet workflow.
+ * `characterId` is a shortened name (`char_maya`) in the
  * same family as script-extracted `char_001` / `char_girl_one`, uniqued
  * against existing rows on the `(sequenceId, characterId)` index.
  */
@@ -162,7 +160,7 @@ export const attachLibraryCharacterFn = createServerFn({ method: 'POST' })
 /**
  * Edit a character's bible fields. Only provided fields change; prompts and
  * the character sheet that project them re-stale purely by hash derivation
- * (no flag written). Casting stays on `recastCharacterFn`. `voiceOnly` is
+ * (no flag written). `voiceOnly` is
  * required (#1585): it is the way back from a bible call that misfiled an
  * on-screen character as a voice, so the form always states it.
  */
@@ -520,22 +518,10 @@ export const restoreSequenceCharacterFn = createServerFn({ method: 'POST' })
     );
   });
 
-/** Get shot IDs for all shots containing a specific character */
-export const getShotIdsForCharacterFn = createServerFn({ method: 'GET' })
-  .middleware([sequenceAccessMiddleware])
-  .validator(zodValidator(z.object({ characterId: z.string().min(1) })))
-  .handler(async ({ context, data }) => {
-    const shotIds = await context.scopedDb.characters.getShotIdsForCharacter(
-      context.sequence.id,
-      data.characterId
-    );
-    return { shotIds, count: shotIds.length };
-  });
-
 /**
- * Regenerate the character sheet from the current bible. Does not recast
- * talent, does not regenerate shots — stills go stale by derivation once
- * the new version is selected.
+ * Regenerate the character sheet from the current bible. Does not
+ * regenerate shots — stills go stale by derivation once the new version
+ * is selected.
  */
 export const regenerateCharacterSheetFn = createServerFn({ method: 'POST' })
   .middleware([castAccessMiddleware])
@@ -579,21 +565,4 @@ export const getCharacterSheetStalenessFn = createServerFn({ method: 'GET' })
           data.lookId ?? data.characterId
         )
       ).status
-  );
-
-/** Recast a character with different talent, triggering sheet regeneration. */
-export const recastCharacterFn = createServerFn({ method: 'POST' })
-  .middleware([authWithTeamMiddleware])
-  .validator(
-    zodValidator(
-      z.object({
-        // Null from the Characters page (#2017): no shots re-rendered.
-        sequenceId: ulidSchema.nullable(),
-        characterId: z.string().min(1),
-        talentId: ulidSchema,
-      })
-    )
-  )
-  .handler(({ context, data }) =>
-    recastCharacter(context.scopedDb, { userId: context.user.id }, data)
   );

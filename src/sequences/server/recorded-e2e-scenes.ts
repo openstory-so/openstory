@@ -28,7 +28,6 @@ import {
 } from './streaming-scene-parser';
 import { reconcileSceneTags } from '@/sequences/tag-reconcile';
 import { bibleFromWire } from '@/cast/bible-looks';
-import { buildCastCharacterBible } from '@/cast/character-prompt';
 
 const OPENROUTER_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -210,28 +209,9 @@ export function replayRecordedE2eScenes(recording: Recording = 'original'): {
     []
   );
 
-  // Analyze-script casts matched talent onto the bible BEFORE visual/motion
-  // prompts (#867). Replay the recorded Maisie → Sienna Blake match so
-  // CHARACTER_BIBLE JSON matches live, not the pre-cast split output.
-  const talentCast = z
-    .object({
-      matches: z.array(
-        z.object({
-          characterId: z.string(),
-          talentId: z.string(),
-        })
-      ),
-    })
-    .parse(parseJson(responseContent('talent-cast/talent-cast.json')));
-  const characterBible = buildCastCharacterBible(
-    analysed.characterBible,
-    talentCast.matches.map((match) => ({
-      characterId: match.characterId,
-      talentName: 'Sienna Blake',
-      personality: '',
-      movement: '',
-    }))
-  );
+  // The script's bible is the cast (#2135). Recorded prompts that were
+  // built after a talent match no longer match this replay until re-recorded.
+  const characterBible = analysed.characterBible;
 
   return {
     script,

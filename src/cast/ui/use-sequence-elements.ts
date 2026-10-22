@@ -81,7 +81,7 @@ export function useUploadElementToSequence() {
         presign.contentType,
         data.onProgress
       );
-      if (elementKindFromFile(file) === 'image') {
+      if (elementKindFromFile(file) !== 'audio') {
         await ensureUploadRights([
           { url: presign.publicUrl, filename: file.name },
         ]);
@@ -168,6 +168,14 @@ export function useUploadDraftElement() {
       );
       const durationSeconds = await readMediaDuration(file, kind);
 
+      // A real person opens the sign-off dialog; declining fails the upload.
+      // An image or a clip is checked; audio has no likeness.
+      if (kind !== 'audio') {
+        await ensureUploadRights([
+          { url: presign.publicUrl, filename: file.name },
+        ]);
+      }
+
       // Vision reads pixels: a clip or an audio file skips it entirely and is
       // ready the moment the bytes land (#1559).
       if (kind !== 'image') {
@@ -181,11 +189,6 @@ export function useUploadDraftElement() {
           durationSeconds,
         };
       }
-
-      // A real person opens the sign-off dialog; declining fails the upload.
-      await ensureUploadRights([
-        { url: presign.publicUrl, filename: file.name },
-      ]);
 
       data.onAnalyzingChange?.(true);
       let result: {
@@ -350,7 +353,7 @@ export function useReplaceSequenceElement() {
         presign.contentType,
         data.onProgress
       );
-      if (elementKindFromFile(file) === 'image') {
+      if (elementKindFromFile(file) !== 'audio') {
         await ensureUploadRights([
           { url: presign.publicUrl, filename: file.name },
         ]);

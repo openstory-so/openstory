@@ -33,16 +33,10 @@ import {
   useCharacter,
   useCharacterSheetStaleness,
   useRegenerateCharacterSheet,
-  useShotIdsForCharacter,
-  useRecastCharacter,
-  useSaveCharacterAsTalent,
   useSoftDeleteSequenceCharacter,
 } from '@/cast/ui/use-sequence-characters';
 import { castChannelId } from '@/cast/cast-channel';
-import type {
-  CharacterSheetVariant,
-  TalentWithSheets,
-} from '@/platform/server/db/schema';
+import type { CharacterSheetVariant } from '@/platform/server/db/schema';
 import { errorMessage } from '@/platform/errors';
 import { useRealtime } from '@/platform/ui/realtime/client';
 import { useSheetStaleDetected } from '@/cast/ui/use-sheet-stale-detected';
@@ -68,8 +62,6 @@ import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { CharacterBibleForm } from './character-bible-form';
 import { CharacterVoiceSection } from './character-voice-section';
-import { RecastConfirmDialog } from './recast-confirm-dialog';
-import { TalentPickerDialog } from './talent-picker-dialog';
 import { AppImage } from '@/ui/shadcn/app-image';
 
 type CharacterDetailViewProps = {
@@ -98,8 +90,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     isLoading,
     error,
   } = useCharacter(sequenceId, characterId);
-  const saveAsTalent = useSaveCharacterAsTalent();
-  const recastCharacter = useRecastCharacter();
   const regenerateSheet = useRegenerateCharacterSheet();
   const { data: sequence } = useSequence(sequenceId ?? undefined);
   const channelId = castChannelId(sequenceId, characterId);
@@ -137,7 +127,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     activeLook?.isDefault === false ? activeLookId : undefined
   );
   const selectVersion = useSelectCharacterSheetVersion();
-  const { data: shotData } = useShotIdsForCharacter(sequenceId, characterId);
   const navigate = useNavigate();
   const softDelete = useSoftDeleteSequenceCharacter();
   const uploadSheet = useUploadCharacterSheet();
@@ -182,13 +171,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
       );
     },
     [softDelete, sequenceId, characterId, navigate, queryClient]
-  );
-
-  // Dialog states
-  const [isPickerOpen, setIsPickerOpen] = useState(false);
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [selectedTalent, setSelectedTalent] = useState<TalentWithSheets | null>(
-    null
   );
 
   // Track regenerating state from realtime events
@@ -370,13 +352,11 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
 
   // Determine if currently regenerating (from realtime or mutation pending)
   const isSheetGenerating =
-    recastCharacter.isPending ||
-    regenerateSheet.isPending ||
-    character?.sheetStatus === 'generating';
+    regenerateSheet.isPending || character?.sheetStatus === 'generating';
   const isSheetStale = sheetStaleness === 'stale';
-  // A live URL can exist before the first sheet has ever completed (talent
-  // preview, in-flight copy). Generate vs regenerate follows whether a sheet
-  // has landed before — `sheetGeneratedAt` / selection pointer.
+  // A live URL can exist before the first sheet has ever completed.
+  // Generate vs regenerate follows whether a sheet has landed before —
+  // `sheetGeneratedAt` / selection pointer.
   const hasPriorSheet = Boolean(
     character?.sheetGeneratedAt || character?.selectedSheetVersionId
   );
@@ -400,18 +380,14 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
     if (!falPricing) return pricingPending ? undefined : null;
     return estimateImageCost(selectedSheetModel, '16:9', 1, {
       pricing: falPricing,
-      // A reference image uses the model's edit endpoint. The default look
-      // sends the talent sheet; every other look sends the default look's sheet.
-      edit:
-        activeLook?.isDefault === false
-          ? faceState === 'ready'
-          : Boolean(character?.talentId),
+      // A reference image uses the model's edit endpoint. A look other than
+      // the default sends the default look's sheet.
+      edit: activeLook?.isDefault === false && faceState === 'ready',
     });
   }, [
     falPricing,
     pricingPending,
     selectedSheetModel,
-    character?.talentId,
     activeLook?.isDefault,
     faceState,
   ]);
@@ -432,37 +408,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
       }
     );
   }, [regenerateSheet, sequenceId, characterId, activeLookId, sheetModel]);
-
-  const handleTalentSelect = (talent: TalentWithSheets) => {
-    setSelectedTalent(talent);
-    setIsConfirmOpen(true);
-  };
-
-  const handleRecastConfirm = () => {
-    if (!selectedTalent || !character) return;
-
-    recastCharacter.mutate(
-      {
-        sequenceId,
-        characterId: character.id,
-        talentId: selectedTalent.id,
-      },
-      {
-        onSuccess: (result) => {
-          setIsConfirmOpen(false);
-          setSelectedTalent(null);
-          // Other looks are drawn from the new default sheet, so the recast
-          // leaves them for the next update (#2015). Say which.
-          if (result.looksLeftStale.length > 0) {
-            toast(
-              `Update redraws ${result.looksLeftStale.map((look) => look.name).join(', ')} once the new sheet lands.`,
-              { duration: 60_000 }
-            );
-          }
-        },
-      }
-    );
-  };
 
   if (error) {
     return (
@@ -700,32 +645,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
               )}
 
               <div className="flex flex-wrap gap-2">
-                {!character.talent && !character.voiceOnly && (
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      saveAsTalent.mutate(
-                        { sequenceId, characterId: character.id },
-                        {
-                          onSuccess: () =>
-                            toast.success(`Saved ${character.name} as talent`),
-                        }
-                      )
-                    }
-                    disabled={saveAsTalent.isPending}
-                  >
-                    {saveAsTalent.isPending ? 'Saving…' : 'Save as talent'}
-                  </Button>
-                )}
-                {!character.voiceOnly && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setIsPickerOpen(true)}
-                    disabled={isSheetGenerating}
-                  >
-                    {character.talent ? 'Recast' : 'Cast'}
-                  </Button>
-                )}
                 {!character.voiceOnly && (
                   <UploadMediaButton
                     label="Upload Sheet"
@@ -773,20 +692,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
                     : (sequence?.generateVoices ?? false)
                 }
               />
-
-              {character.talent ? (
-                <div className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
-                  <User className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1 min-h-0 min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Cast
-                    </p>
-                    <p className="truncate text-sm font-medium">
-                      {character.talent.name}
-                    </p>
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             <div className="flex flex-col gap-4">
@@ -850,25 +755,6 @@ export const CharacterDetailView: React.FC<CharacterDetailViewProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      <TalentPickerDialog
-        open={isPickerOpen}
-        onOpenChange={setIsPickerOpen}
-        onSelect={handleTalentSelect}
-      />
-
-      {selectedTalent && (
-        <RecastConfirmDialog
-          open={isConfirmOpen}
-          onOpenChange={setIsConfirmOpen}
-          onConfirm={handleRecastConfirm}
-          characterName={character.name}
-          talentName={selectedTalent.name}
-          replacingExisting={Boolean(character.talent)}
-          affectedShotCount={shotData?.count ?? 0}
-          isLoading={recastCharacter.isPending}
-        />
-      )}
 
       {compareVariant && (
         <SheetComparisonDialog

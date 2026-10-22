@@ -17,18 +17,15 @@ import {
   computeCharacterSheetInputHash,
   computeShotImageInputHash,
   computeLocationSheetInputHash,
-  computeTalentSheetInputHash,
   locationSheetInputHashMatches,
   sha256Hex,
   type CharacterBibleHashFields,
   type CharacterSheetInputHash,
-  type CharacterSheetTalentHashFields,
   type LegacyStylingParts,
   type LocationSheetBibleHashFields,
   type LocationSheetInputHash,
   type ShotImageHashInput,
   type ShotImageInputHash,
-  type TalentSheetInputHash,
 } from '@/shots/input-hash';
 import { DEFAULT_IMAGE_MODEL } from '@/models/models';
 import { WorkflowValidationError } from '@/platform/server/workflow/errors';
@@ -43,7 +40,6 @@ import type {
   CharacterSheetWorkflowInput,
   ShotImageSceneSnapshot,
   ShotImagesWorkflowInput,
-  LibraryTalentSheetWorkflowInput,
   LocationSheetWorkflowInput,
   StillHashInput,
 } from '@/platform/server/workflow/types';
@@ -144,15 +140,6 @@ export async function finishCharacterSheetPayload(
   };
 }
 
-/** The payload fields a cast talent supplies to a character sheet. */
-export type CastTalentFields = Pick<
-  CharacterSheetWorkflowInput,
-  | 'referenceImageUrl'
-  | 'talentMetadata'
-  | 'talentSheetInputHash'
-  | 'castTalentDescription'
->;
-
 /** Hash a `StyleConfig` deterministically. `null`/`undefined` → 'no-style'. */
 export async function computeStyleConfigHash(
   styleConfig: StyleConfig | null | undefined
@@ -182,36 +169,8 @@ function characterBibleFields(
 }
 
 /**
- * The cast-talent channel of the sheet hash (#1785): what the prompt reads
- * from the talent, keyed on the talent's own description rather than the
- * prompt wording each path builds from it. `null` when not cast.
- */
-export function characterSheetTalentHashFields(
-  input: CastTalentFields
-): CharacterSheetTalentHashFields | null {
-  const meta = input.talentMetadata;
-  if (!input.referenceImageUrl && !meta && !input.castTalentDescription) {
-    return null;
-  }
-  return {
-    // `?? null`: a payload queued before #1785 has no such field.
-    description: input.castTalentDescription ?? null,
-    sheetImageUrl: input.referenceImageUrl ?? null,
-    sheetLook: meta
-      ? {
-          age: meta.age,
-          gender: meta.gender,
-          ethnicity: meta.ethnicity,
-          physicalDescription: meta.physicalDescription,
-        }
-      : null,
-  };
-}
-
-/**
- * Hash the character-sheet workflow payload. The `talentSheetInputHash` field
- * inlines the upstream talent-sheet's `input_hash` so that a recast triggered
- * against a then-current talent sheet binds to that exact upstream version.
+ * Hash the character-sheet workflow payload. The `talentSheetHash` and
+ * `talent` keys stay, always null, so existing digests still verify.
  */
 function characterSheetHashInput(
   input: SheetPayload<CharacterSheetWorkflowInput>
@@ -220,8 +179,8 @@ function characterSheetHashInput(
     characterBible: characterBibleFields(input.characterMetadata),
     styling: input.lookStyling,
     faceSheetVersionId: input.face === null ? null : input.face.versionId,
-    talentSheetHash: input.talentSheetInputHash ?? null,
-    talent: characterSheetTalentHashFields(input),
+    talentSheetHash: null,
+    talent: null,
     imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
   };
 }
@@ -428,31 +387,6 @@ export async function uploadedLocationSheetHashMatchesStored(
       parts
     )) || (await locationSheetInputHashMatches(stored, body, parts))
   );
-}
-
-/**
- * Library talent sheets are content-addressed by the inlined reference URLs:
- * talent media is append-only in practice, so the snapshot is the URL set
- * itself. Extra live URLs (photos dropped while a run is in flight) do not
- * diverge: `Current` hashes the snapshot set when it is a subset of live
- * media. We hash via `computeTalentSheetInputHash` keyed on those URLs as
- * the reference-media identity (no external `media_id` lookup required).
- */
-export async function computeLibraryTalentSheetHashFromDto(
-  input: SheetPayload<LibraryTalentSheetWorkflowInput>
-): Promise<TalentSheetInputHash> {
-  // Sort here so callers that forget to pre-sort get a stable hash. The
-  // `Current` helper sorts the live media URLs the same way; without sorting
-  // here, an unsorted DTO would diverge against a sorted DB read on every run.
-  const referenceMediaHashes = [...(input.referenceImageUrls ?? [])].sort();
-  return computeTalentSheetInputHash({
-    talent: {
-      name: input.talentName,
-      description: input.talentDescription ?? null,
-    },
-    referenceMediaHashes,
-    imageModel: input.imageModel ?? DEFAULT_IMAGE_MODEL,
-  });
 }
 
 /** Drop nulls/empties and sort so order-insensitive comparisons match. */

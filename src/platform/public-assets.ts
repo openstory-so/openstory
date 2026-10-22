@@ -1,6 +1,6 @@
 /**
- * Canonical public domain for SYSTEM / static assets — talent thumbnails &
- * sheets, location references, and style previews — served from the shared
+ * Canonical public domain for SYSTEM / static assets — character sheets,
+ * location references, and style previews — served from the shared
  * `openstory-public-assets` R2 bucket. Distinct from `R2_PUBLIC_STORAGE_DOMAIN`
  * (per-team, user-generated media).
  *

@@ -1,7 +1,7 @@
 /**
  * MCP tools that generate or cancel cast, music, dialogue and prompt work
- * (#1979): regenerate a character or location sheet, recast with library
- * talent or another of the team's locations, design a character voice, generate music or
+ * (#1979): regenerate a character or location sheet, recast with another
+ * of the team's locations, design a character voice, generate music or
  * rewrite its prompt, record a shot's dialogue again, and cancel what is in
  * flight. Each calls the function the editor's server fn calls; MCP adds only
  * the parent-chain check.
@@ -10,7 +10,6 @@ import { z } from 'zod';
 import {
   cancelCharacterVoice,
   generateCharacterVoice,
-  recastCharacter,
   recastLocation,
   regenerateCharacterSheet,
   regenerateLocationSheet,
@@ -72,7 +71,7 @@ const cancelResult = z.object({ cancelled: z.boolean() });
 const regenerateCharacterSheetTool = openstoryTool({
   name: 'regenerate_character_sheet',
   description:
-    'Generate a new reference sheet for one look of a character, from its current bible and that look’s clothing and styling (spends credits). lookId picks the look (get_character looks[].id); omit it for the default look. A look other than the default is drawn from the default look’s completed sheet and is refused until that sheet exists. Talent and shots are unchanged; stills of the scenes that wear the look go stale once the sheet lands. Poll get_character for sheet status.',
+    'Generate a new reference sheet for one look of a character, from its current bible and that look’s clothing and styling (spends credits). lookId picks the look (get_character looks[].id); omit it for the default look. A look other than the default is drawn from the default look’s completed sheet and is refused until that sheet exists. Shots are unchanged; stills of the scenes that wear the look go stale once the sheet lands. Poll get_character for sheet status.',
   scope: 'generate',
   annotations: generateAnnotations,
   inputSchema: characterInput.extend({
@@ -102,49 +101,6 @@ const regenerateCharacterSheetTool = openstoryTool({
     return {
       data: result,
       summary: `Generating a sheet for ${character.name}.`,
-    };
-  },
-});
-
-const recastCharacterTool = openstoryTool({
-  name: 'recast_character',
-  description:
-    'Cast library talent (list_talent / get_talent: team or public) as a character: its look and voice replace the character’s, a new sheet is generated for the default look, and the shots that wear the default look are regenerated (spends credits). Other looks a scene wears are not redrawn now: they and their shots go stale once the new sheet lands (looksLeftStale), and plan_generation / execute_generation redraws them. The character is the team’s, so every other sequence that casts it reads the recast too and redraws through its own plan_generation / execute_generation; nothing is generated for them here. Refused for a voice-only character.',
-  scope: 'generate',
-  annotations: generateAnnotations,
-  inputSchema: characterInput.extend({
-    talentId: ulidSchema.describe('Library talent ID (list_talent).'),
-  }),
-  outputSchema: z.object({
-    characterId: z.string(),
-    talentId: z.string(),
-    sheetWorkflowRunId: z.string(),
-    affectedShotIds: z.array(z.string()),
-    looksLeftStale: z.array(z.object({ lookId: z.string(), name: z.string() })),
-  }),
-  run: async (input, { scopedDb, userId }) => {
-    const character = await productionAccess(scopedDb).character(
-      input.sequenceId,
-      input.characterId
-    );
-    const result = await recastCharacter(
-      scopedDb,
-      { userId },
-      {
-        sequenceId: input.sequenceId,
-        characterId: character.id,
-        talentId: input.talentId,
-      }
-    );
-    return {
-      data: {
-        characterId: result.character.id,
-        talentId: result.talentId,
-        sheetWorkflowRunId: result.sheetWorkflowRunId,
-        affectedShotIds: result.affectedShotIds,
-        looksLeftStale: result.looksLeftStale,
-      },
-      summary: `Recasting ${character.name}; ${result.affectedShotIds.length} shots will regenerate.${result.looksLeftStale.length > 0 ? ` Stale until the next update: ${result.looksLeftStale.map((look) => look.name).join(', ')}.` : ''}`,
     };
   },
 });
@@ -442,7 +398,6 @@ const cancelPendingShotArtifactTool = openstoryTool({
 
 export const castAudioGenerationTools = [
   regenerateCharacterSheetTool,
-  recastCharacterTool,
   generateCharacterVoiceTool,
   cancelCharacterVoiceTool,
   regenerateLocationSheetTool,

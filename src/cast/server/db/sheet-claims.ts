@@ -40,7 +40,6 @@ import {
   characters,
   locationSheetVariants,
   locations,
-  talent,
 } from '@/platform/server/db/schema';
 import type {
   CharacterSheetInputHash,
@@ -49,8 +48,8 @@ import type {
 
 /**
  * Clear the sheet claim of every look (#2015) of the characters matching
- * `where`, a condition on `characters`: the bible, the cast talent and the
- * style feed all of a character's sheets.
+ * `where`, a condition on `characters`: the bible and the style feed all
+ * of a character's sheets.
  */
 export const demoteCharacterSheetClaims = (db: Database, where: SQL) =>
   db
@@ -64,15 +63,6 @@ export const demoteCharacterSheetClaims = (db: Database, where: SQL) =>
           db.select({ id: characters.id }).from(characters).where(where)
         )
       )
-    );
-
-/** Clear a library talent's sheet claim. */
-export const demoteTalentSheetClaim = (db: Database, talentId: string) =>
-  db
-    .update(talent)
-    .set({ pendingPromoteSheetId: null })
-    .where(
-      and(eq(talent.id, talentId), isNotNull(talent.pendingPromoteSheetId))
     );
 
 export type SheetLanding = 'promoted' | 'parked';

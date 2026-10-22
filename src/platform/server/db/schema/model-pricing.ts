@@ -11,6 +11,7 @@
  * first sight), giving a time-series of model costs.
  */
 
+import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import {
   check,
   index,
@@ -59,6 +60,12 @@ export const modelPricing = snakeCase.table(
      * mispriced endpoints ~59× (Grok, #1069); only newer billed data can.
      */
     rateVerifiedAt: integer({ mode: 'timestamp' }),
+    /**
+     * modelschemas rate card for a pre-flight estimate (#1605). Null until
+     * the daily refresh has stored one. `source.hash`, `extractedAt` and
+     * `expiresAt` live on the card. Billing never reads it.
+     */
+    rateCard: text({ mode: 'json' }).$type<RateCard>(),
     /** When the provider's pricing API was last fetched successfully. */
     fetchedAt: integer({ mode: 'timestamp' }).notNull(),
     updatedAt: integer({ mode: 'timestamp' })

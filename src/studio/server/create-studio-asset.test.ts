@@ -501,6 +501,14 @@ describe('createStudioAssets', () => {
   it('keeps a short Seedance 2.5 reference clip when the prompt does not say edit (#2036)', async () => {
     bytePlusLive = true;
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    await recordLikenessFinding(
+      scopedDb,
+      ['/r2/uploads/short.mp4'],
+      'other',
+      {}
+    );
 
     await createStudioAssets(scopedDb, {
       activity: 'video',
@@ -587,6 +595,15 @@ describe('createStudioAssets', () => {
       'bytedance/seedance-2.5/text-to-video': rate,
     });
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    await recordLikenessFinding(
+      scopedDb,
+      ['https://example.com/walk.mp4'],
+      'other',
+      {}
+    );
 
     await createStudioAssets(scopedDb, {
       activity: 'video',
@@ -884,7 +901,112 @@ describe('upload rights gate (#1581)', () => {
         startImageUrl: uploadUrl,
       })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
+    // An uploaded reference clip is checked like a still (#1930).
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`/r2/talent/${TEAM_ID}/uploads/01WALK.mp4`],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
     expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
+
+  it('refuses a Studio clip whose chain began at an unchecked upload (#1930)', async () => {
+    const { AttestationRequiredError, ValidationError } =
+      await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const oldId = generateId();
+    const oldClip = `/r2/teams/${TEAM_ID}/studio/${oldId}/video.mp4`;
+    const old = await scopedDb.generatedAssets.insert({
+      id: oldId,
+      provider: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      source: 'studio',
+      input: {
+        mode: 'reference',
+        referenceVideos: [`/r2/talent/${TEAM_ID}/uploads/01OLD.mp4`],
+      },
+      status: 'completed',
+      outputs: [{ url: oldClip, contentType: 'video/mp4' }],
+    });
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`/r2/teams/${TEAM_ID}/studio/${old.id}/video.mp4`],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    // Any other stored clip, ours or not, needs its own ledger row.
+    for (const clip of [
+      `/r2/teams/${generateId()}/studio/${old.id}/video.mp4`,
+      `/r2/elements/${TEAM_ID}/seq-1/01COPY.mp4`,
+    ]) {
+      await expect(
+        createStudioAssets(scopedDb, {
+          ...video,
+          mode: 'reference',
+          referenceVideos: [clip],
+        })
+      ).rejects.toBeInstanceOf(AttestationRequiredError);
+    }
+    // A clip stored as a still was judged as a still.
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`/r2/teams/${TEAM_ID}/studio/${old.id}/image.png`],
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
+
+  it('refuses a dot-segment URL under a passing clip’s prefix (#2153)', async () => {
+    const { AttestationRequiredError, ValidationError } =
+      await import('@/platform/errors');
+    const { recordLikenessFinding } =
+      await import('@/cast/server/upload-rights');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const clip = `/r2/teams/${TEAM_ID}/studio/${generateId()}/video.mp4`;
+    const passed = await scopedDb.generatedAssets.insert({
+      provider: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      source: 'studio',
+      input: { mode: 'reference', referenceVideos: [] },
+      status: 'completed',
+      outputs: [{ url: clip, contentType: 'video/mp4' }],
+    });
+    // The stored output itself has nothing behind it to check.
+    await recordLikenessFinding(scopedDb, [clip], 'other', request);
+    const prefix = `/r2/teams/${TEAM_ID}/studio/${passed.id}`;
+    for (const forged of [
+      `${prefix}/video.mp4/../../unchecked.mp4`,
+      `${prefix}/%2e%2e/unchecked.mp4`,
+      `${prefix}/video.mp4?download`,
+      `${prefix}/video.mp4#clip`,
+    ]) {
+      await expect(
+        createStudioAssets(scopedDb, {
+          ...video,
+          mode: 'reference',
+          referenceVideos: [forged],
+        })
+      ).rejects.toBeInstanceOf(ValidationError);
+    }
+    // Same id, different file: not that clip's stored output.
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`${prefix}/other.mp4`],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
   });
 
   it('lets library stills through untouched', async () => {

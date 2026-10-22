@@ -31,7 +31,7 @@ import {
   requireUploadRights,
 } from '@/cast/server/upload-rights';
 import { needsLikenessCheck } from '@/cast/upload-rights';
-import { studioReferenceImages } from '@/studio/reference-rights';
+import { studioLikenessMedia } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { GeneratedAssetInput } from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
@@ -48,12 +48,17 @@ import {
   isSeedanceEdit,
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
+import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  getExtensionFromUrl,
+  getMimeTypeFromExtension,
+} from '@/platform/server/storage/file';
 import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
   studioCanEditSource,
-  studioUsedReferenceVideo,
+  studioUsedUploadedReferenceVideo,
   studioBillableSeconds,
 } from '@/studio/text-to-video';
 import { studioAspectRatio, studioPrimaryOutput } from '@/studio/ui/outputs';
@@ -181,17 +186,103 @@ async function requireOwnEditSource(
     throw new NotFoundError('Video to edit not found');
   }
   // An edit registers its source in Ark's portrait library, which vouches
-  // for whoever is in it. Reference clips skip the likeness gate (only stills
-  // are classified), so a clip made from one could put an unsigned real
-  // person there. An edit's own source already passed this check, so the
-  // source alone covers the whole chain (#1925).
-  // ponytail: any reference clip refuses, uploaded or generated — a clip URL
-  // does not say which row made it. Relax once uploaded videos are
-  // classified like stills.
-  if (studioUsedReferenceVideo(source.input)) {
+  // for whoever is in it. A clip made from an uploaded reference clip is never
+  // edited: older ones were never checked, and a classifier can miss a face.
+  // A generated reference clip counts only if every upload behind it
+  // passes the gate (`requireStudioClipChain`).
+  if (studioUsedUploadedReferenceVideo(source.input)) {
     throw new ValidationError(
-      'This clip was made from a reference video, so it cannot be edited'
+      'This clip was made from an uploaded reference video, so it cannot be edited'
     );
+  }
+  await requireStudioClipChain(scopedDb, [{ assetId: source.id }]);
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === 'string')
+    : [];
+}
+
+/** A reference URL whose path a later fetch can resolve onto a different object. */
+function refuseTraversableReferenceUrl(url: string): void {
+  if (mediaUrlHasTraversal(url)) {
+    throw new ValidationError(
+      'That reference URL can’t be used. Upload the file again.'
+    );
+  }
+}
+
+/**
+ * Studio output key: `teams/<team>/studio/<id>/<file>.mp4|mov|webm`.
+ * The id alone is not a match — a longer or dotted path can share the prefix.
+ */
+function studioClipIdFromUrl(teamId: string, url: string): string | null {
+  const key = r2KeyFromUrl(url);
+  if (!key) return null;
+  const escaped = teamId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return (
+    key.match(
+      new RegExp(
+        `^teams/${escaped}/studio/([^/]+)/[^/]+\\.(?:mp4|mov|webm)$`,
+        'i'
+      )
+    )?.[1] ?? null
+  );
+}
+
+/** A clip to trace: a Studio row by id, or any clip by its URL. */
+type ClipLink = { assetId: string } | { url: string };
+
+/**
+ * A clip Studio made is a reference only if every clip behind it passes;
+ * any other clip must pass the gate itself. Clips made before #1930 took
+ * uploads unchecked, and a reference clip is registered in Ark's portrait
+ * library. Edits are followed by `sourceAssetId`, never by URL.
+ */
+async function requireStudioClipChain(
+  scopedDb: ScopedDb,
+  start: ClipLink[]
+): Promise<void> {
+  const seen = new Set<string>();
+  const queue = [...start];
+  for (let link = queue.pop(); link; link = queue.pop()) {
+    const seenKey = 'assetId' in link ? `id:${link.assetId}` : link.url;
+    if (seen.has(seenKey)) continue;
+    seen.add(seenKey);
+    if ('url' in link) refuseTraversableReferenceUrl(link.url);
+    const assetId =
+      'assetId' in link
+        ? link.assetId
+        : studioClipIdFromUrl(scopedDb.teamId, link.url);
+    const asset = assetId
+      ? await scopedDb.generatedAssets.getById(assetId)
+      : null;
+    // The id in the key is not enough: the URL has to be the file this row
+    // stored. Anything else is checked on its own bytes.
+    if (
+      asset &&
+      'url' in link &&
+      studioPrimaryOutput(asset)?.url !== link.url
+    ) {
+      await requireUploadRights(scopedDb, [link.url]);
+      continue;
+    }
+    if (!asset) {
+      if ('assetId' in link) {
+        throw new ValidationError(
+          'A clip this one was made from is gone, so it cannot be checked'
+        );
+      }
+      // Not a Studio clip of this team: it needs its own ledger row.
+      await requireUploadRights(scopedDb, [link.url]);
+      continue;
+    }
+    for (const url of stringList(asset.input.referenceVideos)) {
+      queue.push({ url });
+    }
+    const sourceId = asset.input.sourceAssetId;
+    if (typeof sourceId === 'string') queue.push({ assetId: sourceId });
   }
 }
 
@@ -207,6 +298,7 @@ export async function createStudioAssets(
   } = {}
 ): Promise<StudioCreateResult> {
   if (input.activity === 'video') {
+    for (const url of input.referenceVideos) refuseTraversableReferenceUrl(url);
     // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
     // to the BytePlus via is refused where this team would land on fal.
     const falKey = await scopedDb.apiKeys.resolveOptionalKey('fal');
@@ -277,13 +369,33 @@ export async function createStudioAssets(
   });
   // Uploads and raw URLs must be cleared or signed on the likeness ledger
   // (#1581); library stills passed the same gate when they were saved.
+  for (const url of studioLikenessMedia(input)) {
+    refuseTraversableReferenceUrl(url);
+  }
   await requireUploadRights(
     scopedDb,
-    studioReferenceImages(input).filter(needsLikenessCheck)
+    studioLikenessMedia(input).filter(needsLikenessCheck)
   );
+  if (input.activity === 'video' && input.mode === 'reference') {
+    // The gate judged a stored file by its type; a clip stored as a still
+    // was judged as a still.
+    const notClip = input.referenceVideos.find(
+      (url) =>
+        !getMimeTypeFromExtension(getExtensionFromUrl(url)).startsWith('video/')
+    );
+    if (notClip) {
+      throw new ValidationError('A reference video must be a video file');
+    }
+    await requireStudioClipChain(
+      scopedDb,
+      input.referenceVideos
+        .filter((url) => !needsLikenessCheck(url))
+        .map((url) => ({ url }))
+    );
+  }
   const noPersonImages: string[] = [];
   if (input.activity === 'video') {
-    for (const url of studioReferenceImages(input)) {
+    for (const url of studioLikenessMedia(input)) {
       if ((await likenessFromLedger(scopedDb, url)) === 'none') {
         noPersonImages.push(url);
       }

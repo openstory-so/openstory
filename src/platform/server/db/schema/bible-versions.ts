@@ -17,13 +17,12 @@ import { generateId } from '@/platform/id';
 import { user } from './auth';
 import { characters } from './characters';
 import { locations } from './locations';
-import { talent } from './talent';
 
 /**
  * Why a bible row exists. `backfill` is the #1600 migration's snapshot of a
  * row as it stood; `analysis` is script analysis or re-analysis; `edit` is a
- * person (the form, the API, MCP); `recast` is casting a talent, which copies
- * the talent's appearance into the bible.
+ * person (the form, the API, MCP); `recast` is a historical source from when
+ * casting copied a talent's appearance into the bible (#2135).
  */
 const BIBLE_VERSION_SOURCES = [
   'backfill',
@@ -73,10 +72,6 @@ export const characterBibleVersions = snakeCase.table(
     // a CHECK would need a table rebuild, so the writers enforce it.
     rendering: text(),
     consistencyTag: text(),
-    // Who plays the character in this version (#2017): a recast is a new
-    // version. Null when uncast. Not a bible field: it is not authored text
-    // and no bible diff names it.
-    talentId: text().references(() => talent.id, { onDelete: 'set null' }),
     source: text({ enum: BIBLE_VERSION_SOURCES }).notNull(),
     createdAt: integer({ mode: 'timestamp' })
       .$defaultFn(() => new Date())

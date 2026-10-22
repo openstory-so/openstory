@@ -261,7 +261,7 @@ changing the area, and update it in the same PR.**
   edit from any sequence stales the others by derivation. A sheet reads no
   sequence style: the bible's required `rendering` (`renderingFor`,
   `renderingOfStyle` in `src/cast/rendering.ts`) is what it takes from one,
-  and `PHOTOREAL_RENDERING` keeps the prompt the talent fixtures match on. A method takes a
+  and `PHOTOREAL_RENDERING` keeps the prompt the recorded character-sheet fixtures match on. A method takes a
   `sequenceId` only for the link's own fields or the event it writes; a write
   made from no sequence (the Characters page, #2065) passes `null` there and
   writes no event. A sheet or voice run started from no sequence
@@ -364,7 +364,7 @@ Read the via's doc before touching it, and update it in the same PR:
 - **Native Google (Gemini)** — `docs/architecture/media-vias.md`. Omni Flash submit must request `response_format.delivery: "uri"` and must NOT pass top-level `duration`/`size`; stills go inline as base64 (`toVisionImageSource(..., { inline: true })`), never as a fetched URI.
 - **LLMTR gateway** — `docs/architecture/media-vias.md`. Team BYOK only. A registry id absent from `LLMTR_TEXT_MODELS` is not routable — never guess a neighbour slug, never send the LLMTR key to OpenRouter, and send native wire names, not OpenRouter plugins.
 - **LLMTR must not block model upgrades.** Missing support, an unreachable catalog, or unverified LLMTR pricing is not a reason to delay an upgrade or keep its PR in draft. Put unsupported or unverified ids in `LLMTR_UNMAPPED_MODEL_IDS` so existing OpenRouter/fal resolution handles them; add LLMTR mappings and rates only after verification. Keep LLMTR last in Settings → API Keys, below OpenRouter.
-- **fal** — `docs/architecture/media-vias.md`. Check `https://fal.ai/models/{model-path}/llms.txt` before updating a model; new motion models go through `bun motion:codegen`, never inline schemas. Pricing is DB-only (`model_pricing`, empty locally until `bun scripts/refresh-fal-pricing.ts` runs) and fal's bill, not its pricing API, is the ground truth.
+- **fal** — `docs/architecture/media-vias.md`. Check `https://fal.ai/models/{model-path}/llms.txt` before updating a model; new motion models go through `bun motion:codegen`, never inline schemas. Pricing is DB-only (`model_pricing`, empty locally until `bun scripts/refresh-fal-pricing.ts` runs) and fal's bill, not its pricing API, is the ground truth. Pre-flight estimates read the stored modelschemas rate card on that row (#1605); a refusal stays null and never copies a sibling endpoint's price.
 
 **Cron jobs need wiring in three places** (like Workflows): `wrangler.jsonc` `triggers.crons` in the **default** block, the same in **`[env.production]`** (non-inheritable), and the constant `scheduled()` string-matches on (e.g. `FAL_PRICING_CRON`). Drift is silent — an unmatched expression falls through to the 5-minute reconcile sweep, which _succeeds_, so the job just never runs. `src/billing/server/refresh-fal-pricing.test.ts` enforces it.
 

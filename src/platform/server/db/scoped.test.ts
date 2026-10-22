@@ -39,58 +39,6 @@ vi.doMock('@/sequences/server/db/sequences', () => ({
   })),
 }));
 
-const mockTalentList = vi.fn();
-const mockTalentGetByIds = vi.fn();
-const mockTalentCreate = vi.fn();
-const mockTalentUpdate = vi.fn();
-const mockTalentDelete = vi.fn();
-const mockTalentToggleFavorite = vi.fn();
-const mockTalentGetById = vi.fn();
-const mockTalentGetWithRelations = vi.fn();
-const mockTalentSheetsGetById = vi.fn();
-const mockTalentSheetsCreate = vi.fn();
-const mockTalentSheetsUpdate = vi.fn();
-const mockTalentSheetsDelete = vi.fn();
-const mockTalentMediaGetById = vi.fn();
-const mockTalentMediaCreate = vi.fn();
-const mockTalentMediaDelete = vi.fn();
-
-vi.doMock('@/cast/server/db/talent', () => ({
-  createTalentReadMethods: vi.fn(() => ({
-    list: mockTalentList,
-    getByIds: mockTalentGetByIds,
-    getById: mockTalentGetById,
-    getWithRelations: mockTalentGetWithRelations,
-    sheets: { getById: mockTalentSheetsGetById },
-    media: { getById: mockTalentMediaGetById },
-  })),
-  createPublicTalentReadMethods: vi.fn(() => ({
-    list: mockTalentList,
-    getWithRelations: mockTalentGetWithRelations,
-  })),
-  createTalentMethods: vi.fn(() => ({
-    list: mockTalentList,
-    getByIds: mockTalentGetByIds,
-    create: mockTalentCreate,
-    update: mockTalentUpdate,
-    delete: mockTalentDelete,
-    toggleFavorite: mockTalentToggleFavorite,
-    getById: mockTalentGetById,
-    getWithRelations: mockTalentGetWithRelations,
-    sheets: {
-      getById: mockTalentSheetsGetById,
-      create: mockTalentSheetsCreate,
-      update: mockTalentSheetsUpdate,
-      delete: mockTalentSheetsDelete,
-    },
-    media: {
-      getById: mockTalentMediaGetById,
-      create: mockTalentMediaCreate,
-      delete: mockTalentMediaDelete,
-    },
-  })),
-}));
-
 const mockStylesList = vi.fn();
 const mockStylesCreate = vi.fn();
 const mockStylesUpdate = vi.fn();
@@ -171,14 +119,14 @@ vi.doMock('@/platform/server/db/scoped/admin', () => ({
 }));
 
 const mockCharactersGetById = vi.fn();
-const mockCharactersListWithTalent = vi.fn();
+const mockCharactersList = vi.fn();
 const mockCharactersListWithSheets = vi.fn();
 const mockCharactersGetShotIdsForCharacter = vi.fn();
 
 vi.doMock('@/cast/server/db/characters', () => ({
   createCharactersMethods: vi.fn(() => ({
     getById: mockCharactersGetById,
-    listWithTalent: mockCharactersListWithTalent,
+    list: mockCharactersList,
     listWithSheets: mockCharactersListWithSheets,
     getShotIdsForCharacter: mockCharactersGetShotIdsForCharacter,
   })),
@@ -246,21 +194,6 @@ describe('createScopedDb', () => {
       mockSequencesUpdateTitle,
       mockSequencesUpdateAnalysisDurationMs,
       mockSequencesUpdateWorkflow,
-      mockTalentList,
-      mockTalentGetByIds,
-      mockTalentCreate,
-      mockTalentUpdate,
-      mockTalentDelete,
-      mockTalentToggleFavorite,
-      mockTalentGetById,
-      mockTalentGetWithRelations,
-      mockTalentSheetsGetById,
-      mockTalentSheetsCreate,
-      mockTalentSheetsUpdate,
-      mockTalentSheetsDelete,
-      mockTalentMediaGetById,
-      mockTalentMediaCreate,
-      mockTalentMediaDelete,
       mockStylesList,
       mockStylesCreate,
       mockStylesUpdate,
@@ -270,7 +203,7 @@ describe('createScopedDb', () => {
       mockStylesIncrementUsage,
       mockLibraryGetAll,
       mockCharactersGetById,
-      mockCharactersListWithTalent,
+      mockCharactersList,
       mockCharactersListWithSheets,
       mockCharactersGetShotIdsForCharacter,
       mockLocationsGetById,
@@ -362,86 +295,6 @@ describe('createScopedDb', () => {
     });
   });
 
-  describe('talent', () => {
-    it('list() delegates to sub-module', async () => {
-      const sentinel = [{ id: 'talent_1' }];
-      mockTalentList.mockResolvedValue(sentinel);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.talent.list();
-
-      expect(mockTalentList).toHaveBeenCalled();
-      expect(result).toEqual(sentinel);
-    });
-
-    it('list() forwards options', async () => {
-      mockTalentList.mockResolvedValue([]);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      await db.talent.list({ favoritesOnly: true });
-
-      expect(mockTalentList).toHaveBeenCalledWith({ favoritesOnly: true });
-    });
-
-    it('getByIds() delegates to sub-module', async () => {
-      const sentinel = [{ id: 'talent_1' }];
-      mockTalentGetByIds.mockResolvedValue(sentinel);
-
-      const ids = ['talent_1', 'talent_2'];
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.talent.getByIds(ids);
-
-      expect(mockTalentGetByIds).toHaveBeenCalledWith(ids);
-      expect(result).toEqual(sentinel);
-    });
-
-    it('create() delegates to sub-module', async () => {
-      const sentinel = { id: 'talent_3' };
-      mockTalentCreate.mockResolvedValue(sentinel);
-
-      const data = { name: 'Actor' };
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.talent.create(data);
-
-      expect(mockTalentCreate).toHaveBeenCalledWith(data);
-      expect(result).toEqual(sentinel);
-    });
-
-    it('update() delegates to sub-module', async () => {
-      const sentinel = { id: 'talent_1' };
-      mockTalentUpdate.mockResolvedValue(sentinel);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.talent.update('talent_1', { name: 'Updated' });
-
-      expect(mockTalentUpdate).toHaveBeenCalledWith('talent_1', {
-        name: 'Updated',
-      });
-      expect(result).toEqual(sentinel);
-    });
-
-    it('delete() delegates to sub-module', async () => {
-      mockTalentDelete.mockResolvedValue(true);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.talent.delete('talent_1');
-
-      expect(mockTalentDelete).toHaveBeenCalledWith('talent_1');
-      expect(result).toBe(true);
-    });
-
-    it('toggleFavorite() delegates to sub-module', async () => {
-      const sentinel = { isFavorite: true };
-      mockTalentToggleFavorite.mockResolvedValue(sentinel);
-
-      const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.talent.toggleFavorite('talent_1');
-
-      expect(mockTalentToggleFavorite).toHaveBeenCalledWith('talent_1');
-      expect(result).toEqual(sentinel);
-    });
-  });
-
   describe('styles', () => {
     it('list() delegates to sub-module', async () => {
       const sentinel = [{ id: 'style_1' }];
@@ -501,14 +354,14 @@ describe('createScopedDb', () => {
       expect(result).toEqual(sentinel);
     });
 
-    it('listWithTalent() delegates to sub-module', async () => {
-      const sentinel = [{ id: 'char_01', name: 'Hero', talent: null }];
-      mockCharactersListWithTalent.mockResolvedValue(sentinel);
+    it('list() delegates to sub-module', async () => {
+      const sentinel = [{ id: 'char_01', name: 'Hero' }];
+      mockCharactersList.mockResolvedValue(sentinel);
 
       const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.characters.listWithTalent('seq_01');
+      const result = await db.characters.list('seq_01');
 
-      expect(mockCharactersListWithTalent).toHaveBeenCalledWith('seq_01');
+      expect(mockCharactersList).toHaveBeenCalledWith('seq_01');
       expect(result).toEqual(sentinel);
     });
 

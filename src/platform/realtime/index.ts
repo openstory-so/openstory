@@ -163,16 +163,6 @@ export function getGenerationChannel(sequenceId?: string): RealtimeChannelApi {
 }
 
 /**
- * Get a channel for talent library events.
- * @param talentId - The talent ID to use as the channel identifier
- */
-export function getTalentChannel(talentId?: string): RealtimeChannelApi {
-  return talentId
-    ? realtimeChannel(`talent:${talentId}`)
-    : noopChannel('talent');
-}
-
-/**
  * Get a channel for per-shot prompt regeneration streaming.
  * @param shotId - The shot ID to use as the channel identifier
  */

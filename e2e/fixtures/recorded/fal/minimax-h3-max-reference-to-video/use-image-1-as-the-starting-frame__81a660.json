@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT ELEVATOR — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-4s): Image 2 caps the lipstick as the elevator jolts and Image 3 reaches for the earring.. Let the elevator jolt register without losing either face or the lipstick.. Camera: lively, natural handheld drift\n\noverall_soundscape: Elevator rattle and a soft jolt; earring taps the floor.\n\nShot 2 (4-8s): Image 2 catches the earring before it rolls beneath the door.. Make the catch feel like a quick, instinctive assist.. Camera: snappy quick tilt down\n\noverall_soundscape: Earring skitters against the floor.\n\nShot 3 (8-12s): Image 2 pockets the lipstick and steps out as the doors open.. Carry the movement naturally from the shared glance into the lobby.. Camera: brisk follow\n\noverall_soundscape: Elevator doors slide open; lobby bustle rises.\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/929a4a31435d12aa9680704794bf41f1ac3f41b27e4ea1a66399d5c643548c83.mp4",
+            "content_type": "video/mp4",
+            "file_name": "px7hxquB6Ns8iZi51EjK8_minimax-h3.mp4",
+            "file_size": 13646712
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 2>, with short dark hair, wearing a black turtleneck and a black blazer with gold hoop earrings.\n<Subject 2> is the man in <Image 3>, with dark hair, wearing a grey textured jacket and dark trousers.\n<Subject 3> is the coral lipstick from <Image 4>, a slim, modern lipstick product with a vibrant coral-orange shade.\n<Subject 4> is the gold hoop earring worn by <Subject 1>.\n\nsummary:\n[reference generation + video continuation] The target video shows a woman and man in a modern elevator where a sudden jolt leads to a dropped earring and a capped lipstick.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - her facial features, hair, and outfit remain consistent.\n<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - his textured jacket and appearance remain consistent.\n<Subject 3> (appears in [Shot 1], [Shot 3]): fully_preserved - the coral color and slim design are maintained.\n<Subject 4> (appears in [Shot 1], [Shot 2]): fully_preserved - the gold hoop earring is tracked accurately.\n\ndetailed_description:\nThe video style is modern, social-first product photography with tactile, editorial energy. The lighting is bright natural morning light with crisp whites and warm skin tones, utilizing a color palette of #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, and #E8F4E8.\n[Shot 1] At 00:00.000, the scene begins with <Image 1> showing the sleek elevator interior. <Subject 1> and <Subject 2> are inside. As the elevator suddenly jolts upward, <Subject 1> quickly uses her hand to firmly cap <Subject 3> (coral lipstick). Simultaneously, the jolt causes <Subject 2> to reach out as <Subject 4> slips from his ear and tumbles. The camera moves with a lively, natural handheld drift, capturing the sudden movement without distorting the subjects' faces.\n[Shot 2] At 00:04.000, the camera performs a snappy, quick tilt down. <Subject 4> skitters across the elevator floor. <Subject 1> reacts with instinctive speed, lunging her hand down to catch <Subject 4> just before it can roll beneath the closing elevator doors. \n[Shot 3] At 00:08.000, the elevator doors begin to slide open to a bright lobby. <Subject 1> tucks <Subject 3> into her pocket and steps out with confidence. <Subject 2> follows her naturally. The camera performs a brisk follow shot, maintaining the fluid movement as they transition from the enclosed elevator into the open, airy lobby space.\n\noverall_soundscape:\nThe mechanical rattle of a moving elevator followed by a heavy metallic jolt. The distinct sharp clink of a gold earring hitting the floor, followed by the sliding sound of doors and the rising ambient bustle of a busy lobby.\n\nnon_diegetic_music:\nN/A",
+          "seed": 41088210,
+          "timings": {
+            "inference": 12.828247296973132
+          }
+        },
+        "status": 200,
+        "billableUnits": 20.160000000000004
+      }
+    }
+  ]
+}

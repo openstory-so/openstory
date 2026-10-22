@@ -36,7 +36,15 @@ export type ChatMessageImagePart = {
     | { type: 'url'; value: string; mimeType?: string }
     | { type: 'data'; value: string; mimeType: string };
 };
-export type ChatMessageContentPart = ChatMessageTextPart | ChatMessageImagePart;
+/** A clip already uploaded to the provider (a Gemini Files URI). Native Gemini only. */
+type ChatMessageVideoPart = {
+  type: 'video';
+  source: { type: 'url'; value: string; mimeType: string };
+};
+export type ChatMessageContentPart =
+  | ChatMessageTextPart
+  | ChatMessageImagePart
+  | ChatMessageVideoPart;
 
 /**
  * Chat prompt message. `content` is either a plain string (the default for

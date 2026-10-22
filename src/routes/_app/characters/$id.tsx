@@ -33,7 +33,7 @@ export const Route = createFileRoute('/_app/characters/$id')({
         {
           label: 'Characters',
           to: '/characters',
-          search: librarySearchFor('characters'),
+          search: librarySearchFor(),
         },
         { label: <CharacterCrumbLabel id={id} /> },
       ];
@@ -73,7 +73,7 @@ function TeamCharacterContent({ id }: { id: string }) {
         description="It was deleted, or it belongs to another team."
         action={
           <Button variant="outline" asChild>
-            <Link to="/characters" search={librarySearchFor('characters')}>
+            <Link to="/characters" search={librarySearchFor()}>
               Back to Characters
             </Link>
           </Button>
@@ -94,7 +94,7 @@ function TeamCharacterContent({ id }: { id: string }) {
           <Button variant="ghost" size="icon" asChild>
             <Link
               to="/characters"
-              search={librarySearchFor('characters')}
+              search={librarySearchFor()}
               aria-label="Back to Characters"
             >
               <ArrowLeft />

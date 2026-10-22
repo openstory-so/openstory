@@ -5,10 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { asStub } from '@/test/as-stub';
 
 const mocks = vi.hoisted(() => ({
-  createLibraryTalent: vi.fn(),
+  createTeamCharacter: vi.fn(),
   createTeamLocation: vi.fn(),
   createSequences: vi.fn(),
-  enqueueLibraryTalentSheet: vi.fn(),
   triggerTeamLocationSheet: vi.fn(),
   enhanceScriptToString: vi.fn(),
   uploadFile: vi.fn(async () => undefined),
@@ -46,12 +45,8 @@ vi.mock('@/sequences/server/create-sequences', () => ({
   createSequences: mocks.createSequences,
 }));
 
-vi.mock('@/cast/server/talent/create-library-talent', () => ({
-  createLibraryTalent: mocks.createLibraryTalent,
-}));
-
-vi.mock('@/cast/server/talent/enqueue-library-talent-sheet', () => ({
-  enqueueLibraryTalentSheet: mocks.enqueueLibraryTalentSheet,
+vi.mock('@/cast/server/cast-edit', () => ({
+  createTeamCharacter: mocks.createTeamCharacter,
 }));
 
 vi.mock('@/cast/server/locations/team-locations', () => ({
@@ -118,7 +113,7 @@ function pngResponse(): Response {
 }
 
 describe('runOneShotCreate', () => {
-  const talentDelete = vi.fn(async () => true);
+  const characterDelete = vi.fn(async () => true);
   const locationDelete = vi.fn(async () => true);
   const teamLocations = vi.fn(async () => [] as { id: string; name: string }[]);
   const callLog: string[] = [];
@@ -127,11 +122,12 @@ describe('runOneShotCreate', () => {
     user: { id: 'user-1' },
     teamId: 'team-1',
     request: { ipAddress: '203.0.113.9', userAgent: 'vitest' },
-    // stub covering styles.list + talent list/delete + the team's locations
     scopedDb: asStub<ScopedDb>({
       styles: { list: async () => [makeStyle()] },
-      talent: { list: async () => [], delete: talentDelete },
-      characters: { listTeam: async () => [] },
+      characters: {
+        listTeam: async () => [],
+        softDeleteForTeam: characterDelete,
+      },
       locations: { listTeam: teamLocations, softDeleteForTeam: locationDelete },
       apiKeys: { resolveOptionalKey: mocks.resolveOptionalKey },
     }),
@@ -148,26 +144,10 @@ describe('runOneShotCreate', () => {
       vi.fn(async () => pngResponse())
     );
 
-    mocks.createLibraryTalent.mockImplementation(
-      async (input: { name: string; enqueueSheet?: boolean }) => {
-        callLog.push(
-          `createTalent:${input.name}:${String(input.enqueueSheet)}`
-        );
-        return {
-          talent: { id: `tal-${input.name}`, name: input.name },
-          sheetWorkflowRunId: null,
-          deferredSheet: {
-            talentId: `tal-${input.name}`,
-            workflowInput: {
-              userId: 'user-1',
-              teamId: 'team-1',
-              talentId: `tal-${input.name}`,
-              talentName: input.name,
-            },
-            activity: 'sheet',
-            deduplicationId: `dedup-${input.name}`,
-          },
-        };
+    mocks.createTeamCharacter.mockImplementation(
+      async (_scopedDb: unknown, _actor: unknown, input: { name: string }) => {
+        callLog.push(`createCharacter:${input.name}`);
+        return { id: `char-${input.name}`, name: input.name };
       }
     );
 
@@ -197,10 +177,6 @@ describe('runOneShotCreate', () => {
       };
     });
 
-    mocks.enqueueLibraryTalentSheet.mockImplementation(async () => {
-      callLog.push('enqueueTalentSheet');
-      return 'sheet-run';
-    });
     mocks.triggerTeamLocationSheet.mockImplementation(async () => {
       callLog.push('triggerLocationSheet');
       return 'location-sheet-run';
@@ -282,62 +258,45 @@ describe('runOneShotCreate', () => {
     );
   });
 
-  it('ingests every character reference before insert and enqueues sheets only after the sequence exists', async () => {
+  it('makes inline characters team characters and casts them, fetching nothing', async () => {
     const result = await runOneShotCreate(
       {
         ...baseInput,
         characters: [
-          {
-            name: 'Ada',
-            isHuman: true,
-            referenceImageUrls: [
-              'https://cdn.example/ada-1.png',
-              'https://cdn.example/ada-2.png',
-              'https://cdn.example/ada-3.png',
-            ],
-            portraitAttestation,
-          },
-          {
-            name: 'Grace',
-            isHuman: true,
-            referenceImageUrls: [
-              'https://cdn.example/grace-1.png',
-              'https://cdn.example/grace-2.png',
-              'https://cdn.example/grace-3.png',
-            ],
-            portraitAttestation,
-          },
+          { name: 'Ada', isHuman: true },
+          { name: 'Grace', isHuman: true },
         ],
       },
       ctx
     );
 
     expect(result.sequences[0]?.id).toBe('seq-1');
-    expect(globalThis.fetch).toHaveBeenCalledTimes(6);
-    expect(mocks.createLibraryTalent).toHaveBeenCalledTimes(2);
-    expect(mocks.createLibraryTalent.mock.calls[0]?.[0]).toEqual(
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(mocks.createTeamCharacter).toHaveBeenCalledTimes(2);
+    expect(mocks.createTeamCharacter.mock.calls[0]?.[2]).toEqual({
+      name: 'Ada',
+      physicalDescription: undefined,
+      isPerson: true,
+      rendering: 'Photoreal live action',
+    });
+    expect(mocks.createSequences).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: 'Ada',
-        enqueueSheet: false,
-        referenceImageUrls: expect.arrayContaining([
-          expect.stringContaining('/r2/talent/'),
-        ]),
-      })
+        castCharacterIds: ['char-Ada', 'char-Grace'],
+      }),
+      expect.anything()
     );
-    expect(
-      mocks.createLibraryTalent.mock.calls[0]?.[0].referenceImageUrls
-    ).toHaveLength(3);
+    expect(mocks.createSequences.mock.calls[0]?.[0]).not.toHaveProperty(
+      'suggestedTalentIds'
+    );
 
-    const createIdx = callLog.indexOf('createTalent:Ada:false');
+    const createIdx = callLog.indexOf('createCharacter:Ada');
     const sequenceIdx = callLog.indexOf('createSequences');
-    const enqueueIdx = callLog.indexOf('enqueueTalentSheet');
     expect(createIdx).toBeGreaterThanOrEqual(0);
     expect(sequenceIdx).toBeGreaterThan(createIdx);
-    expect(enqueueIdx).toBeGreaterThan(sequenceIdx);
-    expect(talentDelete).not.toHaveBeenCalled();
+    expect(characterDelete).not.toHaveBeenCalled();
   });
 
-  it('fails a bad reference before creating talent and names the character plus URL', async () => {
+  it('fails a bad reference before creating a location and names the location plus URL', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: URL | RequestInfo) => {
@@ -347,7 +306,7 @@ describe('runOneShotCreate', () => {
             : typeof input === 'string'
               ? input
               : input.url;
-        if (url.includes('ada-2')) {
+        if (url.includes('pier-2')) {
           return Promise.reject(
             new DOMException('The operation was aborted.', 'TimeoutError')
           );
@@ -360,14 +319,13 @@ describe('runOneShotCreate', () => {
       runOneShotCreate(
         {
           ...baseInput,
-          characters: [
+          locations: [
             {
-              name: 'Ada',
-              isHuman: true,
+              name: 'Pier',
               referenceImageUrls: [
-                'https://cdn.example/ada-1.png',
-                'https://cdn.example/ada-2.png',
-                'https://cdn.example/ada-3.png',
+                'https://cdn.example/pier-1.png',
+                'https://cdn.example/pier-2.png',
+                'https://cdn.example/pier-3.png',
               ],
               portraitAttestation,
             },
@@ -377,16 +335,15 @@ describe('runOneShotCreate', () => {
       )
     ).rejects.toSatisfy((error: unknown) => {
       if (!(error instanceof ValidationError)) return false;
-      expect(error.message).toContain('Character "Ada" reference image #2');
+      expect(error.message).toContain('Location "Pier" reference image #2');
       expect(error.message).toContain('(timeout)');
-      expect(error.message).toContain('https://cdn.example/ada-2.png');
+      expect(error.message).toContain('https://cdn.example/pier-2.png');
       return true;
     });
 
-    expect(mocks.createLibraryTalent).not.toHaveBeenCalled();
+    expect(mocks.createTeamLocation).not.toHaveBeenCalled();
     expect(mocks.createSequences).not.toHaveBeenCalled();
-    expect(mocks.enqueueLibraryTalentSheet).not.toHaveBeenCalled();
-    expect(talentDelete).not.toHaveBeenCalled();
+    expect(locationDelete).not.toHaveBeenCalled();
   });
 
   it('refuses a real-person reference with no portraitAttestation before any insert (#1581)', async () => {
@@ -418,10 +375,10 @@ describe('runOneShotCreate', () => {
     await runOneShotCreate(
       {
         ...baseInput,
-        characters: [
+        locations: [
           {
-            name: 'Ada',
-            referenceImageUrls: ['https://cdn.example/ada-1.png'],
+            name: 'Pier',
+            referenceImageUrls: ['https://cdn.example/pier-1.png'],
             portraitAttestation,
           },
         ],
@@ -433,14 +390,14 @@ describe('runOneShotCreate', () => {
       expect.anything(),
       [
         expect.objectContaining({
-          url: expect.stringContaining('/r2/talent/team-1/uploads/'),
+          url: expect.stringContaining('/r2/locations/team-1/uploads/'),
           statementVersion: 'portrait-rights-v1',
           authorizationBasis: 'self',
         }),
       ],
       ctx.request
     );
-    expect(mocks.createLibraryTalent).toHaveBeenCalledTimes(1);
+    expect(mocks.createTeamLocation).toHaveBeenCalledTimes(1);
   });
 
   it('makes an inline location a team location and starts its sheet only after the sequence exists (#1695)', async () => {
@@ -509,7 +466,7 @@ describe('runOneShotCreate', () => {
     expect(mocks.triggerTeamLocationSheet).not.toHaveBeenCalled();
   });
 
-  it('rolls back inline talents and does not enqueue sheets when sequence create fails', async () => {
+  it('rolls back inline characters when sequence create fails', async () => {
     mocks.createSequences.mockImplementation(async () => {
       callLog.push('createSequences');
       throw new ValidationError(
@@ -521,21 +478,13 @@ describe('runOneShotCreate', () => {
       runOneShotCreate(
         {
           ...baseInput,
-          characters: [
-            {
-              name: 'Ada',
-              isHuman: true,
-              referenceImageUrls: ['https://cdn.example/ada-1.png'],
-              portraitAttestation,
-            },
-          ],
+          characters: [{ name: 'Ada', isHuman: true }],
         },
         ctx
       )
     ).rejects.toThrow(/Already generating this script/);
 
-    expect(mocks.createLibraryTalent).toHaveBeenCalledTimes(1);
-    expect(talentDelete).toHaveBeenCalledWith('tal-Ada');
-    expect(mocks.enqueueLibraryTalentSheet).not.toHaveBeenCalled();
+    expect(mocks.createTeamCharacter).toHaveBeenCalledTimes(1);
+    expect(characterDelete).toHaveBeenCalledWith('char-Ada');
   });
 });

@@ -36,7 +36,6 @@ import {
   sequenceStyleVersions,
   sequences,
   styles,
-  talent,
   teams,
   user,
 } from '@/platform/server/db/schema';
@@ -837,7 +836,7 @@ describe('characters bible CRUD + soft-remove', () => {
     );
   });
 
-  it('create labels a talent-copied voice library, and appends nothing on the re-upsert', async () => {
+  it('create labels a voice that arrives with an id as library, and appends nothing on the re-upsert', async () => {
     const methods = createCharactersMethods(db, teamId);
     const cast = await methods.create(
       {
@@ -845,14 +844,14 @@ describe('characters bible CRUD + soft-remove', () => {
         characterId: 'voice_004',
         name: 'Nora',
         rendering: 'Photoreal live action',
-        voiceId: 'talent-voice',
+        voiceId: 'library-voice',
         voiceDescription: 'Gravelly',
       },
       { source: 'analysis', createdBy: null }
     );
     const [original] = await methods.listVoiceVersions(cast.id);
     expect(original?.source).toBe('library');
-    expect(original?.voiceId).toBe('talent-voice');
+    expect(original?.voiceId).toBe('library-voice');
 
     // The References stage re-upserts the same row; history must not grow and
     // the `coalesce` keeps the voice the row already holds.
@@ -867,7 +866,7 @@ describe('characters bible CRUD + soft-remove', () => {
       },
       { source: 'analysis', createdBy: null }
     );
-    expect(again.voiceId).toBe('talent-voice');
+    expect(again.voiceId).toBe('library-voice');
     expect(await methods.listVoiceVersions(cast.id)).toHaveLength(1);
   });
 
@@ -890,13 +889,13 @@ describe('characters bible CRUD + soft-remove', () => {
         characterId: 'voice_fill',
         name: 'Lia',
         rendering: 'Photoreal live action',
-        voiceId: 'talent-voice',
+        voiceId: 'library-voice',
         voiceDescription: 'Husky',
       },
       { source: 'analysis', createdBy: null }
     );
     // The id is new, the description the character already had wins.
-    expect(recast.voiceId).toBe('talent-voice');
+    expect(recast.voiceId).toBe('library-voice');
     expect(recast.voiceDescription).toBe('Bright');
     const versions = await methods.listVoiceVersions(created.id);
     expect(versions.map((v) => v.source)).toEqual(['library', 'analysis']);
@@ -946,19 +945,10 @@ describe('characters bible CRUD + soft-remove', () => {
       null,
       null
     );
-    const [seq] = await db
-      .select({ teamId: sequences.teamId })
-      .from(sequences)
-      .where(eq(sequences.id, sequenceId));
-    if (!seq) throw new Error('test setup: sequence missing');
-    await db
-      .insert(talent)
-      .values({ teamId: seq.teamId, name: 'T', voiceId: shared });
 
     expect(live.voiceId).toBe(shared);
-    // A's current pointer, B's current pointer (removed from the sequence,
-    // still the team's), the talent.
-    expect(await methods.getVoiceReferenceCount(shared)).toBe(3);
+    // A's current pointer, and B's (removed from the sequence, still the team's).
+    expect(await methods.getVoiceReferenceCount(shared)).toBe(2);
     // C's current pointer moved to 'other'.
     expect(await methods.getVoiceReferenceCount('other')).toBe(1);
     expect(await methods.getVoiceReferenceCount('nobody')).toBe(0);
@@ -1089,7 +1079,7 @@ describe('characters bible CRUD + soft-remove', () => {
     );
 
     expect(await m.list(sequenceId)).toHaveLength(0);
-    expect(await m.listWithTalent(sequenceId)).toHaveLength(0);
+    expect(await m.list(sequenceId)).toHaveLength(0);
     expect(await m.listWithSheets(sequenceId)).toHaveLength(0);
     expect(await m.getNeedingSheets(sequenceId)).toHaveLength(0);
     // Id-addressed reads still reach it (restore, admin).
@@ -1695,14 +1685,6 @@ describe('team characters (#2017)', () => {
       .select()
       .from(characterBibleVersions)
       .where(eq(characterBibleVersions.characterId, characterId));
-  const newTalent = async () => {
-    const [row] = await db
-      .insert(talent)
-      .values({ teamId, name: 'Talent' })
-      .returning();
-    if (!row) throw new Error('test setup: talent insert returned nothing');
-    return row.id;
-  };
   /** A second sequence of the same team, on the first one's style. */
   const secondSequence = async () => {
     const [first] = await db
@@ -1716,7 +1698,7 @@ describe('team characters (#2017)', () => {
       .values({ id, teamId, title: 'S2', styleId: first.styleId });
     return id;
   };
-  it('is read with its talent through a sequence (with the link) or from none (without)', async () => {
+  it('is read through a sequence (with the link) or from none (without)', async () => {
     const created = await chars().create(
       {
         sequenceId,
@@ -1726,34 +1708,29 @@ describe('team characters (#2017)', () => {
       },
       analysis
     );
-    const talentId = await newTalent();
-    // A recast from no sequence (the Characters page) names the talent too.
-    const recast = await chars().updateBible(
+    const edited = await chars().updateBible(
       null,
       created.id,
       { age: '30s' },
-      { actorId, source: 'recast', talentId }
+      { actorId, source: 'edit' }
     );
-    expect(recast.talentId).toBe(talentId);
-    expect(recast).not.toHaveProperty('castId');
+    expect(edited).not.toHaveProperty('castId');
 
-    const cast = await chars().getWithTalent(sequenceId, created.id);
+    const cast = await chars().getCastOrCurrent(sequenceId, created.id);
     expect(cast).toMatchObject({
       id: created.id,
       sequenceId,
       characterId: 'char_001',
       castId: created.castId,
       age: '30s',
-      talent: { id: talentId, name: 'Talent' },
       looks: [{ id: created.id, isDefault: true }],
     });
 
-    const own = await chars().getWithTalent(null, created.id);
+    const own = await chars().getCastOrCurrent(null, created.id);
     expect(own).toMatchObject({
       id: created.id,
       age: '30s',
-      selectedBibleVersionId: recast.selectedBibleVersionId,
-      talent: { id: talentId, name: 'Talent' },
+      selectedBibleVersionId: edited.selectedBibleVersionId,
       sheetImageUrl: null,
       looks: [{ id: created.id, isDefault: true }],
     });
@@ -1765,55 +1742,10 @@ describe('team characters (#2017)', () => {
       .update(characters)
       .set({ deletedAt: new Date() })
       .where(eq(characters.id, created.id));
-    expect(await chars().getWithTalent(null, created.id)).toBeNull();
-    expect(await chars().getWithTalent(sequenceId, created.id)).not.toBeNull();
-  });
-  it('a recast is one bible version, by its author, naming the talent', async () => {
-    const created = await chars().create(
-      {
-        sequenceId,
-        characterId: 'char_001',
-        name: 'Ada',
-        rendering: 'Photoreal live action',
-      },
-      analysis
-    );
-    const talentId = await newTalent();
-    const recast = await chars().updateBible(
-      sequenceId,
-      created.id,
-      { age: '30s' },
-      { actorId, source: 'recast', talentId }
-    );
-
-    const versions = await versionsOf(created.id);
-    expect(versions).toHaveLength(2);
+    expect(await chars().getCastOrCurrent(null, created.id)).toBeNull();
     expect(
-      versions.find((v) => v.id === recast.selectedBibleVersionId)
-    ).toMatchObject({
-      source: 'recast',
-      createdBy: actorId,
-      talentId,
-      age: '30s',
-    });
-    expect(recast.talentId).toBe(talentId);
-
-    // An edit keeps the cast on the version it appends.
-    const edited = await chars().updateBible(
-      sequenceId,
-      created.id,
-      { age: '40s' },
-      { actorId, source: 'edit' }
-    );
-    expect(edited.talentId).toBe(talentId);
-    // The same talent again appends nothing.
-    await chars().updateBible(
-      sequenceId,
-      created.id,
-      {},
-      { actorId, source: 'recast', talentId }
-    );
-    expect(await versionsOf(created.id)).toHaveLength(3);
+      await chars().getCastOrCurrent(sequenceId, created.id)
+    ).not.toBeNull();
   });
 
   it('deleting a sequence keeps only a character another sequence casts', async () => {
@@ -1979,7 +1911,7 @@ describe('team characters (#2017)', () => {
     ).toBe(true);
   });
 
-  it('a Seed voice and a voice a talent still holds do not stop the delete', async () => {
+  it('a Seed voice does not stop the delete', async () => {
     const created = await chars().create(
       {
         sequenceId,
@@ -1994,15 +1926,6 @@ describe('team characters (#2017)', () => {
       created.id,
       { voiceId: newSeedVoiceId() },
       'generated',
-      null,
-      null
-    );
-    // A voice copied from a talent: the talent still points at it.
-    await db.insert(talent).values({ teamId, name: 'T', voiceId: 'voice-t' });
-    await chars().updateVoice(
-      created.id,
-      { voiceId: 'voice-t' },
-      'library',
       null,
       null
     );
@@ -2481,7 +2404,6 @@ describe('team characters (#2017)', () => {
       physicalDescription: 'grey eyes',
       isPerson: true,
       voiceOnly: false,
-      talentId: null,
       standardClothing: null,
     });
     // A default look's id is its character's.

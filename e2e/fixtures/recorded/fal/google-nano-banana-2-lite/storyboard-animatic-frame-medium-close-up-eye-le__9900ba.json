@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. medium close-up. eye level. SCARLETT’s reflection is centered in the mirror, with the lipstick and her hand crisp in the foreground. SCARLETT faces the mirror, holding the uncapped lipstick near her lips. Then: SCARLETT twists up the coral bullet and applies it in the mirror. Camera: handheld drift, smooth, energetic. Keep the reflection and lipstick application legible in the same frame. Characters: Scarlett: Woman, 22, A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob, wearing Black fitted turtleneck, slim black trousers, small gold hoop earrings. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/cfd146a77b08b0239d0e96aa5c02bcd380661c4e6deb5b6835ca608ada76e527.png",
+              "content_type": "image/png",
+              "file_name": "mFhe7bomL70Kbg51DQU8J_RNU5p2Ff.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042102
+      }
+    }
+  ]
+}

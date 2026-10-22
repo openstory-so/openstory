@@ -1,7 +1,6 @@
 /**
  * Content-rejection handling shared by every image render that is not a
- * shot still (#1293): character / location / element sheets, library talent
- * and location sheets, variant grids.
+ * shot still (#1293): character / location / element sheets and variant grids.
  *
  * Same-prompt reseeds first (#881) — stochastic checker hits often clear on a
  * fresh seed. When they don't, render the ORIGINAL prompt once on Grok
@@ -190,7 +189,7 @@ async function softenRejectedPrompt(
 type StoredGeneratedImage = {
   url: string;
   path: string;
-  /** Talent sheets mint the row id inside the store step so it survives replay. */
+  /** Sheets mint the row id inside the store step so it survives replay. */
   sheetId?: string;
 };
 

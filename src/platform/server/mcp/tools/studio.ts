@@ -66,7 +66,7 @@ const VIDEO_ONLY = [
 
 const createStudioAssetsTool = openstoryTool({
   name: 'create_studio_assets',
-  description: `Generate images or videos in the Studio (uses credits), up to 4 at once. activity image takes imageModel (list_models image with studio set) and optional referenceImages (when its studio.referenceImages). activity video takes videoModel (list_models video with studio set) and duration (one of its studio.durations), and mode: text (default), reference (referenceImages / referenceVideos / referenceAudio, named @Image1, @Video1, @Audio1 in the prompt, within the model's studio limits) or frames (startImageUrl, and endImageUrl when its studio.endFrame). draft renders a 480p Ark draft (draftMode models); render_studio_asset_at_quality makes its final. Images of a real person must be uploaded with the portrait sign-off first. ${pollHint}`,
+  description: `Generate images or videos in the Studio (uses credits), up to 4 at once. activity image takes imageModel (list_models image with studio set) and optional referenceImages (when its studio.referenceImages). activity video takes videoModel (list_models video with studio set) and duration (one of its studio.durations), and mode: text (default), reference (referenceImages / referenceVideos / referenceAudio, named @Image1, @Video1, @Audio1 in the prompt, within the model's studio limits) or frames (startImageUrl, and endImageUrl when its studio.endFrame). draft renders a 480p Ark draft (draftMode models); render_studio_asset_at_quality makes its final. Images and clips of a real person must be uploaded with the portrait sign-off first. ${pollHint}`,
   scope: 'generate',
   annotations: paid,
   inputSchema: z.strictObject({

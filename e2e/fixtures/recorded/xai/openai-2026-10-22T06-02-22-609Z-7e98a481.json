@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nDowntown Apartment Bathroom\nType: Interior\n\n[VISUAL DESCRIPTION]:\nA compact apartment bathroom with white tiled walls and a sink crowded with everyday morning toiletries and small personal items. The sink and mirror form the central grooming area, with a window providing daylight. The room feels lived-in and practical rather than lavish.\n\n[ARCHITECTURAL STYLE]:\nContemporary urban apartment bathroom with simple, utilitarian finishes.\n\n[KEY FEATURES]:\nWhite tile, a crowded sink, a mirror above the sink, a window, and ordinary grooming items.\n\n[LIGHTING]:\nNeutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.\n\n[ATMOSPHERE]:\nPrivate, familiar, and briskly lived-in; an everyday personal space.\n\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High resolution with rich detail\n- No people or characters in any frame\n- Clean grid layout with thin dividing lines\n\nStyle: Professional film location reference sheet, production design documentation.\nOutput: Single image containing 3×3 grid of location views.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/37c804208abd0589e87b675392676e3b8e4b46bc02e7c3401f88d802e36317b7.png"
+        }
+      }
+    }
+  ]
+}

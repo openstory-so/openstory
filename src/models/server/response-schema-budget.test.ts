@@ -36,7 +36,6 @@ import {
   sceneSplitBiblesResultSchema,
   sceneSplitScenesResultSchema,
   styleRecommendationResponseSchema,
-  talentMatchResponseSchema,
   voiceDescriptionSchema,
   voiceRangeScriptSchema,
 } from '@/sequences/response-schemas';
@@ -52,7 +51,6 @@ import {
 const MEASURED_SCHEMAS: Record<string, z.ZodType> = {
   sceneSplitScenesResultSchema,
   sceneSplitBiblesResultSchema,
-  talentMatchResponseSchema,
   locationMatchResponseSchema,
   musicDesignResultSchema,
   sceneDurationResponseSchema,

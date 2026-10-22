@@ -230,13 +230,6 @@ export function AppSidebar() {
                       to={to}
                       activeProps={{ 'data-active': 'true' }}
                       activeOptions={{ exact: false }}
-                      // A talent's page lives at /talent/$id but belongs to
-                      // the Characters page's Talent tab (#2017).
-                      data-active={
-                        to === '/characters' && pathname.startsWith('/talent/')
-                          ? 'true'
-                          : undefined
-                      }
                     >
                       <Icon />
                       <span>{label}</span>

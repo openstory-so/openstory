@@ -26,6 +26,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import { useSequenceCharacters } from '@/cast/ui/use-sequence-characters';
 import { useSequenceElements } from '@/cast/ui/use-sequence-elements';
 import { useSequenceLocations } from '@/cast/ui/use-sequence-locations';
+import { useLibraryCharacters } from '@/cast/ui/use-team-characters';
 import { useTeamLocationList } from '@/cast/ui/use-team-locations';
 import { useAuthSession } from '@/platform/ui/auth/session-query';
 import {
@@ -33,7 +34,6 @@ import {
   type SequenceWithShots,
 } from '@/sequences/ui/use-sequences-with-shots';
 import { useStudioAssets, useStudioUploads } from './use-studio-assets';
-import { useTalent } from '@/cast/ui/use-talent';
 import { isBrowserDisplayableStillUrl } from '@/shots/shot-view';
 import {
   studioPosterOutput,
@@ -68,8 +68,8 @@ export type StudioReference = {
   /** Browser-measured length; null or unset when unknown, which is not blocked. */
   durationSeconds?: number | null;
   /**
-   * Name this reference keeps in the prompt (#1748). Talent, locations and
-   * elements are people and places, so `@Sienna Blake` reads where `@Image3`
+   * Name this reference keeps in the prompt (#1748). Characters, locations
+   * and elements are people and places, so `@Sienna Blake` reads where `@Image3`
    * does not; `resolveStudioAliases` swaps it for the slot on the way out.
    */
   alias?: string;
@@ -105,7 +105,7 @@ const SOURCES: { key: Source; label: string; icon: typeof Sparkles }[] = [
   { key: 'generations', label: 'Generations', icon: Sparkles },
   { key: 'uploads', label: 'Uploads', icon: FolderUp },
   { key: 'sequences', label: 'Sequences', icon: Clapperboard },
-  { key: 'cast', label: 'Talent', icon: Users },
+  { key: 'cast', label: 'Characters', icon: Users },
   { key: 'locations', label: 'Locations', icon: MapPin },
   { key: 'audio', label: 'Audio', icon: AudioLines },
   { key: 'draw', label: 'Draw', icon: PencilRuler },
@@ -116,7 +116,7 @@ const EMPTY: Record<LibrarySource, string> = {
     'No generations yet — make an image or clip and it shows up here.',
   uploads: 'Nothing uploaded yet — anything you upload or paste lands here.',
   sequences: 'No sequences yet.',
-  cast: 'No talent with a headshot yet.',
+  cast: 'No characters with a sheet yet.',
   locations: 'No locations with a reference image yet.',
 };
 
@@ -142,9 +142,9 @@ function shotReferences(sequence: SequenceWithShots): StudioReference[] {
 
 /** The team's pickable media, as flat `{ url, label, kind }` rows per source. */
 export function useStudioLibrary(): StudioLibrary {
-  const { data: talent } = useTalent();
-  // The team's locations (#1695); the ones with a sheet are offered below.
+  // The team's characters and locations; the ones with a picture are offered.
   const { data: session } = useAuthSession();
+  const { data: characters } = useLibraryCharacters(!!session);
   const { data: locations } = useTeamLocationList(!!session);
   const { data: sequences } = useSequencesWithShots();
   const images = useStudioAssets({ activity: 'image' });
@@ -185,10 +185,17 @@ export function useStudioLibrary(): StudioLibrary {
           shotCount: sequence.shots.length,
         };
       }),
-      cast: (talent ?? []).flatMap((t) => {
-        const url = t.defaultSheet?.imageUrl ?? t.imageUrl;
+      cast: (characters ?? []).flatMap((character) => {
+        const url = character.sheetPortraitUrl ?? character.sheetImageUrl;
         return url
-          ? [{ url, label: t.name, kind: 'image' as const, alias: t.name }]
+          ? [
+              {
+                url,
+                label: character.name,
+                kind: 'image' as const,
+                alias: character.name,
+              },
+            ]
           : [];
       }),
       locations: (locations ?? []).flatMap((loc) =>
@@ -204,7 +211,7 @@ export function useStudioLibrary(): StudioLibrary {
           : []
       ),
     };
-  }, [talent, locations, sequences, images.data, videos.data, uploads]);
+  }, [characters, locations, sequences, images.data, videos.data, uploads]);
 }
 
 type TileGridProps = {

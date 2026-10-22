@@ -9,17 +9,17 @@ import {
 } from './sse-session';
 
 describe('partitionRealtimeChannels', () => {
-  it('puts billing on its own stream and leaves talent and sequence together', () => {
+  it('puts billing on its own stream and leaves character and sequence together', () => {
     expect(
       partitionRealtimeChannels([
-        'talent:01',
+        'character:01',
         'billing:team',
         'sequence-1',
         'billing:other',
       ])
     ).toEqual({
       billing: ['billing:team', 'billing:other'],
-      heavy: ['talent:01', 'sequence-1'],
+      heavy: ['character:01', 'sequence-1'],
     });
   });
 

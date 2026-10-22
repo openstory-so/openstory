@@ -100,7 +100,7 @@ export async function setupMockRoutes(page: Page): Promise<void> {
 
   // Note: /api/storage/upload is NOT mocked — browser uploads go through the
   // real route into the local Miniflare R2 binding, so downstream copy/move
-  // operations (talent creation, element promotion) find real source objects.
+  // operations (sheet uploads, element promotion) find real source objects.
 
   // Safety net: redirect any stray picsum.photos requests to local test image endpoint
   await page.route('**/picsum.photos/**', async (route: Route) => {

@@ -67,6 +67,11 @@ export type CatalogFalPricingRow = {
   unit: string;
   typicalUnitsPerCall?: number;
   observed?: { medianUnits: number; sampleCount: number };
+  /**
+   * Stored modelschemas card as JSON. A string because the card's example
+   * params are an open record, which a server fn cannot return directly.
+   */
+  rateCardJson?: string;
 };
 
 export type CatalogFalPricingMap = Record<string, CatalogFalPricingRow>;
@@ -91,6 +96,7 @@ export const getCatalogFalPricingFn = createServerFn({ method: 'GET' }).handler(
             sampleCount: row.observed.sampleCount,
           },
         }),
+        ...(row.rateCard && { rateCardJson: JSON.stringify(row.rateCard) }),
       };
     }
     return out;

@@ -39,24 +39,12 @@ type StreamingShot = {
   videoUrl?: string;
 };
 
-type TalentMatch = {
-  characterId: string;
-  characterName: string;
-  talentId: string;
-  talentName: string;
-};
-
 type LocationMatch = {
   locationId: string;
   libraryLocationId: string;
   libraryLocationName: string;
   referenceImageUrl: string | null;
   description?: string;
-};
-
-type UnusedTalent = {
-  ids: string[];
-  names: string[];
 };
 
 /**
@@ -102,12 +90,8 @@ export type GenerationStreamState = {
   isFailed: boolean;
   /** Error message if generation failed */
   error?: string;
-  /** Talent matched to characters during generation */
-  talentMatches: TalentMatch[];
   /** Location matched during generation */
   locationMatches: LocationMatch[];
-  /** Talent that weren't matched to any character */
-  unusedTalent: UnusedTalent | null;
   /** Per-shot in-flight retry state (#882), keyed by shotId */
   shotRetries: Map<string, ShotRetryState>;
 };
@@ -161,11 +145,6 @@ export type GenerationStreamAction =
   | { type: 'COMPLETE'; payload: { sequenceId: string } }
   | { type: 'FAILED'; payload: { message: string } }
   | { type: 'ERROR'; payload: { message: string; phase?: number } }
-  | { type: 'TALENT_MATCHED'; payload: { matches: TalentMatch[] } }
-  | {
-      type: 'TALENT_UNMATCHED';
-      payload: { unusedTalentIds: string[]; unusedTalentNames: string[] };
-    }
   | { type: 'LOCATION_MATCHED'; payload: { matches: LocationMatch[] } }
   | { type: 'PREVIEW_REPLACED'; payload: { newSceneCount: number } }
   | { type: 'RESET'; payload?: GenerationPhaseConfig };
@@ -231,9 +210,7 @@ export function createInitialState(
     shots: new Map(),
     isComplete: false,
     isFailed: false,
-    talentMatches: [],
     locationMatches: [],
-    unusedTalent: null,
     shotRetries: new Map(),
   };
 }
@@ -420,21 +397,6 @@ export function generationStreamReducer(
       return {
         ...state,
         error: action.payload.message,
-      };
-
-    case 'TALENT_MATCHED':
-      return {
-        ...state,
-        talentMatches: action.payload.matches,
-      };
-
-    case 'TALENT_UNMATCHED':
-      return {
-        ...state,
-        unusedTalent: {
-          ids: action.payload.unusedTalentIds,
-          names: action.payload.unusedTalentNames,
-        },
       };
 
     case 'LOCATION_MATCHED':

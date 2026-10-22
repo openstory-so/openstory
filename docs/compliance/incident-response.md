@@ -12,7 +12,7 @@ to the generation pipeline, and at least annually.
 ## 1. Scope
 
 Applies to every asset the platform generates — still frames, video clips,
-character/location/talent sheets, music, and stitched sequence exports — and to
+character/location sheets, music, and stitched sequence exports — and to
 every image a user uploads as a reference, including portraits of real people.
 
 Three categories of incident, worst-first at triage:
@@ -87,8 +87,7 @@ Provenance is recorded when a generated object lands in R2:
   `skipStorage` previews have no R2 object), the 3×3 framing grid, and
   upscales of a picked tile
 - video clips (`video_variant`) — motion workflow, and therefore motion batches
-- character / location / talent / element sheets — each sheet workflow,
-  including library talent headshots and library location grids + previews
+- character / location / element sheets — each sheet workflow
 - music (`music_variant`) — sequence music workflow
 - direct model access (`generated_asset`) — one row per output file
 - sequence exports (`sequence_export`) — the stitched MP4 that gets shared
@@ -169,7 +168,7 @@ where practical. A successful appeal is a **revocation**, not a deletion.
 | Control                                                        | Where                                                          |
 | -------------------------------------------------------------- | -------------------------------------------------------------- |
 | Terms prohibit likeness use without authorization              | `/terms` § Acceptable Use                                      |
-| Portrait-rights attestation required on likeness upload        | Add-talent dialog → `upload_attestations`                      |
+| Every upload classified; a real person needs the attestation   | `src/cast/server/upload-rights.ts` → `upload_attestations`     |
 | Email login + card on file (accepted real-name auth)           | Better Auth session; Stripe customer on the team               |
 | Provider content filters, with rejections logged and queryable | `src/models/content-rejection.ts`, PostHog `content_rejection` |
 

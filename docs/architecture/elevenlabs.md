@@ -111,19 +111,17 @@ shows Take 2 after promoting the second preview, not a generic “Designed
 take” (#1709). A `generatedVoiceId` can be saved once; after create()
 succeeds (or ElevenLabs says it already did / the preview aged out) the
 take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
-**account-wide** ElevenLabs slot, so the id is shared by copy (talent ↔
-character at cast / save-to-library) and freed only through
-`releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over characters'
-current voice versions and `talent.voiceId`; a character holds its voice
-until it is deleted, #2017, so removing it from a sequence or archiving a
-sequence releases nothing, **provider delete first, row write second** so a
-failed delete stays retryable; `heldBy` is the caller's own reference — the
+**account-wide** ElevenLabs slot. The voice lives on the character. A slot is freed only
+through `releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over
+characters' current voice versions; a character holds its voice until it is
+deleted, #2017, so removing it from a sequence or archiving a sequence
+releases nothing, **provider delete first, row write second** so a failed
+delete stays retryable; `heldBy` is the caller's own reference — the
 character's current pointer, counted exactly by
-`characters.getOwnVoiceHolds`) on
-character soft-delete, per-character switch-off, choose-take, recast to a
-talent with a different voice, sequence archive (before the status flip, so
-a failed release is retryable), talent delete and regenerate — never a bare
-delete, and the upsert keeps a voice the row already holds. Billed at
+`characters.getOwnVoiceHolds`) on character soft-delete, per-character
+switch-off, choose-take, sequence archive (before the status flip, so a
+failed release is retryable) and regenerate — never a bare delete, and the
+upsert keeps a voice the row already holds. Billed at
 `VOICE_DESIGN_COST` per design call; pre-flight prices one call per
 estimated character (`generateVoices` on `estimateStoryboardCost`), the
 in-run gate the real speaking count. **Voices are versioned (#1657):** every
@@ -133,9 +131,7 @@ in-run gate the real speaking count. **Voices are versioned (#1657):** every
 `characters.selectedVoiceVersionId`, the only selection pointer. The voice
 IS that row (#1788): `characters` has no voice columns except `useVoice`;
 every scoped read joins the selected version and re-adds `voiceId` /
-`voiceDescription` / `voicePreviews` under those names. A cast's talent
-voice only fills what the selected version lacks, as a new 'library' (or
-'analysis', description only) version. `createdBy` is the person whose action made the
+`voiceDescription` / `voicePreviews` under those names. `createdBy` is the person whose action made the
 version — required on `updateVoice` so no writer forgets it, null when nobody
 did (the cast-records seed). 'removed' means the character dropped its voice id;
 only `releasedAt` means the ElevenLabs slot was actually freed.
@@ -463,7 +459,7 @@ prevention half (a words-per-second placement budget per shot), and
 `splitOverfullShots` enforces it after parse: a shot over the longest clip's
 word budget is split between lines into back-to-back shots. Preflight
 reserves the TTS cost on the references slice (static card), including when
-Voices is off — talent may already hold a `voiceId`. The optimised-prompt
+Voices is off — a character may already hold a `voiceId`. The optimised-prompt
 JSON carries the audio refs for paste-into-Videos. Models with no audio
 reference slot (Grok, Omni Flash, Kling) still get a section and a cut clip
 in References; motion just does not bind it.

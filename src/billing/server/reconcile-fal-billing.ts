@@ -135,6 +135,19 @@ export async function reconcileFalBilling(
     });
   }
 
+  const cardHashes = new Map<string, string>();
+  const cardRows = await db
+    .select({
+      endpointId: modelPricing.endpointId,
+      rateCard: modelPricing.rateCard,
+    })
+    .from(modelPricing)
+    .where(eq(modelPricing.provider, 'fal'));
+  for (const row of cardRows) {
+    const hash = row.rateCard?.source.hash;
+    if (hash) cardHashes.set(row.endpointId, hash);
+  }
+
   for (const event of events) {
     const tx = txByRequestId.get(event.requestId);
     if (!tx) {
@@ -154,6 +167,9 @@ export async function reconcileFalBilling(
       endpointId: event.endpointId,
       chargedMicros: tx.chargedMicros,
       billedMicros: event.costMicros,
+      ...(cardHashes.get(event.endpointId) != null && {
+        rateCardHash: cardHashes.get(event.endpointId),
+      }),
     });
   }
 

@@ -211,7 +211,7 @@ describe('assertDraftElementUploadsAttachable', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('refuses an image with no likeness clearance, and never checks a clip (#1581)', async () => {
+  it('refuses an image with no likeness clearance, checks a clip, and never an audio file (#1581, #1930)', async () => {
     mockFileExists.mockResolvedValue(true);
     mockRequireRights.mockRejectedValueOnce(new Error('not checked'));
 
@@ -237,6 +237,40 @@ describe('assertDraftElementUploadsAttachable', () => {
         }),
       ],
     });
+    expect(mockRequireRights).toHaveBeenCalledWith(expect.anything(), [
+      '/r2/elements/team-1/uploads/walk.mp4',
+    ]);
+
+    mockRequireRights.mockClear();
+    await assertDraftElementUploadsAttachable({
+      scopedDb: makeScopedDb(),
+      teamId: 'team-1',
+      uploads: [
+        makeUpload({
+          tempPath: 'elements/team-1/uploads/line.mp3',
+          filename: 'line.mp3',
+        }),
+      ],
+    });
     expect(mockRequireRights).not.toHaveBeenCalled();
+  });
+
+  it('refuses a video filename on a non-video stored path (#2153)', async () => {
+    mockFileExists.mockResolvedValue(true);
+
+    await expect(
+      assertDraftElementUploadsAttachable({
+        scopedDb: makeScopedDb(),
+        teamId: 'team-1',
+        uploads: [
+          makeUpload({
+            tempPath: 'elements/team-1/uploads/still.png',
+            filename: 'walk.mp4',
+          }),
+        ],
+      })
+    ).rejects.toThrow(/does not match the stored upload/);
+    expect(mockRequireRights).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

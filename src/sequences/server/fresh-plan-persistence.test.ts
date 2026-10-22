@@ -188,7 +188,6 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     characterBible: [character],
     locationBible: [location],
     elementBible: [],
-    talentMatches: [],
     locationMatches: [],
     existingElements: [],
   });
@@ -299,7 +298,6 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     characterBible: [{ ...character, standardClothing: 'red armor' }],
     locationBible: [location],
     elementBible: [],
-    talentMatches: [],
     locationMatches: [],
     existingElements: [],
   });
@@ -316,7 +314,6 @@ it('keeps persisted derived prompts current before sheets exist, while retaining
     characterBible: [character],
     locationBible: [location],
     elementBible: [],
-    talentMatches: [],
     locationMatches: [],
     existingElements: [],
   });

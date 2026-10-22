@@ -30,6 +30,10 @@ import { usePostHog } from '@posthog/react';
 import { toast } from 'sonner';
 
 import { generationPlanKeys } from '@/sequences/ui/use-generation-plan';
+import {
+  sequenceVideoVariantsDiscoverUntilKey,
+  VIDEO_VARIANT_DISCOVERY_MS,
+} from '@/shots/ui/use-shots';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ui', 'use-sequences']);
@@ -132,6 +136,13 @@ export function useAddModelToSequence() {
   >({
     mutationFn: async (input) => addModelToSequenceFn({ data: input }),
     onSuccess: async (_, { sequenceId, variantType }) => {
+      // The generating row is written after this trigger returns.
+      if (variantType === 'video') {
+        queryClient.setQueryData(
+          sequenceVideoVariantsDiscoverUntilKey(sequenceId),
+          Date.now() + VIDEO_VARIANT_DISCOVERY_MS
+        );
+      }
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: MODEL_LIST_KEY[variantType](sequenceId),

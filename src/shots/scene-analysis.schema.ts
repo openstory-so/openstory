@@ -576,17 +576,6 @@ export type Scene = Omit<z.infer<typeof sceneSchema>, 'originalScript'> & {
 };
 export type CharacterBibleEntry = z.infer<typeof characterBibleEntrySchema>;
 
-/**
- * What a talent sheet's `metadata` holds: a bible entry describing the
- * TALENT, with the talent's own distinguishing features. Not a character's
- * (#2065 moved those to the default look); this one stays.
- */
-export const talentSheetMetadataSchema = characterBibleEntrySchema
-  .omit({ rendering: true })
-  .extend({
-    distinguishingFeatures: z.string(),
-  });
-export type TalentSheetMetadata = z.infer<typeof talentSheetMetadataSchema>;
 // Bible entry types as consumed downstream: firstMention carries the
 // server-derived sceneId (see FirstMentionWithScene). The raw z.infer of the
 // entry schemas is the LLM wire shape only.

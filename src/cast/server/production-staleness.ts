@@ -173,7 +173,7 @@ export async function lookSheetStaleness(args: {
   lookId: string;
   /** `sequenceStyleHash`; null from no sequence, so a pre-#2017 digest reads stale there. */
   styleConfigHash: string | null;
-  /** The worn look's talent and live sheet version. */
+  /** The worn look's live sheet version. */
   rows: CharacterSheetDraftRows;
 }): Promise<{ status: SheetStaleness; applicable: boolean }> {
   const { scopedDb, sequence, owner, lookId, styleConfigHash, rows } = args;

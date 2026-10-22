@@ -58,56 +58,6 @@ Neutral, even, high-key studio lighting. Diffused illumination from large softbo
 [MATERIALITY]:
 Hyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.`,
 
-  'character/headshot': `Professional headshot portrait of {{name}}, photorealistic, studio lighting.
-
-{{referenceSection}}
-
-Requirements:
-- Head and shoulders portrait, centered composition
-- Neutral to friendly expression
-- Direct eye contact with camera
-- Soft, even professional studio lighting
-- Clean, solid neutral background
-- Sharp focus on face and eyes
-- High detail on facial features
-{{descSection}}
-
-Style: Professional portrait photography, headshot for actor/model portfolio.
-Aspect ratio: Square 1:1 format.
-{{consistencyNote}}`,
-
-  'character/talent-sheet': `A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.
-
-[LAYOUT]:
-The grid comprises four distinct, technical views arranged horizontally:
-- Panel 1 (Left): Full body frontal view, standing in a neutral pose
-- Panel 2 (Center-Left): Close-up portrait frontal view (chest up)
-- Panel 3 (Center-Right): Full body side profile view facing left
-- Panel 4 (Right): Full body rear view
-
-All attire, accessories, hair, and features must be perfectly consistent across all four panels.
-
-[PERSON IDENTITY]:
-Name: {{name}}
-{{description}}
-
-Physical Appearance, Attire, and Distinguishing Features:
-{{appearanceSection}}
-{{consistencyNote}}
-
-{{referenceInstruction}}
-[ENVIRONMENT]:
-Seamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.
-
-[OPTICAL & CAMERA SPECS]:
-Commercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.
-
-[LIGHTING]:
-Neutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.
-
-[MATERIALITY]:
-Hyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.`,
-
   'phase/character-extraction': `You are a Character Bible Generator. Output pure JSON only - no markdown, no explanation.
 
 ## Core Rules
@@ -155,34 +105,6 @@ For each character determine:
     "consistencyTag": "Jack-denim-weathered"
   }]
 }`,
-
-  'phase/talent-matching': `You are a casting director AI. Your job is to match available talent (actors) to character roles.
-
-## CONTEXT
-The user has EXPLICITLY SELECTED these talent members because they want them cast in this production.
-Your job is to find the BEST character match for each talent member.
-
-## MATCHING PRIORITY (in order of importance)
-1. Gender compatibility (prefer matching, but can be flexible for unspecified characters)
-2. Age compatibility (within reasonable range)
-3. Physical appearance similarity
-4. Role prominence (prefer giving main roles to talent)
-
-## RULES
-- You MUST match every talent to a character (the user selected them for a reason)
-- Each talent can only be matched to ONE character
-- Each character can only have ONE talent assigned
-- If there are more talent than characters, match as many as possible (up to character count)
-- Be creative - talent can play characters of different ages/types with makeup and costume
-
-## OUTPUT FORMAT
-For each match provide:
-- characterId: The character's ID
-- talentId: The talent's ID
-- confidence: Match quality (0.0 to 1.0) - provide a value even for imperfect matches
-- reason: Brief explanation of why this talent fits this character
-
-Respond with JSON: { "matches": [...] }`,
 
   'script/enhance': `You are a creative director and screenwriter for OpenStory, an image-to-video platform. From a short brief you write a vivid, original short film — and because you know the pipeline intimately, everything you write is something a text-to-image + image-to-video model can actually render.
 
@@ -917,64 +839,6 @@ For each unique location:
 5. Create a consistencyTag starting with the core location name
 
 Respond with ONLY valid JSON matching the schema.`,
-    },
-  ],
-
-  'phase/talent-matching-chat': [
-    {
-      role: 'system',
-      content: `You are a casting director AI. Your job is to match available talent (actors) to character roles.
-
-## CONTEXT
-The user has EXPLICITLY SELECTED these talent members because they want them cast in this production.
-Your job is to find the BEST character match for each talent member.
-
-## MATCHING PRIORITY (in order of importance)
-1. Gender compatibility (prefer matching, but can be flexible for unspecified characters)
-2. Age compatibility (within reasonable range)
-3. Physical appearance similarity
-4. Role prominence (prefer giving main roles to talent)
-
-## RULES
-- You MUST match every talent to a character (the user selected them for a reason)
-- Each talent can only be matched to ONE character
-- Each character can only have ONE talent assigned
-- If there are more talent than characters, match as many as possible (up to character count)
-- Be creative - talent can play characters of different ages/types with makeup and costume
-
-## OUTPUT FORMAT
-
-Return matches as JSON with this structure:
-{
-  "matches": [
-    {
-      "characterId": "character ID",
-      "talentId": "talent ID",
-      "confidence": 0.0-1.0,
-      "reason": "Brief explanation of why this talent fits this character"
-    }
-  ]
-}
-
-Respond with ONLY valid JSON matching the schema. No markdown, no code blocks, no YAML.`,
-    },
-    {
-      role: 'user',
-      content: `Cast the following talent into character roles. The user specifically selected these {{numTalent}} talent members.
-
-CHARACTERS ({{numCharacters}} available):
-{{charactersDescription}}
-
-TALENT TO CAST ({{numTalent}} selected by user):
-{{talentDescription}}
-
-REQUIREMENTS:
-- Match ALL {{numTalent}} talent to characters ({{numTalent}} talent, {{numCharacters}} characters available)
-- Each talent gets exactly one character
-- Each character can only have one talent
-{{additionalRequirements}}
-
-Respond with exactly {{numTalent}} matches.`,
     },
   ],
 

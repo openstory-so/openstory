@@ -31,7 +31,6 @@ import { GenerationStopAlert } from '@/sequences/ui/generation/generation-stop-a
 import { GenerationSettings } from '@/ui/settings/generation-settings';
 import { StyleCategorySelect } from '@/look/ui/style-category-select';
 import { StyleSelector } from '@/look/ui/style-selector';
-import { TalentSuggestionSelector } from '@/cast/ui/talent/talent-suggestion-selector';
 import { CastSelector } from '@/cast/ui/cast-selector';
 import {
   AlertDialog,
@@ -359,7 +358,7 @@ export const ScriptView: FC<{
     save: saveSettings,
   } = useGenerationSettings();
 
-  // Load draft from localStorage (script, style, talent, location)
+  // Load draft from localStorage (script, style, location)
   const { draft, isLoaded: draftLoaded, saveDraft } = useSequenceDraft();
 
   // Which video models can render reference-only for this team — resolved
@@ -475,17 +474,12 @@ export const ScriptView: FC<{
     );
   };
   const [selections, setSelections] = useState({
-    talentIds: sequence?.suggestedTalentIds ?? [],
     locationIds: sequence?.suggestedLocationIds ?? [],
     // Team characters picked for a sequence that does not exist yet, in the
     // cast picker or with `@` (#2050): create casts every one.
     castCharacterIds: [] as string[],
   });
-  const {
-    talentIds: selectedTalentIds,
-    locationIds: selectedLocationIds,
-    castCharacterIds,
-  } = selections;
+  const { locationIds: selectedLocationIds, castCharacterIds } = selections;
   const [draftElements, setDraftElements] = useState<DraftElementUpload[]>([]);
   const [isElementBusy, setIsElementBusy] = useState(false);
   const elementSelectorRef = useRef<ElementSelectorHandle>(null);
@@ -523,7 +517,7 @@ export const ScriptView: FC<{
     if (!allowElementDrop || !hasDraggedImages(e)) return;
     dragCounterRef.current = 0;
     setIsDraggingFiles(false);
-    // A nested dropzone (talent/location dialog, element popover) already took
+    // A nested dropzone (location dialog, element popover) already took
     // this drop — portals still bubble React events here, so don't add it as
     // an element too (#1269).
     if (e.defaultPrevented) return;
@@ -817,10 +811,6 @@ export const ScriptView: FC<{
     }));
     setSampleStyleId(draft.sampleStyleId);
     setSelections((s) => ({
-      talentIds:
-        draft.selectedTalentIds.length > 0
-          ? draft.selectedTalentIds
-          : s.talentIds,
       locationIds:
         draft.selectedLocationIds.length > 0
           ? draft.selectedLocationIds
@@ -899,7 +889,6 @@ export const ScriptView: FC<{
       script: script ?? '',
       styleId,
       sampleStyleId,
-      selectedTalentIds,
       selectedLocationIds,
       castCharacterIds,
       elementUploads: draftElements,
@@ -910,7 +899,6 @@ export const ScriptView: FC<{
     script,
     sampleStyleId,
     styleId,
-    selectedTalentIds,
     selectedLocationIds,
     castCharacterIds,
     draftElements,
@@ -1078,8 +1066,6 @@ export const ScriptView: FC<{
       musicModel: audioModels[0] ?? DEFAULT_MUSIC_MODEL,
       audioModels,
       targetDurationSeconds: enhancedTarget ?? undefined,
-      suggestedTalentIds:
-        selectedTalentIds.length > 0 ? selectedTalentIds : undefined,
       suggestedLocationIds:
         selectedLocationIds.length > 0 ? selectedLocationIds : undefined,
       // Every pick is cast; the picker shows each one, a deleted one included.
@@ -1318,23 +1304,13 @@ export const ScriptView: FC<{
   const isMobile = useIsMobile();
   const [referencesSheetOpen, setReferencesSheetOpen] = useState(false);
   const referenceCount =
-    selectedTalentIds.length +
     (isEditing ? 0 : castCharacterIds.length) +
     selectedLocationIds.length +
     (isEditing ? 0 : draftElements.length);
   const referenceSelectors = (
     <>
-      {/* A sequence that exists is cast on its Cast tab and with `@`; only
-          its talent suggestions are edited here. */}
-      {isEditing ? (
-        <TalentSuggestionSelector
-          selectedTalentIds={selectedTalentIds}
-          onSelectionChange={(v) =>
-            setSelections((s) => ({ ...s, talentIds: v }))
-          }
-          disabled={loading}
-        />
-      ) : (
+      {/* A sequence that exists is cast on its Cast tab and with `@`. */}
+      {!isEditing && (
         <CastSelector
           characters={isAuthenticated ? libraryCharacters : []}
           signedOut={!isAuthenticated}
@@ -1343,8 +1319,6 @@ export const ScriptView: FC<{
           onSelectionChange={(v) =>
             setSelections((s) => ({ ...s, castCharacterIds: v }))
           }
-          selectedTalentIds={selectedTalentIds}
-          onTalentChange={(v) => setSelections((s) => ({ ...s, talentIds: v }))}
           disabled={loading}
         />
       )}
@@ -1577,7 +1551,7 @@ export const ScriptView: FC<{
         className="flex flex-col min-h-0 max-h-full"
       >
         {/* Control bar. Below md the three reference selectors fold into one
-            References sheet; md+ shows Talent / Locations / Elements inline. */}
+            References sheet; md+ shows Cast / Locations / Elements inline. */}
         <CardHeader className="shrink-0 flex flex-row items-center md:flex-col md:items-start lg:flex-row justify-between gap-3 px-6 py-4 border-b border-border/50 bg-card/40 short-h:py-2">
           <GenerationSettings
             aspectRatio={aspectRatio}
@@ -1629,12 +1603,15 @@ export const ScriptView: FC<{
             <SheetContent side="bottom" className="px-4 pb-6">
               <SheetHeader className="px-0">
                 <SheetTitle>
-                  {isEditing ? 'Talent' : 'Cast'}, locations & elements
+                  {isEditing
+                    ? 'Locations & elements'
+                    : 'Cast, locations & elements'}
                 </SheetTitle>
                 <SheetDescription>
-                  {isEditing ? 'Pre-cast talent' : 'Cast characters or talent'},
-                  pin locations, or add reference images. Anything you skip is
-                  extracted from the script.
+                  {isEditing
+                    ? 'Pin locations, or add reference images.'
+                    : 'Cast characters, pin locations, or add reference images.'}{' '}
+                  Anything you skip is extracted from the script.
                 </SheetDescription>
               </SheetHeader>
               <div className="flex flex-col items-start gap-3">

@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "medium close-up, slightly above, Scarlett (Image 1) faces the shop window at the curb, noticing a faint smudge at one corner of her mouth., Scarlett (Image 1)’s reflection sits in the dark shop window, with the corner of her mouth visible in sharp focus., EXT. MANHATTAN CROSSWALK — DAY, day, manhattan_crosswalk (Image 2), Natural lighting appropriate to day, #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8, Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/37ac8b4b39e05402513ed9d6a4c22d51eed59448b04c565b6d822a32ead442a2.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}
