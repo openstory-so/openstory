@@ -23,20 +23,12 @@ import { AttestationRequiredError } from '@/platform/errors';
 
 let db: Database;
 const mockAnalyze = vi.fn();
+const mockAnalyzeClip = vi.fn();
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/cast/server/talent/analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: mockAnalyze,
-}));
-const mockToCdnUrl = vi.fn((_url: string): string | null => null);
-vi.doMock('@/platform/server/storage/buckets', async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  toCdnUrl: mockToCdnUrl,
-}));
-
-const mockFalClipFrames = vi.fn();
-vi.doMock('@/cast/server/fal-clip-frames', () => ({
-  falClipFrames: mockFalClipFrames,
+  analyzeTalentClipForTeam: mockAnalyzeClip,
 }));
 
 const {
@@ -156,12 +148,13 @@ describe('classifyUpload', () => {
     );
   });
 
-  it('judges a clip on a Cloudflare grid of its frames (#1930)', async () => {
+  it('has Gemini watch a stored clip, keyed by the clip (#1930)', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mp4`;
-    const cdn = `https://storage.openstory.so/talent/${TEAM_ID}/uploads/01CLIP.mp4`;
-    mockToCdnUrl.mockReturnValueOnce(cdn);
-    verdict('human');
+    const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mov`;
+    mockAnalyzeClip.mockResolvedValueOnce({
+      subjectKind: 'human',
+      isCharacterSheet: false,
+    });
 
     const rights = await classifyUpload({
       scopedDb,
@@ -170,39 +163,16 @@ describe('classifyUpload', () => {
       request,
     });
     expect(rights).toEqual({ status: 'needs_portrait' });
-    expect(mockAnalyze).toHaveBeenCalledWith(
+    expect(mockAnalyzeClip).toHaveBeenCalledWith(
       expect.objectContaining({
-        imageUrls: [
-          `https://assets.openstory.so/cdn-cgi/media/mode=spritesheet,time=0s,imageCount=6,width=1024/${cdn}`,
-        ],
+        key: `talent/${TEAM_ID}/uploads/01CLIP.mov`,
+        mimeType: 'video/quicktime',
       })
     );
-    // The verdict is keyed by the clip's own URL, so the gate reads it.
+    expect(mockAnalyze).not.toHaveBeenCalled();
     await expect(requireUploadRights(scopedDb, [clip])).rejects.toThrow(
       AttestationRequiredError
     );
-  });
-
-  it('judges a clip with no public CDN on fal frames (local dev)', async () => {
-    vi.stubEnv('FAL_KEY', 'platform-fal');
-    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mov`;
-    const frames = ['https://fal.media/a.jpg', 'https://fal.media/b.jpg'];
-    mockFalClipFrames.mockResolvedValueOnce(frames);
-    verdict('animated');
-
-    const rights = await classifyUpload({
-      scopedDb,
-      userId: USER_ID,
-      url: clip,
-      request,
-    });
-    expect(rights).toEqual({ status: 'cleared' });
-    expect(mockFalClipFrames).toHaveBeenCalledWith(clip, 'platform-fal');
-    expect(mockAnalyze).toHaveBeenCalledWith(
-      expect.objectContaining({ imageUrls: frames })
-    );
-    vi.unstubAllEnvs();
   });
 
   it('refuses a clip that is not ours, and records nothing', async () => {
@@ -213,7 +183,7 @@ describe('classifyUpload', () => {
       classifyUpload({ scopedDb, userId: USER_ID, url: clip, request })
     ).rejects.toThrow('can’t be checked for a real person');
     expect(mockAnalyze).not.toHaveBeenCalled();
-    expect(mockFalClipFrames).not.toHaveBeenCalled();
+    expect(mockAnalyzeClip).not.toHaveBeenCalled();
     expect(await db.select().from(uploadAttestations)).toEqual([]);
   });
 });

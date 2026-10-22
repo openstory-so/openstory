@@ -2,8 +2,8 @@
  * Upload rights gate (#1180, #1581) — the server half.
  *
  * One ledger row per uploaded image or clip, keyed by the SHA-256 of its
- * stored URL under the `uploaded_image` subject type (a clip is judged on a
- * grid of its frames, #1930):
+ * stored URL under the `uploaded_image` subject type (a clip is judged by Gemini
+ * watching all of it, #1930):
  *
  *  - {@link classifyUpload} runs the likeness classifier once and records its
  *    verdict (`likeness-cleared-v1` / `likeness-detected-v1`);
@@ -22,7 +22,11 @@
 
 import { elementKindFromFilename } from '@/cast/element-kind';
 import type { Likeness } from '@/cast/likeness';
-import { analyzeTalentMediaForTeam } from '@/cast/server/talent/analyze-talent-media';
+import {
+  analyzeTalentClipForTeam,
+  analyzeTalentMediaForTeam,
+} from '@/cast/server/talent/analyze-talent-media';
+import type { TalentVisionResult } from '@/cast/server/talent-vision';
 import type { TalentSubjectKind } from '@/cast/subject-kind';
 import type { PortraitAttestation, UploadRights } from '@/cast/upload-rights';
 import {
@@ -34,9 +38,11 @@ import {
 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { AttestationRequiredError, ValidationError } from '@/platform/errors';
-import { r2KeyFromUrl, toCdnUrl } from '@/platform/server/storage/buckets';
-import { falClipFrames } from '@/cast/server/fal-clip-frames';
-import { videoSpritesheetUrl } from '@/look/cloudflare-video';
+import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  getExtensionFromUrl,
+  getMimeTypeFromExtension,
+} from '@/platform/server/storage/file';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadAttestation } from '@/platform/server/db/schema/compliance';
 
@@ -122,27 +128,43 @@ export async function recordLikenessFinding(
 }
 
 /**
- * What the classifier looks at: the still itself, or for a clip a Cloudflare
- * grid of its frames (#1930). Where Cloudflare cannot reach the clip (no
- * public CDN: local dev, deploy-button installs) fal pulls three frames
- * instead. A clip that is not ours is refused, never waved through.
+ * One classifier call for the upload: Claude on a still, Gemini watching the
+ * whole clip (#1930). A clip that is not in our storage is refused, never
+ * waved through.
  */
-async function classifierImageUrls(
-  scopedDb: ScopedDb,
-  url: string
-): Promise<string[]> {
-  if (elementKindFromFilename(new URL(url, 'http://x').pathname) !== 'video') {
-    return [url];
+function analyzeUpload(opts: {
+  scopedDb: ScopedDb;
+  userId: string;
+  url: string;
+  filename?: string;
+}): Promise<TalentVisionResult> {
+  const filenames = opts.filename ? [opts.filename] : undefined;
+  const idempotencyKey = `likeness:${opts.url}`;
+  if (
+    elementKindFromFilename(new URL(opts.url, 'http://x').pathname) !== 'video'
+  ) {
+    return analyzeTalentMediaForTeam({
+      scopedDb: opts.scopedDb,
+      userId: opts.userId,
+      imageUrls: [opts.url],
+      filenames,
+      idempotencyKey,
+    });
   }
-  const sheet = videoSpritesheetUrl(toCdnUrl(url) ?? url);
-  if (sheet) return [sheet];
-  if (r2KeyFromUrl(url) === null) {
+  const key = r2KeyFromUrl(opts.url);
+  if (key === null) {
     throw new ValidationError(
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
     );
   }
-  const { key } = await scopedDb.apiKeys.resolveKey('fal');
-  return falClipFrames(url, key);
+  return analyzeTalentClipForTeam({
+    scopedDb: opts.scopedDb,
+    userId: opts.userId,
+    key,
+    mimeType: getMimeTypeFromExtension(getExtensionFromUrl(opts.url)),
+    filenames,
+    idempotencyKey,
+  });
 }
 
 /**
@@ -161,13 +183,7 @@ export async function classifyUpload(opts: {
 }): Promise<UploadRights> {
   const existing = await latestRow(opts.scopedDb, opts.url);
   if (existing) return rightsFromRow(existing);
-  const analysis = await analyzeTalentMediaForTeam({
-    scopedDb: opts.scopedDb,
-    userId: opts.userId,
-    imageUrls: await classifierImageUrls(opts.scopedDb, opts.url),
-    filenames: opts.filename ? [opts.filename] : undefined,
-    idempotencyKey: `likeness:${opts.url}`,
-  });
+  const analysis = await analyzeUpload(opts);
   await recordLikenessFinding(
     opts.scopedDb,
     [opts.url],

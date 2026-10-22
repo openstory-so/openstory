@@ -64,7 +64,7 @@ async function assertElementUploadAttachable(params: {
     );
   }
   // An unknown extension predates #1559 and was an image. A clip is checked
-  // on its frames (#1930); an audio file has no likeness to check.
+  // too (#1930); an audio file has no likeness to check.
   if ((elementKindFromFilename(filename) ?? 'image') !== 'audio') {
     await requireUploadRights(scopedDb, [elementImageUrlFromPath(path)]);
   }

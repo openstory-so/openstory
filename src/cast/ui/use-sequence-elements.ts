@@ -169,7 +169,7 @@ export function useUploadDraftElement() {
       const durationSeconds = await readMediaDuration(file, kind);
 
       // A real person opens the sign-off dialog; declining fails the upload.
-      // A clip is checked on its frames (#1930).
+      // A clip is checked too (#1930).
       if (kind !== 'audio') {
         await ensureUploadRights([
           { url: presign.publicUrl, filename: file.name },

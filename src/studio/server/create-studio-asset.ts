@@ -181,9 +181,8 @@ async function requireOwnEditSource(
     throw new NotFoundError('Video to edit not found');
   }
   // An edit registers its source in Ark's portrait library, which vouches
-  // for whoever is in it. Uploaded reference clips are now checked on their
-  // frames (#1930), but clips made before that were not, and a frame grid can
-  // miss a face a full clip shows, so a clip made from an uploaded one is
+  // for whoever is in it. Uploaded reference clips are now checked (#1930),
+  // but clips made before that were not, and a classifier can miss a face, so a clip made from an uploaded one is
   // still never edited. A generated reference clip came from gated inputs.
   // An edit's own source already passed this check, so the source alone
   // covers the whole chain (#1925).
