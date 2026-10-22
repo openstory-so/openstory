@@ -72,7 +72,9 @@ describe('seedance edit constraints (#2036)', () => {
     expect(seedanceEditLengthMessage(null)).toBeNull();
     // Just outside the window never rounds onto the edge.
     expect(seedanceEditLengthMessage(3.99)).toMatch(/3\.9s\.$/);
-    expect(seedanceEditLengthMessage(30.01)).toMatch(/30\.1s\.$/);
+    // Seedance's own 30s clip reads a hair over; that still fits.
+    expect(seedanceEditLengthMessage(30.04)).toBeNull();
+    expect(seedanceEditLengthMessage(30.21)).toMatch(/30\.3s\.$/);
   });
 
   it('gives the longest clip an edit will follow, and null otherwise', () => {

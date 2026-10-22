@@ -14,6 +14,9 @@
 
 const SEEDANCE_EDIT_MIN_SECONDS = 4;
 const SEEDANCE_EDIT_MAX_SECONDS = 30;
+// A container reads a hair past its picture (audio padding), so Seedance's own
+// 30s clip measures 30.0x. Allow that much over the top, never under 4s.
+const SEEDANCE_EDIT_OVERRUN_SECONDS = 0.2;
 const EDIT_WINDOW = `between ${SEEDANCE_EDIT_MIN_SECONDS} and ${SEEDANCE_EDIT_MAX_SECONDS} seconds`;
 
 /** Ark's wire value for "the model picks the length". An edit requires it. */
@@ -151,7 +154,7 @@ export function seedanceEditLengthMessage(
   if (seconds === null) return null;
   if (
     seconds >= SEEDANCE_EDIT_MIN_SECONDS &&
-    seconds <= SEEDANCE_EDIT_MAX_SECONDS
+    seconds <= SEEDANCE_EDIT_MAX_SECONDS + SEEDANCE_EDIT_OVERRUN_SECONDS
   ) {
     return null;
   }
