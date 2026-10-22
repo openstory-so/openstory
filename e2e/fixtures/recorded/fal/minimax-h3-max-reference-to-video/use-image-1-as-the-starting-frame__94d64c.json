@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. NEIGHBORHOOD DINER — AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-3s): Image 2 borrows the open lipstick and applies it using the dark window as a mirror.. Keep the diner moment intimate and unposed.. Camera: easy, lively handheld drift\n\noverall_soundscape: Diner murmur; rain taps the window.\n\nShot 2 (3-6s): Image 2 hands the lipstick back to Image 4 as her expression shifts from exhausted to amused.. Catch the subtle change in Image 2’s face.. Camera: quick and smooth push-in\n\noverall_soundscape: Soft lipstick cap and paper cup sounds under diner ambience.\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/9a144dd7d2975d32e44e563555f29bda23bab7fbc394d6847772f300bd7afab3.mp4",
+            "content_type": "video/mp4",
+            "file_name": "Vrbq8SLNS9fAVK_hOztFP_minimax-h3.mp4",
+            "file_size": 9256862
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, with dark hair tied in a messy bun, wearing a green utility jacket over a black top.\n<Subject 2> is the woman in <Image 2>, with short dark bobbed hair, wearing a black turtleneck sweater.\n<Subject 3> is the coral lipstick from <Image 3>, featuring a slim metallic-grey tube and a vibrant coral-red bullet.\n<Subject 4> is the woman in <Image 2>, wearing a green utility jacket and black cargo pants.\n\nsummary:\n[reference generation + audio reference] The target video starts from the first image and depicts an intimate moment in a diner where one woman uses a window reflection to apply coral lipstick before passing the product to her friend.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 1]): fully_preserved\n<Subject 2 (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 3 (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 4 (appears in [Shot 2]): fully_preserved\n\ndetailed_description:\nThe video is captured in a modern social-first product photography style with a tactile, editorial energy. The color palette is dominated by crisp whites, creams, and deep blacks, with the vibrant coral of the lipstick popping. The lighting is natural and even, creating an airy atmosphere with lifted shadows and a slight warmth in the highlights.\n\n[Shot 1] The scene begins with <Image 1> inside a diner during the afternoon. <Subject 1> and <Subject 2> sit across from each other with fries and drinks. <Subject 2> picks up the <Subject 3> (coral lipstick) from the table. Using the dark, reflective surface of the window behind her as a mirror, she carefully applies the coral-red lipstick to her lips. The movement is intimate and unposed. The camera performs an easy, lively handheld drift, creating a sense of candid presence. The sound includes the low murmur of diner chatter and the rhythmic tapping of rain against the windowpane.\n\n[Shot 2] At 00:03.000, the shot cuts to a closer-up as <Subject 2> reaches out and hands the <Subject 3> back to <Subject 4>, who is sitting nearby. <Subject 2>’s facial expression shifts noticeably from an exhausted look to a subtle, amused smile as she interacts. The camera executes a quick and smooth push-in to capture this emotional nuance. The audio features the distinct soft click of the lipstick cap snapping shut and the faint rustle of a paper cup being moved over the continuous diner ambience.\n\noverall_soundscape:\nAmbient diner murmur and the soft sound of rain tapping against the window.\n\nnon_diegetic_music:\nN/A",
+          "seed": 87250699,
+          "timings": {
+            "inference": 5.31398666894529
+          }
+        },
+        "status": 200,
+        "billableUnits": 10.560000000000002
+      }
+    }
+  ]
+}

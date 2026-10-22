@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. close-up. eye level. SCARLETT’s mirrored reflection fills the frame, coral package near the lower edge. SCARLETT faces the mirrored wall with a grin beginning. Then: SCARLETT catches FLORIST’s glance toward the flowers and grins at the comparison. Camera: truck, smooth, brisk. Let bands of sunlight slide across the reflection. Characters: Scarlett: Woman, 22, A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes, a sleek dark bob, and bare, full lips ready for colour, wearing Black fitted turtleneck, slim black trousers, small gold hoop earrings. Florist: A tired-looking adult florist standing in the elevator with a bucket of coral ranunculus. Height, build, hair, eyes, skin tone, and any distinguishing marks are not specified, wearing Clothing is not specified. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/3e4026c1fb2b9109003a75e4cea2eff792ba3b719706bfc98dd5c9f8fb452795.png",
+              "content_type": "image/png",
+              "file_name": "pUELQ2m2FeSny8eQapIxh_BimNqWqC.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042116
+      }
+    }
+  ]
+}

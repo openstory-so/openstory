@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN CROSSWALK — LATE MORNING. late morning. Natural lighting appropriate to late morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-4s): Image 2 walks against the crosswalk flow while filming herself and keeping her coffee steady.. Keep city movement alive around her without losing her face.. Camera: brisk, lively handheld follow\n\noverall_soundscape: Crosswalk signal, traffic wash, and crowd footsteps.\n\nShot 2 (4-8s): Image 2 grabs her scarf as a gust catches it, and Image 4 enters to steady her cup when its lid pops loose.. Catch the near-spill with a playful, natural jolt.. Camera: quick, reactive handheld drift\n\noverall_soundscape: Wind catches fabric; coffee lid pops; bicycle brakes squeak.\n\nShot 3 (8-12s): Image 2 wipes a tiny coral mark from the cup rim and keeps walking.. Let her glance to camera land like a casual check-in.. Camera: smooth, quick handheld follow\n\nImage 2 says: <d>[English] Still here.</d>\n\noverall_soundscape: Crowd and traffic continue; crosswalk signal changes.\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/224d9df59f34ae9f068cc323ae792365f299ed5b63fa0c658ad9c7ee52c44409.mp4",
+            "content_type": "video/mp4",
+            "file_name": "GYMlWJ6DkeHZFCNapI42Q_minimax-h3.mp4",
+            "file_size": 16769659
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the downtown crosswalk scene from <Picture 1>, featuring modern urban architecture with late morning sunlight and crisp shadows.\n<Subject 2> is the woman in <Picture 2>, with short dark bobbed hair, wearing a black turtleneck and black trousers, holding a white coffee cup and a smartphone.\n<Subject 3> is the coral lipstick from <Picture 3>, a slim sleek metal tube with a vibrant coral lipstick product.\n<Subject 4> is the man in <Picture 4>, wearing black athletic gear and a waist pack.\n\nsummary:\n[reference generation + audio reference] The target video starts with <Picture 1> and follows <Subject 2> walking through a city, where <Subject 4> appears to help with a coffee spill involving <Subject 3> lipstick marks on the cup.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 1]): fully_preserved\n<Subject 2 (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved\n<Subject 3 (appears in [Shot 2], [Shot 3]): fully_preserved\n<Subject 4 (appears in [Shot 2]): fully_preserved\n\ndetailed_description:\nThe video follows a modern, social-first product photography style with tactile, editorial energy. The lighting is natural late morning, utilizing a palette of #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, and #E8F4E8. The aesthetic is clean and bright with warm skin tones and lifted shadows. \n\n[Shot 1] At 00:00.000, the video begins with <Picture 1>. <Subject 2> walks against the flow of traffic on the downtown crosswalk, filming herself with her smartphone in one hand while keeping a white coffee cup steady in the other. The camera uses a brisk, lively handheld follow, tracking her movement as the city comes alive with moving cars and pedestrians in the background, ensuring her face remains sharp and focused.\n\n[Shot 2] At 00:04.000, the shot cuts to a reactive handheld drift. <Subject 2> grabs her scarf as a gust of wind catches it. <Subject 4> enters the frame and reaches out to steady her cup just as the lid pops loose. A playful, natural jolt captures the near-spill, revealing a small coral mark from <Subject 3> on the cup rim. \n\n[Shot 3] At 00:08.000, the camera transitions to a smooth, quick handheld follow. <Subject 2> uses her thumb to wipe the tiny coral mark from the rim of the cup and continues walking. She glances directly into the camera with a casual, \"check-in\" expression. <Subject 2> (S2) says <d>[English] Still here.</d>\n\noverall_soundscape:\nThe ambient sound includes a rhythmic crosswalk signal, the constant wash of city traffic, and overlapping crowd footsteps. Specific action sounds include wind catching fabric, the plastic pop of a coffee lid, and the sharp squeak of bicycle brakes.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1603989200,
+          "timings": {
+            "inference": 12.713718951039482
+          }
+        },
+        "status": 200,
+        "billableUnits": 20.160000000000004
+      }
+    }
+  ]
+}

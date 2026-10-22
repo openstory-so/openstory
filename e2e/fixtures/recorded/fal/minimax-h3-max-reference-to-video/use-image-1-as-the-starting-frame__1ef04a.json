@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT HALLWAY AND ELEVATOR — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-4s): Image 2 catches the closing elevator doors with her shoulder.. Let the move feel like a real last-second dash.. Camera: energetic handheld follow\n\noverall_soundscape: Footsteps; elevator doors chime and glide.\n\nShot 2 (4-8s): Image 2 twists the lipstick cap closed as the elevator jolts downward and Image 4 notices the matching color.. Use the tight space and mirrors to make the color comparison feel spontaneous.. Camera: steady with a small jolt handheld drift\n\noverall_soundscape: Elevator mechanism hums and jolts.\n\nShot 3 (8-12s): Image 2 catches Image 4’s glance toward the flowers and grins at the comparison.. Let bands of sunlight slide across the reflection.. Camera: smooth, brisk truck\n\noverall_soundscape: Elevator hum; faint rattle as it descends.\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/6ef344fa5830daa637e4c2821db20233d45c9f59b7cba277240aa53c22a04b54.mp4",
+            "content_type": "video/mp4",
+            "file_name": "dVsnK9Boff-ePcTT5ugWt_minimax-h3.mp4",
+            "file_size": 14100755
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, with short black bob hair, wearing a black turtleneck and black trousers, holding a black jacket.\n<Subject 2> is the woman in <Image 2>, appearing as <Subject 1> with the same black bob and black attire.\n<Subject 3> is the coral lipstick from <Image 3>, a slim silver-toned tube with a vibrant coral-red bullet.\n<Subject 4> is the woman in <Image 4>, wearing a grey denim apron over overalls, holding a bouquet of pink flowers.\n\nsummary:\n[keyframe completion + reference generation] The target video shows a cinematic sequence in a modern downtown apartment elevator where <Subject 2> and <Subject 4> interact with a product and morning light.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - matches the starting frame exactly.\n<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 3]): fully_preserved - maintains appearance, clothing, and hair.\n<Subject 3> (appears in [Shot 2]): fully_preserved - the lipstick color and design remain consistent.\n<Subject 4> (appears in [Shot 2], [Shot 3]): fully_preserved - maintains appearance and attire.\n\ndetailed_description:\nThe video is filmed in a social-first product photography style with tactile editorial energy and natural morning light. The color palette consists of crisp whites (#FFFFFF), soft creams (#F0E6D3), vibrant coral (#D4536D), deep charcoal (#1A1A1A), and pale mint greens (#E8F4E8). \n\n[Shot 1] The scene begins with the keyframe from <Image 1>, showing <Subject 1> standing in a modern apartment hallway. <Subject 2> suddenly dashes toward the elevator, using her shoulder to catch the heavy metal doors just before they close in a realistic last-second move. The camera uses an energetic handheld follow motion, capturing the urgency of her movement. The sound is the thud of quick footsteps on the floor and the mechanical chime and glide of the elevator doors closing.\n\n[Shot 2] At 00:04.000, the shot cuts to a close-up inside the elevator. <Subject 2> twists the cap of <Subject 3> shut with a firm click as the elevator jolts downward. <Subject 4> is visible in the frame, noticing the color of the lipstick matches the flowers she holds. The tight space and mirrored elevator walls create a spontaneous feeling of comparison. The camera is steady but features a small jolting handheld drift. The mechanical hum of the elevator is audible, followed by a metallic jolt.\n\n[Shot 3] At 00:08.000, <Subject 2> catches <Subject 4>’s glance toward the bouquet of flowers and <Subject 2> grins warmly at the color match. Bands of bright morning sunlight slide across the reflection on the elevator walls, creating an airy atmosphere. The camera performs a smooth, brisk truck motion. The elevator hum continues with a faint rattle as the car continues to descend.\n\noverall_soundscape:\nEnvironmental sounds include quick footsteps, elevator doors chiming and gliding, mechanical hums, metallic jolts, and a faint rattling sound during descent.\n\nnon_diegetic_music:\nN/A",
+          "seed": 809335076,
+          "timings": {
+            "inference": 12.81934829504462
+          }
+        },
+        "status": 200,
+        "billableUnits": 20.160000000000004
+      }
+    }
+  ]
+}
