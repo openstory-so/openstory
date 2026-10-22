@@ -285,17 +285,19 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() =>
+                onClick={() => {
                   openAssistant({
                     context: [
                       {
                         kind: 'shot',
                         id: shot.id,
-                        label: `Shot ${shot.shotNumber ?? 1}`,
+                        label: shot.shotNumber
+                          ? `Shot ${shot.shotNumber}`
+                          : 'This shot',
                       },
                     ],
-                  })
-                }
+                  });
+                }}
               >
                 Ask the assistant
               </DropdownMenuItem>

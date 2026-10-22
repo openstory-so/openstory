@@ -20,6 +20,7 @@ import { InvalidApiKeyBanner } from './invalid-api-key-banner';
 import { AssistantPanel } from '@/assistant/ui/assistant-panel';
 import { AssistantToggle } from '@/assistant/ui/assistant-toggle';
 import { usePageContext } from '@/assistant/ui/use-page-context';
+import { useAssistantState } from '@/assistant/ui/assistant-store';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
 
@@ -73,8 +74,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   ...props
 }) => {
   const pageContext = usePageContext();
+  // Starters follow everything the composer shows: the route, what a page
+  // registered (the Studio viewer), and what a button handed over.
+  const { extraContext, draft } = useAssistantState();
   const suggestions = suggestionsFor(
-    new Set(pageContext.map((item) => item.kind))
+    new Set(
+      [...pageContext, ...extraContext.values(), ...(draft?.context ?? [])].map(
+        (item) => item.kind
+      )
+    )
   );
   return (
     <AuthGateProvider>

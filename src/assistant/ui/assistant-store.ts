@@ -106,9 +106,24 @@ export function useAssistantState(): AssistantState {
  * whole conversation, its prompt the composer's starting text.
  */
 export function openAssistant(draft?: Omit<AssistantDraft, 'nonce'>): void {
+  if (!draft) {
+    set({ open: true });
+    return;
+  }
+  // An explicit ask for a thing the user dismissed earlier brings it back.
+  const dismissed = new Set(current().dismissedContext);
+  for (const item of draft.context ?? []) {
+    dismissed.delete(`${item.kind}:${item.id}`);
+  }
+  // A new prompt remounts the composer; context alone keeps what was typed.
+  const nonce =
+    draft.prompt !== undefined
+      ? generateId()
+      : (current().draft?.nonce ?? generateId());
   set({
     open: true,
-    ...(draft ? { draft: { ...draft, nonce: generateId() } } : {}),
+    draft: { ...draft, nonce },
+    dismissedContext: dismissed,
   });
 }
 

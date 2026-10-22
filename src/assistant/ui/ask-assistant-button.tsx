@@ -14,7 +14,9 @@ export const AskAssistantButton: React.FC<{
   prompt?: string;
   size?: 'sm' | 'default';
   variant?: 'outline' | 'ghost';
-}> = ({ context, prompt, size = 'sm', variant = 'outline' }) => {
+  /** Runs first: a viewer that covers the panel closes itself here. */
+  onOpen?: () => void;
+}> = ({ context, prompt, size = 'sm', variant = 'outline', onOpen }) => {
   const { requireAuth } = useAuthGate();
   return (
     <Button
@@ -22,7 +24,9 @@ export const AskAssistantButton: React.FC<{
       size={size}
       variant={variant}
       onClick={() => {
-        if (requireAuth()) openAssistant({ context, prompt });
+        if (!requireAuth()) return;
+        onOpen?.();
+        openAssistant({ context, prompt });
       }}
     >
       Ask the assistant
