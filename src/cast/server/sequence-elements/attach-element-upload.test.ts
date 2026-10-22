@@ -254,4 +254,23 @@ describe('assertDraftElementUploadsAttachable', () => {
     });
     expect(mockRequireRights).not.toHaveBeenCalled();
   });
+
+  it('refuses a video filename on a non-video stored path (#2153)', async () => {
+    mockFileExists.mockResolvedValue(true);
+
+    await expect(
+      assertDraftElementUploadsAttachable({
+        scopedDb: makeScopedDb(),
+        teamId: 'team-1',
+        uploads: [
+          makeUpload({
+            tempPath: 'elements/team-1/uploads/still.png',
+            filename: 'walk.mp4',
+          }),
+        ],
+      })
+    ).rejects.toThrow(/does not match the stored upload/);
+    expect(mockRequireRights).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,9 @@
 import { fileExists } from '#storage';
 import { deriveTokenFromFilename } from '@/cast/derive-token';
-import { elementKindFromFilename } from '@/cast/element-kind';
+import {
+  elementKindFromFilename,
+  type SequenceElementKind,
+} from '@/cast/element-kind';
 import { requireUploadRights } from '@/cast/server/upload-rights';
 import { measureStoredMediaDuration } from './media-duration';
 import type { DraftElementUploadInput } from '@/cast/draft-element-upload';
@@ -63,9 +66,12 @@ async function assertElementUploadAttachable(params: {
       `Element "${filename}" is no longer available in storage. Re-upload it and try again.`
     );
   }
-  // An unknown extension predates #1559 and was an image. An image or a clip
-  // is checked; audio has no likeness.
-  if ((elementKindFromFilename(filename) ?? 'image') !== 'audio') {
+  // The kind is the stored path. The filename is only a check that the two
+  // agree — a video name on a still key would skip the clip classifier and
+  // still be sent to a motion model (#2153). An unknown extension predates
+  // #1559 and was an image.
+  const kind = elementKindAgreed(path, filename);
+  if (kind !== 'audio') {
     await requireUploadRights(scopedDb, [elementImageUrlFromPath(path)]);
   }
 }
@@ -103,9 +109,7 @@ export async function attachElementUpload(params: {
     params.token || deriveTokenFromFilename(filename)
   );
 
-  // An unknown extension predates #1559 and was an image; keep it one rather
-  // than failing an attach the user can no longer retry.
-  const kind = elementKindFromFilename(filename) ?? 'image';
+  const kind = elementKindAgreed(path, filename);
   // Vision ran inline during draft upload (the happy path); write it straight
   // onto the row instead of paying for it a second time.
   const hasInlineVision = !!params.description && !!params.consistencyTag;
@@ -234,6 +238,24 @@ export function elementKindOrThrow(filename: string) {
 }
 
 /**
+ * Kind from the stored path. The client filename must name the same kind.
+ * An unknown extension on both sides stays an image (#1559).
+ */
+function elementKindAgreed(
+  path: string,
+  filename: string
+): SequenceElementKind {
+  const fromPath = elementKindFromFilename(path) ?? 'image';
+  const fromName = elementKindFromFilename(filename) ?? 'image';
+  if (fromPath !== fromName) {
+    throw new ValidationError(
+      `Element "${filename}" could not be attached: its file type does not match the stored upload.`
+    );
+  }
+  return fromPath;
+}
+
+/**
  * Replace an element's file. Persists the new file and re-runs vision on an
  * image. Affected shots are left stale — the user updates them from the
  * inspector (edit vs regen is a per-shot choice; replace-time is the wrong
@@ -266,7 +288,7 @@ export async function replaceElementUpload(params: {
   const imageUrl = elementImageUrlFromPath(params.path);
   // A replacement can change the kind (swap a still for the clip it came
   // from), so it is re-derived rather than inherited.
-  const kind = elementKindOrThrow(params.filename);
+  const kind = elementKindAgreed(params.path, params.filename);
 
   const updated = await scopedDb.sequenceElements.update(params.elementId, {
     imageUrl,

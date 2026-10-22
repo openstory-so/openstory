@@ -35,4 +35,17 @@ describe('mediaUrlSchema', () => {
     expect(mediaUrlSchema.safeParse('r2/thumbnails/x.png').success).toBe(false);
     expect(mediaUrlSchema.safeParse('').success).toBe(false);
   });
+
+  it('rejects dot segments, encoded dots, backslashes, queries, and fragments (#2153)', () => {
+    for (const url of [
+      '/r2/teams/t/studio/a/video.mp4/../../other.mp4',
+      '/r2/teams/t/studio/a/%2e%2e/other.mp4',
+      '/r2/teams/t/studio/a/video.mp4?x=1',
+      '/r2/teams/t/studio/a/video.mp4#frag',
+      '/r2/teams/t\\studio\\a\\video.mp4',
+      'https://cdn.example/teams/t/studio/a/%2E%2E/clip.mp4',
+    ]) {
+      expect(mediaUrlSchema.safeParse(url).success).toBe(false);
+    }
+  });
 });

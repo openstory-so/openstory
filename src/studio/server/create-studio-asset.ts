@@ -48,6 +48,7 @@ import {
   isSeedanceEdit,
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
+import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
@@ -203,6 +204,33 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+/** A reference URL whose path a later fetch can resolve onto a different object. */
+function refuseTraversableReferenceUrl(url: string): void {
+  if (mediaUrlHasTraversal(url)) {
+    throw new ValidationError(
+      'That reference URL can’t be used. Upload the file again.'
+    );
+  }
+}
+
+/**
+ * Studio output key: `teams/<team>/studio/<id>/<file>.mp4|mov|webm`.
+ * The id alone is not a match — a longer or dotted path can share the prefix.
+ */
+function studioClipIdFromUrl(teamId: string, url: string): string | null {
+  const key = r2KeyFromUrl(url);
+  if (!key) return null;
+  const escaped = teamId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return (
+    key.match(
+      new RegExp(
+        `^teams/${escaped}/studio/([^/]+)/[^/]+\\.(?:mp4|mov|webm)$`,
+        'i'
+      )
+    )?.[1] ?? null
+  );
+}
+
 /** A clip to trace: a Studio row by id, or any clip by its URL. */
 type ClipLink = { assetId: string } | { url: string };
 
@@ -222,15 +250,24 @@ async function requireStudioClipChain(
     const seenKey = 'assetId' in link ? `id:${link.assetId}` : link.url;
     if (seen.has(seenKey)) continue;
     seen.add(seenKey);
+    if ('url' in link) refuseTraversableReferenceUrl(link.url);
     const assetId =
       'assetId' in link
         ? link.assetId
-        : r2KeyFromUrl(link.url)?.match(
-            new RegExp(`^teams/${scopedDb.teamId}/studio/([^/]+)/`)
-          )?.[1];
+        : studioClipIdFromUrl(scopedDb.teamId, link.url);
     const asset = assetId
       ? await scopedDb.generatedAssets.getById(assetId)
       : null;
+    // The id in the key is not enough: the URL has to be the file this row
+    // stored. Anything else is checked on its own bytes.
+    if (
+      asset &&
+      'url' in link &&
+      studioPrimaryOutput(asset)?.url !== link.url
+    ) {
+      await requireUploadRights(scopedDb, [link.url]);
+      continue;
+    }
     if (!asset) {
       if ('assetId' in link) {
         throw new ValidationError(
@@ -261,6 +298,7 @@ export async function createStudioAssets(
   } = {}
 ): Promise<StudioCreateResult> {
   if (input.activity === 'video') {
+    for (const url of input.referenceVideos) refuseTraversableReferenceUrl(url);
     // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
     // to the BytePlus via is refused where this team would land on fal.
     const falKey = await scopedDb.apiKeys.resolveOptionalKey('fal');
@@ -331,6 +369,9 @@ export async function createStudioAssets(
   });
   // Uploads and raw URLs must be cleared or signed on the likeness ledger
   // (#1581); library stills passed the same gate when they were saved.
+  for (const url of studioLikenessMedia(input)) {
+    refuseTraversableReferenceUrl(url);
+  }
   await requireUploadRights(
     scopedDb,
     studioLikenessMedia(input).filter(needsLikenessCheck)

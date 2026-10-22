@@ -9,7 +9,10 @@
 
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
 import { getPublicAssetsDomain } from '@/platform/public-assets';
-import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
+import {
+  mediaUrlHasTraversal,
+  mediaUrlSchema,
+} from '@/platform/schemas/media-url.schemas';
 import { z } from 'zod';
 
 /** What the ledger says about one upload. `null` on the wire means unchecked. */
@@ -47,6 +50,10 @@ export type PortraitAttestation = z.infer<typeof portraitAttestationSchema>;
  * folders (sheets, headshots), and our public assets domain.
  */
 export function needsLikenessCheck(url: string): boolean {
+  // A traversable URL is never a library still. The server refuses it
+  // outright (#2153); treating it as exempt would skip that refusal's twin,
+  // the ledger check, when a caller only filters on this predicate.
+  if (mediaUrlHasTraversal(url)) return true;
   if (url.startsWith(`https://${getPublicAssetsDomain()}/`)) return false;
   return (
     /^https?:\/\//.test(url) ||
