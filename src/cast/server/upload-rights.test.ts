@@ -175,6 +175,16 @@ describe('classifyUpload', () => {
     );
   });
 
+  it('refuses another team’s stored clip, and reads nothing', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const clip = `/r2/talent/${generateId()}/uploads/01CLIP.mp4`;
+
+    await expect(
+      classifyUpload({ scopedDb, userId: USER_ID, url: clip, request })
+    ).rejects.toThrow('can’t be checked for a real person');
+    expect(mockAnalyzeClip).not.toHaveBeenCalled();
+  });
+
   it('refuses a clip that is not ours, and records nothing', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const clip = 'https://example.com/someone.mp4';

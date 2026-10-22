@@ -129,8 +129,8 @@ export async function recordLikenessFinding(
 
 /**
  * One classifier call for the upload: Claude on a still, Gemini watching the
- * whole clip (#1930). A clip that is not in our storage is refused, never
- * waved through.
+ * whole clip (#1930). A clip that is not this team's stored object is
+ * refused, never waved through.
  */
 function analyzeUpload(opts: {
   scopedDb: ScopedDb;
@@ -152,7 +152,8 @@ function analyzeUpload(opts: {
     });
   }
   const key = r2KeyFromUrl(opts.url);
-  if (key === null) {
+  // Only this team's own objects: the check streams the bytes to Gemini.
+  if (key === null || !key.split('/').includes(opts.scopedDb.teamId)) {
     throw new ValidationError(
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
     );
