@@ -23,12 +23,18 @@ import type {
   RunRecord,
   RunStore,
 } from '@tanstack/ai-persistence';
-import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, type SQL } from 'drizzle-orm';
 import type { ModelMessage } from '@tanstack/ai';
 import { NotFoundError } from '@/platform/errors';
 
 const THREAD_LIST_LIMIT = 50;
 const TITLE_MAX = 80;
+/**
+ * How long a run still marked running is reported to a hydrating client.
+ * Its terminal hook marks it done; one that never ran (a killed isolate)
+ * would otherwise send every reload to tail an open log.
+ */
+export const ACTIVE_RUN_MAX_AGE_MS = 10 * 60_000;
 
 /**
  * A stable id for a message the engine saved without one, so the same
@@ -240,13 +246,22 @@ function createRunStore(db: Database, threadId: string): RunStore {
         .set(set)
         .where(and(ownThread, eq(assistantRuns.runId, runId)));
     },
-    // Always null until a delivery-durability adapter exists on the Worker:
-    // a run reported here makes the client join its stream by GET, which
-    // nothing serves yet, so it would show an error instead of the thread.
-    // A run cut off before its terminal hook is closed by `closeOpenRuns`
-    // when the next turn starts.
+    // The run the client joins on hydrate: the newest still running, if it
+    // started recently enough to still be writing its log.
     async findActiveRun() {
-      return null;
+      const rows = await db
+        .select()
+        .from(assistantRuns)
+        .where(
+          and(
+            ownThread,
+            eq(assistantRuns.status, 'running'),
+            gt(assistantRuns.startedAt, Date.now() - ACTIVE_RUN_MAX_AGE_MS)
+          )
+        )
+        .orderBy(desc(assistantRuns.startedAt))
+        .limit(1);
+      return rows[0] ? mapRun(rows[0]) : null;
     },
     async listByThread() {
       const rows = await db
@@ -386,12 +401,13 @@ export function createAssistantMethods(
     },
 
     /**
-     * Marks every run the thread still records as running as aborted. A
-     * run whose terminal hook never ran (a closed tab, a killed isolate)
-     * would otherwise stay open forever.
+     * Marks every run the thread still records as running as aborted and
+     * returns their ids, so the caller can seal their logs. A run whose
+     * terminal hook never ran (a killed isolate) would otherwise stay open
+     * forever.
      */
-    closeOpenRuns: async (threadId: string): Promise<void> => {
-      await db
+    closeOpenRuns: async (threadId: string): Promise<string[]> => {
+      const closed = await db
         .update(assistantRuns)
         .set({ status: 'aborted', finishedAt: Date.now() })
         .where(
@@ -399,7 +415,9 @@ export function createAssistantMethods(
             eq(assistantRuns.threadId, threadId),
             eq(assistantRuns.status, 'running')
           )
-        );
+        )
+        .returning({ runId: assistantRuns.runId });
+      return closed.map((row) => row.runId);
     },
 
     listThreads: async (): Promise<AssistantThread[]> =>
@@ -457,13 +475,22 @@ export function createAssistantMethods(
     },
 
     /** Removes the thread and everything it holds. Nothing cascades. */
-    deleteThread: async (id: string): Promise<boolean> => {
+    /**
+     * Removes the thread and everything it holds; answers the ids of its
+     * runs so the caller can drop their stream logs too, or null when the
+     * thread is not this user's.
+     */
+    deleteThread: async (id: string): Promise<string[] | null> => {
       const rows = await db
         .select({ id: assistantThreads.id })
         .from(assistantThreads)
         .where(and(own, eq(assistantThreads.id, id)))
         .limit(1);
-      if (!rows[0]) return false;
+      if (!rows[0]) return null;
+      const runs = await db
+        .select({ runId: assistantRuns.runId })
+        .from(assistantRuns)
+        .where(eq(assistantRuns.threadId, id));
       await db.batch([
         db
           .delete(assistantInterrupts)
@@ -472,7 +499,7 @@ export function createAssistantMethods(
         db.delete(assistantMessages).where(eq(assistantMessages.threadId, id)),
         db.delete(assistantThreads).where(eq(assistantThreads.id, id)),
       ]);
-      return true;
+      return runs.map((row) => row.runId);
     },
 
     /** The persistence stores for one thread this user owns. */

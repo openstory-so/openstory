@@ -8,6 +8,7 @@ import { zodValidator } from '@tanstack/zod-adapter';
 import { z } from 'zod';
 import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
+import { deleteStreamLogs } from './server/durability';
 
 const threadIdSchema = z.object({ threadId: ulidSchema });
 
@@ -36,6 +37,10 @@ export const renameAssistantThreadFn = createServerFn({ method: 'POST' })
 export const deleteAssistantThreadFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
   .validator(zodValidator(threadIdSchema))
-  .handler(async ({ context, data }) => ({
-    deleted: await context.scopedDb.assistant.deleteThread(data.threadId),
-  }));
+  .handler(async ({ context, data }) => {
+    const runIds = await context.scopedDb.assistant.deleteThread(data.threadId);
+    if (runIds === null) return { deleted: false };
+    // The rows are gone; the replies' stream logs go with them.
+    await deleteStreamLogs(context, runIds);
+    return { deleted: true };
+  });

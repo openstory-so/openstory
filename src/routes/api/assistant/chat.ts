@@ -1,12 +1,14 @@
 /**
  * The in-app assistant's chat endpoint (#2155). POST streams one turn as
- * SSE; GET `?threadId=` hydrates a thread (transcript, paused approvals).
+ * SSE; GET `?threadId=` hydrates a thread (transcript, paused approvals)
+ * and GET `?runId=&offset=` tails a run's log (a reload mid-reply).
  * Session callers only: the MCP server at /mcp is the Bearer-token surface.
  */
 import { createFileRoute } from '@tanstack/react-router';
 import {
   handleAssistantChat,
   handleAssistantHydrate,
+  handleAssistantJoin,
   type AssistantCaller,
 } from '@/assistant/server/assistant-chat';
 import { handleApiError } from '@/platform/errors';
@@ -50,9 +52,11 @@ export const Route = createFileRoute('/api/assistant/chat')({
       },
       GET: async ({ request, context }) => {
         try {
-          return await handleAssistantHydrate(
-            await callerFrom(request, context)
-          );
+          const caller = await callerFrom(request, context);
+          if (new URL(request.url).searchParams.has('runId')) {
+            return handleAssistantJoin(caller);
+          }
+          return await handleAssistantHydrate(caller);
         } catch (error) {
           return errorResponse(error);
         }

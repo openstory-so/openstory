@@ -10,6 +10,7 @@ import {
   chat,
   chatParamsFromRequest,
   maxIterations,
+  resumeServerSentEventsResponse,
   toServerSentEventsResponse,
   type ChatMiddleware,
   type TokenUsage,
@@ -39,6 +40,7 @@ import {
 import { chatModelFor } from '../chat-model';
 import { assistantTools } from './assistant-tools';
 import { threadTitleFrom } from './db/assistant';
+import { assistantStreamLog, heldStreamLog, sealStreamLog } from './durability';
 
 const logger = getLogger(['openstory', 'assistant']);
 
@@ -197,10 +199,19 @@ function billingMiddleware(
   ];
 }
 
-/** POST: one turn. */
+/**
+ * POST: one turn, streamed through the run's log. A reconnect after a drop
+ * re-sends the same POST with `Last-Event-ID`; that is a read of the log,
+ * never a second run, so it answers before any gate or thread write.
+ */
 export async function handleAssistantChat(
   caller: AssistantCaller
 ): Promise<Response> {
+  if (caller.request.headers.has('Last-Event-ID')) {
+    return resumeServerSentEventsResponse({
+      adapter: assistantStreamLog(caller.request, caller),
+    });
+  }
   const params = await chatParamsFromRequest(caller.request);
   const threadId = ulidSchema.safeParse(params.threadId);
   if (!threadId.success) {
@@ -235,8 +246,18 @@ export async function handleAssistantChat(
     threadTitleFrom(lastUserText(params.messages))
   );
   // A run this thread still records as running was cut off before its
-  // terminal hook (a closed tab, a killed isolate): a new turn supersedes it.
-  await scopedDb.assistant.closeOpenRuns(thread.id);
+  // terminal hook (a killed isolate): a new turn supersedes it, and its log
+  // is sealed so nothing tails it forever.
+  for (const runId of await scopedDb.assistant.closeOpenRuns(thread.id)) {
+    try {
+      await sealStreamLog(caller, { runId, threadId: thread.id });
+    } catch (error) {
+      logger.warn('sealing a cut-off assistant run failed', {
+        runId,
+        err: toErrorPayload(error),
+      });
+    }
+  }
   const abortController = new AbortController();
   const middleware: Array<ChatMiddleware<OpenStoryMcpContext>> = [
     {
@@ -277,7 +298,24 @@ export async function handleAssistantChat(
     abortController,
     middleware,
   });
-  return toServerSentEventsResponse(stream, { abortController });
+  // Every chunk lands in the log before the browser sees it; the run
+  // outlives the response, so a rejoin reads the reply to its end.
+  return toServerSentEventsResponse(stream, {
+    abortController,
+    // Keyed by the body's run id, the one the run row and hydrate carry.
+    durability: { adapter: heldStreamLog(params.runId, caller) },
+  });
+}
+
+/**
+ * GET `?runId=&offset=`: a run's log from `offset` (`-1` for the start),
+ * tailed until the run ends. The client sends this for the run hydrate
+ * reports as still going, in a second tab or after a reload.
+ */
+export function handleAssistantJoin(caller: AssistantCaller): Response {
+  return resumeServerSentEventsResponse({
+    adapter: assistantStreamLog(caller.request, caller),
+  });
 }
 
 /** GET `?threadId=`: the stored transcript and any paused approval. */

@@ -60,11 +60,36 @@ a reload or a second tab paints the same thread. A thread id the browser
 kept from another sign-in answers 404 (`THREAD_NOT_FOUND`), and the client
 starts a new thread on it; an id nothing was sent to yet hydrates empty.
 
-Stream resume (reconnect to a run still going) needs a delivery-durability
-adapter on the Worker; it is not wired yet. Until it is, `findActiveRun`
-answers null (a reported run would make the client join a stream nothing
-serves) and a run still marked running when the next turn starts is closed
-as aborted (`closeOpenRuns`).
+## Resume
+
+Every chunk of a turn is appended to a stream log before the browser sees
+it (`src/assistant/server/durability.ts`): `@tanstack/ai-durable-stream`
+over `@durable-streams/server-cloudflare`, a Durable Object per run behind
+the `STREAMS` binding (`StreamObject`, tag v4 in every env block, class
+re-exported from `src/server.ts`). The streams server is called in-process;
+no route speaks its protocol to the outside, and a stream is keyed under
+`assistant/<team>/<user>/<runId>`, so another user's run id names a stream
+that does not exist.
+
+- A drop mid-reply: the client re-sends the POST with `Last-Event-ID`.
+  That is a read of the log, answered before any gate or thread write;
+  the model never runs twice.
+- A reload or a second tab: hydrate reports the run `findActiveRun` finds
+  (running, started within `ACTIVE_RUN_MAX_AGE_MS`), the client joins it
+  with `GET ?runId=&offset=-1`, and the log is tailed to the run's end.
+- The run outlives the response: `heldStreamLog` holds the request with
+  `waitUntil` until the log closes, so billing and persistence still run
+  after the tab is gone. `waitUntil` is bounded, so a turn that goes on
+  much longer than that after a disconnect is cut off with its log open
+  and its usage uncharged (no terminal hook runs). The next turn closes
+  such runs as aborted (`closeOpenRuns`) and seals their logs
+  (`sealStreamLog`) so nothing tails them forever. That seal is by status,
+  not age: a turn sent from a second tab while the first still streams
+  cuts the first off, which that tab shows as a failure.
+- A log is keyed by the body's run id (the one the run row and hydrate
+  carry), expires three days after its last read (`Stream-TTL`, sent on
+  every create; the server refuses a create whose TTL differs from the
+  stored one), and is deleted with its thread (`deleteStreamLogs`).
 
 The charge key is minted per request on the server. The client's run id is
 only the AG-UI correlation id; keying billing on it would let a repeated id
