@@ -65,7 +65,6 @@ export async function analyzeTalentClipForTeam(input: {
   /** Storage key of the clip (`<bucket>/<path>`). */
   key: string;
   mimeType: string;
-  filenames?: string[];
   idempotencyKey: string;
 }): Promise<TalentVisionResult> {
   const llmKey = await input.scopedDb.apiKeys.resolveLlmKey(TALENT_CLIP_MODEL);
@@ -79,7 +78,6 @@ export async function analyzeTalentClipForTeam(input: {
   try {
     const result = await analyzeTalentClip({
       clip: file,
-      filenames: input.filenames,
       llmKey,
       observability: { userId: input.userId, tags: ['vision', 'talent'] },
     });

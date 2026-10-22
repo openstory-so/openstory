@@ -163,7 +163,6 @@ function analyzeUpload(opts: {
     userId: opts.userId,
     key,
     mimeType: getMimeTypeFromExtension(getExtensionFromUrl(opts.url)),
-    filenames,
     idempotencyKey,
   });
 }
