@@ -50,6 +50,10 @@ import {
 } from '@/motion/seedance-edit';
 import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
 import {
+  getExtensionFromUrl,
+  getMimeTypeFromExtension,
+} from '@/platform/server/storage/file';
+import {
   snapStudioVideoDuration,
   STUDIO_EDIT_MODEL,
   studioCanEditSource,
@@ -181,15 +185,56 @@ async function requireOwnEditSource(
     throw new NotFoundError('Video to edit not found');
   }
   // An edit registers its source in Ark's portrait library, which vouches
-  // for whoever is in it. Uploaded reference clips are now checked (#1930),
-  // but clips made before that were not, and a classifier can miss a face, so a clip made from an uploaded one is
-  // still never edited. A generated reference clip came from gated inputs.
-  // An edit's own source already passed this check, so the source alone
-  // covers the whole chain (#1925).
+  // for whoever is in it. A clip made from an uploaded reference clip is never
+  // edited: older ones were never checked, and a classifier can miss a face.
+  // A generated reference clip counts only if every upload behind it
+  // passes the gate (`requireStudioClipChain`).
   if (studioUsedUploadedReferenceVideo(source.input)) {
     throw new ValidationError(
       'This clip was made from an uploaded reference video, so it cannot be edited'
     );
+  }
+  await requireStudioClipChain(
+    scopedDb,
+    input.sourceVideoUrl ? [input.sourceVideoUrl] : []
+  );
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === 'string')
+    : [];
+}
+
+/**
+ * A clip Studio made is a reference only if every uploaded clip behind it
+ * passes the gate. Clips made before #1930 took uploads unchecked, and a
+ * reference clip is registered in Ark's portrait library.
+ */
+async function requireStudioClipChain(
+  scopedDb: ScopedDb,
+  urls: string[]
+): Promise<void> {
+  const seen = new Set<string>();
+  let queue = urls;
+  while (queue.length > 0) {
+    const next: string[] = [];
+    for (const url of queue) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      const assetId = r2KeyFromUrl(url)?.match(
+        new RegExp(`^teams/${scopedDb.teamId}/studio/([^/]+)/`)
+      )?.[1];
+      if (!assetId) continue;
+      const asset = await scopedDb.generatedAssets.getById(assetId);
+      if (!asset) continue;
+      const clips = stringList(asset.input.referenceVideos);
+      await requireUploadRights(scopedDb, clips.filter(needsLikenessCheck));
+      next.push(...clips.filter((clip) => !needsLikenessCheck(clip)));
+      const source = asset.input.sourceVideoUrl;
+      if (typeof source === 'string') next.push(source);
+    }
+    queue = next;
   }
 }
 
@@ -279,6 +324,21 @@ export async function createStudioAssets(
     scopedDb,
     studioLikenessMedia(input).filter(needsLikenessCheck)
   );
+  if (input.activity === 'video' && input.mode === 'reference') {
+    // The gate judged a stored file by its type; a clip stored as a still
+    // was judged as a still.
+    const notClip = input.referenceVideos.find(
+      (url) =>
+        !getMimeTypeFromExtension(getExtensionFromUrl(url)).startsWith('video/')
+    );
+    if (notClip) {
+      throw new ValidationError('A reference video must be a video file');
+    }
+    await requireStudioClipChain(
+      scopedDb,
+      input.referenceVideos.filter((url) => !needsLikenessCheck(url))
+    );
+  }
   const noPersonImages: string[] = [];
   if (input.activity === 'video') {
     for (const url of studioLikenessMedia(input)) {

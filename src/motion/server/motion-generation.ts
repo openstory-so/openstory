@@ -411,8 +411,8 @@ type MotionRef = NonNullable<GenerateMotionOptions['referenceImages']>[number];
  * Character (and other face-bearing) refs go through ingest — as `asset://`
  * when {@link registersWithArk}, else as `plain`. A reference clip is always
  * registered, as a Video asset (#1930): Ark refuses a lifelike face in a clip
- * sent as a URL, and a run cannot read the likeness ledger to know a clip
- * shows none. Location/element sheets and audio are never ingested. Submit
+ * sent as a URL. The run has already refused a clip the ledger has not
+ * cleared or signed (`check-reference-clip-rights`). Location/element sheets and audio are never ingested. Submit
  * uses the same helper so `arkUrlFor` is not asked for a URL the map does
  * not hold.
  */

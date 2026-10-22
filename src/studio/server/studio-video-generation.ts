@@ -343,6 +343,7 @@ export function arkStillsForStudio(
     StudioVideoJobOptions,
     | 'mode'
     | 'referenceImages'
+    | 'referenceVideos'
     | 'startImageUrl'
     | 'endImageUrl'
     | 'sourceVideoUrl'

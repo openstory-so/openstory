@@ -581,6 +581,36 @@ describe('MotionWorkflow content-flag rescue (#1373)', () => {
     expect(retried).toContain('Run.');
   });
 
+  it('refuses a reference clip the likeness ledger never checked, before any submit (#1930)', async () => {
+    const { scopedDb } = makeScopedDb();
+    Object.assign(scopedDb.liveRead, {
+      compliance: { attestations: { listForSubject: async () => [] } },
+    });
+
+    const run = makeWorkflow().runBody(
+      makeEvent({
+        referenceImages: [
+          {
+            referenceImageUrl: '/r2/elements/team-1/seq-0/old.mp4',
+            description: 'DANCE',
+            kind: 'video',
+            role: 'element',
+            token: 'DANCE',
+            durationSeconds: 5,
+          },
+        ],
+      }),
+      makeStep(),
+      scopedDb
+    );
+    await expect(run).rejects.toThrow(
+      'DANCE: This upload has not been checked for a real person yet'
+    );
+    await expect(run).rejects.toBeInstanceOf(NonRetryableError);
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(mockIngestArkAssets).not.toHaveBeenCalled();
+  });
+
   it('refused reference audio: no soften, no fallback, names the recording (#1773)', async () => {
     mockSubmit.mockRejectedValue(
       new Error(

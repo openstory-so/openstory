@@ -20,7 +20,6 @@
  * off the client.
  */
 
-import { elementKindFromFilename } from '@/cast/element-kind';
 import type { Likeness } from '@/cast/likeness';
 import {
   analyzeTalentClipForTeam,
@@ -51,8 +50,21 @@ export type LikenessRequestContext = {
   userAgent?: string | null;
 };
 
+/**
+ * All the gate reads: the newest ledger row for a URL. Narrow so a workflow
+ * can ask through `scopedDb.liveRead` (#1930).
+ */
+export type UploadRightsReader = {
+  compliance: {
+    attestations: Pick<
+      ScopedDb['compliance']['attestations'],
+      'listForSubject'
+    >;
+  };
+};
+
 async function latestRow(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReader,
   url: string
 ): Promise<UploadAttestation | undefined> {
   const [latest] = await scopedDb.compliance.attestations.listForSubject(
@@ -140,9 +152,10 @@ function analyzeUpload(opts: {
 }): Promise<TalentVisionResult> {
   const filenames = opts.filename ? [opts.filename] : undefined;
   const idempotencyKey = `likeness:${opts.url}`;
-  if (
-    elementKindFromFilename(new URL(opts.url, 'http://x').pathname) !== 'video'
-  ) {
+  // Routed on the stored file's type: a clip that reached the still
+  // classifier could be cleared on bytes it cannot read.
+  const mimeType = getMimeTypeFromExtension(getExtensionFromUrl(opts.url));
+  if (mimeType.startsWith('image/')) {
     return analyzeTalentMediaForTeam({
       scopedDb: opts.scopedDb,
       userId: opts.userId,
@@ -150,6 +163,11 @@ function analyzeUpload(opts: {
       filenames,
       idempotencyKey,
     });
+  }
+  if (!mimeType.startsWith('video/')) {
+    throw new ValidationError(
+      'Only an image or a video clip can be checked for a real person.'
+    );
   }
   const key = r2KeyFromUrl(opts.url);
   // Only this team's own objects: the check streams the bytes to Gemini.
@@ -162,7 +180,7 @@ function analyzeUpload(opts: {
     scopedDb: opts.scopedDb,
     userId: opts.userId,
     key,
-    mimeType: getMimeTypeFromExtension(getExtensionFromUrl(opts.url)),
+    mimeType,
     idempotencyKey,
   });
 }
@@ -219,7 +237,7 @@ export async function attestUploads(
  * a real person, so a caller can derive `isHuman` from the ledger.
  */
 export async function requireUploadRights(
-  scopedDb: ScopedDb,
+  scopedDb: UploadRightsReader,
   urls: string[]
 ): Promise<Map<string, { depictsRealPerson: boolean }>> {
   const result = new Map<string, { depictsRealPerson: boolean }>();
@@ -323,4 +341,18 @@ export async function carryUploadRights(
     ipAddress: row.ipAddress,
     userAgent: row.userAgent,
   });
+}
+
+/**
+ * {@link carryUploadRights} for a copy: an unchecked source stays unchecked
+ * rather than failing the copy, and every use still asks the gate.
+ */
+export async function carryUploadRightsIfChecked(
+  scopedDb: ScopedDb,
+  fromUrl: string,
+  toUrl: string
+): Promise<void> {
+  if (await latestRow(scopedDb, fromUrl)) {
+    await carryUploadRights(scopedDb, fromUrl, toUrl);
+  }
 }

@@ -177,17 +177,25 @@ export async function analyzeTalentClip(input: {
       ],
     },
   ];
-  return runTalentVision({
+  const result = await runTalentVision({
     model: TALENT_CLIP_MODEL,
     messages,
     llmKey: input.llmKey,
     observability: input.observability,
   });
+  // A region fallback answers on another model, which may never have seen
+  // the video part. Only Gemini's verdict counts.
+  if (result.model !== TALENT_CLIP_MODEL) {
+    throw new Error(
+      `The clip check answered on ${result.model}, not ${TALENT_CLIP_MODEL}`
+    );
+  }
+  return result;
 }
 
 // Goes through callLLMStream rather than a hand-rolled `chat()` loop so this
-// call gets what every centralized call gets: the #1259 region fallback, the
-// OpenRouter provider pin (#1285 — Vertex advertises `response_format`
+// call gets what every centralized call gets. For a still: the #1259 region
+// fallback, the OpenRouter provider pin (#1285 — Vertex advertises `response_format`
 // without `structured_outputs`, which this schema needs), the priority
 // service tier, and — since the fallback is GLM-5.3 Flash, which cannot
 // disable thinking and defaults to `max` effort (#1494) — a `low` effort on

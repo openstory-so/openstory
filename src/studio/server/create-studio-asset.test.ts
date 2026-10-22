@@ -904,6 +904,41 @@ describe('upload rights gate (#1581)', () => {
     expect(mockReserveRunCredits).not.toHaveBeenCalled();
   });
 
+  it('refuses a Studio clip whose chain began at an unchecked upload (#1930)', async () => {
+    const { AttestationRequiredError, ValidationError } =
+      await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const old = await scopedDb.generatedAssets.insert({
+      provider: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      source: 'studio',
+      input: {
+        mode: 'reference',
+        referenceVideos: [`/r2/talent/${TEAM_ID}/uploads/01OLD.mp4`],
+      },
+      status: 'completed',
+    });
+
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`/r2/teams/${TEAM_ID}/studio/${old.id}/video.mp4`],
+      })
+    ).rejects.toBeInstanceOf(AttestationRequiredError);
+    // A clip stored as a still was judged as a still.
+    await expect(
+      createStudioAssets(scopedDb, {
+        ...video,
+        mode: 'reference',
+        referenceVideos: [`/r2/teams/${TEAM_ID}/studio/${old.id}/image.png`],
+      })
+    ).rejects.toBeInstanceOf(ValidationError);
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
+  });
+
   it('lets library stills through untouched', async () => {
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     await createStudioAssets(scopedDb, {

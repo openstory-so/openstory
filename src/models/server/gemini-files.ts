@@ -8,6 +8,9 @@
 import { readStorageStream, storageObjectSize } from '#storage';
 import { getEnv } from '#env';
 import { z } from 'zod';
+import { getLogger } from '@/platform/logger';
+
+const logger = getLogger(['openstory', 'models', 'gemini-files']);
 
 export type GeminiFile = { name: string; uri: string; mimeType: string };
 
@@ -73,8 +76,9 @@ export async function uploadClipToGemini(
   let body: ReadableStream<Uint8Array> = stream.body;
   if (typeof FixedLengthStream !== 'undefined') {
     const fixed = new FixedLengthStream(size);
-    void stream.body.pipeTo(fixed.writable).catch(() => {
-      // Surfaces as the upload fetch failing.
+    void stream.body.pipeTo(fixed.writable).catch((error: unknown) => {
+      // The upload fetch fails too; this keeps the storage cause.
+      logger.warn('Reading a stored clip for Gemini failed', { key, error });
     });
     body = fixed.readable;
   }
@@ -89,12 +93,32 @@ export async function uploadClipToGemini(
     // Node's fetch (tests, scripts) refuses a stream body without it.
     duplex: 'half',
   } as RequestInit & { headers: Record<string, string> });
-  let file = z.object({ file: fileSchema }).parse(await finished.json()).file;
+  const uploaded: unknown = await finished.json();
+  const { name } = z
+    .object({ file: z.object({ name: z.string() }) })
+    .parse(uploaded).file;
+  // From here the clip is on Google: every failure deletes it.
+  try {
+    return await waitUntilActive(
+      z.object({ file: fileSchema }).parse(uploaded).file,
+      apiKey
+    );
+  } catch (error) {
+    await deleteGeminiFile(name, apiKey).catch((deleteError: unknown) => {
+      logger.warn('Could not delete a Gemini file', { name, deleteError });
+    });
+    throw error;
+  }
+}
 
+async function waitUntilActive(
+  uploaded: z.infer<typeof fileSchema>,
+  apiKey: string
+): Promise<GeminiFile> {
+  let file = uploaded;
   const deadline = Date.now() + MAX_WAIT_MS;
   while (file.state === 'PROCESSING') {
     if (Date.now() > deadline) {
-      await deleteGeminiFile(file.name, apiKey);
       throw new Error('Gemini took too long to read the clip');
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -106,7 +130,6 @@ export async function uploadClipToGemini(
     file = fileSchema.parse(await polled.json());
   }
   if (file.state !== 'ACTIVE') {
-    await deleteGeminiFile(file.name, apiKey);
     throw new Error(`Gemini could not read the clip (${file.state})`);
   }
   return { name: file.name, uri: file.uri, mimeType: file.mimeType };

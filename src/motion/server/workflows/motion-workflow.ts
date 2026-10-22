@@ -102,6 +102,8 @@ import {
   SEEDANCE_INTERNAL_BACKOFF,
 } from '@/motion/seedance-edit';
 import { UnusableReferencesError } from '@/motion/reference-support';
+import { requireUploadRights } from '@/cast/server/upload-rights';
+import { AttestationRequiredError } from '@/platform/errors';
 import { NonRetryableError } from 'cloudflare:workflows';
 import {
   persistMotionCompletion,
@@ -705,6 +707,29 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         );
       }
     );
+
+    // A reference clip must be cleared or signed on the likeness ledger
+    // before any model sees it (#1930). A clip attached before the check has
+    // no row, and every trigger lands here, so the run asks.
+    const clipRefs = (referenceImages ?? []).filter(
+      (ref) => ref.kind === 'video'
+    );
+    if (clipRefs.length > 0) {
+      await step.do('check-reference-clip-rights', async () => {
+        for (const ref of clipRefs) {
+          try {
+            await requireUploadRights(scopedDb.liveRead, [
+              ref.referenceImageUrl,
+            ]);
+          } catch (error) {
+            if (!(error instanceof AttestationRequiredError)) throw error;
+            throw new NonRetryableError(
+              `${ref.token ?? 'A reference clip'}: ${error.message}`
+            );
+          }
+        }
+      });
+    }
 
     // Step 3: Submit + poll with a bounded same-model retry on content-flag
     // rejections (#881). Each attempt resubmits a fresh fal job; a content

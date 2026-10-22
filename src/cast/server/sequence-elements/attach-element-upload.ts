@@ -63,8 +63,8 @@ async function assertElementUploadAttachable(params: {
       `Element "${filename}" is no longer available in storage. Re-upload it and try again.`
     );
   }
-  // An unknown extension predates #1559 and was an image. A clip is checked
-  // too (#1930); an audio file has no likeness to check.
+  // An unknown extension predates #1559 and was an image. An image or a clip
+  // is checked; audio has no likeness.
   if ((elementKindFromFilename(filename) ?? 'image') !== 'audio') {
     await requireUploadRights(scopedDb, [elementImageUrlFromPath(path)]);
   }

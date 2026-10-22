@@ -34,6 +34,7 @@ vi.doMock('@/cast/server/talent/analyze-talent-media', () => ({
 const {
   attestUploads,
   carryUploadRights,
+  carryUploadRightsIfChecked,
   classifyUpload,
   likenessFromLedger,
   realPersonUrls,
@@ -400,5 +401,18 @@ describe('carryUploadRights', () => {
     await expect(
       carryUploadRights(scopedDb, url, `/r2/talent/${TEAM_ID}/tal1/x.png`)
     ).rejects.toBeInstanceOf(AttestationRequiredError);
+  });
+});
+
+describe('carryUploadRightsIfChecked', () => {
+  it('leaves an unchecked copy unchecked instead of failing the copy', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const copy = `/r2/elements/${TEAM_ID}/seq2/01COPY.mp4`;
+
+    await carryUploadRightsIfChecked(scopedDb, url, copy);
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
+    await expect(requireUploadRights(scopedDb, [copy])).rejects.toBeInstanceOf(
+      AttestationRequiredError
+    );
   });
 });

@@ -27,7 +27,7 @@ function studioReferenceImages(input: StudioCreateInput): string[] {
 
 /**
  * Everything a studio create sends that the likeness gate checks: the stills,
- * plus reference clips, which are judged on a grid of their frames (#1930).
+ * plus reference clips, which Gemini watches whole (#1930).
  * Reference audio has no likeness.
  */
 export function studioLikenessMedia(input: StudioCreateInput): string[] {
