@@ -37,7 +37,7 @@ export async function analyzeTalentMediaForTeam(
 ): Promise<TalentVisionResult> {
   const llmKeyInfo =
     await input.scopedDb.apiKeys.resolveLlmKey(TALENT_VISION_MODEL);
-  await requireCredits(input.scopedDb, llmKeyInfo);
+  await requireVisionCredits(input.scopedDb, llmKeyInfo);
   const result = await analyzeTalentMedia({
     imageUrls: input.imageUrls,
     filenames: input.filenames,
@@ -73,7 +73,7 @@ export async function analyzeTalentClipForTeam(input: {
       'Checking a clip for a real person needs a Gemini API key. Add one in Settings → API Keys.'
     );
   }
-  await requireCredits(input.scopedDb, llmKey);
+  await requireVisionCredits(input.scopedDb, llmKey);
   const file = await uploadClipToGemini(input.key, input.mimeType, llmKey.key);
   try {
     const result = await analyzeTalentClip({
@@ -93,7 +93,7 @@ export async function analyzeTalentClipForTeam(input: {
   }
 }
 
-async function requireCredits(
+async function requireVisionCredits(
   scopedDb: ScopedDb,
   llmKey: ResolvedLlmKey
 ): Promise<void> {

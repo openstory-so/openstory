@@ -194,10 +194,7 @@ async function requireOwnEditSource(
       'This clip was made from an uploaded reference video, so it cannot be edited'
     );
   }
-  await requireStudioClipChain(
-    scopedDb,
-    input.sourceVideoUrl ? [input.sourceVideoUrl] : []
-  );
+  await requireStudioClipChain(scopedDb, [{ assetId: source.id }]);
 }
 
 function stringList(value: unknown): string[] {
@@ -206,39 +203,49 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+/** A clip to trace: a Studio row by id, or any clip by its URL. */
+type ClipLink = { assetId: string } | { url: string };
+
 /**
  * A clip Studio made is a reference only if every clip behind it passes;
  * any other clip must pass the gate itself. Clips made before #1930 took
  * uploads unchecked, and a reference clip is registered in Ark's portrait
- * library.
+ * library. Edits are followed by `sourceAssetId`, never by URL.
  */
 async function requireStudioClipChain(
   scopedDb: ScopedDb,
-  urls: string[]
+  start: ClipLink[]
 ): Promise<void> {
   const seen = new Set<string>();
-  let queue = urls;
-  while (queue.length > 0) {
-    const next: string[] = [];
-    for (const url of queue) {
-      if (seen.has(url)) continue;
-      seen.add(url);
-      const assetId = r2KeyFromUrl(url)?.match(
-        new RegExp(`^teams/${scopedDb.teamId}/studio/([^/]+)/`)
-      )?.[1];
-      const asset = assetId
-        ? await scopedDb.generatedAssets.getById(assetId)
-        : null;
-      // Not a Studio clip of this team: it needs its own ledger row.
-      if (!asset) {
-        await requireUploadRights(scopedDb, [url]);
-        continue;
+  const queue = [...start];
+  for (let link = queue.pop(); link; link = queue.pop()) {
+    const seenKey = 'assetId' in link ? `id:${link.assetId}` : link.url;
+    if (seen.has(seenKey)) continue;
+    seen.add(seenKey);
+    const assetId =
+      'assetId' in link
+        ? link.assetId
+        : r2KeyFromUrl(link.url)?.match(
+            new RegExp(`^teams/${scopedDb.teamId}/studio/([^/]+)/`)
+          )?.[1];
+    const asset = assetId
+      ? await scopedDb.generatedAssets.getById(assetId)
+      : null;
+    if (!asset) {
+      if ('assetId' in link) {
+        throw new ValidationError(
+          'A clip this one was made from is gone, so it cannot be checked'
+        );
       }
-      next.push(...stringList(asset.input.referenceVideos));
-      const source = asset.input.sourceVideoUrl;
-      if (typeof source === 'string') next.push(source);
+      // Not a Studio clip of this team: it needs its own ledger row.
+      await requireUploadRights(scopedDb, [link.url]);
+      continue;
     }
-    queue = next;
+    for (const url of stringList(asset.input.referenceVideos)) {
+      queue.push({ url });
+    }
+    const sourceId = asset.input.sourceAssetId;
+    if (typeof sourceId === 'string') queue.push({ assetId: sourceId });
   }
 }
 
@@ -340,7 +347,9 @@ export async function createStudioAssets(
     }
     await requireStudioClipChain(
       scopedDb,
-      input.referenceVideos.filter((url) => !needsLikenessCheck(url))
+      input.referenceVideos
+        .filter((url) => !needsLikenessCheck(url))
+        .map((url) => ({ url }))
     );
   }
   const noPersonImages: string[] = [];
