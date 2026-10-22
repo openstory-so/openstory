@@ -207,9 +207,10 @@ function stringList(value: unknown): string[] {
 }
 
 /**
- * A clip Studio made is a reference only if every uploaded clip behind it
- * passes the gate. Clips made before #1930 took uploads unchecked, and a
- * reference clip is registered in Ark's portrait library.
+ * A clip Studio made is a reference only if every clip behind it passes;
+ * any other clip must pass the gate itself. Clips made before #1930 took
+ * uploads unchecked, and a reference clip is registered in Ark's portrait
+ * library.
  */
 async function requireStudioClipChain(
   scopedDb: ScopedDb,
@@ -225,12 +226,15 @@ async function requireStudioClipChain(
       const assetId = r2KeyFromUrl(url)?.match(
         new RegExp(`^teams/${scopedDb.teamId}/studio/([^/]+)/`)
       )?.[1];
-      if (!assetId) continue;
-      const asset = await scopedDb.generatedAssets.getById(assetId);
-      if (!asset) continue;
-      const clips = stringList(asset.input.referenceVideos);
-      await requireUploadRights(scopedDb, clips.filter(needsLikenessCheck));
-      next.push(...clips.filter((clip) => !needsLikenessCheck(clip)));
+      const asset = assetId
+        ? await scopedDb.generatedAssets.getById(assetId)
+        : null;
+      // Not a Studio clip of this team: it needs its own ledger row.
+      if (!asset) {
+        await requireUploadRights(scopedDb, [url]);
+        continue;
+      }
+      next.push(...stringList(asset.input.referenceVideos));
       const source = asset.input.sourceVideoUrl;
       if (typeof source === 'string') next.push(source);
     }
