@@ -1043,7 +1043,12 @@ export function calculateMotionMetadata(
         : undefined;
   const cost = estimateFalCost(
     endpointId,
-    { durationSeconds: validatedDuration, resolution },
+    {
+      request: input,
+      usage: { duration: validatedDuration },
+      durationSeconds: validatedDuration,
+      resolution,
+    },
     pricing
   );
 

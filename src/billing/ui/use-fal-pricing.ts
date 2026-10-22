@@ -11,8 +11,23 @@ import {
   getCatalogFalPricingFn,
   type CatalogFalPricingMap,
 } from '@/billing/pricing.fn';
+import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
 import { micros } from '@/billing/money';
+
+function parseRateCard(json: string): RateCard | undefined {
+  try {
+    const parsed: unknown = JSON.parse(json);
+    if (parsed === null || typeof parsed !== 'object' || !('price' in parsed)) {
+      return undefined;
+    }
+    // The cron only stores a schema-checked card. The client trusts that copy.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- guarded to an object with price; evaluateCard refuses a bad card
+    return parsed as RateCard;
+  } catch {
+    return undefined;
+  }
+}
 
 const FAL_PRICING_QUERY_KEY = ['fal-catalog-pricing'] as const;
 
@@ -33,6 +48,9 @@ function hydratePricingMap(
           medianUnits: row.observed.medianUnits,
           sampleCount: row.observed.sampleCount,
         },
+      }),
+      ...(row.rateCardJson && {
+        rateCard: parseRateCard(row.rateCardJson),
       }),
     };
   }

@@ -6,6 +6,7 @@
  * charges on the next refresh. Cached per isolate for a few minutes.
  */
 
+import type { RateCard } from '@modelschemas/rate-card/evaluator';
 import { getDb } from '#db-client';
 import { isBytePlusConfigured } from '@/models/server/byteplus-config';
 import { BYTEPLUS_RATE_CARD } from '@/billing/byteplus-pricing';
@@ -43,6 +44,11 @@ export type EffectiveFalPricing = {
    * `MIN_OBSERVED_SAMPLES` before trusting the median.
    */
   observed?: ObservedUnits;
+  /**
+   * Stored modelschemas card. Pre-flight only — absent until the daily
+   * refresh has fetched one for this endpoint.
+   */
+  rateCard?: RateCard;
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -90,6 +96,7 @@ export function buildFalPricingMap(
           sampleCount: row.observedSampleCount,
         } satisfies ObservedUnits,
       }),
+      ...(row.rateCard ? { rateCard: row.rateCard } : {}),
     };
   }
   for (const endpointId of duplicates) {
@@ -193,6 +200,9 @@ function applyUnverifiedSiblingRates(
       ...((targetRate?.observed ?? sourceRate.observed)
         ? { observed: targetRate?.observed ?? sourceRate.observed }
         : {}),
+      // A sibling's card is a different endpoint's price. Keep only a card
+      // stored for this id.
+      ...(targetRate?.rateCard ? { rateCard: targetRate.rateCard } : {}),
     };
   }
 }

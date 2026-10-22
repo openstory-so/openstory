@@ -12,6 +12,8 @@
  *    preserves the stored value rather than nulling it.
  * 3. `model_usage_observations` — median units per image from our own
  *    generations, the preferred estimation signal.
+ * 4. modelschemas rate cards for endpoints we use (#1605). A missing card
+ *    or a failed fetch leaves the stored card in place.
  *
  * Also appends `model_pricing_history` rows on price changes (and first
  * sight). Billing reads these prices, so a fal price move reaches real
@@ -32,6 +34,7 @@ import {
   fetchFalTypicalUnits,
   fetchFalUnitPrices,
 } from './fal-pricing-fetch';
+import { fetchFalRateCards } from './fetch-rate-cards';
 import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   FAL_UNVERIFIED_SIBLINGS,
@@ -592,6 +595,16 @@ export async function refreshFalPricing(
     apiKey,
     usedPrices
   );
+  // Same endpoint set as the historical estimate. A miss keeps yesterday's
+  // card; the gate must not call modelschemas itself.
+  const rateCards = await fetchFalRateCards(
+    usedPrices.map((p) => p.endpointId)
+  );
+  const storedCardByEndpoint = new Map(
+    existing.flatMap((row) =>
+      row.rateCard ? [[row.endpointId, row.rateCard] as const] : []
+    )
+  );
 
   // A broad historical-fetch failure is no reason to discard the live unit
   // prices (which drive every real charge) or the observed medians (which
@@ -635,6 +648,10 @@ export async function refreshFalPricing(
       typicalUnitsPerCall: typical,
       observedMedianUnits: obs?.medianUnits ?? null,
       observedSampleCount: obs?.sampleCount ?? 0,
+      rateCard:
+        rateCards.get(p.endpointId) ??
+        storedCardByEndpoint.get(p.endpointId) ??
+        null,
       fetchedAt: now,
       updatedAt: now,
     };
@@ -686,6 +703,7 @@ export async function refreshFalPricing(
           typicalUnitsPerCall: sql`excluded.typical_units_per_call`,
           observedMedianUnits: sql`excluded.observed_median_units`,
           observedSampleCount: sql`excluded.observed_sample_count`,
+          rateCard: sql`excluded.rate_card`,
           fetchedAt: sql`excluded.fetched_at`,
           updatedAt: sql`excluded.updated_at`,
         },

@@ -175,9 +175,23 @@ describe('reconcileFalBilling', () => {
   });
 
   test('reports drift when the charge disagrees with the billed cost', async () => {
-    await db
-      .insert(modelPricing)
-      .values(pricingRow({ unit: 'units', unitPriceMicros: 10_000 }));
+    await db.insert(modelPricing).values(
+      pricingRow({
+        unit: 'units',
+        unitPriceMicros: 10_000,
+        rateCard: {
+          inputs: {},
+          tables: {},
+          price: 1,
+          examples: [],
+          source: {
+            url: 'https://example.test/card',
+            hash: 'drift-hash',
+            extractedAt: '2026-10-22T00:00:00.000Z',
+          },
+        },
+      })
+    );
     // We charged $0.00119 (the old wrong rate); fal billed $0.07.
     await insertUsageTx({ requestId: 'req-1', costMicros: 1_190 });
     const { reconcileFalBilling } = await load([event()]);
@@ -191,6 +205,7 @@ describe('reconcileFalBilling', () => {
       requestId: 'req-1',
       chargedMicros: 1_190,
       billedMicros: 70_000,
+      rateCardHash: 'drift-hash',
     });
   });
 

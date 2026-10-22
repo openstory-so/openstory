@@ -246,6 +246,8 @@ describe('refreshFalPricing', () => {
     modelsCatalog?: string[];
     /** Endpoints whose price fetch errored. */
     priceFailures?: string[];
+    /** Rate cards the modelschemas fetch returns, keyed by endpoint id. */
+    cards?: Map<string, unknown>;
     /** Usage-API billed rates (the overlay source). */
     billed?: {
       endpointId: string;
@@ -266,6 +268,9 @@ describe('refreshFalPricing', () => {
       ...(await vi.importActual('@/models/fal-endpoints')),
       getFalEndpointIds: () =>
         opts.used ?? opts.prices.map((p) => p.endpointId),
+    }));
+    vi.doMock('./fetch-rate-cards', () => ({
+      fetchFalRateCards: () => Promise.resolve(opts.cards ?? new Map()),
     }));
     vi.doMock('./fal-pricing-fetch', () => ({
       fetchFalCatalogIds: () =>
@@ -313,6 +318,46 @@ describe('refreshFalPricing', () => {
     await db.delete(modelPricingHistory);
     await db.delete(modelUsageObservations);
     vi.resetAllMocks();
+  });
+
+  test('stores a fetched rate card and keeps a stored card when the fetch misses', async () => {
+    const stored = {
+      inputs: {},
+      tables: {},
+      price: 0.1,
+      examples: [],
+      source: {
+        url: 'https://example.test/stored',
+        hash: 'stored-hash',
+        extractedAt: '2026-10-21T00:00:00.000Z',
+      },
+    };
+    const fetched = {
+      ...stored,
+      price: 0.2,
+      source: { ...stored.source, hash: 'fetched-hash' },
+    };
+    await db
+      .insert(modelPricing)
+      .values([
+        seedRow({ endpointId: 'fal-ai/flux-2', rateCard: stored }),
+        seedRow({ endpointId: 'fal-ai/a', rateCard: stored }),
+      ]);
+    const { refreshFalPricing } = await load({
+      prices: fivePrices,
+      cards: new Map([['fal-ai/flux-2', fetched]]),
+    });
+
+    await refreshFalPricing();
+
+    const rows = await db.select().from(modelPricing);
+    const byId = new Map(rows.map((row) => [row.endpointId, row.rateCard]));
+    expect(byId.get('fal-ai/flux-2')).toMatchObject({
+      source: { hash: 'fetched-hash' },
+    });
+    expect(byId.get('fal-ai/a')).toMatchObject({
+      source: { hash: 'stored-hash' },
+    });
   });
 
   test('aborts on an empty price list instead of emptying the table', async () => {

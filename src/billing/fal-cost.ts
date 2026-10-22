@@ -7,15 +7,22 @@
  * audio, duration, etc. in the unit count.
  *
  * `estimateFalCost` predicts a cost BEFORE a generation runs, for the
- * pre-flight credit gate. Preference order for the unit count (#1069):
- * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then fal's
- * historical estimate, then a billed-units fallback for endpoints whose
- * "seconds" unit is not 1:1 with duration (H3 Max, #1382), then **null**
- * ("unknown") — never a fabricated compute-seconds default or an advertised
- * USD against a $1 catalog stub (Lite). Callers gate conservatively /
- * display nothing for null.
+ * pre-flight credit gate. Preference order (#1605, updating #1069):
+ * our observed median (`MIN_OBSERVED_SAMPLES`+ generations), then the
+ * stored modelschemas rate card evaluated against the request we are about
+ * to send, then fal's historical typical units (and the unit formula for
+ * endpoints that have no card yet), then **null**. A card that refuses
+ * returns null — it does not fall through to a sibling price or a $1 stub.
+ * Billing never reads the card. Callers gate conservatively / display
+ * nothing for null.
  */
 
+import {
+  cardParams,
+  evaluateCard,
+  RateCardError,
+  type RateCard,
+} from '@modelschemas/rate-card/evaluator';
 // Type-only: the live pricing reader is server-only (D1). `falCostFromUnits`
 // (the billing half) lives in `@/billing/server/fal-cost-billing`.
 import type { EffectiveFalPricing } from '@/billing/server/fal-pricing-live';
@@ -23,7 +30,7 @@ import {
   FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP,
   TYPICAL_VIDEO_CLIP_SECONDS,
 } from './fal-typical-units';
-import { type Microdollars, multiplyMicros } from './money';
+import { type Microdollars, multiplyMicros, usdToMicros } from './money';
 import { getLogger } from '@/platform/logger';
 
 const logger = getLogger(['openstory', 'ai', 'fal-cost']);
@@ -60,6 +67,18 @@ const DEFAULT_TOKEN_RESOLUTION = '720p';
 // ============================================================================
 
 export type FalCostEstimateParams = {
+  /**
+   * The request body we are about to send, or the levers a pre-flight gate
+   * already knows (`resolution`, `num_images`). Request-bound card inputs
+   * read this.
+   */
+  request?: object;
+  /**
+   * Usage-bound levers known before the call (a video `duration` when the
+   * card binds it as usage). Keys the card does not read are dropped.
+   */
+  usage?: Record<string, unknown>;
+  /** Formula fallback when no card is stored. */
   numImages?: number;
   durationSeconds?: number;
   widthPx?: number;
@@ -195,11 +214,103 @@ function predictedSecondUnits(
 }
 
 /**
+ * Put each known lever where this card reads it. A usage key the card does
+ * not read would throw `unknown-usage-key` and look like a refusal. A
+ * request key it does not read is ignored by the evaluator.
+ */
+function inputsForCard(
+  card: RateCard,
+  request: Record<string, unknown>,
+  usage: Record<string, unknown>
+): { request: Record<string, unknown>; usage: Record<string, unknown> } {
+  const bound = cardParams(card);
+  const placedUsage: Record<string, unknown> = {};
+  for (const key of bound.usage) {
+    if (Object.prototype.hasOwnProperty.call(usage, key)) {
+      placedUsage[key] = usage[key];
+    } else if (Object.prototype.hasOwnProperty.call(request, key)) {
+      placedUsage[key] = request[key];
+    }
+  }
+  const placedRequest = { ...request };
+  for (const key of bound.request) {
+    if (
+      !Object.prototype.hasOwnProperty.call(placedRequest, key) &&
+      Object.prototype.hasOwnProperty.call(usage, key)
+    ) {
+      placedRequest[key] = usage[key];
+    }
+  }
+  return { request: placedRequest, usage: placedUsage };
+}
+
+function plainRecord(value: object | undefined): Record<string, unknown> {
+  if (!value) return {};
+  return { ...value };
+}
+
+/**
+ * Levers the gate knows, spelled so a card can read them, without
+ * overwriting a field already on the built request.
+ */
+function knownLevers(params: FalCostEstimateParams): {
+  request: Record<string, unknown>;
+  usage: Record<string, unknown>;
+} {
+  const request = plainRecord(params.request);
+  const usage = { ...params.usage };
+  if (params.resolution != null && request.resolution == null) {
+    request.resolution = params.resolution;
+  }
+  if (params.numImages != null && request.num_images == null) {
+    request.num_images = params.numImages;
+  }
+  if (
+    params.durationSeconds != null &&
+    usage.duration == null &&
+    request.duration == null
+  ) {
+    usage.duration = params.durationSeconds;
+  }
+  return { request, usage };
+}
+
+/**
+ * Evaluate the stored card. `null` is a refusal (warn, do not fall through).
+ */
+function estimateFromCard(
+  endpointId: string,
+  card: RateCard,
+  params: FalCostEstimateParams
+): Microdollars | null {
+  const known = knownLevers(params);
+  const inputs = inputsForCard(card, known.request, known.usage);
+  try {
+    const { amount, currency } = evaluateCard(card, inputs);
+    if (currency !== 'USD' || !(amount > 0)) {
+      logger.warn(
+        `Rate card for ${endpointId} refused a price — estimate unknown`,
+        { endpointId, currency, amount }
+      );
+      return null;
+    }
+    return usdToMicros(amount);
+  } catch (err) {
+    const code = err instanceof RateCardError ? err.code : undefined;
+    logger.warn(
+      `Rate card for ${endpointId} refused a price — estimate unknown`,
+      { endpointId, code, err }
+    );
+    return null;
+  }
+}
+
+/**
  * Rough pre-flight cost estimate for the credit gate. Returns **null when no
- * honest estimate exists** — unknown endpoint, or a per-call endpoint with no
- * unit-count signal yet. `pricingMap` is required so a call site cannot
- * silently estimate on stale data: pass `getEffectiveFalPricing()` on server
- * paths, or an explicit fixture in tests.
+ * honest estimate exists** — unknown endpoint, a card that refuses, or a
+ * per-call endpoint with no unit-count signal yet. `pricingMap` is required
+ * so a call site cannot silently estimate on stale data: pass
+ * `getEffectiveFalPricing()` on server paths, or an explicit fixture in tests.
  */
 export function estimateFalCost(
   endpointId: string,
@@ -210,6 +321,12 @@ export function estimateFalCost(
   if (!pricing) {
     logger.error(`No fal pricing data for endpoint: ${endpointId}`);
     return null;
+  }
+
+  // Observed median outranks the card. A card with no median is the
+  // estimate; a refusal stays null rather than borrowing another price.
+  if (pricing.rateCard && trustedObservedUnits(pricing) == null) {
+    return estimateFromCard(endpointId, pricing.rateCard, params);
   }
 
   const numImages = params.numImages ?? 1;

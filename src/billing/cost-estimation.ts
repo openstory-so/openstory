@@ -125,7 +125,7 @@ export function gateEstimate(
   const key = `${context.model}:${context.operation}`;
   if (!reportedUnpriced.has(key)) {
     reportedUnpriced.add(key);
-    logger.error(
+    logger.warn(
       `No pricing signal for ${context.model} — gating ${context.operation} on the unknown-estimate floor`,
       {
         model: context.model,

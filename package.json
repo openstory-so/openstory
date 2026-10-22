@@ -117,6 +117,7 @@
     "@logtape/logtape": "^2.4.0",
     "@logtape/redaction": "^2.4.0",
     "@modelcontextprotocol/server": "2.3.1",
+    "@modelschemas/rate-card": "^0.2.0",
     "@openrouter/sdk": "0.13.20",
     "@openstory/stitch": "workspace:*",
     "@opentelemetry/api": "^1.9.1",
