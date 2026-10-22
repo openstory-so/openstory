@@ -86,41 +86,48 @@ const whoami = toolDefinition({
   };
 });
 
+/**
+ * Every tool, in registration order. The MCP server serves this list and the
+ * in-app assistant (#2155) runs the same definitions through `chat()`, so a
+ * tool added here is in both with no second copy.
+ */
+export const MCP_TOOLS = [
+  whoami,
+  listSequences,
+  getSequence,
+  getSequenceStatus,
+  listScenes,
+  getScene,
+  listShots,
+  getShot,
+  getShotFrames,
+  getSequenceContactSheet,
+  ...castReadTools,
+  ...productionReadTools,
+  ...contextReadTools,
+  ...libraryReadTools,
+  updateSceneTool,
+  ...structureEditTools,
+  // After every other tool has registered, so the catalog includes them.
+  createApplySequenceEdits(),
+  ...shotContentTools,
+  ...castMusicTools,
+  ...generationUploadTools,
+  ...castAudioGenerationTools,
+  ...studioTools,
+  planGenerationTool,
+  executeGenerationTool,
+  getOperationStatusTool,
+  retryFailedWorkTool,
+  planExportTool,
+  startExportTool,
+  ...stitchTools,
+];
+
 export const mcpServer = createMCPServer({
   name: MCP_SERVER_NAME,
   version: MCP_SERVER_VERSION,
-  tools: [
-    whoami,
-    listSequences,
-    getSequence,
-    getSequenceStatus,
-    listScenes,
-    getScene,
-    listShots,
-    getShot,
-    getShotFrames,
-    getSequenceContactSheet,
-    ...castReadTools,
-    ...productionReadTools,
-    ...contextReadTools,
-    ...libraryReadTools,
-    updateSceneTool,
-    ...structureEditTools,
-    // After every other tool has registered, so the catalog includes them.
-    createApplySequenceEdits(),
-    ...shotContentTools,
-    ...castMusicTools,
-    ...generationUploadTools,
-    ...castAudioGenerationTools,
-    ...studioTools,
-    planGenerationTool,
-    executeGenerationTool,
-    getOperationStatusTool,
-    retryFailedWorkTool,
-    planExportTool,
-    startExportTool,
-    ...stitchTools,
-  ],
+  tools: MCP_TOOLS,
   // Advertises the resources capability; `resources/*` requests never reach
   // these reads (see resources.ts).
   resources: MCP_RESOURCE_TEMPLATES.map(({ name, uriTemplate }) =>
