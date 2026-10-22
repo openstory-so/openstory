@@ -321,8 +321,8 @@ drops the link.
 
 A team-character edit, or a sheet, voice or bible started with no sequence
 (`sequenceId` null, Characters page, #2017), writes no sequence event and is
-not fanned out to every sequence that casts the character. Library talent and
-location claims are not sequence-scoped. There is no team-level log.
+not fanned out to every sequence that casts the character. Location claims
+are not sequence-scoped. There is no team-level log.
 
 ## Backfill & migration safety
 

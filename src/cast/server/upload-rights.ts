@@ -16,7 +16,7 @@
  *  - {@link carryUploadRights} re-keys the row when a finalize moves the
  *    object, so the library URL is covered by the same evidence.
  *
- * `depictsRealPerson` on a talent row is derived from this ledger, never taken
+ * `depictsRealPerson` on a character is derived from this ledger, never taken
  * off the client.
  */
 

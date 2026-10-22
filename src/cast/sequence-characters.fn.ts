@@ -80,7 +80,7 @@ export const getCharacterFn = createServerFn({ method: 'GET' })
   .middleware([castAccessMiddleware])
   .validator(zodValidator(castCharacterInput))
   .handler(async ({ context, data }): Promise<CharacterDetail | null> => {
-    const character = await context.scopedDb.characters.getWithTalent(
+    const character = await context.scopedDb.characters.getCastOrCurrent(
       context.sequence?.id ?? null,
       data.characterId
     );
@@ -95,7 +95,7 @@ export const getCharacterFn = createServerFn({ method: 'GET' })
 export const getSequenceCharactersFn = createServerFn({ method: 'GET' })
   .middleware([sequenceAccessMiddleware])
   .handler(async ({ context }) => {
-    const characters = await context.scopedDb.characters.listWithTalent(
+    const characters = await context.scopedDb.characters.list(
       context.sequence.id
     );
     // Why `isPerson` cannot be turned off, for the bible form (#2065).

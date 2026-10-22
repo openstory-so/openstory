@@ -8,8 +8,6 @@ any episode changes her in every episode; what that edit stales in each one
 is staleness's job (`prompt-staleness-dependency-graph.md`), never a
 pointer's.
 
-A character's face, sheet and voice live on the character (#2135). Talent tables are dropped by migration `20261018090611` after `20261018090430` copies a talent sheet onto a character that had no sheet of its own and copies a talent voice onto a character with no selected voice. A sheet hash still includes `talentSheetHash` (null when uncast). Sheets stamped while cast to a talent read stale after this change; the image stays until Update redraws it.
-
 This doc covers the tables, every read and write going through the cast
 link, the Characters page, attaching a team character to a sequence and
 what analysis does with the attached cast (#2050), and making and editing a

@@ -130,9 +130,9 @@ describe('buildTalentVisionMessages', () => {
 });
 
 describe('e2e talent-vision aimock fixture', () => {
-  // Recorded by `bun test:e2e:record e2e/tests/talent.spec.ts` against real
-  // uploads of e2e/fixtures/{test-image,character-sheet,creature}.jpg — one
-  // file per prompt. aimock matches userMessage exactly under the request
+  // Recorded against real uploads of
+  // e2e/fixtures/{test-image,character-sheet,creature}.jpg — one file per
+  // prompt. aimock matches userMessage exactly under the request
   // transform, so file order never matters.
   const loadFixtures = () =>
     readdirSync(TALENT_VISION_FIXTURE_DIR)
@@ -191,9 +191,8 @@ describe('e2e talent-vision aimock fixture', () => {
     expect(parsed.subjectKind).toBe('other');
   });
 
-  // The untagged prompt is the server's sheet-metadata pass in
-  // create-library-talent.ts, which only runs for a sheet the client already
-  // classified — the robot sheet is the only one the suite uploads.
+  // The untagged prompt is a classification sent with no filename
+  // (`classifyUpload` without one); its recorded answer is the robot sheet.
   it('matches the singular prompt with the sheet-metadata answer', () => {
     const fixtures = loadFixtures();
     const messages = buildTalentVisionMessages([

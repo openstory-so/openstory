@@ -353,13 +353,7 @@ Storyboard freezes the same plan a Continue click uses and spawns the same
 just created. The loader ignores this parent run's processing banner, while
 retaining actual artifact claims. Frozen stop-at, switches and model choices
 remain authoritative. The reservation grows from this materialized plan before
-rendering. A character's face, sheet and voice live on the character.
-Migration `20261018090430` copies a talent sheet onto a character that had
-no sheet of its own and copies a talent voice onto a character with no
-selected voice; `20261018090611` drops the talent tables. A sheet hash
-still includes `talentSheetHash` (null when uncast). Sheets stamped while
-cast to a talent read stale after that drop; the image stays until Update
-redraws it. Explicit regeneration still renders the edit.
+rendering. Explicit regeneration still renders the edit.
 A look's sheet is the character's, shared by every sequence that casts it
 (#2017), so a sequence that casts a character with a finished sheet owes
 none. Voice-only cast never owes a sheet.

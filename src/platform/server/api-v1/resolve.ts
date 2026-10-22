@@ -111,8 +111,9 @@ export async function resolveStyle(
  * inline create objects — into the team characters to cast into the new
  * sequence (`castCharacterIds`). A string names one of the team's characters,
  * by id then by name; two of that name is a conflict that asks for the id.
- * An inline create whose name a team character (or an earlier create in this
- * list) has reuses it. New names are delegated to `deps.createCharacter`.
+ * An inline create whose name a team character already has is a conflict; a
+ * repeat of an earlier create in this list reuses it. New names are delegated
+ * to `deps.createCharacter`.
  */
 export async function resolveCharacterIds(
   deps: CharacterResolveDeps,
@@ -148,15 +149,17 @@ export async function resolveCharacterIds(
   const created = new Map<string, string>();
   for (const create of creates) {
     const slug = slugify(create.name);
-    const existingId =
-      created.get(slug) ??
-      named(
-        create.name,
-        team.filter((c) => slugify(c.name) === slug)
-      );
-    if (existingId) {
-      ids.push(existingId);
+    const earlier = created.get(slug);
+    if (earlier) {
+      ids.push(earlier);
       continue;
+    }
+    const taken = team.filter((c) => slugify(c.name) === slug);
+    if (taken.length > 0) {
+      // Reusing it would drop this create's description and person flag.
+      throw new ConflictError(
+        `The team already has a character named "${create.name}". Pass its name or id as a string to cast it: ${taken.map((c) => c.id).join(', ')}.`
+      );
     }
     const character = await deps.createCharacter(create);
     ids.push(character.id);

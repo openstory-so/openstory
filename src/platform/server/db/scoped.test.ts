@@ -119,14 +119,14 @@ vi.doMock('@/platform/server/db/scoped/admin', () => ({
 }));
 
 const mockCharactersGetById = vi.fn();
-const mockCharactersListWithTalent = vi.fn();
+const mockCharactersList = vi.fn();
 const mockCharactersListWithSheets = vi.fn();
 const mockCharactersGetShotIdsForCharacter = vi.fn();
 
 vi.doMock('@/cast/server/db/characters', () => ({
   createCharactersMethods: vi.fn(() => ({
     getById: mockCharactersGetById,
-    listWithTalent: mockCharactersListWithTalent,
+    list: mockCharactersList,
     listWithSheets: mockCharactersListWithSheets,
     getShotIdsForCharacter: mockCharactersGetShotIdsForCharacter,
   })),
@@ -203,7 +203,7 @@ describe('createScopedDb', () => {
       mockStylesIncrementUsage,
       mockLibraryGetAll,
       mockCharactersGetById,
-      mockCharactersListWithTalent,
+      mockCharactersList,
       mockCharactersListWithSheets,
       mockCharactersGetShotIdsForCharacter,
       mockLocationsGetById,
@@ -354,14 +354,14 @@ describe('createScopedDb', () => {
       expect(result).toEqual(sentinel);
     });
 
-    it('listWithTalent() delegates to sub-module', async () => {
-      const sentinel = [{ id: 'char_01', name: 'Hero', talent: null }];
-      mockCharactersListWithTalent.mockResolvedValue(sentinel);
+    it('list() delegates to sub-module', async () => {
+      const sentinel = [{ id: 'char_01', name: 'Hero' }];
+      mockCharactersList.mockResolvedValue(sentinel);
 
       const db = createScopedDb(TEAM_ID, USER_ID);
-      const result = await db.characters.listWithTalent('seq_01');
+      const result = await db.characters.list('seq_01');
 
-      expect(mockCharactersListWithTalent).toHaveBeenCalledWith('seq_01');
+      expect(mockCharactersList).toHaveBeenCalledWith('seq_01');
       expect(result).toEqual(sentinel);
     });
 

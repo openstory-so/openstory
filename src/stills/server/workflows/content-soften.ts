@@ -189,7 +189,7 @@ async function softenRejectedPrompt(
 type StoredGeneratedImage = {
   url: string;
   path: string;
-  /** Talent sheets mint the row id inside the store step so it survives replay. */
+  /** Sheets mint the row id inside the store step so it survives replay. */
   sheetId?: string;
 };
 

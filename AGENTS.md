@@ -261,7 +261,7 @@ changing the area, and update it in the same PR.**
   edit from any sequence stales the others by derivation. A sheet reads no
   sequence style: the bible's required `rendering` (`renderingFor`,
   `renderingOfStyle` in `src/cast/rendering.ts`) is what it takes from one,
-  and `PHOTOREAL_RENDERING` keeps the prompt the talent fixtures match on. A method takes a
+  and `PHOTOREAL_RENDERING` keeps the prompt the recorded character-sheet fixtures match on. A method takes a
   `sequenceId` only for the link's own fields or the event it writes; a write
   made from no sequence (the Characters page, #2065) passes `null` there and
   writes no event. A sheet or voice run started from no sequence

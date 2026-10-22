@@ -105,6 +105,24 @@ export async function createTestShot(
 }
 
 /**
+ * The team character the full-sequence e2e casts as SCARLETT. No sheet: the
+ * run draws it.
+ */
+export async function createScarlettCharacter(
+  teamId: string
+): Promise<{ id: string; name: string }> {
+  const res = await fetch('http://localhost:3020/api/test/character', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ teamId, preset: 'scarlett' }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to create Scarlett via API: ${res.status}`);
+  }
+  return z.object({ id: z.string(), name: z.string() }).parse(await res.json());
+}
+
+/**
  * Create a test character for a sequence.
  */
 export async function createTestCharacter(

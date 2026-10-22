@@ -3335,7 +3335,7 @@ describe('cast and music edits (#1979)', () => {
     });
 
     // The read the form shows is the same answer.
-    const list = await scopedDb.characters.listWithTalent(sequenceId);
+    const list = await scopedDb.characters.list(sequenceId);
     const locks = await personLocksOf(scopedDb, list);
     const lockOf = (id: string) =>
       locks[list.findIndex((character) => character.id === id)];
@@ -3360,7 +3360,7 @@ describe('cast and music edits (#1979)', () => {
     await expect(
       updateCharacter(scopedDb, actor, sequenceA, photo.id, notPerson)
     ).rejects.toMatchObject({ code: 'CONFLICT', message: uploadedPhoto });
-    const [inA] = await scopedDb.characters.listWithTalent(sequenceA);
+    const [inA] = await scopedDb.characters.list(sequenceA);
     // The sheet is the look's, so the new sequence sees it too.
     expect(inA?.looks.some((look) => look.sheetImageUrl)).toBe(true);
     expect(await personLocksOf(scopedDb, inA ? [inA] : [])).toEqual([

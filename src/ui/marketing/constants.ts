@@ -50,7 +50,7 @@ export const TOP_TIER_FEATURES = [
     image: `https://${VITE_R2_PUBLIC_ASSETS_DOMAIN}/images/marketing/14-fantasy-dragon.webp`,
   },
   {
-    title: 'Cast Your Own Talent & Locations',
+    title: 'Cast Your Own Characters & Locations',
     description:
       'Define your characters and environments once \u2014 age, wardrobe, lighting, architecture. OpenStory maintains consistency across every shot in every sequence.',
     images: [
@@ -95,7 +95,7 @@ export const PROCESS_STEPS = [
     number: '02',
     title: 'Define Your Look',
     description:
-      'Set your visual style, cast your talent, choose your locations. These carry across your entire project.',
+      'Set your visual style, cast your characters, choose your locations. These carry across your entire project.',
   },
   {
     number: '03',

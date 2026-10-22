@@ -1079,7 +1079,7 @@ describe('characters bible CRUD + soft-remove', () => {
     );
 
     expect(await m.list(sequenceId)).toHaveLength(0);
-    expect(await m.listWithTalent(sequenceId)).toHaveLength(0);
+    expect(await m.list(sequenceId)).toHaveLength(0);
     expect(await m.listWithSheets(sequenceId)).toHaveLength(0);
     expect(await m.getNeedingSheets(sequenceId)).toHaveLength(0);
     // Id-addressed reads still reach it (restore, admin).
@@ -1716,7 +1716,7 @@ describe('team characters (#2017)', () => {
     );
     expect(edited).not.toHaveProperty('castId');
 
-    const cast = await chars().getWithTalent(sequenceId, created.id);
+    const cast = await chars().getCastOrCurrent(sequenceId, created.id);
     expect(cast).toMatchObject({
       id: created.id,
       sequenceId,
@@ -1726,7 +1726,7 @@ describe('team characters (#2017)', () => {
       looks: [{ id: created.id, isDefault: true }],
     });
 
-    const own = await chars().getWithTalent(null, created.id);
+    const own = await chars().getCastOrCurrent(null, created.id);
     expect(own).toMatchObject({
       id: created.id,
       age: '30s',
@@ -1742,8 +1742,10 @@ describe('team characters (#2017)', () => {
       .update(characters)
       .set({ deletedAt: new Date() })
       .where(eq(characters.id, created.id));
-    expect(await chars().getWithTalent(null, created.id)).toBeNull();
-    expect(await chars().getWithTalent(sequenceId, created.id)).not.toBeNull();
+    expect(await chars().getCastOrCurrent(null, created.id)).toBeNull();
+    expect(
+      await chars().getCastOrCurrent(sequenceId, created.id)
+    ).not.toBeNull();
   });
 
   it('deleting a sequence keeps only a character another sequence casts', async () => {

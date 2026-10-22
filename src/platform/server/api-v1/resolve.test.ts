@@ -190,16 +190,17 @@ describe('resolveCharacterIds', () => {
     expect(ids).toEqual(['c-ada']);
   });
 
-  it('reuses an existing character by name instead of creating a duplicate', async () => {
+  it('refuses an inline create whose name a team character has, naming its id', async () => {
     const createCharacter = vi.fn();
-    const ids = await resolveCharacterIds(
-      {
-        characters: library([{ id: 'c-ada', name: 'Ada Lovelace' }]),
-        createCharacter,
-      },
-      [{ name: 'Ada Lovelace', isHuman: true }]
-    );
-    expect(ids).toEqual(['c-ada']);
+    await expect(
+      resolveCharacterIds(
+        {
+          characters: library([{ id: 'c-ada', name: 'Ada Lovelace' }]),
+          createCharacter,
+        },
+        [{ name: 'ada lovelace', isHuman: true }]
+      )
+    ).rejects.toThrow(/already has a character named "ada lovelace".*c-ada/);
     expect(createCharacter).not.toHaveBeenCalled();
   });
 

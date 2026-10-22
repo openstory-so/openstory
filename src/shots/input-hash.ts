@@ -271,17 +271,12 @@ export type LegacyStylingByCharacter = Readonly<
 >;
 
 /**
- * What the character-sheet prompt reads from a cast talent (#1785), resolved
- * live by `resolveCastTalent`. `description` is the talent row's own text, not
- * the path-specific prompt wording built from it, so every stamp path hashes
- * what verify recomputes. `sheetImageUrl` / `sheetLook` are the default talent
- * sheet the prompt copies — a promoted variant keeps its sheet's `inputHash`
- * but changes the image.
+ * The old talent channel of the sheet digest (#1785). Every caller passes
+ * null; the shape stays so the legacy digest kinds parse.
  */
 const characterSheetTalentHashFieldsSchema = z.object({
   description: z.string().nullable(),
   sheetImageUrl: z.string().nullable(),
-  /** Required; `null` is "the talent sheet has no look metadata". */
   sheetLook: z
     .object({
       age: z.string().nullable(),
@@ -317,9 +312,11 @@ export type CharacterSheetHashInput = {
    * after the default sheet exists.
    */
   faceSheetVersionId: string | null;
-  /** Required; `null` is "no talent sheet". */
+  /**
+   * `talentSheetHash` and `talent` stay on the digest, always null, so
+   * existing digests still verify.
+   */
   talentSheetHash: string | null;
-  /** Required; `null` is "not cast". */
   talent: CharacterSheetTalentHashFields | null;
   /**
    * The sequence style's digest. Read only by the legacy shapes (a sheet
@@ -383,7 +380,7 @@ function characterSheetHashBody(
       consistencyTag: trim(cb.consistencyTag),
     },
     talentSheetHash: input.talentSheetHash ?? null,
-    // Joined only when cast, so no uncast character's digest moves.
+    // Joined only when set, which no caller does now.
     ...(talent
       ? {
           talent: {
@@ -892,7 +889,7 @@ function sceneMetadata(scene: Scene, includeTitle: boolean) {
 
 /**
  * Current stamp shape. v5 dropped `sceneNumber` from the scene surface.
- * Display labels (`name` on bibles/talent, `title` on scene metadata and
+ * Display labels (`name` on bibles, `title` on scene metadata and
  * music summaries) are also omitted from the stamp. Verify accepts the
  * previous digests via the `*InputHashMatches` helpers until
  * {@link LEGACY_HASH_UNTIL}.

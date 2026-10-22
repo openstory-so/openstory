@@ -27,6 +27,7 @@ import {
 } from '../fixtures/location.fixture';
 import {
   cleanupSequenceById,
+  createScarlettCharacter,
   createTestStyle,
   getTestSequenceShots,
   getTestSequenceStatus,
@@ -125,10 +126,12 @@ testWithUser.describe('Full Sequence Pipeline', () => {
   testWithUser.setTimeout(1_800_000);
 
   let testLocation: TestLocation | null = null;
+  let scarlett: { id: string; name: string } | null = null;
   let styleId: string | null = null;
   let createdSequenceId: string | null = null;
 
   testWithUser.beforeEach(async ({ testUser }) => {
+    scarlett = await createScarlettCharacter(testUser.teamId);
     // Locations belong to the team (#1695), so the one the recorded
     // location match names is made for this test's own team.
     testLocation = await createSunlitLoftLocation(testUser.teamId);
@@ -142,6 +145,7 @@ testWithUser.describe('Full Sequence Pipeline', () => {
     // After the sequence: a location a sequence links to cannot be deleted.
     if (testLocation) await cleanupLocationById(testLocation.id);
     testLocation = null;
+    scarlett = null;
     styleId = null;
     createdSequenceId = null;
   });
@@ -252,7 +256,26 @@ SUPER:  CORAL.  OUT NOW.
         { timeout: t(60_000) }
       );
 
-      // 5. Pick location. Characters come from the script (#2135).
+      // 5. Cast Scarlett, a team character with no sheet yet (#2135): the
+      // run binds the script's SCARLETT to her and draws her sheet.
+      if (!scarlett) throw new Error('scarlett not initialised');
+      const castButton = page.getByRole('button', {
+        name: 'Cast',
+        exact: true,
+      });
+      if (!(await castButton.isVisible())) {
+        await page.getByRole('button', { name: 'References' }).click();
+      }
+      await castButton.click();
+      const castDialog = page.getByRole('dialog');
+      await expect(castDialog).toBeVisible({ timeout: 10_000 });
+      await castDialog.getByRole('button', { name: scarlett.name }).click();
+      await castDialog
+        .getByRole('button', { name: 'Cast 1', exact: true })
+        .click();
+      await expect(castDialog).not.toBeVisible();
+
+      // 6. Pick location.
       await openComposerReference(page);
       const locationDialog = page.getByRole('dialog');
       await expect(locationDialog).toBeVisible({ timeout: 10_000 });

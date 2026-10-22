@@ -1110,7 +1110,7 @@ export function createCharactersMethods(db: Database, teamId: string) {
      * One character, as a sequence casts it or, from no sequence (null), at
      * its current version (#2017). Null when gone.
      */
-    getWithTalent: async (
+    getCastOrCurrent: async (
       sequenceId: string | null,
       id: string
     ): Promise<CharacterWithSheet | CastCharacterWithSheet | null> =>
@@ -1337,12 +1337,6 @@ export function createCharactersMethods(db: Database, teamId: string) {
           asc(characterBibleVersions.createdAt),
           asc(characterBibleVersions.id)
         ),
-
-    /** The sequence's live cast. Kept under the old name until callers move to {@link list}. */
-    listWithTalent: async (
-      sequenceId: string
-    ): Promise<CastCharacterWithSheet[]> =>
-      await selectCharacters(sequenceId, isNull(sequenceCast.removedAt)),
 
     /** These characters as `sequenceId` casts them. */
     getByIds: async (

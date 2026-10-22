@@ -65,16 +65,18 @@ const portraitAttestation = portraitAttestationSchema.optional().meta({
     'Required when an image shows a real, identifiable person (checked server-side): portrait-rights statement version and authorization basis.',
 });
 
-/** Inline request to create a team character and cast it into the sequence. */
+/**
+ * Inline request to create a team character and cast it into the sequence.
+ * Strict: a character has no reference images (#2135), so a client still
+ * sending `referenceImageUrls` gets a 400, not a silent drop.
+ */
 const createCharacterSchema = z
-  .object({
+  .strictObject({
     name: entityName,
     description: entityDescription,
     isHuman: z.boolean().optional().meta({
       description: 'Whether the character is a human (vs creature/object).',
     }),
-    referenceImageUrls,
-    portraitAttestation,
   })
   .meta({ id: 'CreateCharacter' });
 
@@ -96,15 +98,15 @@ const createLocationSchema = z
  * One cast member / location: a **reference** to an existing team character
  * or team location (string = id or name), or an inline **create** request
  * (object). A single list per kind keeps the "some exist, some are new"
- * mental model. Reference images on an inline character are rights-checked;
- * the sequence draws the sheet. They are not stored as a separate library.
+ * mental model. An inline character takes no images; the sequence draws its
+ * sheet.
  */
 const characterRefSchema = z
   .union([z.string().min(1), createCharacterSchema])
   .meta({
     id: 'CharacterRef',
     description:
-      'Existing team character by id or name (string), or an inline create object. The character is cast into the sequence. A name two team characters share is a conflict that asks for the id. Reference images are rights-checked; the sequence draws the sheet.',
+      'Existing team character by id or name (string), or an inline create object. The character is cast into the sequence. A name two team characters share is a conflict that asks for the id. An inline create whose name a team character already has is a conflict too. The sequence draws the sheet.',
   });
 const locationRefSchema = z
   .union([z.string().min(1), createLocationSchema])

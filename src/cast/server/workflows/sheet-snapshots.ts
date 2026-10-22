@@ -169,9 +169,8 @@ function characterBibleFields(
 }
 
 /**
- * Hash the character-sheet workflow payload. `talentSheetHash` and `talent`
- * stay on the digest so an uncast sheet's hash does not move; both are null
- * now that sheets are drawn from the character bible and looks.
+ * Hash the character-sheet workflow payload. The `talentSheetHash` and
+ * `talent` keys stay, always null, so existing digests still verify.
  */
 function characterSheetHashInput(
   input: SheetPayload<CharacterSheetWorkflowInput>

@@ -68,11 +68,12 @@ rather than only asserted in a policy document:
   image, video, or voice of a real identifiable person without their written
   authorization covering AI generation, and place responsibility for holding that
   authorization on the user.
-- **At the point of upload**, attaching reference media to a talent record
-  requires ticking the portrait-rights statement and naming the basis for the
-  authorization. Stored in `upload_attestations` with a SHA-256 of the exact
-  statement text shown, so a 2026 attestation cannot be misread against wording
-  shipped later.
+- **At the point of upload**, every image is classified for a real person on
+  the server (`classifyUpload`, `src/cast/server/upload-rights.ts`). An image
+  that shows one cannot be used until the uploader ticks the portrait-rights
+  statement and names the basis for the authorization. Stored in
+  `upload_attestations` with a SHA-256 of the exact statement text shown, so a
+  2026 attestation cannot be misread against wording shipped later.
 - **Statement text** is versioned and single-sourced in
   `src/platform/compliance/attestations.ts`. Editing a statement in place is
   prohibited (it would invalidate every stored hash); a test pins this.
@@ -111,9 +112,9 @@ IDs or run liveness checks.
    `account_terminated`, recorded in `enforcement_actions` with actor, reason,
    optional expiry, and revocation.
 5. **Enforce** — the gate in `triggerWorkflow` blocks restricted accounts from
-   starting durable work. Talent uploads require a server-recorded warrant
-   (`requireUploadAttestation`) — portrait + basis for humans, asset statement
-   for animated/other — not only the dialog checkbox.
+   starting durable work. Every finalize, create and generate that uses an
+   upload asks `requireUploadRights` first: the ledger must say cleared or
+   signed (portrait + basis), not only the dialog checkbox.
 6. **Notify and appeal** — `ComplianceRestrictionBanner` shows the restriction
    notice and links to `/report`. If `ABUSE_REPORT_NOTIFY_EMAIL` is set, intake
    emails the operator (and fails the request if the send fails). A successful

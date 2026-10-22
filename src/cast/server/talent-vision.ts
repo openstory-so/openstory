@@ -63,6 +63,8 @@ export type TalentVisionResult = TalentMediaAnalysis & {
   usedOwnKey: boolean;
 };
 
+// Recorded e2e fixtures match this prompt text; changing it means
+// re-recording them.
 const SYSTEM_PROMPT = `You are a talent reference analyst for a film/video production tool. You will be shown one or more images stored as library talent — a real person, an illustrated or 3D character, a creature, or similar.
 
 First classify WHAT the subject is. Do NOT default to human.

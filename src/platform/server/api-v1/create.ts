@@ -131,10 +131,6 @@ export const oneShotWaitResultSchema = z
 export type OneShotResult = z.infer<typeof oneShotResultSchema>;
 export type OneShotWaitResult = z.infer<typeof oneShotWaitResultSchema>;
 
-type CharacterCreate = Exclude<
-  NonNullable<ApiCreateSequenceInput['characters']>[number],
-  string
->;
 type LocationCreate = Exclude<
   NonNullable<ApiCreateSequenceInput['locations']>[number],
   string
@@ -199,25 +195,6 @@ async function requireIngestedImageRights(
   }
 }
 
-async function ingestInlineCharacterImages(
-  items: ApiCreateSequenceInput['characters'],
-  teamId: string
-): Promise<Map<CharacterCreate, string[]>> {
-  const map = new Map<CharacterCreate, string[]>();
-  await Promise.all(
-    inlineCreates<CharacterCreate>(items).map(async (item) => {
-      const urls = await ingestReferenceImages(
-        item.referenceImageUrls,
-        STORAGE_BUCKETS.CHARACTERS,
-        teamId,
-        (index) => `Character "${item.name}" reference image #${index + 1}`
-      );
-      map.set(item, urls);
-    })
-  );
-  return map;
-}
-
 async function ingestInlineLocationImages(
   items: ApiCreateSequenceInput['locations'],
   teamId: string
@@ -272,28 +249,17 @@ export async function runOneShotCreate(
     input.enhance === 'always' ||
     (input.enhance === 'auto' && isShortScript(input.script));
 
-  const [
-    style,
-    elementUploads,
-    ingestedCharacters,
-    ingestedLocations,
-    videoDefaults,
-  ] = await Promise.all([
-    // No style (or "auto") is Match script, the app's default (#1213).
-    input.style && input.style !== AUTO_STYLE_ID
-      ? resolveStyle(ctx.scopedDb, input.style)
-      : null,
-    ingestElements(ctx.teamId, input.elements),
-    ingestInlineCharacterImages(input.characters, ctx.teamId),
-    ingestInlineLocationImages(input.locations, ctx.teamId),
-    resolveApiVideoDefaults(ctx.scopedDb),
-  ]);
+  const [style, elementUploads, ingestedLocations, videoDefaults] =
+    await Promise.all([
+      // No style (or "auto") is Match script, the app's default (#1213).
+      input.style && input.style !== AUTO_STYLE_ID
+        ? resolveStyle(ctx.scopedDb, input.style)
+        : null,
+      ingestElements(ctx.teamId, input.elements),
+      ingestInlineLocationImages(input.locations, ctx.teamId),
+      resolveApiVideoDefaults(ctx.scopedDb),
+    ]);
   await requireIngestedImageRights(ctx, [
-    ...inlineCreates<CharacterCreate>(input.characters).map((item) => ({
-      label: `Character "${item.name}"`,
-      urls: ingestedCharacters.get(item) ?? [],
-      attestation: item.portraitAttestation,
-    })),
     ...inlineCreates<LocationCreate>(input.locations).map((item) => ({
       label: `Location "${item.name}"`,
       urls: ingestedLocations.get(item) ?? [],
@@ -340,8 +306,7 @@ export async function runOneShotCreate(
         {
           characters: ctx.scopedDb.characters,
           createCharacter: async (item) => {
-            // Reference images are rights-checked above and not stored on a
-            // library row. The sequence draws the character's sheet.
+            // The sequence draws the character's sheet.
             const character = await createTeamCharacter(
               ctx.scopedDb,
               { userId: ctx.user.id },
@@ -428,7 +393,7 @@ export async function runOneShotCreate(
 
     // Sequence rows exist — now it's safe to bill sheet generation. Failures
     // here must not fail the create: the client already has sequence ids, and
-    // the storyboard wait-for-sheets gate will surface a missing sheet.
+    // the generation plan owes a missing sheet, so the run draws it.
     await Promise.allSettled(
       createdLocationIds.map((locationId) =>
         triggerTeamLocationSheet(ctx.scopedDb, {

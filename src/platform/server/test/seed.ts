@@ -514,6 +514,60 @@ export async function createSunlitLoftTestLocation(teamId: string) {
 }
 
 /**
+ * The team character the full-sequence e2e casts as the script's SCARLETT
+ * (#2135). No sequence and no sheet: the run casts her and draws the sheet.
+ */
+export async function createScarlettTestCharacter(teamId: string) {
+  const db = getDb();
+  const now = new Date();
+  const id = generateId();
+  const name = 'Scarlett';
+  await db.insert(characters).values({
+    id,
+    teamId,
+    legacyName: name,
+    selectedBibleVersionId: id,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(characterLooks).values({
+    id,
+    characterId: id,
+    isDefault: true,
+    sortOrder: 0,
+    selectedLookVersionId: id,
+    sheetStatus: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(characterLookVersions).values({
+    id,
+    lookId: id,
+    name: DEFAULT_LOOK_NAME,
+    clothing:
+      'Black fitted turtleneck, slim black trousers, small gold hoop earrings.',
+    styling: null,
+    source: 'edit',
+    createdAt: now,
+  });
+  await db.insert(characterBibleVersions).values({
+    id,
+    characterId: id,
+    name,
+    age: '22',
+    gender: 'Woman',
+    physicalDescription:
+      'A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes, a sleek dark bob, and bare, full lips ready for colour.',
+    voiceOnly: false,
+    rendering: 'Photoreal live action',
+    isPerson: false,
+    source: 'edit',
+    createdAt: now,
+  });
+  return { id, name };
+}
+
+/**
  * Create a test character for a sequence.
  */
 export async function createTestCharacter(

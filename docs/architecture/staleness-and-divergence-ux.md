@@ -33,7 +33,7 @@ Both are slim, non-modal, sit inline with the artifact they describe, and reuse 
 Props:
 
 - `artifact: 'thumbnail' | 'video' | 'audio' | 'sheet' | 'visual-prompt' | 'motion-prompt' | 'music-prompt'`
-- `entityType: 'shot' | 'character' | 'location' | 'library-location' | 'sequence'` (matches `StalenessEntityType` in `staleness-indicator.tsx` and `realtimeSchema.generation['stale:detected']`). A character's face, sheet and voice live on the character. `talentSheetHash` on a sheet is null when the character was never cast to a talent. Sheets stamped while cast to a talent read stale after migration `20261018090611`; the image stays until Update redraws it. Talent tables are dropped by that migration after `20261018090430` copies a talent sheet onto a character that had no sheet of its own and copies a talent voice onto a character with no selected voice.
+- `entityType: 'shot' | 'character' | 'location' | 'library-location' | 'sequence'` (matches `StalenessEntityType` in `staleness-indicator.tsx` and `realtimeSchema.generation['stale:detected']`).
 - `onRegenerate: () => void`
 - `onDismiss?: () => void` — soft-dismiss for this session only; doesn't change DB state.
 - `density?: 'inline' | 'corner-dot'` — `inline` for detail views, `corner-dot` for cards / lists.

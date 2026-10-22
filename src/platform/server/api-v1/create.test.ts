@@ -258,38 +258,20 @@ describe('runOneShotCreate', () => {
     );
   });
 
-  it('ingests every character reference before insert and casts the team character', async () => {
+  it('makes inline characters team characters and casts them, fetching nothing', async () => {
     const result = await runOneShotCreate(
       {
         ...baseInput,
         characters: [
-          {
-            name: 'Ada',
-            isHuman: true,
-            referenceImageUrls: [
-              'https://cdn.example/ada-1.png',
-              'https://cdn.example/ada-2.png',
-              'https://cdn.example/ada-3.png',
-            ],
-            portraitAttestation,
-          },
-          {
-            name: 'Grace',
-            isHuman: true,
-            referenceImageUrls: [
-              'https://cdn.example/grace-1.png',
-              'https://cdn.example/grace-2.png',
-              'https://cdn.example/grace-3.png',
-            ],
-            portraitAttestation,
-          },
+          { name: 'Ada', isHuman: true },
+          { name: 'Grace', isHuman: true },
         ],
       },
       ctx
     );
 
     expect(result.sequences[0]?.id).toBe('seq-1');
-    expect(globalThis.fetch).toHaveBeenCalledTimes(6);
+    expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(mocks.createTeamCharacter).toHaveBeenCalledTimes(2);
     expect(mocks.createTeamCharacter.mock.calls[0]?.[2]).toEqual({
       name: 'Ada',
@@ -314,7 +296,7 @@ describe('runOneShotCreate', () => {
     expect(characterDelete).not.toHaveBeenCalled();
   });
 
-  it('fails a bad reference before creating a character and names the character plus URL', async () => {
+  it('fails a bad reference before creating a location and names the location plus URL', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: URL | RequestInfo) => {
@@ -324,7 +306,7 @@ describe('runOneShotCreate', () => {
             : typeof input === 'string'
               ? input
               : input.url;
-        if (url.includes('ada-2')) {
+        if (url.includes('pier-2')) {
           return Promise.reject(
             new DOMException('The operation was aborted.', 'TimeoutError')
           );
@@ -337,14 +319,13 @@ describe('runOneShotCreate', () => {
       runOneShotCreate(
         {
           ...baseInput,
-          characters: [
+          locations: [
             {
-              name: 'Ada',
-              isHuman: true,
+              name: 'Pier',
               referenceImageUrls: [
-                'https://cdn.example/ada-1.png',
-                'https://cdn.example/ada-2.png',
-                'https://cdn.example/ada-3.png',
+                'https://cdn.example/pier-1.png',
+                'https://cdn.example/pier-2.png',
+                'https://cdn.example/pier-3.png',
               ],
               portraitAttestation,
             },
@@ -354,15 +335,15 @@ describe('runOneShotCreate', () => {
       )
     ).rejects.toSatisfy((error: unknown) => {
       if (!(error instanceof ValidationError)) return false;
-      expect(error.message).toContain('Character "Ada" reference image #2');
+      expect(error.message).toContain('Location "Pier" reference image #2');
       expect(error.message).toContain('(timeout)');
-      expect(error.message).toContain('https://cdn.example/ada-2.png');
+      expect(error.message).toContain('https://cdn.example/pier-2.png');
       return true;
     });
 
-    expect(mocks.createTeamCharacter).not.toHaveBeenCalled();
+    expect(mocks.createTeamLocation).not.toHaveBeenCalled();
     expect(mocks.createSequences).not.toHaveBeenCalled();
-    expect(characterDelete).not.toHaveBeenCalled();
+    expect(locationDelete).not.toHaveBeenCalled();
   });
 
   it('refuses a real-person reference with no portraitAttestation before any insert (#1581)', async () => {
@@ -394,10 +375,10 @@ describe('runOneShotCreate', () => {
     await runOneShotCreate(
       {
         ...baseInput,
-        characters: [
+        locations: [
           {
-            name: 'Ada',
-            referenceImageUrls: ['https://cdn.example/ada-1.png'],
+            name: 'Pier',
+            referenceImageUrls: ['https://cdn.example/pier-1.png'],
             portraitAttestation,
           },
         ],
@@ -409,14 +390,14 @@ describe('runOneShotCreate', () => {
       expect.anything(),
       [
         expect.objectContaining({
-          url: expect.stringContaining('/r2/characters/team-1/uploads/'),
+          url: expect.stringContaining('/r2/locations/team-1/uploads/'),
           statementVersion: 'portrait-rights-v1',
           authorizationBasis: 'self',
         }),
       ],
       ctx.request
     );
-    expect(mocks.createTeamCharacter).toHaveBeenCalledTimes(1);
+    expect(mocks.createTeamLocation).toHaveBeenCalledTimes(1);
   });
 
   it('makes an inline location a team location and starts its sheet only after the sequence exists (#1695)', async () => {

@@ -111,9 +111,7 @@ shows Take 2 after promoting the second preview, not a generic “Designed
 take” (#1709). A `generatedVoiceId` can be saved once; after create()
 succeeds (or ElevenLabs says it already did / the preview aged out) the
 take is `unusable` and Use this take is hidden — the R2 MP3 stays. Previews cost no slot; a saved voice is an
-**account-wide** ElevenLabs slot. The voice lives on the character. Migration
-`20261018090430` copies a talent voice onto a character with no selected
-voice, and `20261018090611` drops the talent tables. A slot is freed only
+**account-wide** ElevenLabs slot. The voice lives on the character. A slot is freed only
 through `releaseVoiceIfUnreferenced` (`getVoiceReferenceCount` over
 characters' current voice versions; a character holds its voice until it is
 deleted, #2017, so removing it from a sequence or archiving a sequence

@@ -203,11 +203,7 @@ always, any other once a live scene picks it. A look nobody wears gets a
 sheet only when someone asks. A look other than the
 default is drawn from the default look's sheet: the run draws the person
 from that image and changes the costume. A character's face is that default
-sheet. Migration `20261018090430` copies a talent sheet onto a character
-that had no sheet of its own; `20261018090611` drops the talent tables. A
-sheet hash still includes `talentSheetHash` (null when uncast). Sheets
-stamped while cast to a talent read stale after that drop; the image stays
-until Update redraws it.
+sheet.
 
 - **The face** is the default look's selected sheet, whatever its last
   attempt did (`populatedDefaultSheet`). A failed or running re-roll leaves
@@ -264,7 +260,7 @@ location). Reads return it as `sheetPortraitUrl` / `referencePortraitUrl`.
 - **No portrait:** a sheet copied onto a character by `20261018090430` (that
   copy stays free), a library location, an element, a sheet from before
   portraits, and a draw that failed. A failed draw never fails the sheet.
-  Tiles then crop the sheet as before (`talentSquareImageClassName`).
+  Tiles then crop the sheet as before (`sheetSquareImageClassName`).
 - It is charged as its own line ("Sheet portrait"). A hold for the estimate
   is taken before the paid call (its own, not the sheet run's reservation):
   no hold, no call, and the tile crops. A replayed hold that no longer

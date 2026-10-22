@@ -188,7 +188,7 @@ Since #1035 the split runs as **two parallel LLM calls** (sibling `step.do`s via
 
 After scene splitting, two child workflows run **in parallel** via `Promise.all` over `spawnAndAwaitChild(...)`:
 
-Phase 2 matches team locations only. A character's face, sheet and voice live on the character. Talent tables are dropped by migration `20261018090611` after `20261018090430` copies a talent sheet onto a character that had no sheet of its own and copies a talent voice onto a character with no selected voice. A sheet hash still includes `talentSheetHash` (null when uncast). Sheets stamped while cast to a talent read stale after this change; the image stays until Update redraws it.
+Phase 2 matches team locations only.
 
 ```mermaid
 flowchart LR
