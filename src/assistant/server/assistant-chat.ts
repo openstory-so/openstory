@@ -129,12 +129,14 @@ function lastUserText(
 }
 
 /**
- * Bill the turn to the team unless its own key paid for it. One charge per
- * request, after the last model call, from the usage the provider reported.
- * The idempotency key is minted here, never taken from the client: a
- * repeated client run id would otherwise be billed once and run free.
- * TanStack swallows what a terminal hook throws, so a failed charge is
- * logged here or it is lost.
+ * Bill the turn to the team unless its own key paid for it. Each model
+ * iteration is charged as the provider reports its usage, not once at the
+ * end: the run goes on after the browser disconnects, and a run the host
+ * drops before its terminal hook has then already paid for every
+ * iteration that finished. The idempotency key is minted here, never taken
+ * from the client: a repeated client run id would otherwise be billed once
+ * and run free. TanStack swallows what a hook throws, so a failed charge
+ * is logged here or it is lost.
  */
 function billingMiddleware(
   caller: AssistantCaller,
@@ -144,32 +146,33 @@ function billingMiddleware(
   runId: string
 ): ChatMiddleware[] {
   const chargeKey = `assistant:${caller.teamId}:${generateId()}`;
-  let total: TokenUsage | undefined;
-  const charge = async (info?: { usage?: TokenUsage }) => {
+  let iteration = 0;
+  const charge = async (usage: TokenUsage) => {
     if (usedOwnKey) return;
-    const usage = total ?? info?.usage;
+    iteration += 1;
     // Nothing reported means nothing was used (the model never answered).
-    if (!usage || usage.totalTokens === 0) return;
+    if (usage.totalTokens === 0) return;
     const cost = llmCostFromUsage(usage, model, via);
     if (cost <= 0) {
       reportMissingBillingCost({
         source: 'assistant-chat',
         modelId: model,
         teamId: caller.teamId,
-        metadata: { usage, via, runId },
+        metadata: { usage, via, runId, iteration },
       });
       return;
     }
     try {
       await caller.scopedDb.billing.deductCredits(cost, {
         description: `Assistant (${model})`,
-        metadata: { model, runId },
-        idempotencyKey: chargeKey,
+        metadata: { model, runId, iteration },
+        idempotencyKey: `${chargeKey}:${iteration}`,
       });
     } catch (error) {
       logger.error('assistant charge failed', {
         teamId: caller.teamId,
         runId,
+        iteration,
         cost,
         err: toErrorPayload(error),
       });
@@ -179,22 +182,10 @@ function billingMiddleware(
   return [
     {
       name: 'assistant-billing',
-      onUsage: (_ctx, usage) => {
-        // Every model iteration reports; sum tokens, keep the latest cost sum.
-        total = total
-          ? {
-              promptTokens: total.promptTokens + usage.promptTokens,
-              completionTokens: total.completionTokens + usage.completionTokens,
-              totalTokens: total.totalTokens + usage.totalTokens,
-              ...(usage.cost !== undefined || total.cost !== undefined
-                ? { cost: (total.cost ?? 0) + (usage.cost ?? 0) }
-                : {}),
-            }
-          : usage;
-      },
-      onFinish: (_ctx, info) => charge(info),
-      onAbort: () => charge(),
-      onError: () => charge(),
+      onUsage: (_ctx, usage) => charge(usage),
+      // A provider that reports no per-iteration usage reports a total here.
+      onFinish: (_ctx, info) =>
+        iteration === 0 && info.usage ? charge(info.usage) : undefined,
     },
   ];
 }

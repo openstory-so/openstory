@@ -46,9 +46,10 @@ same on both paths. Do not add an assistant-only tool; add an MCP tool.
    assistant store across threads), through `chatModelFor`: a selectable
    analysis model or `DEFAULT_ANALYSIS_MODEL`, swapped for the request's
    country the way a sequence's is. It runs on the team's `resolveLlmKey`.
-   `requireCredits` runs first; a platform key bills the run once at the end
-   with `llmCostFromUsage(usage, model, llmKey.via)`, idempotent on the run
-   id. A team key bills nothing.
+   `requireCredits` runs first; a platform key bills each model iteration
+   as its usage is reported, with `llmCostFromUsage(usage, model,
+llmKey.via)`, under a server-minted key per iteration. A team key bills
+   nothing.
 4. `withPersistence` writes the transcript, the run and any interrupt to
    `assistant_messages` / `assistant_runs` / `assistant_interrupts` through
    the stores in `src/assistant/server/db/assistant.ts`. Each store is built
@@ -79,9 +80,11 @@ that does not exist.
   with `GET ?runId=&offset=-1`, and the log is tailed to the run's end.
 - The run outlives the response: `heldStreamLog` holds the request with
   `waitUntil` until the log closes, so billing and persistence still run
-  after the tab is gone. `waitUntil` is bounded, so a turn that goes on
-  much longer than that after a disconnect is cut off with its log open
-  and its usage uncharged (no terminal hook runs). The next turn closes
+  after the tab is gone. Each model iteration is charged as its usage is
+  reported (idempotency key per iteration), so a run the host drops has
+  already paid for every iteration that finished; only the one in flight
+  is lost. `waitUntil` is bounded, so a turn that goes on much longer than
+  that after a disconnect is cut off with its log open. The next turn closes
   such runs as aborted (`closeOpenRuns`) and seals their logs
   (`sealStreamLog`) so nothing tails them forever. That seal is by status,
   not age: a turn sent from a second tab while the first still streams
