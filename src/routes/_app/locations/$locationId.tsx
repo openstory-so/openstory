@@ -12,6 +12,7 @@ import { EmptyState } from '@/ui/shadcn/empty-state';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeft, MapPin } from 'lucide-react';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { Suspense } from 'react';
 import { z } from 'zod';
 
@@ -70,6 +71,11 @@ function TeamLocationContent({ id }: { id: string }) {
             </Link>
           </Button>
           <h1 className="text-lg font-semibold">{location.name}</h1>
+          <AskAssistantButton
+            context={[
+              { kind: 'location', id: location.id, label: location.name },
+            ]}
+          />
           {!location.usedAnywhere && (
             <DeleteLocationButton
               locationId={location.id}

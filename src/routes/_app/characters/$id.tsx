@@ -14,6 +14,7 @@ import { Skeleton } from '@/ui/shadcn/skeleton';
 import { librarySearchFor } from '@/cast/ui/library-search';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeft, User } from 'lucide-react';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { Suspense } from 'react';
 import { z } from 'zod';
 
@@ -101,6 +102,11 @@ function TeamCharacterContent({ id }: { id: string }) {
             </Link>
           </Button>
           <h1 className="text-lg font-semibold">{character.name}</h1>
+          <AskAssistantButton
+            context={[
+              { kind: 'character', id: character.id, label: character.name },
+            ]}
+          />
           {!character.castAnywhere && (
             <DeleteCharacterButton
               characterId={character.id}

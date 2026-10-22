@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/ui/shadcn/dropdown-menu';
 import { Skeleton } from '@/ui/shadcn/skeleton';
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import type { SceneWithScript } from './use-scenes';
 import type { AspectRatio } from '@/models/aspect-ratios';
 import { cn } from '@/ui/utils';
@@ -283,6 +284,22 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() =>
+                  openAssistant({
+                    context: [
+                      {
+                        kind: 'shot',
+                        id: shot.id,
+                        label: `Shot ${shot.shotNumber ?? 1}`,
+                      },
+                    ],
+                  })
+                }
+              >
+                Ask the assistant
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!onMoveUp} onClick={onMoveUp}>
                 <ArrowUp className="h-4 w-4" />
                 Move up

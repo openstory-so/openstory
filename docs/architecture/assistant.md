@@ -79,6 +79,14 @@ items are chips in the composer; a removed chip stays removed for the
 thread (`dismissedContext` in the store). A page can hand over extra
 context and a prompt with `openAssistant({ context, prompt })`.
 
+Context the URL does not name (the Studio viewer's open asset) is held in
+component state, so the page says so by rendering `AssistantContextItem`
+while it is open; the store's `extraContext` joins the chips and leaves
+on unmount. Entry points: "Ask the assistant" in a shot's menu, on the
+character and location pages, and in the Studio viewer
+(`AskAssistantButton`). The empty thread's starters follow the context
+kinds (`suggestionsFor` in `app-layout.tsx`).
+
 ## Shell
 
 `AssistantPanel` is mounted once in `AppLayout`, right of the page on

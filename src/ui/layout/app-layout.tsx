@@ -25,6 +25,13 @@ interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
 
 /** Starters for an empty assistant thread; the page decides them (#2155). */
 function suggestionsFor(kinds: ReadonlySet<string>): string[] {
+  if (kinds.has('studio_asset')) {
+    return [
+      'Make a variation of this with a wider shot',
+      'Use this as a reference for a new clip',
+      'What prompt made this?',
+    ];
+  }
   if (kinds.has('shot')) {
     return [
       'What is still missing before this shot can render?',

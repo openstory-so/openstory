@@ -26,6 +26,12 @@ export type AssistantState = {
   draft: AssistantDraft | null;
   /** Context chips the user removed for this thread, by `kind:id`. */
   dismissedContext: ReadonlySet<string>;
+  /**
+   * Context a page holds in component state rather than the URL (the
+   * Studio viewer's open asset), keyed by who registered it. The router
+   * cannot see these, so the page says so through `AssistantContextItem`.
+   */
+  extraContext: ReadonlyMap<string, PageContextItem>;
 };
 
 const STORAGE_KEY = 'openstory.assistant';
@@ -56,6 +62,7 @@ const SERVER_STATE: AssistantState = {
   threadId: '',
   draft: null,
   dismissedContext: new Set(),
+  extraContext: new Map(),
 };
 
 let state: AssistantState | null = null;
@@ -119,6 +126,17 @@ export function switchAssistantThread(threadId: string): void {
 
 export function startAssistantThread(): void {
   switchAssistantThread(generateId());
+}
+
+/** A page's component-state context, present while `item` is set. */
+export function setAssistantExtraContext(
+  key: string,
+  item: PageContextItem | null
+): void {
+  const next = new Map(current().extraContext);
+  if (item) next.set(key, item);
+  else next.delete(key);
+  set({ extraContext: next });
 }
 
 export function dismissAssistantContext(item: PageContextItem): void {

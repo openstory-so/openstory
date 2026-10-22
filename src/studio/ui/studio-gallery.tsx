@@ -88,6 +88,9 @@ import {
 } from 'lucide-react';
 import { Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { toast } from 'sonner';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
+import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
+import type { PageContextItem } from '@/assistant/page-context';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
 function useNow(active: boolean) {
@@ -594,6 +597,20 @@ function EditVideoForm({
  * long one grows the card to the dialog's height and then scrolls inside it,
  * so the header and the actions never move.
  */
+/** The open asset as assistant context (#2155): what it is, and its prompt's first words. */
+function studioAssetContext(
+  asset: StudioGalleryAsset,
+  prompt: string
+): PageContextItem {
+  const what = asset.activity === 'video' ? 'Clip' : 'Image';
+  const words = prompt.trim().split(/\s+/).slice(0, 6).join(' ');
+  return {
+    kind: 'studio_asset',
+    id: asset.id,
+    label: words ? `${what} · ${words}` : what,
+  };
+}
+
 export function GenerationDetail({
   asset,
   supportMode,
@@ -714,6 +731,10 @@ export function GenerationDetail({
             />
           )}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <AskAssistantButton
+            size="default"
+            context={[studioAssetContext(asset, prompt)]}
+          />
           <Button
             type="button"
             variant="outline"
@@ -961,6 +982,14 @@ export function StudioGallery({
         }}
       >
         <DialogContent className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+          {openAsset && !supportMode && (
+            <AssistantContextItem
+              item={studioAssetContext(
+                openAsset,
+                readableStudioPrompt(studioPrompt(openAsset))
+              )}
+            />
+          )}
           {openAsset && (
             <GenerationDetail
               asset={openAsset}

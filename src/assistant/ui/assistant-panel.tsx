@@ -184,9 +184,14 @@ const PanelBody: React.FC<AssistantPanelProps & { titleId: string }> = ({
   uploadStub,
   titleId,
 }) => {
-  const { threadId, draft, dismissedContext } = useAssistantState();
+  const { threadId, draft, dismissedContext, extraContext } =
+    useAssistantState();
   const { isAuthenticated } = useAuthGate();
-  const visible = [...pageContext, ...(draft?.context ?? [])].filter(
+  const visible = [
+    ...pageContext,
+    ...extraContext.values(),
+    ...(draft?.context ?? []),
+  ].filter(
     (item, index, all) =>
       !isContextDismissed(item, dismissedContext) &&
       all.findIndex((o) => o.kind === item.kind && o.id === item.id) === index
