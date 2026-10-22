@@ -34,6 +34,11 @@ vi.doMock('@/platform/server/storage/buckets', async (importOriginal) => ({
   toCdnUrl: mockToCdnUrl,
 }));
 
+const mockFalClipFrames = vi.fn();
+vi.doMock('@/cast/server/fal-clip-frames', () => ({
+  falClipFrames: mockFalClipFrames,
+}));
+
 const {
   attestUploads,
   carryUploadRights,
@@ -178,14 +183,37 @@ describe('classifyUpload', () => {
     );
   });
 
-  it('refuses a clip it cannot transform, and records nothing', async () => {
+  it('judges a clip with no public CDN on fal frames (local dev)', async () => {
+    vi.stubEnv('FAL_KEY', 'platform-fal');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const clip = `/r2/talent/${TEAM_ID}/uploads/01CLIP.mov`;
+    const frames = ['https://fal.media/a.jpg', 'https://fal.media/b.jpg'];
+    mockFalClipFrames.mockResolvedValueOnce(frames);
+    verdict('animated');
+
+    const rights = await classifyUpload({
+      scopedDb,
+      userId: USER_ID,
+      url: clip,
+      request,
+    });
+    expect(rights).toEqual({ status: 'cleared' });
+    expect(mockFalClipFrames).toHaveBeenCalledWith(clip, 'platform-fal');
+    expect(mockAnalyze).toHaveBeenCalledWith(
+      expect.objectContaining({ imageUrls: frames })
+    );
+    vi.unstubAllEnvs();
+  });
+
+  it('refuses a clip that is not ours, and records nothing', async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const clip = 'https://example.com/someone.mp4';
 
     await expect(
       classifyUpload({ scopedDb, userId: USER_ID, url: clip, request })
     ).rejects.toThrow('can’t be checked for a real person');
     expect(mockAnalyze).not.toHaveBeenCalled();
+    expect(mockFalClipFrames).not.toHaveBeenCalled();
     expect(await db.select().from(uploadAttestations)).toEqual([]);
   });
 });

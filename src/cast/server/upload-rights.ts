@@ -34,7 +34,8 @@ import {
 } from '@/platform/compliance/attestations';
 import { sha256Hex } from '@/platform/compliance/hash';
 import { AttestationRequiredError, ValidationError } from '@/platform/errors';
-import { toCdnUrl } from '@/platform/server/storage/buckets';
+import { r2KeyFromUrl, toCdnUrl } from '@/platform/server/storage/buckets';
+import { falClipFrames } from '@/cast/server/fal-clip-frames';
 import { videoSpritesheetUrl } from '@/look/cloudflare-video';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadAttestation } from '@/platform/server/db/schema/compliance';
@@ -122,20 +123,26 @@ export async function recordLikenessFinding(
 
 /**
  * What the classifier looks at: the still itself, or for a clip a Cloudflare
- * grid of its frames (#1930). A clip off our zone (local dev's `/r2`, a raw
- * URL elsewhere) cannot be transformed, so it is refused, never waved through.
+ * grid of its frames (#1930). Where Cloudflare cannot reach the clip (no
+ * public CDN: local dev, deploy-button installs) fal pulls three frames
+ * instead. A clip that is not ours is refused, never waved through.
  */
-function classifierImageUrl(url: string): string {
+async function classifierImageUrls(
+  scopedDb: ScopedDb,
+  url: string
+): Promise<string[]> {
   if (elementKindFromFilename(new URL(url, 'http://x').pathname) !== 'video') {
-    return url;
+    return [url];
   }
   const sheet = videoSpritesheetUrl(toCdnUrl(url) ?? url);
-  if (!sheet) {
+  if (sheet) return [sheet];
+  if (r2KeyFromUrl(url) === null) {
     throw new ValidationError(
       'This clip can’t be checked for a real person here. Upload it to OpenStory and try again.'
     );
   }
-  return sheet;
+  const { key } = await scopedDb.apiKeys.resolveKey('fal');
+  return falClipFrames(url, key);
 }
 
 /**
@@ -157,7 +164,7 @@ export async function classifyUpload(opts: {
   const analysis = await analyzeTalentMediaForTeam({
     scopedDb: opts.scopedDb,
     userId: opts.userId,
-    imageUrls: [classifierImageUrl(opts.url)],
+    imageUrls: await classifierImageUrls(opts.scopedDb, opts.url),
     filenames: opts.filename ? [opts.filename] : undefined,
     idempotencyKey: `likeness:${opts.url}`,
   });
