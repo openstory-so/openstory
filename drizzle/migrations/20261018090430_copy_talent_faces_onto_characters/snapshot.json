@@ -1,6 +1,6 @@
 {
-  "id": "90313df2-9249-4c95-81ee-99d0de45d865",
-  "prevIds": ["44917977-d9d5-4338-a37e-39486368ce2e"],
+  "id": "f91dc2d1-3457-41eb-a858-b983df3a0523",
+  "prevIds": ["544379f3-6666-4aec-8132-d46cc16959c4"],
   "version": "7",
   "dialect": "sqlite",
   "ddl": [
@@ -250,6 +250,10 @@
     },
     {
       "name": "shots",
+      "entityType": "tables"
+    },
+    {
+      "name": "stitches",
       "entityType": "tables"
     },
     {
@@ -8128,6 +8132,66 @@
       "generated": null,
       "name": "id",
       "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "team_id",
+      "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "user_id",
+      "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "cut",
+      "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "published_at",
+      "entityType": "columns",
+      "table": "stitches"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
       "table": "styles"
     },
     {
@@ -10974,6 +11038,28 @@
       "tableTo": "teams",
       "columnsTo": ["id"],
       "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stitches_team_id_teams_id_fk",
+      "entityType": "fks",
+      "table": "stitches"
+    },
+    {
+      "columns": ["user_id"],
+      "tableTo": "user",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "RESTRICT",
+      "nameExplicit": false,
+      "name": "fk_stitches_user_id_user_id_fk",
+      "entityType": "fks",
+      "table": "stitches"
+    },
+    {
+      "columns": ["team_id"],
+      "tableTo": "teams",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
       "nameExplicit": false,
       "name": "styles_team_id_teams_id_fk",
@@ -11661,6 +11747,13 @@
       "nameExplicit": false,
       "name": "shots_pk",
       "table": "shots",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "stitches_pk",
+      "table": "stitches",
       "entityType": "pks"
     },
     {
@@ -13894,6 +13987,20 @@
       "name": "uq_shots_scene_shot_number",
       "entityType": "indexes",
       "table": "shots"
+    },
+    {
+      "columns": [
+        {
+          "value": "team_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "idx_stitches_team",
+      "entityType": "indexes",
+      "table": "stitches"
     },
     {
       "columns": [
