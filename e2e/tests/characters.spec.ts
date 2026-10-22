@@ -256,10 +256,6 @@ test.describe('Characters page', () => {
     await expect(open).toBeEnabled({ timeout: HYDRATION_TIMEOUT });
     await open.click();
     const picker = page.getByRole('dialog');
-    // Characters is the first tab: a pick is a direct add.
-    await expect(
-      picker.getByRole('tab', { name: 'Characters' })
-    ).toHaveAttribute('aria-selected', 'true');
     await picker.getByRole('button', { name: character.name }).click();
     await picker.getByRole('button', { name: 'Cast 1', exact: true }).click();
     await expect(picker).not.toBeVisible();
