@@ -141,6 +141,35 @@ describe('message store', () => {
     );
   });
 
+  it('saves an id-less message to the same row every time', async () => {
+    const methods = createAssistantMethods(db, teamId, userId);
+    const threadId = generateId();
+    await methods.ensureThread(threadId, 'Hi');
+    const { messages } = methods.persistence(threadId).stores;
+    const transcript = [
+      { id: 'm1', role: 'user' as const, content: 'Go' },
+      {
+        role: 'assistant' as const,
+        content: '',
+        toolCalls: [
+          {
+            id: 'call_9',
+            type: 'function' as const,
+            function: { name: 'get_shot', arguments: '{}' },
+          },
+        ],
+      },
+      { role: 'tool' as const, toolCallId: 'call_9', content: '{}' },
+      { role: 'assistant' as const, content: 'Done.' },
+    ];
+    await messages.saveThread(threadId, transcript);
+    await messages.saveThread(threadId, transcript);
+    const rows = await db.select().from(assistantMessages);
+    expect(rows.map((r) => r.messageId).sort()).toEqual(
+      ['assistant-call_9', 'at-3', 'm1', 'tool-call_9'].sort()
+    );
+  });
+
   it('drops messages a full replace leaves out', async () => {
     const methods = createAssistantMethods(db, teamId, userId);
     const threadId = generateId();

@@ -6,7 +6,8 @@
  * are written by hand here.
  */
 
-import type { ConnectionAdapter, StreamChunk } from '@tanstack/ai-react';
+import type { StreamChunk } from '@tanstack/ai';
+import type { ConnectionAdapter } from '@tanstack/ai-react';
 
 type ScriptedToolCall = {
   name: string;
@@ -33,6 +34,18 @@ export type ScriptedConnectionOptions = {
   charsPerSecond?: number;
 };
 
+/** An event written by hand; `typed` hands it to the client as a chunk. */
+type RawChunk = Record<string, unknown>;
+
+async function* typed(
+  source: AsyncIterable<RawChunk>
+): AsyncGenerator<StreamChunk> {
+  for await (const chunk of source) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a story harness: the type strings are the AG-UI enum's values, and `@tanstack/ai` (where the enum is re-exported) is server-only in this repo
+    yield chunk as StreamChunk;
+  }
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let counter = 0;
@@ -57,7 +70,7 @@ async function* play(
   signal: AbortSignal | undefined,
   approved: boolean,
   onPause: (at: Cursor) => void
-): AsyncGenerator<StreamChunk> {
+): AsyncGenerator<RawChunk> {
   const stamp = () => ({ timestamp: Date.now() });
   yield { type: 'RUN_STARTED', ...ids, ...stamp() };
   let step = start.step;
@@ -216,16 +229,18 @@ export function scriptedConnection({
       const approved = !JSON.stringify(runContext?.resume ?? []).includes(
         '"approved":false'
       );
-      return play(
-        steps,
-        cursor,
-        ids,
-        charsPerSecond,
-        abortSignal,
-        approved,
-        (at) => {
-          cursor = at;
-        }
+      return typed(
+        play(
+          steps,
+          cursor,
+          ids,
+          charsPerSecond,
+          abortSignal,
+          approved,
+          (at) => {
+            cursor = at;
+          }
+        )
       );
     },
     hydrate: async () => ({ messages: [], activeRun: null, interrupts: null }),

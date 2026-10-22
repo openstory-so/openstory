@@ -76,7 +76,7 @@ export async function readText(file: File): Promise<string> {
 export function messageContent(
   text: string,
   attachments: Attachment[]
-): string | ContentPart[] {
+): string | { content: ContentPart[] } {
   const ready = attachments.filter((a) => a.status === 'ready');
   if (ready.length === 0) return text;
   const lines = [text.trim()];
@@ -108,5 +108,5 @@ export function messageContent(
       }
     }
   }
-  return parts;
+  return { content: parts };
 }

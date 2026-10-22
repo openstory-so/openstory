@@ -134,7 +134,7 @@ export function unwrapMcpResult(result: unknown): unknown {
 
 /** The tool list for one chat run. */
 export function assistantTools(): AnyTool[] {
-  return MCP_TOOLS.map((tool) => {
+  return MCP_TOOLS.map((tool: AnyTool) => {
     const execute = tool.execute;
     // Every MCP tool is a `.server()`; one without a body would sit in the
     // catalog uncallable, so it fails here rather than on the user.

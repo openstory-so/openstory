@@ -26,7 +26,7 @@ import { generateId } from '@/platform/id';
 import { getLogger, toErrorPayload } from '@/platform/logger';
 import { aiObservabilityMiddleware } from '@/platform/server/observability/ai-otel';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { User } from '@/platform/server/db/schema';
+import type { User } from '@/platform/server/auth/config';
 import type { OpenStoryMcpContext } from '@/platform/server/mcp/tool-context';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { ValidationError } from '@/platform/errors';
@@ -100,9 +100,13 @@ function toolContext(caller: AssistantCaller): OpenStoryMcpContext {
 
 /** The first text of the last user message, for a new thread's title. */
 function lastUserText(
-  messages: Array<{ role: string; content: unknown }>
+  messages: ReadonlyArray<{ role: string; content?: unknown; parts?: unknown }>
 ): string {
   const last = [...messages].reverse().find((m) => m.role === 'user');
+  // A UI message carries parts; a model message carries content.
+  if (last && Array.isArray(last.parts)) {
+    return lastUserText([{ role: 'user', content: last.parts }]);
+  }
   if (!last) return '';
   if (typeof last.content === 'string') return last.content;
   if (Array.isArray(last.content)) {
@@ -225,6 +229,16 @@ export async function handleAssistantChat(
   // terminal hook (a closed tab, a killed isolate): a new turn supersedes it.
   await scopedDb.assistant.closeOpenRuns(thread.id);
   const abortController = new AbortController();
+  const middleware: Array<ChatMiddleware<OpenStoryMcpContext>> = [
+    ...aiObservabilityMiddleware({
+      observationName: 'assistant-chat',
+      tags: ['assistant'],
+      userId: caller.user.id,
+      sessionId: thread.id,
+    }),
+    ...billingMiddleware(caller, model, llmKey.via, usedOwnKey, params.runId),
+    withPersistence(scopedDb.assistant.persistence(thread.id)),
+  ];
   const stream = chat({
     adapter: createAdapter(model, llmKey),
     messages: params.messages,
@@ -238,16 +252,7 @@ export async function handleAssistantChat(
     ...(params.resume ? { resume: params.resume } : {}),
     agentLoopStrategy: maxIterations(MAX_TURNS),
     abortController,
-    middleware: [
-      ...aiObservabilityMiddleware({
-        observationName: 'assistant-chat',
-        tags: ['assistant'],
-        userId: caller.user.id,
-        sessionId: thread.id,
-      }),
-      ...billingMiddleware(caller, model, llmKey.via, usedOwnKey, params.runId),
-      withPersistence(scopedDb.assistant.persistence(thread.id)),
-    ],
+    middleware,
   });
   return toServerSentEventsResponse(stream, { abortController });
 }

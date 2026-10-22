@@ -39,7 +39,14 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const chat = useAssistantChat({ threadId, pageContext, connection });
-  const { messages, sendMessage, isLoading, error, stop, interrupts } = chat;
+  const {
+    messages,
+    sendMessage,
+    isLoading,
+    error,
+    stop,
+    addToolApprovalResponse,
+  } = chat;
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: messages.length,
@@ -50,19 +57,14 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
   });
 
   // Bound approvals, by tool call, so the card that asked carries its buttons.
+  // Answered by approval id, which the tool-call part carries: the server
+  // tools are not registered on the client, so the typed `interrupts` list
+  // cannot narrow to them.
   const approvals = {
-    approve: (toolCallId: string) => {
-      const item = interrupts.find(
-        (i) => i.kind === 'tool-approval' && i.toolCallId === toolCallId
-      );
-      if (item?.kind === 'tool-approval') item.resolveInterrupt(true);
-    },
-    deny: (toolCallId: string) => {
-      const item = interrupts.find(
-        (i) => i.kind === 'tool-approval' && i.toolCallId === toolCallId
-      );
-      if (item?.kind === 'tool-approval') item.resolveInterrupt(false);
-    },
+    approve: (approvalId: string) =>
+      void addToolApprovalResponse({ id: approvalId, approved: true }),
+    deny: (approvalId: string) =>
+      void addToolApprovalResponse({ id: approvalId, approved: false }),
   };
 
   const lastId = messages.at(-1)?.id;

@@ -24,11 +24,28 @@ import type {
   RunStore,
 } from '@tanstack/ai-persistence';
 import { and, asc, desc, eq, inArray, type SQL } from 'drizzle-orm';
-import { generateId } from '@/platform/id';
+import type { ModelMessage } from '@tanstack/ai';
 import { NotFoundError } from '@/platform/errors';
 
 const THREAD_LIST_LIMIT = 50;
 const TITLE_MAX = 80;
+
+/**
+ * A stable id for a message the engine saved without one, so the same
+ * message saves to the same row every time: a tool result takes the id its
+ * wire form will carry (`tool-<toolCallId>`, as `uiMessagesToWire` derives
+ * it), an assistant turn that made tool calls takes its first call's id,
+ * anything else its position.
+ */
+function derivedMessageId(message: ModelMessage, position: number): string {
+  if (message.role === 'tool' && message.toolCallId) {
+    return `tool-${message.toolCallId}`;
+  }
+  if (message.role === 'assistant' && message.toolCalls?.[0]?.id) {
+    return `assistant-${message.toolCalls[0].id}`;
+  }
+  return `at-${position}`;
+}
 
 function chunk<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -115,11 +132,7 @@ function createMessageStore(db: Database, threadId: string): MessageStore {
         // merge-by-id finds it instead of appending a copy; anything else
         // gets a ULID. The id is written into the stored message so every
         // later load carries it.
-        const messageId =
-          incoming.id ??
-          (incoming.role === 'tool' && incoming.toolCallId
-            ? `tool-${incoming.toolCallId}`
-            : generateId());
+        const messageId = incoming.id ?? derivedMessageId(incoming, position);
         const message = incoming.id ? incoming : { ...incoming, id: messageId };
         keep.add(messageId);
         const existing = storedById.get(messageId);

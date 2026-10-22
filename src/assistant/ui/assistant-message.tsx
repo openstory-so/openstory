@@ -10,8 +10,41 @@ import { Markdown } from '@tanstack/markdown/react';
 import { cn } from '@/ui/utils';
 import { ToolCallCard } from './tool-call-card';
 
-/** No remote images: a model-written image URL could carry data out. */
-const MARKDOWN_COMPONENTS = { img: () => null };
+/**
+ * A link the model wrote: only http(s), opened in a new tab with the
+ * destination visible next to it, so an injected link cannot pass for the
+ * app's own. Any other scheme renders as text.
+ */
+function ModelLink({
+  href,
+  children,
+}: {
+  href?: string;
+  children?: React.ReactNode;
+}) {
+  let url: URL | null = null;
+  try {
+    url = href ? new URL(href, window.location.origin) : null;
+  } catch {
+    url = null;
+  }
+  if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
+    return <span>{children}</span>;
+  }
+  const own = url.origin === window.location.origin;
+  return (
+    <a href={url.href} target="_blank" rel="noopener noreferrer nofollow">
+      {children}
+      {!own && <span className="text-muted-foreground"> ({url.hostname})</span>}
+    </a>
+  );
+}
+
+/**
+ * No remote images (a model-written image URL could carry data out) and
+ * links through `ModelLink`.
+ */
+const MARKDOWN_COMPONENTS = { img: () => null, a: ModelLink };
 
 export type ApprovalHandlers = {
   approve: (toolCallId: string) => void;
@@ -114,8 +147,10 @@ export const AssistantMessage: React.FC<{
               part={part}
               result={results.get(part.id)}
               estimate={estimate}
-              onApprove={() => approvals.approve(part.id)}
-              onDeny={() => approvals.deny(part.id)}
+              onApprove={() =>
+                part.approval && approvals.approve(part.approval.id)
+              }
+              onDeny={() => part.approval && approvals.deny(part.approval.id)}
             />
           );
         }
