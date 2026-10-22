@@ -18,6 +18,7 @@ import { reconstructChat, withPersistence } from '@tanstack/ai-persistence';
 import { z } from 'zod';
 import { estimateLLMCost } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
+import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
 import { createAdapter } from '@/models/server/create-adapter';
@@ -215,6 +216,12 @@ export async function handleAssistantChat(
   const model = DEFAULT_ANALYSIS_MODEL;
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
   const usedOwnKey = llmKey.source === 'team';
+  // A restricted account may read but not spend (#1180); the request
+  // middleware checked access, this checks generation before any credit.
+  await requireGenerationAllowed({
+    userId: caller.user.id,
+    teamId: caller.teamId,
+  });
   await requireCredits(scopedDb, estimateLLMCost(2), {
     providers: ['openrouter'],
     llmModel: model,
