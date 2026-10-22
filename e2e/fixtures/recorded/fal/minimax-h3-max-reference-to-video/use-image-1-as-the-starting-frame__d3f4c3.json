@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. MANHATTAN CROSSWALK — DAY. day. Natural lighting appropriate to day. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 makes a quick touch-up in the glass.. Favor the tactile lipstick detail while keeping her reflected expression readable.. Camera: precise and brisk handheld drift\n\noverall_soundscape: Cap clicks softly in her hand. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/f785e77bda07bfab9c22f8caedfcff6a1145d4cfe71f59376d0e9bdd46ad1807.mp4",
+            "content_type": "video/mp4",
+            "file_name": "I5cf0tQLDjhAc84B5y2cX_minimax-h3.mp4",
+            "file_size": 5755512
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, featuring short dark bob hair, gold hoop earrings, wearing a black turtleneck and overcoat.\n<Subject 2> is the coral lipstick from <Image 3>, featuring a slim gold-toned tube and a matte coral-colored bullet.\n<Subject 3> is the reflection of the woman in the glass surface from <Image 2>.\n\nsummary:\n[reference generation + audio reuse] The target video shows a woman applying coral lipstick while looking at her reflection in a Manhattan crosswalk.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 3> (appears in [Shot 1]): fully_preserved\n\ndetailed_description:\nThe video is filmed in a high-end, modern-social-first product photography style with tactile, editorial energy. The lighting is natural daylight, bright with slightly warm highlights and lifted shadows for an airy aesthetic. The color palette consists of crisp whites, warm neutrals, and a vibrant pop of coral.\n\n[Shot 1] The scene opens with the starting frame from <Image 1>. <Subject 1> stands at a Manhattan crosswalk during the day, looking into a glass surface. She holds <Subject 2> in her hand, carefully applying the coral lipstick to her lips. <Subject 3> is visible in the glass, showing her focused expression clearly readable as she moves. The camera performs a precise and brisk handheld drift closer to her face.\n\n[Shot 2] At 00:03.000, the shot cuts to a close-up detail shot. The focus shifts to the tactile texture of <Subject 2>. We see the hand of <Subject 1> as she adjusts the lipstick, the matte finish of the coral bullet catching the soft daylight. The background of the neutral-toned city remains a soft, out-of-focus bokeh, emphasizing the material quality of the product against her skin tones.\n\noverall_soundscape:\nThe soft, mechanical click of the lipstick tube rotating and being held, accompanied by the ambient hum of a distant city street and faint traffic.\n\nnon_diegetic_music:\nN/A",
+          "seed": 713588493,
+          "timings": {
+            "inference": 3.6229172850144096
+          }
+        },
+        "status": 200,
+        "billableUnits": 8.2304
+      }
+    }
+  ]
+}

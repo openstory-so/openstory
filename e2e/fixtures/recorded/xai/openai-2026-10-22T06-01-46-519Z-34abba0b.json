@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional 3x3 grid location reference sheet for film production, showing 9 distinct views of the same location in consistent visual style.\n\n[LOCATION]:\nManhattan Crosswalk\nType: Exterior\n\n[VISUAL DESCRIPTION]:\nA busy Manhattan street crossing bordered by shops and pale stone buildings. The broad intersection carries dense pedestrian traffic, with a curb where commuters wait for the signal and a shop window that reflects passersby. Vehicles move through the intersection beside the crossing.\n\n[ARCHITECTURAL STYLE]:\nDense metropolitan streetscape with mixed commercial frontage and urban stone buildings.\n\n[KEY FEATURES]:\nMarked crosswalk, curb, shop window, pale stone façades, traffic lanes, and pedestrian signal.\n\n[LIGHTING]:\nNeutral, even light across all panels. Show the place independently of time of day. Preserve material and surface colours; practical light fixtures are fixed features, not scene lighting.\n\n[ATMOSPHERE]:\nCrowded, brisk, and continually in motion.\n\n[GRID LAYOUT - 3 rows × 3 columns, each panel 16:9 aspect ratio]:\n\nRow 1 - ESTABLISHING SHOTS:\n- Panel 1 (Top-Left): Wide exterior/approach view showing the location in context\n- Panel 2 (Top-Center): Main establishing shot - the primary view of the location\n- Panel 3 (Top-Right): Alternate angle establishing shot\n\nRow 2 - MEDIUM SHOTS:\n- Panel 4 (Middle-Left): Key interior/exterior area view\n- Panel 5 (Middle-Center): Central focal point of the location\n- Panel 6 (Middle-Right): Secondary important area\n\nRow 3 - DETAIL & ATMOSPHERE:\n- Panel 7 (Bottom-Left): Architectural or design details close-up\n- Panel 8 (Bottom-Center): Texture and material details\n- Panel 9 (Bottom-Right): Atmospheric/mood shot capturing the essence\n\n[TECHNICAL SPECIFICATIONS]:\n- All 9 panels must show the SAME location from different angles\n- Maintain absolute visual consistency across all panels (architecture, colors, materials, lighting)\n- Each panel is 16:9 landscape format\n- Cinematic film production quality\n- High resolution with rich detail\n- No people or characters in any frame\n- Clean grid layout with thin dividing lines\n\nStyle: Professional film location reference sheet, production design documentation.\nOutput: Single image containing 3×3 grid of location views.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/2e89f3f3a4f9e3781ae3c476c035d9be4c9681edc676ca950b4b907ff0ef8224.png"
+        }
+      }
+    }
+  ]
+}

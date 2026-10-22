@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — LATE AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-4s): Image 2'S FRIEND applies the colour and checks her grin in the camera screen.. Keep the screen reflection crisp and the rooftop background soft.. Camera: brisk gentle push-in\n\noverall_soundscape: Soft click of the lipstick cap.\n\nShot 2 (4-8s): Image 2 and Image 2'S FRIEND laugh and lean into the same frame.. Hold their shared laugh as the contact sheets flutter and the lipstick catches the light.. Camera: warm and lively handheld drift, then slight push-in\n\noverall_soundscape: Wind lifts the contact sheets; distant train fades.\n\nReference images:\nImage 3: Scarlett's Friend - An adult friend of Scarlett — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/57b324a372f09c1160dda6c7f955874aa85e8f798aa2d4f38b4a5c6ea9ae4828.mp4",
+            "content_type": "video/mp4",
+            "file_name": "YS9FahHiKnCX4Xw9WigN6_minimax-h3.mp4",
+            "file_size": 10303775
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>, with dark hair tied in a bun, wearing a black denim jacket over a white t-shirt.\n<Subject 2> is the woman in <Picture 2>, with short black bobbed hair, wearing a black turtleneck and gold hoop earrings. \n<Subject 3> is the CORAL_LIPSTICK from <Picture 4>, a slim, matte coral-toned lipstick tube.\n\nsummary:\n[keyframe completion + reference generation] The target video starts with <Picture 1>, showing <Subject 1> and <Subject 2> on a downtown rooftop, featuring <Subject 3> as they interact with the product together.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - maintains facial features and clothing throughout.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - maintains bob hairstyle and turtleneck throughout.\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - the coral color and matte finish are consistent.\n<Picture 1> (appears in [Shot 1]): fully_preserved - serves as the initial keyframe.\n\ndetailed_description:\nThe video follows a modern, social-first product photography style with tactile, editorial energy. The lighting is natural and even, reflecting a late afternoon with a palette of #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, and #E8F4E8. The aesthetic is clean and bright with crisp whites and warm skin tones. \n\n[Shot 1] At 00:00.000, the scene begins with <Picture 1>. <Subject 1> and <Subject 2> are on a downtown rooftop. <Subject 1> holds <Subject 3>, applying the coral lipstick to her lips while checking her grin in the digital screen of a professional camera. The reflection on the camera screen is crisp, while the rooftop background with the city skyline is soft and blurred. The camera performs a brisk, gentle push-in toward <Subject 1>. The sound of a soft click of the lipstick cap closing is heard.\n\n[Shot 2] At 00:04.000, the shot cuts to <Subject 1> and <Subject 2> leaning into the same frame together, sharing a genuine laugh. Beside them, a stack of contact sheetsutters in the breeze. The matte surface of <Subject 3> catches the golden afternoon light. The camera moves with a warm, lively handheld drift followed by a slight push-in as they laugh. The sound includes wind lifting the contact sheets and a distant train fading into the background.\n\noverall_soundscape:\nThe ambient sounds of a city rooftop including the soft click of a lipstick cap, the rustling of paper contact sheets in the wind, and the faint, fading hum of a distant train.\n\nnon_diegetic_music:\nN/A",
+          "seed": 208318535,
+          "timings": {
+            "inference": 6.907913521048613
+          }
+        },
+        "status": 200,
+        "billableUnits": 13.760000000000002
+      }
+    }
+  ]
+}

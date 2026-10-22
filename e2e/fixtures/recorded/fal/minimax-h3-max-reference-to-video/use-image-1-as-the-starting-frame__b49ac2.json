@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 tears open the box with her thumbnail and turns the lipstick tube in her palm.. Let the satin finish catch a clean stripe of window light.. Camera: quick, tactile handheld drift, then slight push-in\n\noverall_soundscape: Cardboard tear; soft bathroom room tone. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/50a60db32937bcdc4e43f31b243a078afb735eef5d5fde3d3c487ff6348aac7b.mp4",
+            "content_type": "video/mp4",
+            "file_name": "6zcU_Qk13eGtmZ3vUSlFQ_minimax-h3.mp4",
+            "file_size": 4994619
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 2>, featuring short black bob hair and wearing a black turtleneck and gold hoop earrings.\n<Subject 2> is the pair of hands in <Image 1> with warm skin tones, wearing a black long-sleeved shirt.\n<Subject 3> is the coral lipstick shown in <Image 3>, featuring a slim satin-finish tube and a matching coral bullet.\n\nsummary:\n[reference generation] The target video uses <Image 1> as the starting frame to show a tactile product reveal where a woman opens packaging and inspects a coral lipstick in a sunlit modern bathroom.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 2]): fully_preserved.\n<Subject 2 (appears in [Shot 1], [Shot 2]): fully_preserved.\n<Subject 3 (appears in [Shot 2], [Shot 3]): fully_preserved.\n\ndetailed_description:\nThe video is captured in a modern social-first product photography style with tactile, editorial energy. The lighting is bright, natural morning light, featuring crisp whites and lifted shadows to create an airy atmosphere. The color palette is dominated by neutrals (#FFFFFF, #F0E6D3) with a vibrant pop of coral (#D4536D).\n\n[Shot 1] The video begins with the starting frame from <Image 1>, a close-up of <Subject 2> holding a coral-colored cardboard box over a white marble bathroom sink. The background shows clean white subway tiles and a soft-focus window area. The camera is static.\n\n[Shot 2] At 00:01.000, the shot cuts to a quick, tactile handheld drift as <Subject 2> uses their thumbnail to tear open the top of the cardboard box. The sound of crisp cardboard tearing is sharp and clear. <Subject 1>'s hands reach into the frame, revealing <Subject 3> inside. \n\n[Shot 3] At 00:03.000, the camera performs a slight push-in on <Subject 3> as <Subject 1> turns the lipstick tube in their palm. A clean stripe of window light catches the satin finish of the tube, highlighting its smooth texture and the rich coral color. The movement is fluid and organic, emphasizing the premium material quality of the product.\n\noverall_soundscape:\nThe audio consists of the soft, ambient room tone of a bathroom, the distinct, tactile sound of cardboard tearing, and the subtle slide of the lipstick tube being handled.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1150590288,
+          "timings": {
+            "inference": 3.638639267999679
+          }
+        },
+        "status": 200,
+        "billableUnits": 8.2304
+      }
+    }
+  ]
+}

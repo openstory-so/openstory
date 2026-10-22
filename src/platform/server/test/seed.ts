@@ -557,7 +557,7 @@ export async function createScarlettTestCharacter(teamId: string) {
     age: '22',
     gender: 'Woman',
     physicalDescription:
-      'A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes, a sleek dark bob, and bare, full lips ready for colour.',
+      'A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob.',
     voiceOnly: false,
     rendering: 'Photoreal live action',
     isPerson: false,

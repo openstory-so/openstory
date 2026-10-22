@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. MANHATTAN CROSSWALK — DAY. day. Natural lighting appropriate to day. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-4s): Image 2 moves with the crowd through the crosswalk.. Keep Image 2 distinct within the flow without isolating her from the city.. Camera: energetic handheld follow\n\noverall_soundscape: Crosswalk crowd, traffic wash, and city ambience.\n\nShot 2 (4-8s): Image 2 checks the smudge in the glass and brings out the lipstick.. Use the window reflection as her mirror; keep the city softly moving behind her.. Camera: quick short push-in\n\noverall_soundscape: Traffic and muted crowd noise.\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/6d06e085fd90f4984ed02f0a63d1cde2606eb00c067be939d35b6ff1e4438d29.mp4",
+            "content_type": "video/mp4",
+            "file_name": "_X6ekfzS_eDMFRstJhbU4_minimax-h3.mp4",
+            "file_size": 12099610
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, featuring short dark bobbed hair, wearing a black turtleneck and a black overcoat.\n<Subject 2> is the woman in <Image 2>, with short dark hair, wearing a black turtleneck, black overcoat, black trousers, and black ankle boots.\n<Subject 3> is the coral lipstick from <Image 3>, a slim, matte-finish tube with a vibrant coral-orange shade.\n\nsummary:\n[reference generation + audio reuse] The target video shows <Subject 2> navigating a Manhattan crosswalk, transitioning to a close-up where she uses <Subject 3> via a window reflection.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - establishes the starting frame composition.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - her facial features, attire, and movement are consistent throughout.\n<Subject 3> (appears in [Shot 2]): fully_preserved - the color and texture of the lipstick are maintained.\n\ndetailed_description:\nThe video is filmed in a modern, social-first product photography style with tactile, editorial energy. The color palette consists of crisp whites, deep blacks, and a singular pop of coral. The lighting is natural and airy, with lifted shadows and warm highlights.\n\n[Shot 1] The scene begins with <Image 1>, showing a busy sun-lit Manhattan crosswalk. <Subject 2> walks through the dense crowd of pedestrians in business attire across the white and black zebra stripes. The camera uses an energetic handheld follow motion, tracking <Subject 2> as she moves with the flow of the city. The background is vibrant with urban movement. The soundscape is the heavy roar of a crosswalk crowd, the wash of city traffic, and the rhythmic sound of footsteps on the pavement.\n\n[Shot 2] At 00:04.000, the shot cuts to a quick short push-in on <Subject 2> as she stops near a storefront window. She uses the glass reflection as a mirror to check for a small smudge on her face. She reaches into her pocket and pulls out <Subject 3>, the coral lipstick. The matte finish of the lipstick catches the light. In the reflection, the city traffic moves softly behind her while she remains in focus. The audio shifts to muted traffic noise and the distant hum of the city crowd.\n\noverall_soundscape:\nA dense urban atmosphere featuring a crosswalk crowd, constant traffic wash, and various ambient city sounds like footsteps on asphalt.\n\nnon_diegetic_music:\nN/A",
+          "seed": 611990052,
+          "timings": {
+            "inference": 6.455166759958956
+          }
+        },
+        "status": 200,
+        "billableUnits": 13.0304
+      }
+    }
+  ]
+}

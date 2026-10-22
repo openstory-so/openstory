@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.\n\n[LAYOUT]:\nThe grid comprises four distinct, technical views arranged horizontally:\n- Panel 1 (Left): Full body frontal view, standing in a neutral pose\n- Panel 2 (Center-Left): Close-up portrait frontal view (chest up)\n- Panel 3 (Center-Right): Full body side profile view facing left\n- Panel 4 (Right): Full body rear view\n\nAll attire, accessories, hair, and features must be perfectly consistent across all four panels.\n\n[CHARACTER IDENTITY]:\nName: Scarlett\nAge: 22\nGender: Woman\n\nPhysical Appearance:\nA striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob.\n\nCostume:\nBlack fitted turtleneck, slim black trousers, small gold hoop earrings, and a black coat.\n\nHair, Makeup & Condition for this look:\nSleek dark bob; vivid coral lipstick. The wind lifts her hair during the street scene.\n\nCRITICAL - Same person, new outfit:\nThe reference image is this character's default look. Every panel must show that same person: face, body, skin, and hair match the reference. Change the costume to the clothing described above. Change the hair only when the styling notes for this look say to. For face, body, skin and hair, the IMAGE takes priority over any text. For the clothing, the TEXT takes priority over the image: the reference wears another outfit.\n\n[ENVIRONMENT]:\nSeamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.\n\n[OPTICAL & CAMERA SPECS]:\nCommercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.\n\n[LIGHTING]:\nNeutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.\n\n[MATERIALITY]:\nHyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/a35acde2bb3c361314108c18a36e668da5b10c93ec58590fa440275841053912.png",
+          "mime_type": "image/png"
+        }
+      }
+    }
+  ]
+}

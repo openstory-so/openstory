@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Storyboard animatic frame. medium wide. eye level. SCARLETT and SCARLETT'S FRIEND share the sunlit rooftop table, with contact sheets and two paper cups in the foreground. SCARLETT sits by the table; SCARLETT'S FRIEND holds the camera up after taking her photo. Then: SCARLETT'S FRIEND lowers the camera. Camera: handheld drift, easy, lively. Let the rooftop sunlight and candid ease shape the moment. Characters: Scarlett: Woman, 22, A striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob, wearing Black fitted turtleneck, slim black trousers, small gold hoop earrings. Scarlett's Friend: Unspecified, Adult, unspecified, An adult friend of Scarlett, seen photographing her on a rooftop and later trying the lipstick. Facial features, build, hair, skin tone, and other distinguishing traits are not specified. No permanent marks are described, wearing Clothing is not specified. Drawn as a storyboard artist's animatic frame: confident pencil line with flat grey marker tones, three or four values, greyscale only even where the description names a colour. Clear silhouettes, correct perspective and depth, the set blocked in with simple shapes. Figures have readable poses, gestures and simple expressive faces. Draw the single opening moment of the shot: each character appears exactly once, and what happens next is shown only by a few bold arrows for the camera move and the way subjects travel. A rough pre-production drawing: not a finished illustration, not a photo, not a 3D render. The drawing fills the whole image edge to edge: no border, no frame line, no paper margin, no grid of panels. No text, no titles, no subtitles, no watermarks, no letters, no words, no signs, no UI elements.",
+        "model": "google/nano-banana-2-lite"
+      },
+      "response": {
+        "json": {
+          "images": [
+            {
+              "url": "https://assets.openstory.so/e2e/d47134e8425aca28967f204f0e0f1b911bb9d429ba1990873418041886b6a13e.png",
+              "content_type": "image/png",
+              "file_name": "-KM0CGI6gcxqf09zqH3uV_OGPJpyGF.png",
+              "file_size": null,
+              "width": 1376,
+              "height": 768
+            }
+          ],
+          "description": ""
+        },
+        "status": 200,
+        "billableUnits": 0.042123
+      }
+    }
+  ]
+}

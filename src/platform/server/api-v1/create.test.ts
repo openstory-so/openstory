@@ -478,14 +478,7 @@ describe('runOneShotCreate', () => {
       runOneShotCreate(
         {
           ...baseInput,
-          characters: [
-            {
-              name: 'Ada',
-              isHuman: true,
-              referenceImageUrls: ['https://cdn.example/ada-1.png'],
-              portraitAttestation,
-            },
-          ],
+          characters: [{ name: 'Ada', isHuman: true }],
         },
         ctx
       )

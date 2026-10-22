@@ -211,7 +211,7 @@ CORAL — A CITY LAUNCH
 
 INT. DOWNTOWN APARTMENT BATHROOM - MORNING
 
-Hard light off white tile. SCARLETT,
+Hard light off white tile. SCARLETT (22),
 a city influencer in a black turtleneck,
 unboxes a coral lipstick and turns it slowly to camera.
 

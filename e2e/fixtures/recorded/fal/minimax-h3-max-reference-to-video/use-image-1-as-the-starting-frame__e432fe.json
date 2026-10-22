@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. MANHATTAN CROSSWALK — DAY. day. Natural lighting appropriate to day. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 laughs, caps and pockets the lipstick, then moves with the crowd as the signal changes.. Let the gust lift her hair before the crowd carries her forward.. Camera: accelerating into the walk follow\n\noverall_soundscape: Wind gust; walk signal chirp; crowd surges into the crosswalk. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/b73cd2e0a3664fbd8f1c1835cff1d865d7b80df1bb57b95abf5a686747c2ae44.mp4",
+            "content_type": "video/mp4",
+            "file_name": "MVurKqmZn-CiB33z6XrN0_minimax-h3.mp4",
+            "file_size": 7337498
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, with short black bob hair, wearing a black turtleneck and a black blazer, and gold hoop earrings.\n<Subject 2> is the woman in <Image 2>, performing the actions of moving through the crowd.\n<Subject 3> is the coral-colored lipstick from <Image 3>, featuring a slim, matte-finish tube and a matching coral cap.\n\nsummary:\n[reference generation + video continuation] The target video shows <Subject 1> in a Manhattan crosswalk holding <Subject 3>, followed by laughing, capping the lipstick, and merging into a moving crowd as the signal changes.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 2> (appears in [Shot 2]): fully_preserved\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved\n\ndetailed_description:\nThe video follows a modern, social-first product photography style with tactile, editorial energy, utilizing natural daylight lighting. The color palette consists of crisp whites, warm skin tones, and neutral blacks with a vibrant pop of coral. \n[Shot 1] The shot starts from <Image 1>, showing <Subject 1> standing in a busy Manhattan crosswalk. She is looking directly at the camera with a neutral expression, holding <Subject 3> up to her face. The lighting is bright and airy, highlighting the texture of the lipstick and her blazer. The camera is static, capturing the close-up.\n[Shot 2] At 00:01.500, the camera begins an accelerating tracking walk-follow shot as <Subject 1> breaks into a genuine, joyful laugh. She deftly caps <Subject 3> and pockets the lipstick with a satisfying tactile click. Simultaneously, a gust of wind catches her, lifting her short black hair. As the pedestrian walk signal chirps, <Subject 1> begins walking forward, merging into the dense crowd of pedestrians in the background. The camera follows her at an increasing speed, maintaining a medium-close shot that captures the fluid movement of the crowd carrying her through the urban environment.\n\noverall_soundscape:\nEnvironmental sounds include a sudden gust of wind, the rhythmic electronic chirp of a pedestrian walk signal, and the collective surge of a crowd's footsteps on the pavement. The physical sound of the lipstick cap clicking into place is audible.\n\nnon_diegetic_music:\nN/A",
+          "seed": 320643857,
+          "timings": {
+            "inference": 3.681757473037578
+          }
+        },
+        "status": 200,
+        "billableUnits": 8.2304
+      }
+    }
+  ]
+}

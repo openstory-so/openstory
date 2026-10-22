@@ -1,0 +1,17 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "close-up, eye level, Scarlett (Image 1) presses her lips together, facing her reflection., Scarlett (Image 1)’s coral lips and pleased expression anchor the frame above the black turtleneck collar., INT. DOWNTOWN APARTMENT BATHROOM — MORNING, morning, downtown_apartment_bathroom (Image 2), Natural lighting appropriate to morning, #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8, Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base\n\nReference images define identity — keep every referenced character, object, and location consistent with its reference image; never render a reference image itself as a separate panel or subject.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/961def7a617564a3f1d5592f66846f97c1b3e040e24c5ce7f2045a0de0a73763.jpeg",
+          "mime_type": "image/jpeg"
+        }
+      }
+    }
+  ]
+}

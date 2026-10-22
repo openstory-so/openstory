@@ -1,0 +1,16 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "image",
+        "userMessage": "A professional four-panel photographic character reference grid, maintaining absolute anatomical and stylistic consistency.\n\n[LAYOUT]:\nThe grid comprises four distinct, technical views arranged horizontally:\n- Panel 1 (Left): Full body frontal view, standing in a neutral pose\n- Panel 2 (Center-Left): Close-up portrait frontal view (chest up)\n- Panel 3 (Center-Right): Full body side profile view facing left\n- Panel 4 (Right): Full body rear view\n\nAll attire, accessories, hair, and features must be perfectly consistent across all four panels.\n\n[CHARACTER IDENTITY]:\nName: Scarlett\nAge: 22\nGender: Woman\n\nPhysical Appearance:\nA striking, fresh-faced 22-year-old beauty creator: dewy, even skin, high cheekbones, wide dark eyes and a sleek dark bob.\n\nCostume:\nBlack fitted turtleneck, slim black trousers, small gold hoop earrings.\n\n[ENVIRONMENT]:\nSeamless, minimalist commercial photo studio cyclorama with flat neutral white background. Clean, sterile, analytical atmosphere designed for clarity.\n\n[OPTICAL & CAMERA SPECS]:\nCommercial reference photography style. High-resolution medium format digital, tack-sharp focus across all panels, deep depth of field. Flat perspective, no lens distortion.\n\n[LIGHTING]:\nNeutral, even, high-key studio lighting. Diffused illumination from large softboxes to eliminate harsh shadows and highlight shape and form evenly. 5500K daylight balance.\n\n[MATERIALITY]:\nHyper-accurate rendering of all fabrics, skin textures, hardware, and micro-details. Consistent texture rendering across all four angles without beautification or alteration.",
+        "model": "grok-imagine-image-2.0"
+      },
+      "response": {
+        "image": {
+          "url": "https://assets.openstory.so/e2e/124ace3896e11f56c3e5df2cd9dc4681be65aceb4e336b2dc2882418fe165482.png"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Split the script within the USER_SCRIPT tags into logical scenes by emitting boundary annotations. The script has a numbered line gutter (\"N: \") — quotes must copy the script text WITHOUT the gutter.\n\n<USER_SCRIPT>\n1: Scene 1 — 14s\n2: \n3: INT. DOWNTOWN APARTMENT BATHROOM — MORNING\n4: \n5: Hard window light cuts across white tile and a sink crowded with ordinary morning things. Scarlett, 22, in a black turtleneck, tears open a small coral lipstick box with her thumbnail. She turns the tube in her palm; its satin finish catches a clean stripe of light.\n6: \n7: Cut to: her reflection as she twists the coral bullet up and sweeps it on. She presses her lips together, then grins at the unexpectedly bright colour against the black collar.\n8: \n9: Scarlett says, “One shade. Whole city.”\n10: \n11: Scene 2 — 12s\n12: \n13: INT. DOWNTOWN APARTMENT ELEVATOR — MORNING\n14: \n15: The elevator jolts between floors. Scarlett steadies herself with one hand and caps the lipstick with the other, the tube bright against the brushed-steel walls. Beside her, a neighbour in a rain-speckled coat fishes for a dropped earring; Scarlett catches it before it rolls beneath the door.\n16: \n17: They share a quick, amused look in the mirror. As the doors part onto the busy lobby, Scarlett slips the lipstick into her coat pocket and steps out into the day.\n18: \n19: Scene 3 — 18s\n20: \n21: EXT. MANHATTAN CROSSWALK — DAY\n22: \n23: A dense tide of commuters surges through the crosswalk. Scarlett moves with it, black coat swinging, coral lips vivid among charcoal suits and pale stone buildings. A taxi noses into the intersection; the crowd pauses at the curb.\n24: \n25: In the dark reflection of a shop window, she spots a faint smudge at one corner of her mouth. She pulls out the lipstick and makes a quick, practiced touch-up using the glass as a mirror. A gust lifts her hair; she laughs, caps the tube, and tucks it away as the walk signal changes and the crowd carries her onward.\n26: \n27: Scene 4 — 16s\n28: \n29: EXT. DOWNTOWN ROOFTOP — LATE AFTERNOON\n30: \n31: Warm sunlight washes a rooftop table scattered with contact sheets and a camera. Scarlett’s friend lowers the camera after snapping her; the train rattles past in the distance, shivering the water in two paper cups.\n32: \n33: Scarlett sets the lipstick on the table beside a coral-orange peel. Her friend reaches for it, and Scarlett gently slides it over. The friend applies the colour, checks her grin in the camera’s dark screen, then looks up at Scarlett. They laugh and lean into the same frame as the wind lifts the contact sheets and the coral tube gleams between them.\n</USER_SCRIPT>\n\nIMPORTANT: each boundary's quote must be copied character-for-character from the script (no gutter, no paraphrase, no smart-quote substitution). Respond with ONLY valid JSON matching the schema.",
+        "model": "anthropic/claude-opus-5.5",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"projectMetadata\":{\"title\":\"One Shade. Whole City.\"},\"boundaries\":[{\"hintLine\":1,\"quote\":\"Scene 1 — 14s\"},{\"hintLine\":11,\"quote\":\"Scene 2 — 12s\"},{\"hintLine\":19,\"quote\":\"Scene 3 — 18s\"},{\"hintLine\":27,\"quote\":\"Scene 4 — 16s\"}]}",
+        "usage": {
+          "prompt_tokens": 2892,
+          "completion_tokens": 140,
+          "total_tokens": 3032,
+          "cost": 0.034512,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 2888,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.034512,
+            "upstream_inference_prompt_cost": 0.028912,
+            "upstream_inference_completions_cost": 0.0056
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 0,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1492,
+        "interChunkDelaysMs": [
+          20, 136, 0, 0, 1, 0, 0, 2, 3, 225, 0, 0, 0, 0, 0, 0, 0, 0, 13, 0, 2
+        ],
+        "totalDurationMs": 1894
+      },
+      "metadata": {
+        "systemHash": "a29934a5"
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — LATE AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nNo BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\n\nnon_diegetic_music: N/A\n\nAvoid jitter and bent limbs.\n\nShot 1 (0-4s): Image 2'S FRIEND lowers the camera.. Let the rooftop sunlight and candid ease shape the moment.. Camera: easy, lively handheld drift\n\noverall_soundscape: Distant train rattles; water shivers in the paper cups.\n\nShot 2 (4-8s): Image 2 slides the lipstick across the table to Image 2'S FRIEND.. Compose the coral tube and peel as a playful color-blocked detail.. Camera: smooth and quick short overhead track\n\noverall_soundscape: Lipstick tube slides lightly across the tabletop.\n\nReference images:\nImage 3: Scarlett's Friend - An adult friend of Scarlett — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/5bc97b967f6f483dbc6105d1673c5ddbb37bb9c00f7736cdca581bdfaae69e44.mp4",
+            "content_type": "video/mp4",
+            "file_name": "YLVlkTzsTEOVSd5Je6HgW_minimax-h3.mp4",
+            "file_size": 13039980
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>, wearing a black turtleneck and black trousers, sitting at a table.\n<Subject 2> is the woman in <Picture 2>, wearing a dark denim jacket over a white t-shirt and grey jeans, holding a professional camera.\n<Subject 3> is Scarlett's Friend, an adult woman from <Picture 3> with short dark bob hair and gold hoop earrings.\n<Subject 4> is the CORAL_LIPSTICK from <Picture 4>, a slim, coral-colored lipstick with a matte finish.\n\nsummary:\n[reference generation + audio reference] The target video shows a cinematic afternoon scene on a downtown rooftop, starting with <Picture 1> where <Subject 2> captures a moment, ending with <Subject 2 sliding <Subject 4> to <Subject 3>.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved\n<Subject 2> (appears in [Shot 1]): fully_preserved\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved\n<Subject 4> (appears in [Shot 2]): fully_preserved\n\ndetailed_description:\nThe style is modern social-first product photography with tactile, editorial energy. The lighting is natural, even afternoon sunlight, utilizing a color palette of #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, and #E8F4E8. The atmosphere is airy with lifted shadows and warm highlights, maintaining crisp whites. \n\n[Shot 1] The video begins with the starting frame of <Picture 1>. <Subject 1> sits at a wooden table on a downtown rooftop, looking off-camera. <Subject 2>, standing opposite her, lowers the professional camera from her eye, looking towards <Subject 1> with a candid, easy smile. The camera moves with an easy, lively handheld drift with small amplitude, capturing the relaxed vibe of the moment. The sound of a distant train rattles and the faint shiver of water in paper cups on the table are audible.\n\n[Shot 2] At 00:04.000, the shot cuts to a close-up overhead detail shot. <Subject 2> reaches out and slides <Subject 4> (the coral lipstick) across the textured wood of the table toward <Subject 3>. The composition focuses on the coral tube and cap, creating a playful color-blocked visual. The camera performs a smooth and quick short overhead track. The distinct sound of the lipstick tube sliding lightly across the wooden tabletop is heard.\n\noverall_soundscape:\nDistant train rattles in the background, the soft sound of water moving in paper cups, and the tactile slide of a lipstick tube on wood.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1956970812,
+          "timings": {
+            "inference": 6.80759243608918
+          }
+        },
+        "status": 200,
+        "billableUnits": 13.760000000000002
+      }
+    }
+  ]
+}

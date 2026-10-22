@@ -1,0 +1,62 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "userMessage": "Classify music design for each scene and generate a unified music prompt for the sequence.\n\nThere are 4 scenes. Return exactly 4 rows in `scenes`, in this order.\n\n<SCENES>\n[\n  {\n    \"sceneId\": \"01M5H335WK16A073CXXV178EMH\",\n    \"title\": \"DOWNTOWN APARTMENT BATHROOM\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 14,\n    \"location\": \"INT. DOWNTOWN APARTMENT BATHROOM — MORNING\",\n    \"timeOfDay\": \"morning\"\n  },\n  {\n    \"sceneId\": \"01M5H335WZK5DT95VDVGGWNF0J\",\n    \"title\": \"DOWNTOWN APARTMENT ELEVATOR\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 12,\n    \"location\": \"INT. DOWNTOWN APARTMENT ELEVATOR — MORNING\",\n    \"timeOfDay\": \"morning\"\n  },\n  {\n    \"sceneId\": \"01M5H335X9FMFGYYJAYK0KEK3S\",\n    \"title\": \"MANHATTAN CROSSWALK\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 18,\n    \"location\": \"EXT. MANHATTAN CROSSWALK — DAY\",\n    \"timeOfDay\": \"day\"\n  },\n  {\n    \"sceneId\": \"01M5H335XGR886ASDFGC4HA2Q9\",\n    \"title\": \"DOWNTOWN ROOFTOP — LATE AFTERNOON\",\n    \"storyBeat\": \"\",\n    \"durationSeconds\": 16,\n    \"location\": \"EXT. DOWNTOWN ROOFTOP — LATE AFTERNOON\",\n    \"timeOfDay\": \"\"\n  }\n]\n</SCENES>\n\nFor each scene, classify:\n1. presence: \"none\"|\"minimal\"|\"moderate\"|\"full\"\n2. style: Genre/instrumentation (if music present)\n3. mood: Emotional quality (if music present)\n4. atmosphere: Environmental atmosphere\n\nThen synthesize unified tags (starting with \"instrumental\") and a 1-2 sentence prompt for one cohesive music track.\n\nRespond with ONLY valid JSON matching the schema.",
+        "model": "openai/gpt-6-luna",
+        "turnIndex": 0,
+        "hasToolResult": false
+      },
+      "response": {
+        "content": "{\"scenes\":[{\"sceneId\":\"01M5H335WK16A073CXXV178EMH\",\"musicDesign\":{\"presence\":\"minimal\",\"style\":\"electronic ambient with sparse piano\",\"mood\":\"quiet, reflective\",\"atmosphere\":\"intimate downtown apartment bathroom in the morning\"}},{\"sceneId\":\"01M5H335WZK5DT95VDVGGWNF0J\",\"musicDesign\":{\"presence\":\"minimal\",\"style\":\"subtle electronic ambient\",\"mood\":\"anticipatory, restrained\",\"atmosphere\":\"enclosed apartment elevator in the morning\"}},{\"sceneId\":\"01M5H335X9FMFGYYJAYK0KEK3S\",\"musicDesign\":{\"presence\":\"moderate\",\"style\":\"cinematic electronic with a soft rhythmic pulse\",\"mood\":\"alert, forward-moving\",\"atmosphere\":\"busy Manhattan crosswalk in daylight\"}},{\"sceneId\":\"01M5H335XGR886ASDFGC4HA2Q9\",\"musicDesign\":{\"presence\":\"moderate\",\"style\":\"cinematic ambient with warm synth and piano\",\"mood\":\"reflective, gently hopeful\",\"atmosphere\":\"open downtown rooftop in late-afternoon light\"}}],\"tags\":\"instrumental, cinematic, electronic, ambient, piano, synth, pulsing, building, reflective, hopeful, spacious, urban\",\"prompt\":\"Instrumental cinematic electronic ambient begins sparsely with intimate piano and soft synth textures, then gathers a gentle pulse as it moves into the busy city. It opens into a spacious, warm, reflective rooftop finish with a quietly hopeful lift.\"}",
+        "usage": {
+          "prompt_tokens": 1452,
+          "completion_tokens": 484,
+          "total_tokens": 1936,
+          "cost": 0.000423425,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 1449,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.000423425,
+            "upstream_inference_prompt_cost": 0.000181425,
+            "upstream_inference_completions_cost": 0.000242
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 156,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        }
+      },
+      "recordedTimings": {
+        "ttftMs": 1344,
+        "interChunkDelaysMs": [
+          413, 432, 410, 415, 264, 11, 0, 182, 0, 1, 293, 6, 4, 4, 0, 0, 0, 1,
+          0, 0, 2, 0, 9, 1, 0, 0, 5, 1, 0, 0, 2, 0, 0, 2, 0, 1, 0, 9, 0, 15, 0,
+          0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+          0, 28, 0, 0, 0, 40, 0, 0, 1, 16, 0, 0, 0, 0, 20, 0, 0, 0, 27, 0, 0, 0,
+          21, 0, 0, 0, 27, 0, 0, 0, 18, 0, 0, 0, 19, 0, 0, 0, 99, 0, 0, 0, 14,
+          0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 22, 0, 0, 0, 77, 0, 0, 0, 27, 0, 0,
+          0, 25, 1, 10, 0, 9, 3, 0, 2, 17, 0, 0, 0, 32, 0, 0, 0, 0, 19, 0, 0, 0,
+          37, 2, 6, 1, 2, 0, 0, 0, 41, 0, 0, 0, 30, 0, 1, 0, 0, 33, 0, 0, 0, 93,
+          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 22, 0, 0, 0, 45, 0, 0,
+          0, 26, 0, 0, 1, 28, 0, 0, 0, 26, 0, 0, 0, 19, 0, 0, 0, 27, 0, 0, 1,
+          14, 0, 0, 0, 73, 0, 1, 0, 0, 12, 0, 1, 0, 23, 0, 0, 0, 27, 0, 1, 0,
+          61, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 32, 0, 0, 0, 50, 0,
+          0, 0, 40, 0, 0, 0, 27, 0, 3, 0, 42, 0, 0, 0, 59, 0, 0, 0, 116, 0, 5
+        ],
+        "totalDurationMs": 5578
+      },
+      "metadata": {
+        "systemHash": "8a201535"
+      }
+    }
+  ]
+}
