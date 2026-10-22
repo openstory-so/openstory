@@ -416,9 +416,17 @@ on the missing table, in one batch, so nothing is half written.
 
 ## Talent tables (#2135)
 
-`20261018090430` copies a talent sheet onto a character that had no sheet of
-its own, and copies a talent voice onto a character with no selected voice.
-`20261018090611` then drops the talent tables. `talent_id` on
+`20261018090430` copies a talent sheet onto a character that had no live
+sheet of its own, and copies a talent voice onto a character with no
+selected voice. Each new row reuses a ULID the character owns that its table
+does not hold yet (character id, then current bible version, then default
+look version). Old characters often have none free: the face then
+overwrites the character's own dead sheet row, and the voice a released or
+failed voice row. A voice with neither stops the file through a guard,
+because overwriting a live voice would strand its provider slot. The file
+uses plain `__` scratch tables (D1 refuses TEMP tables) and set-based writes
+only (#1019). Voices on talent that is never copied are not freed at the
+provider. `20261018090611` then drops the talent tables. `talent_id` on
 `character_bible_versions` is a foreign key, so that file rebuilds the table
 (copy out, drop, create, copy back) instead of `DROP COLUMN`. A character's
 face, sheet and voice live on the character. A sheet hash still includes `talentSheetHash`
