@@ -615,7 +615,9 @@ function ReferenceList({ references }: { references: StudioShownReference[] }) {
               src={open.url}
               controls
               className="max-h-[70vh] w-full rounded-md bg-muted"
-            />
+            >
+              <track kind="captions" />
+            </video>
           ) : (
             <img
               src={open?.url}
