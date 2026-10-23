@@ -551,6 +551,8 @@ type ShotRow = {
   apply: (w: World) => World;
   /** Every artifact not listed must read fresh. */
   stale: ShotArtifact[];
+  /** Artifacts the shot no longer has, so they carry no verdict. */
+  untracked?: ShotArtifact[];
 };
 
 const withCharacter = (
@@ -634,8 +636,10 @@ const SHOT_MATRIX: ShotRow[] = [
   {
     mutation: 'shot switched to reference-only on a start-frame sequence',
     apply: (w) => ({ ...w, shot: { useStartFrame: false } }),
-    // The motion prompt loses its still; the clip was sent one.
+    // The motion prompt loses its still; the clip was sent one. The still
+    // and its prompt are no longer artifacts of this shot (#2165).
     stale: ['motionPrompt', 'clip'],
+    untracked: ['still', 'visualPrompt'],
   },
   // --- sequence settings ---------------------------------------------------
   {
@@ -901,7 +905,11 @@ describe('staleness matrix — a shot and its clip', () => {
     const world = row.apply(BASE);
     const verdicts = await shotVerdicts(world, stamps);
     const expected = (artifact: ShotArtifact) =>
-      row.stale.includes(artifact) ? 'stale' : 'fresh';
+      row.untracked?.includes(artifact)
+        ? 'untracked'
+        : row.stale.includes(artifact)
+          ? 'stale'
+          : 'fresh';
     expect({
       still: verdicts.thumbnail,
       visualPrompt: verdicts.visualPrompt,

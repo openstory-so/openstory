@@ -1089,6 +1089,67 @@ describe('per-shot start-frame override', () => {
     hashMotionPromptInput.mockResolvedValue('motion-stored');
   });
 
+  it('does not count a stale still or visual prompt once the shot is reference-only (#2165)', async () => {
+    buildRegenerateShotSnapshot.mockClear();
+    hashVisualPromptInput.mockClear();
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    hashVisualPromptInput.mockResolvedValue('visual-live');
+    hashMotionPromptInput.mockResolvedValue('motion-live');
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb: makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        visualSelected: { text: 'a prompt', inputHash: 'visual-stored' },
+      }),
+      sequence,
+      shot: asStub<Shot>({ id: 'shot-1', useStartFrame: false }),
+      frame,
+      selectedImage: selectedImage('image-stored'),
+      scene,
+    });
+
+    // The still and its prompt stay in the database. The clip is not made
+    // from them, so a divergent hash must not light a chip or Update all.
+    expect(result).toMatchObject({
+      thumbnail: 'untracked',
+      visualPrompt: 'untracked',
+      motionPrompt: 'stale',
+      liveHashes: { thumbnail: null, visualPrompt: null },
+    });
+    expect(buildRegenerateShotSnapshot).not.toHaveBeenCalled();
+    expect(hashVisualPromptInput).not.toHaveBeenCalled();
+  });
+
+  it('counts a stale still when the sequence is reference-only but the shot keeps its start frame', async () => {
+    buildRegenerateShotSnapshot.mockResolvedValue({
+      snapshotInputHash: 'image-live',
+    });
+    hashVisualPromptInput.mockResolvedValue('visual-live');
+    hashMotionPromptInput.mockResolvedValue('motion-stored');
+
+    const result = await computeShotStaleness({
+      dialogue: NO_LINES,
+      scopedDb: makeScopedDb({
+        motionSelectedHash: 'motion-stored',
+        visualSelected: { text: 'a prompt', inputHash: 'visual-stored' },
+      }),
+      sequence: { ...sequence, generateStartFrames: false },
+      shot: asStub<Shot>({ id: 'shot-1', useStartFrame: true }),
+      frame,
+      selectedImage: selectedImage('image-stored'),
+      scene,
+    });
+
+    expect(result).toMatchObject({
+      thumbnail: 'stale',
+      visualPrompt: 'stale',
+      motionPrompt: 'fresh',
+    });
+  });
+
   it('hashes a reference-only SHOT with no still, on a start-frame sequence', async () => {
     await computeShotStaleness({
       dialogue: NO_LINES,

@@ -363,6 +363,11 @@ Consequences of the override being per shot:
   answer quotes the wrong endpoint for the rest.
 - **The manifest** records `frameVersionId: null` for a reference-only shot
   even when a still exists, and staleness compares against the same rule.
+- **The still and the visual prompt drop out of staleness** while the shot
+  renders reference-only (`computeShotStaleness`, #2165). A divergent hash
+  on either one must not light a chip, badge, dot, or an Update all image.
+  The motion prompt and the clip still compare, including the mode switch
+  itself.
 - **`UpdateStalePlan`** freezes `usesStartFrame` per target at click time. It
   is required and never defaulted: a payload from a build that predates it
   replays without the key, and `!undefined` is `true`, which would silently

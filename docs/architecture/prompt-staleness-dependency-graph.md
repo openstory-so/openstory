@@ -348,6 +348,11 @@ Key consequences of the shape:
   each pointer, so the clip reads stale through its motion-prompt pointer too.
   Before #1786 the rename rewrote the selected row in place and the clip's
   pointer never moved. The rename popover says how many shots go out of date.
+- **A reference-only shot has no still verdict (#2165).** `computeShotStaleness`
+  leaves `thumbnail` and `visualPrompt` `'untracked'` while
+  `rendersReferenceOnly` is true, even when those rows exist and their hashes
+  diverge. Chips, badges, dots, Update all and `get_shot_staleness` all read
+  that result. The motion prompt and the clip still compare.
 - **Still → clip is a pointer, not a hash cascade.** The clip manifest records
   the still version and motion-prompt version it was rendered from, and the
   compare (`isSelectedVersionStale`) checks them against the shot's current

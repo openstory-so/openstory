@@ -517,7 +517,10 @@ export async function computeShotStaleness(args: {
       ? (reads.selectedPromptByFrame.get(frame.id) ?? null)
       : await scopedDb.framePromptVersions.getSelected(frame.id);
   const effectivePrompt = selectedPrompt?.text ?? null;
-  if (frame && effectivePrompt) {
+  // A reference-only shot has no still and no visual prompt (#2165). The
+  // rows can stay, and their hashes can diverge, but they are not what the
+  // clip is made from — counting them lights chips Update all cannot clear.
+  if (frame && effectivePrompt && !motionSequence.referenceOnly) {
     // Null stored hash: 'untracked' (no opinion), unless a named element's
     // row is newer than the still — replace would otherwise hide it (#1192).
     if (selectedImage?.inputHash == null && !selectedImage?.url) {
@@ -672,7 +675,7 @@ export async function computeShotStaleness(args: {
   // fall back to the most recent version with a non-null one for prompts whose
   // selected row carries a null hash (a pre-fix user-edit, or the force-regen
   // path). Without the fallback, those are stuck at `'untracked'` permanently.
-  if (frame && scene) {
+  if (frame && scene && !motionSequence.referenceOnly) {
     // The fallback read is inside the try: it is exactly the transient-D1 case
     // the catch exists for, and outside it one bad read rejects the caller's
     // whole batch.
