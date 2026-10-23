@@ -315,6 +315,11 @@ changing the area, and update it in the same PR.**
   `docs/architecture/oauth-server.md`. Bearer JWTs are accepted on `/api/v1`
   and `/mcp` only; `osk_` keys are unscoped; OAuth tables come from
   `bun auth:generate`, never by hand.
+- **In-app assistant (#2155)** — `docs/architecture/assistant.md`. The chat
+  runs `MCP_TOOLS` through `chat()` under the session; never add an
+  assistant-only tool, add an MCP tool. A write that spends credits goes in
+  `SPEND_TOOLS` (pinned by its test) so the run pauses for the user. Page
+  context is read off the router, never registered by a page.
 - **Server-side export** — `docs/architecture/public-api-internals.md`. No
   in-browser encode; `POST /api/v1/sequences/$id/exports` →
   `SequenceExportWorkflow` → the video-export Container (production-only).

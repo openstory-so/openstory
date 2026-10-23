@@ -290,6 +290,9 @@ describe('tools/list and whoami', () => {
       'openstory.plan_export',
       'openstory.start_export',
       'openstory.create_stitch',
+      'openstory.create_style',
+      'openstory.update_style',
+      'openstory.delete_style',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
     const batch = tools.find(
@@ -302,6 +305,9 @@ describe('tools/list and whoami', () => {
     expect(batchSchema).not.toContain('generate_shot_video');
     const writes = new Set([
       'openstory.update_scene',
+      'openstory.create_style',
+      'openstory.update_style',
+      'openstory.delete_style',
       'openstory.create_sequence',
       'openstory.update_sequence',
       'openstory.regenerate_storyboard',
@@ -400,6 +406,7 @@ describe('tools/list and whoami', () => {
     ]);
     const destructive = new Set([
       'openstory.archive_sequence',
+      'openstory.delete_style',
       'openstory.delete_scene',
       'openstory.delete_shot',
       'openstory.discard_shot_dialogue_reading',

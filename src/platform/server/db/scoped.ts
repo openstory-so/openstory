@@ -60,6 +60,7 @@ import {
   createPublicStitchReads,
   createStitchesMethods,
 } from '@/stitches/server/db/stitches';
+import { createAssistantMethods } from '@/assistant/server/db/assistant';
 import { createSequenceMusicPromptVersionsMethods } from '@/audio/server/db/sequence-music-prompt-versions';
 import { createSequenceVariantsMethods } from '@/audio/server/db/sequence-variants';
 import {
@@ -420,6 +421,8 @@ export function createScopedDb(teamId: string, userId: string) {
     sequenceVariants: createSequenceVariantsMethods(db),
     sequenceExports: createSequenceExportsMethods(db),
     stitches: createStitchesMethods(db, teamId, userId),
+    // In-app assistant threads and their persistence stores (#2155).
+    assistant: createAssistantMethods(db, teamId, userId),
 
     characters: createCharactersMethods(db, teamId),
     sequenceElements: createSequenceElementsMethods(db),

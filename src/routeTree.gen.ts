@@ -65,6 +65,7 @@ import { Route as AppSettingsPasskeysRouteImport } from './routes/_app/settings/
 import { Route as AppStudioIndexRouteImport } from './routes/_app/studio/index'
 import { Route as AppStylesIndexRouteImport } from './routes/_app/styles/index'
 import { Route as AppVideosIndexRouteImport } from './routes/_app/videos/index'
+import { Route as ApiAssistantChatRouteImport } from './routes/api/assistant/chat'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBillingWebhookRouteImport } from './routes/api/billing/webhook'
 import { Route as ApiOpenrouterCallbackRouteImport } from './routes/api/openrouter/callback'
@@ -385,6 +386,11 @@ const AppVideosIndexRoute = AppVideosIndexRouteImport.update({
   path: '/videos/',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const ApiAssistantChatRoute = ApiAssistantChatRouteImport.update({
+  id: '/api/assistant/chat',
+  path: '/api/assistant/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -642,6 +648,7 @@ export interface FileRoutesByFullPath {
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
+  '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
@@ -736,6 +743,7 @@ export interface FileRoutesByTo {
   '/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/settings/developer': typeof AppSettingsDeveloperRoute
   '/settings/passkeys': typeof AppSettingsPasskeysRoute
+  '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
@@ -835,6 +843,7 @@ export interface FileRoutesById {
   '/_app/settings/api-keys': typeof AppSettingsApiKeysRoute
   '/_app/settings/developer': typeof AppSettingsDeveloperRoute
   '/_app/settings/passkeys': typeof AppSettingsPasskeysRoute
+  '/api/assistant/chat': typeof ApiAssistantChatRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/billing/webhook': typeof ApiBillingWebhookRoute
   '/api/openrouter/callback': typeof ApiOpenrouterCallbackRoute
@@ -934,6 +943,7 @@ export interface FileRouteTypes {
     | '/settings/api-keys'
     | '/settings/developer'
     | '/settings/passkeys'
+    | '/api/assistant/chat'
     | '/api/auth/$'
     | '/api/billing/webhook'
     | '/api/openrouter/callback'
@@ -1028,6 +1038,7 @@ export interface FileRouteTypes {
     | '/settings/api-keys'
     | '/settings/developer'
     | '/settings/passkeys'
+    | '/api/assistant/chat'
     | '/api/auth/$'
     | '/api/billing/webhook'
     | '/api/openrouter/callback'
@@ -1126,6 +1137,7 @@ export interface FileRouteTypes {
     | '/_app/settings/api-keys'
     | '/_app/settings/developer'
     | '/_app/settings/passkeys'
+    | '/api/assistant/chat'
     | '/api/auth/$'
     | '/api/billing/webhook'
     | '/api/openrouter/callback'
@@ -1199,6 +1211,7 @@ export interface RootRouteChildren {
   OauthLoginRoute: typeof OauthLoginRoute
   R2SplatRoute: typeof R2SplatRoute
   StitchIdRoute: typeof StitchIdRoute
+  ApiAssistantChatRoute: typeof ApiAssistantChatRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBillingWebhookRoute: typeof ApiBillingWebhookRoute
   ApiOpenrouterCallbackRoute: typeof ApiOpenrouterCallbackRoute
@@ -1608,6 +1621,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/videos/'
       preLoaderRoute: typeof AppVideosIndexRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/api/assistant/chat': {
+      id: '/api/assistant/chat'
+      path: '/api/assistant/chat'
+      fullPath: '/api/assistant/chat'
+      preLoaderRoute: typeof ApiAssistantChatRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -2169,6 +2189,7 @@ const rootRouteChildren: RootRouteChildren = {
   OauthLoginRoute: OauthLoginRoute,
   R2SplatRoute: R2SplatRoute,
   StitchIdRoute: StitchIdRoute,
+  ApiAssistantChatRoute: ApiAssistantChatRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBillingWebhookRoute: ApiBillingWebhookRoute,
   ApiOpenrouterCallbackRoute: ApiOpenrouterCallbackRoute,

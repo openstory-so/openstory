@@ -17,14 +17,58 @@ import { Breadcrumbs } from './breadcrumbs';
 import { SEQUENCE_HEADER_SLOT_ID } from '@/sequences/ui/sequence-header-slot';
 import { ComplianceRestrictionBanner } from './compliance-restriction-banner';
 import { InvalidApiKeyBanner } from './invalid-api-key-banner';
+import { AssistantPanel } from '@/assistant/ui/assistant-panel';
+import { AssistantToggle } from '@/assistant/ui/assistant-toggle';
+import { usePageContext } from '@/assistant/ui/use-page-context';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
+
+/** Starters for an empty assistant thread; the page decides them (#2155). */
+function suggestionsFor(kinds: ReadonlySet<string>): string[] {
+  if (kinds.has('shot')) {
+    return [
+      'What is still missing before this shot can render?',
+      'Make this shot darker and more handheld',
+      'Why is this shot stale?',
+    ];
+  }
+  if (kinds.has('sequence')) {
+    return [
+      'What does this sequence still owe before it can export?',
+      'Summarise the script in three lines',
+      'Which shots have no clip yet?',
+    ];
+  }
+  if (kinds.has('character')) {
+    return [
+      'Give this character a second look in different clothes',
+      'Which sequences cast this character?',
+      'Describe this character’s voice',
+    ];
+  }
+  if (kinds.has('location')) {
+    return [
+      'Which sequences use this location?',
+      'Redraw this location’s sheet at night',
+      'Describe this location in one line',
+    ];
+  }
+  return [
+    'What did I work on most recently?',
+    'Start a new sequence from a script I paste',
+    'Show my characters',
+  ];
+}
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   className,
   children,
   ...props
 }) => {
+  const pageContext = usePageContext();
+  const suggestions = suggestionsFor(
+    new Set(pageContext.map((item) => item.kind))
+  );
   return (
     <AuthGateProvider>
       <UploadRightsGateProvider>
@@ -52,6 +96,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   id={SEQUENCE_HEADER_SLOT_ID}
                   className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
                 />
+                <AssistantToggle />
               </header>
               <ComplianceRestrictionBanner />
               <InvalidApiKeyBanner />
@@ -66,6 +111,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 {children}
               </div>
             </SidebarInset>
+            {/* Mounted once here so the conversation survives navigation;
+                the chips follow the route (#2155). */}
+            <AssistantPanel
+              pageContext={pageContext}
+              suggestions={suggestions}
+            />
           </SidebarProvider>
         </TooltipProvider>
       </UploadRightsGateProvider>
