@@ -5097,7 +5097,7 @@ describe('library styles', () => {
     );
     await db
       .insert(teamMembers)
-      .values({ id: generateId(), teamId, userId: actorId, role: 'admin' });
+      .values({ teamId, userId: actorId, role: 'admin' });
     expect(await data('delete_style', { styleId: created.id })).toEqual({
       styleId: created.id,
     });
