@@ -13,7 +13,6 @@ import { generateId } from '@/platform/id';
 import type { AnalysisModelId } from '@/models/models.config';
 import { ModelSelector } from '@/models/ui/pickers/model-selector';
 import { Button } from '@/ui/shadcn/button';
-import { Kbd } from '@/ui/shadcn/kbd';
 import { Textarea } from '@/ui/shadcn/textarea';
 import { cn } from '@/ui/utils';
 import { PAGE_CONTEXT_NOUN, type PageContextItem } from '../page-context';
@@ -227,12 +226,15 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   return (
     <div
       className={cn(
-        'flex flex-col border-t bg-background',
+        'flex flex-col border-t bg-background p-3',
         dragging && 'ring-2 ring-ring ring-inset'
       )}
     >
+      {/* One bordered field: chips and attachments above the text, the
+          actions in a quiet row under it. The field takes the focus ring,
+          not the textarea, so the whole thing reads as the input. */}
       <form
-        className="flex flex-col gap-2 p-3"
+        className="flex flex-col gap-1.5 rounded-xl border bg-card px-3 pt-2.5 pb-1.5 shadow-xs transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30"
         onSubmit={(event) => {
           event.preventDefault();
           send();
@@ -284,11 +286,12 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
             context.length > 0 ? 'Ask about this…' : 'Ask about your work…'
           }
           aria-label="Message the assistant"
+          aria-description="Enter sends, Shift+Enter starts a new line"
           rows={1}
-          className="max-h-48 min-h-10 resize-none text-base md:text-base"
+          className="max-h-48 min-h-9 resize-none border-0 bg-transparent px-0 py-1 text-base shadow-none focus-visible:ring-0 md:text-base dark:bg-transparent"
           autoComplete="off"
         />
-        <div className="flex items-center gap-2">
+        <div className="-mx-1.5 flex items-center gap-1">
           <input
             ref={fileInputRef}
             type="file"
@@ -304,21 +307,21 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
             type="button"
             variant="ghost"
             size="sm"
+            className="text-muted-foreground"
             onClick={() => fileInputRef.current?.click()}
           >
             Attach
           </Button>
-          <div className="w-44">
+          <div className="min-w-0 max-w-44">
             <ModelSelector
               singleSelect
+              size="sm"
+              variant="ghost"
               selectedModels={[model]}
               onModelsChange={(ids) => ids[0] && onModelChange(ids[0])}
             />
           </div>
-          <span className="hidden flex-1 text-xs text-muted-foreground lg:block">
-            <Kbd>Enter</Kbd> sends, <Kbd>Shift+Enter</Kbd> new line
-          </span>
-          <span className="flex-1 lg:hidden" />
+          <span className="flex-1" />
           {busy ? (
             <Button type="button" variant="outline" size="sm" onClick={onStop}>
               Stop

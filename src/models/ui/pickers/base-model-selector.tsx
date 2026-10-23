@@ -105,6 +105,8 @@ type BaseModelSelectorProps = {
   disabled?: boolean;
   multiSelect?: boolean;
   size?: 'default' | 'sm';
+  /** `ghost` for a trigger that sits inside another control, like a composer. */
+  variant?: 'outline' | 'ghost';
 };
 
 export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
@@ -116,6 +118,7 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
   disabled = false,
   multiSelect = false,
   size = 'default',
+  variant = 'outline',
 }) => {
   const [open, setOpen] = useState(false);
   const [multipleEnabled, setMultipleEnabled] = useState(
@@ -204,7 +207,7 @@ export const BaseModelSelector: React.FC<BaseModelSelectorProps> = ({
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant={variant}
           size={size}
           className="w-full justify-between"
           disabled={disabled}

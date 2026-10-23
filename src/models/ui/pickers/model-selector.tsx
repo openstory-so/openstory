@@ -27,6 +27,8 @@ type ModelSelectorProps = {
   singleSelect?: boolean;
   /** When set, only these ids appear. */
   allowedIds?: readonly AnalysisModelId[];
+  size?: 'default' | 'sm';
+  variant?: 'outline' | 'ghost';
 };
 
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -35,6 +37,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
   disabled = false,
   singleSelect = false,
   allowedIds,
+  size,
+  variant,
 }) => {
   // Region-blocked vendors are hidden from the picker (#1259): a user in an
   // Anthropic-blocked country shouldn't be offered a model the server would
@@ -102,6 +106,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       }}
       disabled={disabled}
       multiSelect={!singleSelect}
+      size={size}
+      variant={variant}
     />
   );
 };

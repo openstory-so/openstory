@@ -89,7 +89,7 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
         <div className="flex flex-1 flex-col justify-end gap-3 p-4">
           <p className="text-sm text-muted-foreground">
             Ask about your work, or tell me what to change. I can read and edit
-            anything the app can, and I ask before spending credits.
+            anything the app can, and I ask before I delete.
           </p>
           <ul className="flex flex-col gap-1" aria-label="Suggested prompts">
             {suggestions.map((suggestion) => (

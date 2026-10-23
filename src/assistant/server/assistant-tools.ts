@@ -8,9 +8,9 @@
  *   unwrapped: the model and the tool card get the structured data, an
  *   error envelope becomes a thrown error (TanStack AI reports it as the
  *   tool's error result and the run continues).
- * - A write that spends credits or deletes something is `needsApproval`, so
- *   the run pauses on a card the user confirms (the MCP client did this
- *   itself; in chat the server has to).
+ * - A delete is `needsApproval`: the run pauses on a card the user confirms.
+ *   Spending does not ask: the user is inside the app, and a generation
+ *   shows up on the page as it starts, where it can be cancelled.
  * - Most tools are `lazy`: the model sees the name and first sentence, and
  *   asks for a schema when it needs one, so a turn does not carry a hundred
  *   schemas.
@@ -50,42 +50,9 @@ const EAGER_TOOLS = new Set([
   'openstory.set_shot_image_from_upload',
 ]);
 
-/**
- * Writes that spend credits. The catalog marks a paid write with
- * `openWorldHint: true` (`paid` / `generateAnnotations`), which
- * `needsApproval` reads; this set names the ones that spend without that
- * mark, and `assistant-tools.test.ts` pins both against the catalog.
- */
-export const SPEND_TOOLS = new Set([
-  'openstory.create_sequence',
-  'openstory.rebuild_shot_prompts',
-  'openstory.execute_generation',
-  'openstory.start_export',
-  'openstory.generate_shot_image',
-  'openstory.generate_shot_image_variants',
-  'openstory.generate_shot_video',
-  'openstory.generate_character_voice',
-  'openstory.generate_music',
-  'openstory.regenerate_character_sheet',
-  'openstory.regenerate_location_sheet',
-  'openstory.regenerate_shot_dialogue',
-  'openstory.regenerate_storyboard',
-  'openstory.render_sequence_drafts_at_quality',
-  'openstory.render_shot_at_quality',
-  'openstory.render_studio_asset_at_quality',
-  'openstory.create_studio_assets',
-  'openstory.edit_studio_asset',
-  'openstory.draft_studio_prompt',
-  'openstory.rewrite_music_prompt',
-  'openstory.replace_element',
-  'openstory.recast_location',
-  'openstory.apply_sequence_edits',
-]);
-
 type Annotations = {
   readOnlyHint?: boolean;
   destructiveHint?: boolean;
-  openWorldHint?: boolean;
 };
 
 function annotationsOf(tool: AnyTool): Annotations {
@@ -95,15 +62,10 @@ function annotationsOf(tool: AnyTool): Annotations {
     : {};
 }
 
-/** A write the user confirms before it runs: a spend or a delete. */
+/** A write the user confirms before it runs: a delete. */
 export function needsApproval(tool: AnyTool): boolean {
-  const { readOnlyHint, destructiveHint, openWorldHint } = annotationsOf(tool);
-  if (readOnlyHint) return false;
-  return (
-    destructiveHint === true ||
-    openWorldHint === true ||
-    SPEND_TOOLS.has(tool.name)
-  );
+  const { readOnlyHint, destructiveHint } = annotationsOf(tool);
+  return !readOnlyHint && destructiveHint === true;
 }
 
 type McpEnvelope = {

@@ -10,6 +10,8 @@ import { cn } from '@/ui/utils';
 
 /** "openstory_get_shot_frames" (or the MCP "openstory.…") → "Get shot frames". */
 function toolTitle(name: string): string {
+  // The engine's own call for a lazy tool's schema.
+  if (name === '__lazy__tool__discovery__') return 'Finding tools';
   const bare = name.replace(/^openstory[._]/, '').replaceAll('_', ' ');
   return bare.charAt(0).toUpperCase() + bare.slice(1);
 }

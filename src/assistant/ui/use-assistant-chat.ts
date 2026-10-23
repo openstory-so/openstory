@@ -7,7 +7,8 @@
 
 import { fetchServerSentEvents, useChat } from '@tanstack/ai-react';
 import type { ConnectionAdapter } from '@tanstack/ai-react';
-import { useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useMemo, useRef } from 'react';
 import type { AnalysisModelId } from '@/models/models.config';
 import type { PageContextItem } from '../page-context';
 import { startAssistantThread } from './assistant-store';
@@ -60,6 +61,11 @@ async function fetchWithServerErrors(
   throw error;
 }
 
+/** A tool that changes something: anything but a read, whoami or the engine's own. */
+function isWriteTool(name: string): boolean {
+  return /^openstory_(?!get_|list_)/.test(name);
+}
+
 export type AssistantChatOptions = {
   threadId: string;
   pageContext: PageContextItem[];
@@ -82,10 +88,25 @@ export function useAssistantChat({
       }),
     [connection]
   );
+  const queryClient = useQueryClient();
+  // A write the model made lands on the page the user is looking at: the
+  // Images grid shows the asset generating, a shot its new prompt. Reads
+  // change nothing, so they refetch nothing.
+  const writes = useRef(new Set<string>());
   return useChat({
     connection: live,
     threadId,
     persistence: true,
     forwardedProps: { pageContext, model },
+    onChunk: (chunk) => {
+      if (chunk.type === 'TOOL_CALL_START' && isWriteTool(chunk.toolCallName)) {
+        writes.current.add(chunk.toolCallId);
+      } else if (
+        chunk.type === 'TOOL_CALL_RESULT' &&
+        writes.current.delete(chunk.toolCallId)
+      ) {
+        void queryClient.invalidateQueries();
+      }
+    },
   });
 }

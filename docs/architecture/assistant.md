@@ -17,20 +17,18 @@ only assistant-side work per tool happens in
 - The MCP envelope is unwrapped: `structuredContent` goes to the model and
   the card; an error envelope becomes a thrown error, which TanStack AI
   reports as the tool's error result and the run goes on.
-- A write that spends credits or deletes something is `needsApproval`: the
-  run pauses on a card with Allow / Deny. Spending is read off the catalog's
-  own mark (`openWorldHint: true` on a write, the `paid` annotations) plus
-  `SPEND_TOOLS` for the few that spend without it (`create_sequence`,
-  `rebuild_shot_prompts`); deleting is `destructiveHint`. A read never asks.
-  `assistant-tools.test.ts` pins both against the catalog.
+- A delete (`destructiveHint`) is `needsApproval`: the run pauses on a card
+  with Allow / Deny. A spend does not ask: the user is inside the app, the
+  page shows the generation as it starts, and it can be cancelled there.
+  A read never asks. `assistant-tools.test.ts` pins this against the catalog.
 - Tools outside `EAGER_TOOLS` are `lazy`: the model sees the name and the
   first sentence, and discovers a schema when it needs one.
 - The model calls a tool by `chatToolName`: `openstory_get_shot`, the MCP
   name with its dot as an underscore. OpenAI rejects a dot in a tool name
   and OpenRouter reports only "Provider returned error" for it; the
   provider's own message is logged by the `assistant-model-error`
-  middleware (`onModelError`, `rawEvent`). `EAGER_TOOLS`, `SPEND_TOOLS` and
-  the approval rule keep the MCP names.
+  middleware (`onModelError`, `rawEvent`). `EAGER_TOOLS` and the approval rule
+  keep the MCP names.
 
 Scope checks, the likeness gate and billing are the tool's own and are the
 same on both paths. Do not add an assistant-only tool; add an MCP tool.
