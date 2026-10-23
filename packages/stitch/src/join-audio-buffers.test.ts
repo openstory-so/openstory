@@ -46,11 +46,14 @@ describe('joinAudioBuffers', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('returns null with no chunks', () => {
-    expect(joinAudioBuffers([])).toBeNull();
+    expect(joinAudioBuffers([], 1)).toBeNull();
   });
 
   it('lays consecutive chunks end to end at the track rate', () => {
-    const joined = joinAudioBuffers([chunk([1, 2], 0.5), chunk([3, 4], 0.7)]);
+    const joined = joinAudioBuffers(
+      [chunk([1, 2], 0.5), chunk([3, 4], 0.7)],
+      1
+    );
     expect(joined?.timestamp).toBe(0.5);
     expect(joined?.buffer.sampleRate).toBe(10);
     expect(Array.from(joined?.buffer.getChannelData(0) ?? [])).toEqual([
@@ -59,7 +62,7 @@ describe('joinAudioBuffers', () => {
   });
 
   it('leaves silence across a gap and ignores overlap past the end', () => {
-    const joined = joinAudioBuffers([chunk([1], 0), chunk([2, 3], 0.3)]);
+    const joined = joinAudioBuffers([chunk([1], 0), chunk([2, 3], 0.3)], 1);
     expect(Array.from(joined?.buffer.getChannelData(0) ?? [])).toEqual([
       1, 0, 0, 2, 3,
     ]);
@@ -82,10 +85,10 @@ describe('joinAudioBuffers refuses a broken track', () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test double
       return { buffer: buffer as unknown as AudioBuffer, timestamp };
     };
-    const joined = joinAudioBuffers([
-      stereo([1, 2], [9, 8], 0),
-      stereo([3, 4], [7, 6], 0.2),
-    ]);
+    const joined = joinAudioBuffers(
+      [stereo([1, 2], [9, 8], 0), stereo([3, 4], [7, 6], 0.2)],
+      1
+    );
     expect(Array.from(joined?.buffer.getChannelData(0) ?? [])).toEqual([
       1, 2, 3, 4,
     ]);
@@ -94,13 +97,13 @@ describe('joinAudioBuffers refuses a broken track', () => {
     ]);
   });
 
-  it('throws on more than a second of gaps instead of sizing by timestamps', () => {
-    expect(() => joinAudioBuffers([chunk([1], 0), chunk([2], 1000)])).toThrow(
-      /gaps/
-    );
+  it('throws on a span past the clip instead of sizing by timestamps', () => {
+    expect(() =>
+      joinAudioBuffers([chunk([1], 0), chunk([2], 1000)], 5)
+    ).toThrow(/past the clip/);
   });
 
   it('throws on a span that is not a positive length', () => {
-    expect(() => joinAudioBuffers([chunk([1], Number.NaN)])).toThrow(/span/);
+    expect(() => joinAudioBuffers([chunk([1], Number.NaN)], 1)).toThrow(/span/);
   });
 });

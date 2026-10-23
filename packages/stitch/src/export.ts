@@ -177,7 +177,7 @@ async function scheduleTrack(
     if (offset + chunk.timestamp >= end) break;
     chunks.push(chunk);
   }
-  const joined = joinAudioBuffers(chunks);
+  const joined = joinAudioBuffers(chunks, end - offset);
   if (!joined) return;
   const node = ctx.createBufferSource();
   node.buffer = joined.buffer;

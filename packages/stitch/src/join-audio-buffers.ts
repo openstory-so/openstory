@@ -9,7 +9,9 @@
  * track once, continuously.
  */
 export function joinAudioBuffers(
-  chunks: readonly { buffer: AudioBuffer; timestamp: number }[]
+  chunks: readonly { buffer: AudioBuffer; timestamp: number }[],
+  /** The longest the track can be, from what the caller knows of the clip. */
+  maxSeconds: number
 ): { buffer: AudioBuffer; timestamp: number } | null {
   const first = chunks[0];
   if (!first) return null;
@@ -17,19 +19,16 @@ export function joinAudioBuffers(
   const { sampleRate, numberOfChannels } = first.buffer;
   const start = first.timestamp;
   // The span comes from the file's own timestamps, so it is refused rather
-  // than trusted to size the allocation: more than a second of gaps, or no
-  // span at all, is a broken track, and the caller reports it like one.
-  let frames = 0;
-  for (const { buffer } of chunks) frames += buffer.length;
-  const length = Math.round(
-    (last.timestamp + last.buffer.duration - start) * sampleRate
-  );
+  // than trusted to size the allocation: longer than the clip, or no span
+  // at all, is a broken track, and the caller reports it like one.
+  const seconds = last.timestamp + last.buffer.duration - start;
+  const length = Math.round(seconds * sampleRate);
   if (!(length > 0)) {
     throw new Error('Audio track chunks span no positive length');
   }
-  if (length > frames + sampleRate) {
+  if (seconds > maxSeconds) {
     throw new Error(
-      `Audio track has ${((length - frames) / sampleRate).toFixed(1)}s of gaps between chunks`
+      `Audio track spans ${seconds.toFixed(1)}s, past the clip's ${maxSeconds.toFixed(1)}s`
     );
   }
   const joined = new AudioBuffer({ numberOfChannels, length, sampleRate });

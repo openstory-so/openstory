@@ -586,7 +586,10 @@ export class SequencePlayerEngine {
             if (stale()) return;
             chunks.push(chunk);
           }
-          const joined = joinAudioBuffers(chunks);
+          const joined = joinAudioBuffers(
+            chunks,
+            clipEnd(clipIndex) - clipOffsetSeconds
+          );
           if (joined) {
             const at = clipOffsetSeconds + joined.timestamp;
             this.queueBuffer(joined.buffer, at, master);
