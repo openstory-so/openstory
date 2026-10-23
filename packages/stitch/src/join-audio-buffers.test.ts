@@ -103,6 +103,22 @@ describe('joinAudioBuffers refuses a broken track', () => {
     ).toThrow(/past the clip/);
   });
 
+  it('allows a track to outrun its clip by up to a second', () => {
+    // Bound 1 s, track 1.5 s: an encoder pad, not a broken file.
+    const joined = joinAudioBuffers([chunk(Array(15).fill(1), 0)], 1);
+    expect(joined?.buffer.length).toBe(15);
+    expect(() => joinAudioBuffers([chunk(Array(25).fill(1), 0)], 1)).toThrow(
+      /past the clip/
+    );
+  });
+
+  it('throws on a bound that is not a positive length', () => {
+    expect(() => joinAudioBuffers([chunk([1], 0)], Number.NaN)).toThrow(
+      /bound/
+    );
+    expect(() => joinAudioBuffers([chunk([1], 0)], 0)).toThrow(/bound/);
+  });
+
   it('throws on a span that is not a positive length', () => {
     expect(() => joinAudioBuffers([chunk([1], Number.NaN)], 1)).toThrow(/span/);
   });

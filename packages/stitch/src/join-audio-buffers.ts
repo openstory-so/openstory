@@ -13,22 +13,31 @@ export function joinAudioBuffers(
   /** The longest the track can be, from what the caller knows of the clip. */
   maxSeconds: number
 ): { buffer: AudioBuffer; timestamp: number } | null {
+  if (!(Number.isFinite(maxSeconds) && maxSeconds > 0)) {
+    throw new Error(
+      `Audio track bound is not a positive length: ${maxSeconds}`
+    );
+  }
   const first = chunks[0];
   if (!first) return null;
   const last = chunks.at(-1) ?? first;
   const { sampleRate, numberOfChannels } = first.buffer;
   const start = first.timestamp;
-  // The span comes from the file's own timestamps, so it is refused rather
-  // than trusted to size the allocation: longer than the clip, or no span
-  // at all, is a broken track, and the caller reports it like one.
+  // The span comes from the file's own timestamps, and so does the clip's
+  // length, so neither is trusted alone to size the allocation. A track may
+  // outrun its picture by an encoder pad (milliseconds), so each bound has a
+  // second of slack; past either, or with no span at all, it is a broken
+  // track and the caller reports it like one.
   const seconds = last.timestamp + last.buffer.duration - start;
   const length = Math.round(seconds * sampleRate);
   if (!(length > 0)) {
     throw new Error('Audio track chunks span no positive length');
   }
-  if (seconds > maxSeconds) {
+  let frames = 0;
+  for (const { buffer } of chunks) frames += buffer.length;
+  if (seconds > maxSeconds + 1 || length > frames + sampleRate) {
     throw new Error(
-      `Audio track spans ${seconds.toFixed(1)}s, past the clip's ${maxSeconds.toFixed(1)}s`
+      `Audio track spans ${seconds.toFixed(1)}s with ${((length - frames) / sampleRate).toFixed(1)}s of gaps, past the clip's ${maxSeconds.toFixed(1)}s`
     );
   }
   const joined = new AudioBuffer({ numberOfChannels, length, sampleRate });
