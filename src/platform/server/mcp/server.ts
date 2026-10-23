@@ -51,6 +51,7 @@ import { castReadTools } from './tools/cast-reads';
 import { productionReadTools } from './tools/production-reads';
 import { contextReadTools } from './tools/context-reads';
 import { libraryReadTools } from './tools/library-reads';
+import { libraryEditTools } from './tools/library-edits';
 
 export const MCP_SERVER_NAME = 'openstory';
 export const MCP_SERVER_VERSION = '0.1.0';
@@ -122,6 +123,7 @@ export const MCP_TOOLS = [
   planExportTool,
   startExportTool,
   ...stitchTools,
+  ...libraryEditTools,
 ];
 
 export const mcpServer = createMCPServer({

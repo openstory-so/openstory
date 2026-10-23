@@ -77,6 +77,7 @@ import {
   shots,
   shotPromptVersions,
   styles,
+  teamMembers,
   teams,
   renderSegments,
   videoVariants,
@@ -5050,5 +5051,58 @@ describe('inline review frames', () => {
     expect(
       result.content.filter((block) => block.type === 'image')
     ).toHaveLength(1);
+  });
+});
+
+describe('library styles', () => {
+  const refusal = (code: string) => ({
+    isError: true,
+    structuredContent: { error: { code } },
+  });
+  it('creates, edits and deletes a team style; delete needs an admin', async () => {
+    const created = z
+      .object({ id: z.string(), name: z.string(), isTemplate: z.boolean() })
+      .parse(
+        await data('create_style', {
+          name: 'Harbour Noir',
+          category: 'film',
+          config: {
+            version: 2,
+            look: {
+              mood: 'tense',
+              artStyle: 'live action',
+              lighting: 'neon',
+              colorPalette: ['#000000'],
+              colorGrading: 'teal',
+            },
+            motion: { camera: 'handheld', pace: 'measured', energy: 3 },
+          },
+        })
+      );
+    expect(created).toMatchObject({ name: 'Harbour Noir', isTemplate: false });
+    // No config: refused by the input schema.
+    expect(
+      (await call('create_style', { name: 'Harbour Noir', category: 'film' }))
+        .isError
+    ).toBe(true);
+    expect(
+      await data('update_style', { styleId: created.id, tags: ['noir'] })
+    ).toMatchObject({ id: created.id, tags: ['noir'] });
+    expect(await call('update_style', { styleId: created.id })).toMatchObject(
+      refusal('VALIDATION_ERROR')
+    );
+    // A member cannot delete; an admin can.
+    expect((await call('delete_style', { styleId: created.id })).isError).toBe(
+      true
+    );
+    await db
+      .insert(teamMembers)
+      .values({ id: generateId(), teamId, userId: actorId, role: 'admin' });
+    expect(await data('delete_style', { styleId: created.id })).toEqual({
+      styleId: created.id,
+    });
+    expect(await call('get_style', { id: created.id })).toMatchObject(
+      refusal('NOT_FOUND')
+    );
   });
 });
