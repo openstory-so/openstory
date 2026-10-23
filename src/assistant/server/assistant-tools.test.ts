@@ -9,6 +9,7 @@ import {
   assistantTools,
   chatToolName,
   needsApproval,
+  takesUrl,
   unwrapMcpResult,
 } from './assistant-tools';
 
@@ -73,5 +74,28 @@ describe('unwrapMcpResult', () => {
     expect(unwrapMcpResult({ user: { id: 'u' } })).toEqual({
       user: { id: 'u' },
     });
+  });
+});
+
+describe('model-written URLs', () => {
+  it('asks before every tool whose input holds a URL the model writes', () => {
+    // A page the model read could tell it to send the user's work to a URL
+    // of its choosing. The set is read off the schemas; this pins it so a
+    // new URL-taking tool is a deliberate addition here, and asks.
+    const urlTools = MCP_TOOLS.filter(takesUrl).map((tool) => tool.name);
+    expect(urlTools.sort()).toEqual([
+      'openstory.apply_sequence_edits',
+      'openstory.create_sequence',
+      'openstory.create_stitch',
+      'openstory.fetch_url',
+      'openstory.upload_media',
+    ]);
+    for (const name of urlTools) {
+      const tool = MCP_TOOLS.find((t) => t.name === name);
+      expect(tool && needsApproval(tool), name).toBe(true);
+    }
+    expect(MCP_TOOLS.filter(takesUrl).map((t) => t.name)).not.toContain(
+      'openstory.web_search'
+    );
   });
 });

@@ -154,11 +154,15 @@ tools, so an outside agent gets them too. Both are reads with
 `fetch_url` goes through `openSafeUrl` (the public API's SSRF-hardened
 opener: host checks on every redirect hop, bounded hops, a connect budget)
 and refuses the app's own origin, then reads a bounded prefix of a text
-page and hands back at most 30,000 characters. In chat `fetch_url` is the
-one read that asks: the model composes the URL, and a page it read could
-tell it to put the user's script in one, so the URL sits on an Allow / Deny
-card first (`URL_TOOLS` in `assistant-tools.ts`). A search query is shown
-on its card but does not ask. The system prompt tells the model a page's
+page and hands back at most 30,000 characters. In chat any tool whose
+input carries a URL the model writes asks first (`takesUrl` in
+`assistant-tools.ts`, read off each tool's JSON Schema, so a new URL field
+or a batch that embeds one is caught with no list to forget; the set is
+pinned in `assistant-tools.test.ts`): a page the model read could tell it
+to put the user's script in a URL, so the URL sits on an Allow / Deny card
+before anything goes out. Today that is `fetch_url`, `upload_media`,
+`create_sequence`, `create_stitch` and `apply_sequence_edits`. A search
+query is shown on its card but does not ask. The system prompt tells the model a page's
 text is material, never instructions.
 
 ## MCP Apps views in the app

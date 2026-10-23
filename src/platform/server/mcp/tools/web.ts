@@ -179,19 +179,25 @@ const fetchUrl = openstoryTool({
         400
       );
     }
-    // Read a bounded prefix so a huge page never sits whole in memory.
+    // Read a bounded prefix so a huge page never sits whole in memory, on
+    // its own short clock: the opener's body budget is sized for a clip.
     const reader = response.body?.getReader();
     const chunks: Uint8Array[] = [];
     let bytes = 0;
-    while (reader) {
-      const { value, done } = await reader.read();
-      if (done || !value) break;
-      chunks.push(value);
-      bytes += value.length;
-      if (bytes >= PAGE_BYTES_MAX) {
-        await reader.cancel();
-        break;
+    const bodyClock = setTimeout(() => void reader?.cancel(), FETCH_TIMEOUT_MS);
+    try {
+      while (reader) {
+        const { value, done } = await reader.read();
+        if (done || !value) break;
+        chunks.push(value);
+        bytes += value.length;
+        if (bytes >= PAGE_BYTES_MAX) {
+          await reader.cancel();
+          break;
+        }
       }
+    } finally {
+      clearTimeout(bodyClock);
     }
     const raw = new TextDecoder().decode(concat(chunks, bytes));
     const { title, text } = /html/i.test(type)
