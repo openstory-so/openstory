@@ -65,3 +65,18 @@ describe('joinAudioBuffers', () => {
     ]);
   });
 });
+
+describe('joinAudioBuffers caps the allocation', () => {
+  beforeEach(() => vi.stubGlobal('AudioBuffer', FakeAudioBuffer));
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('allows at most a second of gaps and drops what lies past it', () => {
+    const joined = joinAudioBuffers([chunk([1], 0), chunk([2], 1000)]);
+    // 2 frames of sound + 10 frames (one second at 10 Hz) of gap allowance.
+    expect(joined?.buffer.length).toBe(12);
+  });
+
+  it('returns null for a span that is not a positive length', () => {
+    expect(joinAudioBuffers([chunk([1], Number.NaN)])).toBeNull();
+  });
+});

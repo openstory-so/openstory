@@ -16,19 +16,25 @@ export function joinAudioBuffers(
   const last = chunks.at(-1) ?? first;
   const { sampleRate, numberOfChannels } = first.buffer;
   const start = first.timestamp;
-  const length = Math.round(
-    (last.timestamp + last.buffer.duration - start) * sampleRate
+  // The span comes from the file's own timestamps, so a crafted file cannot
+  // size the allocation: the sound plus at most a second of gaps.
+  let frames = 0;
+  for (const { buffer } of chunks) frames += buffer.length;
+  const length = Math.min(
+    Math.round((last.timestamp + last.buffer.duration - start) * sampleRate),
+    frames + sampleRate
   );
+  if (!(length > 0)) return null;
   const joined = new AudioBuffer({ numberOfChannels, length, sampleRate });
   for (const { buffer, timestamp } of chunks) {
     const at = Math.round((timestamp - start) * sampleRate);
-    const frames = Math.min(buffer.length, length - at);
-    if (frames <= 0) continue;
+    const fit = Math.min(buffer.length, length - at);
+    if (fit <= 0) continue;
     for (let c = 0; c < numberOfChannels; c++) {
       joined.copyToChannel(
         buffer
           .getChannelData(Math.min(c, buffer.numberOfChannels - 1))
-          .subarray(0, frames),
+          .subarray(0, fit),
         c,
         at
       );
