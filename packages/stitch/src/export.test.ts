@@ -51,7 +51,16 @@ vi.doMock('mediabunny', () => ({
   AudioBufferSink: class {
     buffers() {
       return (async function* () {
-        yield { buffer: { duration: 0.25 }, timestamp: 0 };
+        yield {
+          buffer: {
+            duration: 0.25,
+            length: 12_000,
+            sampleRate: 48_000,
+            numberOfChannels: 1,
+            getChannelData: () => new Float32Array(12_000),
+          },
+          timestamp: 0,
+        };
       })();
     }
   },
@@ -287,6 +296,23 @@ describe('exportSequence', () => {
 
   it('places a clip’s sound at its offset', async () => {
     const starts: number[] = [];
+    // The sink's chunk is joined into a fresh AudioBuffer before it is
+    // scheduled; node has none.
+    vi.stubGlobal(
+      'AudioBuffer',
+      class {
+        length: number;
+        sampleRate: number;
+        constructor(o: { length: number; sampleRate: number }) {
+          this.length = o.length;
+          this.sampleRate = o.sampleRate;
+        }
+        get duration() {
+          return this.length / this.sampleRate;
+        }
+        copyToChannel() {}
+      }
+    );
     vi.stubGlobal(
       'OfflineAudioContext',
       class {

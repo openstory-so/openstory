@@ -29,6 +29,7 @@ import {
   QUALITY_HIGH,
   StreamTarget,
   type InputAudioTrack,
+  type WrappedAudioBuffer,
   type Quality,
   type StreamTargetChunk,
 } from 'mediabunny';
@@ -38,6 +39,7 @@ import type { StitchLogger } from './logger.js';
 import { computeMusicGain } from './music-gain.js';
 import type { PlaybackClip } from './playback-clip.js';
 import { createRangedSource } from './ranged-source.js';
+import { joinAudioBuffers } from './join-audio-buffers.js';
 import { cuesToWebVTT } from './webvtt.js';
 
 /** What to export: a clip list to open, or a source a player already opened. */
@@ -156,7 +158,11 @@ function drawCaption(
   });
 }
 
-/** Schedule every decoded buffer of `track` on `ctx` from `offset`, through `to`. */
+/**
+ * Schedule `track` on `ctx` at `offset`, through `to`, as one node: the
+ * track's rate is rarely the mix's, and per-chunk resampling clicks
+ * (joinAudioBuffers).
+ */
 async function scheduleTrack(
   ctx: OfflineAudioContext,
   track: InputAudioTrack,
@@ -164,17 +170,19 @@ async function scheduleTrack(
   to: AudioNode,
   signal: AbortSignal | undefined
 ): Promise<void> {
-  for await (const { buffer, timestamp } of new AudioBufferSink(track).buffers(
-    0
-  )) {
+  const end = ctx.length / ctx.sampleRate;
+  const chunks: WrappedAudioBuffer[] = [];
+  for await (const chunk of new AudioBufferSink(track).buffers(0)) {
     if (signal?.aborted) throw abortError();
-    const at = offset + timestamp;
-    if (at >= ctx.length / ctx.sampleRate) return;
-    const node = ctx.createBufferSource();
-    node.buffer = buffer;
-    node.connect(to);
-    node.start(at);
+    if (offset + chunk.timestamp >= end) break;
+    chunks.push(chunk);
   }
+  const joined = joinAudioBuffers(chunks);
+  if (!joined) return;
+  const node = ctx.createBufferSource();
+  node.buffer = joined.buffer;
+  node.connect(to);
+  node.start(offset + joined.timestamp);
 }
 
 export async function exportSequence(
