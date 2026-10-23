@@ -111,6 +111,19 @@ export type StudioGalleryAsset = GeneratedAsset & {
   creatorEmail?: string | null;
 };
 
+/**
+ * What a failed card and the detail pane show. Seedance sentences this app
+ * wrote pass through. Any other stored sentence stays, so a fal failure is
+ * not replaced with "Generation failed".
+ */
+export function studioShownFailure(error: string | null | undefined): string {
+  if (isContentRejectionError(error)) return CONTENT_REJECTION_USER_TITLE;
+  const plain = seedanceUserFacingError(error);
+  if (plain) return plain;
+  const stored = error?.trim();
+  return stored ? stored : 'Generation failed';
+}
+
 function StudioCard({
   asset,
   onOpen,
@@ -157,9 +170,7 @@ function StudioCard({
         ) : asset.status === 'failed' ? (
           <div className="flex h-full items-center justify-center p-4 text-center text-sm text-destructive">
             <span className="line-clamp-6">
-              {isContentRejectionError(asset.error)
-                ? CONTENT_REJECTION_USER_TITLE
-                : (seedanceUserFacingError(asset.error) ?? 'Generation failed')}
+              {studioShownFailure(asset.error)}
             </span>
           </div>
         ) : isVideo && primary ? (
@@ -385,7 +396,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   if (asset.status === 'failed') {
     return (
       <p className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 text-center text-sm break-words text-destructive select-text">
-        {seedanceUserFacingError(asset.error) ?? 'Generation failed'}
+        {studioShownFailure(asset.error)}
       </p>
     );
   }
