@@ -152,33 +152,27 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
             isFetchingNextPage={query.isFetchingNextPage}
             onLoadMore={() => void query.fetchNextPage()}
             supportMode={supportMode}
-            onReuse={
-              supportMode
-                ? undefined
-                : (reuse) => composerRef.current?.load(reuse)
-            }
+            onReuse={(reuse) => composerRef.current?.load(reuse)}
           />
         </PageContainer>
       </div>
 
-      {!supportMode && (
-        <div
-          className="flex min-h-0 max-h-[50%] shrink-0 flex-col overflow-hidden border-t bg-background/80 backdrop-blur-md"
-          data-testid="studio-composer-pane"
+      <div
+        className="flex min-h-0 max-h-[50%] shrink-0 flex-col overflow-hidden border-t bg-background/80 backdrop-blur-md"
+        data-testid="studio-composer-pane"
+      >
+        <PageContainer
+          maxWidth="wide"
+          padding="compact"
+          className="flex min-h-0 flex-col overflow-hidden py-4"
         >
-          <PageContainer
-            maxWidth="wide"
-            padding="compact"
-            className="flex min-h-0 flex-col overflow-hidden py-4"
-          >
-            <StudioComposer
-              ref={composerRef}
-              activity={activity}
-              generatingPrompts={generatingPrompts}
-            />
-          </PageContainer>
-        </div>
-      )}
+          <StudioComposer
+            ref={composerRef}
+            activity={activity}
+            generatingPrompts={generatingPrompts}
+          />
+        </PageContainer>
+      </div>
     </div>
   );
 }

@@ -198,10 +198,9 @@ export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
   const prompt = readableStudioPrompt(studioPrompt(asset)).trim();
   if (!prompt) return null;
   const input = asset.input;
-  // An edit's prompt only means something against its source clip, which
-  // the composer cannot hold; edit again from the dialog instead (#1925).
-  if (input.mode === 'edit') return null;
   const duration = input.duration;
+  // An edit is a reference run whose source clip is `@Video1` (#1925).
+  const sourceVideo = oneString(input.sourceVideoUrl);
   const aspect = aspectRatioSchema.safeParse(input.aspectRatio);
   return {
     prompt,
@@ -220,12 +219,15 @@ export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
         duration > 0)
         ? duration
         : null,
-    mode: videoMode(input.mode),
+    mode: input.mode === 'edit' ? 'reference' : videoMode(input.mode),
     generateAudio:
       typeof input.generateAudio === 'boolean' ? input.generateAudio : null,
     draft: typeof input.draft === 'boolean' ? input.draft : null,
     referenceImages: strings(input.referenceImages),
-    referenceVideos: strings(input.referenceVideos),
+    referenceVideos: [
+      ...(sourceVideo ? [sourceVideo] : []),
+      ...strings(input.referenceVideos),
+    ],
     referenceAudio: strings(input.referenceAudio),
     startImageUrl: oneString(input.startImageUrl),
     endImageUrl: oneString(input.endImageUrl),

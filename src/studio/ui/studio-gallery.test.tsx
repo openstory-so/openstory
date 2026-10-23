@@ -68,9 +68,8 @@ describe('GenerationDetail', () => {
     expect(html).toContain('Share link');
     expect(html).toContain('Download');
     expect(html).toContain('Open @Image1');
-    expect(html).toContain('Download @Image1');
-    expect(html).toContain('/r2/fox.png?download');
-    expect(html).toContain('Download @Audio1');
+    expect(html).not.toContain('Download @Image1');
+    expect(html).not.toContain('Download @Audio1');
     expect(html).toContain('aspect-video');
   });
 

@@ -544,7 +544,6 @@ function ReferenceTile({
         <figcaption className="w-full truncate text-center font-mono text-xs text-muted-foreground">
           {reference.label}
         </figcaption>
-        <ReferenceDownload reference={reference} />
       </figure>
     </li>
   );
@@ -610,24 +609,26 @@ function ReferenceList({ references }: { references: StudioShownReference[] }) {
               Reference used for this generation
             </DialogDescription>
           </DialogHeader>
-          {open?.kind === 'video' ? (
-            <video
-              src={open.url}
-              controls
-              className="max-h-[70vh] w-full rounded-md bg-muted"
-            >
-              <track kind="captions" />
-            </video>
-          ) : (
-            <img
-              src={open?.url}
-              alt={open?.label ?? ''}
-              className="max-h-[70vh] w-full object-contain"
-            />
-          )}
           {open && (
-            <div className="flex justify-end">
-              <ReferenceDownload reference={open} />
+            <div className="relative">
+              {open.kind === 'video' ? (
+                <video
+                  src={open.url}
+                  controls
+                  className="max-h-[70vh] w-full rounded-md bg-muted"
+                >
+                  <track kind="captions" />
+                </video>
+              ) : (
+                <img
+                  src={open.url}
+                  alt={open.label}
+                  className="max-h-[70vh] w-full object-contain"
+                />
+              )}
+              <div className="absolute top-2 right-2">
+                <ReferenceDownload reference={open} />
+              </div>
             </div>
           )}
         </DialogContent>

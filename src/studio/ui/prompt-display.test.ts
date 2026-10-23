@@ -156,6 +156,24 @@ describe('studioReuse', () => {
     });
   });
 
+  it('loads an edited clip as a reference with its source first', () => {
+    const row = asset({
+      activity: 'video',
+      input: {
+        prompt: 'Edit the walk',
+        aspectRatio: '16:9',
+        mode: 'edit',
+        sourceVideoUrl: '/r2/source.mp4',
+        referenceVideos: ['/r2/extra.mp4'],
+      },
+    });
+    expect(studioReuse(row)).toMatchObject({
+      prompt: 'Edit the walk',
+      mode: 'reference',
+      referenceVideos: ['/r2/source.mp4', '/r2/extra.mp4'],
+    });
+  });
+
   it('is null when the generation has no prompt', () => {
     const row = asset({ activity: 'image', input: { aspectRatio: '1:1' } });
     expect(studioReuse(row)).toBeNull();
