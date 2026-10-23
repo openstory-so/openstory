@@ -28,43 +28,57 @@ interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
 function suggestionsFor(kinds: ReadonlySet<string>): string[] {
   if (kinds.has('studio_asset')) {
     return [
-      'Make a variation of this with a wider shot',
-      'Use this as a reference for a new clip',
-      'What prompt made this?',
+      'How can I make this image more striking?',
+      'Give me three variations that push the mood further',
+      'Turn this into a short clip. What should move?',
     ];
   }
   if (kinds.has('shot')) {
     return [
-      'What is still missing before this shot can render?',
-      'Make this shot darker and more handheld',
-      'Why is this shot stale?',
+      'How can I make this shot more interesting?',
+      'Give me three alternative framings for this shot',
+      'What would a cinematographer change here?',
+    ];
+  }
+  if (kinds.has('scene')) {
+    return [
+      'How can I make this scene land harder?',
+      'Where does this scene drag, and what should I cut?',
+      'Suggest a stronger opening and closing shot for this scene',
+    ];
+  }
+  if (kinds.has('draft_script')) {
+    return [
+      'How can I make this script more visual?',
+      'Tighten the dialogue without losing the beats',
+      'What is missing from this story?',
     ];
   }
   if (kinds.has('sequence')) {
     return [
-      'What does this sequence still owe before it can export?',
-      'Summarise the script in three lines',
-      'Which shots have no clip yet?',
+      'How can I make this sequence better?',
+      'What is the weakest moment in this cut?',
+      'What would make the first five seconds hook harder?',
     ];
   }
   if (kinds.has('character')) {
     return [
-      'Give this character a second look in different clothes',
-      'Which sequences cast this character?',
-      'Describe this character’s voice',
+      'How can I make this character more distinctive?',
+      'Suggest a look that says more about who they are',
+      'What voice would suit them?',
     ];
   }
   if (kinds.has('location')) {
     return [
+      'How can I make this location feel more alive?',
+      'What time of day and weather would serve the story best?',
       'Which sequences use this location?',
-      'Redraw this location’s sheet at night',
-      'Describe this location in one line',
     ];
   }
   return [
-    'What did I work on most recently?',
-    'Start a new sequence from a script I paste',
-    'Show my characters',
+    'Help me write a 30-second script',
+    'Review my latest sequence and name the one change with the biggest payoff',
+    'Make a reference still for a character I describe',
   ];
 }
 
