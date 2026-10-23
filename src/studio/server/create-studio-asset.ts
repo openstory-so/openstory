@@ -45,6 +45,7 @@ import {
 } from '@/studio/schema';
 import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-duration';
 import {
+  generationCouldNotStartMessage,
   isSeedanceEdit,
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
@@ -466,7 +467,7 @@ export async function createStudioAssets(
           } catch (error) {
             await scopedDb.generatedAssets.markFailed(
               row.id,
-              'The generation could not be started — please try again.'
+              generationCouldNotStartMessage(input.activity)
             );
             throw error;
           }

@@ -37,6 +37,31 @@ const SEEDANCE_EDIT_CONSTRAINT_MESSAGE = `Seedance read this as a video edit and
 
 const SEEDANCE_INTERNAL_MESSAGE = `Seedance couldn't process this video because of a temporary error. Try again. ${NOT_CHARGED}`;
 
+/** Account-wide ACR pool, not the team's plan. Raw Ark text stays in the log. */
+const PROVIDER_BUSY_MESSAGE =
+  "Our video provider is busy right now. You weren't charged. Try again in a few minutes.";
+
+const REFERENCE_PROCESS_MESSAGE =
+  "One of your reference images couldn't be processed. You weren't charged.";
+
+/**
+ * Trigger never started a run, so nothing was billed. `generation` is the
+ * reconciler, which does not know image from video.
+ */
+export function generationCouldNotStartMessage(
+  activity: 'image' | 'video' | 'audio' | 'generation' = 'generation'
+): string {
+  const what =
+    activity === 'video'
+      ? 'video'
+      : activity === 'image'
+        ? 'image'
+        : activity === 'audio'
+          ? 'audio'
+          : 'generation';
+  return `This ${what} couldn't start. You weren't charged. Try again.`;
+}
+
 /** Whole word, so "credits" and "editorial" do not count. */
 function promptRequestsSeedanceEdit(prompt: string): boolean {
   return /\bedit\b/i.test(prompt);
@@ -200,11 +225,41 @@ export function seedanceSubmitRefusal(
  * strips Ark's prefix and code and keeps at most 180 characters of its
  * detail.
  */
+export type SeedanceFailureReferences = {
+  images?: readonly string[];
+  videos?: readonly string[];
+};
+
+function referenceTag(
+  message: string,
+  urls: readonly string[] | undefined,
+  prefix: 'Image' | 'Video'
+): string | null {
+  if (!urls) return null;
+  const index = urls.findIndex(
+    (url) => url.length > 0 && message.includes(url)
+  );
+  return index >= 0 ? `@${prefix}${index + 1}` : null;
+}
+
 export function explainSeedanceFailure(
   message: string,
-  via: string | undefined
+  via: string | undefined,
+  references?: SeedanceFailureReferences
 ): string | null {
+  if (seedanceUserFacingError(message)) {
+    return via === 'byteplus' ? message : null;
+  }
   if (via !== 'byteplus' || /may show a real person/.test(message)) return null;
+  if (/QuotaSharedPoolExceeded/.test(message)) return PROVIDER_BUSY_MESSAGE;
+  if (/failed processing/.test(message)) {
+    const tag =
+      referenceTag(message, references?.images, 'Image') ??
+      referenceTag(message, references?.videos, 'Video');
+    return tag
+      ? `${tag} couldn't be processed. You weren't charged.`
+      : REFERENCE_PROCESS_MESSAGE;
+  }
   if (/TaskTypeConstraint/.test(message))
     return SEEDANCE_EDIT_CONSTRAINT_MESSAGE;
   if (/InternalServiceError/.test(message)) return SEEDANCE_INTERNAL_MESSAGE;
@@ -224,7 +279,13 @@ export function seedanceUserFacingError(
   error: string | null | undefined
 ): string | null {
   const text = error?.trim();
-  if (!text || !/^Seedance (?:couldn't|can only|read this)/.test(text))
+  if (
+    !text ||
+    !/^(?:Seedance (?:couldn't|can only|read this)|Our video provider|One of your reference|@Image\d+ couldn't|@Video\d+ couldn't|This (?:video|image|audio|generation) couldn't start)/.test(
+      text
+    )
+  ) {
     return null;
+  }
   return text;
 }

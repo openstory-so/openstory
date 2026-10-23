@@ -1696,9 +1696,11 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
     // all of them pass through — is what keeps motion's error rate visible in
     // PostHog alongside image and audio. No duration: the start time lives in
     // a step return this hook can't see.
+    const via = await resolveMotionVia(model, scopedDb.credentials);
+    const shown = explainSeedanceFailure(error, via) ?? error;
     recordMediaGenerationSpan({
       model,
-      provider: await resolveMotionVia(model, scopedDb.credentials),
+      provider: via,
       activity: 'video',
       prompt: input.prompt,
       errorType: isContentRejectionError(error)
@@ -1721,7 +1723,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         scopedDb,
         shotId,
         model,
-        error,
+        error: shown,
         workflowRunId: event.instanceId,
         variantOnly: input.variantOnly,
         emit: async (event2, payload) => {

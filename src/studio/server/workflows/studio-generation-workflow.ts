@@ -678,7 +678,14 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         metadata: { model: input.videoModel, assetId },
       });
     }
-    await scopedDb.generatedAssets.markFailed(assetId, error, videoVia);
+    const shown =
+      input.activity === 'video'
+        ? (explainSeedanceFailure(error, videoVia, {
+            images: input.referenceImages,
+            videos: input.referenceVideos,
+          }) ?? error)
+        : error;
+    await scopedDb.generatedAssets.markFailed(assetId, shown, videoVia);
     if (input.activity === 'video') {
       // Unpin this run's ACR stills (#1531). Not caught: this runs inside the
       // base class's retried `emit-failure` step, which keeps the real

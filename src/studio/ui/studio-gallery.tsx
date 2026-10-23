@@ -86,7 +86,13 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
-import { Suspense, useEffect, useState, type CSSProperties } from 'react';
+import {
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import { toast } from 'sonner';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
@@ -379,7 +385,7 @@ function StudioViewer({ asset }: { asset: GeneratedAsset }) {
   if (asset.status === 'failed') {
     return (
       <p className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 text-center text-sm break-words text-destructive select-text">
-        {asset.error ?? 'Generation failed'}
+        {seedanceUserFacingError(asset.error) ?? 'Generation failed'}
       </p>
     );
   }
@@ -435,40 +441,196 @@ function mentionItems(references: StudioShownReference[]): MentionItem[] {
   );
 }
 
-function ReferenceTile({ reference }: { reference: StudioShownReference }) {
+/** Step through opened reference stills. Wraps at either end. */
+export function stepReferenceIndex(
+  current: number,
+  delta: number,
+  count: number
+): number {
+  if (count <= 0) return 0;
+  return (current + delta + count) % count;
+}
+
+function referenceContentType(reference: StudioShownReference): string {
+  const path = reference.url.split(/[?#]/)[0] ?? reference.url;
+  const ext = path.split('.').pop()?.toLowerCase();
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'gif') return 'image/gif';
+  if (ext === 'mp4') return 'video/mp4';
+  if (ext === 'webm') return 'video/webm';
+  if (ext === 'mov') return 'video/quicktime';
+  if (ext === 'mp3') return 'audio/mpeg';
+  if (ext === 'wav') return 'audio/wav';
+  if (reference.kind === 'video') return 'video/mp4';
+  if (reference.kind === 'audio') return 'audio/mpeg';
+  return 'image/png';
+}
+
+function ReferenceDownload({ reference }: { reference: StudioShownReference }) {
+  const id = reference.label.replace(/^@/, '');
+  return (
+    <Button asChild variant="secondary" size="icon">
+      <a
+        href={studioDownloadHref(reference.url)}
+        download={studioDownloadFilename(id, referenceContentType(reference))}
+        aria-label={`Download ${reference.label}`}
+      >
+        <Download aria-hidden="true" />
+      </a>
+    </Button>
+  );
+}
+
+function ReferencePreview({ reference }: { reference: StudioShownReference }) {
+  if (reference.kind === 'audio') {
+    return (
+      <div className="flex size-16 items-center justify-center">
+        <AudioLines
+          className="size-5 text-muted-foreground"
+          aria-hidden="true"
+        />
+      </div>
+    );
+  }
+  if (reference.kind === 'video') {
+    return (
+      <ElementThumbnail
+        kind="video"
+        url={reference.url}
+        label={reference.label}
+        fit="cover"
+      />
+    );
+  }
+  return (
+    <AppImage
+      src={reference.url}
+      alt=""
+      width={64}
+      height={64}
+      className="size-16 object-cover"
+    />
+  );
+}
+
+function ReferenceTile({
+  reference,
+  onOpen,
+  triggerRef,
+}: {
+  reference: StudioShownReference;
+  onOpen?: () => void;
+  triggerRef?: (node: HTMLButtonElement | null) => void;
+}) {
   return (
     <li className="w-16 shrink-0">
       <figure className="flex flex-col items-center gap-1">
-        <div className="size-16 overflow-hidden rounded-md border bg-muted">
-          {reference.kind === 'audio' ? (
-            <div className="flex size-16 items-center justify-center">
-              <AudioLines
-                className="size-5 text-muted-foreground"
-                aria-hidden="true"
-              />
-            </div>
-          ) : reference.kind === 'video' ? (
-            <ElementThumbnail
-              kind="video"
-              url={reference.url}
-              label={reference.label}
-              fit="cover"
-            />
+        <div className="relative size-16 overflow-hidden rounded-md border bg-muted">
+          {onOpen ? (
+            <button
+              ref={triggerRef}
+              type="button"
+              className="block size-16 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              aria-label={`Open ${reference.label}`}
+              onClick={onOpen}
+            >
+              <ReferencePreview reference={reference} />
+            </button>
           ) : (
-            <AppImage
-              src={reference.url}
-              alt=""
-              width={64}
-              height={64}
-              className="size-16 object-cover"
-            />
+            <ReferencePreview reference={reference} />
           )}
         </div>
         <figcaption className="w-full truncate text-center font-mono text-xs text-muted-foreground">
           {reference.label}
         </figcaption>
+        <ReferenceDownload reference={reference} />
       </figure>
     </li>
+  );
+}
+
+function ReferenceList({ references }: { references: StudioShownReference[] }) {
+  const visual = references.filter((reference) => reference.kind !== 'audio');
+  const [openAt, setOpenAt] = useState<number | null>(null);
+  const triggers = useRef<(HTMLButtonElement | null)[]>([]);
+  const open = openAt === null ? undefined : visual[openAt];
+
+  return (
+    <>
+      <ul
+        className="flex shrink-0 gap-2 overflow-x-auto"
+        aria-label="References"
+      >
+        {references.map((reference) => {
+          const visualIndex = visual.indexOf(reference);
+          return (
+            <ReferenceTile
+              key={`${reference.label}-${reference.url}`}
+              reference={reference}
+              triggerRef={
+                visualIndex >= 0
+                  ? (node) => {
+                      triggers.current[visualIndex] = node;
+                    }
+                  : undefined
+              }
+              onOpen={
+                visualIndex >= 0 ? () => setOpenAt(visualIndex) : undefined
+              }
+            />
+          );
+        })}
+      </ul>
+      <Dialog
+        open={open !== undefined}
+        onOpenChange={(next) => {
+          if (!next && openAt !== null) triggers.current[openAt]?.focus();
+          if (!next) setOpenAt(null);
+        }}
+      >
+        <DialogContent
+          className="flex max-h-[90vh] max-w-4xl flex-col gap-3"
+          onKeyDown={(event) => {
+            if (openAt === null || visual.length < 2) return;
+            if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+            event.preventDefault();
+            setOpenAt(
+              stepReferenceIndex(
+                openAt,
+                event.key === 'ArrowRight' ? 1 : -1,
+                visual.length
+              )
+            );
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{open?.label ?? 'Reference'}</DialogTitle>
+            <DialogDescription>
+              Reference used for this generation
+            </DialogDescription>
+          </DialogHeader>
+          {open?.kind === 'video' ? (
+            <video
+              src={open.url}
+              controls
+              className="max-h-[70vh] w-full rounded-md bg-muted"
+            />
+          ) : (
+            <img
+              src={open?.url}
+              alt={open?.label ?? ''}
+              className="max-h-[70vh] w-full object-contain"
+            />
+          )}
+          {open && (
+            <div className="flex justify-end">
+              <ReferenceDownload reference={open} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -674,19 +836,7 @@ export function GenerationDetail({
           <DialogTitle>{asset.modelName || 'Generation'}</DialogTitle>
           <DialogDescription>{facts.join(' · ')}</DialogDescription>
         </DialogHeader>
-        {references.length > 0 && (
-          <ul
-            className="flex shrink-0 gap-2 overflow-x-auto"
-            aria-label="References"
-          >
-            {references.map((reference) => (
-              <ReferenceTile
-                key={`${reference.label}-${reference.url}`}
-                reference={reference}
-              />
-            ))}
-          </ul>
-        )}
+        {references.length > 0 && <ReferenceList references={references} />}
         <div className="max-h-64 overflow-y-auto md:max-h-none md:min-h-0 md:flex-1">
           {prompt ? (
             <HighlightedPrompt

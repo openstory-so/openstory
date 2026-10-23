@@ -189,12 +189,22 @@ export async function createPooledAsset(
   // `ingestAigcAsset` checks Ark by name first, which is what makes a retried
   // create (lost response, crash before finalize) reuse the asset instead of
   // making a second one, and what heals a ledger that lost rows.
-  const uri = await ingestAigcAsset(config, {
-    identity: input.storedUrl,
-    publicUrl: input.publicUrl,
-    assetType: input.assetType,
-    ...(input.groupId && { groupId: input.groupId }),
-  });
+  let uri: string;
+  try {
+    uri = await ingestAigcAsset(config, {
+      identity: input.storedUrl,
+      publicUrl: input.publicUrl,
+      assetType: input.assetType,
+      ...(input.groupId && { groupId: input.groupId }),
+    });
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    // The asset id alone does not say which still failed (#2163).
+    if (/failed processing/.test(text) && !text.includes(input.storedUrl)) {
+      throw new Error(`${text} (${input.storedUrl})`);
+    }
+    throw error;
+  }
 
   if (!uri.startsWith('asset://')) {
     throw new Error(`BytePlus CreateAsset returned an unexpected id: ${uri}`);

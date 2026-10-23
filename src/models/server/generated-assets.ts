@@ -27,6 +27,7 @@ import {
   fetchModelInputSchema,
   type ModelInputJsonSchema,
 } from './schema-fetch';
+import { generationCouldNotStartMessage } from '@/motion/seedance-edit';
 import { getLogger } from '@/platform/logger';
 import { triggerWorkflow } from '@/platform/server/workflow/client';
 import type { AssetGenerationWorkflowInput } from '@/platform/server/workflow/types';
@@ -140,7 +141,7 @@ export async function createGeneratedAsset(
     // cron reconciler couldn't verify it either).
     await scopedDb.generatedAssets.markFailed(
       row.id,
-      'The generation could not be started — please try again.'
+      generationCouldNotStartMessage(data.activity)
     );
     throw error;
   }

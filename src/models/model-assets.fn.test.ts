@@ -248,7 +248,9 @@ describe('createGeneratedAsset', () => {
     const rows = await db.select().from(generatedAssets);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe('failed');
-    expect(rows[0]?.error).toMatch(/could not be started/);
+    expect(rows[0]?.error).toBe(
+      "This image couldn't start. You weren't charged. Try again."
+    );
     expect(rows[0]?.workflowRunId).toBeNull();
   });
 });

@@ -832,7 +832,7 @@ async function failOrphanedGeneratedAssetsPass(db: Database): Promise<number> {
     .update(generatedAssets)
     .set({
       status: 'failed',
-      error: 'The generation could not be started — please try again.',
+      error: "This generation couldn't start. You weren't charged. Try again.",
     })
     .where(
       and(

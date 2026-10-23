@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { GeneratedAsset } from '@/platform/server/db/schema';
 import { Dialog } from '@/ui/shadcn/dialog';
 import { TooltipProvider } from '@/ui/shadcn/tooltip';
-import { GenerationDetail } from './studio-gallery';
+import { GenerationDetail, stepReferenceIndex } from './studio-gallery';
 
 function asset(input: GeneratedAsset['input']): GeneratedAsset {
   return {
@@ -67,6 +67,16 @@ describe('GenerationDetail', () => {
     expect(html).toContain('Copy prompt');
     expect(html).toContain('Share link');
     expect(html).toContain('Download');
+    expect(html).toContain('Open @Image1');
+    expect(html).toContain('Download @Image1');
+    expect(html).toContain('/r2/fox.png?download');
+    expect(html).toContain('Download @Audio1');
     expect(html).toContain('aspect-video');
+  });
+
+  it('steps reference stills and wraps at the ends', () => {
+    expect(stepReferenceIndex(0, -1, 4)).toBe(3);
+    expect(stepReferenceIndex(3, 1, 4)).toBe(0);
+    expect(stepReferenceIndex(1, 1, 4)).toBe(2);
   });
 });

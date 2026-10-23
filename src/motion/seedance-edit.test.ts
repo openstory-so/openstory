@@ -121,6 +121,11 @@ describe('seedance edit constraints (#2036)', () => {
       )
     ).toBeNull();
     expect(seedanceUserFacingError(null)).toBeNull();
+    expect(
+      seedanceUserFacingError(
+        "This video couldn't start. You weren't charged. Try again."
+      )
+    ).toMatch(/^This video couldn't start/);
   });
 
   it('retries InternalServiceError only for a BytePlus job', () => {
@@ -168,5 +173,36 @@ describe('seedance edit constraints (#2036)', () => {
         'byteplus'
       )
     ).toBeNull();
+    expect(
+      explainSeedanceFailure(
+        'BytePlus OpenAPI CreateAsset failed (QuotaSharedPoolExceeded): Asset quota exceeded: the shared pool for projects without explicit allocation is full.',
+        'byteplus'
+      )
+    ).toBe(
+      "Our video provider is busy right now. You weren't charged. Try again in a few minutes."
+    );
+    expect(
+      explainSeedanceFailure(
+        'BytePlus asset asset-20261020163722-7plhr failed processing (/r2/b.png)',
+        'byteplus',
+        { images: ['/r2/a.png', '/r2/b.png'] }
+      )
+    ).toBe("@Image2 couldn't be processed. You weren't charged.");
+    expect(
+      explainSeedanceFailure(
+        'BytePlus asset asset-20261020163722-7plhr failed processing',
+        'byteplus'
+      )
+    ).toBe(
+      "One of your reference images couldn't be processed. You weren't charged."
+    );
+    expect(
+      explainSeedanceFailure(
+        "Our video provider is busy right now. You weren't charged. Try again in a few minutes.",
+        'byteplus'
+      )
+    ).toBe(
+      "Our video provider is busy right now. You weren't charged. Try again in a few minutes."
+    );
   });
 });

@@ -288,7 +288,9 @@ describe('reconcileAllStuckJobs — generated_assets passes (#458)', () => {
         c.payload.status === 'failed'
     );
     expect(update).toBeDefined();
-    expect(update?.payload.error).toMatch(/could not be started/);
+    expect(update?.payload.error).toBe(
+      "This generation couldn't start. You weren't charged. Try again."
+    );
     expect(counts['generated_assets.orphaned']).toBe(1);
   });
 });
