@@ -33,6 +33,9 @@ describe('assistantTools', () => {
     expect(needsApproval(tool('openstory.execute_generation'))).toBe(false);
     expect(needsApproval(tool('openstory.create_studio_assets'))).toBe(false);
     expect(needsApproval(tool('openstory.delete_character'))).toBe(true);
+    // A model-chosen URL is shown before it goes out; a search query is not.
+    expect(needsApproval(tool('openstory.fetch_url'))).toBe(true);
+    expect(needsApproval(tool('openstory.web_search'))).toBe(false);
   });
 
   it('keeps the first-turn tools eager and the rest lazy', () => {

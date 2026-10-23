@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import { OpenStoryError } from '@/platform/errors';
 import { optionalEnv } from '@/platform/server/env/environment';
+import { openSafeUrl } from '@/platform/server/api-v1/safe-fetch';
 import { openstoryTool } from '../tool-context';
 
 const annotations = {
@@ -152,22 +153,24 @@ const fetchUrl = openstoryTool({
     text: z.string(),
     truncated: z.boolean(),
   }),
-  run: async ({ url }) => {
-    const response = await fetch(url, {
-      headers: {
-        Accept: 'text/html, text/plain, application/json;q=0.9, */*;q=0.1',
-        'User-Agent': 'OpenStoryAssistant/1 (+https://openstory.so)',
-      },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      throw new OpenStoryError(
-        `The page answered ${response.status}.`,
-        'FETCH_URL_FAILED',
-        400
-      );
-    }
+  run: async ({ url }, { origin }) => {
+    // The same SSRF-hardened opener the public API uses for element images:
+    // host checks on every redirect hop, bounded hops, a connect budget. The
+    // app's own origin is public but refused too, start and end, so a page
+    // cannot be a way to call our API.
+    const own = new URL(origin).origin;
+    const refuseOwn = (candidate: string) => {
+      if (new URL(candidate).origin === own) {
+        throw new OpenStoryError(
+          'Cannot fetch this app.',
+          'FETCH_URL_REFUSED',
+          400
+        );
+      }
+    };
+    refuseOwn(url);
+    const response = await openSafeUrl(url, 'Page');
+    if (response.url) refuseOwn(response.url);
     const type = response.headers.get('content-type') ?? '';
     if (!/^(text\/|application\/(json|xhtml\+xml|xml))/i.test(type)) {
       throw new OpenStoryError(

@@ -10,12 +10,11 @@ import { authWithTeamMiddleware } from '@/platform/middleware.fn';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { getRequest } from '@tanstack/react-start/server';
 import { OpenStoryError } from '@/platform/errors';
-import { SEQUENCE_CARD_URI } from '@/platform/mcp-views';
+import { SEQUENCE_CARD_URI, VIEW_CALLABLE_TOOLS } from '@/platform/mcp-views';
 import { MCP_TOOLS } from '@/platform/server/mcp/server';
 import { SEQUENCE_CARD_HTML } from '@/platform/server/mcp/ui/sequence-card';
 import { deleteStreamLogs } from './server/durability';
 import { toolContext, type AssistantCaller } from './server/assistant-chat';
-import { isReadOnlyTool } from './server/assistant-tools';
 
 const threadIdSchema = z.object({ threadId: ulidSchema });
 
@@ -67,9 +66,9 @@ export const getMcpViewFn = createServerFn({ method: 'GET' })
   });
 
 /**
- * `tools/call` from a view: a read-only MCP tool, under the session, with
+ * `tools/call` from a view: one of `VIEW_CALLABLE_TOOLS`, under the session, with
  * the MCP envelope kept so the page reads `structuredContent` as it would
- * from any host. A write is refused: a view never spends or changes.
+ * from any host. Anything else is refused: a view never spends, changes or roams.
  */
 export const callMcpReadToolFn = createServerFn({ method: 'POST' })
   .middleware([authWithTeamMiddleware])
@@ -83,9 +82,9 @@ export const callMcpReadToolFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ context, data }) => {
     const tool = MCP_TOOLS.find((candidate) => candidate.name === data.name);
-    if (!tool || !isReadOnlyTool(tool) || !tool.execute) {
+    if (!tool || !VIEW_CALLABLE_TOOLS.has(tool.name) || !tool.execute) {
       throw new OpenStoryError(
-        'A view may only call a read tool',
+        'A view may only call the tools its page needs',
         'FORBIDDEN',
         403
       );

@@ -151,9 +151,15 @@ waits on the user and shut once all are done.
 `fetch_url` (`src/platform/server/mcp/tools/web.ts`) are ordinary MCP
 tools, so an outside agent gets them too. Both are reads with
 `openWorldHint`; without the key `web_search` answers a clear tool error.
-`fetch_url` takes http(s) only, reads a bounded prefix of a text page and
-hands back at most 30,000 characters. The system prompt tells the model a
-page's text is material, never instructions.
+`fetch_url` goes through `openSafeUrl` (the public API's SSRF-hardened
+opener: host checks on every redirect hop, bounded hops, a connect budget)
+and refuses the app's own origin, then reads a bounded prefix of a text
+page and hands back at most 30,000 characters. In chat `fetch_url` is the
+one read that asks: the model composes the URL, and a page it read could
+tell it to put the user's script in one, so the URL sits on an Allow / Deny
+card first (`URL_TOOLS` in `assistant-tools.ts`). A search query is shown
+on its card but does not ask. The system prompt tells the model a page's
+text is material, never instructions.
 
 ## MCP Apps views in the app
 
@@ -163,7 +169,8 @@ client-safe) shows that view under its finished card: `McpAppFrame`
 protocol in a sandboxed iframe with no same-origin. The page comes from
 `getMcpViewFn` (the same HTML the MCP server serves as a resource), the
 tool result is re-wrapped in its MCP envelope, `tools/call` runs through
-`callMcpReadToolFn` (read-only tools only, under the session), `open-link`
+`callMcpReadToolFn` (only `VIEW_CALLABLE_TOOLS`, the reads the pages make,
+under the session), `open-link`
 opens a tab, and `ui/message` goes into the thread as the user. Nothing is
 registered per view: a new view is one entry in `TOOL_VIEWS` and its HTML
 in `getMcpViewFn`.
