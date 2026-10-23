@@ -8,6 +8,7 @@
 import { fetchServerSentEvents, useChat } from '@tanstack/ai-react';
 import type { ConnectionAdapter } from '@tanstack/ai-react';
 import { useMemo } from 'react';
+import type { AnalysisModelId } from '@/models/models.config';
 import type { PageContextItem } from '../page-context';
 import { startAssistantThread } from './assistant-store';
 
@@ -62,6 +63,7 @@ async function fetchWithServerErrors(
 export type AssistantChatOptions = {
   threadId: string;
   pageContext: PageContextItem[];
+  model: AnalysisModelId;
   /** Stories and tests hand in a scripted connection. */
   connection?: ConnectionAdapter;
 };
@@ -69,6 +71,7 @@ export type AssistantChatOptions = {
 export function useAssistantChat({
   threadId,
   pageContext,
+  model,
   connection,
 }: AssistantChatOptions) {
   const live = useMemo(
@@ -83,6 +86,6 @@ export function useAssistantChat({
     connection: live,
     threadId,
     persistence: true,
-    forwardedProps: { pageContext },
+    forwardedProps: { pageContext, model },
   });
 }

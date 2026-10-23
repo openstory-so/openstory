@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
 import { useUploadStudioMedia } from '@/studio/ui/use-studio-assets';
 import { generateId } from '@/platform/id';
+import type { AnalysisModelId } from '@/models/models.config';
+import { ModelSelector } from '@/models/ui/pickers/model-selector';
 import { Button } from '@/ui/shadcn/button';
 import { Kbd } from '@/ui/shadcn/kbd';
 import { Textarea } from '@/ui/shadcn/textarea';
@@ -29,6 +31,9 @@ export type AssistantComposerProps = {
   /** Text a page handed over; placed, not sent. */
   initialPrompt?: string;
   busy: boolean;
+  /** The model that answers; one pick for every thread. */
+  model: AnalysisModelId;
+  onModelChange: (model: AnalysisModelId) => void;
   onSend: (content: ReturnType<typeof messageContent>) => void;
   onStop: () => void;
   /** Stories: every upload resolves to this value, no network. */
@@ -125,6 +130,8 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   onDismissContext,
   initialPrompt,
   busy,
+  model,
+  onModelChange,
   onSend,
   onStop,
   uploadStub,
@@ -301,10 +308,17 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
           >
             Attach
           </Button>
-          <span className="hidden flex-1 text-xs text-muted-foreground sm:block">
+          <div className="w-44">
+            <ModelSelector
+              singleSelect
+              selectedModels={[model]}
+              onModelsChange={(ids) => ids[0] && onModelChange(ids[0])}
+            />
+          </div>
+          <span className="hidden flex-1 text-xs text-muted-foreground lg:block">
             <Kbd>Enter</Kbd> sends, <Kbd>Shift+Enter</Kbd> new line
           </span>
-          <span className="flex-1 sm:hidden" />
+          <span className="flex-1 lg:hidden" />
           {busy ? (
             <Button type="button" variant="outline" size="sm" onClick={onStop}>
               Stop

@@ -44,7 +44,10 @@ same on both paths. Do not add an assistant-only tool; add an MCP tool.
    the user in the team (`scopedDb.assistant.ensureThread`).
 2. `forwardedProps.pageContext` (validated by `pageContextSchema`) becomes
    one system line naming what the user is looking at, ids included.
-3. The model is `DEFAULT_ANALYSIS_MODEL` on the team's `resolveLlmKey`.
+3. The model is the composer's pick (`forwardedProps.model`, kept in the
+   assistant store across threads), through `chatModelFor`: a selectable
+   analysis model or `DEFAULT_ANALYSIS_MODEL`, swapped for the request's
+   country the way a sequence's is. It runs on the team's `resolveLlmKey`.
    `requireCredits` runs first; a platform key bills the run once at the end
    with `llmCostFromUsage(usage, model, llmKey.via)`, idempotent on the run
    id. A team key bills nothing.

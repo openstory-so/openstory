@@ -20,7 +20,7 @@ import { estimateLLMCost } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
-import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
+import { getRequestCountry } from '@/platform/server/request-country';
 import { createAdapter } from '@/models/server/create-adapter';
 import { llmCostFromUsage } from '@/models/server/llm-client';
 import { generateId } from '@/platform/id';
@@ -36,6 +36,7 @@ import {
   pageContextSchema,
   type PageContextItem,
 } from '../page-context';
+import { chatModelFor } from '../chat-model';
 import { assistantTools } from './assistant-tools';
 import { threadTitleFrom } from './db/assistant';
 
@@ -213,7 +214,8 @@ export async function handleAssistantChat(
   }
 
   const { scopedDb } = caller;
-  const model = DEFAULT_ANALYSIS_MODEL;
+  // The composer's pick; the default when it is missing or not selectable.
+  const model = chatModelFor(params.forwardedProps.model, getRequestCountry());
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
   const usedOwnKey = llmKey.source === 'team';
   // A restricted account may read but not spend (#1180); the request
