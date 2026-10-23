@@ -81,8 +81,9 @@ jobs:
 
       # A published package changed on this PR without a changeset means the
       # release workflow never ships the change. `changeset --empty` opts out.
+      # The version PR deletes the consumed changesets, so this check always fails there.
       - name: Check changesets
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
         env:
           BASE: ${{ github.base_ref }}
         run: bun changeset:check --since "origin/$BASE"
