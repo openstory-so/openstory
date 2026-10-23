@@ -79,7 +79,9 @@ const WEB_PROMPT =
  * `llmCostFromUsage`, like every native spend.
  */
 function webSearchFor(via: LlmKeyInfo['via']) {
-  return via === 'openrouter' ? { plugins: [{ id: 'web' as const }] } : {};
+  return via === 'openrouter'
+    ? { plugins: [{ id: 'web' as const, maxResults: 3, maxUses: 3 }] }
+    : {};
 }
 
 function systemPrompts(
