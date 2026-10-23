@@ -1,13 +1,21 @@
 /**
  * The composer (#2155): context chips the user can remove, attachments
  * with their upload state, a textarea that sends on Enter (Shift+Enter for
- * a line), and Send or Stop. Files arrive by drop, paste or the Attach
- * button and upload at once.
+ * a line), and Send or Stop. Files arrive by drop or paste and upload at
+ * once; `+` opens the Studio reference picker, so anything the team already
+ * has (a generation, an upload, a shot, a character, a location) attaches
+ * without a second upload, and its Upload button takes a new file.
  */
 
-import { useRef, useState, type ClipboardEvent } from 'react';
+import { Suspense, useRef, useState, type ClipboardEvent } from 'react';
+import { ArrowUp, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useUploadRightsGate } from '@/cast/ui/upload-rights-gate';
+import {
+  StudioReferencePicker,
+  useStudioLibrary,
+  type StudioReference,
+} from '@/studio/ui/studio-reference-picker';
 import { useUploadStudioMedia } from '@/studio/ui/use-studio-assets';
 import { generateId } from '@/platform/id';
 import type { AnalysisModelId } from '@/models/models.config';
@@ -23,6 +31,31 @@ import {
   readText,
   type Attachment,
 } from './attachments';
+
+/** Only the picker needs the library; mounting it only while open keeps the
+ * chat from fetching every generation on every page. */
+const AttachmentPicker: React.FC<{
+  attached: string[];
+  onOpenChange: (open: boolean) => void;
+  onPick: (references: StudioReference[]) => void;
+  onUpload: (files: File[]) => void;
+}> = ({ attached, onOpenChange, onPick, onUpload }) => {
+  const library = useStudioLibrary();
+  return (
+    <StudioReferencePicker
+      open
+      onOpenChange={onOpenChange}
+      title="Attach"
+      library={library}
+      attached={attached}
+      multiple
+      slots={{ image: Infinity, video: Infinity, audio: Infinity }}
+      onPick={onPick}
+      onUpload={onUpload}
+      acceptAlso="text/*,.fountain,.fdx,.md,.txt,.srt"
+    />
+  );
+};
 
 export type AssistantComposerProps = {
   context: PageContextItem[];
@@ -138,7 +171,7 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
   const [text, setText] = useState(initialPrompt ?? '');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const upload = useUploadStudioMedia();
   const { ensureUploadRights } = useUploadRightsGate();
@@ -198,6 +231,35 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
           });
         }
       })();
+    }
+  };
+
+  // A pick from the library is already stored and already past the likeness
+  // gate, so the chip is ready at once; only an image's preview for the
+  // model's eyes is still fetched.
+  const addReferences = (references: StudioReference[]) => {
+    for (const reference of references) {
+      const id = generateId();
+      setAttachments((list) => [
+        ...list,
+        {
+          id,
+          name: reference.label,
+          kind: reference.kind,
+          mimeType: `${reference.kind}/*`,
+          status: 'ready',
+          upload: reference.url,
+        },
+      ]);
+      if (reference.kind === 'image') {
+        void fetch(reference.url)
+          .then((response) => response.blob())
+          .then(imagePreview)
+          .then(
+            (preview) => patch(id, { preview }),
+            () => patch(id, { note: 'no preview' })
+          );
+      }
     }
   };
 
@@ -292,26 +354,27 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
           autoComplete="off"
         />
         <div className="-mx-1.5 flex items-center gap-1">
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="image/*,video/*,audio/*,text/*,.fountain,.fdx,.md,.txt,.srt"
-            className="sr-only"
-            onChange={(event) => {
-              if (event.target.files) addFiles(event.target.files);
-              event.target.value = '';
-            }}
-          />
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="text-muted-foreground"
-            onClick={() => fileInputRef.current?.click()}
+            size="icon-sm"
+            aria-label="Attach from your library or upload"
+            onClick={() => setPickerOpen(true)}
           >
-            Attach
+            <Plus aria-hidden="true" />
           </Button>
+          {pickerOpen && (
+            <Suspense fallback={null}>
+              <AttachmentPicker
+                attached={attachments.flatMap((a) =>
+                  a.upload ? [a.upload] : []
+                )}
+                onOpenChange={setPickerOpen}
+                onPick={addReferences}
+                onUpload={addFiles}
+              />
+            </Suspense>
+          )}
           <div className="min-w-0 max-w-44">
             <ModelSelector
               singleSelect
@@ -327,8 +390,14 @@ export const AssistantComposer: React.FC<AssistantComposerProps> = ({
               Stop
             </Button>
           ) : (
-            <Button type="submit" size="sm" disabled={!canSend}>
-              Send
+            <Button
+              type="submit"
+              size="icon-sm"
+              className="rounded-full"
+              aria-label="Send"
+              disabled={!canSend}
+            >
+              <ArrowUp aria-hidden="true" />
             </Button>
           )}
         </div>

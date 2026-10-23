@@ -126,12 +126,21 @@ button can open it and it survives navigation and reloads.
 
 ## Uploads
 
-A file dropped, pasted or attached uploads at once through the Studio
-upload path (`useUploadStudioMedia`, then `ensureUploadRights` for an
-image, the same likeness gate as the editor). The message tells the model
-the stored `upload` value for each file, which `set_*_from_upload` and the
-Studio tools take, and carries a downscaled JPEG preview of each image as a
-vision part so the model can see it. Text files are inlined.
+A file dropped or pasted uploads at once through the Studio upload path
+(`useUploadStudioMedia`, then `ensureUploadRights` for an image, the same
+likeness gate as the editor). The composer's `+` opens the Studio reference
+picker (`StudioReferencePicker`, the one upload surface in the app): a
+generation, past upload, shot, character or location picked there is
+already stored and already past the gate, so it attaches with no upload;
+its Upload button takes a new file down the same path as a drop. The
+message tells the model the stored `upload` value for each file, which
+`set_*_from_upload` and the Studio tools take, and carries a downscaled
+JPEG preview of each image as a vision part so the model can see it. Text
+files are inlined.
+
+Consecutive tool calls in one reply fold into a single `<details>`
+(`groupToolCalls` in `assistant-message.tsx`), open while any call runs or
+waits on the user and shut once all are done.
 
 ## Stories
 

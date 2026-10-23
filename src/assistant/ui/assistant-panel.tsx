@@ -124,9 +124,6 @@ const ThreadMenu: React.FC<{ threadId: string; enabled: boolean }> = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem onSelect={() => startAssistantThread()}>
-          New chat
-        </DropdownMenuItem>
         {current && (
           <DropdownMenuItem
             variant="destructive"
@@ -139,6 +136,9 @@ const ThreadMenu: React.FC<{ threadId: string; enabled: boolean }> = ({
           <DropdownMenuLabel className="text-destructive">
             Could not load history: {threads.error.message}
           </DropdownMenuLabel>
+        )}
+        {!current && others.length === 0 && !threads.error && (
+          <DropdownMenuLabel>No earlier chats</DropdownMenuLabel>
         )}
         {others.length > 0 && (
           <>
@@ -206,6 +206,14 @@ const PanelBody: React.FC<AssistantPanelProps & { titleId: string }> = ({
         >
           Assistant
         </h2>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => startAssistantThread()}
+        >
+          New chat
+        </Button>
         <ThreadMenu threadId={threadId} enabled={isAuthenticated} />
         <Button
           type="button"

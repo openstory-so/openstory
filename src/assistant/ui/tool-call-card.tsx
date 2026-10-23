@@ -9,7 +9,7 @@ import { Button } from '@/ui/shadcn/button';
 import { cn } from '@/ui/utils';
 
 /** "openstory_get_shot_frames" (or the MCP "openstory.…") → "Get shot frames". */
-function toolTitle(name: string): string {
+export function toolTitle(name: string): string {
   // The engine's own call for a lazy tool's schema.
   if (name === '__lazy__tool__discovery__') return 'Finding tools';
   const bare = name.replace(/^openstory[._]/, '').replaceAll('_', ' ');
@@ -32,9 +32,9 @@ function keyInputs(input: unknown): Array<[string, string]> {
   return out;
 }
 
-type ToolCardStatus = 'running' | 'waiting' | 'done' | 'error';
+export type ToolCardStatus = 'running' | 'waiting' | 'done' | 'error';
 
-function toolCardStatus(
+export function toolCardStatus(
   part: ToolCallPart,
   result: ToolResultPart | undefined
 ): ToolCardStatus {
@@ -45,7 +45,7 @@ function toolCardStatus(
   return 'running';
 }
 
-const STATUS_LABEL: Record<ToolCardStatus, string> = {
+export const STATUS_LABEL: Record<ToolCardStatus, string> = {
   running: 'Running…',
   waiting: 'Needs your OK',
   done: 'Done',

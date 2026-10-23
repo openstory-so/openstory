@@ -45,7 +45,7 @@ export function attachmentKind(file: File): AttachmentKind | null {
 }
 
 /** A JPEG data URL no wider than `PREVIEW_MAX_EDGE`. */
-export async function imagePreview(file: File): Promise<string> {
+export async function imagePreview(file: Blob): Promise<string> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(
     1,

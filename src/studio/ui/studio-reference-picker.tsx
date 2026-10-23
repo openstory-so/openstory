@@ -415,6 +415,8 @@ type StudioReferencePickerProps = {
   slots: StudioReferenceSlots;
   onPick: (references: StudioReference[]) => void;
   onUpload: (files: File[]) => void;
+  /** Further file types Upload takes besides the slots' media (#2155: scripts). */
+  acceptAlso?: string;
 };
 
 export function StudioReferencePicker({
@@ -427,6 +429,7 @@ export function StudioReferencePicker({
   slots,
   onPick,
   onUpload,
+  acceptAlso,
 }: StudioReferencePickerProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<Source>('generations');
@@ -471,7 +474,9 @@ export function StudioReferencePicker({
           ...(slots.video > 0
             ? ['video/mp4', 'video/quicktime', '.mp4', '.mov']
             : []),
+          ...(acceptAlso ? [acceptAlso] : []),
         ].join(',');
+  const limited = Number.isFinite(slots.image);
 
   return (
     <Dialog
@@ -485,9 +490,11 @@ export function StudioReferencePicker({
           <div className="flex flex-col gap-0.5">
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>
-              {multiple
-                ? `Up to ${slots.image} stills${slots.video > 0 ? `, ${slots.video} clips` : ''}${slots.audio > 0 ? `, ${slots.audio} audio` : ''}. Upload or paste.`
-                : 'Pick one, upload, or paste.'}
+              {!multiple
+                ? 'Pick one, upload, or paste.'
+                : limited
+                  ? `Up to ${slots.image} stills${slots.video > 0 ? `, ${slots.video} clips` : ''}${slots.audio > 0 ? `, ${slots.audio} audio` : ''}. Upload or paste.`
+                  : 'Pick any, upload, or paste.'}
             </DialogDescription>
           </div>
           <input
@@ -559,10 +566,16 @@ export function StudioReferencePicker({
             ) : source === 'audio' ? (
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted-foreground">
-                  MP3 or WAV, up to {slots.audio} more. Seedance: 15 seconds
-                  combined. Each clip becomes{' '}
-                  <span className="font-mono">@Audio1</span>,{' '}
-                  <span className="font-mono">@Audio2</span>… in the prompt.
+                  {limited ? (
+                    <span>
+                      MP3 or WAV, up to {slots.audio} more. Seedance: 15 seconds
+                      combined. Each clip becomes{' '}
+                      <span className="font-mono">@Audio1</span>,{' '}
+                      <span className="font-mono">@Audio2</span>… in the prompt.
+                    </span>
+                  ) : (
+                    <span>MP3 or WAV.</span>
+                  )}
                 </p>
                 <Button
                   type="button"
