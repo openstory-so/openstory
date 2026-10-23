@@ -17,3 +17,5 @@ A change that should not release gets an empty changeset:
 ```sh
 bunx changeset --empty
 ```
+
+Test fails a pull request that changes `packages/stitch` with no changeset (`bun changeset:check --since origin/main`), so a missing one cannot reach `main`. The empty changeset is the opt-out.

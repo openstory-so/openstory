@@ -100,7 +100,8 @@
     "deploy:production": "bun scripts/flatten-migrations.ts && wrangler d1 migrations apply DB --env=production --remote && wrangler deploy",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "changeset publish"
+    "changeset:publish": "changeset publish",
+    "changeset:check": "changeset status"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

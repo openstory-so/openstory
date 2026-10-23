@@ -76,6 +76,16 @@ jobs:
       - name: Check formatting
         run: bun format:check
 
+      # A published package changed on this PR without a changeset means the
+      # release workflow never ships the change. `changeset --empty` opts out.
+      - name: Check changesets
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE"
+          bun changeset:check --since "origin/$BASE"
+
       - name: Check dead code (knip)
         run: bun dead-code
 
