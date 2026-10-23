@@ -12,6 +12,7 @@ import { Button } from '@/ui/shadcn/button';
 import type { PageContextItem } from '../page-context';
 import { AssistantComposer } from './assistant-composer';
 import { AssistantMessage } from './assistant-message';
+import { setAssistantModel, useAssistantState } from './assistant-store';
 import { useAssistantChat } from './use-assistant-chat';
 
 export type AssistantConversationProps = {
@@ -38,7 +39,8 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
   uploadStub,
 }) => {
   const queryClient = useQueryClient();
-  const chat = useAssistantChat({ threadId, pageContext, connection });
+  const { model } = useAssistantState();
+  const chat = useAssistantChat({ threadId, pageContext, model, connection });
   const {
     messages,
     sendMessage,
@@ -87,7 +89,7 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
         <div className="flex flex-1 flex-col justify-end gap-3 p-4">
           <p className="text-sm text-muted-foreground">
             Ask about your work, or tell me what to change. I can read and edit
-            anything the app can, and I ask before spending credits.
+            anything the app can, and I ask before I delete.
           </p>
           <ul className="flex flex-col gap-1" aria-label="Suggested prompts">
             {suggestions.map((suggestion) => (
@@ -153,6 +155,8 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
         onDismissContext={onDismissContext}
         initialPrompt={initialPrompt}
         busy={isLoading}
+        model={model}
+        onModelChange={setAssistantModel}
         onSend={(content) => {
           void sendMessage(content);
           // The first send creates the thread row; History should list it.

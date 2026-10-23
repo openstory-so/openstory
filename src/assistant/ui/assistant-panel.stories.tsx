@@ -189,40 +189,32 @@ export const ToolError: Story = {
   },
 };
 
-export const ConfirmBeforeSpend: Story = {
+export const ConfirmBeforeDelete: Story = {
   args: {
-    send: 'Render the clip for this shot',
+    send: 'Delete this shot',
     script: {
       steps: [
         {
           toolCalls: [
             {
-              name: 'openstory_plan_generation',
-              input: { sequenceId: '01J0SEQ', stopAt: 'motion' },
-              result: {
-                planToken: 'tok_1',
-                estimate: { usd: 0.42 },
-                work: { motion: ['01J0SHOT'] },
-              },
+              name: 'openstory_get_shot',
+              input: { sequenceId: '01J0SEQ', shotId: '01J0SHOT' },
+              result: { id: '01J0SHOT', number: 3, hasStill: true },
             },
           ],
         },
         {
-          text: 'One clip to render, about $0.42. Allow it and I will start.',
+          text: 'Shot 3 and its still go. Allow it and I will delete them.',
           toolCalls: [
             {
-              name: 'openstory_execute_generation',
-              input: {
-                sequenceId: '01J0SEQ',
-                planToken: 'tok_1',
-                confirm: true,
-              },
+              name: 'openstory_delete_shot',
+              input: { sequenceId: '01J0SEQ', shotId: '01J0SHOT' },
               needsApproval: true,
-              result: { workflowRunIds: ['wf_1'] },
+              result: { deleted: true },
             },
           ],
         },
-        { text: 'Started. The clip shows up on the shot when it lands.' },
+        { text: 'Deleted. The scene now has two shots.' },
       ],
     },
   },

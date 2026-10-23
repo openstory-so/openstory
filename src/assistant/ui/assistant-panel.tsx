@@ -25,6 +25,7 @@ import {
   listAssistantThreadsFn,
 } from '@/assistant/assistant.fn';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
+import { SignInButton } from '@/platform/ui/auth/sign-in-button';
 import { Button } from '@/ui/shadcn/button';
 import {
   Drawer,
@@ -184,9 +185,14 @@ const PanelBody: React.FC<AssistantPanelProps & { titleId: string }> = ({
   uploadStub,
   titleId,
 }) => {
-  const { threadId, draft, dismissedContext } = useAssistantState();
+  const { threadId, draft, dismissedContext, extraContext } =
+    useAssistantState();
   const { isAuthenticated } = useAuthGate();
-  const visible = [...pageContext, ...(draft?.context ?? [])].filter(
+  const visible = [
+    ...pageContext,
+    ...extraContext.values(),
+    ...(draft?.context ?? []),
+  ].filter(
     (item, index, all) =>
       !isContextDismissed(item, dismissedContext) &&
       all.findIndex((o) => o.kind === item.kind && o.id === item.id) === index
@@ -211,17 +217,27 @@ const PanelBody: React.FC<AssistantPanelProps & { titleId: string }> = ({
           <XIcon />
         </Button>
       </header>
-      <AssistantConversation
-        key={threadId}
-        threadId={threadId}
-        pageContext={visible}
-        onDismissContext={dismissAssistantContext}
-        initialPrompt={draft?.prompt}
-        draftKey={draft?.nonce}
-        suggestions={suggestions}
-        connection={connection}
-        uploadStub={uploadStub}
-      />
+      {isAuthenticated ? (
+        <AssistantConversation
+          key={threadId}
+          threadId={threadId}
+          pageContext={visible}
+          onDismissContext={dismissAssistantContext}
+          initialPrompt={draft?.prompt}
+          draftKey={draft?.nonce}
+          suggestions={suggestions}
+          connection={connection}
+          uploadStub={uploadStub}
+        />
+      ) : (
+        <div className="flex flex-1 flex-col items-start gap-3 p-4">
+          <p className="text-sm text-muted-foreground">
+            Sign in to chat about your work. The assistant acts on your team, so
+            it needs to know who you are.
+          </p>
+          <SignInButton />
+        </div>
+      )}
     </div>
   );
 };

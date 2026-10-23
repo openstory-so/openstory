@@ -17,20 +17,18 @@ only assistant-side work per tool happens in
 - The MCP envelope is unwrapped: `structuredContent` goes to the model and
   the card; an error envelope becomes a thrown error, which TanStack AI
   reports as the tool's error result and the run goes on.
-- A write that spends credits or deletes something is `needsApproval`: the
-  run pauses on a card with Allow / Deny. Spending is read off the catalog's
-  own mark (`openWorldHint: true` on a write, the `paid` annotations) plus
-  `SPEND_TOOLS` for the few that spend without it (`create_sequence`,
-  `rebuild_shot_prompts`); deleting is `destructiveHint`. A read never asks.
-  `assistant-tools.test.ts` pins both against the catalog.
+- A delete (`destructiveHint`) is `needsApproval`: the run pauses on a card
+  with Allow / Deny. A spend does not ask: the user is inside the app, the
+  page shows the generation as it starts, and it can be cancelled there.
+  A read never asks. `assistant-tools.test.ts` pins this against the catalog.
 - Tools outside `EAGER_TOOLS` are `lazy`: the model sees the name and the
   first sentence, and discovers a schema when it needs one.
 - The model calls a tool by `chatToolName`: `openstory_get_shot`, the MCP
   name with its dot as an underscore. OpenAI rejects a dot in a tool name
   and OpenRouter reports only "Provider returned error" for it; the
   provider's own message is logged by the `assistant-model-error`
-  middleware (`onModelError`, `rawEvent`). `EAGER_TOOLS`, `SPEND_TOOLS` and
-  the approval rule keep the MCP names.
+  middleware (`onModelError`, `rawEvent`). `EAGER_TOOLS` and the approval rule
+  keep the MCP names.
 
 Scope checks, the likeness gate and billing are the tool's own and are the
 same on both paths. Do not add an assistant-only tool; add an MCP tool.
@@ -44,7 +42,10 @@ same on both paths. Do not add an assistant-only tool; add an MCP tool.
    the user in the team (`scopedDb.assistant.ensureThread`).
 2. `forwardedProps.pageContext` (validated by `pageContextSchema`) becomes
    one system line naming what the user is looking at, ids included.
-3. The model is `DEFAULT_ANALYSIS_MODEL` on the team's `resolveLlmKey`.
+3. The model is the composer's pick (`forwardedProps.model`, kept in the
+   assistant store across threads), through `chatModelFor`: a selectable
+   analysis model or `DEFAULT_ANALYSIS_MODEL`, swapped for the request's
+   country the way a sequence's is. It runs on the team's `resolveLlmKey`.
    `requireCredits` runs first; a platform key bills the run once at the end
    with `llmCostFromUsage(usage, model, llmKey.via)`, idempotent on the run
    id. A team key bills nothing.
@@ -78,6 +79,14 @@ already filled. No page registers anything, so none can forget to. The
 items are chips in the composer; a removed chip stays removed for the
 thread (`dismissedContext` in the store). A page can hand over extra
 context and a prompt with `openAssistant({ context, prompt })`.
+
+Context the URL does not name (the Studio viewer's open asset) is held in
+component state, so the page says so by rendering `AssistantContextItem`
+while it is open; the store's `extraContext` joins the chips and leaves
+on unmount. Entry points: "Ask the assistant" in a shot's menu, on the
+character and location pages, and in the Studio viewer
+(`AskAssistantButton`). The empty thread's starters follow the context
+kinds (`suggestionsFor` in `app-layout.tsx`).
 
 ## Shell
 

@@ -9,6 +9,11 @@
 
 import { useSyncExternalStore } from 'react';
 import { generateId } from '@/platform/id';
+import {
+  DEFAULT_ANALYSIS_MODEL,
+  isSelectableAnalysisModelId,
+  type AnalysisModelId,
+} from '@/models/models.config';
 import type { PageContextItem } from '../page-context';
 
 export type AssistantDraft = {
@@ -23,14 +28,25 @@ export type AssistantDraft = {
 export type AssistantState = {
   open: boolean;
   threadId: string;
+  /** The model that answers; the user's pick, kept across threads. */
+  model: AnalysisModelId;
   draft: AssistantDraft | null;
   /** Context chips the user removed for this thread, by `kind:id`. */
   dismissedContext: ReadonlySet<string>;
+  /**
+   * Context a page holds in component state rather than the URL (the
+   * Studio viewer's open asset), keyed by who registered it. The router
+   * cannot see these, so the page says so through `AssistantContextItem`.
+   */
+  extraContext: ReadonlyMap<string, PageContextItem>;
 };
 
 const STORAGE_KEY = 'openstory.assistant';
 
-function readStored(): Pick<AssistantState, 'open' | 'threadId'> | null {
+function readStored(): Pick<
+  AssistantState,
+  'open' | 'threadId' | 'model'
+> | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
@@ -43,7 +59,14 @@ function readStored(): Pick<AssistantState, 'open' | 'threadId'> | null {
       'open' in parsed &&
       typeof parsed.open === 'boolean'
     ) {
-      return { open: parsed.open, threadId: parsed.threadId };
+      return {
+        open: parsed.open,
+        threadId: parsed.threadId,
+        model:
+          'model' in parsed && isSelectableAnalysisModelId(parsed.model)
+            ? parsed.model
+            : DEFAULT_ANALYSIS_MODEL,
+      };
     }
   } catch {
     // A private window or blocked storage: start fresh.
@@ -54,8 +77,10 @@ function readStored(): Pick<AssistantState, 'open' | 'threadId'> | null {
 const SERVER_STATE: AssistantState = {
   open: false,
   threadId: '',
+  model: DEFAULT_ANALYSIS_MODEL,
   draft: null,
   dismissedContext: new Set(),
+  extraContext: new Map(),
 };
 
 let state: AssistantState | null = null;
@@ -76,7 +101,11 @@ function set(patch: Partial<AssistantState>): void {
   try {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ open: state.open, threadId: state.threadId })
+      JSON.stringify({
+        open: state.open,
+        threadId: state.threadId,
+        model: state.model,
+      })
     );
   } catch {
     // Storage is a convenience; the panel works without it.
@@ -99,9 +128,24 @@ export function useAssistantState(): AssistantState {
  * whole conversation, its prompt the composer's starting text.
  */
 export function openAssistant(draft?: Omit<AssistantDraft, 'nonce'>): void {
+  if (!draft) {
+    set({ open: true });
+    return;
+  }
+  // An explicit ask for a thing the user dismissed earlier brings it back.
+  const dismissed = new Set(current().dismissedContext);
+  for (const item of draft.context ?? []) {
+    dismissed.delete(`${item.kind}:${item.id}`);
+  }
+  // A new prompt remounts the composer; context alone keeps what was typed.
+  const nonce =
+    draft.prompt !== undefined
+      ? generateId()
+      : (current().draft?.nonce ?? generateId());
   set({
     open: true,
-    ...(draft ? { draft: { ...draft, nonce: generateId() } } : {}),
+    draft: { ...draft, nonce },
+    dismissedContext: dismissed,
   });
 }
 
@@ -119,6 +163,21 @@ export function switchAssistantThread(threadId: string): void {
 
 export function startAssistantThread(): void {
   switchAssistantThread(generateId());
+}
+
+export function setAssistantModel(model: AnalysisModelId): void {
+  set({ model });
+}
+
+/** A page's component-state context, present while `item` is set. */
+export function setAssistantExtraContext(
+  key: string,
+  item: PageContextItem | null
+): void {
+  const next = new Map(current().extraContext);
+  if (item) next.set(key, item);
+  else next.delete(key);
+  set({ extraContext: next });
 }
 
 export function dismissAssistantContext(item: PageContextItem): void {

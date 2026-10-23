@@ -20,7 +20,7 @@ import { estimateLLMCost } from '@/billing/cost-estimation';
 import { requireCredits } from '@/billing/server/preflight';
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
-import { DEFAULT_ANALYSIS_MODEL } from '@/models/models.config';
+import { getRequestCountry } from '@/platform/server/request-country';
 import { createAdapter } from '@/models/server/create-adapter';
 import { llmCostFromUsage } from '@/models/server/llm-client';
 import { generateId } from '@/platform/id';
@@ -36,6 +36,7 @@ import {
   pageContextSchema,
   type PageContextItem,
 } from '../page-context';
+import { chatModelFor } from '../chat-model';
 import { assistantTools } from './assistant-tools';
 import { threadTitleFrom } from './db/assistant';
 
@@ -57,7 +58,7 @@ const SYSTEM_PROMPT = `You are the OpenStory assistant, inside the OpenStory app
 
 How to work:
 - Read before you write. Use get_* and list_* to find ids; never guess an id.
-- Paid work needs a plan first: plan_generation, show the estimate in one line, then execute_generation with its planToken. The user confirms any spend or delete on a card; do not ask them again in text.
+- Paid work needs a plan first: plan_generation, show the estimate in one line, then execute_generation with its planToken. The user confirms a delete on a card; do not ask them again in text. A generation starts at once and shows on the page.
 - Prefer the smallest tool: one shot's prompt, not the storyboard; one still, not every still.
 - When a tool starts a generation, say what started and stop; the page shows progress. Do not poll.
 - Say what you did in one or two short sentences. No headings, no lists unless listing things. Plain words.
@@ -213,7 +214,8 @@ export async function handleAssistantChat(
   }
 
   const { scopedDb } = caller;
-  const model = DEFAULT_ANALYSIS_MODEL;
+  // The composer's pick; the default when it is missing or not selectable.
+  const model = chatModelFor(params.forwardedProps.model, getRequestCountry());
   const llmKey = await scopedDb.apiKeys.resolveLlmKey(model);
   const usedOwnKey = llmKey.source === 'team';
   // A restricted account may read but not spend (#1180); the request

@@ -20,11 +20,19 @@ import { InvalidApiKeyBanner } from './invalid-api-key-banner';
 import { AssistantPanel } from '@/assistant/ui/assistant-panel';
 import { AssistantToggle } from '@/assistant/ui/assistant-toggle';
 import { usePageContext } from '@/assistant/ui/use-page-context';
+import { useAssistantState } from '@/assistant/ui/assistant-store';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
 
 /** Starters for an empty assistant thread; the page decides them (#2155). */
 function suggestionsFor(kinds: ReadonlySet<string>): string[] {
+  if (kinds.has('studio_asset')) {
+    return [
+      'Make a variation of this with a wider shot',
+      'Use this as a reference for a new clip',
+      'What prompt made this?',
+    ];
+  }
   if (kinds.has('shot')) {
     return [
       'What is still missing before this shot can render?',
@@ -66,8 +74,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   ...props
 }) => {
   const pageContext = usePageContext();
+  // Starters follow everything the composer shows: the route, what a page
+  // registered (the Studio viewer), and what a button handed over.
+  const { extraContext, draft } = useAssistantState();
   const suggestions = suggestionsFor(
-    new Set(pageContext.map((item) => item.kind))
+    new Set(
+      [...pageContext, ...extraContext.values(), ...(draft?.context ?? [])].map(
+        (item) => item.kind
+      )
+    )
   );
   return (
     <AuthGateProvider>
