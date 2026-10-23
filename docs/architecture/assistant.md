@@ -147,23 +147,18 @@ waits on the user and shut once all are done.
 
 ## The web
 
-`web_search` (Brave Search, `BRAVE_SEARCH_API_KEY`, platform key only) and
-`fetch_url` (`src/platform/server/mcp/tools/web.ts`) are ordinary MCP
-tools, so an outside agent gets them too. Both are reads with
-`openWorldHint`; without the key `web_search` answers a clear tool error.
-`fetch_url` goes through `openSafeUrl` (the public API's SSRF-hardened
-opener: host checks on every redirect hop, bounded hops, a connect budget)
-and refuses the app's own origin, then reads a bounded prefix of a text
-page and hands back at most 30,000 characters. In chat any tool whose
-input carries a URL the model writes asks first (`takesUrl` in
-`assistant-tools.ts`, read off each tool's JSON Schema, so a new URL field
-or a batch that embeds one is caught with no list to forget; the set is
-pinned in `assistant-tools.test.ts`): a page the model read could tell it
-to put the user's script in a URL, so the URL sits on an Allow / Deny card
-before anything goes out. Today that is `fetch_url`, `upload_media`,
-`create_sequence`, `create_stitch` and `apply_sequence_edits`. A search
-query is shown on its card but does not ask. The system prompt tells the model a page's
-text is material, never instructions.
+Web search is the provider's, not a tool of ours: on the OpenRouter via the
+chat sends `plugins: [{ id: "web" }]` (`webSearchFor` in
+`assistant-chat.ts`), and OpenRouter searches and reads pages server-side
+for whatever model is picked, so results land in the model's context and
+nothing leaves the Worker but the query. The system prompt says so only
+when it is on; a native or LLMTR key runs without. Nothing is on the MCP
+server: an outside agent has its own web. The plugin's per-result charge
+lands on the OpenRouter bill outside `llmCostFromUsage`, like every native
+spend. In chat `upload_media` asks first (`URL_TOOLS` in
+`assistant-tools.ts`): a page the model read could name a URL that carries
+the user's work out, and an upload from a URL is the one tool whose job is
+that URL. Tools that take an optional reference link run as before.
 
 ## MCP Apps views in the app
 

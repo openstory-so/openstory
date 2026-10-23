@@ -21,7 +21,6 @@
  */
 
 import type { AnyTool } from '@tanstack/ai';
-import { z } from 'zod';
 import { MCP_TOOLS } from '@/platform/server/mcp/server';
 
 /** Tools the model sees in full on every turn: the ones most turns start with. */
@@ -63,34 +62,17 @@ function annotationsOf(tool: AnyTool): Annotations {
     : {};
 }
 
-const urlTakers = new Map<string, boolean>();
-
 /**
- * A tool whose input has a URL the model writes (`z.url()` anywhere in its
- * schema, read off the JSON Schema so a new field or a batch that embeds
- * one is caught with no registry). A page in the thread could tell the
- * model to send `evil.example/?<the user's script>`, so the user sees the
- * URL on a card before anything goes out. A search query is shown on its
- * card too, but carries no page's data, so it does not ask.
+ * The one tool whose job is a URL the model writes: a web page the model
+ * read could tell it to upload `evil.example/?<the user's script>`, so the
+ * URL sits on a card first. Other tools take an optional reference link
+ * and run as before: asking on every call would block the common case.
  */
-export function takesUrl(tool: AnyTool): boolean {
-  let known = urlTakers.get(tool.name);
-  if (known === undefined) {
-    known = JSON.stringify(
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every MCP tool's inputSchema is a zod schema
-      z.toJSONSchema(tool.inputSchema as z.ZodType, {
-        io: 'input',
-        unrepresentable: 'any',
-      })
-    ).includes('"format":"uri"');
-    urlTakers.set(tool.name, known);
-  }
-  return known;
-}
+const URL_TOOLS = new Set(['openstory.upload_media']);
 
-/** What the user confirms before it runs: a delete, or a tool sent a model-written URL. */
+/** What the user confirms before it runs: a delete, or an upload from a model-written URL. */
 export function needsApproval(tool: AnyTool): boolean {
-  if (takesUrl(tool)) return true;
+  if (URL_TOOLS.has(tool.name)) return true;
   const { readOnlyHint, destructiveHint } = annotationsOf(tool);
   return !readOnlyHint && destructiveHint === true;
 }

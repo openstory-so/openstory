@@ -39,7 +39,6 @@ import { generationUploadTools } from './tools/generation-uploads';
 import { castAudioGenerationTools } from './tools/cast-audio-generation';
 import { studioTools } from './tools/studio';
 import { stitchTools } from './tools/stitch';
-import { webTools } from './tools/web';
 import {
   executeGenerationTool,
   getOperationStatusTool,
@@ -125,7 +124,6 @@ export const MCP_TOOLS = [
   startExportTool,
   ...stitchTools,
   ...libraryEditTools,
-  ...webTools,
 ];
 
 export const mcpServer = createMCPServer({
