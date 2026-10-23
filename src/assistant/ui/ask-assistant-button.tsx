@@ -6,7 +6,6 @@
 
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
 import { Button } from '@/ui/shadcn/button';
-import { DropdownMenuItem } from '@/ui/shadcn/dropdown-menu';
 import type { PageContextItem } from '../page-context';
 import { openAssistant } from './assistant-store';
 
@@ -32,23 +31,5 @@ export const AskAssistantButton: React.FC<{
     >
       Ask the assistant
     </Button>
-  );
-};
-
-/** The same ask as a row in a dropdown menu. */
-export const AskAssistantMenuItem: React.FC<{
-  context: PageContextItem[];
-  prompt?: string;
-}> = ({ context, prompt }) => {
-  const { requireAuth } = useAuthGate();
-  return (
-    <DropdownMenuItem
-      onSelect={() => {
-        if (!requireAuth()) return;
-        openAssistant({ context, prompt });
-      }}
-    >
-      Ask the assistant
-    </DropdownMenuItem>
   );
 };

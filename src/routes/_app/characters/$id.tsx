@@ -106,6 +106,7 @@ function TeamCharacterContent({ id }: { id: string }) {
             context={[
               { kind: 'character', id: character.id, label: character.name },
             ]}
+            prompt="How can I make this character more distinctive?"
           />
           {!character.castAnywhere && (
             <DeleteCharacterButton

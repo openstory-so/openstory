@@ -1,6 +1,7 @@
 import { Button } from '@/ui/shadcn/button';
 import { useStyles } from './use-styles';
 import { MOCK_SYSTEM_STYLES } from '@/look/style-templates';
+import { AuthGateStub } from '@/platform/ui/auth/auth-gate-provider';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import {
@@ -20,6 +21,13 @@ const meta: Meta<typeof StyleSelectionDialog> = {
       },
     },
   },
+  decorators: [
+    (Story) => (
+      <AuthGateStub>
+        <Story />
+      </AuthGateStub>
+    ),
+  ],
   argTypes: {
     open: {
       description: 'Whether the dialog is open',

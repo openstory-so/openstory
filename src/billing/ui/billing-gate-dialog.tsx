@@ -1,3 +1,5 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
+import { usePageContext } from '@/assistant/ui/use-page-context';
 /**
  * Billing Gate Dialog
  * Promotes credits first (#1096): buy credits, or ask the founder for some.
@@ -118,6 +120,8 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
   reason = 'manual',
 }) => {
   const posthog = usePostHog();
+  // Only a sequence page can ask what finishing costs (#2155).
+  const inSequence = usePageContext().some((item) => item.kind === 'sequence');
 
   useEffect(() => {
     if (open) posthog.capture('billing_gate_shown', { reason, context });
@@ -195,14 +199,24 @@ export const BillingGateDialog: React.FC<BillingGateDialogProps> = ({
               Use your own key
             </Link>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground/70 hover:text-muted-foreground"
-            onClick={() => onOpenChange(false)}
-          >
-            {hasFalKey ? 'Continue' : 'Set up later'}
-          </Button>
+          <div className="flex items-center gap-1">
+            {inSequence && (
+              <AskAssistantButton
+                context={[]}
+                prompt="What will finishing this sequence cost?"
+                variant="ghost"
+                onOpen={() => onOpenChange(false)}
+              />
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground/70 hover:text-muted-foreground"
+              onClick={() => onOpenChange(false)}
+            >
+              {hasFalKey ? 'Continue' : 'Set up later'}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

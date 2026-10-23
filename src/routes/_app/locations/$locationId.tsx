@@ -75,6 +75,7 @@ function TeamLocationContent({ id }: { id: string }) {
             context={[
               { kind: 'location', id: location.id, label: location.name },
             ]}
+            prompt="How can I make this location feel more alive?"
           />
           {!location.usedAnywhere && (
             <DeleteLocationButton

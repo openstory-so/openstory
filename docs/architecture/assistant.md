@@ -111,10 +111,17 @@ context and a prompt with `openAssistant({ context, prompt })`.
 Context the URL does not name (the Studio viewer's open asset) is held in
 component state, so the page says so by rendering `AssistantContextItem`
 while it is open; the store's `extraContext` joins the chips and leaves
-on unmount. Entry points: "Ask the assistant" in a shot's menu, on the
-character and location pages, and in the Studio viewer
-(`AskAssistantButton`). The empty thread's starters follow the context
-kinds (`suggestionsFor` in `app-layout.tsx`).
+on unmount. Entry points: one "Ask the assistant" control per surface,
+in that surface's existing toolbar or menu (`AskAssistantButton`, or a
+plain button or menu row calling `openAssistant` where
+the tree also renders in stories without an `AuthGateProvider`). Each
+carries a creative-direction line, "How can I make this shot more
+interesting?" and the like, placed in the composer, never sent, with a
+chip only for a thing the URL does not name. The empty gallery, empty
+libraries and empty sequence list ask "What do you want to make?" with
+starter chips; the empty thread asks "What do you want to do?" with
+starters that follow the context kinds (`suggestionsFor` in
+`app-layout.tsx`).
 
 ## Shell
 

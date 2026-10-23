@@ -1,3 +1,5 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
+import { Button } from '@/ui/shadcn/button';
 import { ScenePlayer } from '@/motion/ui/scene-player';
 import { theatreDraftLabel } from '@/motion/draft-mode';
 import { CanvasMediaStage } from './canvas-media-stage';
@@ -246,16 +248,44 @@ export const SceneCanvas: React.FC<SceneCanvasProps> = ({
         draftLabel={draftLabel}
         overlayActions={
           scope === 'sequence' ? (
-            <SequenceDownloadMenu
-              sequenceExport={sequenceExport}
-              draftLabel={draftLabel}
-              variant="overlay"
-              publish={{
-                teamId: sequence.teamId,
-                sequenceId: sequence.id,
-                defaultTitle: sequence.title,
-              }}
-            />
+            <>
+              {/* The shot under the playhead is not in the URL, so it rides
+                  as a chip; with nothing playing the route's chips suffice. */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const playing = shots.find((s) => s.id === playingShotId);
+                  openAssistant({
+                    context: playing
+                      ? [
+                          {
+                            kind: 'shot',
+                            id: playing.id,
+                            label: playing.shotNumber
+                              ? `Shot ${playing.shotNumber}`
+                              : 'This shot',
+                          },
+                        ]
+                      : [],
+                    prompt: 'This shot feels wrong, fix the pacing.',
+                  });
+                }}
+              >
+                Ask the assistant
+              </Button>
+              <SequenceDownloadMenu
+                sequenceExport={sequenceExport}
+                draftLabel={draftLabel}
+                variant="overlay"
+                publish={{
+                  teamId: sequence.teamId,
+                  sequenceId: sequence.id,
+                  defaultTitle: sequence.title,
+                }}
+              />
+            </>
           ) : undefined
         }
       />

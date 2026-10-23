@@ -106,6 +106,7 @@ import {
   type AspectRatio,
 } from '@/models/aspect-ratios';
 import { VoiceInputButton } from '@/ui/voice/voice-input-button';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { pickShufflePrompt, studioShufflePrompts } from './prompt-shuffle';
 import { parseStudioPaste } from './paste-import';
@@ -1784,6 +1785,15 @@ export function StudioComposer({
             {draft.isPending ? 'Drafting…' : 'Draft prompt'}
           </Button>
         )}
+        <AskAssistantButton
+          variant="ghost"
+          context={[]}
+          prompt={
+            trimmed
+              ? `Make this prompt more cinematic:\n\n${trimmed}`
+              : 'Help me write a prompt for '
+          }
+        />
 
         <div className="ml-auto flex items-center gap-2">
           {hasContent && (

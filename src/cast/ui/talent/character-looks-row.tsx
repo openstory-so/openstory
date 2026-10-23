@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { z } from 'zod';
@@ -232,6 +233,13 @@ export const CharacterLooksRow: React.FC<{
           >
             Edit look
           </Button>
+        ) : null}
+        {active ? (
+          <AskAssistantButton
+            variant="ghost"
+            context={[{ kind: 'look', id: active.id, label: active.name }]}
+            prompt="Give this look a different outfit."
+          />
         ) : null}
       </div>
 

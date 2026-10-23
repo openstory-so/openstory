@@ -90,9 +90,13 @@ import { Suspense, useEffect, useState, type CSSProperties } from 'react';
 import { toast } from 'sonner';
 import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
-import { useAssistantState } from '@/assistant/ui/assistant-store';
+import {
+  openAssistant,
+  useAssistantState,
+} from '@/assistant/ui/assistant-store';
 import { useIsMobile } from '@/ui/use-mobile';
 import type { PageContextItem } from '@/assistant/page-context';
+import type { StudioActivity } from '@/studio/schema';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
 function useNow(active: boolean) {
@@ -262,6 +266,41 @@ function StudioCard({
         </p>
       )}
     </article>
+  );
+}
+
+/** Ways to begin, each handed to the assistant as a first line (#2155). */
+const ASSISTANT_STARTERS: Record<StudioActivity, readonly string[]> = {
+  image: [
+    'A reference still for a character I describe',
+    'A mood board for a scene from one of my sequences',
+    'Turn a photo I upload into a stylised still',
+  ],
+  video: [
+    'A short clip from one of my stills',
+    'A looping background for a title card',
+    'Animate a character sheet into a turnaround',
+  ],
+};
+
+function AssistantStarters({ activity }: { activity: StudioActivity }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <p className="text-muted-foreground">What do you want to make?</p>
+      <div className="flex flex-wrap justify-center gap-2">
+        {ASSISTANT_STARTERS[activity].map((starter) => (
+          <Button
+            key={starter}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openAssistant({ context: [], prompt: starter })}
+          >
+            {starter}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -943,12 +982,16 @@ export function StudioGallery({
               ? 'No clips match this search across any users.'
               : 'No stills match this search across any users.'
             : isAuthenticated
-              ? activity === 'video'
-                ? 'Your clips land here. Start with a prompt below.'
-                : 'Your stills land here. Start with a prompt below.'
+              ? undefined
               : 'Browse the composer, then sign in to generate and keep a library.'
         }
-        action={!supportMode && !isAuthenticated ? <SignInButton /> : undefined}
+        action={
+          supportMode ? undefined : isAuthenticated ? (
+            <AssistantStarters activity={activity} />
+          ) : (
+            <SignInButton />
+          )
+        }
       />
     );
   }

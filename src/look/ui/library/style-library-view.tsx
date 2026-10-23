@@ -1,8 +1,10 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { GalleryIcon } from '@/ui/icons/gallery-icon';
 import { StyleDetailDialog } from '@/look/ui/style-detail-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -117,29 +119,35 @@ export const StyleLibraryView: FC<StyleLibraryViewProps> = ({
   return (
     <div className="flex flex-col gap-6">
       <div className="sticky top-0 z-10 flex flex-col gap-3 bg-background pt-1 pb-2">
-        <InputGroup className="sm:max-w-xs">
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-          <InputGroupInput
-            placeholder="Search styles"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            aria-label="Search styles"
-          />
-          {searchQuery && (
-            <InputGroupAddon align="inline-end">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSearchQuery('')}
-              >
-                <X />
-                <span className="sr-only">Clear search</span>
-              </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <InputGroup className="sm:max-w-xs">
+            <InputGroupAddon>
+              <Search />
             </InputGroupAddon>
-          )}
-        </InputGroup>
+            <InputGroupInput
+              placeholder="Search styles"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              aria-label="Search styles"
+            />
+            {searchQuery && (
+              <InputGroupAddon align="inline-end">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X />
+                  <span className="sr-only">Clear search</span>
+                </Button>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
+          <AskAssistantButton
+            context={[]}
+            prompt="Which look would give this story more mood?"
+          />
+        </div>
 
         {groups.length > 1 && (
           <div className="flex flex-wrap gap-2">
@@ -174,6 +182,14 @@ export const StyleLibraryView: FC<StyleLibraryViewProps> = ({
                 : 'There are no styles available yet.'}
             </EmptyDescription>
           </EmptyHeader>
+          {!searchQuery && (
+            <EmptyContent>
+              <AskAssistantButton
+                context={[]}
+                prompt="Design a style for a moody thriller"
+              />
+            </EmptyContent>
+          )}
         </Empty>
       ) : (
         <div className="flex flex-col gap-8">

@@ -1,3 +1,4 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { TeamCharacterCard } from '@/cast/ui/character-library/team-character-card';
 import { LibraryVirtualGrid } from '@/cast/ui/library-virtual-grid';
 import { useTeamCharacters } from '@/cast/ui/use-team-characters';
@@ -41,6 +42,12 @@ export const TeamCharacterList: React.FC<{
         icon={<User className="h-12 w-12" />}
         title="No characters yet"
         description="Make one with New character, or analyse a sequence."
+        action={
+          <AskAssistantButton
+            context={[]}
+            prompt="Create a character from a photo I describe"
+          />
+        }
       />
     );
   }

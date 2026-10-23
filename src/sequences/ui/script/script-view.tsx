@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
@@ -1721,6 +1722,31 @@ export const ScriptView: FC<{
             {/* CSS-only placement so SSR and hydration match — no useIsMobile
                 gate (that hid Enhance until the client effect ran). */}
             <div className="ml-auto flex items-center gap-1">
+              {/* The new page registers the draft as a chip and the script
+                  page's route names the sequence, so no context here. A
+                  highlighted passage becomes the ask (#2155). */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                // Keep the editor's selection: a focus move would drop it
+                // before the click reads it.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  const selected = document.getSelection()?.toString().trim();
+                  openAssistant({
+                    context: [],
+                    prompt: selected
+                      ? `Rewrite this passage:\n\`\`\`\n${selected}\n\`\`\``
+                      : isEditing
+                        ? 'How can I make this script more visual?'
+                        : 'Help me write a 30-second script',
+                  });
+                }}
+              >
+                Ask the assistant
+              </Button>
               {enhanceControls}
               <VoiceInputButton
                 label="script"
