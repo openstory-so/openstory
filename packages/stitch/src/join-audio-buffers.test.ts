@@ -66,17 +66,41 @@ describe('joinAudioBuffers', () => {
   });
 });
 
-describe('joinAudioBuffers caps the allocation', () => {
+describe('joinAudioBuffers refuses a broken track', () => {
   beforeEach(() => vi.stubGlobal('AudioBuffer', FakeAudioBuffer));
   afterEach(() => vi.unstubAllGlobals());
 
-  it('allows at most a second of gaps and drops what lies past it', () => {
-    const joined = joinAudioBuffers([chunk([1], 0), chunk([2], 1000)]);
-    // 2 frames of sound + 10 frames (one second at 10 Hz) of gap allowance.
-    expect(joined?.buffer.length).toBe(12);
+  it('keeps both channels of a stereo track', () => {
+    const stereo = (l: number[], r: number[], timestamp: number) => {
+      const buffer = new FakeAudioBuffer({
+        numberOfChannels: 2,
+        length: l.length,
+        sampleRate: 10,
+      });
+      buffer.getChannelData(0).set(l);
+      buffer.getChannelData(1).set(r);
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test double
+      return { buffer: buffer as unknown as AudioBuffer, timestamp };
+    };
+    const joined = joinAudioBuffers([
+      stereo([1, 2], [9, 8], 0),
+      stereo([3, 4], [7, 6], 0.2),
+    ]);
+    expect(Array.from(joined?.buffer.getChannelData(0) ?? [])).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(Array.from(joined?.buffer.getChannelData(1) ?? [])).toEqual([
+      9, 8, 7, 6,
+    ]);
   });
 
-  it('returns null for a span that is not a positive length', () => {
-    expect(joinAudioBuffers([chunk([1], Number.NaN)])).toBeNull();
+  it('throws on more than a second of gaps instead of sizing by timestamps', () => {
+    expect(() => joinAudioBuffers([chunk([1], 0), chunk([2], 1000)])).toThrow(
+      /gaps/
+    );
+  });
+
+  it('throws on a span that is not a positive length', () => {
+    expect(() => joinAudioBuffers([chunk([1], Number.NaN)])).toThrow(/span/);
   });
 });

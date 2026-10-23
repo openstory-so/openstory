@@ -159,9 +159,9 @@ function drawCaption(
 }
 
 /**
- * Schedule `track` on `ctx` at `offset`, through `to`, as one node: the
- * track's rate is rarely the mix's, and per-chunk resampling clicks
- * (joinAudioBuffers).
+ * Schedule `track` on `ctx` at `offset`, through `to`, as one node so it is
+ * resampled once (joinAudioBuffers). Chunks starting past the end of the
+ * mix are not decoded.
  */
 async function scheduleTrack(
   ctx: OfflineAudioContext,

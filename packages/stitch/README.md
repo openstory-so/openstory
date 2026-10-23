@@ -329,7 +329,7 @@ engine.dispose();
 - **Opening is concurrent.** Every clip is opened at once for its duration and size, then the first frame is read, so a twenty-clip cut is one round of header reads plus that frame, not twenty sequential opens. Stills decode their images during `prepare()`.
 - **Reads are bounded range requests.** 64 KiB blocks. A faststart header is one request. `locate()` walks the offset table, O(N) in the clip count.
 - **Clips are downloaded whole, in order.** From the clip under the playhead, each clip is streamed whole in one request, one clip at a time, up to two clips past the playhead, and held in memory. `play()` resolves once the current clip is all here; a stall at a cut clears once the next clip is. So a slow link waits once per clip for the clip's bytes, never once per block; music still streams. Clips outside that window are let go of, so a long cut never sits in memory whole. Music and dialogue lines served over HTTP keep a 16 MiB cache.
-- **Sound streams too.** Each clip's audio is decoded a second ahead of the playhead and dropped once played.
+- **Sound is decoded a clip at a time.** Each clip's audio is decoded when the playhead is a second from the clip, queued as one node at its own sample rate, and dropped once played. Only the music streams chunk by chunk.
 - **A stall holds everything together.** The audio clock is the playback clock, so a network stall suspends it, and the picture, the music and every queued line of dialogue pause and resume as one.
 
 ## Requirements

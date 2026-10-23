@@ -51,16 +51,18 @@ vi.doMock('mediabunny', () => ({
   AudioBufferSink: class {
     buffers() {
       return (async function* () {
-        yield {
-          buffer: {
-            duration: 0.25,
-            length: 12_000,
-            sampleRate: 48_000,
-            numberOfChannels: 1,
-            getChannelData: () => new Float32Array(12_000),
-          },
-          timestamp: 0,
-        };
+        for (const timestamp of [0, 0.25, 0.5]) {
+          yield {
+            buffer: {
+              duration: 0.25,
+              length: 12_000,
+              sampleRate: 48_000,
+              numberOfChannels: 1,
+              getChannelData: () => new Float32Array(12_000),
+            },
+            timestamp,
+          };
+        }
       })();
     }
   },
@@ -294,16 +296,18 @@ describe('exportSequence', () => {
     expect(addedAt).toEqual([0, 0.25, 0.5, 0.75]);
   });
 
-  it('places a clip’s sound at its offset', async () => {
+  it('places a clip’s sound at its offset as one node', async () => {
     const starts: number[] = [];
-    // The sink's chunk is joined into a fresh AudioBuffer before it is
-    // scheduled; node has none.
+    const lengths: number[] = [];
+    // joinAudioBuffers builds a fresh AudioBuffer before the chunks are
+    // scheduled, and Node has no AudioBuffer global.
     vi.stubGlobal(
       'AudioBuffer',
       class {
         length: number;
         sampleRate: number;
         constructor(o: { length: number; sampleRate: number }) {
+          lengths.push(o.length);
           this.length = o.length;
           this.sampleRate = o.sampleRate;
         }
@@ -353,6 +357,7 @@ describe('exportSequence', () => {
     ]);
     await exportSequence({ clips: [clip], ...settings, frameRate: 1 });
     expect(starts).toEqual([2]);
+    expect(lengths).toEqual([36_000]);
   });
 
   it('refuses music this browser cannot decode and disposes that input', async () => {

@@ -7,11 +7,11 @@
  *   continuity + global timestamps).
  * - A music `Input` + `AudioBufferSink` mixed through a music-only `GainNode`
  *   that applies `musicGainDb`.
- * - Clip sound (dialogue / VO) streamed like the music (#1845): an
- *   `AudioBufferSink` per clip, a second ahead of the playhead, queued as
- *   `AudioBufferSourceNode`s on the master gain (not attenuated by the music
- *   loudness gain). Nothing is decoded before it is needed, so a first play
- *   waits on its own second of sound, not the whole clip.
+ * - Clip sound (dialogue / VO): an `AudioBufferSink` per clip, decoded whole
+ *   once the playhead is within a second of the clip and queued as one
+ *   `AudioBufferSourceNode` on the master gain (not attenuated by the music
+ *   loudness gain), so each track is resampled once (#2170). The clip is
+ *   already held whole by then, so the wait is the decode, not a download.
  * - Buffering: when the next frame or the clip's sound is not in yet, the
  *   `AudioContext` is suspended — the clock and every queued node stop
  *   together — and `onBuffering` fires, instead of dropping frames or
@@ -553,9 +553,10 @@ export class SequencePlayerEngine {
   }
 
   /**
-   * Stream clip sound from `from` on, a second ahead of the playhead, the
-   * way the music streams. Clips without sound are skipped; the lane head
-   * jumps to the next clip that has some.
+   * Queue clip sound from `from` on, one clip at a time, each decoded whole
+   * (the clip is already held) and queued as one node when the playhead is
+   * a second from it. Clips without sound are skipped; the lane head jumps
+   * to the next clip that has some.
    */
   private startClipAudioLane(from: number): void {
     const generation = ++this.laneGeneration;
@@ -576,8 +577,8 @@ export class SequencePlayerEngine {
         try {
           // AudioBufferSink also decodes PCM cut WAVs (a still's takes),
           // which have no WebCodecs decoder configuration. The track is
-          // queued as one node, not chunk by chunk: its rate is not the
-          // context's, and per-chunk resampling clicks (joinAudioBuffers).
+          // queued as one node, not chunk by chunk, so it is resampled once
+          // (why: joinAudioBuffers).
           const chunks: WrappedAudioBuffer[] = [];
           for await (const chunk of new AudioBufferSink(track).buffers(
             Math.max(0, from - clipOffsetSeconds)
