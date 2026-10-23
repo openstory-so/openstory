@@ -14,6 +14,10 @@
  * - Most tools are `lazy`: the model sees the name and first sentence, and
  *   asks for a schema when it needs one, so a turn does not carry a hundred
  *   schemas.
+ * - The model sees `openstory_get_shot`, not `openstory.get_shot`: OpenAI
+ *   rejects a dot in a tool name (`^[a-zA-Z0-9_-]+$`), and OpenRouter only
+ *   reports that as "Provider returned error". The sets below and the
+ *   approval rule keep the MCP names; only the name on the wire changes.
  */
 
 import type { AnyTool } from '@tanstack/ai';
@@ -132,6 +136,11 @@ export function unwrapMcpResult(result: unknown): unknown {
   return result.structuredContent ?? text;
 }
 
+/** The name the model calls a tool by: the MCP name with its dot as `_`. */
+export function chatToolName(mcpName: string): string {
+  return mcpName.replace(/^openstory\./, 'openstory_');
+}
+
 /** The tool list for one chat run. */
 export function assistantTools(): AnyTool[] {
   return MCP_TOOLS.map((tool: AnyTool) => {
@@ -141,6 +150,7 @@ export function assistantTools(): AnyTool[] {
     if (!execute) throw new Error(`${tool.name} has no execute`);
     return {
       ...tool,
+      name: chatToolName(tool.name),
       needsApproval: needsApproval(tool),
       lazy: !EAGER_TOOLS.has(tool.name),
       execute: async (input: unknown, ctx: unknown) =>

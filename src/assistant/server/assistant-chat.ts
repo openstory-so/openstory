@@ -53,7 +53,7 @@ export type AssistantCaller = {
   request: Request;
 };
 
-const SYSTEM_PROMPT = `You are the OpenStory assistant, inside the OpenStory app. You help the user make AI video: sequences, scenes, shots, characters, locations, styles, music and the Studio. Every openstory.* tool acts on the user's team, with their permissions and their credits.
+const SYSTEM_PROMPT = `You are the OpenStory assistant, inside the OpenStory app. You help the user make AI video: sequences, scenes, shots, characters, locations, styles, music and the Studio. Every openstory_* tool acts on the user's team, with their permissions and their credits.
 
 How to work:
 - Read before you write. Use get_* and list_* to find ids; never guess an id.
@@ -237,6 +237,20 @@ export async function handleAssistantChat(
   await scopedDb.assistant.closeOpenRuns(thread.id);
   const abortController = new AbortController();
   const middleware: Array<ChatMiddleware<OpenStoryMcpContext>> = [
+    {
+      name: 'assistant-model-error',
+      // OpenRouter answers "Provider returned error"; the provider's own
+      // message is in `rawEvent`, and only the log sees it.
+      onModelError: (_ctx, error) =>
+        logger.error('assistant model error', {
+          threadId: thread.id,
+          runId: params.runId,
+          model,
+          via: llmKey.via,
+          error: error.message,
+          rawEvent: error.rawEvent,
+        }),
+    },
     ...aiObservabilityMiddleware({
       observationName: 'assistant-chat',
       tags: ['assistant'],

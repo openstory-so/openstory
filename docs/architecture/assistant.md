@@ -25,6 +25,12 @@ only assistant-side work per tool happens in
   `assistant-tools.test.ts` pins both against the catalog.
 - Tools outside `EAGER_TOOLS` are `lazy`: the model sees the name and the
   first sentence, and discovers a schema when it needs one.
+- The model calls a tool by `chatToolName`: `openstory_get_shot`, the MCP
+  name with its dot as an underscore. OpenAI rejects a dot in a tool name
+  and OpenRouter reports only "Provider returned error" for it; the
+  provider's own message is logged by the `assistant-model-error`
+  middleware (`onModelError`, `rawEvent`). `EAGER_TOOLS`, `SPEND_TOOLS` and
+  the approval rule keep the MCP names.
 
 Scope checks, the likeness gate and billing are the tool's own and are the
 same on both paths. Do not add an assistant-only tool; add an MCP tool.

@@ -149,7 +149,7 @@ export const ToolRunning: Story = {
         {
           toolCalls: [
             {
-              name: 'openstory.get_shot',
+              name: 'openstory_get_shot',
               input: { shotId: '01J0SHOT' },
               result: SHOT,
               delayMs: 4000,
@@ -172,7 +172,7 @@ export const ToolError: Story = {
         {
           toolCalls: [
             {
-              name: 'openstory.set_music_from_upload',
+              name: 'openstory_set_music_from_upload',
               input: {
                 sequenceId: '01J0SEQ',
                 upload: '/r2/uploads/yesterday.mp3',
@@ -197,7 +197,7 @@ export const ConfirmBeforeSpend: Story = {
         {
           toolCalls: [
             {
-              name: 'openstory.plan_generation',
+              name: 'openstory_plan_generation',
               input: { sequenceId: '01J0SEQ', stopAt: 'motion' },
               result: {
                 planToken: 'tok_1',
@@ -211,7 +211,7 @@ export const ConfirmBeforeSpend: Story = {
           text: 'One clip to render, about $0.42. Allow it and I will start.',
           toolCalls: [
             {
-              name: 'openstory.execute_generation',
+              name: 'openstory_execute_generation',
               input: {
                 sequenceId: '01J0SEQ',
                 planToken: 'tok_1',
@@ -239,7 +239,7 @@ export const LongConversation: Story = {
           i < 39
             ? [
                 {
-                  name: 'openstory.get_scene',
+                  name: 'openstory_get_scene',
                   input: { sceneId: `scene-${i + 2}` },
                   result: { shots: 2 },
                   delayMs: 100,

@@ -8,9 +8,9 @@ import type { ToolCallPart, ToolResultPart } from '@tanstack/ai';
 import { Button } from '@/ui/shadcn/button';
 import { cn } from '@/ui/utils';
 
-/** "openstory.get_shot_frames" → "Get shot frames". */
+/** "openstory_get_shot_frames" (or the MCP "openstory.…") → "Get shot frames". */
 function toolTitle(name: string): string {
-  const bare = name.replace(/^openstory\./, '').replaceAll('_', ' ');
+  const bare = name.replace(/^openstory[._]/, '').replaceAll('_', ' ');
   return bare.charAt(0).toUpperCase() + bare.slice(1);
 }
 
