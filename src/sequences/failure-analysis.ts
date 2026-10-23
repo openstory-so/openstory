@@ -32,6 +32,8 @@ type ShotFailure = {
   shotId: string;
   sceneNumber: number;
   sceneTitle: string;
+  /** Position within its scene, as the rail labels it (#2166). */
+  shotNumber: number;
   error: string | null;
 };
 
@@ -66,6 +68,14 @@ function getSceneTitle(shot: Shot, scenesById: ScenesById): string {
   const scene = shot.sceneId ? scenesById.get(shot.sceneId) : null;
   return (
     plainSceneTitle(scene?.title) || `Scene ${sceneNumberOf(shot, scenesById)}`
+  );
+}
+
+/** Same fallback as the scene rail: a shot with no stored number is its position in its scene. */
+function shotNumberOf(shot: Shot, shots: readonly Shot[]): number {
+  return (
+    shot.shotNumber ??
+    shots.filter((s) => s.sceneId === shot.sceneId).indexOf(shot) + 1
   );
 }
 
@@ -213,6 +223,7 @@ export function analyzeFailures(
         shotId: f.id,
         sceneNumber: sceneNumberOf(f, scenesById),
         sceneTitle: getSceneTitle(f, scenesById),
+        shotNumber: shotNumberOf(f, shots),
         error: f.imageError,
       })),
     });
@@ -235,6 +246,7 @@ export function analyzeFailures(
         shotId: f.id,
         sceneNumber: sceneNumberOf(f, scenesById),
         sceneTitle: getSceneTitle(f, scenesById),
+        shotNumber: shotNumberOf(f, shots),
         error: f.primaryVideo?.error ?? null,
       })),
     });
@@ -256,6 +268,7 @@ export function analyzeFailures(
         shotId: f.id,
         sceneNumber: sceneNumberOf(f, scenesById),
         sceneTitle: getSceneTitle(f, scenesById),
+        shotNumber: shotNumberOf(f, shots),
         error: null,
       })),
     });

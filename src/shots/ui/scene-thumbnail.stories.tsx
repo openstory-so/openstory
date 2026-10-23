@@ -120,3 +120,13 @@ export const ClipFirstFrameBeatsPreview: Story = {
     alt: 'Scene 1 — storyboard preview is superseded once the clip exists',
   },
 };
+
+/** The still rendered; the clip was refused (#2166). The tile keeps the still and wears a corner badge. */
+export const ClipContentBlocked: Story = {
+  args: {
+    thumbnailUrl: 'https://picsum.photos/seed/scene1/320/180',
+    clipError:
+      'Content checker rejected the generated dialogue (Seedance 2.5). Regenerate the dialogue for another reading.',
+    alt: 'Scene 1',
+  },
+};

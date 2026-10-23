@@ -129,6 +129,11 @@ export const SceneRail: React.FC<{
                           thumbnailStatus={shot.imageStatus}
                           videoUrl={shownClipUrl(shot)}
                           generationError={shot.imageError}
+                          clipError={
+                            shot.videoStatus === 'failed'
+                              ? (shot.primaryVideo?.error ?? 'Failed')
+                              : null
+                          }
                           draftLabel={
                             shownClipUrl(shot) ? shotDraftLabel(shot) : null
                           }

@@ -621,3 +621,45 @@ describe('analyzeLoadedFailures', () => {
     expect(result?.headline).not.toContain('full retry required');
   });
 });
+
+describe('shot numbers (#2166)', () => {
+  test('a failed clip names its shot, falling back to its position in the scene', () => {
+    const shots = [
+      makeShot({
+        shot: { id: 'shot-1', sceneId: 'scene-1', shotNumber: null },
+      }),
+      makeShot({
+        shot: { id: 'shot-4', sceneId: 'scene-1', shotNumber: 4 },
+        sources: {
+          video: null,
+          primaryVideo: render({
+            status: 'failed',
+            url: null,
+            error: 'refused',
+          }),
+        },
+      }),
+      makeShot({
+        shot: { id: 'shot-x', sceneId: 'scene-2', shotNumber: null },
+        sources: {
+          video: null,
+          primaryVideo: render({
+            status: 'failed',
+            url: null,
+            error: 'refused',
+          }),
+        },
+      }),
+    ];
+
+    const result = analyzeFailures(shots, makeSequence(), SCENES);
+
+    const motionGroup = result.groups.find((g) => g.category === 'motion');
+    expect(motionGroup?.shots.map((s) => [s.sceneTitle, s.shotNumber])).toEqual(
+      [
+        ['The Reveal', 4],
+        ['Scene 2', 1],
+      ]
+    );
+  });
+});

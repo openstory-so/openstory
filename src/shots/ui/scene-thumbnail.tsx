@@ -35,6 +35,12 @@ type SceneThumbnailProps = {
   videoStartSeconds?: number;
   /** Provider error for a failed still — content flags render as a warning. */
   generationError?: string | null;
+  /**
+   * Provider error for a failed clip (#2166). The still is fine, so the tile
+   * keeps it and wears a corner badge: the rail is where a blocked shot is
+   * found without opening every one.
+   */
+  clipError?: string | null;
   alt: string;
   aspectRatio: AspectRatio;
   className?: string;
@@ -82,6 +88,7 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
   previewThumbnailUrl,
   thumbnailStatus,
   generationError,
+  clipError,
   alt,
   aspectRatio,
   className,
@@ -174,6 +181,28 @@ const SceneThumbnailComponent: React.FC<SceneThumbnailProps> = ({
             </span>
           )}
         </div>
+      )}
+
+      {clipError && !isFailed && (
+        <span
+          title={
+            isContentRejectionError(clipError)
+              ? CONTENT_REJECTION_USER_TITLE
+              : 'Clip failed to generate'
+          }
+          className="pointer-events-none absolute bottom-1 left-1 flex size-4 items-center justify-center rounded-full bg-background/80 text-destructive backdrop-blur-sm"
+        >
+          {isContentRejectionError(clipError) ? (
+            <Info className="size-3" aria-hidden />
+          ) : (
+            <AlertCircle className="size-3" aria-hidden />
+          )}
+          <span className="sr-only">
+            {isContentRejectionError(clipError)
+              ? CONTENT_REJECTION_USER_TITLE
+              : 'Clip failed to generate'}
+          </span>
+        </span>
       )}
 
       {isFailed && (

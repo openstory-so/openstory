@@ -106,7 +106,8 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
           )}
 
           {summary.groups.length > 0 && !isCredits && (
-            <details className="mt-2">
+            // A content flag names each shot and its remedy, so it starts open (#2166).
+            <details className="mt-2" open={isWarning}>
               <summary className="cursor-pointer text-xs underline">
                 {isWarning ? 'Which shots' : 'View error details'}
               </summary>
@@ -128,6 +129,7 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
                           {f.sceneTitle === `Scene ${f.sceneNumber}`
                             ? f.sceneTitle
                             : `Scene ${f.sceneNumber} (${f.sceneTitle})`}
+                          {` · Shot ${f.shotNumber}`}
                         </Link>
                         {`: ${isWarning ? contentRejectionHint(f.error) : errorLabel(f.error)}`}
                       </div>

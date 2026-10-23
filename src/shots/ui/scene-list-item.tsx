@@ -207,6 +207,11 @@ const SceneListItemComponent: React.FC<SceneListItemProps> = ({
                 videoUrl={clipUrl}
                 videoStartSeconds={videoStartSeconds}
                 generationError={shot?.imageError}
+                clipError={
+                  shot?.videoStatus === 'failed'
+                    ? (shot.primaryVideo?.error ?? 'Failed')
+                    : null
+                }
                 draftLabel={clipUrl ? shotDraftLabel(shot) : null}
                 alt={linkLabel ?? 'Shot thumbnail'}
                 aspectRatio={aspectRatio}
@@ -391,7 +396,8 @@ const areEqual = (
   // Check video-related fields (for skeleton/completion state)
   if (
     prevShot.video?.url !== nextShot.video?.url ||
-    prevShot.videoStatus !== nextShot.videoStatus
+    prevShot.videoStatus !== nextShot.videoStatus ||
+    prevShot.primaryVideo?.error !== nextShot.primaryVideo?.error
   ) {
     return false;
   }
