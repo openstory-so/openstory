@@ -19,7 +19,11 @@ import { type Client, createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createAssistantMethods, threadTitleFrom } from './assistant';
+import {
+  ACTIVE_RUN_MAX_AGE_MS,
+  createAssistantMethods,
+  threadTitleFrom,
+} from './assistant';
 
 let client: Client;
 let db: Database;
@@ -211,6 +215,31 @@ describe('run store', () => {
     expect(await runs.findActiveRun(threadId)).toBeNull();
   });
 
+  it('reports a recent running run as active, never a stale or finished one', async () => {
+    const methods = createAssistantMethods(db, teamId, userId);
+    const threadId = generateId();
+    await methods.ensureThread(threadId, 'Hi');
+    const { runs } = methods.persistence(threadId).stores;
+    const now = Date.now();
+    await runs.createOrResume({
+      runId: 'run_stale',
+      threadId,
+      startedAt: now - ACTIVE_RUN_MAX_AGE_MS - 1,
+    });
+    expect(await runs.findActiveRun(threadId)).toBeNull();
+    await runs.createOrResume({ runId: 'run_live', threadId, startedAt: now });
+    expect(await runs.findActiveRun(threadId)).toMatchObject({
+      runId: 'run_live',
+    });
+    // The next turn closes both and names them so their logs get sealed.
+    expect((await methods.closeOpenRuns(threadId)).sort()).toEqual([
+      'run_live',
+      'run_stale',
+    ]);
+    expect(await runs.findActiveRun(threadId)).toBeNull();
+    expect(await runs.get('run_live')).toMatchObject({ status: 'aborted' });
+  });
+
   it('cannot read a run of another thread', async () => {
     const methods = createAssistantMethods(db, teamId, userId);
     const a = generateId();
@@ -236,10 +265,10 @@ describe('deleteThread', () => {
       { id: 'm1', role: 'user', content: 'a' },
     ]);
     await stores.runs.createOrResume({ runId: 'r', threadId, startedAt: 1 });
-    expect(await methods.deleteThread(threadId)).toBe(true);
+    expect(await methods.deleteThread(threadId)).toEqual(['r']);
     expect(await methods.getThread(threadId)).toBeNull();
     expect(await db.select().from(assistantMessages)).toHaveLength(0);
     expect(await db.select().from(assistantRuns)).toHaveLength(0);
-    expect(await methods.deleteThread(threadId)).toBe(false);
+    expect(await methods.deleteThread(threadId)).toBeNull();
   });
 });

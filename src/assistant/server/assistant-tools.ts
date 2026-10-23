@@ -21,6 +21,7 @@
  */
 
 import type { AnyTool } from '@tanstack/ai';
+import { z } from 'zod';
 import { MCP_TOOLS } from '@/platform/server/mcp/server';
 
 /** Tools the model sees in full on every turn: the ones most turns start with. */
@@ -62,8 +63,34 @@ function annotationsOf(tool: AnyTool): Annotations {
     : {};
 }
 
-/** A write the user confirms before it runs: a delete. */
+const urlTakers = new Map<string, boolean>();
+
+/**
+ * A tool whose input has a URL the model writes (`z.url()` anywhere in its
+ * schema, read off the JSON Schema so a new field or a batch that embeds
+ * one is caught with no registry). A page in the thread could tell the
+ * model to send `evil.example/?<the user's script>`, so the user sees the
+ * URL on a card before anything goes out. A search query is shown on its
+ * card too, but carries no page's data, so it does not ask.
+ */
+export function takesUrl(tool: AnyTool): boolean {
+  let known = urlTakers.get(tool.name);
+  if (known === undefined) {
+    known = JSON.stringify(
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every MCP tool's inputSchema is a zod schema
+      z.toJSONSchema(tool.inputSchema as z.ZodType, {
+        io: 'input',
+        unrepresentable: 'any',
+      })
+    ).includes('"format":"uri"');
+    urlTakers.set(tool.name, known);
+  }
+  return known;
+}
+
+/** What the user confirms before it runs: a delete, or a tool sent a model-written URL. */
 export function needsApproval(tool: AnyTool): boolean {
+  if (takesUrl(tool)) return true;
   const { readOnlyHint, destructiveHint } = annotationsOf(tool);
   return !readOnlyHint && destructiveHint === true;
 }

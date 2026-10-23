@@ -17,10 +17,10 @@ export const AssistantContextItem: React.FC<{ item: PageContextItem }> = ({
   // The store is outside React; this is the one place a page syncs into it.
   // Keyed on the fields, not the object: a page that builds the item each
   // render must not re-register each render.
-  const { kind, id, label } = item;
+  const { kind, id, label, text } = item;
   useEffect(() => {
-    setAssistantExtraContext(key, { kind, id, label });
+    setAssistantExtraContext(key, { kind, id, label, text });
     return () => setAssistantExtraContext(key, null);
-  }, [key, kind, id, label]);
+  }, [key, kind, id, label, text]);
   return null;
 };

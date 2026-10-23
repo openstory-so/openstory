@@ -192,6 +192,7 @@ import React, {
 import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { ScriptEditor } from './script-editor';
+import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
 function useSequenceDraft() {
   const [draft, setDraft] = useState<SequenceDraft>(EMPTY_SEQUENCE_DRAFT);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -1535,6 +1536,17 @@ export const ScriptView: FC<{
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/* A script nothing has saved yet reaches the assistant as text (#2155). */}
+      {!isEditing && scriptValue.trim() !== '' && (
+        <AssistantContextItem
+          item={{
+            kind: 'draft_script',
+            id: 'draft',
+            label: 'Unsaved script',
+            text: scriptValue.slice(0, 50_000),
+          }}
+        />
+      )}
       {isDraggingFiles && (
         <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-primary/60 bg-background/80 backdrop-blur-sm">
           <ImagePlus className="size-10 text-primary" />

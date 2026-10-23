@@ -25,7 +25,8 @@ import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import { overResponseCap, type OpenStoryMcpContext } from './tool-context';
 import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
-import { SEQUENCE_CARD_HTML, SEQUENCE_CARD_URI } from './ui/sequence-card';
+import { SEQUENCE_CARD_URI } from '@/platform/mcp-views';
+import { SEQUENCE_CARD_HTML } from './ui/sequence-card';
 import { getEnv } from '#env';
 
 const logger = getLogger(['openstory', 'mcp', 'resources']);

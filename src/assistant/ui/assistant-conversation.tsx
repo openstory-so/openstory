@@ -137,6 +137,7 @@ export const AssistantConversation: React.FC<AssistantConversationProps> = ({
                     message={message}
                     streaming={isLoading && message.id === lastId}
                     approvals={approvals}
+                    onViewMessage={(text) => void sendMessage(text)}
                   />
                 </div>
               );

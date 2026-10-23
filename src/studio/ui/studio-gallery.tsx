@@ -96,6 +96,8 @@ import {
 import { toast } from 'sonner';
 import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
+import { useAssistantState } from '@/assistant/ui/assistant-store';
+import { useIsMobile } from '@/ui/use-mobile';
 import type { PageContextItem } from '@/assistant/page-context';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
@@ -822,7 +824,7 @@ export function GenerationDetail({
   editPending?: boolean;
   /** An opener for an earlier step of the edit history, if it is loaded. */
   onOpenHistory?: (id: string) => (() => void) | undefined;
-  /** Close the viewer and open the assistant with this asset (#2155); absent in support mode. */
+  /** Runs as the assistant opens with this asset (#2155); absent in support mode. */
   onAskAssistant?: () => void;
 }) {
   const prompt = readableStudioPrompt(studioPrompt(asset));
@@ -1020,6 +1022,11 @@ export function StudioGallery({
   onReuse?: (reuse: StudioReuse) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const assistant = useAssistantState();
+  const isMobile = useIsMobile();
+  // The desktop panel's width, which the viewer leaves free; on a phone the
+  // assistant is a drawer over everything, so nothing to leave.
+  const panelWidth = assistant.open && !isMobile ? assistant.width : 0;
   const [copied, setCopied] = useState(false);
   const remove = useDeleteStudioAsset();
   const renderAtQuality = useRenderStudioAssetAtQuality();
@@ -1142,8 +1149,12 @@ export function StudioGallery({
         </div>
       )}
 
+      {/* With the assistant open the viewer takes only the room left of
+          the panel and is not modal, so the user can look and type at once;
+          a click in the panel is not "outside". */}
       <Dialog
         open={openAsset != null}
+        modal={!assistant.open}
         onOpenChange={(open) => {
           if (!open) {
             setOpenId(null);
@@ -1151,7 +1162,26 @@ export function StudioGallery({
           }
         }}
       >
-        <DialogContent className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <DialogContent
+          className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          style={
+            panelWidth > 0
+              ? {
+                  width: `calc(96vw - ${panelWidth}px)`,
+                  left: `calc((100vw - ${panelWidth}px) / 2)`,
+                }
+              : undefined
+          }
+          onInteractOutside={(event) => {
+            const target = event.target;
+            if (
+              target instanceof Element &&
+              target.closest('[data-assistant-panel]')
+            ) {
+              event.preventDefault();
+            }
+          }}
+        >
           {openAsset && !supportMode && (
             <AssistantContextItem
               item={studioAssetContext(
@@ -1210,14 +1240,7 @@ export function StudioGallery({
                   : undefined
               }
               editPending={edit.isPending}
-              onAskAssistant={
-                supportMode
-                  ? undefined
-                  : () => {
-                      setOpenId(null);
-                      setCopied(false);
-                    }
-              }
+              onAskAssistant={supportMode ? undefined : () => setCopied(false)}
               onOpenHistory={(id) => {
                 const target = assets.find((asset) => asset.id === id);
                 return target ? () => step(target) : undefined;

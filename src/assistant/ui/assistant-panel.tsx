@@ -46,32 +46,17 @@ import { cn } from '@/ui/utils';
 import type { PageContextItem } from '../page-context';
 import { AssistantConversation } from './assistant-conversation';
 import {
+  clampAssistantWidth,
   closeAssistant,
   dismissAssistantContext,
   isContextDismissed,
+  setAssistantWidth,
   startAssistantThread,
   switchAssistantThread,
   useAssistantState,
 } from './assistant-store';
 
-const WIDTH_KEY = 'openstory.assistant.width';
-const MIN_WIDTH = 320;
-const MAX_WIDTH = 640;
-const DEFAULT_WIDTH = 400;
 const KEY_STEP = 24;
-
-function readWidth(): number {
-  try {
-    const stored = Number(localStorage.getItem(WIDTH_KEY));
-    if (stored >= MIN_WIDTH && stored <= MAX_WIDTH) return stored;
-  } catch {
-    // no storage
-  }
-  return DEFAULT_WIDTH;
-}
-
-const clampWidth = (width: number) =>
-  Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
 
 const assistantThreadKeys = {
   list: ['assistant-threads'] as const,
@@ -124,9 +109,6 @@ const ThreadMenu: React.FC<{ threadId: string; enabled: boolean }> = ({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem onSelect={() => startAssistantThread()}>
-          New chat
-        </DropdownMenuItem>
         {current && (
           <DropdownMenuItem
             variant="destructive"
@@ -139,6 +121,9 @@ const ThreadMenu: React.FC<{ threadId: string; enabled: boolean }> = ({
           <DropdownMenuLabel className="text-destructive">
             Could not load history: {threads.error.message}
           </DropdownMenuLabel>
+        )}
+        {!current && others.length === 0 && !threads.error && (
+          <DropdownMenuLabel>No earlier chats</DropdownMenuLabel>
         )}
         {others.length > 0 && (
           <>
@@ -206,6 +191,14 @@ const PanelBody: React.FC<AssistantPanelProps & { titleId: string }> = ({
         >
           Assistant
         </h2>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => startAssistantThread()}
+        >
+          New chat
+        </Button>
         <ThreadMenu threadId={threadId} enabled={isAuthenticated} />
         <Button
           type="button"
@@ -243,10 +236,9 @@ const PanelBody: React.FC<AssistantPanelProps & { titleId: string }> = ({
 };
 
 export const AssistantPanel: React.FC<AssistantPanelProps> = (props) => {
-  const { open } = useAssistantState();
+  const { open, width } = useAssistantState();
   const isMobile = useIsMobile();
   const titleId = useId();
-  const [width, setWidth] = useState(readWidth);
 
   if (props.inline) {
     return (
@@ -270,15 +262,9 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = (props) => {
     );
   }
 
-  const commitWidth = (next: number) => {
-    const clamped = clampWidth(next);
-    setWidth(clamped);
-    try {
-      localStorage.setItem(WIDTH_KEY, String(clamped));
-    } catch {
-      // no storage
-    }
-  };
+  // The store persists it, and the Studio viewer reads it to leave the
+  // panel uncovered.
+  const commitWidth = setAssistantWidth;
 
   // Pointer capture keeps the move and the release on the handle itself, so
   // nothing is left on `window` when the drag is cancelled or the panel
@@ -290,7 +276,9 @@ export const AssistantPanel: React.FC<AssistantPanelProps> = (props) => {
     const startWidth = width;
     handle.setPointerCapture(event.pointerId);
     const onMove = (move: PointerEvent) =>
-      setWidth(clampWidth(startWidth + (startX - move.clientX)));
+      setAssistantWidth(
+        clampAssistantWidth(startWidth + (startX - move.clientX))
+      );
     const onEnd = (end: PointerEvent) => {
       commitWidth(startWidth + (startX - end.clientX));
       handle.removeEventListener('pointermove', onMove);

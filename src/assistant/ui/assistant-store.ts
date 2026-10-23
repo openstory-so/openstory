@@ -27,6 +27,8 @@ export type AssistantDraft = {
 
 export type AssistantState = {
   open: boolean;
+  /** The desktop panel's width in px; a page that must not sit under it reads this. */
+  width: number;
   threadId: string;
   /** The model that answers; the user's pick, kept across threads. */
   model: AnalysisModelId;
@@ -42,10 +44,16 @@ export type AssistantState = {
 };
 
 const STORAGE_KEY = 'openstory.assistant';
+const MIN_ASSISTANT_WIDTH = 320;
+const MAX_ASSISTANT_WIDTH = 640;
+const DEFAULT_WIDTH = 400;
+
+export const clampAssistantWidth = (width: number) =>
+  Math.min(MAX_ASSISTANT_WIDTH, Math.max(MIN_ASSISTANT_WIDTH, width));
 
 function readStored(): Pick<
   AssistantState,
-  'open' | 'threadId' | 'model'
+  'open' | 'threadId' | 'model' | 'width'
 > | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -66,6 +74,10 @@ function readStored(): Pick<
           'model' in parsed && isSelectableAnalysisModelId(parsed.model)
             ? parsed.model
             : DEFAULT_ANALYSIS_MODEL,
+        width:
+          'width' in parsed && typeof parsed.width === 'number'
+            ? clampAssistantWidth(parsed.width)
+            : DEFAULT_WIDTH,
       };
     }
   } catch {
@@ -76,6 +88,7 @@ function readStored(): Pick<
 
 const SERVER_STATE: AssistantState = {
   open: false,
+  width: DEFAULT_WIDTH,
   threadId: '',
   model: DEFAULT_ANALYSIS_MODEL,
   draft: null,
@@ -105,6 +118,7 @@ function set(patch: Partial<AssistantState>): void {
         open: state.open,
         threadId: state.threadId,
         model: state.model,
+        width: state.width,
       })
     );
   } catch {
@@ -167,6 +181,10 @@ export function startAssistantThread(): void {
 
 export function setAssistantModel(model: AnalysisModelId): void {
   set({ model });
+}
+
+export function setAssistantWidth(width: number): void {
+  set({ width: clampAssistantWidth(width) });
 }
 
 /** A page's component-state context, present while `item` is set. */

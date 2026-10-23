@@ -46,9 +46,10 @@ same on both paths. Do not add an assistant-only tool; add an MCP tool.
    assistant store across threads), through `chatModelFor`: a selectable
    analysis model or `DEFAULT_ANALYSIS_MODEL`, swapped for the request's
    country the way a sequence's is. It runs on the team's `resolveLlmKey`.
-   `requireCredits` runs first; a platform key bills the run once at the end
-   with `llmCostFromUsage(usage, model, llmKey.via)`, idempotent on the run
-   id. A team key bills nothing.
+   `requireCredits` runs first; a platform key bills each model iteration
+   as its usage is reported, with `llmCostFromUsage(usage, model,
+llmKey.via)`, under a server-minted key per iteration. A team key bills
+   nothing.
 4. `withPersistence` writes the transcript, the run and any interrupt to
    `assistant_messages` / `assistant_runs` / `assistant_interrupts` through
    the stores in `src/assistant/server/db/assistant.ts`. Each store is built
@@ -60,11 +61,38 @@ a reload or a second tab paints the same thread. A thread id the browser
 kept from another sign-in answers 404 (`THREAD_NOT_FOUND`), and the client
 starts a new thread on it; an id nothing was sent to yet hydrates empty.
 
-Stream resume (reconnect to a run still going) needs a delivery-durability
-adapter on the Worker; it is not wired yet. Until it is, `findActiveRun`
-answers null (a reported run would make the client join a stream nothing
-serves) and a run still marked running when the next turn starts is closed
-as aborted (`closeOpenRuns`).
+## Resume
+
+Every chunk of a turn is appended to a stream log before the browser sees
+it (`src/assistant/server/durability.ts`): `@tanstack/ai-durable-stream`
+over `@durable-streams/server-cloudflare`, a Durable Object per run behind
+the `STREAMS` binding (`StreamObject`, tag v4 in every env block, class
+re-exported from `src/server.ts`). The streams server is called in-process;
+no route speaks its protocol to the outside, and a stream is keyed under
+`assistant/<team>/<user>/<runId>`, so another user's run id names a stream
+that does not exist.
+
+- A drop mid-reply: the client re-sends the POST with `Last-Event-ID`.
+  That is a read of the log, answered before any gate or thread write;
+  the model never runs twice.
+- A reload or a second tab: hydrate reports the run `findActiveRun` finds
+  (running, started within `ACTIVE_RUN_MAX_AGE_MS`), the client joins it
+  with `GET ?runId=&offset=-1`, and the log is tailed to the run's end.
+- The run outlives the response: `heldStreamLog` holds the request with
+  `waitUntil` until the log closes, so billing and persistence still run
+  after the tab is gone. Each model iteration is charged as its usage is
+  reported (idempotency key per iteration), so a run the host drops has
+  already paid for every iteration that finished; only the one in flight
+  is lost. `waitUntil` is bounded, so a turn that goes on much longer than
+  that after a disconnect is cut off with its log open. The next turn closes
+  such runs as aborted (`closeOpenRuns`) and seals their logs
+  (`sealStreamLog`) so nothing tails them forever. That seal is by status,
+  not age: a turn sent from a second tab while the first still streams
+  cuts the first off, which that tab shows as a failure.
+- A log is keyed by the body's run id (the one the run row and hydrate
+  carry), expires three days after its last read (`Stream-TTL`, sent on
+  every create; the server refuses a create whose TTL differs from the
+  stored one), and is deleted with its thread (`deleteStreamLogs`).
 
 The charge key is minted per request on the server. The client's run id is
 only the AG-UI correlation id; keying billing on it would let a repeated id
@@ -98,12 +126,73 @@ button can open it and it survives navigation and reloads.
 
 ## Uploads
 
-A file dropped, pasted or attached uploads at once through the Studio
-upload path (`useUploadStudioMedia`, then `ensureUploadRights` for an
-image, the same likeness gate as the editor). The message tells the model
-the stored `upload` value for each file, which `set_*_from_upload` and the
-Studio tools take, and carries a downscaled JPEG preview of each image as a
-vision part so the model can see it. Text files are inlined.
+A file dropped or pasted uploads at once through the Studio upload path
+(`useUploadStudioMedia`, then `ensureUploadRights` for an image, the same
+likeness gate as the editor). The composer's `+` opens the Studio reference
+picker (`StudioReferencePicker`, the one upload surface in the app): a
+generation, past upload, shot, character or location picked there is
+already stored and already past the gate, so it attaches with no upload;
+its Upload button takes a new file down the same path as a drop. The
+message tells the model the stored `upload` value for each file, which
+`set_*_from_upload` and the Studio tools take, and carries a downscaled
+JPEG preview of each image as a vision part so the model can see it. Text
+files are inlined.
+
+A PDF is read in the browser (`unpdf`, a lazy chunk) and inlined as text
+like any script file; nothing of it is stored.
+
+Consecutive tool calls in one reply fold into a single `<details>`
+(`groupToolCalls` in `assistant-message.tsx`), open while any call runs or
+waits on the user and shut once all are done.
+
+## The web
+
+`web_search` (Brave Search, `BRAVE_SEARCH_API_KEY`, platform key only) and
+`fetch_url` (`src/platform/server/mcp/tools/web.ts`) are ordinary MCP
+tools, so an outside agent gets them too. Both are reads with
+`openWorldHint`; without the key `web_search` answers a clear tool error.
+`fetch_url` goes through `openSafeUrl` (the public API's SSRF-hardened
+opener: host checks on every redirect hop, bounded hops, a connect budget)
+and refuses the app's own origin, then reads a bounded prefix of a text
+page and hands back at most 30,000 characters. In chat any tool whose
+input carries a URL the model writes asks first (`takesUrl` in
+`assistant-tools.ts`, read off each tool's JSON Schema, so a new URL field
+or a batch that embeds one is caught with no list to forget; the set is
+pinned in `assistant-tools.test.ts`): a page the model read could tell it
+to put the user's script in a URL, so the URL sits on an Allow / Deny card
+before anything goes out. Today that is `fetch_url`, `upload_media`,
+`create_sequence`, `create_stitch` and `apply_sequence_edits`. A search
+query is shown on its card but does not ask. The system prompt tells the model a page's
+text is material, never instructions.
+
+## MCP Apps views in the app
+
+A tool with a `ui://` view (`TOOL_VIEWS` in `src/platform/mcp-views.ts`,
+client-safe) shows that view under its finished card: `McpAppFrame`
+(`src/assistant/ui/mcp-app-frame.tsx`) is the host side of the MCP Apps
+protocol in a sandboxed iframe with no same-origin. The page comes from
+`getMcpViewFn` (the same HTML the MCP server serves as a resource), the
+tool result is re-wrapped in its MCP envelope, `tools/call` runs through
+`callMcpReadToolFn` (only `VIEW_CALLABLE_TOOLS`, the reads the pages make,
+under the session), `open-link`
+opens a tab, and `ui/message` goes into the thread as the user. Nothing is
+registered per view: a new view is one entry in `TOOL_VIEWS` and its HTML
+in `getMcpViewFn`.
+
+## Unsaved work as context
+
+A `PageContextItem` may carry `text` (up to 50,000 characters) for a thing
+no tool can read. The new-sequence page renders an `AssistantContextItem`
+of kind `draft_script` with the script being typed, so "tighten this" works
+before anything is saved; the system line quotes the text in a fence and
+says it is the user's work, not instructions.
+
+## The Studio viewer
+
+With the panel open the viewer is not modal and takes only the room left
+of the panel (`--assistant-w`, from the store's `width`), so the user can
+look at the image and talk about it at once. A click in the panel is not
+"outside" the viewer.
 
 ## Stories
 
