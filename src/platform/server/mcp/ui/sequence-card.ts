@@ -11,8 +11,6 @@
  * `ui/message` so the agent picks up without polling. It writes nothing.
  */
 
-export const SEQUENCE_CARD_URI = 'ui://openstory/sequence-card.html';
-
 // ponytail: each open card polls and announces on its own; two cards of one
 // run post two messages. Share a watcher if hosts start keeping many open.
 const POLL_MS = 10_000;

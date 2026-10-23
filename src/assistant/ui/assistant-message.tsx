@@ -199,7 +199,9 @@ export const AssistantMessage: React.FC<{
   message: UIMessage;
   streaming: boolean;
   approvals: ApprovalHandlers;
-}> = ({ message, streaming, approvals }) => {
+  /** Text a tool view posts into the thread. */
+  onViewMessage?: (text: string) => void;
+}> = ({ message, streaming, approvals, onViewMessage }) => {
   if (message.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -228,6 +230,7 @@ export const AssistantMessage: React.FC<{
       estimate={estimate}
       onApprove={() => part.approval && approvals.approve(part.approval.id)}
       onDeny={() => part.approval && approvals.deny(part.approval.id)}
+      onViewMessage={onViewMessage}
     />
   );
   return (

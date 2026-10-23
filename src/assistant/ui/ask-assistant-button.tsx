@@ -14,7 +14,7 @@ export const AskAssistantButton: React.FC<{
   prompt?: string;
   size?: 'sm' | 'default';
   variant?: 'outline' | 'ghost';
-  /** Runs first: a viewer that covers the panel closes itself here. */
+  /** Runs first, before the panel opens (the Studio viewer resets its copied state). */
   onOpen?: () => void;
 }> = ({ context, prompt, size = 'sm', variant = 'outline', onOpen }) => {
   const { requireAuth } = useAuthGate();

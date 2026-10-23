@@ -34,14 +34,30 @@ const PREVIEW_MAX_EDGE = 1024;
 const PREVIEW_QUALITY = 0.8;
 const TEXT_MAX_CHARS = 100_000;
 
+function isPdf(file: File): boolean {
+  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+}
+
 export function attachmentKind(file: File): AttachmentKind | null {
   if (file.type.startsWith('image/')) return 'image';
   if (file.type.startsWith('video/')) return 'video';
   if (file.type.startsWith('audio/')) return 'audio';
-  if (file.type.startsWith('text/') || TEXT_EXTENSIONS.test(file.name)) {
+  if (
+    file.type.startsWith('text/') ||
+    TEXT_EXTENSIONS.test(file.name) ||
+    isPdf(file)
+  ) {
     return 'text';
   }
   return null;
+}
+
+/** A PDF is its text: pages joined, read in the browser, nothing stored. */
+async function readPdf(file: File): Promise<string> {
+  const { extractText, getDocumentProxy } = await import('unpdf');
+  const pdf = await getDocumentProxy(new Uint8Array(await file.arrayBuffer()));
+  const { text } = await extractText(pdf, { mergePages: true });
+  return text;
 }
 
 /** A JPEG data URL no wider than `PREVIEW_MAX_EDGE`. */
@@ -62,7 +78,7 @@ export async function imagePreview(file: Blob): Promise<string> {
 }
 
 export async function readText(file: File): Promise<string> {
-  const text = await file.text();
+  const text = isPdf(file) ? await readPdf(file) : await file.text();
   return text.length > TEXT_MAX_CHARS
     ? `${text.slice(0, TEXT_MAX_CHARS)}\n[cut at ${TEXT_MAX_CHARS} characters]`
     : text;

@@ -138,9 +138,50 @@ message tells the model the stored `upload` value for each file, which
 JPEG preview of each image as a vision part so the model can see it. Text
 files are inlined.
 
+A PDF is read in the browser (`unpdf`, a lazy chunk) and inlined as text
+like any script file; nothing of it is stored.
+
 Consecutive tool calls in one reply fold into a single `<details>`
 (`groupToolCalls` in `assistant-message.tsx`), open while any call runs or
 waits on the user and shut once all are done.
+
+## The web
+
+`web_search` (Brave Search, `BRAVE_SEARCH_API_KEY`, platform key only) and
+`fetch_url` (`src/platform/server/mcp/tools/web.ts`) are ordinary MCP
+tools, so an outside agent gets them too. Both are reads with
+`openWorldHint`; without the key `web_search` answers a clear tool error.
+`fetch_url` takes http(s) only, reads a bounded prefix of a text page and
+hands back at most 30,000 characters. The system prompt tells the model a
+page's text is material, never instructions.
+
+## MCP Apps views in the app
+
+A tool with a `ui://` view (`TOOL_VIEWS` in `src/platform/mcp-views.ts`,
+client-safe) shows that view under its finished card: `McpAppFrame`
+(`src/assistant/ui/mcp-app-frame.tsx`) is the host side of the MCP Apps
+protocol in a sandboxed iframe with no same-origin. The page comes from
+`getMcpViewFn` (the same HTML the MCP server serves as a resource), the
+tool result is re-wrapped in its MCP envelope, `tools/call` runs through
+`callMcpReadToolFn` (read-only tools only, under the session), `open-link`
+opens a tab, and `ui/message` goes into the thread as the user. Nothing is
+registered per view: a new view is one entry in `TOOL_VIEWS` and its HTML
+in `getMcpViewFn`.
+
+## Unsaved work as context
+
+A `PageContextItem` may carry `text` (up to 50,000 characters) for a thing
+no tool can read. The new-sequence page renders an `AssistantContextItem`
+of kind `draft_script` with the script being typed, so "tighten this" works
+before anything is saved; the system line quotes the text in a fence and
+says it is the user's work, not instructions.
+
+## The Studio viewer
+
+With the panel open the viewer is not modal and takes only the room left
+of the panel (`--assistant-w`, from the store's `width`), so the user can
+look at the image and talk about it at once. A click in the panel is not
+"outside" the viewer.
 
 ## Stories
 

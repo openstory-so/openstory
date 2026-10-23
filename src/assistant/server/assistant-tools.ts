@@ -120,3 +120,8 @@ export function assistantTools(): AnyTool[] {
     };
   });
 }
+
+/** A tool that changes nothing, by its own annotation. */
+export function isReadOnlyTool(tool: AnyTool): boolean {
+  return annotationsOf(tool).readOnlyHint === true;
+}

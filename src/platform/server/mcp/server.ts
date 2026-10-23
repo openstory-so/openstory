@@ -20,7 +20,7 @@ import type { McpAuthContext } from './auth';
 import { mcpJsonRpcError } from './json-rpc';
 import { serveResourceRequest } from './resources';
 import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
-import { SEQUENCE_CARD_URI } from './ui/sequence-card';
+import { TOOL_VIEWS } from '@/platform/mcp-views';
 import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
 import { listSequences } from './tools/list-sequences';
 import { getSequence } from './tools/get-sequence';
@@ -39,6 +39,7 @@ import { generationUploadTools } from './tools/generation-uploads';
 import { castAudioGenerationTools } from './tools/cast-audio-generation';
 import { studioTools } from './tools/studio';
 import { stitchTools } from './tools/stitch';
+import { webTools } from './tools/web';
 import {
   executeGenerationTool,
   getOperationStatusTool,
@@ -124,6 +125,7 @@ export const MCP_TOOLS = [
   startExportTool,
   ...stitchTools,
   ...libraryEditTools,
+  ...webTools,
 ];
 
 export const mcpServer = createMCPServer({
@@ -265,11 +267,6 @@ function withServerIdentity(
     return parsed.data;
   });
 }
-
-/** MCP Apps views (#1673): tool name → its `ui://` resource. */
-const TOOL_VIEWS: Record<string, string> = {
-  'openstory.get_sequence': SEQUENCE_CARD_URI,
-};
 
 const toolsListSchema = z.looseObject({
   result: z.looseObject({

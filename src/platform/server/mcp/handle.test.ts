@@ -293,6 +293,8 @@ describe('handleMcpPost Origin and auth gates', () => {
       'openstory.create_style',
       'openstory.update_style',
       'openstory.delete_style',
+      'openstory.web_search',
+      'openstory.fetch_url',
     ]);
   });
 

@@ -293,6 +293,8 @@ describe('tools/list and whoami', () => {
       'openstory.create_style',
       'openstory.update_style',
       'openstory.delete_style',
+      'openstory.web_search',
+      'openstory.fetch_url',
     ]);
     expect(tools[0]?.description).toMatch(/user and team/i);
     const batch = tools.find(

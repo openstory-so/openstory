@@ -5,8 +5,10 @@
  */
 
 import type { ToolCallPart, ToolResultPart } from '@tanstack/ai';
+import { viewForChatTool } from '@/platform/mcp-views';
 import { Button } from '@/ui/shadcn/button';
 import { cn } from '@/ui/utils';
+import { McpAppFrame } from './mcp-app-frame';
 
 /** "openstory_get_shot_frames" (or the MCP "openstory.…") → "Get shot frames". */
 export function toolTitle(name: string): string {
@@ -74,6 +76,8 @@ export type ToolCallCardProps = {
   estimate?: string;
   onApprove?: () => void;
   onDeny?: () => void;
+  /** Text a tool's view posts into the thread (`ui/message`). */
+  onViewMessage?: (text: string) => void;
 };
 
 export const ToolCallCard: React.FC<ToolCallCardProps> = ({
@@ -82,11 +86,13 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
   estimate,
   onApprove,
   onDeny,
+  onViewMessage,
 }) => {
   const status = toolCardStatus(part, result);
   const inputs = keyInputs(part.input);
   const details = resultText(result);
   const denied = result?.outcome === 'denied';
+  const viewUri = viewForChatTool(part.name);
   return (
     <div
       data-status={status}
@@ -140,6 +146,9 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({
             </Button>
           </div>
         </div>
+      )}
+      {viewUri && status === 'done' && result && (
+        <McpAppFrame uri={viewUri} result={result} onMessage={onViewMessage} />
       )}
       {details && (
         <details className="group text-xs">

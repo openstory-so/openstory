@@ -52,7 +52,7 @@ const AttachmentPicker: React.FC<{
       slots={{ image: Infinity, video: Infinity, audio: Infinity }}
       onPick={onPick}
       onUpload={onUpload}
-      acceptAlso="text/*,.fountain,.fdx,.md,.txt,.srt"
+      acceptAlso="text/*,application/pdf,.pdf,.fountain,.fdx,.md,.txt,.srt"
     />
   );
 };
