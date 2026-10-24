@@ -78,7 +78,7 @@ export function configureFalProxyFromEnv(): void {
   };
   // `fal.config({})` would install the proxy with the default fetch, which
   // never reads `x-fal-billable-units`. Aimock replays that header (from
-  // fixture `billableUnits`) so `@tanstack/ai-fal` can set `usage.unitsBilled`
+  // fixture `billableUnits`) so `@tanstack/ai-fal` can set `usage.billed`
   // — without the billing fetch wrap, e2e stills bill $0 even when
   // `model_pricing` is seeded. Adapters call `configureFalClient` again with
   // the real key; this first call only has to install the wrap.

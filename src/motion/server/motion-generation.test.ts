@@ -1350,7 +1350,7 @@ describe('Motion Service', () => {
             promptTokens: 0,
             completionTokens: 0,
             totalTokens: 0,
-            unitsBilled: 5,
+            billed: { quantity: 5, unit: 'units' },
           },
           { modelKey: 'seedance_v2_5', hasReferenceImages, referenceOnly }
         );

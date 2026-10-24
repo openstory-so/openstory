@@ -27,6 +27,7 @@ import {
   throwNotedRunError,
   toGeminiThinkingLevel,
 } from './llm-client';
+import { generateId } from '@/platform/id';
 import { withLlmRateLimitRetry } from './quota-retry';
 import type { TextModel } from '@/models/models';
 import {
@@ -454,6 +455,8 @@ export async function durableLLMCallCf<TSchema extends z.ZodType>(
                 ...usageCapture.middleware,
               ],
               debug: false,
+              threadId: generateId(),
+              promptCache: 'none' as const,
             };
             const eventStream = chat({
               ...commonOptions,
@@ -659,6 +662,8 @@ export async function durableStreamingLLMCallCf<TSchema extends z.ZodType>(
               ...usageCapture.middleware,
             ],
             debug: false,
+            threadId: generateId(),
+            promptCache: 'none' as const,
           };
           const eventStream = chat({
             ...commonOptions,

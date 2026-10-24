@@ -19,6 +19,7 @@ import type {
   ChatMessage,
   ChatMessageImagePart,
 } from '@/platform/server/ai/prompts-index';
+import { generateId } from '@/platform/id';
 import { chat, type TokenUsage } from '@tanstack/ai';
 import type { ProviderPreferences } from '@tanstack/ai-openrouter';
 import { z } from 'zod';
@@ -162,6 +163,8 @@ export async function timedStructuredCall<T>(opts: {
       messages: chatMessages,
       systemPrompts,
       stream: true,
+      threadId: generateId(),
+      promptCache: 'none',
       abortController,
       outputSchema: opts.schema,
       modelOptions: modelOptions(

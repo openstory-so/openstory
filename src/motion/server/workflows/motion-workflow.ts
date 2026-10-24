@@ -1219,7 +1219,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   job.modelKey,
                   scopedDb.credentials,
                   job.via,
-                  job.endpointId
+                  job.endpointId,
+                  job.threadId
                 );
               } catch (error) {
                 if (isContentRejectionError(error)) {

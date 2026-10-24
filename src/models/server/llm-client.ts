@@ -34,6 +34,7 @@ import {
   regionFallbackModel,
 } from '@/models/region-policy';
 import { aiDebugLogger } from '@/platform/server/ai/ai-debug-logger';
+import { generateId } from '@/platform/id';
 import {
   createAdapter,
   resolveNativeGeminiModel,
@@ -747,6 +748,11 @@ function baseChatOptions(params: LLMRequestParams) {
     modelOptions,
     ...(tools && { tools }),
     debug: params.debug ?? false,
+    // One-shot calls are not a conversation. The id only satisfies the
+    // required AG-UI key. `none` keeps the 1.0 default (`short`, keyed by
+    // that id) from writing a provider cache this call never reads again.
+    threadId: generateId(),
+    promptCache: 'none' as const,
   };
 }
 

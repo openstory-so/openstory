@@ -1,6 +1,7 @@
 import { base64ToBytes } from '@/platform/base64';
 import { getEnv } from '#env';
 import { uploadFile } from '#storage';
+import { billedQuantity } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import {
   ELEVENLABS_MUSIC_ENDPOINT,
@@ -250,6 +251,7 @@ async function callElevenLabsAudio(
   const result = await generateAudio({
     adapter,
     prompt: options.prompt,
+    threadId: generateId(),
     duration: billedDuration,
     modelOptions: {
       forceInstrumental: options.instrumental ?? true,
@@ -345,6 +347,7 @@ async function callFalAudio(
   const result = await generateAudio({
     adapter,
     prompt: shape.prompt,
+    threadId: generateId(),
     duration: shape.duration,
     modelOptions: shape.modelOptions,
     timeout: FAL_GENERATION_TIMEOUT_MS,
@@ -359,7 +362,7 @@ async function callFalAudio(
   // Exact cost from fal's reported billed units.
   const cost = await falCostFromUnits(
     modelConfig.id,
-    result.usage?.unitsBilled
+    billedQuantity(result.usage)
   );
 
   return {
@@ -370,7 +373,7 @@ async function callFalAudio(
       model: modelConfig.id,
       vendor: modelConfig.vendor,
       endpointId: modelConfig.id,
-      unitsBilled: result.usage?.unitsBilled,
+      unitsBilled: billedQuantity(result.usage),
       duration: billedDuration,
       cost,
       generatedAt: new Date().toISOString(),

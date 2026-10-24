@@ -7,6 +7,7 @@
  */
 
 import { generateVoice } from '@tanstack/ai';
+import { generateId } from '@/platform/id';
 import {
   toCatalogVoiceFromLibrary,
   voiceConsumesAccountSlot,
@@ -52,6 +53,7 @@ export async function designVoicePreviews(
   const result = await generateVoice({
     adapter,
     prompt: voiceDescription,
+    threadId: generateId(),
     modelOptions: {
       autoGenerateText: true,
       shouldEnhance: true,

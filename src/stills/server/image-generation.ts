@@ -7,6 +7,7 @@ import {
   loadBytePlusImage,
 } from '@/models/server/byteplus-config';
 import { isContentRejectionError } from '@/models/content-rejection';
+import { billedQuantity } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import { extractFalErrorMessage } from '@/models/fal-error';
@@ -26,6 +27,7 @@ import {
 } from '@/models/server/quota-retry';
 import { isNativeBytePlusImageModel } from '@/models/models';
 import type { MediaVia } from '@/models/via';
+import { generateId } from '@/platform/id';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
@@ -219,6 +221,7 @@ async function generateImageInternal(
   via: MediaVia
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
+  const threadId = generateId();
 
   let result: AiImageGenerationResult;
   let endpoint: string;
@@ -256,6 +259,7 @@ async function generateImageInternal(
             geminiAdapter
           ),
           prompt,
+          threadId,
           size: gemini.size,
           numberOfImages: gemini.numImages,
           timeout: FAL_GENERATION_TIMEOUT_MS,
@@ -297,6 +301,7 @@ async function generateImageInternal(
           ? await generateImage({
               adapter: createGrokImage(nativeModel, xaiKey.key, grokAdapter),
               prompt,
+              threadId,
               size: grok.size,
               numberOfImages: grok.numImages,
               modelOptions: { quality: 'medium' },
@@ -306,6 +311,7 @@ async function generateImageInternal(
           : await generateImage({
               adapter: createGrokImage(nativeModel, xaiKey.key, grokAdapter),
               prompt,
+              threadId,
               size: grok.size,
               numberOfImages: grok.numImages,
               timeout: FAL_GENERATION_TIMEOUT_MS,
@@ -345,11 +351,12 @@ async function generateImageInternal(
       result = await generateImage({
         adapter: falImage(endpoint, { apiKey: key.key }),
         prompt,
+        threadId,
         modelOptions,
         timeout: FAL_GENERATION_TIMEOUT_MS,
         debug: false,
       });
-      unitsBilled = result.usage?.unitsBilled;
+      unitsBilled = billedQuantity(result.usage);
       cost = await falCostFromUnits(endpoint, unitsBilled);
       break;
     }
@@ -379,6 +386,7 @@ async function generateImageInternal(
         generateImage({
           adapter: createBytePlusImage(request.modelId, apiKey, config),
           prompt: request.prompt,
+          threadId,
           size: request.size,
           ...(request.numberOfImages !== undefined && {
             numberOfImages: request.numberOfImages,
@@ -392,7 +400,7 @@ async function generateImageInternal(
         })
       );
       usedOwnKey = false;
-      unitsBilled = result.usage?.unitsBilled;
+      unitsBilled = billedQuantity(result.usage);
       cost = await falCostFromUnits(endpoint, unitsBilled);
       break;
     }

@@ -424,7 +424,7 @@ describe('recordMediaGenerationSpan', () => {
       'gen_ai.usage.cost': 0.35,
       $ai_total_cost_usd: 0.35,
       $ai_output_cost_usd: 0.35,
-      'tanstack.ai.usage.units_billed': 5,
+      'tanstack.ai.usage.billed_quantity': 5,
       'gen_ai.input.messages': JSON.stringify([
         {
           role: 'user',
