@@ -82,7 +82,7 @@ The AI model for generating scene images. You can select **multiple image models
 | -------------------------- | ----------------- | --------------------------------------------------------- |
 | Nano Banana 2 Lite         | Google            | Turbo default — fastest Google tier, references, fixed 1K |
 | GPT Image 2                | OpenAI            | Quality default — text rendering, UI fidelity, up to 4K   |
-| Nano Banana 2              | Google            | Fast generation and editing                               |
+| Nano Banana 2.1            | Google            | Fast generation and editing                               |
 | Nano Banana Pro            | Google            | Enhanced realism and typography                           |
 | Grok Imagine Image 2.0     | SpaceXAI          | Newest Imagine image model, 1K/2K, edit up to 3 refs      |
 | Grok Imagine Image Quality | SpaceXAI          | Quality Mode — higher fidelity, stronger text             |

@@ -48,12 +48,12 @@ export function isNativeGeminiVideoModel(model: ImageToVideoModel): boolean {
  * Registry key → Gemini native image model. Fal ids in `IMAGE_MODELS` stay
  * the no-key fallback; native generateContent uses these GA names.
  *
- * @see https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image
+ * @see https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1
  * @see https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite-image
  * @see https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-image
  */
 const NATIVE_IMAGE_MODELS = {
-  nano_banana_2: 'gemini-3.1-flash-image',
+  nano_banana_2: 'gemini-nano-banana-2.1',
   nano_banana_2_lite: 'gemini-3.1-flash-lite-image',
   nano_banana_pro: 'gemini-3-pro-image',
 } as const satisfies Partial<Record<TextToImageModel, string>>;
@@ -202,12 +202,19 @@ export function geminiVideoCostFromUsage(
  * read 2026-09-02). Google bills image output as tokens; these ARE the
  * advertised 1K/2K/4K conversions, not bill-verified. Lite is 1K-only so
  * every tier maps to the 1K rate. Native spend is unaudited by #1069.
+ *
+ * Nano Banana 2.1 (#2063) still carries its predecessor's (Gemini 3.1 Flash
+ * Image) published per-image card: Google's 2.1 per-image table was not
+ * reachable when the id moved. The adapter lists $1.50 in / $7.50 out per 1M
+ * text tokens, and fal's image-output rate implies roughly $30 per 1M from
+ * Google, which would put a 1K still near $0.034 — so this card likely
+ * over-charges. Replace it with Google's table once read.
  */
 const IMAGE_USD_PER_IMAGE: Record<
   NativeGeminiImageModel,
   Record<'1K' | '2K' | '4K', number>
 > = {
-  'gemini-3.1-flash-image': { '1K': 0.067, '2K': 0.101, '4K': 0.151 },
+  'gemini-nano-banana-2.1': { '1K': 0.067, '2K': 0.101, '4K': 0.151 },
   'gemini-3.1-flash-lite-image': { '1K': 0.0336, '2K': 0.0336, '4K': 0.0336 },
   'gemini-3-pro-image': { '1K': 0.134, '2K': 0.134, '4K': 0.24 },
 };

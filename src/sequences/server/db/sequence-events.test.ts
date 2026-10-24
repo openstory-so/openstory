@@ -771,7 +771,7 @@ describe('sequence settings history', () => {
 
     const page = await createSequenceEventsMethods(db).listHistory(sequenceId);
     expect(page.events[0]?.changes).toEqual([
-      { label: 'Image', from: 'Nano Banana 2', to: 'GPT Image 2.5' },
+      { label: 'Image', from: 'Nano Banana 2.1', to: 'GPT Image 2.5' },
     ]);
     expect(page.events[1]?.changes).toEqual([
       { label: 'Aspect ratio', from: '16:9', to: '9:16' },

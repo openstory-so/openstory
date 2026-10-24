@@ -229,6 +229,24 @@ describe('resolution tiers (#1449)', () => {
     ).toBe('1K');
   });
 
+  it('never sends the 0.5K token Nano Banana 2.1 dropped (#2063)', () => {
+    for (const resolution of ['720p', '1080p', '4k'] as const) {
+      expect(
+        buildImageRequest({ ...base, model: 'nano_banana_2', resolution }).input
+          .resolution
+      ).not.toBe('0.5K');
+    }
+  });
+
+  it('pins Nano Banana 2.1 to minimal thinking on fal (#2063)', () => {
+    expect(
+      buildImageRequest({ ...base, model: 'nano_banana_2' }).input
+    ).toMatchObject({ thinking_level: 'minimal' });
+    expect(
+      buildImageRequest({ ...base, model: 'nano_banana_pro' }).input
+    ).not.toHaveProperty('thinking_level');
+  });
+
   it('leaves a fixed-size model without a resolution field', () => {
     expect(
       buildImageRequest({
@@ -307,8 +325,7 @@ describe('buildGeminiImageRequest', () => {
   });
 
   it('resolves against Google’s tokens, not the fal enum', () => {
-    // nano_banana_2's fal enum starts at 0.5K, which this via does not admit —
-    // a 720p ask has to land on 1K here, never on a token Gemini rejects.
+    // A 720p ask has to land on 1K here, never on a token Gemini rejects.
     expect(
       buildGeminiImageRequest({
         ...BASE,
@@ -325,6 +342,18 @@ describe('buildGeminiImageRequest', () => {
     expect(
       buildGeminiImageRequest({ ...BASE, resolution: '1080p' }).nativeModel
     ).toBe('gemini-3.1-flash-lite-image');
+  });
+
+  it('pins Nano Banana 2.1 to minimal thinking, and only it (#2063)', () => {
+    expect(
+      buildGeminiImageRequest({ ...BASE, model: 'nano_banana_2' })
+        .minimalThinking
+    ).toBe(true);
+    expect(
+      buildGeminiImageRequest({ ...BASE, model: 'nano_banana_pro' })
+        .minimalThinking
+    ).toBe(false);
+    expect(buildGeminiImageRequest(BASE).minimalThinking).toBe(false);
   });
 
   it('defaults Pro/2 to 2K, matching the fal path', () => {

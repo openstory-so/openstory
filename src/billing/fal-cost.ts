@@ -104,6 +104,11 @@ type EstimateStrategy =
  */
 const ENDPOINT_STRATEGY: Record<string, EstimateStrategy> = {
   'fal-ai/ace-step-1.5': 'seconds',
+  // Token-billed stills (#2063). The `tokens` branch is the video formula
+  // (h × w × fps × duration) and would quote a still at $0, so these estimate
+  // per call from observed/typical units however fal's catalog spells the unit.
+  'google/nano-banana-2.1': 'per_call',
+  'google/nano-banana-2.1/edit': 'per_call',
   'bytedance/seedance-2.0/enterprise/v2/image-to-video': 'tokens',
   'bytedance/seedance-2.0/enterprise/v2/reference-to-video': 'tokens',
   'bytedance/seedance-2.0/enterprise/v2/text-to-video': 'tokens',

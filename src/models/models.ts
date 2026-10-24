@@ -197,8 +197,8 @@ export function videoPromptHardLimit(
  */
 export const IMAGE_MODELS = {
   nano_banana_2: {
-    id: 'fal-ai/nano-banana-2' as const,
-    name: 'Nano Banana 2',
+    id: 'google/nano-banana-2.1' as const,
+    name: 'Nano Banana 2.1',
     vendor: 'Google',
     license: 'proprietary' as const,
     qualityRank: 1,
@@ -733,7 +733,7 @@ export function safeAudioModel(
  * These endpoints accept image_urls for reference-based generation
  */
 export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
-  nano_banana_2: 'fal-ai/nano-banana-2/edit',
+  nano_banana_2: 'google/nano-banana-2.1/edit',
   // T2I is `google/nano-banana-2-lite`; fal's documented edit sibling drops
   // the `2` and carries the token pricing the `/2-lite/edit` catalog row
   // advertises as $0 compute-seconds.

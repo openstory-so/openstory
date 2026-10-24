@@ -9,10 +9,10 @@ import { micros } from './money';
 
 export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
   // Image models
-  'fal-ai/nano-banana-2': {
-    unitPrice: micros(80_000),
+  'google/nano-banana-2.1': {
+    unitPrice: micros(60_000),
     unit: 'images',
-    typicalUnitsPerCall: 1.5,
+    typicalUnitsPerCall: 1,
   },
   'google/nano-banana-2-lite': {
     unitPrice: micros(40_000),

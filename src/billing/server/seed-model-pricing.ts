@@ -45,8 +45,12 @@ const units = (unitPriceUsd: number, typicalUnitsPerCall = 1): SeedPrice => ({
  * the sibling t2i unit/price so a reference-image still has a row.
  */
 export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
-  'fal-ai/nano-banana-2': img(0.08, 1.5),
-  'fal-ai/nano-banana-2/edit': img(0.08, 1.5),
+  'google/nano-banana-2.1': img(
+    FAL_ADVERTISED_CALL_USD['google/nano-banana-2.1']
+  ),
+  'google/nano-banana-2.1/edit': img(
+    FAL_ADVERTISED_CALL_USD['google/nano-banana-2.1/edit']
+  ),
   'google/nano-banana-2-lite': img(
     FAL_ADVERTISED_CALL_USD['google/nano-banana-2-lite']
   ),

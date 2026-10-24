@@ -31,6 +31,12 @@ export const FAL_TYPICAL_UNITS_PER_DEFAULT_CLIP: Readonly<
 export const FAL_ADVERTISED_CALL_USD = {
   'google/nano-banana-2-lite': 0.04,
   'google/nano-banana-lite/edit': 0.04,
+  // Nano Banana 2.1 is token-priced on fal ($35.294 / 1M image-output tokens,
+  // $8.823 / 1M thinking, $1.764 / 1M input — llms.txt, read 2026-10-24). Our
+  // default 2K still at ~1680 image tokens is ~$0.059 before the (minimal)
+  // thinking spend; 1K ~$0.040, 4K ~$0.089. Advertised, not bill-verified.
+  'google/nano-banana-2.1': 0.06,
+  'google/nano-banana-2.1/edit': 0.06,
 } as const satisfies Record<string, number>;
 
 /**

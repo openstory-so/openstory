@@ -62,11 +62,17 @@ pricing, transcribed from ai.google.dev — Google reports tokens, never cost,
 so those tables ARE the bill (like xAI, native spend is **unaudited** by the
 #1069 drift detection). Omni Flash bills video output as tokens (5,792/s of
 720p at the $17.50/1M video-output rate ≈ $0.10/s). Nano Banana stills bill
-the advertised per-image equivalent (Lite 1K $0.0336; Flash 1K/2K/4K
-$0.067/$0.101/$0.151; Pro 1K/2K $0.134, 4K $0.24). Native ids are
-`gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`;
+the advertised per-image equivalent (Lite 1K $0.0336; Nano Banana 2.1
+1K/2K/4K $0.067/$0.101/$0.151 — still its predecessor's card, unverified,
+see #2063; Pro 1K/2K $0.134, 4K $0.24). Native ids are
+`gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`;
 without a Google key the same catalog keys stay on fal
-(`fal-ai/nano-banana-2`, `google/nano-banana-2-lite`, `fal-ai/nano-banana-pro`).
+(`google/nano-banana-2.1`, `google/nano-banana-2-lite`,
+`fal-ai/nano-banana-pro`). Nano Banana 2.1 serves 1K/2K/4K only and defaults
+to `medium` thinking; both vias pin `minimal` (`thinking_level` on fal,
+`thinkingConfig.thinkingLevel` natively) to keep the predecessor's latency.
+On fal it is token-billed, so its estimate is pinned `per_call` in
+`ENDPOINT_STRATEGY` — the `tokens` branch is the video formula.
 
 Omni Flash serves image-to-video, reference-to-video, and text-to-video from
 ONE Interactions-API model (`gemini-omni-1.1-flash`): images ride the

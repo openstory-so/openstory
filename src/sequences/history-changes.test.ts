@@ -25,7 +25,7 @@ describe('historyChanges', () => {
     );
     expect(lines).toEqual([
       { label: 'Style', from: 'Documentary', to: 'Noir' },
-      { label: 'Image', from: 'Nano Banana 2', to: 'GPT Image 2.5' },
+      { label: 'Image', from: 'Nano Banana 2.1', to: 'GPT Image 2.5' },
       { label: 'Stops', from: 'Images', to: 'Motion' },
       { label: 'Music', from: 'None', to: 'ElevenLabs Music' },
     ]);

@@ -90,7 +90,9 @@ function imageSizeToAspectRatio(imageSize: ImageSize): AspectRatioValue {
 const IMAGE_RESOLUTION: Partial<
   Record<TextToImageModel, { tokens: string[] } | { pixels: PixelBounds }>
 > = {
-  nano_banana_2: { tokens: ['0.5K', '1K', '2K', '4K'] },
+  // 2.1 dropped fal's 0.5K token (#2063). No tier ever picked it — 720p is
+  // the lowest tier and lands on 1K — so nothing that was sent changes.
+  nano_banana_2: { tokens: ['1K', '2K', '4K'] },
   nano_banana_pro: { tokens: ['1K', '2K', '4K'] },
   phota: { tokens: ['1K', '4K'] },
   grok_imagine_image: { tokens: ['1k', '2k'] },
@@ -112,7 +114,14 @@ const IMAGE_RESOLUTION: Partial<
   flux_2_turbo: { pixels: { minEdge: 512, maxEdge: 2048 } },
 };
 
-/** The tokens the Gemini via admits — narrower than the fal enum (no 0.5K). */
+/**
+ * Nano Banana 2.1 thinks at `medium` unless told otherwise; its predecessor
+ * ran at the minimal level. Both vias pin `minimal` so the default image
+ * model keeps v2's latency and thinking-token spend (#2063).
+ */
+const NANO_BANANA_2_THINKING_LEVEL = 'minimal';
+
+/** The tokens the Gemini via admits (no 512 / 0.5K tier). */
 const GEMINI_IMAGE_RESOLUTIONS = ['1K', '2K', '4K'] as const;
 
 /**
@@ -307,6 +316,11 @@ function buildFalModelOptions(
             '2K',
         }),
         safety_tolerance: '6',
+        // 2.1 defaults to `medium` thinking; v2 took no thinking knob and
+        // answered at its minimal default. Pin the old latency (#2063).
+        ...(params.model === 'nano_banana_2' && {
+          thinking_level: NANO_BANANA_2_THINKING_LEVEL,
+        }),
         ...(params.numImages !== undefined && { num_images: params.numImages }),
         ...(params.outputFormat && { output_format: params.outputFormat }),
         ...(params.referenceImageUrls?.length && {
@@ -433,6 +447,8 @@ export type GeminiImageRequest = {
   resolution: GeminiImageResolution;
   numImages: number;
   referenceImageUrls: string[];
+  /** Pin Gemini's minimal thinking level; false leaves the model default. */
+  minimalThinking: boolean;
 };
 
 /**
@@ -475,6 +491,7 @@ export function buildGeminiImageRequest(
       params.model,
       params.referenceImageUrls ?? []
     ),
+    minimalThinking: nativeModel === 'gemini-nano-banana-2.1',
   };
 }
 
