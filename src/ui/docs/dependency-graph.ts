@@ -586,7 +586,7 @@ export const GRAPH_NODES: readonly GraphNode[] = [
       'Which motion prompt version it rendered',
       'Which still version it rendered (start-frame mode)',
       'Bound dialogue-audio identity (audioSourceKey: voice id + line + tone + TTS model)',
-      'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio',
+      'Every line its prompt quoted, voiced or not (dialogueKey), on a model with audio or a clip that quoted them before its model went silent',
       'Which dialogue sections its audio was cut from (audioClipIds, against the clip ids the shot holds now)',
       'References the motion prompt names, as the sheet version or media URL that was current then (referenceKeys). A stamped key for someone who still exists but the prompt no longer names is not compared; a deleted one is stale',
       'The length it was rendered at, snapped onto the model grid on both sides',

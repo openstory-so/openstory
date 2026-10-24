@@ -512,7 +512,7 @@ describe('estimateVideoCost endpoint routing', () => {
       hasReferenceImages: false,
     });
     expect(withRefs).toBe(micros(5 * 140_000));
-    expect(without).toBe(micros(5 * 70_000));
+    expect(without).toBe(micros(5 * 157_000));
   });
 
   it('prices a 5s H3 Max clip at $0.20 (8 billed units, not duration)', () => {

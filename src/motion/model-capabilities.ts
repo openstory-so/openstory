@@ -15,7 +15,10 @@ import { tiersForTokens, type Resolution } from '@/models/resolutions';
 export const MOTION_DURATION_GRID = {
   grok_imagine_video_1_5: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   gemini_omni_flash: [3, 4, 5, 6, 7, 8, 9, 10],
-  kling_v3_pro: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+  kling_v3_pro: [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    24, 25, 26, 27, 28, 29, 30,
+  ],
   minimax_h3_max: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   seedance_v2: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
   seedance_v2_mini: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
@@ -29,7 +32,7 @@ export const MOTION_DURATION_GRID = {
 export const MOTION_RESOLUTION_TOKENS = {
   grok_imagine_video_1_5: ['480p', '720p', '1080p'],
   gemini_omni_flash: ['360p', '720p', '1080p', '4k'],
-  kling_v3_pro: [],
+  kling_v3_pro: ['720p', '1080p'],
   // fal added 1080P (latent refinement from a native 768P source) upstream;
   // picked up by `bun motion:codegen`, unrelated to #1498.
   minimax_h3_max: ['480P', '768P', '1080P'],

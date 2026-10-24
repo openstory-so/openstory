@@ -26,6 +26,7 @@ import {
   DIALOGUE_CLIP_TOKEN,
   isElementVoiceToken,
 } from '@/motion/dialogue-tts';
+import { zKlingV4Shot } from './generated/zod.gen';
 
 /**
  * Music is a sequence-level track (`sequence_music_variants`) the user can mute, swap
@@ -133,14 +134,6 @@ export function buildMotionShotPrompt({
     const audioData = audio ?? undefined;
 
     switch (vendor) {
-      case 'Kling':
-        assembled = buildKlingPrompt(
-          fullPrompt,
-          dialogueData,
-          audioData,
-          omitSharedConstraints
-        );
-        break;
       case 'ByteDance':
         assembled = buildSeedancePrompt(
           fullPrompt,
@@ -196,6 +189,14 @@ export type PackedMotionPromptShot = {
 /** Bytes reserved for the start-frame line and reference legend after packing. */
 const PACKED_PROMPT_RESERVE = 256;
 
+/**
+ * Kling 4.0 caps each `multi_prompt[]` element's prompt (512 characters),
+ * far below the whole-prompt ceiling. A packed job may take either Kling
+ * route, so every element is held to it. Read off the generated schema.
+ */
+const MULTI_PROMPT_ELEMENT_MAX =
+  zKlingV4Shot.shape.prompt.maxLength ?? Number.POSITIVE_INFINITY;
+
 export function packedSceneFromScene(
   scene:
     | {
@@ -228,8 +229,9 @@ export function packedPromptFitsLimit(
   if (hardLimit === undefined) return true;
   const budget = Math.max(1, hardLimit - PACKED_PROMPT_RESERVE);
   if (packed.multiPrompt && packed.multiPrompt.length > 0) {
+    const elementBudget = Math.min(budget, MULTI_PROMPT_ELEMENT_MAX);
     return packed.multiPrompt.every(
-      (element) => element.prompt.length <= budget
+      (element) => element.prompt.length <= elementBudget
     );
   }
   return packed.prompt.length <= budget;
@@ -310,7 +312,8 @@ export function buildPackedMotionPrompt({
   });
   if (model === 'kling_v3_pro') {
     // Kling rejects `prompt` + `multi_prompt` together, so the header has to
-    // live on the first element. Later shots stay action-only.
+    // live on the first element. Later shots stay action-only. Kling 4.0
+    // caps each element at 512 characters (`packedPromptFitsLimit`).
     return {
       prompt: joinPacked(header, bodies.join('\ncut to\n')),
       multiPrompt: shots.map((shot, i) => ({
@@ -433,58 +436,13 @@ function formatPackedShotList(
   return labeled.join('\n\n');
 }
 
-/** Kling `multi_prompt[].duration` is the string enum `'1'`…`'15'`. */
+/**
+ * Kling O3 `multi_prompt[].duration` is the string enum `'1'`…`'15'`; the
+ * Kling 4.0 builder turns it into the integer that endpoint takes.
+ */
 function klingMultiPromptDuration(seconds: number): string {
   const n = Math.min(15, Math.max(1, Math.round(seconds)));
   return String(n);
-}
-
-// ---------------------------------------------------------------------------
-// Kling 3.0: Character labels with tone + temporal markers + ambient sounds
-// Guide: https://blog.fal.ai/kling-3-0-prompting-guide/
-// ---------------------------------------------------------------------------
-
-function buildKlingPrompt(
-  fullPrompt: string,
-  dialogue: MotionDialogue | undefined,
-  audio: MotionAudio | undefined,
-  omitSharedConstraints: boolean
-): string {
-  const parts = [fullPrompt];
-
-  // Append dialogue with Kling-specific character labels and temporal markers
-  if (dialogue) {
-    parts.push(formatKlingDialogue(dialogue.lines));
-  }
-
-  // Ambient sound woven into the prompt (Kling generates audio natively)
-  const ambientParts: string[] = [];
-  if (audio?.ambientSound) ambientParts.push(audio.ambientSound);
-  if (audio && audio.soundEffects.length > 0)
-    ambientParts.push(audio.soundEffects.join(', '));
-  if (omitSharedConstraints) {
-    if (ambientParts.length > 0) {
-      parts.push(`Ambient sounds: ${ambientParts.join('. ')}.`);
-    }
-  } else {
-    parts.push(
-      ambientParts.length > 0
-        ? `Ambient sounds: ${ambientParts.join('. ')}. ${NO_MUSIC_DIRECTION}`
-        : NO_MUSIC_DIRECTION
-    );
-  }
-
-  return parts.join('\n\n');
-}
-
-function formatKlingDialogue(lines: DialogueLine[]): string {
-  return lines
-    .map((line) => {
-      const label = line.character || 'Narrator';
-      const tone = line.tone ? `, ${line.tone}` : '';
-      return `[${label}${tone}]: "${line.line}"`;
-    })
-    .join('\nImmediately, ');
 }
 
 // ---------------------------------------------------------------------------

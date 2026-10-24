@@ -235,10 +235,10 @@ describe('Motion Service', () => {
   });
 
   describe('submitMotionJob', () => {
-    it('should submit job with Kling v3 Pro model options', async () => {
+    it('should submit job with Kling 4.0 model options', async () => {
       mockGenerateVideo.mockResolvedValue({
         jobId: 'test-kling-v3-request-id',
-        model: 'fal-ai/kling-video/v3/pro/image-to-video',
+        model: 'kling/v4/image-to-video',
       });
 
       const result = await submitMotionJob({
@@ -261,13 +261,13 @@ describe('Motion Service', () => {
           prompt: 'A person walking',
           modelOptions: expect.objectContaining({
             start_image_url: 'https://example.com/image.jpg',
-            duration: '5',
-            cfg_scale: 0.5,
-            negative_prompt:
-              'blur, distort, and low quality, background music, musical score, soundtrack',
+            duration: 5,
           }),
         })
       );
+      const call = mockGenerateVideo.mock.calls[0]?.[0];
+      expect(call?.modelOptions).not.toHaveProperty('negative_prompt');
+      expect(call?.modelOptions).not.toHaveProperty('generate_audio');
     });
 
     it('should submit job with Seedance 2.5 model options', async () => {

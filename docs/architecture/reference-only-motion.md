@@ -248,12 +248,14 @@ sibling for a shot that matched nothing (#1521).
 conservative floor, safe in a pure isomorphic schema. It is NOT the question to
 ask anywhere a team's keys are reachable; see below.
 
-Kling v3 Pro start-frame-only shots stay on image-to-video. Shots with
-references, and reference-only shots, route to Kling O3 Pro
+Kling start-frame-only shots stay on image-to-video, which is Kling 4.0
+(`kling/v4/image-to-video`) since #2177. Shots with references, and
+reference-only shots, route to Kling O3 Pro
 (`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
-frame is optional. Catalog key stays `kling_v3_pro`.
+frame is optional. Kling 4.0 has a separate reference endpoint, not adopted
+yet. Catalog key stays `kling_v3_pro`.
 
-Three Kling-specific consequences of that split.
+Four Kling-specific consequences of that split.
 
 **The still is pinned, not described.** O3 is the only reference endpoint with
 a real start-frame field, so a shot that rendered one sends it as
@@ -266,10 +268,19 @@ already sees these in the starting frame") is true again, and
 that decides, derived from the schema so it cannot drift.
 
 **Audio is resolved, not inherited.** `generate_audio` defaults to **false**
-on the O3 endpoints where v3 image-to-video defaults to **true** — every other
-endpoint in the catalog defaults true. `buildModelInput` therefore resolves
-the flag from the catalog rather than inheriting either default; otherwise
-whether a shot matched a cast sheet would decide whether the clip has sound.
+on the O3 endpoints, and Kling 4.0 image-to-video has no audio at all.
+`buildModelInput` therefore resolves the flag from the catalog rather than
+inheriting a default; otherwise whether a shot matched a cast sheet would
+decide whether the clip has sound. `kling_v3_pro` declares
+`supportsAudio: false`, so the O3 route asks for no audio either.
+
+**The two routes take different `multi_prompt` shapes.** O3 takes string
+durations and `shot_type: customize`; Kling 4.0 takes integer durations, no
+`shot_type`, and at most 512 characters per shot. `klingMultiPromptFields`
+reads the endpoint's schema to pick the shape, and `packedPromptFitsLimit`
+holds every element to 512 so a packed job fits either route. Their duration
+grids differ too: Kling 4.0 takes 3–30s, O3 3–15s, so a clip over 15s that
+routes to O3 snaps to 15.
 
 **The image budget is the tightest we have.** O3 takes 4 (Seedance 9, H3 Max
 9, Grok 7, Omni Flash 7). With the start frame in its own field all 4 go to

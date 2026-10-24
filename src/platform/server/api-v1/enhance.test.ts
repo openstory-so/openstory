@@ -78,9 +78,9 @@ describe('enhanceSseResponse', () => {
     );
     expect(donePayload.enhancedScript).toBe('Scene 1 — 6s\nJust right.');
     expect(donePayload.duration.snappedSeconds).toBe(6);
-    expect(donePayload.duration.clipGrid).toEqual([
-      3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
-    ]);
+    expect(donePayload.duration.clipGrid).toEqual(
+      Array.from({ length: 28 }, (_, i) => i + 3)
+    );
   });
 
   it('emits an error shot when the generator fails mid-stream', async () => {

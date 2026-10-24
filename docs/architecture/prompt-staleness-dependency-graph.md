@@ -723,8 +723,10 @@ with its bound voice token (`dialogueLinesKey`). `audioSourceKey` sees voiced
 lines only, and is null on a model without dialogue-audio input, yet every
 audio-capable model splices all lines into its prompt. It is null when nothing
 was quoted — no lines, no motion prompt, or a model without audio — and the
-compare applies the same rule to the live side. A manifest from before #1784
-has no key and is not compared.
+compare applies the same rule to the live side. A clip that did quote lines is
+still compared after its model stops taking audio (`kling_v3_pro`, now the
+silent Kling 4.0): the stamp, not the model's current flag, says the take
+speaks them. A manifest from before #1784 has no key and is not compared.
 
 ```ts
 sha256Hex({

@@ -103,16 +103,21 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
     unit: 'seconds',
     unitPriceUsd: 0.1,
   },
-  'fal-ai/kling-video/v3/pro/image-to-video': {
+  // Kling 4.0 (fal llms.txt, 2026-10-24, not yet bill-verified): $0.157/s at
+  // 720p, $0.235/s at 1080p (fal's default). Motion asks for the sequence's
+  // tier, 720p by default, so the seed is the 720p rate.
+  'kling/v4/image-to-video': {
     unit: 'seconds',
-    unitPriceUsd: 0.07,
+    unitPriceUsd: 0.157,
   },
   'fal-ai/kling-video/v3/pro/text-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.168,
   },
-  // Both O3 rows are the audio-on rate; fal quotes $0.112/s with audio off,
-  // and motion always asks Kling for native audio (#1498).
+  // Both O3 rows are the audio-on rate. fal quotes $0.112/s with audio off,
+  // which is what motion now asks for: Kling 4.0 has no audio, so the
+  // catalog turns it off on every Kling route (#1498). Left at the higher
+  // rate until the pricing cron replaces it.
   'fal-ai/kling-video/o3/pro/reference-to-video': {
     unit: 'seconds',
     unitPriceUsd: 0.14,

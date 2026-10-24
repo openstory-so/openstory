@@ -18,7 +18,7 @@ type ResolutionPillsProps = {
    */
   available: readonly Resolution[];
   disabled?: boolean;
-  /** Why the choice is narrow — e.g. "Kling 3.0 Omni renders at a fixed size". */
+  /** Why the choice is narrow — e.g. "Nano Banana 2 Lite renders at a fixed size". */
   note?: string | null;
 };
 

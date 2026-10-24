@@ -85,17 +85,25 @@ export const IMAGE_TO_VIDEO_MODELS = {
     enforcesPromptLimit: true,
     performance: { estimatedGenerationTime: 20, quality: 'best' as const },
   },
+  // Key kept from Kling 3.0 Omni: it is persisted on sequences and teams.
   kling_v3_pro: {
-    id: 'fal-ai/kling-video/v3/pro/image-to-video',
-    name: 'Kling 3.0 Omni',
+    id: 'kling/v4/image-to-video',
+    name: 'Kling 4.0',
     vendor: 'Kling',
     license: 'proprietary' as const,
     qualityRank: 4,
-    // fal's schema declares 2500 and rejects past it (#1754).
+    // Kling 4.0's own `prompt` takes 26000, but shots with references still
+    // render on the O3 Pro reference endpoint, whose schema declares 2500 and
+    // rejects past it (#1754). The tighter route sets the ceiling.
     maxPromptLength: 2500,
     enforcesPromptLimit: true,
-    supportsAudio: true,
-    // Packed via `multi_prompt[]` (1–15s per shot) + `shot_type: customize`.
+    // Kling 4.0 has no `generate_audio` switch and fal documents no audio
+    // track, so the clip is treated as silent. Declared false for every
+    // route, so the O3 reference route does not add sound the image-to-video
+    // route cannot (#1498).
+    supportsAudio: false,
+    // Packed via `multi_prompt[]`. Kling 4.0 caps each shot's prompt at 512
+    // characters (`packedPromptFitsLimit`) and has no `shot_type`.
     supportsInClipMultiShot: true,
     performance: { estimatedGenerationTime: 306, quality: 'best' as const },
   },
@@ -881,7 +889,7 @@ export type MediaDurationLimit = {
  * routes to this endpoint and passes the rendered still as the first image
  * plus cast/element refs after it (see `resolveMotionEndpoint`).
  *
- * Kling v3 Pro's start-frame-only shots stay on image-to-video; shots with
+ * Kling 4.0's start-frame-only shots stay on image-to-video; shots with
  * references (and reference-only shots) route to Kling O3 Pro, the sibling
  * that actually has a reference-to-video endpoint (#1498).
  */

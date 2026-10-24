@@ -222,77 +222,74 @@ export type File = {
 };
 
 /**
- * ImageToVideoV3ProRequest
+ * ImageToVideoInput
+ *
+ * The output aspect ratio follows the input frames.
  */
-export type KlingVideoV3ProImageToVideoInput = {
+export type V4ImageToVideoInput = {
   /**
-   * Elements
+   * Resolution
    *
-   * Elements (characters/objects) to include in the video. Each example can either be an image set (frontal + reference images) or a video. Reference in prompt as @Element1, @Element2, etc.
+   * Output resolution.
    */
-  elements?: Array<KlingV3ComboElementInput> | unknown;
+  resolution?: '720p' | '1080p';
   /**
    * Prompt
    *
-   * Text prompt for video generation. Either prompt or multi_prompt must be provided, but not both.
+   * Text prompt. Either prompt or multi_prompt must be provided.
    */
   prompt?: string | unknown;
   /**
-   * Duration
-   *
-   * The duration of the generated video in seconds
-   */
-  duration?: '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | '11' | '12' | '13' | '14' | '15';
-  /**
-   * Multi Prompt
-   *
-   * List of prompts for multi-shot video generation. If provided, divides the video into multiple shots.
-   */
-  multi_prompt?: Array<KlingV3MultiPromptElement> | unknown;
-  /**
-   * Start Image Url
-   *
-   * URL of the image to be used for the video
-   */
-  start_image_url: string | Blob | File;
-  /**
-   * Shot Type
-   *
-   * The type of multi-shot video generation. 'intelligent' lets the model automatically determine shot structure.
-   */
-  shot_type?: 'customize' | 'intelligent';
-  /**
-   * Cfg Scale
-   *
-   *
-   *             The CFG (Classifier Free Guidance) scale is a measure of how close you want
-   *             the model to stick to your prompt.
-   *
-   */
-  cfg_scale?: number;
-  /**
    * End Image Url
    *
-   * URL of the image to be used for the end of the video
+   * Image to use as the last frame of the video.
    */
   end_image_url?: string | unknown;
   /**
-   * Negative Prompt
-   */
-  negative_prompt?: string;
-  /**
-   * Generate Audio
+   * Start Image Url
    *
-   * Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.
+   * Image to use as the first frame of the video.
+   *
+   * Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s
    */
-  generate_audio?: boolean;
+  start_image_url: string | Blob | File;
+  /**
+   * Multi Prompt
+   *
+   * Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.
+   */
+  multi_prompt?: Array<KlingV4Shot> | unknown;
+  /**
+   * Duration
+   *
+   * Video duration in seconds (3-30).
+   */
+  duration?: number;
 };
 
 /**
- * ImageToVideoV3ProOutput
+ * ImageToVideoOutput
  */
-export type KlingVideoV3ProImageToVideoOutput = {
+export type V4ImageToVideoOutput = {
   video: File;
+};
+
+/**
+ * KlingV4Shot
+ */
+export type KlingV4Shot = {
+  /**
+   * Prompt
+   *
+   * The prompt for this shot.
+   */
+  prompt: string;
+  /**
+   * Duration
+   *
+   * Shot duration in seconds.
+   */
+  duration?: number;
 };
 
 /**
@@ -1619,7 +1616,7 @@ export type GetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdResponses = 
 
 export type GetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdResponse = GetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdResponses[keyof GetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdResponses];
 
-export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusData = {
+export type GetKlingV4ImageToVideoRequestsByRequestIdStatusData = {
   body?: never;
   path: {
     /**
@@ -1633,19 +1630,19 @@ export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusData = {
      */
     logs?: number;
   };
-  url: '/fal-ai/kling-video/v3/pro/image-to-video/requests/{request_id}/status';
+  url: '/kling/v4/image-to-video/requests/{request_id}/status';
 };
 
-export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusResponses = {
+export type GetKlingV4ImageToVideoRequestsByRequestIdStatusResponses = {
   /**
    * The request status.
    */
   200: QueueStatus;
 };
 
-export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusResponse = GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusResponses[keyof GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusResponses];
+export type GetKlingV4ImageToVideoRequestsByRequestIdStatusResponse = GetKlingV4ImageToVideoRequestsByRequestIdStatusResponses[keyof GetKlingV4ImageToVideoRequestsByRequestIdStatusResponses];
 
-export type PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelData = {
+export type PutKlingV4ImageToVideoRequestsByRequestIdCancelData = {
   body?: never;
   path: {
     /**
@@ -1654,10 +1651,10 @@ export type PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelData = {
     request_id: string;
   };
   query?: never;
-  url: '/fal-ai/kling-video/v3/pro/image-to-video/requests/{request_id}/cancel';
+  url: '/kling/v4/image-to-video/requests/{request_id}/cancel';
 };
 
-export type PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelResponses = {
+export type PutKlingV4ImageToVideoRequestsByRequestIdCancelResponses = {
   /**
    * The request was cancelled.
    */
@@ -1669,25 +1666,25 @@ export type PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelResponse
   };
 };
 
-export type PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelResponse = PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelResponses[keyof PutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelResponses];
+export type PutKlingV4ImageToVideoRequestsByRequestIdCancelResponse = PutKlingV4ImageToVideoRequestsByRequestIdCancelResponses[keyof PutKlingV4ImageToVideoRequestsByRequestIdCancelResponses];
 
-export type PostFalAiKlingVideoV3ProImageToVideoData = {
-  body: KlingVideoV3ProImageToVideoInput;
+export type PostKlingV4ImageToVideoData = {
+  body: V4ImageToVideoInput;
   path?: never;
   query?: never;
-  url: '/fal-ai/kling-video/v3/pro/image-to-video';
+  url: '/kling/v4/image-to-video';
 };
 
-export type PostFalAiKlingVideoV3ProImageToVideoResponses = {
+export type PostKlingV4ImageToVideoResponses = {
   /**
    * The request status.
    */
   200: QueueStatus;
 };
 
-export type PostFalAiKlingVideoV3ProImageToVideoResponse = PostFalAiKlingVideoV3ProImageToVideoResponses[keyof PostFalAiKlingVideoV3ProImageToVideoResponses];
+export type PostKlingV4ImageToVideoResponse = PostKlingV4ImageToVideoResponses[keyof PostKlingV4ImageToVideoResponses];
 
-export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdData = {
+export type GetKlingV4ImageToVideoRequestsByRequestIdData = {
   body?: never;
   path: {
     /**
@@ -1696,17 +1693,17 @@ export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdData = {
     request_id: string;
   };
   query?: never;
-  url: '/fal-ai/kling-video/v3/pro/image-to-video/requests/{request_id}';
+  url: '/kling/v4/image-to-video/requests/{request_id}';
 };
 
-export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponses = {
+export type GetKlingV4ImageToVideoRequestsByRequestIdResponses = {
   /**
    * Result of the request.
    */
-  200: KlingVideoV3ProImageToVideoOutput;
+  200: V4ImageToVideoOutput;
 };
 
-export type GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponse = GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponses[keyof GetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponses];
+export type GetKlingV4ImageToVideoRequestsByRequestIdResponse = GetKlingV4ImageToVideoRequestsByRequestIdResponses[keyof GetKlingV4ImageToVideoRequestsByRequestIdResponses];
 
 export type GetMinimaxH3MaxImageToVideoRequestsByRequestIdStatusData = {
   body?: never;

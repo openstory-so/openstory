@@ -169,10 +169,54 @@ export const zGeminiOmni11FlashImageToVideoOutput = z.object({
 });
 
 /**
- * ImageToVideoV3ProOutput
+ * ImageToVideoOutput
  */
-export const zKlingVideoV3ProImageToVideoOutput = z.object({
+export const zV4ImageToVideoOutput = z.object({
   video: zFile
+});
+
+/**
+ * KlingV4Shot
+ */
+export const zKlingV4Shot = z.object({
+  prompt: z.string().min(1).max(512).register(z.globalRegistry, {
+    description: 'The prompt for this shot.'
+  }),
+  duration: z.int().gte(1).lte(30).register(z.globalRegistry, {
+    description: 'Shot duration in seconds.'
+  }).optional().default(5)
+});
+
+/**
+ * ImageToVideoInput
+ *
+ * The output aspect ratio follows the input frames.
+ */
+export const zV4ImageToVideoInput = z.object({
+  resolution: z.enum(['720p', '1080p']).register(z.globalRegistry, {
+    description: 'Output resolution.'
+  }).optional().default('1080p'),
+  prompt: z.union([
+    z.string().max(26000),
+    z.unknown()
+  ]).optional(),
+  end_image_url: z.union([
+    z.string(),
+    z.unknown()
+  ]).optional(),
+  start_image_url: z.union([
+    z.string(),
+    z.string()
+  ]),
+  multi_prompt: z.union([
+    z.array(zKlingV4Shot).min(1),
+    z.unknown()
+  ]).optional(),
+  duration: z.int().gte(3).lte(30).register(z.globalRegistry, {
+    description: 'Video duration in seconds (3-30).'
+  }).optional().default(5)
+}).register(z.globalRegistry, {
+  description: 'The output aspect ratio follows the input frames.'
 });
 
 /**
@@ -223,59 +267,6 @@ export const zKlingV3MultiPromptElement = z.object({
   prompt: z.string().register(z.globalRegistry, {
     description: 'The prompt for this shot.'
   })
-});
-
-/**
- * ImageToVideoV3ProRequest
- */
-export const zKlingVideoV3ProImageToVideoInput = z.object({
-  elements: z.union([
-    z.array(zKlingV3ComboElementInput),
-    z.unknown()
-  ]).optional(),
-  prompt: z.union([
-    z.string().max(2500),
-    z.unknown()
-  ]).optional(),
-  duration: z.enum([
-    '3',
-    '4',
-    '5',
-    '6',
-    '7',
-    '8',
-    '9',
-    '10',
-    '11',
-    '12',
-    '13',
-    '14',
-    '15'
-  ]).register(z.globalRegistry, {
-    description: 'The duration of the generated video in seconds'
-  }).optional().default('5'),
-  multi_prompt: z.union([
-    z.array(zKlingV3MultiPromptElement),
-    z.unknown()
-  ]).optional(),
-  start_image_url: z.union([
-    z.string(),
-    z.string()
-  ]),
-  shot_type: z.enum(['customize', 'intelligent']).register(z.globalRegistry, {
-    description: 'The type of multi-shot video generation. \'intelligent\' lets the model automatically determine shot structure.'
-  }).optional().default('customize'),
-  cfg_scale: z.number().gte(0).lte(1).register(z.globalRegistry, {
-    description: '\n            The CFG (Classifier Free Guidance) scale is a measure of how close you want\n            the model to stick to your prompt.\n        '
-  }).optional().default(0.5),
-  end_image_url: z.union([
-    z.string(),
-    z.unknown()
-  ]).optional(),
-  negative_prompt: z.string().max(2500).optional().default('blur, distort, and low quality'),
-  generate_audio: z.boolean().register(z.globalRegistry, {
-    description: 'Whether to generate native audio for the video. Supports Chinese and English voice output. Other languages are automatically translated to English. For English speech, use lowercase letters; for acronyms or proper nouns, use uppercase.'
-  }).optional().default(true)
 });
 
 /**
@@ -1409,13 +1400,13 @@ export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdPath = z.o
  */
 export const zGetFalAiGeminiOmni11FlashImageToVideoRequestsByRequestIdResponse = zGeminiOmni11FlashImageToVideoOutput;
 
-export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusPath = z.object({
+export const zGetKlingV4ImageToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
 });
 
-export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusQuery = z.object({
+export const zGetKlingV4ImageToVideoRequestsByRequestIdStatusQuery = z.object({
   logs: z.number().register(z.globalRegistry, {
     description: 'Whether to include logs (`1`) in the response or not (`0`).'
   }).optional()
@@ -1424,9 +1415,9 @@ export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusQuery 
 /**
  * The request status.
  */
-export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
+export const zGetKlingV4ImageToVideoRequestsByRequestIdStatusResponse = zQueueStatus;
 
-export const zPutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelPath = z.object({
+export const zPutKlingV4ImageToVideoRequestsByRequestIdCancelPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -1435,7 +1426,7 @@ export const zPutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelPath =
 /**
  * The request was cancelled.
  */
-export const zPutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelResponse = z.object({
+export const zPutKlingV4ImageToVideoRequestsByRequestIdCancelResponse = z.object({
   success: z.boolean().register(z.globalRegistry, {
     description: 'Whether the request was cancelled successfully.'
   }).optional()
@@ -1443,14 +1434,14 @@ export const zPutFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdCancelRespon
   description: 'The request was cancelled.'
 });
 
-export const zPostFalAiKlingVideoV3ProImageToVideoBody = zKlingVideoV3ProImageToVideoInput;
+export const zPostKlingV4ImageToVideoBody = zV4ImageToVideoInput;
 
 /**
  * The request status.
  */
-export const zPostFalAiKlingVideoV3ProImageToVideoResponse = zQueueStatus;
+export const zPostKlingV4ImageToVideoResponse = zQueueStatus;
 
-export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdPath = z.object({
+export const zGetKlingV4ImageToVideoRequestsByRequestIdPath = z.object({
   request_id: z.string().register(z.globalRegistry, {
     description: 'Request ID'
   })
@@ -1459,7 +1450,7 @@ export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdPath = z.obj
 /**
  * Result of the request.
  */
-export const zGetFalAiKlingVideoV3ProImageToVideoRequestsByRequestIdResponse = zKlingVideoV3ProImageToVideoOutput;
+export const zGetKlingV4ImageToVideoRequestsByRequestIdResponse = zV4ImageToVideoOutput;
 
 export const zGetMinimaxH3MaxImageToVideoRequestsByRequestIdStatusPath = z.object({
   request_id: z.string().register(z.globalRegistry, {

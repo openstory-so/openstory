@@ -396,8 +396,8 @@ describe('buildShotPromptPreview', () => {
     expect(parsed).toEqual(
       expect.objectContaining({
         multi_prompt: [
-          expect.objectContaining({ duration: '4' }),
-          expect.objectContaining({ duration: '6' }),
+          expect.objectContaining({ duration: 4 }),
+          expect.objectContaining({ duration: 6 }),
         ],
       })
     );

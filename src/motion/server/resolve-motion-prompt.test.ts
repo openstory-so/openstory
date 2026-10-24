@@ -9,7 +9,7 @@ import {
 // kling_v3_pro is audio-capable (dialogue/audio enriched); grok is not
 // (fullPrompt passes through untouched). Using both pins the model-specific
 // assembly branch vs. the bare passthrough.
-const AUDIO_MODEL = 'kling_v3_pro' as const;
+const AUDIO_MODEL = 'seedance_v2' as const;
 const NON_AUDIO_MODEL = 'grok_imagine_video_1_5' as const;
 
 // What the shot says now (#1657) — resolved from the shot's dialogue

@@ -76,7 +76,7 @@ describe('Seedance catalog split', () => {
       'fal-ai/kling-video/o3/pro/reference-to-video'
     );
     expect(MOTION_REFERENCE_ENDPOINTS.kling_v3_pro?.maxImages).toBe(4);
-    expect(IMAGE_TO_VIDEO_MODELS.kling_v3_pro.name).toBe('Kling 3.0 Omni');
+    expect(IMAGE_TO_VIDEO_MODELS.kling_v3_pro.name).toBe('Kling 4.0');
     for (const config of Object.values(MOTION_REFERENCE_ENDPOINTS)) {
       expect(MOTION_TRANSFORMS).toHaveProperty(config.endpointId);
     }
@@ -100,12 +100,13 @@ describe('videoModelSupportsAudio', () => {
   it('returns true for audio-capable video models', () => {
     expect(videoModelSupportsAudio('seedance_v2')).toBe(true);
     expect(videoModelSupportsAudio('seedance_v2_5')).toBe(true);
-    expect(videoModelSupportsAudio('kling_v3_pro')).toBe(true);
     expect(videoModelSupportsAudio('minimax_h3_max')).toBe(true);
   });
 
   it('returns false for models without audio', () => {
     expect(videoModelSupportsAudio('grok_imagine_video_1_5')).toBe(false);
+    // Kling 4.0 has no generate_audio switch and documents no audio track.
+    expect(videoModelSupportsAudio('kling_v3_pro')).toBe(false);
     // Omni Flash always emits audio but has no generate_audio API field, so
     // the scene-editor SFX toggle must stay hidden.
     expect(videoModelSupportsAudio('gemini_omni_flash')).toBe(false);

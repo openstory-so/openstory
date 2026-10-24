@@ -36,8 +36,8 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
   'fal-ai/flux-2-max': { unitPrice: micros(70_000), unit: 'megapixels' },
   'fal-ai/krea-2/turbo': { unitPrice: micros(8_000), unit: 'megapixels' },
   // Video models
-  'fal-ai/kling-video/v3/pro/image-to-video': {
-    unitPrice: micros(70_000),
+  'kling/v4/image-to-video': {
+    unitPrice: micros(157_000),
     unit: 'seconds',
   },
   'fal-ai/kling-video/o3/pro/reference-to-video': {

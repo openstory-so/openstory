@@ -50,92 +50,17 @@ function makeMotionPrompt(overrides: Partial<MotionPrompt> = {}): MotionPrompt {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Kling v3 Pro (audio-capable — default model)
-// ---------------------------------------------------------------------------
-
 describe('buildMotionShotPrompt', () => {
-  describe('Kling v3 Pro (audio)', () => {
-    const model = 'kling_v3_pro';
-
-    it('starts with the fullPrompt as the base', () => {
+  // Kling 4.0 has no audio, so it gets the plain fullPrompt: no dialogue
+  // labels, no ambience, no no-music direction.
+  describe('Kling 4.0 (no audio)', () => {
+    it('returns the fullPrompt without dialogue or sound sections', () => {
       const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
-        model,
+        model: 'kling_v3_pro',
       });
 
-      expect(result.startsWith(fullPromptText)).toBe(true);
-    });
-
-    it('appends character labels with tone and dialogue text', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain(
-        '[Sarah, firm commanding]: "We need to reconsider the entire approach."'
-      );
-      expect(result).toContain(
-        '[James, soft resigned]: "I couldn\'t agree more."'
-      );
-    });
-
-    it('uses temporal markers between dialogue lines', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain('Immediately,');
-    });
-
-    it('appends ambient sound descriptions', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain('Ambient sounds:');
-      expect(result).toContain('quiet office hum');
-      expect(result).toContain('chair scrape');
-    });
-
-    it('omits dialogue section when not present', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({
-          dialogue: { presence: false, lines: [] },
-        }),
-        model,
-      });
-
-      expect(result).not.toContain('[Sarah');
-      // Still has fullPrompt + audio
-      expect(result.startsWith(fullPromptText)).toBe(true);
-      expect(result).toContain('Ambient sounds:');
-    });
-
-    it('omits ambient sounds when no audio data, keeps the no-music direction', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({ audio: undefined }),
-        model,
-      });
-
-      expect(result).not.toContain('Ambient sounds:');
-      expect(result).toContain('No BGM, no music.');
-      // Still has fullPrompt + dialogue
-      expect(result).toContain('[Sarah');
-    });
-
-    it('suppresses model-generated music alongside the ambient sounds', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt(),
-        model,
-      });
-
-      expect(result).toContain(
-        'Ambient sounds: quiet office hum with keyboard clicks. chair scrape, paper rustling. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
-      );
+      expect(result).toBe(fullPromptText);
     });
   });
 
@@ -432,74 +357,6 @@ describe('buildMotionShotPrompt', () => {
   // ---------------------------------------------------------------------------
 
   describe('edge cases', () => {
-    it('handles dialogue lines without tone', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({
-          dialogue: {
-            presence: true,
-            lines: [{ character: 'Sarah', line: 'Hello.', tone: '' }],
-          },
-        }),
-        model: 'kling_v3_pro',
-      });
-
-      // No tone → no tone suffix in Kling label
-      expect(result).toContain('[Sarah]: "Hello."');
-    });
-
-    it('handles narrator (empty character)', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({
-          dialogue: {
-            presence: true,
-            lines: [
-              { character: '', line: 'It was a dark night.', tone: 'somber' },
-            ],
-          },
-        }),
-        model: 'kling_v3_pro',
-      });
-
-      expect(result).toContain('[Narrator, somber]: "It was a dark night."');
-    });
-
-    it('handles audio with only ambient sound', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({
-          audio: { ambientSound: 'rain on windows', soundEffects: [] },
-        }),
-        model: 'kling_v3_pro',
-      });
-
-      expect(result).toContain('Ambient sounds: rain on windows');
-    });
-
-    it('handles audio with only sound effects', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({
-          audio: { ambientSound: '', soundEffects: ['door slam'] },
-        }),
-        model: 'kling_v3_pro',
-      });
-
-      expect(result).toContain('Ambient sounds: door slam');
-    });
-
-    it('handles empty audio (no ambient, no SFX)', () => {
-      const result = buildMotionShotPrompt({
-        motionPrompt: makeMotionPrompt({
-          audio: { ambientSound: '', soundEffects: [] },
-        }),
-        model: 'kling_v3_pro',
-      });
-
-      // Only the no-music direction remains
-      expect(result).not.toContain('Ambient sounds:');
-      expect(result).toContain(
-        'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.'
-      );
-    });
-
     it('never adds a no-music direction to a model that generates no audio', () => {
       const result = buildMotionShotPrompt({
         motionPrompt: makeMotionPrompt(),
@@ -687,6 +544,19 @@ describe('buildPackedMotionPrompt', () => {
     });
     expect(packedPromptFitsLimit(packed, 4096)).toBe(true);
     expect(packedPromptFitsLimit(packed, packed.prompt.length)).toBe(false);
+  });
+
+  it('holds each Kling multi_prompt element to the 512-character shot cap', () => {
+    const fits = buildPackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('x'.repeat(400), 6)],
+      model: 'kling_v3_pro',
+    });
+    const tooLong = buildPackedMotionPrompt({
+      shots: [shot('opens the door', 4), shot('x'.repeat(513), 6)],
+      model: 'kling_v3_pro',
+    });
+    expect(packedPromptFitsLimit(fits, 2500)).toBe(true);
+    expect(packedPromptFitsLimit(tooLong, 2500)).toBe(false);
   });
 
   it('two reference-only derived bodies fit H3 Max with the scene header', () => {

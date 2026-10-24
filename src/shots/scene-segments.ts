@@ -386,6 +386,11 @@ function legacyPackedAudioMatches(
  * take dialogue audio. Lines reach the prompt only through a motion prompt
  * and only on an audio model; anything else stamps null, and compares null.
  * An absent key is a row from before #1784: unknown, never stale.
+ *
+ * A clip that did quote lines stays compared after its model stops taking
+ * audio (`kling_v3_pro` moved to the silent Kling 4.0): its old take still
+ * speaks those lines, and treating the model's new flag as the clip's would
+ * stale every such clip on deploy.
  */
 function dialogueMoved(
   entry: { shotId: string; dialogueKey?: string | null },
@@ -397,7 +402,7 @@ function dialogueMoved(
   const quoted =
     currentMotion !== null &&
     isValidImageToVideoModel(model) &&
-    videoModelSupportsAudio(model);
+    (videoModelSupportsAudio(model) || entry.dialogueKey !== null);
   const current = quoted
     ? (live.dialogueKeyByShot.get(entry.shotId) ?? null)
     : null;

@@ -411,8 +411,8 @@ describe('dialogueAudioMaxSeconds (#1651)', () => {
 
   it('falls back to the grid for a model with no audio window', () => {
     // Kling takes no reference audio; the clip is still minted in References,
-    // so the ceiling is the longest take its grid can hold.
-    expect(dialogueAudioMaxSeconds(['kling_v3_pro'])).toBe(15);
+    // so the ceiling is the longest take its grid can hold (Kling 4.0: 30s).
+    expect(dialogueAudioMaxSeconds(['kling_v3_pro'])).toBe(30);
     expect(dialogueAudioMaxSeconds(['gemini_omni_flash'])).toBe(10);
   });
 

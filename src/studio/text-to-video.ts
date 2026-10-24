@@ -197,6 +197,16 @@ export function studioReferenceEndpoint(
   return STUDIO_REFERENCE_ENDPOINTS[model] ?? null;
 }
 
+/**
+ * Models whose text-to-video and reference siblings take no `resolution`,
+ * though their image-to-video endpoint does. `kling_v3_pro` frames run on
+ * Kling 4.0 (720p / 1080p); its text mode stays on Kling 3.0 Pro and its
+ * reference mode on Kling O3 Pro, both fixed-size.
+ */
+const STUDIO_SIBLINGS_WITHOUT_RESOLUTION = {
+  kling_v3_pro: true,
+} as const satisfies Partial<Record<ImageToVideoModel, true>>;
+
 /** Image-to-video endpoints whose schema has `end_image_url`. */
 const STUDIO_END_FRAME_MODELS = {
   kling_v3_pro: true,
@@ -437,7 +447,9 @@ export function renumberStudioReferences(
  * The model's own spelling of a tier, or undefined when it takes none (#1449).
  * The tokens come from the i2v endpoint's generated schema — the studio T2V
  * and reference-to-video siblings advertise the same enum, so there is one
- * source for both routes rather than a hand-kept copy that can drift.
+ * source for both routes rather than a hand-kept copy that can drift. The
+ * exception is `STUDIO_SIBLINGS_WITHOUT_RESOLUTION`, which
+ * `buildStudioVideoInput` checks.
  */
 export function studioVideoResolution(
   model: ImageToVideoModel,
@@ -616,7 +628,10 @@ export function buildStudioVideoInput(
     modelOptions.generate_audio = options.generateAudio;
   }
 
-  const resolution = studioVideoResolution(model, options.resolution);
+  const resolution =
+    model in STUDIO_SIBLINGS_WITHOUT_RESOLUTION
+      ? undefined
+      : studioVideoResolution(model, options.resolution);
   if (resolution) modelOptions.resolution = resolution;
 
   if (model === 'minimax_h3_max') {

@@ -14,7 +14,7 @@
  * A hard ceiling is one the via actually rejects on, and only those throw.
  * They are marked `enforcesPromptLimit` in the catalog, each with the number
  * the provider itself states: the fal endpoints that declare `prompt.maxLength`
- * (Kling 3.0 Omni 2500, Omni Flash 20000, H3 Max 50000), and native xAI, whose
+ * (Kling 2500, Omni Flash 20000, H3 Max 50000), and native xAI, whose
  * 4096 is the length its 400 names. Sending past those would just fail later.
  *
  * A throw is recoverable rather than terminal: the motion rescue shortens the

@@ -27,39 +27,42 @@ function build<T extends ImageToVideoModel>(
 }
 
 describe('buildModelInput', () => {
-  describe('Kling v3 Pro (audio)', () => {
+  describe('Kling 4.0 (kling_v3_pro key)', () => {
     it('uses start_image_url (not image_url)', () => {
       const result = build('kling_v3_pro');
       expect(result).toHaveProperty('start_image_url', baseOptions.imageUrl);
       expect(result).not.toHaveProperty('image_url');
     });
 
-    it('applies the schema default for cfg_scale', () => {
-      const result = build('kling_v3_pro');
-      expect(result.cfg_scale).toBe(0.5);
+    // Kling 4.0 dropped these; the schema strips anything it does not know.
+    it('sends none of the parameters Kling 4.0 dropped', () => {
+      const result = build('kling_v3_pro', { generateAudio: true });
+      for (const dropped of [
+        'cfg_scale',
+        'negative_prompt',
+        'generate_audio',
+        'shot_type',
+        'elements',
+        'aspect_ratio',
+      ]) {
+        expect(result, dropped).not.toHaveProperty(dropped);
+      }
     });
 
-    // Supplying a negative prompt replaces fal's default rather than extending
-    // it, so the quality terms have to be carried over alongside the music
-    // suppression (#1165).
-    it('suppresses music via negative_prompt, keeping the default quality terms', () => {
-      const result = build('kling_v3_pro');
-      expect(result.negative_prompt).toBe(
-        'blur, distort, and low quality, background music, musical score, soundtrack'
+    it('sends an integer duration', () => {
+      expect(build('kling_v3_pro', { duration: 20 }).duration).toBe(20);
+    });
+
+    it('asks for the requested resolution tier', () => {
+      expect(build('kling_v3_pro', { resolution: '720p' }).resolution).toBe(
+        '720p'
+      );
+      expect(build('kling_v3_pro', { resolution: '1080p' }).resolution).toBe(
+        '1080p'
       );
     });
 
-    it('sets generate_audio to true from schema default', () => {
-      const result = build('kling_v3_pro');
-      expect(result.generate_audio).toBe(true);
-    });
-
-    it('forwards generate_audio=false when caller suppresses audio', () => {
-      const result = build('kling_v3_pro', { generateAudio: false });
-      expect(result.generate_audio).toBe(false);
-    });
-
-    it('sends multi_prompt and omits prompt for a packed clip (#1510)', () => {
+    it('sends multi_prompt with integer durations and omits prompt for a packed clip (#1510)', () => {
       const result = build('kling_v3_pro', {
         multiPrompt: [
           { prompt: 'opens the door', duration: '4' },
@@ -68,35 +71,19 @@ describe('buildModelInput', () => {
         duration: 10,
       });
       expect(result.multi_prompt).toEqual([
-        { prompt: 'opens the door', duration: '4' },
-        { prompt: 'the hallway', duration: '6' },
+        { prompt: 'opens the door', duration: 4 },
+        { prompt: 'the hallway', duration: 6 },
       ]);
-      expect(result.shot_type).toBe('customize');
+      expect(result).not.toHaveProperty('shot_type');
       expect(result).not.toHaveProperty('prompt');
     });
 
-    // The combined text is over Kling's 2500, but it is never sent: each
-    // multi_prompt element is what fal length-checks (#1754).
-    it('measures the packed elements, not the dropped combined prompt', () => {
-      const element = 'x'.repeat(2000);
+    it('refuses a packed element past the 512-character shot cap', () => {
       expect(() =>
         build('kling_v3_pro', {
-          prompt: `${element}\n\n${element}`,
-          multiPrompt: [
-            { prompt: element, duration: '4' },
-            { prompt: element, duration: '6' },
-          ],
-          duration: 10,
+          multiPrompt: [{ prompt: 'x'.repeat(513), duration: '5' }],
         })
-      ).not.toThrow();
-    });
-
-    it('still refuses a single element past the schema limit', () => {
-      expect(() =>
-        build('kling_v3_pro', {
-          multiPrompt: [{ prompt: 'x'.repeat(2501), duration: '5' }],
-        })
-      ).toThrow(/2500/);
+      ).toThrow(/512/);
     });
   });
 
@@ -134,9 +121,9 @@ describe('buildModelInput', () => {
       );
     });
 
-    it('leaves a model with no resolution field alone', () => {
-      expect(build('kling_v3_pro', { resolution: '4k' })).not.toHaveProperty(
-        'resolution'
+    it('lands a 4K ask on Kling 4.0 at its 1080p ceiling', () => {
+      expect(build('kling_v3_pro', { resolution: '4k' }).resolution).toBe(
+        '1080p'
       );
     });
   });
@@ -181,21 +168,7 @@ describe('buildModelInput', () => {
 
   describe('duration snapping (1–30s)', () => {
     const valid: Record<ImageToVideoModel, readonly (string | number)[]> = {
-      kling_v3_pro: [
-        '3',
-        '4',
-        '5',
-        '6',
-        '7',
-        '8',
-        '9',
-        '10',
-        '11',
-        '12',
-        '13',
-        '14',
-        '15',
-      ],
+      kling_v3_pro: Array.from({ length: 28 }, (_, i) => i + 3),
       grok_imagine_video_1_5: [
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
       ],
@@ -383,11 +356,29 @@ describe('buildModelInput', () => {
       expect(input.prompt).toContain('@Image2: ACME_LOGO - red circular badge');
     });
 
-    // O3's schema defaults `generate_audio` to false where Kling's v3
-    // image-to-video defaults it to true, so inheriting the default would make
-    // a shot silent purely because it matched a cast sheet (#1498).
-    it('keeps native audio on, matching the start-frame route', () => {
-      expect(buildRef().input.generate_audio).toBe(true);
+    // The catalog, not the route, decides whether a clip has sound (#1498).
+    // Kling 4.0 image-to-video has no audio, so the O3 route asks for none
+    // either: a shot does not gain sound because it matched a cast sheet.
+    it('keeps native audio off, matching the start-frame route', () => {
+      expect(buildRef().input.generate_audio).toBe(false);
+    });
+
+    it('sends O3 its own multi_prompt shape (string durations, shot_type)', () => {
+      const { input } = buildRef({
+        multiPrompt: [
+          { prompt: 'opens the door', duration: '4' },
+          { prompt: 'the hallway', duration: '6' },
+        ],
+        duration: 10,
+      });
+      expect(input).toMatchObject({
+        multi_prompt: [
+          { prompt: 'opens the door', duration: '4' },
+          { prompt: 'the hallway', duration: '6' },
+        ],
+        shot_type: 'customize',
+      });
+      expect(input).not.toHaveProperty('prompt');
     });
 
     it('forwards generate_audio=false when caller suppresses audio', () => {

@@ -14,6 +14,7 @@ import {
   videoModelSupportsAudio,
 } from '@/models/models';
 import { pickVideoResolution } from '@/models/resolutions';
+import { assertPromptWithinHardLimit } from '@/models/prompt-length';
 import { resolveMotionEndpoint } from '@/motion/resolve-motion-endpoint';
 import {
   inlineReferenceDescription,
@@ -31,6 +32,7 @@ import {
   type MotionEndpointId,
   type MotionTransform,
 } from './endpoint-map';
+import { zKlingV4Shot } from './generated/zod.gen';
 import type { GenerateMotionOptions } from './motion-generation';
 import { hasStartFrameField } from './motion-transform';
 
@@ -44,8 +46,8 @@ const QUALITY_OVERRIDES: Partial<
 
 /**
  * The `resolution` tokens an endpoint advertises, read off the generated fal
- * schema. Empty for an endpoint with no such field (Kling v3),
- * whose output size is fixed.
+ * schema. Empty for an endpoint with no such field, whose output size is
+ * fixed.
  */
 export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
   const schema: { properties?: Record<string, unknown> } =
@@ -62,7 +64,7 @@ export function motionResolutionTokens(endpointId: MotionEndpointId): string[] {
  * `'768P'` on H3 Max, `'4k'` on Seedance 2.0. Read off the
  * generated fal schema, so a new motion model needs no entry anywhere: it
  * inherits whatever its `resolution` enum advertises, and an endpoint with no
- * such field (Kling v3) keeps its fixed output.
+ * such field keeps its fixed output.
  *
  * Empty when no tier was asked for, which leaves the schema default in place.
  */
@@ -76,20 +78,6 @@ function resolutionOverride(
   const picked = pickVideoResolution(options, resolution);
   return picked ? { resolution: picked } : {};
 }
-
-/**
- * Second lever against model-generated music (#1165) for the two endpoints
- * that expose `negative_prompt`; the in-prompt direction from
- * `buildMotionShotPrompt` covers every audio-capable model, and is Seedance
- * 2.5's only lever since its schema has no negative prompt.
- *
- * Kling's `negative_prompt` defaults to 'blur, distort, and low quality' when
- * absent — supplying our own replaces it, so those terms are carried over.
- */
-const NO_MUSIC_NEGATIVE_PROMPTS: Partial<Record<ImageToVideoModel, string>> = {
-  kling_v3_pro:
-    'blur, distort, and low quality, background music, musical score, soundtrack',
-};
 
 type MotionOutputFor<T extends ImageToVideoModel> = z.output<
   (typeof MOTION_INPUT_SCHEMAS)[(typeof IMAGE_TO_VIDEO_MODELS)[T]['id']]
@@ -119,6 +107,10 @@ export function buildModelInput<T extends ImageToVideoModel>(
         ).prompt
       : options.prompt;
 
+  const multiPromptFields = klingMultiPromptFields(
+    endpointId,
+    options.multiPrompt
+  );
   const result = applyMotionTransform(endpointId, {
     prompt: promptForSchema(prompt, options.multiPrompt),
     duration: options.duration,
@@ -128,23 +120,16 @@ export function buildModelInput<T extends ImageToVideoModel>(
     aspectRatio: options.aspectRatio,
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
-    ...(NO_MUSIC_NEGATIVE_PROMPTS[modelKey] && {
-      negative_prompt: NO_MUSIC_NEGATIVE_PROMPTS[modelKey],
-    }),
     // Resolved from the catalog, never inherited from the schema default: a
-    // model's routes can disagree (Kling v3 image-to-video defaults true, its
-    // O3 reference/text siblings default false), which would let the route a
-    // shot happens to take decide whether the clip has sound (#1498). Models
-    // with no `generate_audio` field strip it during apiSchema.parse.
+    // model's routes can disagree (Kling O3's reference/text siblings default
+    // false), which would let the route a shot happens to take decide whether
+    // the clip has sound (#1498). Models with no `generate_audio` field
+    // (Kling 4.0 image-to-video) strip it during apiSchema.parse.
     generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),
-    ...(options.multiPrompt &&
-      options.multiPrompt.length > 0 && {
-        multi_prompt: options.multiPrompt,
-        shot_type: 'customize',
-      }),
+    ...multiPromptFields,
   });
 
-  return applyKlingMultiPrompt(result, options.multiPrompt);
+  return applyKlingMultiPrompt(result, multiPromptFields);
 }
 
 /**
@@ -168,23 +153,48 @@ function promptForSchema(
 }
 
 /**
+ * The `multi_prompt[]` fields in this endpoint's own shape. Kling O3
+ * (reference / text-to-video) takes string durations and needs
+ * `shot_type: customize`; Kling 4.0 image-to-video takes integer durations and
+ * has no `shot_type`. Read off the generated schema, so the packed prompt
+ * stays one shape and each route gets what it accepts.
+ */
+function klingMultiPromptFields(
+  endpointId: MotionEndpointId,
+  multiPrompt: GenerateMotionOptions['multiPrompt']
+): Record<string, unknown> {
+  if (!multiPrompt?.length) return {};
+  const schema: { properties?: Record<string, unknown> } =
+    MOTION_JSON_SCHEMAS[endpointId];
+  if (schema.properties && 'shot_type' in schema.properties) {
+    return { multi_prompt: multiPrompt, shot_type: 'customize' };
+  }
+  // The union in the generated schema lets an over-long element through as
+  // `unknown`, so the per-shot cap is asserted here, where the rescue that
+  // shortens a prompt can catch it (#1754).
+  const elementLimit = zKlingV4Shot.shape.prompt.maxLength ?? undefined;
+  return {
+    multi_prompt: multiPrompt.map((element) => {
+      assertPromptWithinHardLimit(element.prompt, elementLimit);
+      return { prompt: element.prompt, duration: Number(element.duration) };
+    }),
+  };
+}
+
+/**
  * Kling rejects `prompt` and `multi_prompt` together. The transform always
  * requires a prompt string, so a packed job still parses one and then this
  * drops it.
  */
 function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
   input: T,
-  multiPrompt: GenerateMotionOptions['multiPrompt']
+  multiPromptFields: Record<string, unknown>
 ): T {
-  if (!multiPrompt?.length) return input;
+  if (!('multi_prompt' in multiPromptFields)) return input;
   const { prompt: _prompt, ...rest } = input;
   // Kling forbids prompt + multi_prompt together; the transform still
   // requires a prompt string, so strip it after parse.
-  const packed = {
-    ...rest,
-    multi_prompt: multiPrompt,
-    shot_type: 'customize' as const,
-  };
+  const packed = { ...rest, ...multiPromptFields };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- packed Kling body is T minus prompt
   return packed as unknown as T;
 }
@@ -270,6 +280,10 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
       );
     }
     const { endpointId } = endpoint;
+    const multiPromptFields = klingMultiPromptFields(
+      endpointId,
+      options.multiPrompt
+    );
     const input = applyMotionTransform(endpointId, {
       prompt: promptForSchema(options.prompt, options.multiPrompt),
       duration: options.duration,
@@ -278,15 +292,11 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
       ...resolutionOverride(endpointId, options.resolution),
       generate_audio:
         options.generateAudio ?? videoModelSupportsAudio(modelKey),
-      ...(options.multiPrompt &&
-        options.multiPrompt.length > 0 && {
-          multi_prompt: options.multiPrompt,
-          shot_type: 'customize',
-        }),
+      ...multiPromptFields,
     });
     return {
       endpointId,
-      input: applyKlingMultiPrompt(input, options.multiPrompt),
+      input: applyKlingMultiPrompt(input, multiPromptFields),
     };
   }
 
@@ -333,6 +343,10 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
 
   const config = endpoint.referenceConfig;
   const imageField = config.imageField ?? 'image_urls';
+  const multiPromptFields = klingMultiPromptFields(
+    endpointId,
+    options.multiPrompt
+  );
 
   const input = applyMotionTransform(endpointId, {
     prompt: promptForSchema(prompt, options.multiPrompt),
@@ -354,15 +368,11 @@ export function buildMotionRequest<T extends ImageToVideoModel>(
     ...QUALITY_OVERRIDES[modelKey],
     ...resolutionOverride(endpointId, options.resolution),
     generate_audio: options.generateAudio ?? videoModelSupportsAudio(modelKey),
-    ...(options.multiPrompt &&
-      options.multiPrompt.length > 0 && {
-        multi_prompt: options.multiPrompt,
-        shot_type: 'customize',
-      }),
+    ...multiPromptFields,
   });
 
   return {
     endpointId: endpoint.endpointId,
-    input: applyKlingMultiPrompt(input, options.multiPrompt),
+    input: applyKlingMultiPrompt(input, multiPromptFields),
   };
 }

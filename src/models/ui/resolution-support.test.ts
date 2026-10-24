@@ -24,9 +24,14 @@ describe('availableResolutions', () => {
     ]);
   });
 
+  it('offers Kling 4.0 its two tiers', () => {
+    expect(availableResolutions({ videoModels: ['kling_v3_pro'] })).toEqual([
+      '720p',
+      '1080p',
+    ]);
+  });
+
   it('offers nothing for a model with a fixed output', () => {
-    // Kling v3 Pro's schema has no resolution field at all.
-    expect(availableResolutions({ videoModels: ['kling_v3_pro'] })).toEqual([]);
     // Nano Banana 2 Lite is fixed 1K.
     expect(
       availableResolutions({ imageModels: ['nano_banana_2_lite'] })

@@ -92,7 +92,7 @@ describe('buildStudioVideoInput', () => {
         model: 'kling_v3_pro',
         prompt: 'x'.repeat(2501),
       })
-    ).toThrow(/Kling 3.0 Omni accepts at most 2500/);
+    ).toThrow(/Kling 4.0 accepts at most 2500/);
   });
 
   it('sends a long prompt whole where nothing enforces a ceiling', () => {
@@ -119,7 +119,9 @@ describe('buildStudioVideoInput', () => {
     expect(at('minimax_h3_max', '4k')).toBe('1080P');
   });
 
-  it('omits resolution for a model that takes none', () => {
+  // Kling's frames run on Kling 4.0, which takes a resolution; its text
+  // (Kling 3.0 Pro) and reference (Kling O3 Pro) siblings do not.
+  it('omits resolution where the text and reference siblings take none', () => {
     expect(
       buildStudioVideoInput({
         ...base,
