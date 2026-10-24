@@ -347,13 +347,15 @@ export const IMAGE_MODELS = {
     maxPromptLength: 2000,
   },
   krea_2_turbo: {
-    id: 'fal-ai/krea-2/turbo' as const,
-    name: 'Krea 2 Turbo',
+    id: 'krea/v3/text-to-image' as const,
+    name: 'Krea 3',
     vendor: 'Krea',
     license: 'open-weight' as const,
     qualityRank: 99,
-    description: 'Ultra-fast storyboard generation',
-    // fal's schema declares 5000 (#1754).
+    description: 'Fast poster generation (Krea 3 jam speed tier)',
+    // The key predates Krea 3; it stays because stored rows name it. The
+    // speed tier is a request param (`model: 'jam'`, build-image-request.ts),
+    // not an endpoint. fal's schema declares 5000 (#1754).
     maxPromptLength: 5000,
     hidden: true,
   },

@@ -70,6 +70,7 @@ export const VIDEO_WALL_CLOCK = {
 
 export const IMAGE_WALL_CLOCK = {
   gpt_image_2: { p50: 106, p90: 127, n: 1700 },
+  // Measured on Krea 2 Turbo; Krea 3 jam + low reasoning is unmeasured.
   krea_2_turbo: { p50: 3, p90: 3, n: 1326 }, // pre-D1
   flux_2_turbo: { p50: 3, p90: 8, n: 585 }, // pre-D1
   nano_banana_2: { p50: 32, p90: 50, n: 179 },

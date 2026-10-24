@@ -263,16 +263,23 @@ function buildFalModelOptions(
       };
 
     case 'krea_2_turbo':
+      // Krea 3 is one endpoint with a `model` switch. `jam` is its speed
+      // tier and `low` reasoning its faster harness — together the closest
+      // match to the Krea 2 Turbo endpoint this key used to call. The
+      // defaults (`berry`, `medium`, `auto` ≈ 2048²) are the quality tier and
+      // would slow the poster. `negative_prompt` is honoured by `berry` only,
+      // so none is sent. The schema has no `num_images`, `acceleration` or
+      // `enable_prompt_expansion`, and `output_format` is png or jpeg only.
       return {
+        model: 'jam',
+        reasoning_level: 'low',
         image_size: resolveImageSize(params),
         enable_safety_checker: true,
         ...(params.seed !== undefined && { seed: params.seed }),
-        ...(params.numImages !== undefined && { num_images: params.numImages }),
-        ...(params.outputFormat && { output_format: params.outputFormat }),
-        ...(params.acceleration && { acceleration: params.acceleration }),
-        ...(params.enablePromptExpansion !== undefined && {
-          enable_prompt_expansion: params.enablePromptExpansion,
-        }),
+        ...(params.outputFormat &&
+          params.outputFormat !== 'webp' && {
+            output_format: params.outputFormat,
+          }),
         sync_mode: false,
       };
 

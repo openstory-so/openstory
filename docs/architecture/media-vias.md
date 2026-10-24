@@ -17,7 +17,7 @@ Seedance has neither: Ark documents no limit, only a style recommendation ("no m
 
 **Native xAI images have no ceiling either.** xAI's docs state none for `grok-imagine-image-2.0`, and fal's schema says 8000 — but `@tanstack/ai-grok`'s `validatePrompt` throws client-side at 4000 with a stale `grok-2-image-1212` message, which is what took every character and location sheet down once the truncation was gone. We patched that check out under `patches/` until upstream dropped it in `@tanstack/ai-grok` 0.19; `grok-prompt-cap-patch.test.ts` fails if a bump brings it back. The two Grok image entries carry **no `maxPromptLength` at all** — fal's 8000 is fal's number and Grok never routes through fal — so `maxPromptLength` is optional on `PromptRecommendation`: absent means the counter shows the length alone and nothing warns.
 
-**Audit of the rest (fal `prompt.maxLength`, 2026-09-23):** gpt-image 32000, nano-banana family 50000, krea 5000 are fal's numbers. FLUX.2, HiDream, Hunyuan, Qwen, Seedream (2000) and Phota (8000) have no `maxLength` in fal's schema — those are our own recommendations and only ever turn the counter amber.
+**Audit of the rest (fal `prompt.maxLength`, 2026-09-23):** gpt-image 32000, nano-banana family 50000, Krea 3 5000 are fal's numbers. FLUX.2, HiDream, Hunyuan, Qwen, Seedream (2000) and Phota (8000) have no `maxLength` in fal's schema — those are our own recommendations and only ever turn the counter amber.
 
 Only the hard limit gates clip **packing** (`packedPromptFitsLimit`, which returns true when there is none), so a packed Seedance clip is no longer refused against a limit that does not exist.
 

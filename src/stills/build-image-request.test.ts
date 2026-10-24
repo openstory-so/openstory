@@ -170,6 +170,30 @@ describe('buildImageRequest — edit endpoints carry their reference images', ()
   });
 });
 
+describe('buildImageRequest — poster model (Krea 3, #2137)', () => {
+  it('asks Krea 3 for its speed tier at the preset size', () => {
+    const { endpointId, input } = buildImageRequest({
+      model: 'krea_2_turbo',
+      prompt: 'a lighthouse at dusk',
+      imageSize: 'landscape_16_9',
+      numImages: 1,
+      outputFormat: 'webp',
+      negativePrompt: 'text',
+    });
+    expect(endpointId).toBe('krea/v3/text-to-image');
+    expect(input).toMatchObject({
+      model: 'jam',
+      reasoning_level: 'low',
+      image_size: 'landscape_16_9',
+    });
+    // Not in the Krea 3 schema (webp, num_images) or ignored by jam
+    // (negative_prompt).
+    expect(input).not.toHaveProperty('output_format');
+    expect(input).not.toHaveProperty('negative_prompt');
+    expect(input).not.toHaveProperty('num_images');
+  });
+});
+
 describe('buildGrokImageRequest (issue #1167)', () => {
   const BASE = {
     model: 'grok_imagine_image',
