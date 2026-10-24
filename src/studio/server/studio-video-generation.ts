@@ -5,6 +5,7 @@
  */
 
 import { getEnv } from '#env';
+import { generateId } from '@/platform/id';
 import { toArkFetchableUrl } from '@/models/server/byteplus-asset-ingest';
 import {
   arkUrlFor,
@@ -23,6 +24,7 @@ import {
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
 import { ARK_AUTO_DURATION } from '@/motion/seedance-edit';
+import { billedFields } from '@/billing/billed-quantity';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
@@ -119,6 +121,12 @@ export type StudioVideoJobSubmission = {
   endpointId: string;
   via: MediaVia;
   usedOwnKey: boolean;
+  /**
+   * AG-UI thread for this submission. Polls pass it back so a later
+   * middleware finishes the same run. Missing on jobs submitted before
+   * the field.
+   */
+  threadId: string;
   /** Set when the clip went out as an Ark draft (#1756). */
   draftTaskId?: string;
 };
@@ -257,7 +265,8 @@ async function buildStudioImageModeInput(
 async function submitFalStudioVideoJob(
   options: StudioVideoJobOptions,
   modelKey: ImageToVideoModel,
-  mode: StudioVideoMode
+  mode: StudioVideoMode,
+  threadId: string
 ): Promise<StudioVideoJobSubmission> {
   // No fal fallback (#1925): an edit is an Ark task. Seedance 2.5 is only
   // offered where Ark is claimed, so this is a BYOK-fal team or a bug.
@@ -279,6 +288,7 @@ async function submitFalStudioVideoJob(
       prompt: built.prompt,
       modelOptions: built.modelOptions,
       timeout: FAL_REQUEST_TIMEOUT_MS,
+      threadId,
       debug: false,
     });
     return {
@@ -287,6 +297,7 @@ async function submitFalStudioVideoJob(
       endpointId,
       via: 'fal',
       usedOwnKey: key.source === 'team',
+      threadId,
     };
   }
   const built = buildStudioVideoInput({
@@ -304,6 +315,7 @@ async function submitFalStudioVideoJob(
     prompt: built.prompt,
     modelOptions: built.modelOptions,
     timeout: FAL_REQUEST_TIMEOUT_MS,
+    threadId,
     debug: false,
   });
   return {
@@ -312,6 +324,7 @@ async function submitFalStudioVideoJob(
     endpointId,
     via: 'fal',
     usedOwnKey: key.source === 'team',
+    threadId,
   };
 }
 
@@ -463,6 +476,7 @@ export async function submitStudioVideoJob(
   options: SubmitStudioVideoOptions
 ): Promise<StudioVideoJobSubmission> {
   const modelKey = options.model;
+  const threadId = generateId();
   const mode = options.mode ?? 'text';
   // The tier resolves to whatever token the model advertises (#1449). Only the
   // xAI via spells the size `<ratio>_<resolution>` — the fal via sends a bare
@@ -563,6 +577,7 @@ export async function submitStudioVideoJob(
           duration: built.duration,
           ...(grokSize && { size: grokSize }),
           timeout: FAL_REQUEST_TIMEOUT_MS,
+          threadId,
           debug: false,
         });
         return {
@@ -571,6 +586,7 @@ export async function submitStudioVideoJob(
           endpointId: NATIVE_GROK_VIDEO_MODEL,
           via: 'xai',
           usedOwnKey: xaiKey.source === 'team',
+          threadId,
         };
       }
       const built = buildStudioVideoInput({
@@ -587,6 +603,7 @@ export async function submitStudioVideoJob(
         duration: built.duration,
         ...(grokSize && { size: grokSize }),
         timeout: FAL_REQUEST_TIMEOUT_MS,
+        threadId,
         debug: false,
       });
       return {
@@ -595,6 +612,7 @@ export async function submitStudioVideoJob(
         endpointId: NATIVE_GROK_VIDEO_MODEL,
         via: 'xai',
         usedOwnKey: xaiKey.source === 'team',
+        threadId,
       };
     }
     case 'google': {
@@ -635,6 +653,7 @@ export async function submitStudioVideoJob(
             geminiSize
           ),
           timeout: FAL_REQUEST_TIMEOUT_MS,
+          threadId,
           debug: false,
         });
         return {
@@ -643,6 +662,7 @@ export async function submitStudioVideoJob(
           endpointId: NATIVE_GEMINI_VIDEO_MODEL,
           via: 'google',
           usedOwnKey: googleKey.source === 'team',
+          threadId,
         };
       }
       const built = buildStudioVideoInput({
@@ -661,6 +681,7 @@ export async function submitStudioVideoJob(
           geminiSize
         ),
         timeout: FAL_REQUEST_TIMEOUT_MS,
+        threadId,
         debug: false,
       });
       return {
@@ -669,6 +690,7 @@ export async function submitStudioVideoJob(
         endpointId: NATIVE_GEMINI_VIDEO_MODEL,
         via: 'google',
         usedOwnKey: googleKey.source === 'team',
+        threadId,
       };
     }
     case 'byteplus': {
@@ -693,6 +715,7 @@ export async function submitStudioVideoJob(
           endpointId: modelId,
           via: 'byteplus',
           usedOwnKey: false,
+          threadId,
         };
       }
       const promptText =
@@ -738,6 +761,7 @@ export async function submitStudioVideoJob(
               }),
             },
             timeout: FAL_REQUEST_TIMEOUT_MS,
+            threadId,
             debug: false,
           })
         );
@@ -747,6 +771,7 @@ export async function submitStudioVideoJob(
           endpointId: modelId,
           via: 'byteplus',
           usedOwnKey: false,
+          threadId,
           ...(draft && { draftTaskId: job.jobId }),
         };
       } catch (error) {
@@ -759,16 +784,20 @@ export async function submitStudioVideoJob(
       }
     }
     case 'fal': {
-      return submitFalStudioVideoJob(options, modelKey, mode);
+      return submitFalStudioVideoJob(options, modelKey, mode, threadId);
     }
   }
 }
 
 export async function pollStudioVideoJob(
-  job: Pick<StudioVideoJobSubmission, 'jobId' | 'via' | 'endpointId'>,
+  job: Pick<
+    StudioVideoJobSubmission,
+    'jobId' | 'via' | 'endpointId' | 'threadId'
+  >,
   credentials?: CredentialScopedDb
 ) {
   const via = assertMediaVia(job.via);
+  const thread = job.threadId ? { threadId: job.threadId } : {};
   switch (via) {
     case 'xai': {
       const key = await resolveOptionalXaiKey(credentials);
@@ -780,6 +809,7 @@ export async function pollStudioVideoJob(
       return getVideoJobStatus({
         adapter: createNativeVideoAdapter(key.key),
         jobId: job.jobId,
+        ...thread,
       });
     }
     case 'fal': {
@@ -793,6 +823,7 @@ export async function pollStudioVideoJob(
           ),
         }),
         jobId: job.jobId,
+        ...thread,
       });
     }
     case 'google': {
@@ -805,6 +836,7 @@ export async function pollStudioVideoJob(
       const result = await getVideoJobStatus({
         adapter: createNativeGeminiVideoAdapter(key.key),
         jobId: job.jobId,
+        ...thread,
       });
       if (
         result.status === 'completed' &&
@@ -841,6 +873,7 @@ export async function pollStudioVideoJob(
         getVideoJobStatus({
           adapter: createBytePlusVideo(job.endpointId, apiKey, config),
           jobId: job.jobId,
+          ...thread,
         })
       );
     }
@@ -851,6 +884,7 @@ export async function studioVideoCostFromUsage(
   job: Pick<StudioVideoJobSubmission, 'via' | 'endpointId' | 'modelKey'>,
   usage: TokenUsage | undefined
 ) {
+  const billed = billedFields(usage);
   switch (job.via) {
     case 'xai': {
       const cost = grokVideoCost(usage?.cost);
@@ -861,9 +895,18 @@ export async function studioVideoCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'studio-video-cost-from-usage-xai',
+          modelId: job.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GROK_VIDEO_MODEL,
-        unitsBilled: usage?.unitsBilled,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -877,9 +920,18 @@ export async function studioVideoCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'studio-video-cost-from-usage-google',
+          modelId: job.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-        unitsBilled: usage?.unitsBilled,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -887,8 +939,14 @@ export async function studioVideoCostFromUsage(
     case 'fal': {
       return {
         endpointId: job.endpointId,
-        unitsBilled: usage?.unitsBilled,
-        cost: await falCostFromUnits(job.endpointId, usage?.unitsBilled),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: await falCostFromUnits(
+          job.endpointId,
+          billed.unitsBilled,
+          undefined,
+          { missingUnitsReason: billed.missingUnitsReason }
+        ),
         recordFalUsage: true,
       };
     }
@@ -897,6 +955,7 @@ export async function studioVideoCostFromUsage(
       return {
         endpointId: job.endpointId,
         unitsBilled,
+        billedUnit: undefined,
         cost: await falCostFromUnits(job.endpointId, unitsBilled),
         recordFalUsage: false,
       };

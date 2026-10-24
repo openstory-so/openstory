@@ -7,6 +7,7 @@ import {
   loadBytePlusImage,
 } from '@/models/server/byteplus-config';
 import { isContentRejectionError } from '@/models/content-rejection';
+import { billedFields } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { FAL_GENERATION_TIMEOUT_MS } from '@/models/server/fal-deadline-fetch';
 import { extractFalErrorMessage } from '@/models/fal-error';
@@ -26,6 +27,7 @@ import {
 } from '@/models/server/quota-retry';
 import { isNativeBytePlusImageModel } from '@/models/models';
 import type { MediaVia } from '@/models/via';
+import { generateId } from '@/platform/id';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import type { Microdollars } from '@/billing/money';
 import type { ResolvedApiKey } from '@/models/server/db/api-keys';
@@ -85,6 +87,8 @@ export type ImageGenerationResult = {
      * ledger) and also spread into the transaction metadata as a billing
      * trail — see `recordFalUsageStep` (#1069). */
     unitsBilled?: number;
+    /** Unit of `unitsBilled`, from `usage.billed.unit` when the adapter sent one. */
+    billedUnit?: string;
     /** Images this one call rendered. `unitsBilled` covers all of them, so the
      * cron divides by it to get a per-image median (#1069). */
     numImages?: number;
@@ -163,6 +167,7 @@ export async function generateImageWithProvider(
       durationMs: result.processingTimeMs,
       costMicros: result.metadata.cost,
       unitsBilled: result.metadata.unitsBilled,
+      billedUnit: result.metadata.billedUnit,
       usedOwnKey: result.metadata.usedOwnKey,
       prompt: params.prompt,
       outputUrl: result.imageUrls,
@@ -219,12 +224,14 @@ async function generateImageInternal(
   via: MediaVia
 ): Promise<ImageGenerationResult> {
   const startTime = Date.now();
+  const threadId = generateId();
 
   let result: AiImageGenerationResult;
   let endpoint: string;
   let usedOwnKey: boolean;
   let params: ImageGenerationParams = rawParams;
   let unitsBilled: number | undefined;
+  let billedUnit: string | undefined;
   let cost: Microdollars | undefined;
 
   switch (via) {
@@ -256,6 +263,7 @@ async function generateImageInternal(
             geminiAdapter
           ),
           prompt,
+          threadId,
           size: gemini.size,
           numberOfImages: gemini.numImages,
           timeout: FAL_GENERATION_TIMEOUT_MS,
@@ -297,6 +305,7 @@ async function generateImageInternal(
           ? await generateImage({
               adapter: createGrokImage(nativeModel, xaiKey.key, grokAdapter),
               prompt,
+              threadId,
               size: grok.size,
               numberOfImages: grok.numImages,
               modelOptions: { quality: 'medium' },
@@ -306,6 +315,7 @@ async function generateImageInternal(
           : await generateImage({
               adapter: createGrokImage(nativeModel, xaiKey.key, grokAdapter),
               prompt,
+              threadId,
               size: grok.size,
               numberOfImages: grok.numImages,
               timeout: FAL_GENERATION_TIMEOUT_MS,
@@ -345,12 +355,17 @@ async function generateImageInternal(
       result = await generateImage({
         adapter: falImage(endpoint, { apiKey: key.key }),
         prompt,
+        threadId,
         modelOptions,
         timeout: FAL_GENERATION_TIMEOUT_MS,
         debug: false,
       });
-      unitsBilled = result.usage?.unitsBilled;
-      cost = await falCostFromUnits(endpoint, unitsBilled);
+      const billed = billedFields(result.usage);
+      unitsBilled = billed.unitsBilled;
+      billedUnit = billed.billedUnit;
+      cost = await falCostFromUnits(endpoint, unitsBilled, undefined, {
+        missingUnitsReason: billed.missingUnitsReason,
+      });
       break;
     }
     case 'byteplus': {
@@ -379,6 +394,7 @@ async function generateImageInternal(
         generateImage({
           adapter: createBytePlusImage(request.modelId, apiKey, config),
           prompt: request.prompt,
+          threadId,
           size: request.size,
           ...(request.numberOfImages !== undefined && {
             numberOfImages: request.numberOfImages,
@@ -392,8 +408,12 @@ async function generateImageInternal(
         })
       );
       usedOwnKey = false;
-      unitsBilled = result.usage?.unitsBilled;
-      cost = await falCostFromUnits(endpoint, unitsBilled);
+      const billed = billedFields(result.usage);
+      unitsBilled = billed.unitsBilled;
+      billedUnit = billed.billedUnit;
+      cost = await falCostFromUnits(endpoint, unitsBilled, undefined, {
+        missingUnitsReason: billed.missingUnitsReason,
+      });
       break;
     }
   }
@@ -450,6 +470,7 @@ async function generateImageInternal(
       model: params.model,
       endpointId: endpoint,
       unitsBilled,
+      billedUnit,
       // What the call actually returned, not what it was asked for: the median
       // divides `unitsBilled` by this, so a partial return (3 of 4 images)
       // recorded as 4 biases the per-image figure LOW — the direction that

@@ -376,6 +376,7 @@ describe('recordMediaGenerationSpan', () => {
     durationMs: 42_000,
     costMicros: micros(350_000),
     unitsBilled: 5,
+    billedUnit: 'units',
     prompt: 'a cat on a skateboard',
     outputUrl: 'https://cdn.test/video.mp4',
     observationName: 'motion',
@@ -424,7 +425,8 @@ describe('recordMediaGenerationSpan', () => {
       'gen_ai.usage.cost': 0.35,
       $ai_total_cost_usd: 0.35,
       $ai_output_cost_usd: 0.35,
-      'tanstack.ai.usage.units_billed': 5,
+      'tanstack.ai.usage.billed_quantity': 5,
+      'tanstack.ai.usage.billed_unit': 'units',
       'gen_ai.input.messages': JSON.stringify([
         {
           role: 'user',

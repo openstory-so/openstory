@@ -1219,7 +1219,8 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
                   job.modelKey,
                   scopedDb.credentials,
                   job.via,
-                  job.endpointId
+                  job.endpointId,
+                  job.threadId
                 );
               } catch (error) {
                 if (isContentRejectionError(error)) {
@@ -1504,6 +1505,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         durationMs: Date.now() - job.submittedAt,
         costMicros: actualCost,
         unitsBilled: billing.unitsBilled,
+        billedUnit: billing.billedUnit,
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,

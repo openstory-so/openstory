@@ -769,12 +769,16 @@ describe('pollStudioVideoJob', () => {
       jobId: 'job-1',
       via: 'fal',
       endpointId: 'fal-ai/kling-video/v3/pro/text-to-video',
+      threadId: 'thread-1',
     });
 
     expect(result.status).toBe('completed');
     expect(mockFalVideo).toHaveBeenCalledWith(
       'fal-ai/kling-video/v3/pro/text-to-video',
       expect.anything()
+    );
+    expect(mockGetVideoJobStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ jobId: 'job-1', threadId: 'thread-1' })
     );
   });
 
@@ -790,6 +794,7 @@ describe('pollStudioVideoJob', () => {
       jobId: 'ark-job',
       via: 'byteplus',
       endpointId: 'dreamina-seedance-2-5-260628',
+      threadId: 'thread-ark',
     });
 
     expect(result.status).toBe('completed');
@@ -809,6 +814,7 @@ describe('pollStudioVideoJob', () => {
       jobId: 'google-job',
       via: 'google',
       endpointId: 'gemini-omni-1.1-flash',
+      threadId: 'thread-google',
     });
 
     expect(result.status).toBe('completed');

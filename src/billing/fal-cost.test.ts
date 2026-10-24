@@ -1,5 +1,6 @@
 import type { RateCard } from '@modelschemas/rate-card/evaluator';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import * as billingObservability from '@/billing/billing-observability';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import {
   estimateFalCost,
@@ -127,6 +128,23 @@ describe('falCostFromUnits', () => {
     expect(
       await falCostFromUnits('fal-ai/nano-banana-2', undefined, PRICING)
     ).toBe(ZERO_MICROS);
+  });
+
+  test('a malformed billed shape names why the charge is zero', async () => {
+    const report = vi.spyOn(billingObservability, 'reportMissingBillingCost');
+    expect(
+      await falCostFromUnits('fal-ai/nano-banana-2', undefined, PRICING, {
+        missingUnitsReason: 'usage.billed did not match { quantity, unit }',
+      })
+    ).toBe(ZERO_MICROS);
+    expect(report).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'fal-cost',
+        modelId: 'fal-ai/nano-banana-2',
+        description: 'usage.billed did not match { quantity, unit }',
+      })
+    );
+    report.mockRestore();
   });
 
   test('unknown endpoint charges nothing', async () => {

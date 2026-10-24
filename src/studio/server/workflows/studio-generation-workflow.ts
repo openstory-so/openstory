@@ -569,6 +569,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
         activity: 'video',
         costMicros: videoCost,
         unitsBilled: billing.unitsBilled,
+        billedUnit: billing.billedUnit,
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,

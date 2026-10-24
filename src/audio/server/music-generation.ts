@@ -1,6 +1,7 @@
 import { base64ToBytes } from '@/platform/base64';
 import { getEnv } from '#env';
 import { uploadFile } from '#storage';
+import { billedFields } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import {
   ELEVENLABS_MUSIC_ENDPOINT,
@@ -83,6 +84,8 @@ export type MusicResult = {
      * ledger) and also spread into the transaction metadata as a billing
      * trail — see `recordFalUsageStep` (#1069). */
     unitsBilled?: number;
+    /** Unit of `unitsBilled`. ElevenLabs minutes are ours; fal's come from `usage.billed`. */
+    billedUnit?: string;
     duration: number;
     cost: Microdollars;
     generatedAt: string;
@@ -180,6 +183,7 @@ export async function generateMusic(
       durationMs: Date.now() - startedAt,
       costMicros: result.metadata.cost,
       unitsBilled: result.metadata.unitsBilled,
+      billedUnit: result.metadata.billedUnit,
       usedOwnKey: result.metadata.usedOwnKey,
       prompt: options.prompt,
       outputUrl: result.audioUrl,
@@ -250,6 +254,7 @@ async function callElevenLabsAudio(
   const result = await generateAudio({
     adapter,
     prompt: options.prompt,
+    threadId: generateId(),
     duration: billedDuration,
     modelOptions: {
       forceInstrumental: options.instrumental ?? true,
@@ -277,6 +282,8 @@ async function callElevenLabsAudio(
       vendor: modelConfig.vendor,
       endpointId: ELEVENLABS_MUSIC_ENDPOINT,
       unitsBilled,
+      // Count is whole minutes of the requested duration, not an adapter bill.
+      billedUnit: 'minutes',
       duration: billedDuration,
       cost: estimateMusicCost(billedDuration),
       generatedAt: new Date().toISOString(),
@@ -345,6 +352,7 @@ async function callFalAudio(
   const result = await generateAudio({
     adapter,
     prompt: shape.prompt,
+    threadId: generateId(),
     duration: shape.duration,
     modelOptions: shape.modelOptions,
     timeout: FAL_GENERATION_TIMEOUT_MS,
@@ -357,9 +365,12 @@ async function callFalAudio(
   }
 
   // Exact cost from fal's reported billed units.
+  const billed = billedFields(result.usage);
   const cost = await falCostFromUnits(
     modelConfig.id,
-    result.usage?.unitsBilled
+    billed.unitsBilled,
+    undefined,
+    { missingUnitsReason: billed.missingUnitsReason }
   );
 
   return {
@@ -370,7 +381,8 @@ async function callFalAudio(
       model: modelConfig.id,
       vendor: modelConfig.vendor,
       endpointId: modelConfig.id,
-      unitsBilled: result.usage?.unitsBilled,
+      unitsBilled: billed.unitsBilled,
+      billedUnit: billed.billedUnit,
       duration: billedDuration,
       cost,
       generatedAt: new Date().toISOString(),

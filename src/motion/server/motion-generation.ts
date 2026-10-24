@@ -19,6 +19,7 @@ import {
 } from '@/models/server/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
+import { billedFields } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
 import {
@@ -51,6 +52,7 @@ import {
 import { submitBytePlusFinalRender } from '@/models/server/byteplus-final-render';
 import { DRAFT_FINAL_RESOLUTION, DRAFT_RESOLUTION } from '@/motion/draft-mode';
 import { assertMediaVia, type MediaVia } from '@/models/via';
+import { generateId } from '@/platform/id';
 import { workersSafeFetch } from '@/platform/server/ai/workers-safe-fetch';
 import { reportMissingBillingCost } from '@/billing/billing-observability';
 import { getLogger } from '@/platform/logger';
@@ -162,6 +164,12 @@ export type MotionJobSubmission = {
    */
   via: MediaVia;
   usedOwnKey: boolean;
+  /**
+   * AG-UI thread for this submission. `getVideoJobStatus` finishes the same
+   * run only when the poll passes this id. Missing on runs submitted before
+   * the field: a poll with no middleware may omit it.
+   */
+  threadId: string;
   submittedAt: number;
   /**
    * Set when the job went out as an Ark draft (#1756): the id "Render at
@@ -303,7 +311,8 @@ async function resolveOptionalFalKey(
 
 async function submitFalMotionJob(
   options: GenerateMotionOptions,
-  modelKey: ImageToVideoModel
+  modelKey: ImageToVideoModel,
+  threadId: string
 ): Promise<{ jobId: string; usedOwnKey: boolean; endpointId: string }> {
   // A clip or voice line this model cannot use — it takes no reference of
   // that kind, or not one that long — is a refusal, not a degradation
@@ -378,6 +387,7 @@ async function submitFalMotionJob(
     adapter: falVideo(endpoint.endpointId, { apiKey: key.key }),
     prompt: optimisedPrompt,
     modelOptions,
+    threadId,
     timeout: FAL_REQUEST_TIMEOUT_MS,
     debug: false,
   });
@@ -474,6 +484,9 @@ export async function submitMotionJob(
   options: SubmitMotionOptions
 ): Promise<MotionJobSubmission> {
   const modelKey = options.model || DEFAULT_VIDEO_MODEL;
+  // One id for the submit and every poll of this job. A fresh id per attempt
+  // keeps a content-flag re-roll from resuming the refused run.
+  const threadId = generateId();
 
   // Same order as Grok (#1167): native key first, fal is the fallback.
   // `resolveKey('fal')` throws with no fal key, so an xAI-only (or
@@ -633,6 +646,7 @@ export async function submitMotionJob(
       const job = await generateVideo({
         adapter: createNativeMotionAdapter(xaiKey.key),
         prompt: input.prompt,
+        threadId,
         duration: input.duration,
         ...(input.size && { size: input.size }),
         // Carries the pinned opening frame on a shot that has both a still
@@ -674,6 +688,7 @@ export async function submitMotionJob(
       const job = await generateVideo({
         adapter: createNativeGeminiMotionAdapter(googleKey.key),
         prompt: input.prompt,
+        threadId,
         modelOptions: input.modelOptions,
         timeout: FAL_REQUEST_TIMEOUT_MS,
         debug: false,
@@ -683,7 +698,7 @@ export async function submitMotionJob(
       break;
     }
     case 'fal': {
-      const fal = await submitFalMotionJob(options, modelKey);
+      const fal = await submitFalMotionJob(options, modelKey, threadId);
       jobId = fal.jobId;
       usedOwnKey = fal.usedOwnKey;
       stampedEndpointId = fal.endpointId;
@@ -748,6 +763,7 @@ export async function submitMotionJob(
           generateVideo({
             adapter: createBytePlusVideo(endpoint.endpointId, apiKey, config),
             prompt: request.prompt,
+            threadId,
             size: request.size,
             ...(request.duration !== undefined && {
               duration: request.duration,
@@ -777,6 +793,7 @@ export async function submitMotionJob(
     endpointId: stampedEndpointId,
     via: stampedVia,
     usedOwnKey,
+    threadId,
     submittedAt: Date.now(),
     ...(draft && { draftTaskId: jobId }),
   };
@@ -796,7 +813,8 @@ export async function pollMotionJob(
   modelKey: ImageToVideoModel,
   credentials?: CredentialScopedDb,
   viaStamp: string = 'fal',
-  endpointId?: string
+  endpointId?: string,
+  threadId?: string
 ) {
   const via = assertMediaVia(viaStamp);
   const modelConfig = IMAGE_TO_VIDEO_MODELS[modelKey];
@@ -813,6 +831,7 @@ export async function pollMotionJob(
       return await getVideoJobStatus({
         adapter: createNativeMotionAdapter(key.key),
         jobId,
+        ...(threadId && { threadId }),
       });
     }
     case 'google': {
@@ -825,6 +844,7 @@ export async function pollMotionJob(
       const result = await getVideoJobStatus({
         adapter: createNativeGeminiMotionAdapter(key.key),
         jobId,
+        ...(threadId && { threadId }),
       });
       if (
         result.status === 'completed' &&
@@ -859,6 +879,7 @@ export async function pollMotionJob(
           ),
         }),
         jobId,
+        ...(threadId && { threadId }),
       });
     }
     case 'byteplus': {
@@ -881,6 +902,7 @@ export async function pollMotionJob(
         getVideoJobStatus({
           adapter: createBytePlusVideo(modelId, apiKey, config),
           jobId,
+          ...(threadId && { threadId }),
         })
       );
     }
@@ -902,6 +924,7 @@ export async function motionCostFromUsage(
     referenceOnly?: boolean;
   }
 ) {
+  const billed = billedFields(usage);
   switch (via) {
     case 'xai': {
       const cost = grokVideoCost(usage?.cost);
@@ -912,9 +935,18 @@ export async function motionCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'motion-cost-from-usage-xai',
+          modelId: ctx.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GROK_VIDEO_MODEL,
-        unitsBilled: usage?.unitsBilled,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -930,9 +962,18 @@ export async function motionCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'motion-cost-from-usage-google',
+          modelId: ctx.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-        unitsBilled: usage?.unitsBilled,
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -946,8 +987,16 @@ export async function motionCostFromUsage(
       ).endpointId;
       return {
         endpointId,
-        unitsBilled: usage?.unitsBilled,
-        cost: await falCostFromUnits(endpointId, usage?.unitsBilled),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: await falCostFromUnits(
+          endpointId,
+          billed.unitsBilled,
+          undefined,
+          {
+            missingUnitsReason: billed.missingUnitsReason,
+          }
+        ),
         recordFalUsage: true,
       };
     }
@@ -962,6 +1011,7 @@ export async function motionCostFromUsage(
       return {
         endpointId,
         unitsBilled,
+        billedUnit: undefined,
         cost: await falCostFromUnits(endpointId, unitsBilled),
         recordFalUsage: false,
       };
