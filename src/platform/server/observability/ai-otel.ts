@@ -508,6 +508,8 @@ export type MediaGenerationRecord = AIObservabilityMeta & {
   costMicros?: Microdollars;
   /** Provider-reported billable units for the completed job. */
   unitsBilled?: number;
+  /** Unit of `unitsBilled` (`units`, `seconds`, `minutes`, …). */
+  billedUnit?: string;
   /** Provider-reported prompt tokens, when the via bills in tokens. */
   inputTokens?: number;
   /** Provider-reported completion tokens, when the via bills in tokens. */
@@ -609,10 +611,11 @@ function emitMediaGenerationSpan(record: MediaGenerationRecord): void {
           'gen_ai.usage.output_tokens': record.outputTokens,
         }),
         ...(record.unitsBilled !== undefined && {
-          // 1.0 renamed the library attribute. The count is our ledger's
-          // `unitsBilled`; the unit stays off the span because this record
-          // does not carry one.
+          // Same names `otelMiddleware` writes from `usage.billed`.
           'tanstack.ai.usage.billed_quantity': record.unitsBilled,
+        }),
+        ...(record.billedUnit !== undefined && {
+          'tanstack.ai.usage.billed_unit': record.billedUnit,
         }),
         ...(record.usedOwnKey !== undefined && {
           'openstory.used_own_key': record.usedOwnKey,

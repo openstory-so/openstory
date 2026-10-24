@@ -102,6 +102,7 @@ describe('generateMusic native ElevenLabs', () => {
     expect(result.storagePath).toMatch(/^team_1\/seq_1\/music\/.+\.mp3$/);
     expect(result.metadata.endpointId).toBe(ELEVENLABS_MUSIC_ENDPOINT);
     expect(result.metadata.unitsBilled).toBe(2);
+    expect(result.metadata.billedUnit).toBe('minutes');
     expect(result.metadata.cost).toBe(300_000);
     expect(result.metadata.usedOwnKey).toBe(false);
   });

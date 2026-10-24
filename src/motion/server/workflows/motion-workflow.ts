@@ -1505,6 +1505,7 @@ export class MotionWorkflow extends OpenStoryWorkflowEntrypoint<MotionWorkflowIn
         durationMs: Date.now() - job.submittedAt,
         costMicros: actualCost,
         unitsBilled: billing.unitsBilled,
+        billedUnit: billing.billedUnit,
         inputTokens: billedUsage?.promptTokens,
         outputTokens: billedUsage?.completionTokens,
         usedOwnKey: job.usedOwnKey,

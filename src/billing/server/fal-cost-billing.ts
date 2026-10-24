@@ -28,7 +28,8 @@ const logger = getLogger(['openstory', 'ai', 'fal-cost']);
 export async function falCostFromUnits(
   endpointId: string,
   unitsBilled: number | undefined,
-  pricingMap?: Record<string, EffectiveFalPricing>
+  pricingMap?: Record<string, EffectiveFalPricing>,
+  options?: { missingUnitsReason?: string }
 ): Promise<Microdollars> {
   let pricing: EffectiveFalPricing | undefined;
   try {
@@ -44,7 +45,11 @@ export async function falCostFromUnits(
     return reportZeroCharge(endpointId, 'no pricing for endpoint', unitsBilled);
   }
   if (unitsBilled == null || !Number.isFinite(unitsBilled)) {
-    return reportZeroCharge(endpointId, 'no unitsBilled reported', unitsBilled);
+    return reportZeroCharge(
+      endpointId,
+      options?.missingUnitsReason ?? 'no unitsBilled reported',
+      unitsBilled
+    );
   }
   return multiplyMicros(pricing.unitPrice, unitsBilled);
 }

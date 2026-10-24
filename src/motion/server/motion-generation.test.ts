@@ -1355,6 +1355,8 @@ describe('Motion Service', () => {
           { modelKey: 'seedance_v2_5', hasReferenceImages, referenceOnly }
         );
         expect(billing.endpointId).toBe(endpointId);
+        expect(billing.unitsBilled).toBe(5);
+        expect(billing.billedUnit).toBe('units');
         expect(billing.recordFalUsage).toBe(true);
       }
     );

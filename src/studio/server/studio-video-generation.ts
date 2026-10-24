@@ -24,7 +24,7 @@ import {
   isBytePlusPortraitFilterError,
 } from '@/models/server/byteplus-portrait-filter';
 import { ARK_AUTO_DURATION } from '@/motion/seedance-edit';
-import { billedQuantity } from '@/billing/billed-quantity';
+import { billedFields } from '@/billing/billed-quantity';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
@@ -884,6 +884,7 @@ export async function studioVideoCostFromUsage(
   job: Pick<StudioVideoJobSubmission, 'via' | 'endpointId' | 'modelKey'>,
   usage: TokenUsage | undefined
 ) {
+  const billed = billedFields(usage);
   switch (job.via) {
     case 'xai': {
       const cost = grokVideoCost(usage?.cost);
@@ -894,9 +895,18 @@ export async function studioVideoCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'studio-video-cost-from-usage-xai',
+          modelId: job.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GROK_VIDEO_MODEL,
-        unitsBilled: billedQuantity(usage),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -910,9 +920,18 @@ export async function studioVideoCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'studio-video-cost-from-usage-google',
+          modelId: job.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-        unitsBilled: billedQuantity(usage),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -920,8 +939,14 @@ export async function studioVideoCostFromUsage(
     case 'fal': {
       return {
         endpointId: job.endpointId,
-        unitsBilled: billedQuantity(usage),
-        cost: await falCostFromUnits(job.endpointId, billedQuantity(usage)),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: await falCostFromUnits(
+          job.endpointId,
+          billed.unitsBilled,
+          undefined,
+          { missingUnitsReason: billed.missingUnitsReason }
+        ),
         recordFalUsage: true,
       };
     }
@@ -930,6 +955,7 @@ export async function studioVideoCostFromUsage(
       return {
         endpointId: job.endpointId,
         unitsBilled,
+        billedUnit: undefined,
         cost: await falCostFromUnits(job.endpointId, unitsBilled),
         recordFalUsage: false,
       };

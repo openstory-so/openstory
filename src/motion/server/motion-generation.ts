@@ -19,7 +19,7 @@ import {
 } from '@/models/server/byteplus-portrait-filter';
 import { bytePlusVideoUnitsBilled } from '@/billing/byteplus-pricing';
 import { withBytePlusQuotaRetry } from '@/models/server/quota-retry';
-import { billedQuantity } from '@/billing/billed-quantity';
+import { billedFields } from '@/billing/billed-quantity';
 import { falCostFromUnits } from '@/billing/server/fal-cost-billing';
 import { estimateFalCost, type EffectiveFalPricing } from '@/billing/fal-cost';
 import {
@@ -924,6 +924,7 @@ export async function motionCostFromUsage(
     referenceOnly?: boolean;
   }
 ) {
+  const billed = billedFields(usage);
   switch (via) {
     case 'xai': {
       const cost = grokVideoCost(usage?.cost);
@@ -934,9 +935,18 @@ export async function motionCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'motion-cost-from-usage-xai',
+          modelId: ctx.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GROK_VIDEO_MODEL,
-        unitsBilled: billedQuantity(usage),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -952,9 +962,18 @@ export async function motionCostFromUsage(
           metadata: { usage },
         });
       }
+      if (billed.missingUnitsReason) {
+        reportMissingBillingCost({
+          source: 'motion-cost-from-usage-google',
+          modelId: ctx.modelKey,
+          description: billed.missingUnitsReason,
+          metadata: { usage },
+        });
+      }
       return {
         endpointId: NATIVE_GEMINI_VIDEO_MODEL,
-        unitsBilled: billedQuantity(usage),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
         cost: cost ?? ZERO_MICROS,
         recordFalUsage: false,
       };
@@ -968,8 +987,16 @@ export async function motionCostFromUsage(
       ).endpointId;
       return {
         endpointId,
-        unitsBilled: billedQuantity(usage),
-        cost: await falCostFromUnits(endpointId, billedQuantity(usage)),
+        unitsBilled: billed.unitsBilled,
+        billedUnit: billed.billedUnit,
+        cost: await falCostFromUnits(
+          endpointId,
+          billed.unitsBilled,
+          undefined,
+          {
+            missingUnitsReason: billed.missingUnitsReason,
+          }
+        ),
         recordFalUsage: true,
       };
     }
@@ -984,6 +1011,7 @@ export async function motionCostFromUsage(
       return {
         endpointId,
         unitsBilled,
+        billedUnit: undefined,
         cost: await falCostFromUnits(endpointId, unitsBilled),
         recordFalUsage: false,
       };
