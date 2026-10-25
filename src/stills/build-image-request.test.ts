@@ -113,6 +113,20 @@ describe('buildImageRequest — edit endpoints carry their reference images', ()
     expect(input.quality).toBe('medium');
   });
 
+  it('sends minimal thinking to Nano Banana 2.1 on both vias, and only to it (#2063)', () => {
+    type M = 'nano_banana_2_1' | 'nano_banana_2' | 'nano_banana_pro';
+    const fal = (model: M) =>
+      buildImageRequest({ prompt: 'p', model }).input.thinking_level;
+    expect(fal('nano_banana_2_1')).toBe('minimal');
+    expect(fal('nano_banana_2')).toBeUndefined();
+    expect(fal('nano_banana_pro')).toBeUndefined();
+    const native = (model: M) =>
+      buildGeminiImageRequest({ prompt: 'p', model }).minimalThinking;
+    expect(native('nano_banana_2_1')).toBe(true);
+    expect(native('nano_banana_2')).toBe(false);
+    expect(native('nano_banana_pro')).toBe(false);
+  });
+
   it('leaves references untouched for a model with no known cap', () => {
     const many = Array.from(
       { length: 7 },

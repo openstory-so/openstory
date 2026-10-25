@@ -46,6 +46,9 @@ describe('nativeGeminiTextModel', () => {
 
 describe('nativeGeminiImageModel', () => {
   it('maps Nano Banana registry keys onto the GA Gemini image ids', () => {
+    expect(nativeGeminiImageModel('nano_banana_2_1')).toBe(
+      'gemini-nano-banana-2.1'
+    );
     expect(nativeGeminiImageModel('nano_banana_2')).toBe(
       'gemini-3.1-flash-image'
     );
@@ -74,8 +77,9 @@ describe('geminiImageCost', () => {
     expect(geminiImageCost(1, 'gemini-3.1-flash-lite-image', '1K')).toBe(
       33_600
     );
+    expect(geminiImageCost(1, 'gemini-nano-banana-2.1', '1K')).toBe(33_600);
+    expect(geminiImageCost(1, 'gemini-nano-banana-2.1', '2K')).toBe(50_400);
     expect(geminiImageCost(1, 'gemini-3.1-flash-image', '1K')).toBe(67_000);
-    expect(geminiImageCost(1, 'gemini-3.1-flash-image', '2K')).toBe(101_000);
     expect(geminiImageCost(1, 'gemini-3-pro-image', '1K')).toBe(134_000);
     expect(geminiImageCost(1, 'gemini-3-pro-image', '4K')).toBe(240_000);
     expect(geminiImageCost(4, 'gemini-3.1-flash-lite-image', '1K')).toBe(

@@ -53,7 +53,7 @@ import {
   type ImageGenerationResult as AiImageGenerationResult,
 } from '@tanstack/ai';
 import { falImage } from '@tanstack/ai-fal';
-import { createGeminiImage } from '@tanstack/ai-gemini';
+import { ThinkingLevel, createGeminiImage } from '@tanstack/ai-gemini';
 import { createGrokImage } from '@tanstack/ai-grok';
 
 export type { ImageGenerationParams } from '@/stills/build-image-request';
@@ -266,6 +266,11 @@ async function generateImageInternal(
           threadId,
           size: gemini.size,
           numberOfImages: gemini.numImages,
+          ...(gemini.minimalThinking && {
+            modelOptions: {
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+            },
+          }),
           timeout: FAL_GENERATION_TIMEOUT_MS,
           stream: false,
           debug: false,

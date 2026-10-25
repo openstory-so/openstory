@@ -40,7 +40,7 @@ export const TURBO_ANALYSIS_MODELS = [
 /** Fast image models that still take references. Lite is the turbo default. */
 export const TURBO_IMAGE_MODELS = [
   'nano_banana_2_lite',
-  'nano_banana_2',
+  'nano_banana_2_1',
   'flux_2_flash',
   'flux_2_turbo',
 ] as const satisfies readonly TextToImageModel[];

@@ -90,6 +90,7 @@ function imageSizeToAspectRatio(imageSize: ImageSize): AspectRatioValue {
 const IMAGE_RESOLUTION: Partial<
   Record<TextToImageModel, { tokens: string[] } | { pixels: PixelBounds }>
 > = {
+  nano_banana_2_1: { tokens: ['1K', '2K', '4K'] },
   nano_banana_2: { tokens: ['0.5K', '1K', '2K', '4K'] },
   nano_banana_pro: { tokens: ['1K', '2K', '4K'] },
   phota: { tokens: ['1K', '4K'] },
@@ -112,8 +113,15 @@ const IMAGE_RESOLUTION: Partial<
   flux_2_turbo: { pixels: { minEdge: 512, maxEdge: 2048 } },
 };
 
-/** The tokens the Gemini via admits — narrower than the fal enum (no 0.5K). */
+/** The tokens the Gemini via admits — narrower than v2's fal enum (no 0.5K). */
 const GEMINI_IMAGE_RESOLUTIONS = ['1K', '2K', '4K'] as const;
+
+/**
+ * Nano Banana 2.1 thinks at `medium` unless told otherwise, which costs
+ * latency and thinking tokens (#2063). fal's enum is minimal | medium | high
+ * (no `low`), so both vias send minimal to stay identical.
+ */
+const NANO_BANANA_2_1_THINKING = 'minimal';
 
 /**
  * The model's own spelling of the requested tier, or undefined when it takes
@@ -310,6 +318,7 @@ function buildFalModelOptions(
       };
 
     case 'nano_banana_pro':
+    case 'nano_banana_2_1':
     case 'nano_banana_2':
     case 'nano_banana_2_lite':
       return {
@@ -322,6 +331,9 @@ function buildFalModelOptions(
           resolution:
             resolveImageResolutionToken(params.model, params.resolution) ??
             '2K',
+        }),
+        ...(params.model === 'nano_banana_2_1' && {
+          thinking_level: NANO_BANANA_2_1_THINKING,
         }),
         safety_tolerance: '6',
         ...(params.numImages !== undefined && { num_images: params.numImages }),
@@ -450,6 +462,8 @@ export type GeminiImageRequest = {
   resolution: GeminiImageResolution;
   numImages: number;
   referenceImageUrls: string[];
+  /** Nano Banana 2.1 only; see {@link NANO_BANANA_2_1_THINKING}. */
+  minimalThinking: boolean;
 };
 
 /**
@@ -492,6 +506,7 @@ export function buildGeminiImageRequest(
       params.model,
       params.referenceImageUrls ?? []
     ),
+    minimalThinking: params.model === 'nano_banana_2_1',
   };
 }
 

@@ -37,7 +37,7 @@ These models create the visual images for each scene. You can select multiple mo
 | -------------------------- | ----------------- | ------------------------ | --------------------------------------------------------- |
 | **Nano Banana 2 Lite**     | Google            | Proprietary              | Turbo default — fastest Google tier, references, fixed 1K |
 | GPT Image 2                | OpenAI            | Proprietary              | Quality default — text rendering, UI fidelity, up to 4K   |
-| Nano Banana 2              | Google            | Proprietary              | Fast generation and editing                               |
+| Nano Banana 2.1            | Google            | Proprietary              | Fast generation and editing                               |
 | Nano Banana Pro            | Google            | Proprietary              | Enhanced realism and typography                           |
 | Grok Imagine Image 2.0     | SpaceXAI          | Proprietary              | Newest Imagine image model, 1K/2K, edit up to 3 refs      |
 | Grok Imagine Image Quality | SpaceXAI          | Proprietary              | Quality Mode — higher fidelity, stronger text             |

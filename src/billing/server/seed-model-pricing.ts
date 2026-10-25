@@ -45,6 +45,10 @@ const units = (unitPriceUsd: number, typicalUnitsPerCall = 1): SeedPrice => ({
  * the sibling t2i unit/price so a reference-image still has a row.
  */
 export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
+  // Token-billed: fal reports `units` at $1 like GPT Image. ~$0.06 is a 2K
+  // image (1680 tokens × $35.294/1M) plus minimal thinking.
+  'google/nano-banana-2.1': units(1, 0.06),
+  'google/nano-banana-2.1/edit': units(1, 0.06),
   'fal-ai/nano-banana-2': img(0.08, 1.5),
   'fal-ai/nano-banana-2/edit': img(0.08, 1.5),
   'google/nano-banana-2-lite': img(

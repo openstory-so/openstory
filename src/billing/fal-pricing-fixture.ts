@@ -14,6 +14,11 @@ export const TEST_FAL_PRICING: Record<string, EffectiveFalPricing> = {
     unit: 'images',
     typicalUnitsPerCall: 1.5,
   },
+  'google/nano-banana-2.1': {
+    unitPrice: micros(1_000_000),
+    unit: 'units',
+    typicalUnitsPerCall: 0.06,
+  },
   'google/nano-banana-2-lite': {
     unitPrice: micros(40_000),
     unit: 'images',

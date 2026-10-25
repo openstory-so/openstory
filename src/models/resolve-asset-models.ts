@@ -108,7 +108,7 @@ export function resolveVideoModel(
  * ignores the input image and returns a fresh render rather than an upscale.
  * Every model has an edit endpoint except `hidream_i1`.
  */
-export const UPSCALE_FALLBACK_MODEL: TextToImageModel = 'nano_banana_2';
+export const UPSCALE_FALLBACK_MODEL: TextToImageModel = 'nano_banana_2_1';
 
 export function resolveUpscaleModel(
   sourceModel: string | null | undefined

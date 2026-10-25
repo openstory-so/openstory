@@ -73,6 +73,9 @@ export const IMAGE_WALL_CLOCK = {
   krea_2_turbo: { p50: 3, p90: 3, n: 1326 }, // pre-D1
   flux_2_turbo: { p50: 3, p90: 8, n: 585 }, // pre-D1
   nano_banana_2: { p50: 32, p90: 50, n: 179 },
+  // No production samples yet. Native Gemini, 1K, minimal thinking measured
+  // 11.1s median vs v2's 12.6s on 2026-10-25 (3 runs each), so v2 is a fair proxy.
+  nano_banana_2_1: { p50: 32, p90: 50, n: 0, proxy: 'nano_banana_2' },
   grok_imagine_image: { p50: 34, p90: 48, n: 103 },
   hunyuan_image_v3: { p50: 133, p90: 169, n: 58 },
   nano_banana_pro: { p50: 49, p90: 77, n: 48 },

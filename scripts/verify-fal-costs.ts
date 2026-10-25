@@ -182,6 +182,7 @@ function buildImageInput(
         resolution: isHighRes ? '4K' : '2K',
       };
 
+    case 'nano_banana_2_1':
     case 'nano_banana_2':
       return {
         ...base,
@@ -226,6 +227,7 @@ function getImageCostResolution(
   switch (modelKey) {
     case 'nano_banana_pro':
       return isHighRes ? '4K' : '2K';
+    case 'nano_banana_2_1':
     case 'nano_banana_2':
       return isHighRes ? '4K' : '1K';
     default:

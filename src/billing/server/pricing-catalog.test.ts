@@ -27,9 +27,9 @@ describe('buildPricingCatalog native vias', () => {
       via: 'xAI',
       price: 'from $0.08 / second',
     });
-    expect(r['Nano Banana 2']).toMatchObject({
+    expect(r['Nano Banana 2.1']).toMatchObject({
       via: 'Google',
-      price: 'from $0.07 / image',
+      price: 'from $0.03 / image',
     });
     expect(r['Gemini Omni Flash 1.1']).toMatchObject({ via: 'Google' });
     expect(r['Seedream 5.0 Pro']).toMatchObject({ via: 'BytePlus' });
