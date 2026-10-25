@@ -28,8 +28,9 @@ export const DEFAULT_GENERATION_MODE: GenerationMode = 'turbo';
 export const SELECTOR_GROUP_ORDER = ['fast', 'quality'] as const;
 export type SelectorGroup = (typeof SELECTOR_GROUP_ORDER)[number];
 
-/** Fast analysis models, recommendation order. Luna is the turbo default. */
+/** Fast analysis models, recommendation order. Sonnet is the turbo default. */
 export const TURBO_ANALYSIS_MODELS = [
+  'anthropic/claude-sonnet-5.5',
   'openai/gpt-6-luna',
   'anthropic/claude-opus-5-fast',
   'google/gemini-3.8-flash',
@@ -58,12 +59,12 @@ export const TURBO_AUDIO_MODELS = [
   'ace_step_1_5',
 ] as const satisfies readonly AudioModel[];
 
-export const TURBO_DEFAULT_ANALYSIS = 'openai/gpt-6-luna' as const;
+export const TURBO_DEFAULT_ANALYSIS = 'anthropic/claude-sonnet-5.5' as const;
 export const TURBO_DEFAULT_IMAGE = 'nano_banana_2_lite' as const;
 export const TURBO_DEFAULT_VIDEO = 'minimax_h3_max' as const;
 export const TURBO_DEFAULT_AUDIO = 'elevenlabs_music' as const;
 
-export const QUALITY_DEFAULT_ANALYSIS = 'openai/gpt-6-astra' as const;
+export const QUALITY_DEFAULT_ANALYSIS = 'google/gemini-4-argon' as const;
 export const QUALITY_DEFAULT_IMAGE = 'gpt_image_2' as const;
 export const QUALITY_DEFAULT_VIDEO = 'seedance_v2_5' as const;
 export const QUALITY_DEFAULT_AUDIO = 'elevenlabs_music' as const;

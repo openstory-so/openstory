@@ -79,16 +79,18 @@ describe('applyGenerationMode', () => {
 });
 
 describe('mode defaults', () => {
-  it('turbo defaults are Lite / H3 Max / Luna', () => {
+  it('turbo defaults are Lite / H3 Max / Sonnet 5.5', () => {
     expect(defaultAnalysisModel('turbo')).toBe(TURBO_DEFAULT_ANALYSIS);
     expect(defaultImageModel('turbo')).toBe(TURBO_DEFAULT_IMAGE);
     expect(defaultVideoModel('turbo', '16:9')).toBe(TURBO_DEFAULT_VIDEO);
     expect(TURBO_DEFAULT_IMAGE).toBe('nano_banana_2_lite');
     expect(TURBO_DEFAULT_VIDEO).toBe('minimax_h3_max');
+    expect(TURBO_DEFAULT_ANALYSIS).toBe('anthropic/claude-sonnet-5.5');
   });
 
-  it('quality defaults are Astra / GPT Image 2 / Seedance 2.5', () => {
-    expect(defaultAnalysisModel('quality')).toBe('openai/gpt-6-astra');
+  it('quality defaults are Gemini 4 Argon / GPT Image 2 / Seedance 2.5', () => {
+    expect(defaultAnalysisModel('quality')).toBe('google/gemini-4-argon');
+    expect(isTurboAnalysisModel('google/gemini-4-argon')).toBe(false);
     expect(defaultImageModel('quality')).toBe('gpt_image_2');
     expect(defaultVideoModel('quality', '16:9')).toBe('seedance_v2_5');
     expect(QUALITY_DEFAULT_VIDEO).toBe('seedance_v2_5');

@@ -105,9 +105,9 @@ describe('estimateSceneCountFromDuration', () => {
 describe('estimateTotalSeconds', () => {
   test('defaults are GPT Image 2 + Seedance stills/motion, Sonnet analysis', () => {
     // Image/video p90s from PostHog (30d ending 2026-09-01). Analysis falls
-    // back to DEFAULT_ANALYSIS_MODEL (Sonnet 5.5, quality tier) like the
-    // other wall clocks.
-    expect(estimateTotalSeconds(6)).toBe(687);
+    // back to DEFAULT_ANALYSIS_MODEL (Sonnet 5.5, fast tier) like the other
+    // wall clocks, so the default pair is deliberately mixed-tier.
+    expect(estimateTotalSeconds(6)).toBe(644);
   });
 
   test('uses default scene count for 0', () => {
@@ -129,7 +129,7 @@ describe('estimateTotalSeconds', () => {
       imageModel: 'nano_banana_2_lite',
       videoModel: 'minimax_h3_max',
     });
-    expect(defaults).toBe(677);
+    expect(defaults).toBe(638);
     expect(turbo).toBe(231);
     expect(turbo).toBeLessThan(defaults / 2);
   });

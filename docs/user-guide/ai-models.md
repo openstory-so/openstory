@@ -9,24 +9,25 @@ OpenStory integrates with a wide range of AI models across four categories: scri
 
 ## Script Analysis Models
 
-These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison. Next to **Generate**, **Turbo** is the default (Luna, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs). **Quality** selects the quality-ranked defaults. Both modes show the full catalog, grouped Fast / Quality.
+These LLM models analyze your script, extract scenes, characters, and locations, and generate prompts. You can select multiple models to generate parallel sequences for comparison. Next to **Generate**, **Turbo** is the default (Claude Sonnet 5.5, Nano Banana 2 Lite, MiniMax H3 Max, ElevenLabs). **Quality** selects Gemini 4 Argon, GPT Image 2 and Seedance 2.5. Both modes show the full catalog, grouped Fast / Quality.
 
-| Model              | Vendor    | Context Window | License                   |
-| ------------------ | --------- | -------------- | ------------------------- |
-| **GPT-6 Luna**     | OpenAI    | 1M tokens      | Proprietary (default)     |
-| Claude Fable 5     | Anthropic | 1M tokens      | Proprietary               |
-| Claude Opus 5      | Anthropic | 1M tokens      | Proprietary (scene-split) |
-| Claude Opus 5 Fast | Anthropic | 1M tokens      | Proprietary               |
-| Gemini 3.7 Flash   | Google    | 1M tokens      | Proprietary               |
-| Gemini 3.1 Pro     | Google    | 1M tokens      | Proprietary               |
-| GPT-6.1 Sol        | OpenAI    | 1M tokens      | Proprietary               |
-| GLM-5.3 Flash      | Z.ai      | 1M tokens      | Open Weight (MIT)         |
-| GPT-5.6 Terra      | OpenAI    | 1M tokens      | Proprietary               |
-| DeepSeek V4 Pro    | DeepSeek  | 1M tokens      | Open Weight (MIT)         |
-| Claude Sonnet 5.5  | Anthropic | 1M tokens      | Proprietary               |
-| Grok 4.7           | SpaceXAI  | 500K tokens    | Proprietary               |
-| Mistral Small 4    | Mistral   | 262K tokens    | Open Weight (Apache 2.0)  |
-| Seed 2.0 Mini      | ByteDance | 262K tokens    | Proprietary               |
+| Model                 | Vendor    | Context Window | License                       |
+| --------------------- | --------- | -------------- | ----------------------------- |
+| **Claude Sonnet 5.5** | Anthropic | 1M tokens      | Proprietary (Turbo default)   |
+| **Gemini 4 Argon**    | Google    | 1M tokens      | Proprietary (Quality default) |
+| Claude Fable 5.1      | Anthropic | 1M tokens      | Proprietary                   |
+| GPT-6 Luna            | OpenAI    | 1M tokens      | Proprietary                   |
+| Claude Opus 5         | Anthropic | 1M tokens      | Proprietary (scene-split)     |
+| Claude Opus 5 Fast    | Anthropic | 1M tokens      | Proprietary                   |
+| Gemini 3.8 Flash      | Google    | 1M tokens      | Proprietary                   |
+| Gemini 3.1 Pro        | Google    | 1M tokens      | Proprietary                   |
+| GPT-6.1 Sol           | OpenAI    | 1M tokens      | Proprietary                   |
+| GLM-5.3 Flash         | Z.ai      | 1M tokens      | Open Weight (MIT)             |
+| GPT-5.6 Terra         | OpenAI    | 1M tokens      | Proprietary                   |
+| DeepSeek V4 Pro       | DeepSeek  | 1M tokens      | Open Weight (MIT)             |
+| Grok 4.7              | SpaceXAI  | 500K tokens    | Proprietary                   |
+| Mistral Small 4       | Mistral   | 262K tokens    | Open Weight (Apache 2.0)      |
+| Seed 2.0 Mini         | ByteDance | 262K tokens    | Proprietary                   |
 
 ## Image Generation Models
 
