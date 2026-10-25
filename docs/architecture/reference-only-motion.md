@@ -275,6 +275,11 @@ on the O3 endpoints where v3 image-to-video defaults to **true** — every other
 endpoint in the catalog defaults true. `buildModelInput` therefore resolves
 the flag from the catalog rather than inheriting either default; otherwise
 whether a shot matched a cast sheet would decide whether the clip has sound.
+Two models have no `generate_audio` field and always render sound: MiniMax
+H3 Max and Kling 4.0 (a 2026-10-25 test render returned a stereo track with
+sound throughout). Both are `supportsAudio: true`; with the switch off,
+`buildMotionShotPrompt` asks for silence in the prompt instead, since there is
+no API field to set.
 
 **The image budget is the tightest we have.** O3 takes 4 (Seedance 9, H3 Max
 9, Grok 7, Omni Flash 7). With the start frame in its own field all 4 go to

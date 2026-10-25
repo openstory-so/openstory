@@ -712,3 +712,29 @@ describe('buildPackedMotionPrompt', () => {
     expect(packed.prompt.split(lighting).length).toBe(2);
   });
 });
+
+describe('Kling 4.0 always renders sound (#2177)', () => {
+  const model = 'kling_v4';
+
+  it('carries dialogue and ambience like Kling 3 when audio is on', () => {
+    const result = buildMotionShotPrompt({
+      motionPrompt: makeMotionPrompt(),
+      model,
+    });
+    expect(result).toContain('We need to reconsider the entire approach.');
+    expect(result).toContain('quiet office hum');
+  });
+
+  it('asks for silence in-prompt when generateAudio is false (no API field)', () => {
+    const result = buildMotionShotPrompt({
+      motionPrompt: makeMotionPrompt(),
+      model,
+      generateAudio: false,
+    });
+    expect(result).not.toContain('We need to reconsider');
+    expect(result).not.toContain('quiet office hum');
+    expect(
+      result.endsWith('Silent. No dialogue, no sound effects, no music.')
+    ).toBe(true);
+  });
+});

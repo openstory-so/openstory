@@ -108,10 +108,12 @@ export const IMAGE_TO_VIDEO_MODELS = {
     // fal's schema declares 26000 and rejects past it.
     maxPromptLength: 26000,
     enforcesPromptLimit: true,
-    // No generate_audio field, and fal does not say whether the clip has
-    // sound. Kept alongside Kling 3.0 Omni, which has the audio switch and
-    // character elements v4 dropped (#2177).
-    supportsAudio: false,
+    // Always generates audio with no API switch: the schema has no
+    // generate_audio, and a 720p test render (2026-10-25) came back with a
+    // stereo AAC track, sound throughout. Same shape as MiniMax H3 Max. Kept
+    // alongside Kling 3.0 Omni, which has the audio switch and character
+    // elements v4 dropped (#2177).
+    supportsAudio: true,
     // Packed via `multi_prompt[]` of {prompt ≤512 chars, integer duration}.
     // No `shot_type`.
     supportsInClipMultiShot: true,

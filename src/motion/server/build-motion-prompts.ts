@@ -45,6 +45,9 @@ import {
 const NO_MUSIC_DIRECTION =
   'No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.';
 
+/** Audio "off" for a model that always renders sound (Kling 4). */
+const SILENT_SOUNDSCAPE = 'Silent. No dialogue, no sound effects, no music.';
+
 /**
  * Scene-level look stated once at the top of a packed prompt. Per-shot bodies
  * then only describe action, camera, dialogue, and SFX.
@@ -134,6 +137,14 @@ export function buildMotionShotPrompt({
 
     switch (vendor) {
       case 'Kling':
+        // Kling 4 has no generate_audio switch: "off" is asked for in-prompt,
+        // like MiniMax H3. Packed clips put it in the header instead.
+        if (model === 'kling_v4' && generateAudio === false) {
+          assembled = omitSharedConstraints
+            ? fullPrompt
+            : `${fullPrompt}\n\n${SILENT_SOUNDSCAPE}`;
+          break;
+        }
         assembled = buildKlingPrompt(
           fullPrompt,
           dialogueData,
@@ -373,6 +384,8 @@ function formatPackedHeader(input: {
     parts.push(
       'overall_soundscape: Silent. No dialogue, no sound effects, no music.\nnon_diegetic_music: N/A'
     );
+  } else if (input.model === 'kling_v4' && input.generateAudio === false) {
+    parts.push(SILENT_SOUNDSCAPE);
   } else {
     parts.push(NO_MUSIC_DIRECTION);
     if (input.model === 'minimax_h3_max') {
