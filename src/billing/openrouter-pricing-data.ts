@@ -29,6 +29,14 @@ export const OPENROUTER_PRICING: Record<string, OpenRouterPricing> = {
     completionPerMillionTokens: 50,
     webSearchPerQuery: 0.01,
   },
+  // Hand-added 2026-10-25 from OpenRouter /api/v1/models. Intro rate:
+  // Google lists $4/$20 from 2026-12-01.
+  'google/gemini-4-argon': {
+    name: 'Google: Gemini 4 Argon',
+    promptPerMillionTokens: 2,
+    completionPerMillionTokens: 10,
+    webSearchPerQuery: 0.014,
+  },
   // Hand-edited 2026-09-11: Standard intro $0.75/$3.75 from OpenRouter +
   // ai.google.dev (the 3.7 card was the stale Flex/Batch $0.375/$1.875).
   // Regenerate with bun scripts/update-openrouter-pricing.ts when possible.

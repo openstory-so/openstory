@@ -48,6 +48,19 @@ export const SCRIPT_ANALYSIS_MODELS = [
     description: 'Frontier reasoning and coding',
   },
   {
+    id: 'google/gemini-4-argon',
+    name: 'Gemini 4 Argon',
+    vendor: 'Google',
+    license: 'proprietary' as const,
+    // Not on LMArena yet; Google's flagship reasoning model, ranked beside
+    // Opus 5.5 until the next snapshot.
+    qualityRank: 3,
+    contextWindow: 1_048_576,
+    maxOutputTokens: 943_718,
+    vision: true,
+    description: 'Google flagship reasoning with 1M context',
+  },
+  {
     id: 'anthropic/claude-opus-5-fast',
     name: 'Claude Opus 5 Fast',
     vendor: 'Anthropic',
@@ -422,13 +435,14 @@ export function resolveVisionModel(
   return DEFAULT_VISION_MODEL;
 }
 /**
- * Default model when none is specified. Luna won the analysis speed/quality
- * eval (pipeline 95.7 at ~$0.015 vs Fable 5 at $0.85) and is the Turbo
- * analysis default. Quality mode selects GPT-6 Astra; both modes show the
- * full picker, grouped Fast / Quality.
+ * Default model when none is specified (API callers, unknown stored ids,
+ * workflow fallbacks). Sonnet 5.5: vision, strict structured outputs and
+ * reasoning on one model. The in-app picker seeds from the mode defaults
+ * in generation-mode.ts instead.
  * Existing users keep whatever generation settings already store.
  */
-export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'openai/gpt-6-luna';
+export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId =
+  'anthropic/claude-sonnet-5.5';
 
 /**
  * Boundary-annotation scenes call only. Grok 4.6 + medium reasoning

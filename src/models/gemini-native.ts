@@ -14,6 +14,7 @@ import { typedEntries } from '@/platform/typed-object';
 import type { TokenUsage } from '@tanstack/ai';
 
 const NATIVE_TEXT_MODELS = {
+  'google/gemini-4-argon': 'gemini-4-argon',
   'google/gemini-3.8-flash': 'gemini-3.8-flash',
   'google/gemini-3.1-pro-preview': 'gemini-3.1-pro-preview',
   'google/gemini-3-flash-preview': 'gemini-3-flash-preview',
@@ -115,6 +116,15 @@ const TEXT_RATES: Record<
     output: 3,
     inputHigh: 0.5,
     outputHigh: 3,
+    highTierFrom: Number.POSITIVE_INFINITY,
+  },
+  // gemini-4-argon intro $2/$10 through 2026-11-30; Google lists $4/$20
+  // from 2026-12-01 (read 2026-10-25).
+  'gemini-4-argon': {
+    input: 2,
+    output: 10,
+    inputHigh: 2,
+    outputHigh: 10,
     highTierFrom: Number.POSITIVE_INFINITY,
   },
   // gemini-3.8-flash intro $0.75/$3.75 through 2026-12-31; Google lists

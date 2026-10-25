@@ -48,7 +48,8 @@ Motion status checking: `checkMotionStatus(statusUrl)`, `getMotionResult(respons
 
 ## Native Google (Gemini)
 
-Same shape as native Grok: Gemini chat (`google/gemini-3.1-pro-preview`,
+Same shape as native Grok: Gemini chat (`google/gemini-4-argon`,
+`google/gemini-3.8-flash`, `google/gemini-3.1-pro-preview`,
 `google/gemini-3-flash-preview`), **Nano Banana** stills (`nano_banana_2`,
 `nano_banana_2_lite`, `nano_banana_pro`), and **Gemini Omni Flash** video
 (`gemini_omni_flash`) go to Google's own Gemini API via `@tanstack/ai-gemini`

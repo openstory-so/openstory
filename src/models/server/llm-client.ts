@@ -314,6 +314,7 @@ const STRUCTURED_OUTPUT_MODELS = new Set([
   'openai/gpt-6.1-sol',
   'openai/gpt-5.6-terra',
   'openai/gpt-6-luna',
+  'google/gemini-4-argon',
   'google/gemini-3.8-flash',
   'google/gemini-3-flash-preview',
   'mistralai/mistral-small-2603',
