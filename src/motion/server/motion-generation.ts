@@ -131,7 +131,7 @@ export type GenerateMotionOptions = {
    * Kling v3 packed multi-shot (#1510). When set, the fal request sends
    * `multi_prompt[]` + `shot_type: customize` and omits `prompt`.
    */
-  multiPrompt?: Array<{ prompt: string; duration: string }>;
+  multiPrompt?: Array<{ prompt: string; duration: string | number }>;
   /**
    * Ark draft mode (#1756): render a 480p preview. Honoured only when the
    * model `supportsDraftMode` — other models render as usual — and only on

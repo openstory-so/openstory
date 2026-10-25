@@ -40,6 +40,9 @@ const QUALITY_OVERRIDES: Partial<
 > = {
   // Required on i2v and r2v; schema default is the same value.
   minimax_h3_max: { prompt_expansion_mode: 'balanced' },
+  // Schema default is 1080p ($0.235/s); 720p ($0.157/s) unless a tier is
+  // picked (#2177).
+  kling_v4: { resolution: '720p' },
 };
 
 /**
@@ -170,7 +173,8 @@ function promptForSchema(
 /**
  * Kling rejects `prompt` and `multi_prompt` together. The transform always
  * requires a prompt string, so a packed job still parses one and then this
- * drops it.
+ * drops it. `multi_prompt` and `shot_type` are the parsed values: v3 keeps
+ * `shot_type: 'customize'`, and v4, which has no such field, has it stripped.
  */
 function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
   input: T,
@@ -178,15 +182,8 @@ function applyKlingMultiPrompt<T extends { prompt?: unknown }>(
 ): T {
   if (!multiPrompt?.length) return input;
   const { prompt: _prompt, ...rest } = input;
-  // Kling forbids prompt + multi_prompt together; the transform still
-  // requires a prompt string, so strip it after parse.
-  const packed = {
-    ...rest,
-    multi_prompt: multiPrompt,
-    shot_type: 'customize' as const,
-  };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- packed Kling body is T minus prompt
-  return packed as unknown as T;
+  return rest as unknown as T;
 }
 
 /** Output of any registered fal transform: the reference-to-video and

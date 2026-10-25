@@ -99,6 +99,25 @@ export const IMAGE_TO_VIDEO_MODELS = {
     supportsInClipMultiShot: true,
     performance: { estimatedGenerationTime: 306, quality: 'best' as const },
   },
+  kling_v4: {
+    id: 'kling/v4/image-to-video',
+    name: 'Kling 4.0',
+    vendor: 'Kling',
+    license: 'proprietary' as const,
+    qualityRank: 4,
+    // fal's schema declares 26000 and rejects past it.
+    maxPromptLength: 26000,
+    enforcesPromptLimit: true,
+    // No generate_audio field, and fal does not say whether the clip has
+    // sound. Kept alongside Kling 3.0 Omni, which has the audio switch and
+    // character elements v4 dropped (#2177).
+    supportsAudio: false,
+    // Packed via `multi_prompt[]` of {prompt ≤512 chars, integer duration}.
+    // No `shot_type`.
+    supportsInClipMultiShot: true,
+    // Unmeasured: Kling 3.0's estimate until PostHog has v4 runs.
+    performance: { estimatedGenerationTime: 306, quality: 'best' as const },
+  },
   minimax_h3_max: {
     id: 'minimax/h3-max/image-to-video',
     name: 'MiniMax H3 Max',

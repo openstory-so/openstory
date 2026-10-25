@@ -540,7 +540,7 @@ function buildMotionPreview(input: {
   resolution?: Resolution;
   referenceImages: ReturnType<typeof buildMotionReferenceImages>;
   byteplusEnabled: boolean;
-  multiPrompt?: Array<{ prompt: string; duration: string }>;
+  multiPrompt?: Array<{ prompt: string; duration: string | number }>;
 }): OptimisedPromptPreview | null {
   const modelPrompt = input.assembledPrompt;
   if (!modelPrompt) return null;

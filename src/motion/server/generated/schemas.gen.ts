@@ -3296,3 +3296,181 @@ export const H3MaxTextToVideoOutputSchema = {
     'video'
   ]
 } as const;
+
+export const V4ImageToVideoInputSchema = {
+  properties: {
+    resolution: {
+      title: 'Resolution',
+      type: 'string',
+      description: 'Output resolution.',
+      enum: [
+        '720p',
+        '1080p'
+      ],
+      default: '1080p'
+    },
+    prompt: {
+      anyOf: [
+        {
+          type: 'string',
+          maxLength: 26000
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Text prompt. Either prompt or multi_prompt must be provided.',
+      title: 'Prompt',
+      examples: [
+        'A detective in a black trench coat stands on a rooftop in the rain, looking through a telescope at the street below.'
+      ]
+    },
+    end_image_url: {
+      anyOf: [
+        {
+          type: 'string',
+          limit_description: 'Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+          'x-fal': {
+            timeout: 20,
+            max_aspect_ratio: 2.5,
+            max_file_size: 31457280,
+            min_width: 300,
+            min_aspect_ratio: 0.4,
+            min_height: 300
+          },
+          ui: {
+            field: 'image'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Image to use as the last frame of the video.',
+      title: 'End Image Url',
+      examples: [
+        'https://v3b.fal.media/files/b/tiger/BwHi22qoQnqaTNMMhe533.png'
+      ]
+    },
+    start_image_url: {
+      anyOf: [
+        {
+          type: 'string'
+        },
+        {
+          type: 'string',
+          format: 'binary'
+        }
+      ],
+      'x-fal-file-input': true,
+      description: 'Image to use as the first frame of the video.\n\nMax file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s',
+      'x-fal': {
+        timeout: 20,
+        max_aspect_ratio: 2.5,
+        max_file_size: 31457280,
+        min_width: 300,
+        min_aspect_ratio: 0.4,
+        min_height: 300
+      },
+      title: 'Start Image Url',
+      examples: [
+        'https://v3b.fal.media/files/b/rabbit/NaslJIC7F2WodS6DFZRRJ.png'
+      ]
+    },
+    multi_prompt: {
+      anyOf: [
+        {
+          minItems: 1,
+          type: 'array',
+          items: {
+            $ref: '#/components/schemas/KlingV4Shot'
+          }
+        },
+        {
+          type: 'null'
+        }
+      ],
+      description: 'Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.',
+      title: 'Multi Prompt',
+      examples: [
+        null
+      ]
+    },
+    duration: {
+      title: 'Duration',
+      minimum: 3,
+      description: 'Video duration in seconds (3-30).',
+      maximum: 30,
+      default: 5,
+      type: 'integer'
+    }
+  },
+  type: 'object',
+  description: 'The output aspect ratio follows the input frames.',
+  'x-fal-order-properties': [
+    'prompt',
+    'start_image_url',
+    'end_image_url',
+    'multi_prompt',
+    'duration',
+    'resolution'
+  ],
+  title: 'ImageToVideoInput',
+  required: [
+    'start_image_url'
+  ]
+} as const;
+
+export const V4ImageToVideoOutputSchema = {
+  properties: {
+    video: {
+      $ref: '#/components/schemas/File',
+      description: 'The generated video.',
+      examples: [
+        {
+          file_name: 'output.mp4',
+          content_type: 'video/mp4',
+          url: 'https://v3b.fal.media/files/b/0aac4496/HjUbnyfTPVcavQNpRh1QJ_clip_image.mp4',
+          file_size: 2953131
+        }
+      ]
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'video'
+  ],
+  title: 'ImageToVideoOutput',
+  required: [
+    'video'
+  ]
+} as const;
+
+export const KlingV4ShotSchema = {
+  properties: {
+    prompt: {
+      type: 'string',
+      minLength: 1,
+      description: 'The prompt for this shot.',
+      title: 'Prompt',
+      maxLength: 512
+    },
+    duration: {
+      minimum: 1,
+      description: 'Shot duration in seconds.',
+      maximum: 30,
+      title: 'Duration',
+      default: 5,
+      type: 'integer'
+    }
+  },
+  type: 'object',
+  'x-fal-order-properties': [
+    'prompt',
+    'duration'
+  ],
+  title: 'KlingV4Shot',
+  required: [
+    'prompt'
+  ]
+} as const;

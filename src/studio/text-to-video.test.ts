@@ -36,6 +36,7 @@ describe('studioVideoEndpointId', () => {
       'xai/grok-imagine-video/v1.5/text-to-video',
       'fal-ai/gemini-omni-1.1-flash',
       'fal-ai/kling-video/v3/pro/text-to-video',
+      'kling/v4/text-to-video',
       'minimax/h3-max/text-to-video',
       'bytedance/seedance-2.0/enterprise/v2/text-to-video',
       'bytedance/seedance-2.5/text-to-video',

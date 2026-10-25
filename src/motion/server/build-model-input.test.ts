@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   IMAGE_TO_VIDEO_MODELS,
   safeImageToVideoModel,
+  videoPromptHardLimit,
   type ImageToVideoModel,
 } from '@/models/models';
 import { typedEntries } from '@/platform/typed-object';
 import { buildModelInput, buildMotionRequest } from './build-model-input';
+import {
+  buildPackedMotionPrompt,
+  packedPromptFitsLimit,
+} from './build-motion-prompts';
 import type { GenerateMotionOptions } from './motion-generation';
 
 const baseOptions: GenerateMotionOptions = {
@@ -97,6 +102,55 @@ describe('buildModelInput', () => {
           multiPrompt: [{ prompt: 'x'.repeat(2501), duration: '5' }],
         })
       ).toThrow(/2500/);
+    });
+  });
+
+  describe('Kling 4.0 (#2177)', () => {
+    it('asks for 720p and sends no audio, aspect or shot_type fields', () => {
+      const result = build('kling_v4', { generateAudio: true });
+      expect(result).toMatchObject({
+        start_image_url: baseOptions.imageUrl,
+        resolution: '720p',
+        duration: 5,
+      });
+      expect(result).not.toHaveProperty('generate_audio');
+      expect(result).not.toHaveProperty('aspect_ratio');
+      expect(result).not.toHaveProperty('shot_type');
+    });
+
+    it('honours a picked tier over the 720p default', () => {
+      expect(build('kling_v4', { resolution: '1080p' }).resolution).toBe(
+        '1080p'
+      );
+    });
+
+    it('packs multi_prompt with integer durations and no prompt', () => {
+      const result = build('kling_v4', {
+        multiPrompt: [
+          { prompt: 'Shot one', duration: 4 },
+          { prompt: 'Shot two', duration: 6 },
+        ],
+      });
+      expect(result.multi_prompt).toEqual([
+        { prompt: 'Shot one', duration: 4 },
+        { prompt: 'Shot two', duration: 6 },
+      ]);
+      expect(result).not.toHaveProperty('prompt');
+      expect(result).not.toHaveProperty('shot_type');
+    });
+
+    it('packs to the 512-char shot cap, not the 26000 prompt cap', () => {
+      const shots = [
+        { durationSeconds: 4, prompt: 'x'.repeat(400) },
+        { durationSeconds: 6, prompt: 'y'.repeat(600) },
+      ];
+      const v4 = buildPackedMotionPrompt({ shots, model: 'kling_v4' });
+      expect(v4.multiPrompt?.map((s) => s.duration)).toEqual([4, 6]);
+      expect(packedPromptFitsLimit(v4, videoPromptHardLimit('kling_v4'))).toBe(
+        false
+      );
+      const v3 = buildPackedMotionPrompt({ shots, model: 'kling_v3_pro' });
+      expect(v3.multiPrompt?.map((s) => s.duration)).toEqual(['4', '6']);
     });
   });
 

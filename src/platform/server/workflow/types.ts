@@ -773,7 +773,7 @@ export interface MotionWorkflowInput
    * Kling v3 packed `multi_prompt[]`. When set, submit sends this instead of
    * `prompt`. Re-assembled after dialogue TTS the same way `prompt` is.
    */
-  multiPrompt?: Array<{ prompt: string; duration: string }>;
+  multiPrompt?: Array<{ prompt: string; duration: string | number }>;
 }
 
 /** Scene look stated once at the top of a packed in-clip prompt (#1510). */

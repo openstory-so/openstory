@@ -3131,3 +3131,152 @@ export type GetMinimaxH3MaxTextToVideoRequestsByRequestIdResponses = {
 };
 
 export type GetMinimaxH3MaxTextToVideoRequestsByRequestIdResponse = GetMinimaxH3MaxTextToVideoRequestsByRequestIdResponses[keyof GetMinimaxH3MaxTextToVideoRequestsByRequestIdResponses];
+
+export type V4ImageToVideoInput = {
+  /**
+   * Resolution
+   *
+   * Output resolution.
+   */
+  resolution?: '720p' | '1080p';
+  /**
+   * Prompt
+   *
+   * Text prompt. Either prompt or multi_prompt must be provided.
+   */
+  prompt?: string | unknown;
+  /**
+   * End Image Url
+   *
+   * Image to use as the last frame of the video.
+   */
+  end_image_url?: string | unknown;
+  /**
+   * Start Image Url
+   *
+   * Image to use as the first frame of the video.
+   *
+   * Max file size: 30.0MB, Min width: 300px, Min height: 300px, Min aspect ratio: 0.40, Max aspect ratio: 2.50, Timeout: 20.0s
+   */
+  start_image_url: string | Blob | File;
+  /**
+   * Multi Prompt
+   *
+   * Per-shot prompts for multi-shot generation. The video duration is the sum of the shot durations.
+   */
+  multi_prompt?: Array<KlingV4Shot> | unknown;
+  /**
+   * Duration
+   *
+   * Video duration in seconds (3-30).
+   */
+  duration?: number;
+};
+
+export type V4ImageToVideoOutput = {
+  video: File;
+};
+
+export type KlingV4Shot = {
+  /**
+   * Prompt
+   *
+   * The prompt for this shot.
+   */
+  prompt: string;
+  /**
+   * Duration
+   *
+   * Shot duration in seconds.
+   */
+  duration?: number;
+};
+
+export type GetKlingV4ImageToVideoRequestsByRequestIdStatusData = {
+  body?: never;
+  path: {
+    /**
+     * Request ID
+     */
+    request_id: string;
+  };
+  query?: {
+    /**
+     * Whether to include logs (`1`) in the response or not (`0`).
+     */
+    logs?: number;
+  };
+  url: '/kling/v4/image-to-video/requests/{request_id}/status';
+};
+
+export type GetKlingV4ImageToVideoRequestsByRequestIdStatusResponses = {
+  /**
+   * The request status.
+   */
+  200: QueueStatus;
+};
+
+export type GetKlingV4ImageToVideoRequestsByRequestIdStatusResponse = GetKlingV4ImageToVideoRequestsByRequestIdStatusResponses[keyof GetKlingV4ImageToVideoRequestsByRequestIdStatusResponses];
+
+export type PutKlingV4ImageToVideoRequestsByRequestIdCancelData = {
+  body?: never;
+  path: {
+    /**
+     * Request ID
+     */
+    request_id: string;
+  };
+  query?: never;
+  url: '/kling/v4/image-to-video/requests/{request_id}/cancel';
+};
+
+export type PutKlingV4ImageToVideoRequestsByRequestIdCancelResponses = {
+  /**
+   * The request was cancelled.
+   */
+  200: {
+    /**
+     * Whether the request was cancelled successfully.
+     */
+    success?: boolean;
+  };
+};
+
+export type PutKlingV4ImageToVideoRequestsByRequestIdCancelResponse = PutKlingV4ImageToVideoRequestsByRequestIdCancelResponses[keyof PutKlingV4ImageToVideoRequestsByRequestIdCancelResponses];
+
+export type PostKlingV4ImageToVideoData = {
+  body: V4ImageToVideoInput;
+  path?: never;
+  query?: never;
+  url: '/kling/v4/image-to-video';
+};
+
+export type PostKlingV4ImageToVideoResponses = {
+  /**
+   * The request status.
+   */
+  200: QueueStatus;
+};
+
+export type PostKlingV4ImageToVideoResponse = PostKlingV4ImageToVideoResponses[keyof PostKlingV4ImageToVideoResponses];
+
+export type GetKlingV4ImageToVideoRequestsByRequestIdData = {
+  body?: never;
+  path: {
+    /**
+     * Request ID
+     */
+    request_id: string;
+  };
+  query?: never;
+  url: '/kling/v4/image-to-video/requests/{request_id}';
+};
+
+export type GetKlingV4ImageToVideoRequestsByRequestIdResponses = {
+  /**
+   * Result of the request.
+   */
+  200: V4ImageToVideoOutput;
+};
+
+export type GetKlingV4ImageToVideoRequestsByRequestIdResponse = GetKlingV4ImageToVideoRequestsByRequestIdResponses[keyof GetKlingV4ImageToVideoRequestsByRequestIdResponses];

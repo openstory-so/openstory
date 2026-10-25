@@ -25,6 +25,7 @@ import {
   zSeedance25ImageToVideoInput,
   zSeedance25ReferenceToVideoInput,
   zSeedance25TextToVideoInput,
+  zV4ImageToVideoInput,
 } from '@/motion/server/generated/zod.gen';
 
 import {
@@ -47,6 +48,7 @@ import {
   Seedance25ImageToVideoInputSchema,
   Seedance25ReferenceToVideoInputSchema,
   Seedance25TextToVideoInputSchema,
+  V4ImageToVideoInputSchema,
 } from '@/motion/server/generated/schemas.gen';
 
 export type MotionJSONSchema =
@@ -68,7 +70,8 @@ export type MotionJSONSchema =
   | typeof Seedance20MiniTextToVideoInputSchema
   | typeof Seedance25ImageToVideoInputSchema
   | typeof Seedance25ReferenceToVideoInputSchema
-  | typeof Seedance25TextToVideoInputSchema;
+  | typeof Seedance25TextToVideoInputSchema
+  | typeof V4ImageToVideoInputSchema;
 
 export const MOTION_INPUT_SCHEMAS = {
   'bytedance/seedance-2.0/enterprise/v2/image-to-video':
@@ -94,6 +97,7 @@ export const MOTION_INPUT_SCHEMAS = {
     zKlingVideoO3ProReferenceToVideoInput,
   'fal-ai/kling-video/o3/pro/text-to-video': zKlingVideoO3ProTextToVideoInput,
   'fal-ai/kling-video/v3/pro/image-to-video': zKlingVideoV3ProImageToVideoInput,
+  'kling/v4/image-to-video': zV4ImageToVideoInput,
   'minimax/h3-max/image-to-video': zH3MaxImageToVideoInput,
   'minimax/h3-max/reference-to-video': zH3MaxReferenceToVideoInput,
   'minimax/h3-max/text-to-video': zH3MaxTextToVideoInput,
@@ -140,6 +144,7 @@ export const MOTION_JSON_SCHEMAS = {
     KlingVideoO3ProTextToVideoInputSchema,
   'fal-ai/kling-video/v3/pro/image-to-video':
     KlingVideoV3ProImageToVideoInputSchema,
+  'kling/v4/image-to-video': V4ImageToVideoInputSchema,
   'minimax/h3-max/image-to-video': H3MaxImageToVideoInputSchema,
   'minimax/h3-max/reference-to-video': H3MaxReferenceToVideoInputSchema,
   'minimax/h3-max/text-to-video': H3MaxTextToVideoInputSchema,
@@ -216,6 +221,10 @@ export const MOTION_TRANSFORMS: {
   'fal-ai/kling-video/v3/pro/image-to-video': motionTransform(
     zKlingVideoV3ProImageToVideoInput,
     KlingVideoV3ProImageToVideoInputSchema
+  ),
+  'kling/v4/image-to-video': motionTransform(
+    zV4ImageToVideoInput,
+    V4ImageToVideoInputSchema
   ),
   'minimax/h3-max/image-to-video': motionTransform(
     zH3MaxImageToVideoInput,

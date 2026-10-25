@@ -253,6 +253,11 @@ references, and reference-only shots, route to Kling O3 Pro
 (`fal-ai/kling-video/o3/pro/reference-to-video`) — the sibling whose start
 frame is optional. Catalog key stays `kling_v3_pro`.
 
+Kling 4.0 (`kling_v4`, #2177) has no entry in `MOTION_REFERENCE_ENDPOINTS`:
+fal's `kling/v4/reference-to-video` is not wired, so it never renders
+reference-only, and references on its image-to-video route are inlined as
+bible descriptions.
+
 Three Kling-specific consequences of that split.
 
 **The still is pinned, not described.** O3 is the only reference endpoint with

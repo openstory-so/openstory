@@ -117,6 +117,10 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
     unit: 'seconds',
     unitPriceUsd: 0.168,
   },
+  // fal llms.txt: $0.157/s at 720p (what we request), $0.235/s at 1080p
+  // (schema default). Advertised, not yet checked against the bill (#2177).
+  'kling/v4/image-to-video': { unit: 'seconds', unitPriceUsd: 0.157 },
+  'kling/v4/text-to-video': { unit: 'seconds', unitPriceUsd: 0.157 },
   // Both O3 rows are the audio-on rate; fal quotes $0.112/s with audio off,
   // and motion always asks Kling for native audio (#1498).
   'fal-ai/kling-video/o3/pro/reference-to-video': {
