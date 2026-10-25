@@ -896,7 +896,8 @@ export function GenerationDetail({
               onClick={() => onReuse(reuse)}
             >
               <RotateCcw aria-hidden="true" />
-              Use again
+              {/* Loads this run's own settings, draft included. */}
+              {asset.status === 'failed' ? 'Try again' : 'Use again'}
             </Button>
           )}
           {onRenderAtQuality &&

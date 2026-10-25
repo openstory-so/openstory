@@ -62,6 +62,7 @@ import {
 import { Separator } from '@/ui/shadcn/separator';
 import { Skeleton } from '@/ui/shadcn/skeleton';
 import { Switch } from '@/ui/shadcn/switch';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/shadcn/tooltip';
 import { ToggleGroup, ToggleGroupItem } from '@/ui/shadcn/toggle-group';
 import { useFalPricing } from '@/billing/ui/use-fal-pricing';
 import {
@@ -88,6 +89,7 @@ import {
   defaultVideoModelFor,
   getCompatibleModel,
   IMAGE_TO_VIDEO_MODELS,
+  isOfferedVideoModel,
   supportsDraftMode,
   supportsReferenceImages,
   type ImageToVideoModel,
@@ -110,6 +112,10 @@ import { useEditorDictation } from '@/ui/use-dictation';
 import { pickShufflePrompt, studioShufflePrompts } from './prompt-shuffle';
 import { parseStudioPaste } from './paste-import';
 import type { StudioReuse } from './prompt-display';
+import {
+  loadStudioComposerPrefs,
+  saveStudioComposerPrefs,
+} from './composer-prefs';
 import type { StudioCreateInput, StudioReferenceKind } from '@/studio/schema';
 import {
   dropStudioAlias,
@@ -155,6 +161,7 @@ import {
 } from 'lucide-react';
 import {
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -380,8 +387,12 @@ export function StudioComposer({
   const [count, setCount] = useState<(typeof COUNTS)[number]>(1);
   const [duration, setDuration] = useState<StudioDuration>(5);
   const [generateAudio, setGenerateAudio] = useState(true);
-  // On by default (#1756): a 480p look before the 1080p spend.
+  // On by default (#1756): a 480p look before the 1080p spend. The user's
+  // last choice wins once their saved settings load.
   const [draftMode, setDraftMode] = useState(true);
+  // Saved settings load after mount (the server has no localStorage), and
+  // nothing is saved until they have, so the defaults never overwrite them.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [lastShuffled, setLastShuffled] = useState<string | null>(null);
   // The mic sits in the toolbar next to Shuffle; dictation streams into the
   // prompt editor through this handle.
@@ -462,6 +473,55 @@ export function StudioComposer({
     },
     [activity]
   );
+
+  useEffect(() => {
+    const saved = loadStudioComposerPrefs(activity);
+    if (saved.aspectRatio) setAspectRatio(saved.aspectRatio);
+    if (saved.resolution) setResolution(saved.resolution);
+    if (saved.count) setCount(saved.count);
+    if (activity === 'image' && saved.imageModel)
+      setImageModel(saved.imageModel);
+    if (activity === 'video') {
+      // A model whose via is off for this deployment stays on the default.
+      if (saved.videoModel && isOfferedVideoModel(saved.videoModel, vias))
+        setVideoModel(saved.videoModel);
+      if (saved.duration != null) setDuration(saved.duration);
+      if (saved.generateAudio != null) setGenerateAudio(saved.generateAudio);
+      if (saved.draft != null) setDraftMode(saved.draft);
+    }
+    setPrefsLoaded(true);
+    // Once per composer: later via changes must not undo the user's pick.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity]);
+
+  useEffect(() => {
+    if (!prefsLoaded) return;
+    saveStudioComposerPrefs(
+      activity,
+      activity === 'image'
+        ? { imageModel, aspectRatio, resolution: pickedResolution, count }
+        : {
+            videoModel,
+            aspectRatio,
+            resolution: pickedResolution,
+            count,
+            duration,
+            generateAudio,
+            draft: draftMode,
+          }
+    );
+  }, [
+    prefsLoaded,
+    activity,
+    imageModel,
+    videoModel,
+    aspectRatio,
+    pickedResolution,
+    count,
+    duration,
+    generateAudio,
+    draftMode,
+  ]);
 
   const composerDirty =
     prompt.trim().length > 0 ||
@@ -1249,7 +1309,6 @@ export function StudioComposer({
         : `${pricedDuration}s`
       : null,
     isVideo && audioCapable ? (generateAudio ? 'Audio' : 'Silent') : null,
-    draftOn ? 'Draft 480p' : null,
     `×${count}`,
   ].filter(Boolean);
 
@@ -1689,28 +1748,6 @@ export function StudioComposer({
                   </section>
                 </>
               )}
-              {draftCapable && (
-                <>
-                  <Separator />
-                  <section className="flex items-center justify-between gap-4">
-                    <label
-                      htmlFor="studio-draft"
-                      className="text-sm font-medium"
-                    >
-                      Draft first
-                      <span className="block text-xs font-normal text-muted-foreground">
-                        480p now; render the 1080p final from its card within
-                        seven days
-                      </span>
-                    </label>
-                    <Switch
-                      id="studio-draft"
-                      checked={draftMode}
-                      onCheckedChange={setDraftMode}
-                    />
-                  </section>
-                </>
-              )}
               <Separator />
               <section className="flex flex-col gap-2">
                 <h3 className="text-sm font-medium">Count</h3>
@@ -1739,6 +1776,31 @@ export function StudioComposer({
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* Out of the popover so it is never missed (a user retried full
+            renders for days without seeing drafts were on). */}
+        {draftCapable && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <label
+                htmlFor="studio-draft"
+                className="flex h-9 items-center gap-2 rounded-md border px-3 text-xs font-medium"
+              >
+                Draft 480p
+                <Switch
+                  id="studio-draft"
+                  checked={draftMode}
+                  onCheckedChange={setDraftMode}
+                />
+              </label>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64">
+              {draftMode
+                ? 'On: renders a 480p draft first. Render the 1080p final from its card within seven days.'
+                : `Off: renders straight at ${RESOLUTION_OPTIONS.find((r) => r.value === resolution)?.label ?? resolution}.`}
+            </TooltipContent>
+          </Tooltip>
+        )}
 
         {prompt.length > 0 && (
           <output
