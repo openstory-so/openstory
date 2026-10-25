@@ -4375,7 +4375,7 @@ describe('Studio create and edit (#1985)', () => {
     const args = {
       activity: 'image',
       prompt: 'A lighthouse like @Image1',
-      imageModel: 'nano_banana_2',
+      imageModel: 'nano_banana_2_1',
       aspectRatio: '16:9',
       count: 2,
       // The shareable URL read back is accepted as the stored one.
@@ -4407,7 +4407,7 @@ describe('Studio create and edit (#1985)', () => {
     const image = {
       activity: 'image',
       prompt: 'A lighthouse',
-      imageModel: 'nano_banana_2',
+      imageModel: 'nano_banana_2_1',
       aspectRatio: '16:9',
     };
     for (const args of [
@@ -4522,7 +4522,7 @@ describe('Studio create and edit (#1985)', () => {
       ]),
       image: expect.arrayContaining([
         expect.objectContaining({
-          model: 'nano_banana_2',
+          model: 'nano_banana_2_1',
           studio: { referenceImages: true },
         }),
       ]),
