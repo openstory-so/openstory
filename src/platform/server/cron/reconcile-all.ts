@@ -182,6 +182,8 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
   for (const row of stuck) {
     const next = await resolveRunState(row.runId ?? '');
     if (next === null || next === 'unknown') continue;
+    // Guarded: a run that lands its own outcome between the select and
+    // this write keeps it.
     await db
       .update(frameVariants)
       .set(
@@ -195,7 +197,12 @@ async function reconcileFrameVariantsPass(db: Database): Promise<number> {
             }
           : { status: next }
       )
-      .where(eq(frameVariants.id, row.id));
+      .where(
+        and(
+          eq(frameVariants.id, row.id),
+          eq(frameVariants.status, 'generating')
+        )
+      );
     // Drop auto-promote claim if this stuck version held it (#1070).
     if (next === 'failed') {
       await db
@@ -456,10 +463,17 @@ async function reconcileVideoVariantsPass(db: Database): Promise<number> {
   for (const row of stuck) {
     const next = await resolveRunState(row.runId ?? '');
     if (next === null || next === 'unknown') continue;
+    // Guarded: a run that lands its own outcome between the select and
+    // this write keeps it.
     await db
       .update(videoVariants)
       .set({ status: next })
-      .where(eq(videoVariants.id, row.id));
+      .where(
+        and(
+          eq(videoVariants.id, row.id),
+          eq(videoVariants.status, 'generating')
+        )
+      );
     // Drop auto-promote claim if this stuck version held it (#1070).
     if (next === 'failed') {
       await db
@@ -702,12 +716,22 @@ async function reconcileShotVariantsPass(
       await db
         .update(shotVariants)
         .set({ status: next })
-        .where(eq(shotVariants.id, row.id));
+        .where(
+          and(
+            eq(shotVariants.id, row.id),
+            eq(shotVariants.status, 'generating')
+          )
+        );
     } else {
       await db
         .update(shotVariants)
         .set({ shotVariantStatus: next })
-        .where(eq(shotVariants.id, row.id));
+        .where(
+          and(
+            eq(shotVariants.id, row.id),
+            eq(shotVariants.shotVariantStatus, 'generating')
+          )
+        );
     }
     updated++;
   }
@@ -761,7 +785,7 @@ async function reconcileSequencesPass(db: Database): Promise<number> {
     await db
       .update(sequences)
       .set(setSequenceStatus(next))
-      .where(eq(sequences.id, row.id));
+      .where(and(eq(sequences.id, row.id), eq(sequences.status, 'processing')));
     updated++;
   }
   return updated;
@@ -811,7 +835,14 @@ async function reconcileGeneratedAssetsPass(db: Database): Promise<number> {
     await db
       .update(generatedAssets)
       .set(setGeneratedAssetStatus(next))
-      .where(eq(generatedAssets.id, row.id));
+      // Guarded: a run that saves its result between the select and this
+      // write must keep it, not be overwritten as failed.
+      .where(
+        and(
+          eq(generatedAssets.id, row.id),
+          inArray(generatedAssets.status, ['queued', 'running'])
+        )
+      );
     updated++;
   }
   return updated;
