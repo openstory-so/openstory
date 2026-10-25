@@ -10,7 +10,7 @@
  * wrong column on the update, missing pass isolation).
  */
 
-import type { SQL } from 'drizzle-orm';
+import { getTableName, type SQL } from 'drizzle-orm';
 import { SQLiteDialect } from 'drizzle-orm/sqlite-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -25,6 +25,7 @@ import {
   sequenceElements,
   sequenceMusicVariants,
   sequences,
+  videoVariants,
 } from '@/platform/server/db/schema';
 
 // Claim tables included so #1085 pass assertions can match on table identity.
@@ -39,7 +40,8 @@ type SchemaTable =
   | typeof frameVariants
   | typeof characterVoiceVersions
   | typeof characters
-  | typeof sequenceMusicVariants;
+  | typeof sequenceMusicVariants
+  | typeof videoVariants;
 type SetPayload = Record<string, Date | string | boolean | null>;
 type UpdateCall = {
   table: SchemaTable;
@@ -295,17 +297,31 @@ describe('reconcileAllStuckJobs — generated_assets passes (#458)', () => {
 
     await reconcileAllStuckJobs();
 
-    const tables = new Set<SchemaTable>([
-      generatedAssets,
-      sequences,
-      shotVariants,
-      frameVariants,
-    ]);
-    const writes = updateCalls.filter((c) => tables.has(c.table));
-    expect(writes.length).toBeGreaterThanOrEqual(5);
-    for (const write of writes) {
-      expect(write.where).toMatch(/status/);
-    }
+    // Each write must check the very column it sets.
+    const guarded = updateCalls
+      .filter((c) => !c.returning)
+      .flatMap((c) => {
+        const column =
+          'shotVariantStatus' in c.payload
+            ? 'shot_variant_status'
+            : 'status' in c.payload
+              ? 'status'
+              : null;
+        if (column === null) return [];
+        const ref = `"${getTableName(c.table)}"."${column}"`;
+        expect(c.where, ref).toContain(ref);
+        return [ref];
+      });
+    expect(new Set(guarded)).toEqual(
+      new Set([
+        '"frame_variants"."status"',
+        '"video_variants"."status"',
+        '"shot_variants"."status"',
+        '"shot_variants"."shot_variant_status"',
+        '"sequences"."status"',
+        '"generated_assets"."status"',
+      ])
+    );
   });
 
   test('orphan pass blind-fails queued rows with no run id', async () => {
