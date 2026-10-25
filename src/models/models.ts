@@ -346,6 +346,16 @@ export const IMAGE_MODELS = {
     description: 'Distilled FLUX.2 — ~2s, edit up to 4 refs',
     maxPromptLength: 2000,
   },
+  krea_3: {
+    id: 'krea/v3/text-to-image' as const,
+    name: 'Krea 3',
+    vendor: 'Krea',
+    license: 'proprietary' as const,
+    qualityRank: 13,
+    description: 'Quality tier (berry), edit up to 8 refs',
+    // fal's schema declares 5000.
+    maxPromptLength: 5000,
+  },
   krea_2_turbo: {
     id: 'fal-ai/krea-2/turbo' as const,
     name: 'Krea 2 Turbo',
@@ -750,6 +760,7 @@ export const EDIT_ENDPOINTS: Partial<Record<TextToImageModel, string>> = {
   flux_2_turbo: 'fal-ai/flux-2/turbo/edit',
   qwen_image: 'fal-ai/qwen-image-2/pro/edit',
   seedream_v5: 'bytedance/seedream/v5/pro/edit',
+  krea_3: 'krea/v3/edit',
 };
 
 /**
@@ -772,6 +783,7 @@ const EDIT_REFERENCE_LIMITS: Partial<Record<TextToImageModel, number>> = {
   grok_imagine_image_quality: 3,
   // Seedream 5.0 Pro: 10 on fal edit and on Ark. Lite was 14.
   seedream_v5: 10,
+  krea_3: 8,
 };
 
 /**

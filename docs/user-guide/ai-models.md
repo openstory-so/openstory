@@ -43,6 +43,7 @@ These models create the visual images for each scene. You can select multiple mo
 | Grok Imagine Image Quality | SpaceXAI          | Proprietary              | Quality Mode — higher fidelity, stronger text             |
 | FLUX.2 Max                 | Black Forest Labs | Proprietary              | Exceptional realism                                       |
 | Phota                      | Phota             | Proprietary              | Character consistency via profiles                        |
+| Krea 3                     | Krea              | Proprietary              | Quality tier, edit up to 8 refs                           |
 | Hunyuan Image v3           | Tencent           | Open Weight              | Strong composition                                        |
 | FLUX.2 Dev                 | Black Forest Labs | Open Weight              | 32B open weights with native editing                      |
 | Qwen Image 2 Pro           | Alibaba           | Open Weight (Apache 2.0) | Native 2K, text rendering                                 |

@@ -88,6 +88,7 @@ export const IMAGE_WALL_CLOCK = {
   },
   flux_2_max: { p50: 99, p90: 126, n: 0, proxy: 'gpt_image_2' },
   phota: { p50: 99, p90: 126, n: 0, proxy: 'gpt_image_2' },
+  krea_3: { p50: 99, p90: 126, n: 0, proxy: 'gpt_image_2' },
   hidream_i1: { p50: 99, p90: 126, n: 0, proxy: 'gpt_image_2' },
   seedream_v5: { p50: 99, p90: 126, n: 0, proxy: 'gpt_image_2' },
 } as const satisfies Record<TextToImageModel, WallClock>;

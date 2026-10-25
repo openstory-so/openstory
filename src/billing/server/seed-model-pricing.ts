@@ -79,6 +79,8 @@ export const LOCAL_FAL_PRICING_SEED: Record<string, SeedPrice> = {
   'fal-ai/flux-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/flux-2/turbo/edit': { unit: 'megapixels', unitPriceUsd: 0.01 },
   'fal-ai/krea-2/turbo': { unit: 'megapixels', unitPriceUsd: 0.008 },
+  'krea/v3/text-to-image': { unit: 'megapixels', unitPriceUsd: 0.025 },
+  'krea/v3/edit': { unit: 'megapixels', unitPriceUsd: 0.025 },
   'xai/grok-imagine-video/v1.5/image-to-video': {
     unit: 'videos',
     unitPriceUsd: 0.05,

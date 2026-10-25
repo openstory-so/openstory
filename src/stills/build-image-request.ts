@@ -276,6 +276,23 @@ function buildFalModelOptions(
         sync_mode: false,
       };
 
+    case 'krea_3':
+      // fal defaults: `berry` (quality) and medium reasoning. `image_size` is
+      // always a preset; Krea's `auto` renders about 2048x2048 at $0.025/MP.
+      return {
+        image_size: resolveImageSize(params),
+        enable_safety_checker: true,
+        ...(params.seed !== undefined && { seed: params.seed }),
+        ...(params.outputFormat && { output_format: params.outputFormat }),
+        ...(params.negativePrompt && {
+          negative_prompt: params.negativePrompt,
+        }),
+        ...(params.referenceImageUrls?.length && {
+          image_urls: params.referenceImageUrls,
+        }),
+        sync_mode: false,
+      };
+
     case 'flux_2_max':
       return {
         image_size: resolveImageSize(params),
