@@ -250,6 +250,7 @@ describe('buildModelInput', () => {
         '14',
         '15',
       ],
+      kling_v4: Array.from({ length: 28 }, (_, i) => i + 3),
       grok_imagine_video_1_5: [
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
       ],
