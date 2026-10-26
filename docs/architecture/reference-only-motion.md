@@ -266,20 +266,15 @@ input plus output length.
 Three Kling-specific consequences of that split. They apply to both
 generations; the image budget differs.
 
-**The still is pinned, not described.** O3 and Kling 4.0 have a real
-start-frame field (so does MiniMax H3 Max's reference route since fal added
-`image_url`, "the video opens exactly on this image"), so a shot that
-rendered one sends it as `start_image_url` rather than as `image_urls[0]`
-with a "Use @Image1 as the starting frame." line. The frame is then guaranteed instead of requested, the
+**The still is pinned, not described.** O3 and Kling 4.0 are the only
+reference endpoints with a real start-frame field, so a shot that rendered one sends it as
+`start_image_url` rather than as `image_urls[0]` with a "Use @Image1 as the
+starting frame." line. The frame is then guaranteed instead of requested, the
 image-to-video motion template's NO VISUAL REDUNDANCY rule ("the video model
 already sees these in the starting frame") is true again, and
 `usesStartFrame: true` keeps meaning what it says. Sheets number from
 `@Image1`, as in reference-only. `pinsDedicatedStartFrame` is the one place
-that decides, derived from the schema so it cannot drift. It pins only when
-a sheet will fill the image list: fal refuses a request whose only
-references are audio ("Audio cannot be the only reference input"), so an H3
-shot whose sole reference is a recorded line keeps the still in
-`reference_image_urls` as Image 1.
+that decides, derived from the schema so it cannot drift.
 
 **Audio is resolved, not inherited.** `generate_audio` defaults to **false**
 on the O3 endpoints where v3 image-to-video defaults to **true** — every other

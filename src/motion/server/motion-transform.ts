@@ -87,15 +87,16 @@ function getImageUrlField(schema: MotionJSONSchema): string | undefined {
 }
 
 /**
- * Does this endpoint accept a still in a dedicated start-frame field?
+ * Does this reference endpoint pin a still in `start_image_url`?
  *
- * True for every image-to-video schema, and — among the reference-to-video
- * endpoints — only for Kling O3, whose `start_image_url` is optional. The
- * transform maps our `imageUrl` onto whichever field this finds, so passing
- * it to an endpoint without one is a no-op rather than a bad request.
+ * Among the reference-to-video endpoints only Kling O3 and Kling 4 have one.
+ * H3 Max's r2v also has a first-frame `image_url`, deliberately not pinned:
+ * its still rides `reference_image_urls` as Image 1, which works, and a
+ * pinned still would leave an audio-only shot with no image reference, which
+ * fal refuses.
  */
 export function hasStartFrameField(schema: MotionJSONSchema): boolean {
-  return getImageUrlField(schema) !== undefined;
+  return getImageUrlField(schema) === 'start_image_url';
 }
 
 // ---------------------------------------------------------------------------

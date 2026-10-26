@@ -567,7 +567,7 @@ export async function submitMotionJob(
     // its own start-frame field it does not (#1498).
     const budget =
       endpoint.referenceConfig.maxImages -
-      (pinsDedicatedStartFrame(endpoint.referenceConfig, options)
+      (pinsDedicatedStartFrame(endpoint.referenceConfig.endpointId, options)
         ? 0
         : options.imageUrl
           ? 1

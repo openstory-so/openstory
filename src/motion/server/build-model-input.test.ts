@@ -477,26 +477,26 @@ describe('buildModelInput', () => {
       return { endpointId, input };
     };
 
-    // H3 Max's r2v gained a real first-frame field (`image_url`), so the
-    // still is pinned like Kling O3's rather than spending a reference slot.
-    it('pins the still in image_url, leaving reference_image_urls to the sheets', () => {
+    it('routes to the r2v sibling and puts stills in reference_image_urls', () => {
       const { endpointId, input } = buildRef();
       expect(endpointId).toBe('minimax/h3-max/reference-to-video');
-      expect('image_url' in input ? input.image_url : undefined).toBe(
-        baseOptions.imageUrl
-      );
+      expect(input).not.toHaveProperty('image_url');
       expect(input).not.toHaveProperty('image_urls');
       expect(input.reference_image_urls).toEqual([
+        baseOptions.imageUrl,
         'https://example.com/jack-sheet.png',
         'https://example.com/logo.png',
       ]);
     });
 
-    it('numbers the sheets from Image 1 with no starting-frame line', () => {
+    it('declares the still as Image 1 and legends unmentioned refs', () => {
       const { input } = buildRef();
-      expect(input.prompt).not.toContain('starting frame');
-      expect(input.prompt).toContain('Image 1: Jack - tall man with a scar');
-      expect(input.prompt).toContain('Image 2: ACME_LOGO - red circular badge');
+      expect(
+        typeof input.prompt === 'string' &&
+          input.prompt.startsWith('Use Image 1 as the starting frame.')
+      ).toBe(true);
+      expect(input.prompt).toContain('Image 2: Jack - tall man with a scar');
+      expect(input.prompt).toContain('Image 3: ACME_LOGO - red circular badge');
     });
 
     it('keeps 768P and balanced prompt expansion', () => {
