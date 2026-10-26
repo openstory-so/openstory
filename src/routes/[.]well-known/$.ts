@@ -72,11 +72,11 @@ async function withRequestOriginIssuer(
 
 /** The portal wants the exact token as plain text, nothing else. */
 function openaiAppsChallenge(request: Request): Response {
-  const token: unknown = Reflect.get(getEnv(), 'OPENAI_APPS_CHALLENGE');
-  if (typeof token !== 'string' || !token.trim()) {
+  const token = getEnv().OPENAI_APPS_CHALLENGE?.trim();
+  if (!token) {
     return new Response('Not found', { status: 404 });
   }
-  return new Response(request.method === 'HEAD' ? null : token.trim(), {
+  return new Response(request.method === 'HEAD' ? null : token, {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   });
 }

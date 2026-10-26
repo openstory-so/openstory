@@ -55,6 +55,12 @@ export type SecretNeed = {
   build: boolean;
   /** Report this reason and never push, even when runtime. */
   hold?: string;
+  /**
+   * The Worker runs without it (the feature is off or a default applies).
+   * Typed `?:` in `src/platform/server/env/env.d.ts`; required runtime
+   * secrets are typed by `scripts/regen-worker-types.ts` from this catalog.
+   */
+  optional?: true;
 };
 
 /**
@@ -66,37 +72,40 @@ export const SECRETS = {
   ADMIN_EMAILS: { runtime: true, build: false },
   API_KEY_ENCRYPTION_KEY: { runtime: true, build: false },
   // Live `ARK_API_KEY` on the Worker is what claims the BytePlus via (#1519).
-  ARK_API_KEY: { runtime: true, build: false },
-  ARK_BASE_URL: { runtime: true, build: false },
-  BYTEPLUS_ACCESS_KEY: { runtime: true, build: false },
-  BYTEPLUS_SECRET_KEY: { runtime: true, build: false },
-  BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false },
-  BYTEPLUS_ASSET_SLOTS: { runtime: true, build: false },
-  BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false },
+  ARK_API_KEY: { runtime: true, build: false, optional: true },
+  ARK_BASE_URL: { runtime: true, build: false, optional: true },
+  BYTEPLUS_ACCESS_KEY: { runtime: true, build: false, optional: true },
+  BYTEPLUS_SECRET_KEY: { runtime: true, build: false, optional: true },
+  BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false, optional: true },
+  BYTEPLUS_ASSET_SLOTS: { runtime: true, build: false, optional: true },
+  BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false, optional: true },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
   // Designed voices live on this account; there is no team BYOK (#1552).
-  ELEVENLABS_API_KEY: { runtime: true, build: false },
-  ELEVENLABS_BASE_URL: { runtime: true, build: false },
+  ELEVENLABS_API_KEY: { runtime: true, build: false, optional: true },
+  ELEVENLABS_BASE_URL: { runtime: true, build: false, optional: true },
   // Seed Audio voices and dialogue (#1765); platform key only.
-  SEED_SPEECH_API_KEY: { runtime: true, build: false },
-  SEED_SPEECH_BASE_URL: { runtime: true, build: false },
-  SEED_SPEECH_QPM: { runtime: true, build: false },
+  SEED_SPEECH_API_KEY: { runtime: true, build: false, optional: true },
+  SEED_SPEECH_BASE_URL: { runtime: true, build: false, optional: true },
+  SEED_SPEECH_QPM: { runtime: true, build: false, optional: true },
   EMAIL_FROM: { runtime: true, build: false },
   FAL_BILLING_KEY: { runtime: true, build: false },
   FAL_KEY: { runtime: true, build: false },
   GEMINI_API_KEY: { runtime: true, build: false },
   GOOGLE_CLIENT_ID: { runtime: true, build: false },
   GOOGLE_CLIENT_SECRET: { runtime: true, build: false },
+  // Lifts modelschemas.com (catalog, input schemas, rate cards) off its
+  // anonymous 60 req/h limit.
+  MODELSCHEMAS_API_KEY: { runtime: true, build: false, optional: true },
   LANGFUSE_BASE_URL: { runtime: false, build: false },
   LANGFUSE_PROMPTS_ENABLED: { runtime: false, build: false },
   LANGFUSE_PUBLIC_KEY: { runtime: false, build: false },
   LANGFUSE_SECRET_KEY: { runtime: false, build: false },
-  OPENAI_APPS_CHALLENGE: { runtime: true, build: false },
+  OPENAI_APPS_CHALLENGE: { runtime: true, build: false, optional: true },
   OPENROUTER_KEY: { runtime: true, build: false },
   R2_PUBLIC_ASSETS_DOMAIN: { runtime: false, build: false },
-  R2_PUBLIC_STORAGE_DOMAIN: { runtime: true, build: false },
-  REVIEW_LOGIN_CODE: { runtime: true, build: false },
-  REVIEW_LOGIN_EMAIL: { runtime: true, build: false },
+  R2_PUBLIC_STORAGE_DOMAIN: { runtime: true, build: false, optional: true },
+  REVIEW_LOGIN_CODE: { runtime: true, build: false, optional: true },
+  REVIEW_LOGIN_EMAIL: { runtime: true, build: false, optional: true },
   STRIPE_PUBLISHABLE_KEY: { runtime: true, build: false },
   STRIPE_SECRET_KEY: { runtime: true, build: false },
   STRIPE_WEBHOOK_SECRET: { runtime: true, build: false },

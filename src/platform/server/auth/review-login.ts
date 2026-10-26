@@ -1,4 +1,5 @@
 import { getEnv } from '#env';
+import type { EnvVarName } from '@/platform/server/env/environment';
 
 /**
  * Fixed sign-in code for the one account plugin-directory reviewers use
@@ -12,9 +13,8 @@ import { getEnv } from '#env';
  */
 const REVIEW_CODE = /^(?=.*[A-Za-z])[A-Za-z0-9]{6}$/;
 
-function secret(name: string): string | undefined {
-  const value: unknown = Reflect.get(getEnv(), name);
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+function secret(name: EnvVarName): string | undefined {
+  return getEnv()[name]?.trim() || undefined;
 }
 
 export function isReviewLogin(email: string): boolean {

@@ -8,7 +8,7 @@
       "ESNext.Disposable",
       "ESNext.TypedArrays"
     ],
-    "types": ["node"],
+    "types": ["node", "./worker-configuration.d.ts"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,

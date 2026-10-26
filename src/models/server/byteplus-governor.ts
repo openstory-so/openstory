@@ -9,6 +9,7 @@
  */
 
 import { getEnv } from '#env';
+import type { EnvVarName } from '@/platform/server/env/environment';
 import { getLogger } from '@/platform/logger';
 import type { AcquireInput, BytePlusGovernor } from './byteplus-governor.do';
 
@@ -39,9 +40,9 @@ const CREATE_MAX_WAIT_MS = 15 * 60_000;
  */
 const READ_MAX_WAIT_MS = 60_000;
 
-function envQpm(name: string, fallback: number): number {
-  const raw = Reflect.get(getEnv(), name);
-  const parsed = typeof raw === 'string' ? Number.parseInt(raw, 10) : NaN;
+function envQpm(name: EnvVarName, fallback: number): number {
+  const raw = getEnv()[name];
+  const parsed = raw === undefined ? NaN : Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 

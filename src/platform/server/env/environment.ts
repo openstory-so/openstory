@@ -8,13 +8,17 @@
 
 import { getEnv } from '#env';
 
-/**
- * A var the generated `Env` does not declare (a secret set per deploy), or
- * `undefined` when unset or empty.
- */
-export function optionalEnv(name: string): string | undefined {
-  const value: unknown = Reflect.get(getEnv(), name);
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
+/** Every string-valued var or secret on the Worker env. */
+export type EnvVarName = {
+  [K in keyof Cloudflare.Env]-?: Cloudflare.Env[K] extends string | undefined
+    ? K
+    : never;
+}[keyof Cloudflare.Env];
+
+/** A var or secret, or `undefined` when unset or empty. */
+export function optionalEnv(name: EnvVarName): string | undefined {
+  const value = getEnv()[name];
+  return value ? value : undefined;
 }
 
 /**

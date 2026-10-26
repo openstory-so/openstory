@@ -18,14 +18,28 @@
  * new text still has runtime declarations, is not HTML, and is at least half
  * as long as what was committed.
  *
+ * Secrets are typed from the push catalog (`scripts/push-secrets.ts`), not
+ * from whatever `.env.local` holds: wrangler reads secret names from env files,
+ * so this writes a throwaway one with every required runtime secret and passes
+ * it with `--env-file`, which replaces the `.dev.vars` / `.env*` lookup.
+ * Optional entries are typed `?:` in `src/platform/server/env/env.d.ts`.
+ *
  * A deliberate new shape (for example after a wrangler upgrade that stops
  * inlining runtime types) is reviewed by hand:
  * `LEFTHOOK_EXCLUDE=typegen-regen`.
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SECRETS, type SecretNeed } from './push-secrets';
 
 export const RUNTIME_TYPES_MARKER = '// Begin runtime types';
 
@@ -73,6 +87,16 @@ export function rejectRegeneratedWorkerTypes(
   return null;
 }
 
+/** Required runtime secrets, as env-file lines; the values are placeholders. */
+export function requiredSecretsEnvFile(
+  catalog: Record<string, SecretNeed>
+): string {
+  return Object.entries(catalog)
+    .filter(([, need]) => need.runtime && !need.optional)
+    .map(([name]) => `${name}=x\n`)
+    .join('');
+}
+
 function countLines(text: string): number {
   if (text.length === 0) return 0;
   return text.split('\n').length;
@@ -83,14 +107,25 @@ function main() {
   const target = join(repoRoot, 'worker-configuration.d.ts');
   const committed = existsSync(target) ? readFileSync(target, 'utf8') : '';
 
+  const secretsDir = mkdtempSync(join(tmpdir(), 'openstory-worker-types-'));
+  const secretsFile = join(secretsDir, 'secrets.env');
+  writeFileSync(secretsFile, requiredSecretsEnvFile(SECRETS));
   const result = spawnSync(
     'bun',
-    ['run', 'wrangler', 'types', '--include-runtime'],
+    [
+      'run',
+      'wrangler',
+      'types',
+      '--include-runtime',
+      '--env-file',
+      secretsFile,
+    ],
     {
       cwd: repoRoot,
       stdio: ['ignore', 'ignore', 'inherit'],
     }
   );
+  rmSync(secretsDir, { recursive: true, force: true });
   if (result.status !== 0) {
     if (committed) writeFileSync(target, committed);
     process.exit(result.status ?? 1);

@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { requiredSecretsEnvFile } from '../../../../scripts/regen-worker-types';
 import {
   SECRETS,
   TOOLING_OR_LEGACY,
@@ -166,7 +168,7 @@ describe('SECRETS catalog (#1502)', () => {
   });
 
   it('pushes BytePlus keys as plain runtime secrets', () => {
-    const runtime = { runtime: true, build: false };
+    const runtime = { runtime: true, build: false, optional: true };
     expect(SECRETS.ARK_API_KEY).toEqual(runtime);
     expect(SECRETS.ARK_BASE_URL).toEqual(runtime);
     expect(SECRETS.BYTEPLUS_ACCESS_KEY).toEqual(runtime);
@@ -177,7 +179,7 @@ describe('SECRETS catalog (#1502)', () => {
   });
 
   it('pushes ElevenLabs keys as plain runtime secrets — platform only, no BYOK', () => {
-    const runtime = { runtime: true, build: false };
+    const runtime = { runtime: true, build: false, optional: true };
     expect(SECRETS.ELEVENLABS_API_KEY).toEqual(runtime);
     expect(SECRETS.ELEVENLABS_BASE_URL).toEqual(runtime);
   });
@@ -218,5 +220,39 @@ describe('formatSecretsTable', () => {
     expect(table).toContain('update');
     expect(table).toContain('build-only - set in Workers Builds');
     expect(table).toContain('unused - nothing reads it');
+  });
+});
+
+describe('catalog ↔ Worker env types', () => {
+  const read = (path: string) =>
+    readFileSync(new URL(`../../../../${path}`, import.meta.url), 'utf8');
+  const envDts = read('src/platform/server/env/env.d.ts');
+  const workerTypes = read('worker-configuration.d.ts');
+  const runtime = Object.entries(SECRETS).filter(([, need]) => need.runtime);
+
+  it('declares every optional runtime secret as optional in env.d.ts', () => {
+    const missing = runtime
+      .filter(([, need]) => 'optional' in need)
+      .map(([name]) => name)
+      .filter((name) => !envDts.includes(`    ${name}?: string;`));
+    expect(missing).toEqual([]);
+  });
+
+  it('types every required runtime secret in worker-configuration.d.ts (bun scripts/regen-worker-types.ts)', () => {
+    const missing = runtime
+      .filter(([, need]) => !('optional' in need))
+      .map(([name]) => name)
+      .filter((name) => !workerTypes.includes(`\t${name}: string;`));
+    expect(missing).toEqual([]);
+  });
+
+  it('writes only required runtime secrets to the regen env file', () => {
+    expect(
+      requiredSecretsEnvFile({
+        A: { runtime: true, build: false },
+        B: { runtime: true, build: false, optional: true },
+        C: { runtime: false, build: true },
+      })
+    ).toBe('A=x\n');
   });
 });
