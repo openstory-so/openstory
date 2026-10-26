@@ -63,8 +63,6 @@ const SERVER_ONLY = [
   '@tanstack/ai-fal',
   '@tanstack/ai-gemini',
   '@opentelemetry/',
-  '@libsql/',
-  'drizzle-orm/libsql',
   'better-auth', // server package; client-safe subpaths are allowlisted below
   'cloudflare:workers',
 ];

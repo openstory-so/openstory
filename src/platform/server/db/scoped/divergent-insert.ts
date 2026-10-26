@@ -21,39 +21,15 @@
  *      a workflow failure even though the variant landed successfully.
  */
 
-// Three drivers carry SQLite errors through this codepath:
-//   - `@libsql/client` populates `extendedCode` (`SQLITE_CONSTRAINT_UNIQUE`).
-//   - `better-sqlite3` populates `code` (`SQLITE_CONSTRAINT_UNIQUE`).
-//   - Cloudflare D1 surfaces a plain `Error` (`D1_ERROR: UNIQUE constraint
-//     failed: …`) with no `code`/`extendedCode` field.
-// Detect via the structured fields when present, then fall back to the
-// canonical SQLite message text — D1 included. The structured branch
-// returns early ONLY for matches; on a known-but-non-matching code we
-// still consult the message regex (cheap, and SQLite's FK / NOT NULL
-// messages don't mention "UNIQUE", so we don't over-match).
-type SqliteErrorShape = { code?: string; extendedCode?: string };
-
-const UNIQUE_CONSTRAINT_CODES = new Set([
-  'SQLITE_CONSTRAINT_UNIQUE',
-  'SQLITE_CONSTRAINT_PRIMARYKEY',
-]);
-
-const UNIQUE_MESSAGE_RE = /UNIQUE constraint failed|SQLITE_CONSTRAINT_UNIQUE/;
+// D1 reports a constraint failure only in its message (`D1_ERROR: UNIQUE
+// constraint failed: …`; a primary-key clash reads the same), and drizzle
+// wraps it in a DrizzleQueryError whose own message is the SQL. So walk the
+// cause chain and match the text. FK and NOT NULL messages do not say UNIQUE.
+const UNIQUE_MESSAGE_RE = /UNIQUE constraint failed/;
 
 export function isUniqueConstraintError(err: unknown): boolean {
-  if (err && typeof err === 'object') {
-    const shape = err as SqliteErrorShape;
-    if (
-      (typeof shape.code === 'string' &&
-        UNIQUE_CONSTRAINT_CODES.has(shape.code)) ||
-      (typeof shape.extendedCode === 'string' &&
-        UNIQUE_CONSTRAINT_CODES.has(shape.extendedCode))
-    ) {
-      return true;
-    }
-  }
-  if (err instanceof Error) {
-    return UNIQUE_MESSAGE_RE.test(err.message);
+  for (let e: unknown = err; e instanceof Error; e = e.cause) {
+    if (UNIQUE_MESSAGE_RE.test(e.message)) return true;
   }
   return false;
 }

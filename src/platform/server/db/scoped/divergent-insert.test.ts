@@ -1,39 +1,31 @@
 /**
  * Unit tests for the race-tolerant divergent-insert helper and its
- * unique-constraint detector. These pin behavior across the three SQLite
- * driver shapes we expect to encounter:
- *   - `@libsql/client` LibsqlError with `extendedCode`
- *   - `better-sqlite3`-style Error with `code`
- *   - Cloudflare D1's plain Error with the canonical SQLite message text
+ * unique-constraint detector. D1 carries the failure in its message text,
+ * and drizzle wraps that error in a DrizzleQueryError (`cause`).
  */
 
 import { describe, expect, it } from 'vitest';
+import { teams } from '@/platform/server/db/schema';
+import { createTestDb } from '@/platform/server/db/test-d1';
 import {
   insertDivergentRaceTolerant,
   isUniqueConstraintError,
 } from './divergent-insert';
 
 describe('isUniqueConstraintError', () => {
-  it('matches @libsql/client extendedCode', () => {
-    const err = Object.assign(new Error('boom'), {
-      code: 'SQLITE_CONSTRAINT',
-      extendedCode: 'SQLITE_CONSTRAINT_UNIQUE',
-    });
-    expect(isUniqueConstraintError(err)).toBe(true);
-  });
-
-  it('matches better-sqlite3-style code on the unique extended value', () => {
-    const err = Object.assign(new Error('boom'), {
-      code: 'SQLITE_CONSTRAINT_UNIQUE',
-    });
-    expect(isUniqueConstraintError(err)).toBe(true);
-  });
-
-  it('matches PRIMARY KEY uniqueness as a unique-constraint violation', () => {
-    const err = Object.assign(new Error('boom'), {
-      code: 'SQLITE_CONSTRAINT_PRIMARYKEY',
-    });
-    expect(isUniqueConstraintError(err)).toBe(true);
+  it('matches a real collision, wrapped by drizzle', async () => {
+    const { db, close } = await createTestDb();
+    try {
+      await db.insert(teams).values({ id: 'a', name: 'T', slug: 's1' });
+      const err: unknown = await db
+        .insert(teams)
+        .values({ id: 'a', name: 'T', slug: 's2' })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(isUniqueConstraintError(err)).toBe(true);
+    } finally {
+      await close();
+    }
   });
 
   it('matches Cloudflare D1 plain Error via the canonical message text', () => {

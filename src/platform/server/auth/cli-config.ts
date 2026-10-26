@@ -7,7 +7,7 @@
  * it (it is gitignored).
  *
  * Schema generation never touches a database, and the Node `#db-client` throws
- * by design, so a dummy libSQL-typed drizzle instance stands in for D1.
+ * by design, so a dummy D1 drizzle instance stands in.
  *
  * The OAuth provider plugin (#1456) seeds its `oauthResource` rows in `init`,
  * which the CLI kicks off but never awaits. Against the dummy db that init
@@ -18,7 +18,7 @@
  * Usage: bun auth:generate
  */
 
-import { drizzle } from 'drizzle-orm/libsql';
+import { drizzle } from 'drizzle-orm/d1';
 import { createAuth } from './config';
 
 process.on('unhandledRejection', (reason) => {
@@ -30,4 +30,4 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-export default createAuth(drizzle({ client: {} as never }) as never);
+export default createAuth(drizzle({} as never) as never);
