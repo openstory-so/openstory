@@ -7,6 +7,7 @@ vi.mock('#env', () => ({
 
 const { aigcGroupName } = await import('./byteplus-config');
 const {
+  BytePlusAssetRefusedError,
   deleteAssetGroup,
   hashAssetIdentity,
   ingestAigcAsset,
@@ -47,6 +48,17 @@ function configWith(
         }
       }
       const result = handler(body);
+      // `{ __status }` answers as a bare edge error (Cloudflare's 520).
+      if (
+        typeof result === 'object' &&
+        result !== null &&
+        '__status' in result &&
+        typeof result.__status === 'number'
+      ) {
+        return new Response(`error code: ${result.__status}`, {
+          status: result.__status,
+        });
+      }
       // `{ __error }` from a handler answers as an Ark error envelope.
       if (
         typeof result === 'object' &&
@@ -232,25 +244,72 @@ describe('ingestAigcAsset', () => {
     expect(polls).toBe(3);
   });
 
-  it('fails when processing ends in Failed', async () => {
+  it('deletes a refused asset and throws its reason (#2207)', async () => {
+    const calls: string[] = [];
+    const deleted: unknown[] = [];
     const config = configWith(
       {
         ListAssets: () => ({ Items: [] as BytePlusAsset[] }),
         CreateAsset: () => ({ Id: 'asset-bad' }),
-        GetAsset: () => ({ Id: 'asset-bad', Status: 'Failed' }),
+        GetAsset: () => ({
+          Id: 'asset-bad',
+          Status: 'Failed',
+          Error: {
+            Code: 'InputVideoSensitiveContentDetected.PolicyViolation',
+            Message:
+              'The request failed because the input video may be related to copyright restrictions. Request ID: 2026_asset-bad',
+          },
+        }),
+        DeleteAsset: (body) => {
+          deleted.push(body.Id);
+          return {};
+        },
+      },
+      calls
+    );
+
+    const failure = ingestAigcAsset(config, {
+      identity: 'clip-b',
+      publicUrl: 'https://cdn.example.com/b.mp4',
+      assetType: 'Video',
+      groupId: 'group-1',
+      sleep: async () => undefined,
+    });
+
+    await expect(failure).rejects.toBeInstanceOf(BytePlusAssetRefusedError);
+    await expect(failure).rejects.toThrow(
+      'BytePlus asset asset-bad failed processing (InputVideoSensitiveContentDetected.PolicyViolation): The request failed because the input video may be related to copyright restrictions.'
+    );
+    expect(deleted).toEqual(['asset-bad']);
+    expect(calls).toEqual(['ListAssets', 'CreateAsset', 'GetAsset', 'DeleteAsset']); // prettier-ignore
+  });
+
+  it('a 520 while waiting is one spent poll, not the end of the wait', async () => {
+    let polls = 0;
+    const config = configWith(
+      {
+        ListAssets: () => ({ Items: [] as BytePlusAsset[] }),
+        CreateAsset: () => ({ Id: 'asset-flaky' }),
+        GetAsset: () => {
+          polls += 1;
+          return polls === 1
+            ? { __status: 520 }
+            : { Id: 'asset-flaky', Status: 'Active' };
+        },
       },
       []
     );
 
-    await expect(
-      ingestAigcAsset(config, {
-        identity: 'still-b',
-        publicUrl: 'https://cdn.example.com/b.png',
-        assetType: 'Image',
-        groupId: 'group-1',
-        sleep: async () => undefined,
-      })
-    ).rejects.toThrow(/failed processing/);
+    const uri = await ingestAigcAsset(config, {
+      identity: 'still-c',
+      publicUrl: 'https://cdn.example.com/c.png',
+      assetType: 'Image',
+      groupId: 'group-1',
+      sleep: async () => undefined,
+    });
+
+    expect(uri).toBe('asset://asset-flaky');
+    expect(polls).toBe(2);
   });
 });
 

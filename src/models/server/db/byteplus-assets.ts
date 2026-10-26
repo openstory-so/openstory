@@ -371,6 +371,41 @@ export function createBytePlusAssetsMethods(db: Database) {
       ]);
     },
 
+    /**
+     * Ark says the account pool is full while the ledger still has room: an
+     * asset we do not track holds the slot (#2207). Give one back by dropping
+     * the least recently used unleased resident row; the caller deletes its
+     * asset on Ark. Null when every resident slot is leased.
+     */
+    async evictIdle(): Promise<string | null> {
+      const now = new Date();
+      const candidates = await db
+        .select({ id: bytePlusAssets.id, assetId: bytePlusAssets.assetId })
+        .from(bytePlusAssets)
+        .where(and(isNotNull(bytePlusAssets.assetId), evictable(now)))
+        .orderBy(
+          sql`case when ${bytePlusAssets.slot} = 'frame' then 0 else 1 end`,
+          asc(bytePlusAssets.lastUsedAt)
+        )
+        .limit(EVICTION_CANDIDATES);
+      for (const victim of candidates) {
+        if (!victim.assetId) continue;
+        // Re-checks no lease landed since the select.
+        const dropped = await db
+          .delete(bytePlusAssets)
+          .where(
+            and(
+              eq(bytePlusAssets.id, victim.id),
+              eq(bytePlusAssets.assetId, victim.assetId),
+              evictable(now)
+            )
+          )
+          .returning({ assetId: bytePlusAssets.assetId });
+        if (dropped[0]?.assetId) return dropped[0].assetId;
+      }
+      return null;
+    },
+
     /** Every Ark asset id the ledger knows — the sweep's view of us (#1519). */
     async listAssetIds(): Promise<string[]> {
       const rows = await db

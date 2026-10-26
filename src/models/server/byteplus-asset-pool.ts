@@ -34,6 +34,7 @@ import { getLogger } from '@/platform/logger';
 import { reportBytePlusAssetPool } from './byteplus-observability';
 import { bytePlusAssetSlots } from './byteplus-config';
 import {
+  BytePlusAssetRefusedError,
   deleteAsset,
   hashAssetIdentity,
   ingestAigcAsset,
@@ -50,7 +51,10 @@ const logger = getLogger(['openstory', 'ai', 'byteplus-asset-pool']);
 type Ledger = ReturnType<typeof createBytePlusAssetsMethods>;
 
 /** Reserve + finalize, as `scopedDb.bytePlusAssets` — both writes, no hatch. */
-export type AssetPoolLedger = Pick<Ledger, 'claimSlot' | 'finalizeSlot'>;
+export type AssetPoolLedger = Pick<
+  Ledger,
+  'claimSlot' | 'finalizeSlot' | 'evictIdle'
+>;
 
 /**
  * How long a submitted still stays pinned when nobody releases it.
@@ -169,6 +173,13 @@ export async function evictPooledAsset(
   reportBytePlusAssetPool({ outcome: 'evicted', slot: input.slot });
 }
 
+function isPoolFull(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes('(QuotaSharedPoolExceeded)')
+  );
+}
+
 /**
  * Create the asset a reservation from {@link claimPooledAsset} made room
  * for, and finalize the slot. Runs after the governor's CreateAsset token.
@@ -189,21 +200,42 @@ export async function createPooledAsset(
   // `ingestAigcAsset` checks Ark by name first, which is what makes a retried
   // create (lost response, crash before finalize) reuse the asset instead of
   // making a second one, and what heals a ledger that lost rows.
-  let uri: string;
-  try {
-    uri = await ingestAigcAsset(config, {
+  const ingest = () =>
+    ingestAigcAsset(config, {
       identity: input.storedUrl,
       publicUrl: input.publicUrl,
       assetType: input.assetType,
       ...(input.groupId && { groupId: input.groupId }),
     });
+  let uri: string;
+  try {
+    try {
+      uri = await ingest();
+    } catch (error) {
+      // Ark counts assets the ledger does not (a crashed eviction, a refused
+      // asset whose delete failed), so it can be full while we have room.
+      // Free one idle slot and try once more instead of reporting busy.
+      if (!isPoolFull(error)) throw error;
+      const evicted = await ledger.evictIdle();
+      if (!evicted) throw error;
+      await evictPooledAsset(config, {
+        assetId: evicted,
+        slot: input.slot,
+        ...(input.groupId && { groupId: input.groupId }),
+      });
+      uri = await ingest();
+    }
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error);
     // Ark's text never says which reference it refused (#2163, #2205).
-    if (!text.includes(input.storedUrl)) {
-      throw new Error(`${text} (${input.storedUrl})`);
+    const named = text.includes(input.storedUrl)
+      ? text
+      : `${text} (${input.storedUrl})`;
+    // The same media is refused every time: do not replay the step (#2207).
+    if (error instanceof BytePlusAssetRefusedError) {
+      throw new NonRetryableError(named);
     }
-    throw error;
+    throw named === text ? error : new Error(named);
   }
 
   if (!uri.startsWith('asset://')) {

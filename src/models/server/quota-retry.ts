@@ -84,6 +84,9 @@ function messageOf(error: unknown): string {
 export function isBytePlusQuotaError(error: unknown): boolean {
   if (hasStatus429(error)) return true;
   const haystack = messageOf(error);
+  // A full asset pool is occupancy, not a rate: waiting frees nothing. The
+  // pool evicts an idle slot instead (#2207).
+  if (haystack.includes('quotasharedpoolexceeded')) return false;
   return BYTEPLUS_QUOTA_MARKERS.some((marker) => haystack.includes(marker));
 }
 

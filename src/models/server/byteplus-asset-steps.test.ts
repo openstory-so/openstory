@@ -68,6 +68,7 @@ function fakeStep() {
 const ledger: AssetPoolLedger = {
   claimSlot: async () => ({ kind: 'exhausted' }),
   finalizeSlot: async () => true,
+  evictIdle: async () => null,
 };
 // only resolveOptionalKey is called
 const credentials = asStub<CredentialScopedDb>({

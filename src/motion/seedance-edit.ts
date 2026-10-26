@@ -249,6 +249,18 @@ function providerDetail(message: string): string {
     .trim();
 }
 
+/** Ark's reason on a refused asset, as one short sentence, or null. */
+function refusalDetail(message: string): string | null {
+  const match =
+    /failed processing \([^)]*\):\s*(.+?)(?:\s*\((?:\/r2\/|https?:\/\/)[^)\s]*\))?$/s.exec(
+      message
+    );
+  const detail = match?.[1]?.trim();
+  if (!detail) return null;
+  const short = detail.length > 180 ? `${detail.slice(0, 177)}…` : detail;
+  return /[.!?…]$/.test(short) ? short : `${short}.`;
+}
+
 /**
  * Plain copy when Ark refused the submit body itself (`InvalidParameter`,
  * which includes `TaskTypeConstraint`), or null. The same body is refused
@@ -300,6 +312,13 @@ export function explainSeedanceFailure(
     referenceTag(message, references?.images, 'Image') ??
     referenceTag(message, references?.videos, 'Video');
   if (/failed processing/.test(message)) {
+    const who = reference ?? 'One of your references';
+    // Ark's own reason, kept on the asset it refused (#2207).
+    if (/copyright/i.test(message)) {
+      return `${who} was refused: it may be copyrighted. You weren't charged.`;
+    }
+    const why = refusalDetail(message);
+    if (why) return `${who} couldn't be processed: ${why} You weren't charged.`;
     return reference
       ? `${reference} couldn't be processed. You weren't charged.`
       : REFERENCE_PROCESS_MESSAGE;
@@ -328,7 +347,7 @@ export function seedanceUserFacingError(
   const text = error?.trim();
   if (
     !text ||
-    !/^(?:Seedance (?:couldn't|can only|read this)|Our video provider|One of your reference|@Image\d+ couldn't|@Video\d+ couldn't|This (?:video|image|audio|generation) couldn't start)/.test(
+    !/^(?:Seedance (?:couldn't|can only|read this)|Our video provider|One of your reference|@(?:Image|Video)\d+ (?:couldn't|was refused)|This (?:video|image|audio|generation) couldn't start)/.test(
       text
     )
   ) {

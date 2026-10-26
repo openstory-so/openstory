@@ -218,6 +218,23 @@ describe('seedance edit constraints (#2036)', () => {
         { images: ['/r2/a.png', '/r2/b.png'] }
       )
     ).toBe("@Image2 couldn't be processed. You weren't charged.");
+    // Ark's reason on the refused asset reaches the user (#2207).
+    expect(
+      explainSeedanceFailure(
+        'BytePlus asset asset-20261027052714-lsg7b failed processing (InputVideoSensitiveContentDetected.PolicyViolation): The request failed because the input video may be related to copyright restrictions. (/r2/clip.mp4)',
+        'byteplus',
+        { images: ['/r2/a.png'], videos: ['/r2/clip.mp4'] }
+      )
+    ).toBe("@Video1 was refused: it may be copyrighted. You weren't charged.");
+    expect(
+      explainSeedanceFailure(
+        'BytePlus asset asset-1 failed processing (SomethingElse): The input image is too blurry (/r2/b.png)',
+        'byteplus',
+        { images: ['/r2/a.png', '/r2/b.png'] }
+      )
+    ).toBe(
+      "@Image2 couldn't be processed: The input image is too blurry. You weren't charged."
+    );
     expect(
       explainSeedanceFailure(
         'BytePlus OpenAPI CreateAsset failed (InvalidParameter.DurationTooLong): Duration must be between 1.8s and 30.2s (/r2/clip.mp4)',

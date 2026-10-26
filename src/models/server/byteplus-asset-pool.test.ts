@@ -51,13 +51,25 @@ let ledger: ReturnType<typeof createBytePlusAssetsMethods>;
  * Ark stub: CreateAsset mints an id, GetAsset reports it Active. `deleteFails`
  * makes DeleteAsset error; `listed` is what ListAssets reports in the group.
  */
-function arkStub(options: { deleteFails?: boolean; listed?: string[] } = {}): {
+function arkStub(
+  options: {
+    deleteFails?: boolean;
+    listed?: string[];
+    /** CreateAsset answers `QuotaSharedPoolExceeded` this many times first. */
+    poolFull?: number;
+    /** GetAsset reports every asset refused, as Ark does for a copyright hit. */
+    refuse?: boolean;
+  } = {}
+): {
   config: BytePlusOpenApiConfig;
   deleted: string[];
   created: () => number;
 } {
   const deleted: string[] = [];
   let next = 0;
+  let fullLeft = options.poolFull ?? 0;
+  const refusal = (Code: string, Message: string) =>
+    new Response(JSON.stringify({ ResponseMetadata: { Error: { Code, Message } } }), { status: 400 }); // prettier-ignore
   const config: BytePlusOpenApiConfig = {
     accessKey: 'AKTEST',
     secretKey: 'sk-test',
@@ -71,6 +83,10 @@ function arkStub(options: { deleteFails?: boolean; listed?: string[] } = {}): {
       const action = new URL(href).searchParams.get('Action') ?? '';
       const raw = typeof init?.body === 'string' ? init.body : '{}';
       const body: Record<string, unknown> = JSON.parse(raw);
+      if (action === 'CreateAsset' && fullLeft > 0) {
+        fullLeft -= 1;
+        return refusal('QuotaSharedPoolExceeded', 'Asset quota exceeded.');
+      }
       const result = (() => {
         switch (action) {
           case 'ListAssetGroups':
@@ -80,7 +96,16 @@ function arkStub(options: { deleteFails?: boolean; listed?: string[] } = {}): {
           case 'CreateAsset':
             return { Id: `ark-${++next}` };
           case 'GetAsset':
-            return { Id: body.Id, Status: 'Active' };
+            return options.refuse
+              ? {
+                  Id: body.Id,
+                  Status: 'Failed',
+                  Error: {
+                    Code: 'InputVideoSensitiveContentDetected.PolicyViolation',
+                    Message: 'The input video may be related to copyright restrictions.', // prettier-ignore
+                  },
+                }
+              : { Id: body.Id, Status: 'Active' };
           case 'DeleteAsset':
             if (options.deleteFails) return undefined;
             deleted.push(String(body.Id));
@@ -615,6 +640,60 @@ describe('createPooledAsset', () => {
     }).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(NonRetryableError);
+  });
+});
+
+describe('assets Ark holds that the ledger does not (#2207)', () => {
+  const reserve = async (url: string) => ({
+    kind: 'reserved' as const,
+    identity: await hashAssetIdentity(url),
+    evictedAssetId: null,
+  });
+  const create = async (config: BytePlusOpenApiConfig, url: string) =>
+    createPooledAsset(config, ledger, {
+      claim: await reserve(url),
+      owner: 'studio:run',
+      storedUrl: url,
+      publicUrl: 'https://fal/clip.mp4',
+      assetType: 'Video',
+      slot: 'frame',
+    });
+
+  it('Ark full while the ledger has room: evicts the oldest idle slot and creates', async () => {
+    const ark = arkStub({ poolFull: 1 });
+    await seedSlot({ url: 'https://cdn/idle.png', assetId: 'ark-idle', slot: 'library', lastUsedAt: ago(600) }); // prettier-ignore
+    await seedSlot({ url: 'https://cdn/busy.png', assetId: 'ark-busy', slot: 'frame', lastUsedAt: ago(900), leasedBy: 'motion:other' }); // prettier-ignore
+
+    expect(await create(ark.config, 'https://cdn/new.png')).toBe(
+      'asset://ark-1'
+    );
+    expect(ark.deleted).toEqual(['ark-idle']);
+    const rows = await db.select({ assetId: bytePlusAssets.assetId }).from(bytePlusAssets); // prettier-ignore
+    expect(rows.map((row) => row.assetId ?? "").toSorted((a, b) => a.localeCompare(b))).toEqual(['ark-1', 'ark-busy']); // prettier-ignore
+  });
+
+  it('Ark full and every slot leased: the pool-full error stands, nothing deleted', async () => {
+    const ark = arkStub({ poolFull: 1 });
+    await seedSlot({ url: 'https://cdn/busy.png', assetId: 'ark-busy', slot: 'frame', lastUsedAt: ago(900), leasedBy: 'motion:other' }); // prettier-ignore
+
+    await expect(create(ark.config, 'https://cdn/new.png')).rejects.toThrow(
+      /QuotaSharedPoolExceeded.*\(https:\/\/cdn\/new\.png\)/
+    );
+    expect(ark.deleted).toEqual([]);
+  });
+
+  it('a refused asset is deleted and fails the step without a retry', async () => {
+    const ark = arkStub({ refuse: true });
+
+    const error = await create(ark.config, '/r2/clip.mp4').catch(
+      (caught: unknown) => caught
+    );
+
+    expect(error).toBeInstanceOf(NonRetryableError);
+    expect(String(error)).toContain(
+      'failed processing (InputVideoSensitiveContentDetected.PolicyViolation): The input video may be related to copyright restrictions. (/r2/clip.mp4)'
+    );
+    expect(ark.deleted).toEqual(['ark-1']);
   });
 });
 

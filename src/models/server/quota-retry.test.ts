@@ -45,6 +45,10 @@ describe('isBytePlusQuotaError', () => {
     withStatus(400, 'InvalidParameter: size is malformed'),
     withStatus(404, 'InvalidEndpointOrModel.NotFound: ModelNotOpen'),
     new Error('content policy violation'),
+    // A full asset pool: waiting frees nothing, the pool evicts (#2207).
+    new Error(
+      'BytePlus OpenAPI CreateAsset failed (QuotaSharedPoolExceeded): Asset quota exceeded: the shared pool for projects without explicit allocation is full.'
+    ),
   ])('does not classify a permanent failure as a quota rejection', (error) => {
     expect(isBytePlusQuotaError(error)).toBe(false);
   });
