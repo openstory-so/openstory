@@ -57,6 +57,10 @@ export function putToR2(
   onProgress?: (percent: number) => void,
   options?: PutOptions
 ): Promise<void> {
+  // The server's likeness check reads the name as a hint (#2192).
+  if (file instanceof File) {
+    uploadUrl = `${uploadUrl}&filename=${encodeURIComponent(file.name)}`;
+  }
   if (file.size <= MULTIPART_THRESHOLD) {
     return putSingle(uploadUrl, file, contentType, onProgress, {
       ...options,
@@ -97,7 +101,8 @@ async function putMultipart(
   if (!bucket || !path) {
     throw new Error('putToR2: upload URL is missing bucket/path for multipart');
   }
-  const base = `/api/storage/multipart?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}`;
+  const filename = parsed.searchParams.get('filename');
+  const base = `/api/storage/multipart?bucket=${encodeURIComponent(bucket)}&path=${encodeURIComponent(path)}${filename ? `&filename=${encodeURIComponent(filename)}` : ''}`;
 
   const createRes = await fetch(
     `${base}&action=create&contentType=${encodeURIComponent(contentType)}`,

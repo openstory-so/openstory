@@ -48,4 +48,16 @@ describe('mediaUrlSchema', () => {
       expect(mediaUrlSchema.safeParse(url).success).toBe(false);
     }
   });
+
+  it('rejects control characters and whitespace the URL parser strips (#2192)', () => {
+    for (const url of [
+      '/r2/talent/mine/.\t./theirs/x.png',
+      '/r2/talent/mine/.\n./theirs/x.png',
+      'https://cdn.example/talent/mine/.\r./theirs/x.png',
+      '/r2/talent/mine/a b.png',
+      '/r2/talent/mine/\u0000x.png',
+    ]) {
+      expect(mediaUrlSchema.safeParse(url).success).toBe(false);
+    }
+  });
 });

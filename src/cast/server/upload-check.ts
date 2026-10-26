@@ -96,7 +96,11 @@ export async function startCheckForStoredUpload(opts: {
     userId: opts.userId,
     teamId: opts.teamId,
     url: getPublicUrl(opts.bucket, opts.path),
-    filename: null,
+    // A hint only, as the browser's filename always was; capped like
+    // `uploadRefSchema`.
+    filename:
+      new URL(opts.request.url).searchParams.get('filename')?.slice(0, 255) ??
+      null,
     ipAddress: opts.request.headers.get('cf-connecting-ip'),
     userAgent: opts.request.headers.get('user-agent'),
   });
