@@ -51,7 +51,10 @@ import {
   seedanceEditLengthMessage,
 } from '@/motion/seedance-edit';
 import { mediaUrlHasTraversal } from '@/platform/schemas/media-url.schemas';
-import { r2KeyFromUrl } from '@/platform/server/storage/buckets';
+import {
+  r2KeyFromUrl,
+  STORAGE_BUCKETS,
+} from '@/platform/server/storage/buckets';
 import {
   getExtensionFromUrl,
   getMimeTypeFromExtension,
@@ -217,7 +220,7 @@ function refuseTraversableReferenceUrl(url: string): void {
 }
 
 /**
- * Studio output key: `teams/<team>/studio/<id>/<file>.mp4|mov|webm`.
+ * Studio output key: `videos/teams/<team>/studio/<id>/<file>.mp4|mov|webm`.
  * The id alone is not a match — a longer or dotted path can share the prefix.
  */
 function studioClipIdFromUrl(teamId: string, url: string): string | null {
@@ -227,7 +230,7 @@ function studioClipIdFromUrl(teamId: string, url: string): string | null {
   return (
     key.match(
       new RegExp(
-        `^teams/${escaped}/studio/([^/]+)/[^/]+\\.(?:mp4|mov|webm)$`,
+        `^${STORAGE_BUCKETS.VIDEOS}/teams/${escaped}/studio/([^/]+)/[^/]+\\.(?:mp4|mov|webm)$`,
         'i'
       )
     )?.[1] ?? null

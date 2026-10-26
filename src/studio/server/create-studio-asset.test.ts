@@ -979,7 +979,7 @@ describe('upload rights gate (#1581)', () => {
       await import('@/platform/errors');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const oldId = generateId();
-    const oldClip = `/r2/teams/${TEAM_ID}/studio/${oldId}/video.mp4`;
+    const oldClip = `/r2/videos/teams/${TEAM_ID}/studio/${oldId}/video.mp4`;
     const old = await scopedDb.generatedAssets.insert({
       id: oldId,
       provider: 'byteplus',
@@ -999,12 +999,14 @@ describe('upload rights gate (#1581)', () => {
       createStudioAssets(scopedDb, {
         ...video,
         mode: 'reference',
-        referenceVideos: [`/r2/teams/${TEAM_ID}/studio/${old.id}/video.mp4`],
+        referenceVideos: [
+          `/r2/videos/teams/${TEAM_ID}/studio/${old.id}/video.mp4`,
+        ],
       })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
     // Any other stored clip, ours or not, needs its own ledger row.
     for (const clip of [
-      `/r2/teams/${generateId()}/studio/${old.id}/video.mp4`,
+      `/r2/videos/teams/${generateId()}/studio/${old.id}/video.mp4`,
       `/r2/elements/${TEAM_ID}/seq-1/01COPY.mp4`,
     ]) {
       await expect(
@@ -1020,7 +1022,9 @@ describe('upload rights gate (#1581)', () => {
       createStudioAssets(scopedDb, {
         ...video,
         mode: 'reference',
-        referenceVideos: [`/r2/teams/${TEAM_ID}/studio/${old.id}/image.png`],
+        referenceVideos: [
+          `/r2/videos/teams/${TEAM_ID}/studio/${old.id}/image.png`,
+        ],
       })
     ).rejects.toBeInstanceOf(ValidationError);
     expect(mockReserveRunCredits).not.toHaveBeenCalled();
@@ -1032,7 +1036,7 @@ describe('upload rights gate (#1581)', () => {
     const { recordLikenessFinding } =
       await import('@/cast/server/upload-rights');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
-    const clip = `/r2/teams/${TEAM_ID}/studio/${generateId()}/video.mp4`;
+    const clip = `/r2/videos/teams/${TEAM_ID}/studio/${generateId()}/video.mp4`;
     const passed = await scopedDb.generatedAssets.insert({
       provider: 'byteplus',
       endpointId: 'dreamina-seedance-2-5-260628',
@@ -1045,7 +1049,7 @@ describe('upload rights gate (#1581)', () => {
     });
     // The stored output itself has nothing behind it to check.
     await recordLikenessFinding(scopedDb, [clip], 'other', request);
-    const prefix = `/r2/teams/${TEAM_ID}/studio/${passed.id}`;
+    const prefix = `/r2/videos/teams/${TEAM_ID}/studio/${passed.id}`;
     for (const forged of [
       `${prefix}/video.mp4/../../unchecked.mp4`,
       `${prefix}/%2e%2e/unchecked.mp4`,
@@ -1069,6 +1073,35 @@ describe('upload rights gate (#1581)', () => {
       })
     ).rejects.toBeInstanceOf(AttestationRequiredError);
     expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  // The stored key carries its bucket (`videos/teams/…`). Matching without
+  // it checked the team's own clip as an unknown upload, and a clip showing a
+  // person was refused with no sign-off to give (#2201).
+  it("takes the team's own clip as a reference without checking its file", async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const id = generateId();
+    const clip = `/r2/videos/teams/${TEAM_ID}/studio/${id}/video.mp4`;
+    await scopedDb.generatedAssets.insert({
+      id,
+      provider: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      source: 'studio',
+      input: { mode: 'reference', referenceVideos: [] },
+      status: 'completed',
+      outputs: [{ url: clip, contentType: 'video/mp4' }],
+    });
+
+    await createStudioAssets(scopedDb, {
+      ...video,
+      mode: 'reference',
+      referenceVideos: [clip],
+    });
+
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
+    expect(mockTriggerWorkflow).toHaveBeenCalledTimes(1);
   });
 
   it('lets library stills through untouched', async () => {
