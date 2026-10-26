@@ -79,7 +79,15 @@ export const SECRETS = {
   BYTEPLUS_ASSET_GROUP_ID: { runtime: true, build: false, optional: true },
   BYTEPLUS_ASSET_SLOTS: { runtime: true, build: false, optional: true },
   BYTEPLUS_OPENAPI_HOST: { runtime: true, build: false, optional: true },
+  // BytePlus governor rates; defaults apply when unset.
+  BYTEPLUS_ASSET_WRITE_QPM: { runtime: true, build: false, optional: true },
+  BYTEPLUS_OPENAPI_QPM: { runtime: true, build: false, optional: true },
   BETTER_AUTH_SECRET: { runtime: true, build: false },
+  // Better Auth reads it from process.env as its base URL when the config
+  // sets none (ours does not). Unset, the origin comes from the request.
+  BETTER_AUTH_URL: { runtime: true, build: false, optional: true },
+  // Where abuse reports are emailed; unset means queue-only (#1180).
+  ABUSE_REPORT_NOTIFY_EMAIL: { runtime: true, build: false, optional: true },
   // Designed voices live on this account; there is no team BYOK (#1552).
   ELEVENLABS_API_KEY: { runtime: true, build: false, optional: true },
   ELEVENLABS_BASE_URL: { runtime: true, build: false, optional: true },
@@ -143,7 +151,6 @@ export const TOOLING_OR_LEGACY = new Set([
   // Pre-rename / retired names sometimes left on the Worker
   'APP_NAME',
   'APP_URL',
-  'BETTER_AUTH_URL',
   'FAL_CONCURRENCY_LIMIT',
   'GH_OAUTH_CLIENT_ID',
   'GH_OAUTH_CLIENT_SECRET',
@@ -153,6 +160,12 @@ export const TOOLING_OR_LEGACY = new Set([
   'QSTASH_TOKEN',
   'QSTASH_URL',
   'RESEND_API_KEY',
+  'TWILIO_ACCOUNT_SID',
+  'TWILIO_AUTH_TOKEN',
+  'TWILIO_VERIFY_SERVICE_SID',
+  // Local tooling only; nothing in the Worker reads them.
+  'GITHUB_TOKEN',
+  'OPENAI_API_KEY',
   'UPSTASH_REDIS_REST_TOKEN',
   'UPSTASH_REDIS_REST_URL',
 ]);

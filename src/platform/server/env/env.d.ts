@@ -31,12 +31,15 @@ declare namespace Cloudflare {
     REVIEW_LOGIN_EMAIL?: string;
     REVIEW_LOGIN_CODE?: string;
 
-    // ── Not in the push catalog: per deploy, per laptop, or test hooks ──
     /** BytePlus governor rates; defaults apply when unset. */
     BYTEPLUS_ASSET_WRITE_QPM?: string;
     BYTEPLUS_OPENAPI_QPM?: string;
     /** Where abuse reports are emailed. Unset means queue-only. */
     ABUSE_REPORT_NOTIFY_EMAIL?: string;
+    /** Better Auth's base URL (read by Better Auth itself). */
+    BETTER_AUTH_URL?: string;
+
+    // ── Not in the push catalog: per deploy, per laptop, or test hooks ──
     /** `'true'` on PR-preview deploys. */
     VITE_IS_PREVIEW?: string;
     /** aimock base URLs for the native vias and OpenRouter in e2e. */
