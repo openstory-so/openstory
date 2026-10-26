@@ -47,7 +47,8 @@ export type StudioReuse = {
   /** Ark draft mode (#1756); null when the row predates it. */
   draft: boolean | null;
   referenceImages: string[];
-  referenceVideos: string[];
+  /** A Studio clip keeps its id so Use again sends the id, not the address. */
+  referenceVideos: { url: string; assetId?: string }[];
   referenceAudio: string[];
   startImageUrl: string | null;
   endImageUrl: string | null;
@@ -193,14 +194,36 @@ export function studioGenerationFacts(asset: GeneratedAsset): string[] {
   return facts;
 }
 
+/**
+ * Clips to load back. `referenceClips` is parallel to the stored addresses:
+ * an id is sent again as an id. An edit's source is the first clip (#1925).
+ */
+function reuseReferenceVideos(
+  input: GeneratedAsset['input']
+): StudioReuse['referenceVideos'] {
+  const clips = Array.isArray(input.referenceClips) ? input.referenceClips : [];
+  const videos = strings(input.referenceVideos).map((url, index) => {
+    const clip = clips[index];
+    if (isRecord(clip) && typeof clip.assetId === 'string') {
+      return { url, assetId: clip.assetId };
+    }
+    return { url };
+  });
+  const source = oneString(input.sourceVideoUrl);
+  if (!source) return videos;
+  const sourceId = oneString(input.sourceAssetId);
+  return [
+    sourceId ? { url: source, assetId: sourceId } : { url: source },
+    ...videos,
+  ];
+}
+
 /** Settings to load back into the composer. Null when there is no prompt. */
 export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
   const prompt = readableStudioPrompt(studioPrompt(asset)).trim();
   if (!prompt) return null;
   const input = asset.input;
   const duration = input.duration;
-  // An edit is a reference run whose source clip is `@Video1` (#1925).
-  const sourceVideo = oneString(input.sourceVideoUrl);
   const aspect = aspectRatioSchema.safeParse(input.aspectRatio);
   return {
     prompt,
@@ -224,10 +247,7 @@ export function studioReuse(asset: GeneratedAsset): StudioReuse | null {
       typeof input.generateAudio === 'boolean' ? input.generateAudio : null,
     draft: typeof input.draft === 'boolean' ? input.draft : null,
     referenceImages: strings(input.referenceImages),
-    referenceVideos: [
-      ...(sourceVideo ? [sourceVideo] : []),
-      ...strings(input.referenceVideos),
-    ],
+    referenceVideos: reuseReferenceVideos(input),
     referenceAudio: strings(input.referenceAudio),
     startImageUrl: oneString(input.startImageUrl),
     endImageUrl: oneString(input.endImageUrl),

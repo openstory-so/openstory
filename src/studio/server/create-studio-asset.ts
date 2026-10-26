@@ -31,10 +31,15 @@ import {
   type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
 import { requireCheckedUploadRights } from '@/cast/server/upload-check';
-import { needsLikenessCheck } from '@/cast/upload-rights';
-import { studioLikenessMedia } from '@/studio/reference-rights';
+import {
+  studioGatedMedia,
+  studioLikenessMedia,
+} from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';
-import type { GeneratedAssetInput } from '@/platform/server/db/schema';
+import type {
+  GeneratedAssetInput,
+  JsonValue,
+} from '@/platform/server/db/schema';
 import { NotFoundError, ValidationError } from '@/platform/errors';
 import { getLogger } from '@/platform/logger';
 import {
@@ -43,6 +48,8 @@ import {
   studioModelName,
   type StudioCreateInput,
   type StudioCreateResult,
+  type StudioReferenceClip,
+  type StudioRunInput,
 } from '@/studio/schema';
 import { measureOwnMediaDuration } from '@/cast/server/sequence-elements/media-duration';
 import {
@@ -105,7 +112,25 @@ function estimateStudioCost(
   return multiplyMicros(perVideo, input.count);
 }
 
-function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
+/**
+ * One clip as JSON. A union of `{ assetId }` and `{ url }` is not a
+ * `JsonValue`: the two shapes do not share keys, so the other key is
+ * `undefined`. Each clip is written on its own.
+ */
+function storedReferenceClip(clip: StudioReferenceClip): JsonValue {
+  if ('assetId' in clip && typeof clip.assetId === 'string') {
+    return { assetId: clip.assetId };
+  }
+  if ('url' in clip && typeof clip.url === 'string') {
+    return { url: clip.url };
+  }
+  throw new ValidationError('A reference clip needs an id or an address');
+}
+
+function snapshotInput(
+  input: StudioRunInput,
+  referenceClips: StudioReferenceClip[]
+): GeneratedAssetInput {
   if (input.activity === 'video') {
     const snapshot: GeneratedAssetInput = {
       prompt: input.prompt,
@@ -123,7 +148,13 @@ function snapshotInput(input: StudioCreateInput): GeneratedAssetInput {
     }
     if (input.mode === 'reference') {
       snapshot.referenceImages = input.referenceImages;
+      // Addresses the model fetched. A Studio clip's address is the output
+      // stored on its row. `referenceClips` is which of those were ids, so a
+      // later use follows the row instead of parsing the address.
       snapshot.referenceVideos = input.referenceVideos;
+      if (referenceClips.length > 0) {
+        snapshot.referenceClips = referenceClips.map(storedReferenceClip);
+      }
       snapshot.referenceAudio = input.referenceAudio;
     }
     if (input.mode === 'edit' && input.sourceVideoUrl && input.sourceAssetId) {
@@ -216,32 +247,63 @@ function refuseTraversableReferenceUrl(url: string): void {
   }
 }
 
-/**
- * Studio output key: `teams/<team>/studio/<id>/<file>.mp4|mov|webm`.
- * The id alone is not a match — a longer or dotted path can share the prefix.
- */
-function studioClipIdFromUrl(teamId: string, url: string): string | null {
-  const key = r2KeyFromUrl(url);
-  if (!key) return null;
-  const escaped = teamId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return (
-    key.match(
-      new RegExp(
-        `^teams/${escaped}/studio/([^/]+)/[^/]+\\.(?:mp4|mov|webm)$`,
-        'i'
-      )
-    )?.[1] ?? null
-  );
-}
-
-/** A clip to trace: a Studio row by id, or any clip by its URL. */
+/** A clip to trace: a Studio row by id, or an upload by its address. */
 type ClipLink = { assetId: string } | { url: string };
 
 /**
+ * Clips recorded on a row. `referenceClips` is the id-or-address form
+ * (#2203). Older rows stored addresses only; those stay addresses and are
+ * never parsed back into an id.
+ */
+function clipLinksFromStored(input: GeneratedAssetInput): ClipLink[] {
+  if (Array.isArray(input.referenceClips)) {
+    return input.referenceClips.flatMap((item): ClipLink[] => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      if ('assetId' in item && typeof item.assetId === 'string') {
+        return [{ assetId: item.assetId }];
+      }
+      if ('url' in item && typeof item.url === 'string')
+        return [{ url: item.url }];
+      return [];
+    });
+  }
+  return stringList(input.referenceVideos).map((url) => ({ url }));
+}
+
+/**
+ * The address the model fetches for one reference clip. An id loads this
+ * team's finished Studio video and uses the output stored on it. An address
+ * is an upload, whatever path it has.
+ */
+async function resolveReferenceClip(
+  scopedDb: ScopedDb,
+  clip: StudioReferenceClip
+): Promise<{ clip: StudioReferenceClip; url: string }> {
+  if ('url' in clip) {
+    refuseTraversableReferenceUrl(clip.url);
+    return { clip, url: clip.url };
+  }
+  const asset = await scopedDb.generatedAssets.getById(clip.assetId);
+  const output = asset ? studioPrimaryOutput(asset) : undefined;
+  if (
+    !asset ||
+    asset.source !== 'studio' ||
+    asset.activity !== 'video' ||
+    asset.status !== 'completed' ||
+    !output?.contentType.startsWith('video/')
+  ) {
+    throw new ValidationError('That clip is not a finished Studio video');
+  }
+  refuseTraversableReferenceUrl(output.url);
+  return { clip: { assetId: clip.assetId }, url: output.url };
+}
+
+/**
  * A clip Studio made is a reference only if every clip behind it passes;
- * any other clip must pass the gate itself. Clips made before #1930 took
- * uploads unchecked, and a reference clip is registered in Ark's portrait
- * library. Edits are followed by `sourceAssetId`, never by URL.
+ * an address is an upload and must pass the gate itself. Clips made before
+ * #1930 took uploads unchecked, and a reference clip is registered in Ark's
+ * portrait library. Edits are followed by `sourceAssetId`. A stored address
+ * is never turned back into an id.
  */
 async function requireStudioClipChain(
   scopedDb: ScopedDb,
@@ -254,37 +316,18 @@ async function requireStudioClipChain(
     const seenKey = 'assetId' in link ? `id:${link.assetId}` : link.url;
     if (seen.has(seenKey)) continue;
     seen.add(seenKey);
-    if ('url' in link) refuseTraversableReferenceUrl(link.url);
-    const assetId =
-      'assetId' in link
-        ? link.assetId
-        : studioClipIdFromUrl(scopedDb.teamId, link.url);
-    const asset = assetId
-      ? await scopedDb.generatedAssets.getById(assetId)
-      : null;
-    // The id in the key is not enough: the URL has to be the file this row
-    // stored. Anything else is checked on its own bytes.
-    if (
-      asset &&
-      'url' in link &&
-      studioPrimaryOutput(asset)?.url !== link.url
-    ) {
+    if ('url' in link) {
+      refuseTraversableReferenceUrl(link.url);
       await requireCheckedUploadRights(scopedDb, [link.url], request);
       continue;
     }
-    if (!asset) {
-      if ('assetId' in link) {
-        throw new ValidationError(
-          'A clip this one was made from is gone, so it cannot be checked'
-        );
-      }
-      // Not a Studio clip of this team: it needs its own ledger row.
-      await requireCheckedUploadRights(scopedDb, [link.url], request);
-      continue;
+    const asset = await scopedDb.generatedAssets.getById(link.assetId);
+    if (!asset || asset.source !== 'studio' || asset.activity !== 'video') {
+      throw new ValidationError(
+        'A clip this one was made from is gone, so it cannot be checked'
+      );
     }
-    for (const url of stringList(asset.input.referenceVideos)) {
-      queue.push({ url });
-    }
+    for (const next of clipLinksFromStored(asset.input)) queue.push(next);
     const sourceId = asset.input.sourceAssetId;
     if (typeof sourceId === 'string') queue.push({ assetId: sourceId });
   }
@@ -303,8 +346,19 @@ export async function createStudioAssets(
     finalFromDraftTaskId?: string;
   } = {}
 ): Promise<StudioCreateResult> {
+  // Resolved before anything spends: an id becomes the output stored on the
+  // row, an address stays the upload. The run receives only those addresses.
+  const resolvedClips =
+    input.activity === 'video'
+      ? await Promise.all(
+          input.referenceVideos.map((clip) =>
+            resolveReferenceClip(scopedDb, clip)
+          )
+        )
+      : [];
+  const referenceVideoUrls = resolvedClips.map((clip) => clip.url);
+  const referenceClips = resolvedClips.map((clip) => clip.clip);
   if (input.activity === 'video') {
-    for (const url of input.referenceVideos) refuseTraversableReferenceUrl(url);
     // Same answer the picker showed (`getViaAvailabilityFn`): a model gated
     // to the BytePlus via is refused where this team would land on fal.
     const falKey = await scopedDb.apiKeys.resolveOptionalKey('fal');
@@ -338,7 +392,7 @@ export async function createStudioAssets(
     // is a clip Seedance made, so it is assumed to be inside the window.
     if (followsClip) {
       const clipSeconds = await Promise.all(
-        input.referenceVideos.map(async (url) => {
+        referenceVideoUrls.map(async (url) => {
           const key = r2KeyFromUrl(url);
           if (!key) return null;
           return measureOwnMediaDuration(key).catch((error: unknown) => {
@@ -378,18 +432,15 @@ export async function createStudioAssets(
   // Uploads and raw URLs must be cleared or signed on the likeness ledger
   // (#1581); library stills passed the same gate when they were saved. One
   // the upload's check never answered for is checked here (#2192).
-  for (const url of studioLikenessMedia(input)) {
+  const gatedMedia = studioGatedMedia(input);
+  for (const url of gatedMedia) {
     refuseTraversableReferenceUrl(url);
   }
-  await requireCheckedUploadRights(
-    scopedDb,
-    studioLikenessMedia(input).filter(needsLikenessCheck),
-    request
-  );
+  await requireCheckedUploadRights(scopedDb, gatedMedia, request);
   if (input.activity === 'video' && input.mode === 'reference') {
     // The gate judged a stored file by its type; a clip stored as a still
-    // was judged as a still.
-    const notClip = input.referenceVideos.find(
+    // was judged as a still. A Studio clip's type is its stored output.
+    const notClip = referenceVideoUrls.find(
       (url) =>
         !getMimeTypeFromExtension(getExtensionFromUrl(url)).startsWith('video/')
     );
@@ -398,9 +449,9 @@ export async function createStudioAssets(
     }
     await requireStudioClipChain(
       scopedDb,
-      input.referenceVideos
-        .filter((url) => !needsLikenessCheck(url))
-        .map((url) => ({ url })),
+      referenceClips.flatMap((clip) =>
+        'assetId' in clip ? [{ assetId: clip.assetId }] : []
+      ),
       request
     );
   }
@@ -432,7 +483,11 @@ export async function createStudioAssets(
 
   const endpointId = studioEndpointId(input);
   const modelName = studioModelName(input);
-  const snapshot = snapshotInput(input);
+  const runInput: StudioRunInput =
+    input.activity === 'video'
+      ? { ...input, referenceVideos: referenceVideoUrls }
+      : input;
+  const snapshot = snapshotInput(runInput, referenceClips);
   const assets: StudioCreateResult['assets'] = [];
 
   try {
@@ -460,7 +515,7 @@ export async function createStudioAssets(
             assetId: row.id,
             reservationId,
             ownsReservation: true,
-            input,
+            input: runInput,
             noPersonImages,
             ...(options.finalFromDraftTaskId && {
               finalFromDraftTaskId: options.finalFromDraftTaskId,
@@ -559,6 +614,11 @@ export async function renderStudioAssetAtQuality(
     draft: false,
     resolution: DRAFT_FINAL_RESOLUTION,
     count: 1,
+    // Ids ride in `referenceClips`. Older rows stored addresses only, and
+    // those are uploads — the address is not parsed for a clip id.
+    referenceVideos: clipLinksFromStored(asset.input).map((link) =>
+      'assetId' in link ? { assetId: link.assetId } : { url: link.url }
+    ),
   });
   return createStudioAssets(scopedDb, input, request, {
     finalFromDraftTaskId: asset.draftTaskId,

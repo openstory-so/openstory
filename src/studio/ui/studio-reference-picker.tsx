@@ -60,6 +60,11 @@ import { useMemo, useRef, useState } from 'react';
 export type StudioReference = {
   /** Stored (origin-relative `/r2/…`) or absolute URL. */
   url: string;
+  /**
+   * Set when this tile is one of the team's Studio videos. The create
+   * request sends the id; the address is only for the tile (#2203).
+   */
+  assetId?: string;
   /** Shown on the tile and in the @ dropdown. */
   label: string;
   kind: StudioReferenceKind;
@@ -165,6 +170,7 @@ export function useStudioLibrary(): StudioLibrary {
           ? [
               {
                 url,
+                assetId: asset.id,
                 label,
                 kind: 'video',
                 posterUrl: studioPosterOutput(asset)?.url,

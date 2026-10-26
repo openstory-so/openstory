@@ -1,3 +1,4 @@
+import { needsLikenessCheck } from '@/cast/upload-rights';
 import type { StudioCreateInput } from './schema';
 
 /**
@@ -30,10 +31,28 @@ function studioReferenceImages(input: StudioCreateInput): string[] {
  * plus reference clips, which Gemini watches whole (#1930).
  * Reference audio has no likeness.
  */
+/** Reference clips sent as an address. A Studio clip id has no address here. */
+function referenceVideoAddresses(input: StudioCreateInput): string[] {
+  if (input.activity !== 'video' || input.mode !== 'reference') return [];
+  return input.referenceVideos.flatMap((clip) =>
+    'url' in clip ? [clip.url] : []
+  );
+}
+
 export function studioLikenessMedia(input: StudioCreateInput): string[] {
-  const clips =
-    input.activity === 'video' && input.mode === 'reference'
-      ? input.referenceVideos
-      : [];
-  return [...studioReferenceImages(input), ...clips];
+  return [...studioReferenceImages(input), ...referenceVideoAddresses(input)];
+}
+
+/**
+ * What the likeness gate checks, and what the composer asks the user to
+ * sign. An address on a reference clip is an upload even when the path
+ * would otherwise be exempt (`needsLikenessCheck`); a Studio clip is an id
+ * and is not in this list. The two sides share this function so they cannot
+ * disagree (#2203).
+ */
+export function studioGatedMedia(input: StudioCreateInput): string[] {
+  const addresses = new Set(referenceVideoAddresses(input));
+  return studioLikenessMedia(input).filter(
+    (url) => addresses.has(url) || needsLikenessCheck(url)
+  );
 }

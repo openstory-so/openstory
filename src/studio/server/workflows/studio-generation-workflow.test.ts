@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { micros } from '@/billing/money';
 import type { WorkflowScopedDb } from '@/platform/server/db/scoped-workflow';
-import type { StudioCreateInput } from '@/studio/schema';
+import type { StudioRunInput } from '@/studio/schema';
 import type { StudioGenerationWorkflowInput } from '@/platform/server/workflow/types';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
 import { asStub } from '@/test/as-stub';
@@ -129,7 +129,7 @@ function makeScopedDb() {
   return { scopedDb, generatedAssets, bytePlusAssets };
 }
 
-const IMAGE: StudioCreateInput = {
+const IMAGE: StudioRunInput = {
   activity: 'image',
   prompt: 'a red fox',
   imageModel: 'gpt_image_2',
@@ -139,7 +139,7 @@ const IMAGE: StudioCreateInput = {
   referenceImages: [],
 };
 
-const VIDEO: StudioCreateInput = {
+const VIDEO: StudioRunInput = {
   activity: 'video',
   prompt: 'the fox turns',
   videoModel: 'seedance_v2',
@@ -154,7 +154,7 @@ const VIDEO: StudioCreateInput = {
 };
 
 function makeEvent(
-  input: StudioCreateInput,
+  input: StudioRunInput,
   extra: Partial<StudioGenerationWorkflowInput> = {}
 ): Readonly<WorkflowEvent<StudioGenerationWorkflowInput>> {
   return {

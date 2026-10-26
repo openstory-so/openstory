@@ -279,7 +279,18 @@ export function studioCanEditSource(videoModel: unknown): boolean {
  */
 export function studioUsedUploadedReferenceVideo(input: {
   referenceVideos?: unknown;
+  /** Set on rows created after #2203. An address here is an upload. */
+  referenceClips?: unknown;
 }): boolean {
+  // A row that recorded which clips were ids: an address is an upload even
+  // when the path would pass `needsLikenessCheck`. Older rows stored
+  // addresses only, and a generated clip's own path is not an upload.
+  if (Array.isArray(input.referenceClips)) {
+    return input.referenceClips.some((clip) => {
+      if (!clip || typeof clip !== 'object') return true;
+      return !('assetId' in clip) || typeof clip.assetId !== 'string';
+    });
+  }
   return (
     Array.isArray(input.referenceVideos) &&
     input.referenceVideos.some(

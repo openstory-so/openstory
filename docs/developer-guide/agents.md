@@ -84,7 +84,7 @@ This is the loop an agent should follow. It is also the procedure to put in an a
 The Studio makes standalone images and videos, outside any sequence. Each generation spends credits, so confirm with the user first.
 
 1. **Choose a model.** `list_models`: an entry with `studio` set is offered in the Studio, and `studio` says what it takes (video modes, durations, reference limits, end frame, audio).
-2. **Attach files (optional).** `upload_media` with `use: "studio"` and no `sequenceId`. Pass the returned `upload` as a reference, start or end frame. Earlier uploads are in `list_studio_uploads`, earlier results in `list_generated_assets` (`source: "studio"`); their URLs are accepted too. A real person needs `portraitAttestation`, as above.
+2. **Attach files (optional).** `upload_media` with `use: "studio"` and no `sequenceId`. Pass the returned `upload` as a reference image, audio, start or end frame, or as `{ url }` for an uploaded reference clip. A clip from `list_generated_assets` (`source: "studio"`) is `{ assetId }` — its id, not its URL. An address is always an upload. A real person in an upload needs `portraitAttestation`, as above.
 3. **Write the prompt (optional).** `draft_studio_prompt` writes one from the references (uses credits).
 4. **Generate.** `create_studio_assets` with `activity` (`image` or `video`), the model, `aspectRatio` and the prompt; a video also takes `duration` and `mode` (`text`, `reference` or `frames`). Up to 4 at once.
 5. **Poll.** `get_generated_asset` with each returned id until `status` is `completed` or `failed`.

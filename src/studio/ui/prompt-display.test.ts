@@ -170,8 +170,27 @@ describe('studioReuse', () => {
     expect(studioReuse(row)).toMatchObject({
       prompt: 'Edit the walk',
       mode: 'reference',
-      referenceVideos: ['/r2/source.mp4', '/r2/extra.mp4'],
+      referenceVideos: [{ url: '/r2/source.mp4' }, { url: '/r2/extra.mp4' }],
     });
+  });
+
+  it('keeps a Studio clip id beside the address it shows (#2203)', () => {
+    const row = asset({
+      activity: 'video',
+      input: {
+        prompt: 'the fox turns',
+        aspectRatio: '16:9',
+        mode: 'reference',
+        referenceVideos: ['/r2/teams/team/studio/clip/video.mp4'],
+        referenceClips: [{ assetId: '01STUDIOCLIP00000000000000' }],
+      },
+    });
+    expect(studioReuse(row)?.referenceVideos).toEqual([
+      {
+        url: '/r2/teams/team/studio/clip/video.mp4',
+        assetId: '01STUDIOCLIP00000000000000',
+      },
+    ]);
   });
 
   it('is null when the generation has no prompt', () => {

@@ -51,7 +51,7 @@ import { recordMediaGenerationSpan } from '@/platform/server/observability/ai-ot
 import { getLogger } from '@/platform/logger';
 import { toCdnUrl } from '@/platform/server/storage/buckets';
 import { isEngineAbortError } from '@/platform/server/workflow/errors';
-import type { StudioCreateInput } from '@/studio/schema';
+import type { StudioRunInput } from '@/studio/schema';
 import {
   pollStudioVideoJob,
   studioVideoCostFromUsage,
@@ -107,7 +107,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
   private async runImage(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
-    input: Extract<StudioCreateInput, { activity: 'image' }>,
+    input: Extract<StudioRunInput, { activity: 'image' }>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
@@ -220,7 +220,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
   private async runVideo(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
-    input: Extract<StudioCreateInput, { activity: 'video' }>,
+    input: Extract<StudioRunInput, { activity: 'video' }>,
     step: WorkflowStep,
     scopedDb: WorkflowScopedDb
   ): Promise<{ assetId: string; outputs: GeneratedAssetOutput[] }> {
@@ -624,7 +624,7 @@ export class StudioGenerationWorkflow extends OpenStoryWorkflowEntrypoint<Studio
 
   private async notifyContentFeed(
     event: Readonly<WorkflowEvent<StudioGenerationWorkflowInput>>,
-    input: StudioCreateInput,
+    input: StudioRunInput,
     outputs: GeneratedAssetOutput[],
     step: WorkflowStep
   ): Promise<void> {

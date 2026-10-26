@@ -51,7 +51,7 @@ import type { UpdateStalePlan } from '@/shots/server/update-stale-plan';
 import type { SceneVoicedLine } from '@/shots/shot-dialogue';
 import type { StoredShotSpec } from '@/shots/shot-list.schema';
 import type { ReferenceImageDescription } from '@/stills/reference-image-prompt';
-import type { StudioCreateInput } from '@/studio/schema';
+import type { StudioRunInput } from '@/studio/schema';
 import { z } from 'zod';
 
 /**
@@ -1824,7 +1824,7 @@ export interface AssetGenerationWorkflowInput extends UserWorkflowContext {
  */
 export interface StudioGenerationWorkflowInput extends UserWorkflowContext {
   assetId: string;
-  input: StudioCreateInput;
+  input: StudioRunInput;
   /**
    * Render the 1080p final of this Ark draft task (#1756). Set by the server
    * fn, never by the client — a task id names another team's render as

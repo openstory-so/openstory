@@ -19,6 +19,7 @@ import {
 } from '@/models/models';
 import { aspectRatioSchema } from '@/models/aspect-ratios';
 import { DEFAULT_RESOLUTION, resolutionSchema } from '@/models/resolutions';
+import { isValidId } from '@/platform/id';
 import { mediaUrlSchema } from '@/platform/schemas/media-url.schemas';
 import {
   STUDIO_VIDEO_MODES,
@@ -75,6 +76,20 @@ export type StudioActivity = z.infer<typeof studioActivitySchema>;
 export type StudioSort = z.infer<typeof studioSortSchema>;
 export type StudioReferenceKind = z.infer<typeof studioReferenceKindSchema>;
 
+/**
+ * A reference clip (#2203). A Studio clip this team made is its id. An
+ * upload is an address. One of the two, never both: an optional id beside
+ * the URL is how a caller used to make the server parse the address.
+ */
+const studioReferenceClipSchema = z.union([
+  z.strictObject({
+    assetId: z.string().refine(isValidId, { message: 'Invalid clip id' }),
+  }),
+  z.strictObject({ url: mediaUrlSchema }),
+]);
+
+export type StudioReferenceClip = z.infer<typeof studioReferenceClipSchema>;
+
 export const studioCreateInputSchema = z.discriminatedUnion('activity', [
   z
     .object({
@@ -116,7 +131,7 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
       /** Reference mode: stills bound as `@Image1`…`@ImageN`, in order. */
       referenceImages: z.array(mediaUrlSchema).max(9).default([]),
       /** Reference mode: clips bound as `@Video1`…`@VideoN`. */
-      referenceVideos: z.array(mediaUrlSchema).max(3).default([]),
+      referenceVideos: z.array(studioReferenceClipSchema).max(3).default([]),
       /** Reference mode: audio clips bound as `@Audio1`…`@AudioN`. */
       referenceAudio: z.array(mediaUrlSchema).max(3).default([]),
       /** Frames mode: the first frame, and optionally the last. */
@@ -241,6 +256,19 @@ export const studioCreateInputSchema = z.discriminatedUnion('activity', [
 ]);
 
 export type StudioCreateInput = z.infer<typeof studioCreateInputSchema>;
+
+type StudioVideoCreateInput = Extract<StudioCreateInput, { activity: 'video' }>;
+
+/**
+ * What a `/studio` run receives. Reference clips have already been resolved
+ * to the addresses the model fetches: a Studio clip's address is the output
+ * stored on its row, read at the trigger, so the run does not look it up.
+ */
+export type StudioRunInput =
+  | Extract<StudioCreateInput, { activity: 'image' }>
+  | (Omit<StudioVideoCreateInput, 'referenceVideos'> & {
+      referenceVideos: string[];
+    });
 
 /** Draft a prompt from the attached references (`draftStudioPromptForTeam`). */
 export const studioPromptDraftInputSchema = z.object({

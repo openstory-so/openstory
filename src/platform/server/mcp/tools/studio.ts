@@ -45,8 +45,22 @@ const mediaRef = z
   .min(1)
   .max(2048)
   .describe(
-    'An upload value (upload_media use studio), or a media URL read from list_studio_uploads or get_generated_asset.'
+    'An upload value (upload_media use studio), or a media URL read from list_studio_uploads.'
   );
+const referenceClip = z.union([
+  z
+    .strictObject({
+      assetId: ulidSchema,
+    })
+    .describe(
+      'A Studio clip: its id from list_generated_assets (source studio). Not its URL.'
+    ),
+  z
+    .strictObject({ url: mediaRef })
+    .describe(
+      'An uploaded clip. A Studio clip is sent as assetId, never as this address.'
+    ),
+]);
 const startedSchema = z.object({
   assets: z.array(z.object({ id: z.string(), workflowRunId: z.string() })),
 });
@@ -66,7 +80,7 @@ const VIDEO_ONLY = [
 
 const createStudioAssetsTool = openstoryTool({
   name: 'create_studio_assets',
-  description: `Generate images or videos in the Studio (uses credits), up to 4 at once. activity image takes imageModel (list_models image with studio set) and optional referenceImages (when its studio.referenceImages). activity video takes videoModel (list_models video with studio set) and duration (one of its studio.durations), and mode: text (default), reference (referenceImages / referenceVideos / referenceAudio, named @Image1, @Video1, @Audio1 in the prompt, within the model's studio limits) or frames (startImageUrl, and endImageUrl when its studio.endFrame). draft renders a 480p Ark draft (draftMode models); render_studio_asset_at_quality makes its final. Images and clips of a real person must be uploaded with the portrait sign-off first. ${pollHint}`,
+  description: `Generate images or videos in the Studio (uses credits), up to 4 at once. activity image takes imageModel (list_models image with studio set) and optional referenceImages (when its studio.referenceImages). activity video takes videoModel (list_models video with studio set) and duration (one of its studio.durations), and mode: text (default), reference (referenceImages / referenceVideos / referenceAudio, named @Image1, @Video1, @Audio1 in the prompt, within the model's studio limits) or frames (startImageUrl, and endImageUrl when its studio.endFrame). A referenceVideos entry is { assetId } for a Studio clip (list_generated_assets) or { url } for an upload — never both, and never a Studio clip's URL. draft renders a 480p Ark draft (draftMode models); render_studio_asset_at_quality makes its final. Images and uploaded clips of a real person must be uploaded with the portrait sign-off first. ${pollHint}`,
   scope: 'generate',
   annotations: paid,
   inputSchema: z.strictObject({
@@ -82,7 +96,7 @@ const createStudioAssetsTool = openstoryTool({
     draft: z.boolean().optional(),
     mode: z.enum(['text', 'reference', 'frames']).optional(),
     referenceImages: z.array(mediaRef).max(9).default([]),
-    referenceVideos: z.array(mediaRef).max(3).default([]),
+    referenceVideos: z.array(referenceClip).max(3).default([]),
     referenceAudio: z.array(mediaRef).max(3).default([]),
     startImageUrl: mediaRef.optional(),
     endImageUrl: mediaRef.optional(),
@@ -103,7 +117,11 @@ const createStudioAssetsTool = openstoryTool({
       studioCreateInputSchema.parse({
         ...input,
         referenceImages: input.referenceImages.map(fromShareableUrl),
-        referenceVideos: input.referenceVideos.map(fromShareableUrl),
+        referenceVideos: input.referenceVideos.map((clip) =>
+          'assetId' in clip
+            ? { assetId: clip.assetId }
+            : { url: fromShareableUrl(clip.url) }
+        ),
         referenceAudio: input.referenceAudio.map(fromShareableUrl),
         startImageUrl:
           input.startImageUrl && fromShareableUrl(input.startImageUrl),

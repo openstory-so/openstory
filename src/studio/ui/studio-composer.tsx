@@ -75,10 +75,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { PortraitAttestationFields } from '@/cast/ui/portrait-attestation-fields';
 import { PORTRAIT_RIGHTS_V1 } from '@/platform/compliance/attestations';
-import {
-  needsLikenessCheck,
-  type PortraitAttestation,
-} from '@/cast/upload-rights';
+import type { PortraitAttestation } from '@/cast/upload-rights';
 import {
   useAttestUploads,
   useRetryUploadCheck,
@@ -86,7 +83,7 @@ import {
 } from '@/cast/ui/use-upload-rights';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
 import { isInsufficientCreditsError } from '@/platform/errors';
-import { studioLikenessMedia } from '@/studio/reference-rights';
+import { studioGatedMedia } from '@/studio/reference-rights';
 import {
   capReferenceImages,
   DEFAULT_IMAGE_MODEL,
@@ -431,8 +428,14 @@ export function StudioComposer({
       const tile = (
         url: string,
         label: string,
-        kind: StudioReference['kind']
-      ): StudioReference => ({ url, label, kind });
+        kind: StudioReference['kind'],
+        assetId?: string
+      ): StudioReference => ({
+        url,
+        label,
+        kind,
+        ...(assetId ? { assetId } : {}),
+      });
       setPrompt(next.prompt);
       setLastShuffled(next.prompt);
       setAspectRatio(next.aspectRatio);
@@ -446,8 +449,8 @@ export function StudioComposer({
         if (next.draft != null) setDraftMode(next.draft);
         if (next.mode) setMode(next.mode);
         setVideoRefs(
-          next.referenceVideos.map((url, index) =>
-            tile(url, `Video ${index + 1}`, 'video')
+          next.referenceVideos.map((clip, index) =>
+            tile(clip.url, `Video ${index + 1}`, 'video', clip.assetId)
           )
         );
         setAudioRefs(
@@ -707,7 +710,11 @@ export function StudioComposer({
         referenceImages:
           effectiveMode === 'reference' ? references.map((r) => r.url) : [],
         referenceVideos:
-          effectiveMode === 'reference' ? videoRefs.map((r) => r.url) : [],
+          effectiveMode === 'reference'
+            ? videoRefs.map((r) =>
+                r.assetId ? { assetId: r.assetId } : { url: r.url }
+              )
+            : [],
         referenceAudio:
           effectiveMode === 'reference' ? audioRefs.map((r) => r.url) : [],
         startImageUrl: effectiveMode === 'frames' ? startFrame?.url : undefined,
@@ -726,14 +733,13 @@ export function StudioComposer({
   };
 
   // --- rights (#1581) ---------------------------------------------------------
-  // Same rule the server gate applies: uploads and raw URLs get checked,
-  // library rows do not. Logged out, nothing is asked until sign-in.
+  // Same list the server checks (`studioGatedMedia`). A reference clip sent
+  // as an address is an upload; a Studio clip is an id and is not signed
+  // here. Logged out, nothing is asked until sign-in.
   const tiles = [...references, ...videoRefs, startFrame, endFrame].filter(
     (r): r is StudioReference => r !== null
   );
-  const gatedUrls = [
-    ...new Set(studioLikenessMedia(buildInput()).filter(needsLikenessCheck)),
-  ];
+  const gatedUrls = [...new Set(studioGatedMedia(buildInput()))];
   const rights = useUploadRights(
     gatedUrls.map((url) => ({
       url,
@@ -1054,16 +1060,21 @@ export function StudioComposer({
     if (item.section === 'references') return item;
     const [, kind = 'image', ...rest] = item.id.split(':');
     const url = rest.join(':');
-    const source = [...library.cast, ...library.locations].find(
-      (r) => r.url === url
-    );
+    const referenceKind = kind === 'video' ? 'video' : 'image';
+    const source = [
+      ...library.generations,
+      ...library.uploads,
+      ...library.cast,
+      ...library.locations,
+    ].find((r) => r.kind === referenceKind && r.url === url);
     const reference: StudioReference = {
       url,
       label: item.label,
-      kind: kind === 'video' ? 'video' : 'image',
+      kind: referenceKind,
       posterUrl:
         kind === 'video' ? (item.thumbnailUrl ?? undefined) : undefined,
       ...(source?.alias ? { alias: source.alias } : {}),
+      ...(source?.assetId ? { assetId: source.assetId } : {}),
     };
     const index = addReference(reference);
     if (index < 0) return item;

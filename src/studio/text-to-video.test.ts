@@ -395,6 +395,19 @@ describe('auto length and edit (#1925)', () => {
         referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
       })
     ).toBe(false);
+    // After #2203 an address is an upload even when the path looks generated.
+    expect(
+      studioUsedUploadedReferenceVideo({
+        referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
+        referenceClips: [{ url: '/r2/teams/team1/studio/asset1/video.mp4' }],
+      })
+    ).toBe(true);
+    expect(
+      studioUsedUploadedReferenceVideo({
+        referenceVideos: ['/r2/teams/team1/studio/asset1/video.mp4'],
+        referenceClips: [{ assetId: '01ASSET' }],
+      })
+    ).toBe(false);
     expect(studioUsedUploadedReferenceVideo({ referenceVideos: [] })).toBe(
       false
     );
