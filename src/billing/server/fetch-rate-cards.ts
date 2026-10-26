@@ -18,9 +18,7 @@ const MODELSCHEMAS_BASE_URL = 'https://modelschemas.com';
 export async function fetchFalRateCards(
   endpointIds: string[]
 ): Promise<Map<string, RateCard>> {
-  const env = getEnv() as ReturnType<typeof getEnv> & {
-    MODELSCHEMAS_API_KEY?: string;
-  };
+  const env = getEnv();
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (env.MODELSCHEMAS_API_KEY) {
     headers.Authorization = `Bearer ${env.MODELSCHEMAS_API_KEY}`;

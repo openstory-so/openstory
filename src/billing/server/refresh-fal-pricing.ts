@@ -446,12 +446,8 @@ export async function refreshFalPricing(
   if (!apiKey) {
     throw new Error('refreshFalPricing: FAL_KEY is not configured');
   }
-  // Admin-scoped key for the usage API. Optional and not in the generated
-  // worker env types — same narrowing as MODELSCHEMAS_API_KEY.
-  const billingKey =
-    deps.billingKey ??
-    (getEnv() as ReturnType<typeof getEnv> & { FAL_BILLING_KEY?: string })
-      .FAL_BILLING_KEY;
+  // Admin-scoped key for the usage API.
+  const billingKey = deps.billingKey ?? getEnv().FAL_BILLING_KEY;
 
   const db = deps.db ?? getDb();
   const catalogIds = await fetchFalCatalogIds(apiKey);

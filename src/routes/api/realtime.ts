@@ -80,10 +80,7 @@ export const Route = createFileRoute('/api/realtime')({
           return new Response('missing channels', { status: 400 });
         }
 
-        // getEnv()'s type is platform-dependent; the Cloudflare runtime
-        // guarantees the Cloudflare.Env shape with the REALTIME binding.
-        // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- platform-dependent env shape
-        const namespace = (getEnv() as unknown as Cloudflare.Env).REALTIME;
+        const namespace = getEnv().REALTIME;
 
         const encoder = new TextEncoder();
         const { readable, writable } = new TransformStream<

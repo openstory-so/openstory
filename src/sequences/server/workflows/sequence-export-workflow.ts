@@ -24,11 +24,7 @@ import {
 } from '@/platform/server/storage/buckets';
 import { recordProvenance } from '@/platform/server/compliance/provenance';
 import { OpenStoryWorkflowEntrypoint } from '@/platform/server/workflow/base-workflow';
-import type {
-  CloudflareEnv,
-  SequenceExportWorkflowInput,
-} from '@/platform/server/workflow/types';
-import type { VideoExportContainer } from '@/sequences/server/video-export-container';
+import type { SequenceExportWorkflowInput } from '@/platform/server/workflow/types';
 import { getContainer } from '@cloudflare/containers';
 import type { WorkflowFailureActivity } from '@/platform/server/workflow/errors';
 import type { WorkflowEvent, WorkflowStep } from 'cloudflare:workers';
@@ -40,18 +36,11 @@ type ContainerExportJob = {
   musicLoudnessGainDb: number | null;
 };
 
-// The container binding only exists in [env.production]; CloudflareEnv (typed
-// from the default block) doesn't include it, so we narrow at the call site.
+// `VIDEO_EXPORT_CONTAINER` exists only in [env.production] and PR previews.
 // `VIDEO_EXPORT_DEV_URL` is a local-dev-only escape hatch (injected by
 // `bun dev:all`, or set in .env.local for a two-terminal setup; never in
 // prod): when present, the workflow POSTs to the host `bun dev:bunny` service
 // instead of the container binding.
-type ContainerEnv = {
-  VIDEO_EXPORT_CONTAINER?: DurableObjectNamespace<VideoExportContainer>;
-  VIDEO_EXPORT_DEV_URL?: string;
-  /** Where the local renderer fetches `/r2/` media from (set by `bun dev:all`). */
-  VIDEO_EXPORT_DEV_MEDIA_ORIGIN?: string;
-};
 
 export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<SequenceExportWorkflowInput> {
   protected override readonly failureLabel = 'Export';
@@ -66,7 +55,7 @@ export class SequenceExportWorkflow extends OpenStoryWorkflowEntrypoint<Sequence
     scopedDb: WorkflowScopedDb
   ): Promise<{ exportId: string; durationSeconds: number }> {
     const { exportId, storagePath, scenes, musicUrl } = event.payload;
-    const env = this.env as CloudflareEnv & ContainerEnv;
+    const env = this.env;
 
     if (scenes.length === 0) {
       throw new Error('No scene videos are ready yet');

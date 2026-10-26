@@ -53,12 +53,8 @@ export async function fetchModelInputSchema(
   activity: GeneratedAssetActivity
 ): Promise<ModelInputJsonSchema> {
   const url = `${MODELSCHEMAS_BASE_URL}/v1/schemas/fal/${activity}/${encodeURI(endpointId)}?kind=input`;
-  // Same optional-env narrowing as the catalog lib — `process.env` reads are
-  // not reliably populated in workerd, and a silently-missing key drops this
-  // path to the anonymous 60 req/h limit.
-  const env = getEnv() as ReturnType<typeof getEnv> & {
-    MODELSCHEMAS_API_KEY?: string;
-  };
+  // A missing key drops this path to the anonymous 60 req/h limit.
+  const env = getEnv();
   const apiKey = env.MODELSCHEMAS_API_KEY;
 
   const res = await fetch(url, {

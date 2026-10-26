@@ -74,10 +74,7 @@ type UsageMetadata = {
 export async function reconcileFalBilling(
   deps: { db?: PricingRefreshDb; billingKey?: string; now?: Date } = {}
 ): Promise<FalBillingReconcileSummary | null> {
-  const billingKey =
-    deps.billingKey ??
-    (getEnv() as ReturnType<typeof getEnv> & { FAL_BILLING_KEY?: string })
-      .FAL_BILLING_KEY;
+  const billingKey = deps.billingKey ?? getEnv().FAL_BILLING_KEY;
   if (!billingKey) {
     logger.error(
       'FAL_BILLING_KEY is not configured — cannot reconcile charges against billed usage'

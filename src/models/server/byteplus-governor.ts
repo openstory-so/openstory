@@ -88,12 +88,9 @@ export async function reserveBytePlusCreateSlot(): Promise<number> {
 }
 
 function governorStub(): DurableObjectStub<BytePlusGovernor> | undefined {
-  // getEnv()'s type is platform-dependent; the Cloudflare runtime guarantees
-  // the Cloudflare.Env shape, and outside it (tests, scripts) the binding is
-  // simply absent.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- platform-dependent env shape
-  const namespace = (getEnv() as unknown as Partial<Cloudflare.Env>)
-    .BYTEPLUS_GOVERNOR;
+  // Outside workerd (tests, scripts) the binding is absent.
+  const env: Partial<Cloudflare.Env> = getEnv();
+  const namespace = env.BYTEPLUS_GOVERNOR;
   if (!namespace) return undefined;
   return namespace.get(namespace.idFromName(GOVERNOR_NAME));
 }

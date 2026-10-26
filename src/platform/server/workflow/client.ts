@@ -3,7 +3,6 @@ import {
   getCfBindingForTriggerPath,
   triggerCfWorkflow,
 } from './trigger-bindings';
-import type { CloudflareEnv } from './types';
 import {
   assertCanGenerate,
   assertCanWrite,
@@ -151,14 +150,12 @@ export async function triggerWorkflowRun<
     return { workflowRunId: mockId, reused: false };
   }
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
-  const cfEnv = env as unknown as CloudflareEnv;
-  const binding = getCfBindingForTriggerPath(urlPath, cfEnv);
+  const binding = getCfBindingForTriggerPath(urlPath, env);
   const result = await triggerCfWorkflow({
     binding,
     triggerPath: urlPath,
     body,
-    env: cfEnv,
+    env: env,
     deduplicationId: options?.deduplicationId,
   });
   logger.info('[TriggerWorkflow] Response', { result });

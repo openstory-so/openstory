@@ -9,12 +9,7 @@
 
 import { getEnv } from '#env';
 
-type ExportEnv = {
-  VIDEO_EXPORT_CONTAINER?: unknown;
-  VIDEO_EXPORT_DEV_URL?: string;
-};
-
 export function isServerExportAvailable(): boolean {
-  const env = getEnv() as ReturnType<typeof getEnv> & ExportEnv;
+  const env = getEnv();
   return Boolean(env.VIDEO_EXPORT_DEV_URL || env.VIDEO_EXPORT_CONTAINER);
 }

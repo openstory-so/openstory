@@ -74,10 +74,7 @@ const TRANSIENT_EVENTS: ReadonlySet<SchemaEventPath> = new Set([
 
 /** Resolve the Durable Object stub for a channel id. */
 function channelStub(channel: string) {
-  // getEnv()'s type is platform-dependent; the Cloudflare runtime guarantees
-  // the Cloudflare.Env shape with the REALTIME Durable Object binding present.
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- platform-dependent env shape
-  const namespace = (getEnv() as unknown as Cloudflare.Env).REALTIME;
+  const namespace = getEnv().REALTIME;
   return namespace.get(namespace.idFromName(channel));
 }
 

@@ -276,8 +276,7 @@ export async function probeImageDimensions(
 function isE2eReplay(): boolean {
   const env = getEnv();
   if (env.E2E_TEST !== 'true') return false;
-  const record = (env as Record<string, string | undefined>).E2E_RECORD;
-  return record !== '1';
+  return env.E2E_RECORD !== '1';
 }
 
 /** True when fal cannot fetch a `/cdn-cgi/image/trim=` URL. */

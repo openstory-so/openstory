@@ -19,7 +19,6 @@ import {
   getCfBindingForRunId,
   workflowNameFromRunId,
 } from './trigger-bindings';
-import type { CloudflareEnv } from './types';
 
 import { getLogger } from '@/platform/logger';
 
@@ -67,8 +66,7 @@ export async function terminateSingleArtifactRun(
     return false;
   }
 
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
-  const env = getEnv() as unknown as CloudflareEnv;
+  const env = getEnv();
   const binding = getCfBindingForRunId(runId, env);
   if (!binding) return false;
   try {
@@ -120,8 +118,7 @@ export async function readInstanceStatus(runId: string): Promise<InstanceRead> {
 export async function readInstanceIfExists(
   runId: string
 ): Promise<InstanceRead | { kind: 'missing' }> {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- getEnv()'s type is platform-dependent; CF runtime guarantees Cloudflare.Env shape with workflow bindings present
-  const env = getEnv() as unknown as CloudflareEnv;
+  const env = getEnv();
   const binding = getCfBindingForRunId(runId, env);
   if (!binding) return { kind: 'no_binding' };
 

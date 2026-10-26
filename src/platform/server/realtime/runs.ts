@@ -17,8 +17,7 @@ import { getLogger } from '@/platform/logger';
 const logger = getLogger(['openstory', 'realtime', 'runs']);
 
 function channelStub(channel: string) {
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- platform-dependent env shape
-  const namespace = (getEnv() as unknown as Cloudflare.Env).REALTIME;
+  const namespace = getEnv().REALTIME;
   return namespace.get(namespace.idFromName(channel));
 }
 

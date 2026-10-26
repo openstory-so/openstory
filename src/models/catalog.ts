@@ -215,11 +215,7 @@ async function fetchCatalogJson(path: string, ttlMs: number): Promise<string> {
   const cached = getCached(path);
   if (cached !== undefined) return cached;
 
-  // MODELSCHEMAS_API_KEY is optional and not part of the generated worker
-  // env types — same narrowing pattern as VIDEO_EXPORT_DEV_URL.
-  const env = getEnv() as ReturnType<typeof getEnv> & {
-    MODELSCHEMAS_API_KEY?: string;
-  };
+  const env = getEnv();
   const apiKey = env.MODELSCHEMAS_API_KEY;
 
   const response = await fetch(`${MODELSCHEMAS_BASE_URL}${path}`, {
