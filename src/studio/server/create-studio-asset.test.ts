@@ -26,6 +26,7 @@ import {
   uploadAttestations,
   user,
 } from '@/platform/server/db/schema';
+import type { JsonValue } from '@/platform/server/db/schema';
 import { InsufficientCreditsError } from '@/platform/errors';
 import { studioCreateInputSchema } from '@/studio/schema';
 
@@ -1190,6 +1191,39 @@ describe('upload rights gate (#1581)', () => {
         })
       ).rejects.toBeInstanceOf(ValidationError);
     }
+  });
+
+  it('refuses a stored reference clip that is neither an id nor an address (#2203)', async () => {
+    const { ValidationError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const badClips: JsonValue[] = [null, { assetId: 1 }, { url: 1 }, []];
+    for (const referenceClip of badClips) {
+      const id = generateId();
+      const stored = `/r2/teams/${TEAM_ID}/studio/${id}/video.mp4`;
+      await scopedDb.generatedAssets.insert({
+        id,
+        provider: 'byteplus',
+        endpointId: 'dreamina-seedance-2-5-260628',
+        activity: 'video',
+        modelName: 'Seedance 2.5',
+        source: 'studio',
+        input: {
+          mode: 'reference',
+          referenceVideos: ['/r2/uploads/old.mp4'],
+          referenceClips: [referenceClip],
+        },
+        status: 'completed',
+        outputs: [{ url: stored, contentType: 'video/mp4' }],
+      });
+      await expect(
+        createStudioAssets(scopedDb, {
+          ...video,
+          mode: 'reference',
+          referenceVideos: [{ assetId: id }],
+        })
+      ).rejects.toThrow(ValidationError);
+    }
+    expect(mockTriggerWorkflow).not.toHaveBeenCalled();
   });
 
   it('lets library stills through untouched', async () => {

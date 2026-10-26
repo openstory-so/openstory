@@ -255,17 +255,21 @@ type ClipLink = { assetId: string } | { url: string };
  * (#2203). Older rows stored addresses only; those stay addresses and are
  * never parsed back into an id.
  */
+function storedClipLink(item: JsonValue): ClipLink {
+  if (item && typeof item === 'object' && !Array.isArray(item)) {
+    if ('assetId' in item && typeof item.assetId === 'string') {
+      return { assetId: item.assetId };
+    }
+    if ('url' in item && typeof item.url === 'string') return { url: item.url };
+  }
+  throw new ValidationError(
+    'A stored reference clip needs an id or an address'
+  );
+}
+
 function clipLinksFromStored(input: GeneratedAssetInput): ClipLink[] {
   if (Array.isArray(input.referenceClips)) {
-    return input.referenceClips.flatMap((item): ClipLink[] => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-      if ('assetId' in item && typeof item.assetId === 'string') {
-        return [{ assetId: item.assetId }];
-      }
-      if ('url' in item && typeof item.url === 'string')
-        return [{ url: item.url }];
-      return [];
-    });
+    return input.referenceClips.map(storedClipLink);
   }
   return stringList(input.referenceVideos).map((url) => ({ url }));
 }
