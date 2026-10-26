@@ -322,6 +322,15 @@
         "name": "BYTEPLUS_GOVERNOR",
         "class_name": "BytePlusGovernor",
       },
+      // Assistant stream log (#2155): one Durable Streams object per run, so
+      // a reload or a second tab tails a reply still being written. The class
+      // is @durable-streams/server-cloudflare's, which requires this exact
+      // binding name. Tag v4. Only the assistant's server code talks to it,
+      // in-process; the protocol is never routed from the edge.
+      {
+        "name": "STREAMS",
+        "class_name": "StreamObject",
+      },
     ],
   },
   "migrations": [
@@ -332,6 +341,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["BytePlusGovernor"],
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["StreamObject"],
     },
   ],
   "env": {
@@ -622,6 +635,10 @@
             "name": "BYTEPLUS_GOVERNOR",
             "class_name": "BytePlusGovernor",
           },
+          {
+            "name": "STREAMS",
+            "class_name": "StreamObject",
+          },
         ],
       },
       "migrations": [
@@ -636,6 +653,10 @@
         {
           "tag": "v3",
           "new_sqlite_classes": ["BytePlusGovernor"],
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["StreamObject"],
         },
       ],
       "triggers": {
@@ -905,6 +926,10 @@
             "name": "BYTEPLUS_GOVERNOR",
             "class_name": "BytePlusGovernor",
           },
+          {
+            "name": "STREAMS",
+            "class_name": "StreamObject",
+          },
         ],
       },
       "migrations": [
@@ -915,6 +940,10 @@
         {
           "tag": "v3",
           "new_sqlite_classes": ["BytePlusGovernor"],
+        },
+        {
+          "tag": "v4",
+          "new_sqlite_classes": ["StreamObject"],
         },
       ],
       // Explicit empty array opts out of inheritance and silences wrangler's

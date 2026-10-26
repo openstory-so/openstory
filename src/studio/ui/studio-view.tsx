@@ -8,6 +8,7 @@ import { Label } from '@/ui/shadcn/label';
 import { Switch } from '@/ui/shadcn/switch';
 import { PageContainer } from '@/ui/layout/page-container';
 import { PageIntro } from '@/ui/typography/page-intro';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { useAdminStudioAssets, useStudioAssets } from './use-studio-assets';
 import { studioPrompt } from './outputs';
 import {
@@ -123,6 +124,11 @@ export function StudioView({ activity, search, navigate }: StudioViewProps) {
         <PageIntro
           title={activity === 'video' ? 'Clips' : 'Images'}
           maxWidth="wide"
+          actions={
+            supportMode ? undefined : (
+              <AskAssistantButton variant="ghost" context={[]} />
+            )
+          }
         >
           {supportMode
             ? activity === 'video'

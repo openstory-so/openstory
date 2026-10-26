@@ -90,6 +90,8 @@ The Studio makes standalone images and videos, outside any sequence. Each genera
 5. **Poll.** `get_generated_asset` with each returned id until `status` is `completed` or `failed`.
 6. **Refine.** `edit_studio_asset` rewrites a finished Seedance clip from a prompt; `get_studio_edit_history` shows the chain. `render_studio_asset_at_quality` turns a finished draft into its 1080p final. `set_studio_asset_favorite` marks keepers; `delete_studio_asset` removes one for good (confirm first).
 
+`watch_clip` answers one question about any stored clip (a shot video, a Studio asset or an upload) by having Gemini watch the whole clip; it uses credits unless the team has its own Gemini key.
+
 ## Not available through MCP yet
 
 - Choosing another designed voice take or assigning a library voice (both write ElevenLabs' account-wide voice slots).

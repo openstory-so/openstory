@@ -1,3 +1,4 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { ElementTokenButton } from './element-token-button';
 import { ReplaceElementPopover } from './replace-element-popover';
 import {
@@ -251,6 +252,7 @@ export const ElementDetailView: React.FC<ElementDetailViewProps> = ({
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>
+            <AskAssistantButton size="default" context={[]} />
           </div>
 
           <dl className="space-y-4">

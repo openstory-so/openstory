@@ -109,6 +109,8 @@ import {
   type AspectRatio,
 } from '@/models/aspect-ratios';
 import { VoiceInputButton } from '@/ui/voice/voice-input-button';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
+import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { pickShufflePrompt, studioShufflePrompts } from './prompt-shuffle';
 import { parseStudioPaste } from './paste-import';
@@ -1365,6 +1367,23 @@ export function StudioComposer({
       onDrop={onDrop}
       onPasteCapture={onPasteCapture}
     >
+      {/* The prompt being typed reaches the assistant, and it writes back (#2155). */}
+      <AssistantContextItem
+        item={{
+          kind: 'draft_prompt',
+          id: 'draft',
+          label: 'Unsaved prompt',
+          text: prompt.slice(0, 50_000),
+        }}
+        onReplace={(text) => {
+          // The model wrote over what the user typed; keep the way back.
+          const previous = prompt;
+          setPrompt(text);
+          toast('The assistant rewrote the prompt', {
+            action: { label: 'Undo', onClick: () => setPrompt(previous) },
+          });
+        }}
+      />
       <div className="flex min-h-0 flex-col gap-3 overflow-y-auto md:flex-row">
         {showTiles && (
           <div
@@ -1874,6 +1893,7 @@ export function StudioComposer({
             {draft.isPending ? 'Drafting…' : 'Draft prompt'}
           </Button>
         )}
+        <AskAssistantButton variant="ghost" context={[]} />
 
         <div className="ml-auto flex items-center gap-2">
           {hasContent && (

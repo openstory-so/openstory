@@ -1,6 +1,5 @@
 import type { CallToolResult } from '@modelcontextprotocol/server';
 import { toolDefinition } from '@tanstack/ai';
-import type { MCPToolContext } from '@tanstack/ai-mcp/server';
 import { z } from 'zod';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { OpenStoryError } from '@/platform/errors';
@@ -19,9 +18,12 @@ export type ReadToolContext = {
 };
 
 /**
- * What `handle.ts` passes to `server.handle(request, { context })` for one
- * request. The db is built only when a production tool runs, after the
- * check for that tool's OAuth scope; discovery and `whoami` need none.
+ * What a tool reads on `ctx.context`. Two callers build it (#2155): MCP
+ * (`handle.ts` → `server.handle(request, { context })`, an OAuth or API-key
+ * caller) and the in-app assistant (`chat({ context })`, the signed-in
+ * user's session). The db is built only when a production tool runs, after
+ * the check for that tool's OAuth scope; discovery and `whoami` need none,
+ * and a session caller has every scope.
  */
 export type OpenStoryMcpContext = {
   caller: McpCallerIdentity;
@@ -29,7 +31,8 @@ export type OpenStoryMcpContext = {
   origin: string;
   scoped: (scope: OAuthApiScope) => ReadToolContext;
 };
-export type OpenStoryToolContext = MCPToolContext<OpenStoryMcpContext>;
+/** The same object; the name every tool definition is typed with. */
+export type OpenStoryToolContext = OpenStoryMcpContext;
 
 /** One tool result or resource read (structured data and text together) over 256 KiB. */
 export const overResponseCap = (text: string) =>

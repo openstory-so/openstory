@@ -10,6 +10,7 @@ import { resolutionSchema } from '@/models/resolutions';
 import { ValidationError } from '@/platform/errors';
 import { ulidSchema } from '@/platform/server/schemas/id.schemas';
 import { fromShareableUrl } from '@/platform/server/storage/buckets';
+import { watchClipForTeam } from '@/models/server/watch-clip';
 import {
   studioActivitySchema,
   studioCreateInputSchema,
@@ -241,6 +242,26 @@ const draftStudioPromptTool = openstoryTool({
   }),
 });
 
+const watchClipTool = openstoryTool({
+  name: 'watch_clip',
+  description:
+    'Ask one question about a stored video and get an answer from a model that watches the whole clip (uses credits unless the team has its own Gemini key). Takes any clip URL a tool returned: a shot video, a Studio asset or an upload. Describe what happens, check continuity, judge a take, find a moment.',
+  scope: 'generate',
+  annotations: paid,
+  inputSchema: z.strictObject({
+    url: mediaRef,
+    question: z.string().min(1).max(2000),
+  }),
+  outputSchema: z.object({ answer: z.string(), model: z.string() }),
+  run: async (input, { scopedDb }) => ({
+    data: await watchClipForTeam(scopedDb, {
+      url: fromShareableUrl(input.url),
+      question: input.question,
+    }),
+    summary: 'Watched the clip.',
+  }),
+});
+
 const getStudioEditHistoryTool = productionRead(
   'get_studio_edit_history',
   'Read the prompts a Studio clip was made from, oldest first: the original, then each edit (edit true) down to this clip. A deleted ancestor ends the list.',
@@ -271,5 +292,6 @@ export const studioTools = [
   setStudioAssetFavoriteTool,
   deleteStudioAssetTool,
   draftStudioPromptTool,
+  watchClipTool,
   getStudioEditHistoryTool,
 ];

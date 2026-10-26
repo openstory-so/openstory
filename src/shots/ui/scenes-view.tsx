@@ -1,3 +1,5 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
+import { Button } from '@/ui/shadcn/button';
 import { GenerationProgressBanner } from '@/sequences/ui/generation/generation-progress-banner';
 import { useSequenceRuns } from '@/sequences/ui/generation/use-sequence-runs';
 import { theatreDraftLabel } from '@/motion/draft-mode';
@@ -1829,6 +1831,20 @@ export const ScenesView: React.FC<ScenesViewProps> = ({
                   canvasDisabled={!canvasReady}
                   trailing={
                     <>
+                      {/* The route names the sequence; the chips come from it. */}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-11 md:h-8"
+                        onClick={() =>
+                          openAssistant({
+                            context: [],
+                          })
+                        }
+                      >
+                        Chat about this
+                      </Button>
                       <CopyScriptButton sequenceId={sequenceId} />
                       <SequenceDownloadMenu
                         sequenceExport={sequenceExport}

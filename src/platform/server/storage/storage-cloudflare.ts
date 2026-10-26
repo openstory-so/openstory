@@ -347,6 +347,14 @@ export async function storageObjectSize(key: string): Promise<number | null> {
   return head?.size ?? null;
 }
 
+/** The stored object's content type, or null when it is missing or untyped. */
+export async function storageObjectContentType(
+  key: string
+): Promise<string | null> {
+  const head = await getR2Bucket().head(key);
+  return head?.httpMetadata?.contentType ?? null;
+}
+
 /**
  * Serve a storage object straight from the R2 binding. Backs the `/r2/$`
  * route (see src/routes/r2.$.ts), which streams stored media whenever no

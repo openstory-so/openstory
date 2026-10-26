@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import { elementKindFromFilename } from '@/cast/element-kind';
 import { ThinkingBar } from '@/ui/ai/thinking-bar';
 import { useAuthGate } from '@/platform/ui/auth/auth-gate-provider';
@@ -192,6 +193,7 @@ import React, {
 import { VoiceInputButton } from '@/ui/voice/voice-input-button';
 import { useEditorDictation } from '@/ui/use-dictation';
 import { ScriptEditor } from './script-editor';
+import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
 function useSequenceDraft() {
   const [draft, setDraft] = useState<SequenceDraft>(EMPTY_SEQUENCE_DRAFT);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -1535,6 +1537,24 @@ export const ScriptView: FC<{
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/* A script nothing has saved yet reaches the assistant as text, and
+          the assistant writes back the way Enhance does: Undo restores (#2155).
+          An empty editor registers too, so "write me a script" has a place to land. */}
+      {!isEditing && (
+        <AssistantContextItem
+          item={{
+            kind: 'draft_script',
+            id: 'draft',
+            label: 'Unsaved script',
+            text: scriptValue.slice(0, 50_000),
+          }}
+          onReplace={(text) => {
+            previousScriptRef.current = scriptValue;
+            setScript(text);
+            setEnhance('canUndoEnhance', true);
+          }}
+        />
+      )}
       {isDraggingFiles && (
         <div className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-primary/60 bg-background/80 backdrop-blur-sm">
           <ImagePlus className="size-10 text-primary" />
@@ -1709,6 +1729,37 @@ export const ScriptView: FC<{
             {/* CSS-only placement so SSR and hydration match — no useIsMobile
                 gate (that hid Enhance until the client effect ran). */}
             <div className="ml-auto flex items-center gap-1">
+              {/* The new page registers the draft as a chip and the script
+                  page's route names the sequence, so no context here. A
+                  highlighted passage becomes the ask (#2155). */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={loading}
+                // Keep the editor's selection: a focus move would drop it
+                // before the click reads it.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  // A selection is a chip, not a request: the user says what
+                  // to do with it.
+                  const selected = document.getSelection()?.toString().trim();
+                  openAssistant({
+                    context: selected
+                      ? [
+                          {
+                            kind: 'selection',
+                            id: 'selection',
+                            label: 'Selected passage',
+                            text: selected.slice(0, 50_000),
+                          },
+                        ]
+                      : [],
+                  });
+                }}
+              >
+                Chat about this
+              </Button>
               {enhanceControls}
               <VoiceInputButton
                 label="script"

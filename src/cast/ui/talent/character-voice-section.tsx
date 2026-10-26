@@ -1,3 +1,4 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { VOICE_DESIGN_COST } from '@/billing/elevenlabs-pricing';
 import { seedVoiceEstimate } from '@/billing/seed-speech-pricing';
 import {
@@ -371,6 +372,7 @@ export const CharacterVoiceSection: React.FC<{
                 {cancel.isPending ? 'Cancelling…' : 'Cancel'}
               </Button>
             ) : null}
+            <AskAssistantButton size="default" context={[]} />
             {seedVoices && (
               <div className="flex flex-col gap-1">
                 <ToggleGroup

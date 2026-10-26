@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -492,6 +493,16 @@ const SceneGroupComponent: React.FC<SceneGroupProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                openAssistant({
+                  context: [{ kind: 'scene', id: scene.id, label: sceneLabel }],
+                })
+              }
+            >
+              Chat about this
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => setTitleDraft(plainSceneTitle(scene.title))}
             >

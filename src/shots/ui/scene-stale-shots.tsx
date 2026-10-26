@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import { UpdateAllDialog } from '@/shots/ui/staleness/update-all-dialog';
 import { Button } from '@/ui/shadcn/button';
 import {
@@ -168,6 +169,27 @@ export const SceneStaleShots: React.FC<SceneStaleShotsProps> = ({
           </Button>
         );
       })}
+      <span aria-hidden="true">·</span>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className="h-auto p-0 text-xs"
+        onClick={() =>
+          openAssistant({
+            // Sequence and scene come off the route; the stale shots do not.
+            // Six leaves room for those two under the eight-chip cap.
+            context: staleShots.slice(0, 6).map((shot) => ({
+              kind: 'shot',
+              id: shot.id,
+              label: `Shot ${numberByShotId.get(shot.id) ?? shot.shotNumber ?? 0}`,
+            })),
+            starters: ['What changed and what needs regenerating?'],
+          })
+        }
+      >
+        Chat about this
+      </Button>
       {onUpdateAll && staleShots.length > 0 && (
         <>
           <span aria-hidden="true">·</span>

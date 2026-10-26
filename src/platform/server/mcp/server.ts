@@ -20,7 +20,7 @@ import type { McpAuthContext } from './auth';
 import { mcpJsonRpcError } from './json-rpc';
 import { serveResourceRequest } from './resources';
 import { MCP_RESOURCE_TEMPLATES } from './tools/resource-reads';
-import { SEQUENCE_CARD_URI } from './ui/sequence-card';
+import { TOOL_VIEWS } from '@/platform/mcp-views';
 import type { OpenStoryMcpContext, OpenStoryToolContext } from './tool-context';
 import { listSequences } from './tools/list-sequences';
 import { getSequence } from './tools/get-sequence';
@@ -51,6 +51,7 @@ import { castReadTools } from './tools/cast-reads';
 import { productionReadTools } from './tools/production-reads';
 import { contextReadTools } from './tools/context-reads';
 import { libraryReadTools } from './tools/library-reads';
+import { libraryEditTools } from './tools/library-edits';
 
 export const MCP_SERVER_NAME = 'openstory';
 export const MCP_SERVER_VERSION = '0.1.0';
@@ -86,41 +87,49 @@ const whoami = toolDefinition({
   };
 });
 
+/**
+ * Every tool, in registration order. The MCP server serves this list and the
+ * in-app assistant (#2155) runs the same definitions through `chat()`, so a
+ * tool added here is in both with no second copy.
+ */
+export const MCP_TOOLS = [
+  whoami,
+  listSequences,
+  getSequence,
+  getSequenceStatus,
+  listScenes,
+  getScene,
+  listShots,
+  getShot,
+  getShotFrames,
+  getSequenceContactSheet,
+  ...castReadTools,
+  ...productionReadTools,
+  ...contextReadTools,
+  ...libraryReadTools,
+  updateSceneTool,
+  ...structureEditTools,
+  // After every other tool has registered, so the catalog includes them.
+  createApplySequenceEdits(),
+  ...shotContentTools,
+  ...castMusicTools,
+  ...generationUploadTools,
+  ...castAudioGenerationTools,
+  ...studioTools,
+  planGenerationTool,
+  executeGenerationTool,
+  getOperationStatusTool,
+  retryFailedWorkTool,
+  planExportTool,
+  startExportTool,
+  ...stitchTools,
+  ...libraryEditTools,
+];
+
 export const mcpServer = createMCPServer({
   name: MCP_SERVER_NAME,
   version: MCP_SERVER_VERSION,
-  tools: [
-    whoami,
-    listSequences,
-    getSequence,
-    getSequenceStatus,
-    listScenes,
-    getScene,
-    listShots,
-    getShot,
-    getShotFrames,
-    getSequenceContactSheet,
-    ...castReadTools,
-    ...productionReadTools,
-    ...contextReadTools,
-    ...libraryReadTools,
-    updateSceneTool,
-    ...structureEditTools,
-    // After every other tool has registered, so the catalog includes them.
-    createApplySequenceEdits(),
-    ...shotContentTools,
-    ...castMusicTools,
-    ...generationUploadTools,
-    ...castAudioGenerationTools,
-    ...studioTools,
-    planGenerationTool,
-    executeGenerationTool,
-    getOperationStatusTool,
-    retryFailedWorkTool,
-    planExportTool,
-    startExportTool,
-    ...stitchTools,
-  ],
+  tools: MCP_TOOLS,
   // Advertises the resources capability; `resources/*` requests never reach
   // these reads (see resources.ts).
   resources: MCP_RESOURCE_TEMPLATES.map(({ name, uriTemplate }) =>
@@ -256,11 +265,6 @@ function withServerIdentity(
     return parsed.data;
   });
 }
-
-/** MCP Apps views (#1673): tool name → its `ui://` resource. */
-const TOOL_VIEWS: Record<string, string> = {
-  'openstory.get_sequence': SEQUENCE_CARD_URI,
-};
 
 const toolsListSchema = z.looseObject({
   result: z.looseObject({

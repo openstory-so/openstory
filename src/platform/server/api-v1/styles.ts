@@ -11,7 +11,7 @@ import { createSequenceLink } from './discovery';
 import { getLink, halLinksSchema, STYLES_PATH, withLinks } from './hal';
 
 /** Response body (minus `_links`) — the OpenAPI `StyleDocument` component derives from this. */
-const styleDocumentSchema = z.object({
+export const styleDocumentSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullable(),

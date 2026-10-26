@@ -17,14 +17,108 @@ import { Breadcrumbs } from './breadcrumbs';
 import { SEQUENCE_HEADER_SLOT_ID } from '@/sequences/ui/sequence-header-slot';
 import { ComplianceRestrictionBanner } from './compliance-restriction-banner';
 import { InvalidApiKeyBanner } from './invalid-api-key-banner';
+import { AssistantPanel } from '@/assistant/ui/assistant-panel';
+import { AssistantToggle } from '@/assistant/ui/assistant-toggle';
+import { usePageContext } from '@/assistant/ui/use-page-context';
+import { useAssistantState } from '@/assistant/ui/assistant-store';
 
 interface AppLayoutProps extends React.HTMLAttributes<HTMLElement> {}
+
+/** Starters for an empty assistant thread; the page decides them (#2155). */
+function suggestionsFor(kinds: ReadonlySet<string>): string[] {
+  if (kinds.has('selection')) {
+    return [
+      'Rewrite this passage so it plays on screen',
+      'Tighten this passage without losing the beat',
+      'Give me three ways this passage could go',
+    ];
+  }
+  if (kinds.has('studio_asset')) {
+    return [
+      'How can I make this image more striking?',
+      'Give me three variations that push the mood further',
+      'Turn this into a short clip. What should move?',
+    ];
+  }
+  if (kinds.has('shot')) {
+    return [
+      'How can I make this shot more interesting?',
+      'Give me three alternative framings for this shot',
+      'What would a cinematographer change here?',
+    ];
+  }
+  if (kinds.has('scene')) {
+    return [
+      'How can I make this scene land harder?',
+      'Where does this scene drag, and what should I cut?',
+      'Suggest a stronger opening and closing shot for this scene',
+    ];
+  }
+  if (kinds.has('draft_script')) {
+    return [
+      'How can I make this script more visual?',
+      'Tighten the dialogue without losing the beats',
+      'What is missing from this story?',
+    ];
+  }
+  if (kinds.has('draft_prompt')) {
+    return [
+      'Make this prompt more cinematic',
+      'Rewrite this prompt with a clear subject, light and lens',
+      'What would make this image more striking?',
+    ];
+  }
+  if (kinds.has('sequence')) {
+    return [
+      'How can I make this sequence better?',
+      'What is the weakest moment in this cut?',
+      'What would make the first five seconds hook harder?',
+    ];
+  }
+  if (kinds.has('character')) {
+    return [
+      'How can I make this character more distinctive?',
+      'Suggest a look that says more about who they are',
+      'What voice would suit them?',
+    ];
+  }
+  if (kinds.has('location')) {
+    return [
+      'How can I make this location feel more alive?',
+      'What time of day and weather would serve the story best?',
+      'Which sequences use this location?',
+    ];
+  }
+  return [
+    'Help me write a 30-second script',
+    'Review my latest sequence and name the one change with the biggest payoff',
+    'Make a reference still for a character I describe',
+  ];
+}
 
 export const AppLayout: React.FC<AppLayoutProps> = ({
   className,
   children,
   ...props
 }) => {
+  const pageContext = usePageContext();
+  // Starters follow everything the composer shows: the route, what a page
+  // registered (the Studio viewer), and what a button handed over.
+  const { extraContext, draft } = useAssistantState();
+  // A surface's own first question (the failure banner's "why did these
+  // fail?") goes ahead of the kind's.
+  const suggestions = [
+    ...(draft?.starters ?? []),
+    ...suggestionsFor(
+      new Set(
+        [
+          ...pageContext,
+          ...extraContext.values(),
+          ...(draft?.context ?? []),
+        ].map((item) => item.kind)
+      )
+    ),
+  ];
   return (
     <AuthGateProvider>
       <UploadRightsGateProvider>
@@ -52,6 +146,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   id={SEQUENCE_HEADER_SLOT_ID}
                   className="@container flex min-w-0 flex-1 items-center justify-end empty:hidden"
                 />
+                <AssistantToggle />
               </header>
               <ComplianceRestrictionBanner />
               <InvalidApiKeyBanner />
@@ -66,6 +161,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 {children}
               </div>
             </SidebarInset>
+            {/* Mounted once here so the conversation survives navigation;
+                the chips follow the route (#2155). */}
+            <AssistantPanel
+              pageContext={pageContext}
+              suggestions={suggestions}
+            />
           </SidebarProvider>
         </TooltipProvider>
       </UploadRightsGateProvider>

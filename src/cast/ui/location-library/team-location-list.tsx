@@ -1,3 +1,4 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { LibraryVirtualGrid } from '@/cast/ui/library-virtual-grid';
 import { TeamLocationCard } from '@/cast/ui/location-library/team-location-card';
 import {
@@ -39,6 +40,7 @@ export const TeamLocationList: React.FC<{
             ? 'Try another search.'
             : 'Make one with New location, or analyse a sequence.'
         }
+        action={q ? undefined : <AskAssistantButton context={[]} />}
       />
     );
   }

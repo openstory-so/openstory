@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import type { TabValue } from '@/shots/ui/scene-script-prompts';
 import { shotDraftLabel } from '@/motion/draft-mode';
 import { BlobLoader } from '@/ui/shadcn/blob-loader';
@@ -497,6 +498,16 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* The selected shot is in the URL; its chip comes from the router. */}
+                <DropdownMenuItem
+                  onClick={() =>
+                    openAssistant({
+                      context: [],
+                    })
+                  }
+                >
+                  Chat about this
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => void handleCopyImageUrl()}>
                   <Link className="h-4 w-4" />
                   Copy start frame URL
@@ -533,6 +544,16 @@ export const ScenePlayer: React.FC<ScenePlayerProps> = ({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* The selected shot is in the URL; its chip comes from the router. */}
+                <DropdownMenuItem
+                  onClick={() =>
+                    openAssistant({
+                      context: [],
+                    })
+                  }
+                >
+                  Chat about this
+                </DropdownMenuItem>
                 {currentShot.image?.url && (
                   <DropdownMenuItem onClick={() => void handleCopyImageUrl()}>
                     <Link className="h-4 w-4" />

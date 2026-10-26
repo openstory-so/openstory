@@ -1,5 +1,6 @@
 import { useStyles } from './use-styles';
 import { MOCK_SYSTEM_STYLES } from '@/look/style-templates';
+import { AuthGateStub } from '@/platform/ui/auth/auth-gate-provider';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { StyleSelectionDialogWithTrigger } from './style-selection-dialog';
@@ -8,6 +9,13 @@ import { StyleSelectorButton } from './style-selector-button';
 const meta: Meta<typeof StyleSelectorButton> = {
   title: 'Style/StyleSelectorButton',
   component: StyleSelectorButton,
+  decorators: [
+    (Story) => (
+      <AuthGateStub>
+        <Story />
+      </AuthGateStub>
+    ),
+  ],
   argTypes: {
     selectedStyle: {
       description: 'The currently selected style object',

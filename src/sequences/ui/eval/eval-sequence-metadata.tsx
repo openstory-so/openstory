@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import type React from 'react';
 import { AspectRatioIcon } from '@/ui/icons/aspect-ratio-icon';
 import { ModelBadge } from '@/models/ui/pickers/model-badge';
@@ -134,6 +135,21 @@ export const SequenceRowMenu: React.FC<{
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() =>
+            openAssistant({
+              context: [
+                {
+                  kind: 'sequence',
+                  id: sequence.id,
+                  label: sequence.title || 'Untitled Sequence',
+                },
+              ],
+            })
+          }
+        >
+          Chat about this
+        </DropdownMenuItem>
         <DropdownMenuItem
           disabled={archive.isPending}
           onClick={() =>

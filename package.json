@@ -108,6 +108,7 @@
     "@cloudflare/containers": "^0.3.7",
     "@content-collections/core": "0.15.3",
     "@content-collections/vite": "0.3.1",
+    "@durable-streams/server-cloudflare": "0.1.1",
     "@elevenlabs/elevenlabs-js": "^2.71.0",
     "@fal-ai/client": "^1.10.1",
     "@fontsource-variable/geist": "^5.3.0",
@@ -128,6 +129,8 @@
     "@tailwindcss/typography": "^0.5.20",
     "@tanstack/ai": "^1.0.0",
     "@tanstack/ai-byteplus": "^1.0.0",
+    "@tanstack/ai-client": "1.0.0",
+    "@tanstack/ai-durable-stream": "1.0.0",
     "@tanstack/ai-elevenlabs": "^1.0.0",
     "@tanstack/ai-fal": "^1.0.0",
     "@tanstack/ai-gemini": "^1.0.0",
@@ -135,6 +138,8 @@
     "@tanstack/ai-mcp": "^1.0.0",
     "@tanstack/ai-openai": "^1.0.0",
     "@tanstack/ai-openrouter": "^1.0.0",
+    "@tanstack/ai-persistence": "1.0.0",
+    "@tanstack/ai-react": "1.0.0",
     "@tanstack/highlight": "1.1.0",
     "@tanstack/markdown": "1.0.0",
     "@tanstack/react-query": "^5.104.1",
@@ -175,6 +180,7 @@
     "tailwind-merge": "^3.7.0",
     "tiptap-markdown": "^0.9.0",
     "ulid": "^3.0.2",
+    "unpdf": "^1.9.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {

@@ -1,3 +1,4 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { MusicView, MusicViewSkeleton } from '@/audio/ui/music-view';
 import { UploadMediaButton } from './upload-media-button';
 import { DivergentAlternateBanner } from '@/shots/ui/staleness/divergent-alternate-banner';
@@ -485,7 +486,8 @@ export const SceneMusicFacet: React.FC<SceneMusicFacetProps> = ({
       />
       {/* User score inject (#1108) — an uploaded track lands in the
           user-upload primary slot; generated alternates stay switchable. */}
-      <div className="flex justify-center">
+      <div className="flex flex-wrap justify-center gap-2">
+        <AskAssistantButton context={[]} />
         <UploadMediaButton
           label="Upload Audio"
           pendingLabel="Uploading…"

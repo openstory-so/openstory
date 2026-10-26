@@ -1,4 +1,5 @@
 import { ModelFamilyCard } from './model-family-card';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { Button } from '@/ui/shadcn/button';
 import {
   Empty,
@@ -207,28 +208,31 @@ export const ModelCatalogView: FC<ModelCatalogViewProps> = ({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4">
-        <form onSubmit={handleSubmit}>
-          <InputGroup className="sm:max-w-xs">
-            <InputGroupAddon>
-              <Search />
-            </InputGroupAddon>
-            <InputGroupInput
-              type="search"
-              placeholder="Search models"
-              value={search}
-              onChange={handleSearchInput}
-              aria-label="Search models"
-            />
-            {search && (
-              <InputGroupAddon align="inline-end">
-                <Button variant="ghost" size="icon" onClick={handleClear}>
-                  <X />
-                  <span className="sr-only">Clear search</span>
-                </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <form onSubmit={handleSubmit}>
+            <InputGroup className="sm:max-w-xs">
+              <InputGroupAddon>
+                <Search />
               </InputGroupAddon>
-            )}
-          </InputGroup>
-        </form>
+              <InputGroupInput
+                type="search"
+                placeholder="Search models"
+                value={search}
+                onChange={handleSearchInput}
+                aria-label="Search models"
+              />
+              {search && (
+                <InputGroupAddon align="inline-end">
+                  <Button variant="ghost" size="icon" onClick={handleClear}>
+                    <X />
+                    <span className="sr-only">Clear search</span>
+                  </Button>
+                </InputGroupAddon>
+              )}
+            </InputGroup>
+          </form>
+          <AskAssistantButton context={[]} />
+        </div>
 
         <ToggleGroup
           type="single"

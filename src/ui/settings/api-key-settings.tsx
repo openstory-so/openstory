@@ -4,11 +4,13 @@
  * LLMTR, plus the Upload-Post key that turns on publishing to social (#1267)
  */
 
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
 import { Alert, AlertDescription } from '@/ui/shadcn/alert';
 import { Badge } from '@/ui/shadcn/badge';
 import { Button } from '@/ui/shadcn/button';
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -261,6 +263,9 @@ function ApiKeySettingsContent({
             Bring your own keys and pay providers directly. A fal.ai key alone
             covers everything — script analysis included.
           </CardDescription>
+          <CardAction>
+            <AskAssistantButton context={[]} />
+          </CardAction>
         </CardHeader>
 
         <CardContent className="flex flex-col gap-3">

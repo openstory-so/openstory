@@ -1,0 +1,78 @@
+/**
+ * The chat tool set is the MCP tool set (#2155): same names, same count,
+ * and a delete waits for the user while a spend does not: the user is in
+ * the app and sees the generation start.
+ */
+import { describe, expect, it } from 'vitest';
+import { MCP_TOOLS } from '@/platform/server/mcp/server';
+import {
+  assistantTools,
+  chatToolName,
+  needsApproval,
+  unwrapMcpResult,
+} from './assistant-tools';
+
+describe('assistantTools', () => {
+  it('serves every MCP tool under its MCP name', () => {
+    const chatNames = assistantTools().map((tool) => tool.name);
+    expect(chatNames).toEqual(MCP_TOOLS.map((tool) => chatToolName(tool.name)));
+    // OpenAI rejects a dot in a tool name.
+    for (const name of chatNames) expect(name).toMatch(/^[a-zA-Z0-9_-]+$/);
+  });
+
+  it('asks before a delete, never before a spend or a read', () => {
+    const tool = (name: string) => {
+      const found = MCP_TOOLS.find((t) => t.name === name);
+      if (!found) throw new Error(`no tool ${name}`);
+      return found;
+    };
+    expect(needsApproval(tool('openstory.get_shot'))).toBe(false);
+    expect(needsApproval(tool('openstory.update_shot_prompt'))).toBe(false);
+    expect(needsApproval(tool('openstory.delete_shot'))).toBe(true);
+    // Spending does not ask: the page shows the generation as it starts.
+    expect(needsApproval(tool('openstory.execute_generation'))).toBe(false);
+    expect(needsApproval(tool('openstory.create_studio_assets'))).toBe(false);
+    expect(needsApproval(tool('openstory.delete_character'))).toBe(true);
+    // A model-chosen URL is shown before it goes out; a search query is not.
+    // An upload from a model-written URL is shown first: a page it read could
+    // name one that carries the user's work out.
+    expect(needsApproval(tool('openstory.upload_media'))).toBe(true);
+  });
+
+  it('keeps the first-turn tools eager and the rest lazy', () => {
+    const tools = assistantTools();
+    const eager = tools.filter((tool) => !tool.lazy).map((tool) => tool.name);
+    expect(eager).toContain('openstory_get_shot');
+    expect(eager).toContain('openstory_plan_generation');
+    expect(tools.find((t) => t.name === 'openstory_delete_shot')?.lazy).toBe(
+      true
+    );
+    expect(eager.length).toBeLessThan(30);
+  });
+});
+
+describe('unwrapMcpResult', () => {
+  it('returns the structured data of a success envelope', () => {
+    expect(
+      unwrapMcpResult({
+        content: [{ type: 'text', text: 'Did it.' }],
+        structuredContent: { id: 'x' },
+      })
+    ).toEqual({ id: 'x' });
+  });
+
+  it('throws the text of an error envelope', () => {
+    expect(() =>
+      unwrapMcpResult({
+        isError: true,
+        content: [{ type: 'text', text: 'shot not found' }],
+      })
+    ).toThrow('shot not found');
+  });
+
+  it('passes a plain result through', () => {
+    expect(unwrapMcpResult({ user: { id: 'u' } })).toEqual({
+      user: { id: 'u' },
+    });
+  });
+});

@@ -59,6 +59,12 @@ import { sequenceMusicPromptVersions } from './sequence-music-prompt-versions';
 import { sequenceMusicVariants } from './sequence-music-variants';
 import { sequenceExports } from './sequence-exports';
 import { stitches } from './stitches';
+import {
+  assistantInterrupts,
+  assistantMessages,
+  assistantRuns,
+  assistantThreads,
+} from './assistant';
 import { sequenceStyleVersions } from './sequence-style-versions';
 
 import { characters } from './characters';
@@ -315,6 +321,15 @@ export { sequenceExports };
 export { stitches };
 export type { Stitch } from './stitches';
 
+// In-app assistant threads and their TanStack AI persistence stores (#2155)
+export {
+  assistantInterrupts,
+  assistantMessages,
+  assistantRuns,
+  assistantThreads,
+};
+export type { AssistantThread } from './assistant';
+
 // Sequence style history (#1600)
 export { sequenceStyleVersions };
 
@@ -550,6 +565,10 @@ export const schema = {
   sequenceExports,
   sequenceStyleVersions,
   stitches,
+  assistantThreads,
+  assistantMessages,
+  assistantRuns,
+  assistantInterrupts,
 
   // Characters (scripted roles extracted from script)
   characters,

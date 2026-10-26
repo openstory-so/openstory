@@ -130,6 +130,10 @@ export const readStorageObject = (
 ): Promise<{ bytes: Uint8Array<ArrayBuffer>; contentType: string } | null> =>
   throwStub();
 
+export const storageObjectContentType = (
+  _key: string
+): Promise<string | null> => throwStub();
+
 export const readStorageStream = (
   _key: string,
   _range: { offset: number; length: number }

@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import { Alert, AlertDescription, AlertTitle } from '@/ui/shadcn/alert';
 import { Button } from '@/ui/shadcn/button';
 import { openAddCreditsDialog } from '@/billing/ui/use-add-credits-dialog';
@@ -165,24 +166,55 @@ export const FailureSummaryBanner: React.FC<FailureSummaryBannerProps> = ({
                 {isRetrying ? <Loader2 className="animate-spin" /> : <Play />}
                 {isRetrying ? 'Continuing\u2026' : 'Continue generation'}
               </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  openAssistant({
+                    context: [],
+                    starters: [
+                      'Why did these fail, and retry what can be retried',
+                    ],
+                  })
+                }
+              >
+                Chat about this
+              </Button>
             </div>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={continueGeneration}
-              disabled={isRetrying}
-              className="mt-2"
-            >
-              <RotateCcw
-                className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`}
-              />
-              {isRetrying
-                ? 'Retrying\u2026'
-                : summary.requiresFullRetry
-                  ? 'Regenerate Sequence'
-                  : 'Retry'}
-            </Button>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={continueGeneration}
+                disabled={isRetrying}
+              >
+                <RotateCcw
+                  className={`h-3 w-3 ${isRetrying ? 'animate-spin' : ''}`}
+                />
+                {isRetrying
+                  ? 'Retrying\u2026'
+                  : summary.requiresFullRetry
+                    ? 'Regenerate Sequence'
+                    : 'Retry'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  openAssistant({
+                    context: [],
+                    starters: [
+                      'Why did these fail, and retry what can be retried',
+                    ],
+                  })
+                }
+              >
+                Chat about this
+              </Button>
+            </div>
           )}
         </div>
       </AlertDescription>

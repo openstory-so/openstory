@@ -1,3 +1,4 @@
+import { openAssistant } from '@/assistant/ui/assistant-store';
 import type React from 'react';
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { ArchivedSequences } from '@/sequences/ui/archived-sequences';
@@ -396,9 +397,23 @@ export const EvalView: React.FC<EvalViewProps> = ({
           }
           action={
             !filters.search && !supportMode && sequences.length === 0 ? (
-              <Button asChild size="lg">
-                <Link to="/">Create Your First Sequence</Link>
-              </Button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button asChild size="lg">
+                  <Link to="/">Create Your First Sequence</Link>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  onClick={() =>
+                    openAssistant({
+                      context: [],
+                    })
+                  }
+                >
+                  Chat about this
+                </Button>
+              </div>
             ) : undefined
           }
         />

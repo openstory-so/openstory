@@ -1,3 +1,5 @@
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
+import { usePageContext } from '@/assistant/ui/use-page-context';
 /**
  * Add Credits Dialog (#1099)
  * OpenAI-style "Add to credit balance" modal — the in-app purchase surface.
@@ -75,6 +77,8 @@ export function AddCreditsDialog() {
   const { data: session } = useAuthSession();
   const queryClient = useQueryClient();
   const posthog = usePostHog();
+  // Only a sequence page can ask what finishing costs (#2155).
+  const inSequence = usePageContext().some((item) => item.kind === 'sequence');
 
   const [amount, setAmount] = useState(DEFAULT_TOPUP_AMOUNT);
   const [selectedPm, setSelectedPm] = useState<string | null>(null);
@@ -337,6 +341,14 @@ export function AddCreditsDialog() {
         )}
 
         <DialogFooter>
+          {inSequence && (
+            <AskAssistantButton
+              context={[]}
+              variant="ghost"
+              size="default"
+              onOpen={() => onOpenChange(false)}
+            />
+          )}
           <Button
             variant="secondary"
             onClick={() => onOpenChange(false)}

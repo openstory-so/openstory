@@ -94,6 +94,15 @@ import {
   type CSSProperties,
 } from 'react';
 import { toast } from 'sonner';
+import { AskAssistantButton } from '@/assistant/ui/ask-assistant-button';
+import { AssistantContextItem } from '@/assistant/ui/assistant-context-item';
+import {
+  openAssistant,
+  useAssistantState,
+} from '@/assistant/ui/assistant-store';
+import { useIsMobile } from '@/ui/use-mobile';
+import type { PageContextItem } from '@/assistant/page-context';
+import type { StudioActivity } from '@/studio/schema';
 
 /** Wall clock ticking once a second while `active`; null otherwise. */
 function useNow(active: boolean) {
@@ -274,6 +283,41 @@ function StudioCard({
         </p>
       )}
     </article>
+  );
+}
+
+/** Ways to begin, each handed to the assistant as a first line (#2155). */
+const ASSISTANT_STARTERS: Record<StudioActivity, readonly string[]> = {
+  image: [
+    'A reference still for a character I describe',
+    'A mood board for a scene from one of my sequences',
+    'Turn a photo I upload into a stylised still',
+  ],
+  video: [
+    'A short clip from one of my stills',
+    'A looping background for a title card',
+    'Animate a character sheet into a turnaround',
+  ],
+};
+
+function AssistantStarters({ activity }: { activity: StudioActivity }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <p className="text-muted-foreground">What do you want to make?</p>
+      <div className="flex flex-wrap justify-center gap-2">
+        {ASSISTANT_STARTERS[activity].map((starter) => (
+          <Button
+            key={starter}
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => openAssistant({ context: [], prompt: starter })}
+          >
+            {starter}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -770,6 +814,23 @@ function EditVideoForm({
  * long one grows the card to the dialog's height and then scrolls inside it,
  * so the header and the actions never move.
  */
+/** The open asset as assistant context (#2155): what it is, and its prompt's first words. */
+function studioAssetContext(
+  asset: StudioGalleryAsset,
+  prompt: string
+): PageContextItem {
+  const what = asset.activity === 'video' ? 'Clip' : 'Image';
+  const words = prompt.trim().split(/\s+/).slice(0, 6).join(' ');
+  // The still (a clip's poster) rides along so the model can look at it.
+  const still = studioPosterOutput(asset)?.url;
+  return {
+    kind: 'studio_asset',
+    id: asset.id,
+    label: (words ? `${what} · ${words}` : what).slice(0, 80),
+    ...(still ? { image: still } : {}),
+  };
+}
+
 export function GenerationDetail({
   asset,
   supportMode,
@@ -785,6 +846,7 @@ export function GenerationDetail({
   onEdit,
   editPending = false,
   onOpenHistory,
+  onAskAssistant,
 }: {
   asset: StudioGalleryAsset;
   supportMode: boolean;
@@ -804,10 +866,13 @@ export function GenerationDetail({
   editPending?: boolean;
   /** An opener for an earlier step of the edit history, if it is loaded. */
   onOpenHistory?: (id: string) => (() => void) | undefined;
+  /** Runs as the assistant opens with this asset (#2155); absent in support mode. */
+  onAskAssistant?: () => void;
 }) {
   const prompt = readableStudioPrompt(studioPrompt(asset));
   const references = studioShownReferences(asset);
   const reuse = studioReuse(asset);
+  const editSource = studioPrimaryOutput(asset);
   const creator = [asset.creatorName, asset.creatorEmail]
     .filter(Boolean)
     .join(' · ');
@@ -878,6 +943,13 @@ export function GenerationDetail({
             />
           )}
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {onAskAssistant && (
+            <AskAssistantButton
+              size="default"
+              context={[studioAssetContext(asset, prompt)]}
+              onOpen={onAskAssistant}
+            />
+          )}
           <Button
             type="button"
             variant="outline"
@@ -900,6 +972,38 @@ export function GenerationDetail({
               {asset.status === 'failed' ? 'Try again' : 'Use again'}
             </Button>
           )}
+          {/* Edit = back to the prompt box with this image as the reference
+              and an empty prompt; the user says what changes. */}
+          {onReuse &&
+            editSource &&
+            asset.activity === 'image' &&
+            asset.status === 'completed' && (
+              <Button
+                type="button"
+                variant="outline"
+                className="pointer-coarse:h-11"
+                onClick={() =>
+                  onReuse({
+                    prompt: '',
+                    aspectRatio: studioAspectRatio(asset),
+                    resolution: null,
+                    imageModel: null,
+                    videoModel: null,
+                    duration: null,
+                    mode: null,
+                    generateAudio: null,
+                    draft: null,
+                    referenceImages: [editSource.url],
+                    referenceVideos: [],
+                    referenceAudio: [],
+                    startImageUrl: null,
+                    endImageUrl: null,
+                  })
+                }
+              >
+                Edit image
+              </Button>
+            )}
           {onRenderAtQuality &&
             asset.draftTaskId &&
             asset.status === 'completed' &&
@@ -994,6 +1098,11 @@ export function StudioGallery({
   onReuse?: (reuse: StudioReuse) => void;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const assistant = useAssistantState();
+  const isMobile = useIsMobile();
+  // The desktop panel's width, which the viewer leaves free; on a phone the
+  // assistant is a drawer over everything, so nothing to leave.
+  const panelWidth = assistant.open && !isMobile ? assistant.width : 0;
   const [copied, setCopied] = useState(false);
   const remove = useDeleteStudioAsset();
   const renderAtQuality = useRenderStudioAssetAtQuality();
@@ -1074,12 +1183,16 @@ export function StudioGallery({
               ? 'No clips match this search across any users.'
               : 'No stills match this search across any users.'
             : isAuthenticated
-              ? activity === 'video'
-                ? 'Your clips land here. Start with a prompt below.'
-                : 'Your stills land here. Start with a prompt below.'
+              ? undefined
               : 'Browse the composer, then sign in to generate and keep a library.'
         }
-        action={!supportMode && !isAuthenticated ? <SignInButton /> : undefined}
+        action={
+          supportMode ? undefined : isAuthenticated ? (
+            <AssistantStarters activity={activity} />
+          ) : (
+            <SignInButton />
+          )
+        }
       />
     );
   }
@@ -1116,8 +1229,12 @@ export function StudioGallery({
         </div>
       )}
 
+      {/* With the assistant open the viewer takes only the room left of
+          the panel and is not modal, so the user can look and type at once;
+          a click in the panel is not "outside". */}
       <Dialog
         open={openAsset != null}
+        modal={!assistant.open}
         onOpenChange={(open) => {
           if (!open) {
             setOpenId(null);
@@ -1125,7 +1242,34 @@ export function StudioGallery({
           }
         }}
       >
-        <DialogContent className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <DialogContent
+          className="flex h-[94vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          style={
+            panelWidth > 0
+              ? {
+                  width: `calc(96vw - ${panelWidth}px)`,
+                  left: `calc((100vw - ${panelWidth}px) / 2)`,
+                }
+              : undefined
+          }
+          onInteractOutside={(event) => {
+            const target = event.target;
+            if (
+              target instanceof Element &&
+              target.closest('[data-assistant-panel]')
+            ) {
+              event.preventDefault();
+            }
+          }}
+        >
+          {openAsset && !supportMode && (
+            <AssistantContextItem
+              item={studioAssetContext(
+                openAsset,
+                readableStudioPrompt(studioPrompt(openAsset))
+              )}
+            />
+          )}
           {openAsset && (
             <GenerationDetail
               asset={openAsset}
@@ -1176,6 +1320,7 @@ export function StudioGallery({
                   : undefined
               }
               editPending={edit.isPending}
+              onAskAssistant={supportMode ? undefined : () => setCopied(false)}
               onOpenHistory={(id) => {
                 const target = assets.find((asset) => asset.id === id);
                 return target ? () => step(target) : undefined;

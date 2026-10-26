@@ -1055,7 +1055,7 @@ describe('upload rights gate (#1581)', () => {
       await import('@/cast/server/upload-rights');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const oldId = generateId();
-    const oldClip = `/r2/teams/${TEAM_ID}/studio/${oldId}/video.mp4`;
+    const oldClip = `/r2/videos/teams/${TEAM_ID}/studio/${oldId}/video.mp4`;
     const upload = `/r2/talent/${TEAM_ID}/uploads/01OLD.mp4`;
     const old = await scopedDb.generatedAssets.insert({
       id: oldId,
@@ -1097,7 +1097,7 @@ describe('upload rights gate (#1581)', () => {
       expect.anything()
     );
     for (const url of [
-      `/r2/teams/${generateId()}/studio/${old.id}/video.mp4`,
+      `/r2/videos/teams/${generateId()}/studio/${old.id}/video.mp4`,
       `/r2/elements/${TEAM_ID}/seq-1/01COPY.mp4`,
       `/r2/teams/${TEAM_ID}/studio/${old.id}/other.mp4`,
     ]) {
@@ -1126,7 +1126,7 @@ describe('upload rights gate (#1581)', () => {
       status: 'completed',
       outputs: [
         {
-          url: `/r2/teams/${TEAM_ID}/studio/${old.id}/image.png`,
+          url: `/r2/videos/teams/${TEAM_ID}/studio/${old.id}/image.png`,
           contentType: 'image/png',
         },
       ],
@@ -1144,7 +1144,7 @@ describe('upload rights gate (#1581)', () => {
     const { ValidationError } = await import('@/platform/errors');
     const scopedDb = createScopedDb(TEAM_ID, USER_ID);
     const clipId = generateId();
-    const stored = `/r2/teams/${TEAM_ID}/studio/${clipId}/video.mp4`;
+    const stored = `/r2/videos/teams/${TEAM_ID}/studio/${clipId}/video.mp4`;
     const clip = await scopedDb.generatedAssets.insert({
       id: clipId,
       provider: 'byteplus',
@@ -1176,7 +1176,7 @@ describe('upload rights gate (#1581)', () => {
       expect.anything()
     );
 
-    const prefix = `/r2/teams/${TEAM_ID}/studio/${clip.id}`;
+    const prefix = `/r2/videos/teams/${TEAM_ID}/studio/${clip.id}`;
     for (const forged of [
       `${prefix}/video.mp4/../../unchecked.mp4`,
       `${prefix}/%2e%2e/unchecked.mp4`,
@@ -1199,7 +1199,7 @@ describe('upload rights gate (#1581)', () => {
     const badClips: JsonValue[] = [null, { assetId: 1 }, { url: 1 }, []];
     for (const referenceClip of badClips) {
       const id = generateId();
-      const stored = `/r2/teams/${TEAM_ID}/studio/${id}/video.mp4`;
+      const stored = `/r2/videos/teams/${TEAM_ID}/studio/${id}/video.mp4`;
       await scopedDb.generatedAssets.insert({
         id,
         provider: 'byteplus',
@@ -1224,6 +1224,40 @@ describe('upload rights gate (#1581)', () => {
       ).rejects.toThrow(ValidationError);
     }
     expect(mockTriggerWorkflow).not.toHaveBeenCalled();
+  });
+
+  // The stored key carries its bucket (`videos/teams/…`, #2202). The
+  // composer sends the clip id, so the file itself is not checked (#2203).
+  it("takes the team's own clip as a reference without checking its file", async () => {
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    const id = generateId();
+    const clip = `/r2/videos/teams/${TEAM_ID}/studio/${id}/video.mp4`;
+    await scopedDb.generatedAssets.insert({
+      id,
+      provider: 'byteplus',
+      endpointId: 'dreamina-seedance-2-5-260628',
+      activity: 'video',
+      modelName: 'Seedance 2.5',
+      source: 'studio',
+      input: { mode: 'reference', referenceVideos: [] },
+      status: 'completed',
+      outputs: [{ url: clip, contentType: 'video/mp4' }],
+    });
+
+    await createStudioAssets(scopedDb, {
+      ...video,
+      mode: 'reference',
+      referenceVideos: [{ assetId: id }],
+    });
+
+    expect(await db.select().from(uploadAttestations)).toEqual([]);
+    expect(mockTriggerWorkflow).toHaveBeenCalledWith(
+      '/studio',
+      expect.objectContaining({
+        input: expect.objectContaining({ referenceVideos: [clip] }),
+      }),
+      expect.anything()
+    );
   });
 
   it('lets library stills through untouched', async () => {
