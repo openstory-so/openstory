@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. MANHATTAN CROSSWALK — DAY. day. Natural lighting appropriate to day. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 checks the smudge in the glass and brings out the lipstick.. Use the window reflection as her mirror; keep the city softly moving behind her.. Camera: quick short push-in\n\noverall_soundscape: Traffic and muted crowd noise. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/3ea500975549ab108036cc5deb2e16bcf9ac6cf27b231923c2b38a2dfd9fcbf3.mp4",
+            "content_type": "video/mp4",
+            "file_name": "V1rwfbAqTIpK2TNL_6DhM_minimax-h3.mp4",
+            "file_size": 4692274
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, featuring short black bob hair, wearing a black turtleneck and a black overcoat.\n<Subject 2> is the coral-colored lipstick shown in <Image 3>, a slim, matte-finish tube with a vibrant coral pigment.\n\nsummary:\n[keyframe completion + reference generation] The target video shows <Subject 1> at a Manhattan crosswalk, using a reflection in a glass window to apply <Subject 2> while the camera pushes in quickly.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - her facial features, hair, and clothing remain consistent throughout.\n<Subject 2> (appears in [Shot 2]): fully_preserved - the specific coral shade and matte texture of the lipstick are maintained when applied.\n\ndetailed_description:\nThe video is captured in a modern social-first product photography style with tactile, editorial energy and natural daylight lighting. The color palette consists of crisp whites (#FFFFFF), warm creams (#F0E6D3), deep coral (#D4536D), and charcoal blacks (#1A1A1A), with lifted shadows and warm highlights. \n\n[Shot 1] The video begins with the starting frame from <Image 1>, showing <Subject 1> standing on a busy Manhattan crosswalk during the day. She is positioned profile-view, looking into the reflection of a glass storefront window. The city behind her is softly blurred, with moving traffic and pedestrians. The atmosphere is airy and high-end. \n\n[Shot 2] At 00:01.500, the camera performs a quick, short push-in toward <Subject 1>. She uses the slightly smudged glass window as a mirror to check her appearance. She brings her hand into the frame as she carefully applies <Subject 2> to her lips. The focus sharpens on the tactile texture of the lipstick and the pop of the coral color against her neutral black attire. The reflection in the glass shows her movements clearly while the city life continues to flow in the soft-focus background.\n\noverall_soundscape:\nAmbient city sounds including muffled traffic hum, distant car horns, and the murmur of a walking crowd. The faint sound of the lipstick tube clicking open.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1224968017,
+          "reference_tokens": 4672,
+          "timings": {
+            "inference": 3.0012700150255114
+          }
+        },
+        "status": 200,
+        "billableUnits": 6.630400000000001
+      }
+    }
+  ]
+}

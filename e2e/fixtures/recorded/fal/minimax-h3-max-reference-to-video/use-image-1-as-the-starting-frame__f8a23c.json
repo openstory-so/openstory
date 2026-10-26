@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT ELEVATOR — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 catches the earring before it rolls beneath the door.. Make the catch feel like a quick, instinctive assist.. Camera: snappy quick tilt down\n\noverall_soundscape: Earring skitters against the floor. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/b524f986d79e73136f51dd6fdf0dc5b42233d0b5a6e6215e9124502b4c17c961.mp4",
+            "content_type": "video/mp4",
+            "file_name": "SO0T9Cng6258UMTRGncRX_minimax-h3.mp4",
+            "file_size": 4966562
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, with short black hair, wearing a black turtleneck and a long black coat with gold hoop earrings.\n<Subject 2> is the gold hoop earring seen in <Image 2>, a simple metallic ring.\n<Subject 3> is the coral lipstick from <Image 3>, featuring a slim matte coral casing and a vibrant coral-toned bullet.\n\nsummary:\n[reference generation + video continuation] The target video starts with <Image 1> and depicts a scene where <Subject 1> instinctively catches a falling <Subject 2> before it rolls under an elevator door, featuring <Subject 3> as a visually-consistent element in a high-end editorial product photography style.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved.\n<Subject 3> (appears in [Shot 2]): fully_preserved.\n\ndetailed_description:\nThe video follows a modern, social-first product photography style with tactile, editorial energy. The lighting is bright and natural, suggesting early morning, with crisp whites and lifted shadows creating an airy atmosphere. The color palette is dominated by #FFFFFF, #F0E6D3, and #1A1A1A, with pops of #D4536D and the coral tones of the product.\n\n[Shot 1] The video begins with <Image 1>, showing <Subject 1> standing in a modern downtown apartment elevator. She is dressed in a sharp black coat. Suddenly, <Subject 2> earring slips from her ear and begins to skitter across the grey tiled floor. The camera is static for a split second as the jewelry falls. \n\n[Shot 2] At 00:01.500, the camera performs a snappy quick tilt down, following the motion of the earring. <Subject 1> reaches down with a quick, instinctive movement. Her fingers deftly catch the <Subject 2> just millimeters before it disappears beneath the gap of the elevator door. In the background, <Subject 3> lipstick is placed neatly on a marble-topped elevator ledge, its matte texture catching the soft morning light. The shot is a close-up, emphasizing the tactile nature of the gold metal against the skin of <Subject 1>.\n\noverall_soundscape:\nThe sharp, metallic clink of <Subject 2> skittering against the hard tiled floor, followed by the soft thud of fingers catching the metal and the faint hum of the elevator motor in the background.\n\nnon_diegetic_music:\nN/A",
+          "seed": 2052737083,
+          "reference_tokens": 4672,
+          "timings": {
+            "inference": 3.020493034971878
+          }
+        },
+        "status": 200,
+        "billableUnits": 6.630400000000001
+      }
+    }
+  ]
+}

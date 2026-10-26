@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT BATHROOM — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 twists up the coral bullet and applies it in the mirror.. Keep the reflection and lipstick application legible in the same frame.. Camera: smooth, energetic handheld drift\n\noverall_soundscape: Soft twist of the lipstick tube. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/1870282cdba4a2032aa051449ad5b0bdb221244bbc9ee8ef094da85e0abb51eb.mp4",
+            "content_type": "video/mp4",
+            "file_name": "BEY5yGvbmlbl4_1mM8gh1_minimax-h3.mp4",
+            "file_size": 5002650
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 2>, with short black bobbed hair, wearing a black turtleneck top and gold hoop earrings.\n<Subject 2> is the coral lipstick shown in <Image 3>, featuring a slim matte-finish tube and a vibrant coral-colored bullet.\n\nsummary:\n[reference generation + audio reference] The target video starts from <Image 1> and shows <Subject 1> applying <Subject 2> while looking into a mirror in a modern apartment bathroom during the morning.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - maintains facial features, hair style, and clothing throughout.\n<Subject 2> (appears in [Shot 1]): fully_preserved - the coral color and sleek tube design remain consistent.\n<Image 1> (appears in [Shot 1]): fully_preserved - serves as the exact starting frame composition.\n<Image 2> (appears in [Shot 1]): attribute_transfer - defines the appearance of the woman and the environment.\n<Image 3> (appears in [Shot 1]): fully_preserved - defines the visual design and color of the lipstick.\n\ndetailed_description:\nThe video is filmed in a modern social-first product photography style with tactile, editorial energy. The lighting is bright, natural morning light with crisp whites and a palette of #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, and #E8F4E8, creating an airy atmosphere with lifted shadows.\n[Shot 1] At 00:00.000, the scene begins exactly as <Image 1>. <Subject 1> stands in a sleek downtown apartment bathroom. <Subject 1> holds <Subject 2> in her right hand, looking into the large rectangular mirror. With a smooth tactile motion, she twists the base of <Subject 2> upward, revealing the coral bullet. <Subject 1> then carefully applies the lipstick to her lower lip. The reflection in the mirror is clear and legible, showing the precise application of the coral pigment. The camera performs a smooth, energetic handheld drift, subtly moving in toward her face to capture the texture of the lipstick and the warmth of her skin. The background features white subway tiles and a window with a soft-focus city view. \n\noverall_soundscape:\nThe soft, mechanical click and friction of the lipstick tube twisting upward, followed by the faint, creamy sound of the product gliding against skin. Ambient quiet silence of a morning in an apartment is present.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1360797174,
+          "reference_tokens": 4672,
+          "timings": {
+            "inference": 3.7080914701800793
+          }
+        },
+        "status": 200,
+        "billableUnits": 8.2304
+      }
+    }
+  ]
+}

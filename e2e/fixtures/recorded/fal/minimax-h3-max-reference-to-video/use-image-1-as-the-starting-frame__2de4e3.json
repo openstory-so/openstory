@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — LATE AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2'S FRIEND applies the colour and checks her grin in the camera screen.. Keep the screen reflection crisp and the rooftop background soft.. Camera: brisk gentle push-in\n\noverall_soundscape: Soft click of the lipstick cap. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Scarlett's Friend - An adult friend of Scarlett — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/28f9bc9dbafc24d1d8bf47aa79aa3338630d3186cae5581d3aaa3e840f39f984.mp4",
+            "content_type": "video/mp4",
+            "file_name": "OcrEmRexR1y9_wMv-Bi4C_minimax-h3.mp4",
+            "file_size": 4894170
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 2>, featuring short black bob hair, gold hoop earrings, wearing a black turtleneck and matching black trousers.\n<Subject 2> is the woman in <Picture 3>, with hair tied back, wearing a black denim jacket over a white t-shirt.\n<Subject 3> is the CORAL_LIPSTICK from <Picture 4>, a slim, matte coral-toned lipstick in a matching cylindrical tube.\n\nsummary:\n[reference generation] The target video starts from <Picture 1> and shows <Subject 1> applying <Subject 3> to her lips while checking her reflection in a camera screen on a rooftop.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 1]): fully_preserved\n<Subject 2 (appears in [Shot 1]): partially_preserved - seen from behind/side in the foreground holding the camera.\n<Subject 3 (appears in [Shot 1], [Shot 2]): fully_preserved - the coral color and sleek design are maintained.\n\ndetailed_description:\nThe video follows a modern, social-first product photography style with tactile, editorial energy. The lighting is natural and even, characteristic of late afternoon, with slight warmth in the highlights and lifted shadows creating an airy atmosphere. The color palette consists of crisp whites, warm neutrals, and a vibrant pop of coral from the product.\n\n[Shot 1] The shot begins with the frame from <Picture 1>, a point-of-view (POV) from behind <Subject 2> holding a professional camera. On the camera's LCD screen, <Subject 1> is framed sitting on a downtown rooftop with a soft-focus city skyline and elevated train tracks. <Subject 1> holds <Subject 3> to her lips, carefully gliding the coral pigment across her lower lip. She looks into the camera lens with a focused expression. The reflection on the camera screen is crisp.\n\n[Shot 2] At 00:02.000, the camera performs a brisk, gentle push-in toward <Subject 1>. She finishes applying the lipstick and breaks into a confident, subtle grin, checking the result in the camera screen's reflection. The texture of <Subject 3> is visible as perfectly matte. The rooftop background remains a creamy bokeh of urban architecture, keeping the focus entirely on her face and the product's finish.\n\noverall_soundscape:\nThe soft, tactile click of the lipstick cap being pressed into place. Distant ambient city hum of a passing train and the faint rustle of wind.\n\nnon_diegetic_music:\nN/A",
+          "seed": 528602495,
+          "reference_tokens": 6496,
+          "timings": {
+            "inference": 3.426166946068406
+          }
+        },
+        "status": 200,
+        "billableUnits": 7.36
+      }
+    }
+  ]
+}

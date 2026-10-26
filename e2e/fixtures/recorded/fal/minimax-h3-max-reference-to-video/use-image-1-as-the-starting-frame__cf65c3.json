@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — LATE AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2'S FRIEND lowers the camera.. Let the rooftop sunlight and candid ease shape the moment.. Camera: easy, lively handheld drift\n\noverall_soundscape: Distant train rattles; water shivers in the paper cups. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Scarlett's Friend - An adult friend of Scarlett — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/8349bc8a8da0a03e2f1fe37692bd954a43d61616f8111e2bd731cb081f48f754.mp4",
+            "content_type": "video/mp4",
+            "file_name": "AZ9kLQ9J10QGTj2zPh4Qk_minimax-h3.mp4",
+            "file_size": 5655031
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>, wearing a black turtleneck and black trousers, sitting at a wooden table.\n<Subject 2> is the friend in <Picture 2>, a woman with dark hair tied in a bun, wearing a grey denim jacket over a white t-shirt and dark jeans, holding a professional camera.\n<Subject 3> is the coral lipstick from <Picture 4>, a slim matte-orange tube with a matching cap.\n\nsummary:\n[reference generation + video continuation] The target video starts with the frame from <Picture 1> and shows <Subject 2> lowering her camera while <Subject 1> sits on a rooftop, featuring <Subject 3>. \n\nretention_analysis:\n<Subject 1 (appears in [Shot 1], [Shot 2]): fully_preserved - facial features and clothing maintained.\n<Subject 2 (appears in [Shot 1], [Shot 2]): fully_preserved - facial features, hairstyle, and camera equipment maintained.\n<Subject 3 (appears in [Shot 2]): attribute_transfer - the specific coral color and texture of the lipstick are applied to the product shot.\n\ndetailed_description:\nThe video follows a modern, social-first product photography aesthetic with tactile editorial energy. The lighting is natural and even, characteristic of late afternoon, with a color palette of crisp whites, warm creams, and pops of coral. \n\n[Shot 1] The shot opens exactly as framed in <Picture 1>. <Subject 1> sits at a weathered wooden table on a downtown rooftop. In the background, a city skyline and an elevated train track are visible under a clear sky. <Subject 2> stands opposite her, holding a professional DSLR camera to her eye, looking through the viewfinder. The camera is static, capturing the candid moment between the two women.\n\n[Shot 2] At 00:01.500, the shot cuts to a close-up handheld shot. <Subject 2> slowly lowers the camera from her eye, looking toward <Subject 1> with a relaxed, candid smile. <Subject 1> reaches out her hand, picking up <Subject 3> which sits on the table next to some printed photographs. The focus is sharp on the matte finish of the coral lipstick. The camera performs a lively, handheld drift, creating a sense of intimacy and ease. The sunlight has a slight warmth in the highlights while shadows remain lifted and airy.\n\noverall_soundscape:\nDistant rumble of a passing train on the elevated tracks, the soft rustle of paper cups and printed photos being moved, and the faint click of the lipstick cap being picked up.\n\nnon_diegetic_music:\nN/A",
+          "seed": 641564566,
+          "reference_tokens": 6496,
+          "timings": {
+            "inference": 3.475685221143067
+          }
+        },
+        "status": 200,
+        "billableUnits": 7.36
+      }
+    }
+  ]
+}

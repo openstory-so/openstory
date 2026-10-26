@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT ELEVATOR — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 caps the lipstick as the elevator jolts and Image 3 reaches for the earring.. Let the elevator jolt register without losing either face or the lipstick.. Camera: lively, natural handheld drift\n\noverall_soundscape: Elevator rattle and a soft jolt; earring taps the floor. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/6018bc1e18c8513454761e49c4c6b5d5a79b0d7e56cf05962f7e1029f973c10f.mp4",
+            "content_type": "video/mp4",
+            "file_name": "nnmvjnq2akgNZRU7iZUSf_minimax-h3.mp4",
+            "file_size": 5073130
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, with short black bob hair, wearing a black turtleneck and a black blazer.\n<Subject 2> is the man in <Image 1>, with short dark hair, wearing a grey textured overshirt over a dark shirt.\n<Subject 3> is the coral lipstick shown in <Image 4>, featuring a slim design and a vibrant coral-toned bullet.\n\nsummary:\n[reference generation + audio reference] The target video shows a woman and a man in a modern elevator where a sudden jolt causes the woman to cap her lipstick and drop an earring.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 1], [Shot 2]): fully_preserved - her facial features, hair, and clothing remain consistent.\n<Subject 2 (appears in [Shot 1], [Shot 2]): fully_preserved - his facial features and grey jacket remain consistent.\n<Subject 3 (appears in [Shot 1], [Shot 2]): fully_preserved - the color and finish of the lipstick are maintained.\n\ndetailed_description:\nThe video is captured in a modern social-first product photography style with tactile, editorial energy and bright, natural morning lighting. The color palette consists of crisp whites, warm creams #F0E6D3, vibrant coral #D4536D, deep charcoal #1A1A1A, and soft greens #E8F4E8. [Shot 1] The shot opens as a medium shot mirroring <Image 1>, showing <Subject 1> and <Subject 2> inside a sleek downtown elevator. <Subject 1> holds the <Subject 3> near her face, looking at her reflection in the elevator mirror. <Subject 2> stands beside her, looking down slightly. The camera has a lively, natural handheld drift, creating an intimate morning atmosphere. [Shot 2] At 00:01.500, the elevator suddenly jolts upward with a mechanical shudder. <Subject 1> reacts to the movement, quickly twisting and capping <Subject 3> to secure it. Simultaneously, a small gold earring slips from <Subject 1>'s ear and falls toward the floor. The camera shakes slightly with the jolt but maintains sharp focus on <Subject 1> and <Subject 2>. The lighting remains clear with lifted shadows and warm highlights, emphasizing the tactile fabric of the black blazer and the matte finish of the lipstick.\n\noverall_soundscape:\nThe mechanical rattle of a moving elevator followed by a sharp metallic jolt, ending with the delicate \"clink\" of an earring hitting the floor.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1460890094,
+          "reference_tokens": 6496,
+          "timings": {
+            "inference": 3.4362182589247823
+          }
+        },
+        "status": 200,
+        "billableUnits": 7.36
+      }
+    }
+  ]
+}

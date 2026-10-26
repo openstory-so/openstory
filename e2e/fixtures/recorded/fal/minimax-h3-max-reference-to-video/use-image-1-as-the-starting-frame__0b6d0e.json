@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — LATE AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 slides the lipstick across the table to Image 2'S FRIEND.. Compose the coral tube and peel as a playful color-blocked detail.. Camera: smooth and quick short overhead track\n\noverall_soundscape: Lipstick tube slides lightly across the tabletop. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Scarlett's Friend - An adult friend of Scarlett — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/507c66ee49c241493250c472f52ad523283c1a7e7f57bcd237486456f911f5cd.mp4",
+            "content_type": "video/mp4",
+            "file_name": "Qjp4Xv13Bzl5d9VJJGylY_minimax-h3.mp4",
+            "file_size": 10019248
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, featuring short dark bob hair, wearing a black turtleneck and gold hoop earrings.\n<Subject 2> is the friend in <Image 3>, an adult woman with short dark hair, also wearing a black turtleneck.\n<Subject 3> is the CORAL_LIPSTICK from <Image 4>, a slim, matte coral-colored lipstick tube with a matching cap and bullet.\n\nsummary:\n[reference generation + audio reuse] The target video shows <Subject 1> sliding <Subject 3> across a wooden table toward <Subject 2> in a cinematic rooftop setting.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - matches the appearance and clothing from <Image 1>.\n<Subject 2> (appears in [Shot 2]): fully_preserved - matches the appearance and clothing from <Image 3>.\n<Subject 3> (appears in [Shot 1], [Shot 2]): fully_preserved - maintains the color and design from <Image 4>.\n\ndetailed_description:\nThe video is filmed in a modern, social-first editorial style on a downtown rooftop during late afternoon. The lighting is natural and even, with slight warmth in the highlights and lifted shadows that maintain an airy atmosphere. The color palette is dominated by crisp whites, creams, and deep charcoals, with the vibrant coral of the product serving as the primary pop of color. \n\n[Shot 1] The scene opens with a close-up detail shot of a weathered grey wooden tabletop. <Subject 1>'s hand enters the frame, holding <Subject 3>. She gracefully slides the coral lipstick <Subject 3> across the texture of the wood. Next to the lipstick lies a small, curled orange peel, creating a playful color-blocked composition against the neutral wood. The camera performs a smooth, quick overhead tracking shot following the movement of the lipstick.\n\n[Shot 2] At 00:02.000, the shot cuts to a medium close-up focusing on <Subject 2>. She reaches out with her hand to accept <Subject 3> as it slides toward her from <Subject 1>. The focus is sharp on the tactile finish of the matte lipstick tube and the natural skin tones of their hands. The background remains soft and clean. The sound is the light, rhythmic friction of the plastic tube moving against the wooden surface.\n\noverall_soundscape:\nThe soft, dry sound of a plastic lipstick tube sliding across a textured wooden table. Subtle ambient city air in the distance.\n\nnon_diegetic_music:\nN/A",
+          "seed": 2006878107,
+          "reference_tokens": 6496,
+          "timings": {
+            "inference": 3.373996073845774
+          }
+        },
+        "status": 200,
+        "billableUnits": 7.36
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nEXT. DOWNTOWN ROOFTOP — LATE AFTERNOON. Natural, even lighting. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 and Image 2'S FRIEND laugh and lean into the same frame.. Hold their shared laugh as the contact sheets flutter and the lipstick catches the light.. Camera: warm and lively handheld drift, then slight push-in\n\noverall_soundscape: Wind lifts the contact sheets; distant train fades. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: Scarlett's Friend - An adult friend of Scarlett — keep visually consistent throughout the shot.\nImage 4: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/09e01933342cf49c1fa9cb169d80a78a067cdde0df6d1b5e03f1dd75eabfbb15.mp4",
+            "content_type": "video/mp4",
+            "file_name": "hLG4Tg7uTSY7v_Z7z0GIx_minimax-h3.mp4",
+            "file_size": 7865768
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Image 1>, with dark hair tied in a bun, wearing a white t-shirt under a dark denim jacket and jeans, with a camera around her neck.\n<Subject 2> is the friend in <Image 2>, with short black bob hair, wearing a black turtleneck and black trousers.\n<Subject 3> is the CORAL_LIPSTICK from <Image 4>, a slim matte-orange lipstick in a matching tube.\n\nsummary:\n[reference generation + audio reference] The target video shows <Subject 1> and <Subject 2> on a downtown rooftop laughing together while contact sheets flutter in the wind and <Subject 3> sits on a table.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - maintains facial features and clothing.\n<Subject 2> (appears in [Shot 1], [Shot 2]): fully_preserved - maintains facial features and clothing.\n<Subject 3> (appears in [Shot 1]): fully_preserved.\n\ndetailed_description:\nThe video is shot in a modern, social-first product photography style with tactile editorial energy and natural late afternoon lighting. The color palette is composed of crisp whites, creams, and deep charals, with a vibrant pop of coral. The atmosphere is airy with lifted shadows and slight warmth in the highlights.\n\n[Shot 1] The shot begins with a frame matching <Image 1>, showing <Subject 1> and <Subject 2> standing on a downtown rooftop overlooking a city skyline. On the wooden table in the foreground, <Subject 3> stands upright next to two paper cups and scattered contact sheets. <Subject 1> and <Subject 2> are looking at each other with soft smiles. \n\n[Shot 2] At 00:01.500, the camera transitions to a medium shot with a warm, lively handheld drift. <Subject 1> and <Subject 2> lean into the same frame, sharing a genuine, deep laugh. A gust of wind catches the contact sheets on the table, causing them to flutter and lift slightly. The sunlight catches the sleek matte surface of <Subject 3>, highlighting its coral hue. The camera performs a slight push-in toward the two women as they continue to laugh, the movement feeling organic and intimate.\n\noverall_soundscape:\nThe sound of wind lifting and fluttering the paper contact sheets. A distant, low rumble of a city train fades out in the background. The sound of shared laughter between two women is prominent.\n\nnon_diegetic_music:\nN/A",
+          "seed": 1404479369,
+          "reference_tokens": 6496,
+          "timings": {
+            "inference": 3.4817826570943
+          }
+        },
+        "status": 200,
+        "billableUnits": 7.36
+      }
+    }
+  ]
+}

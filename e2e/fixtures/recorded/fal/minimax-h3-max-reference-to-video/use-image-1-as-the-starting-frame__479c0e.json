@@ -1,0 +1,29 @@
+{
+  "fixtures": [
+    {
+      "match": {
+        "endpoint": "fal",
+        "userMessage": "Use Image 1 as the starting frame.\nINT. DOWNTOWN APARTMENT ELEVATOR — MORNING. morning. Natural lighting appropriate to morning. #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, #E8F4E8. Modern social-first product photography with tactile, editorial energy. Products shown in real-life context -- hands opening packaging, fingers pressing textures, products on bathroom shelves, kitchen counters, rumpled linen. Close-up detail shots emphasize material and finish. Flat-lays with curated minimal arrangements. Color-matched backgrounds that complement the product. Every frame feels like something you would screenshot and save, Clean and bright with true-to-life color. Whites are crisp, skin tones warm and natural. Minimal processing -- the product looks like it does in your hand. Slight warmth in highlights, lifted shadows keeping everything airy. One accent color pops against neutral base.\n\nImage 2 pockets the lipstick and steps out as the doors open.. Carry the movement naturally from the shared glance into the lobby.. Camera: brisk follow\n\noverall_soundscape: Elevator doors slide open; lobby bustle rises. No BGM, no music. Generate only dialogue, environmental sounds, and action sounds.\nnon_diegetic_music: N/A\n\nReference images:\nImage 3: CORAL_LIPSTICK - A slim — keep visually consistent throughout the shot.",
+        "model": "minimax/h3-max/reference-to-video"
+      },
+      "response": {
+        "json": {
+          "video": {
+            "url": "https://assets.openstory.so/e2e/6e57ea247ab4b64ace99efb2a4a703eafcc2f92a317568ab7def0ab1ff38b3d9.mp4",
+            "content_type": "video/mp4",
+            "file_name": "XrjLK03k6M3HLflHEz1yI_minimax-h3.mp4",
+            "file_size": 4526873
+          },
+          "expanded_prompt": "subject_definitions:\n<Subject 1> is the woman in <Picture 1>, with short black bob hair, wearing a black turtleneck and black blazer with gold hoop earrings.\n<Subject 2> is the man in <Picture 1>, with dark wavy hair, wearing a grey textured jacket over a dark grey shirt.\n<Subject 3> is the coral-colored lipstick from <Picture 3>, featuring a slim design and a matte coral finish.\n\nsummary:\n[reference generation + video continuation] The target video shows <Subject 1> and <Subject 2> in an elevator where <Subject 1> puts away <Subject 3> and exits into a lobby as the doors open.\n\nretention_analysis:\n<Subject 1 (appears in [Shot 1], [Shot 2]): fully_preserved - facial features, hair, and clothing remain consistent.\n<Subject 2 (appears in [Shot 1], [Shot 2]): fully_preserved - facial features and clothing remain consistent.\n<Subject 3 (appears in [Shot 1], [Shot 2]): attribute_transfer - coral color and slim design are maintained.\n\ndetailed_description:\nThe video is filmed in a modern, social-first product photography style with tactile, editorial energy. The lighting is bright morning natural light with crisp whites, warm skin tones, and lifted shadows. The color palette consists of #FFFFFF, #F0E6D3, #D4536D, #1A1A1A, and #E8F4E8. \n\n[Shot 1] The shot begins as the keyframe from <Picture 1>. <Subject 1> and <Subject 2> stand inside a modern elevator with white tiled walls and a large mirror. <Subject 1> looks at <Subject 2> with a shared glance while holding <Subject 3> near her face, having just applied the coral lipstick. <Subject 2> returns the gaze with a subtle, natural smile. The camera is static, capturing the intimate moment and the detailed finish of the lipstick.\n\n[Shot 2] At 00:02.000, the shot cuts to a brisk follow shot as the elevator doors slide open, revealing a sunlit downtown lobby. <Subject 1> naturally pockets <Subject 3> into her blazer pocket and steps out of the elevator with fluid movement. The camera tracks her at a medium speed as she transitions from the elevator into the lobby area. The background shows blurred figures of people and modern architecture. The atmosphere is airy and high-end, emphasizing the aesthetic.\n\noverall_soundscape:\nThe mechanical whir of elevator doors sliding open, followed by the rising ambient bustle of a city lobby including footsteps and distant chatter.\n\nnon_diegetic_music:\nN/A",
+          "seed": 325566644,
+          "reference_tokens": 4672,
+          "timings": {
+            "inference": 3.0484633370069787
+          }
+        },
+        "status": 200,
+        "billableUnits": 6.630400000000001
+      }
+    }
+  ]
+}
