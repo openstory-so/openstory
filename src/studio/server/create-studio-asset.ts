@@ -28,9 +28,9 @@ import {
 import { requireGenerationAllowed } from '@/platform/server/compliance/generation-gate';
 import {
   likenessFromLedger,
-  requireCheckedUploadRights,
   type LikenessRequestContext,
 } from '@/cast/server/upload-rights';
+import { requireCheckedUploadRights } from '@/cast/server/upload-check';
 import { needsLikenessCheck } from '@/cast/upload-rights';
 import { studioLikenessMedia } from '@/studio/reference-rights';
 import type { ScopedDb } from '@/platform/server/db/scoped';

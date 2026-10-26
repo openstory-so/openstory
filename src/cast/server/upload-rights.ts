@@ -220,7 +220,7 @@ function analyzeUpload(opts: {
  * key's owner segment, read the way the upload route reads it
  * (`<bucket>/<team>/…` or `<bucket>/teams/<team>/…`), never a substring.
  */
-function isCheckable(url: string, teamId: string): boolean {
+export function isCheckable(url: string, teamId: string): boolean {
   const key = r2KeyFromUrl(url);
   if (key === null) return needsLikenessCheck(url);
   if (mediaUrlHasTraversal(url)) return false;
@@ -310,27 +310,6 @@ export async function requireUploadRights(
     result.set(url, { depictsRealPerson: rights.status === 'signed' });
   }
   return result;
-}
-
-/**
- * {@link requireUploadRights}, but an upload with no row is checked here
- * first instead of refused (#2192). For a request that takes URLs the
- * caller may never have checked: a past upload, a raw URL, an upload behind
- * a reused clip. Only a URL {@link classifyUpload} may check is checked; any
- * other with no row is refused. A failed check throws; a real person still
- * needs the sign-off.
- */
-export async function requireCheckedUploadRights(
-  scopedDb: ScopedDb,
-  urls: string[],
-  request: LikenessRequestContext
-): Promise<Map<string, { depictsRealPerson: boolean }>> {
-  for (const url of new Set(urls)) {
-    // Another team's file is never checked into use: it stays refused.
-    if (!isCheckable(url, scopedDb.teamId)) continue;
-    await classifyUpload({ scopedDb, userId: scopedDb.userId, url, request });
-  }
-  return requireUploadRights(scopedDb, urls);
 }
 
 /**

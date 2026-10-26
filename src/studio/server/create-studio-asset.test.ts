@@ -33,6 +33,7 @@ const mockGetEffectiveFalPricing = vi.fn();
 const mockCaptureProductEvent = vi.fn();
 const mockMeasureStoredMediaDuration = vi.fn();
 const mockAnalyzeUpload = vi.fn();
+const mockReadInstance = vi.fn();
 
 vi.doMock('#db-client', () => ({ getDb: () => db }));
 vi.doMock('@/billing/server/preflight', async (importOriginal) => {
@@ -66,6 +67,10 @@ vi.doMock('@/cast/server/sequence-elements/media-duration', () => ({
 vi.doMock('@/cast/server/talent/analyze-talent-media', () => ({
   analyzeTalentMediaForTeam: mockAnalyzeUpload,
   analyzeTalentClipForTeam: mockAnalyzeUpload,
+}));
+// The upload's own check run (#2192); none unless a test starts one.
+vi.doMock('@/platform/server/workflow/run-outcome', () => ({
+  readInstanceIfExists: mockReadInstance,
 }));
 vi.doMock('@/billing/server/fal-pricing-live', () => ({
   getEffectiveFalPricing: mockGetEffectiveFalPricing,
@@ -121,6 +126,7 @@ beforeEach(async () => {
   mockGetEffectiveFalPricing.mockResolvedValue({});
   mockMeasureStoredMediaDuration.mockResolvedValue(null);
   mockAnalyzeUpload.mockResolvedValue({ subjectKind: 'human' });
+  mockReadInstance.mockResolvedValue({ kind: 'missing' });
 });
 
 describe('studioCreateInputSchema', () => {
@@ -873,6 +879,20 @@ describe('upload rights gate (#1581)', () => {
       referenceImages: [cleared],
     });
     expect(mockReserveRunCredits).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses while the upload’s own check is still running, with no second check', async () => {
+    const { AttestationRequiredError } = await import('@/platform/errors');
+    const scopedDb = createScopedDb(TEAM_ID, USER_ID);
+    mockReadInstance
+      .mockResolvedValueOnce({ kind: 'read', status: 'running' })
+      .mockResolvedValueOnce({ kind: 'missing' });
+
+    await expect(
+      createStudioAssets(scopedDb, { ...base, referenceImages: [uploadUrl] })
+    ).rejects.toThrow(AttestationRequiredError);
+    expect(mockAnalyzeUpload).not.toHaveBeenCalled();
+    expect(mockReserveRunCredits).not.toHaveBeenCalled();
   });
 
   it('refuses a detected person until signed, then generates', async () => {

@@ -24,6 +24,8 @@ export const uploadRightsKeys = {
 
 /** How often to ask again while the check's run is going. */
 const CHECK_POLL_MS = 1500;
+/** Past this the run is stuck (queued or paused): show it as a failure. */
+const CHECK_GIVE_UP_MS = 3 * 60_000;
 
 function wait(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -44,9 +46,15 @@ export function uploadRightsQuery(ref: UploadRef) {
   return queryOptions({
     queryKey: uploadRightsKeys.url(ref.url),
     queryFn: async ({ signal }): Promise<UploadRights> => {
+      const giveUpAt = Date.now() + CHECK_GIVE_UP_MS;
       for (;;) {
         const check = await classifyUploadFn({ data: ref, signal });
         if (check.status !== 'checking') return check;
+        if (Date.now() >= giveUpAt) {
+          throw new Error(
+            'The check for a real person is taking too long. Try again.'
+          );
+        }
         await wait(CHECK_POLL_MS, signal);
       }
     },

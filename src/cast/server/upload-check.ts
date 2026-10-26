@@ -10,7 +10,11 @@
 
 import { getEnv } from '#env';
 import { sha256Hex } from '@/platform/compliance/hash';
-import { OpenStoryError, ValidationError } from '@/platform/errors';
+import {
+  AttestationRequiredError,
+  OpenStoryError,
+  ValidationError,
+} from '@/platform/errors';
 import {
   getPublicUrl,
   LIKENESS_CHECKED_BUCKETS,
@@ -24,7 +28,10 @@ import type { UserWorkflowContext } from '@/platform/server/workflow/types';
 import type { ScopedDb } from '@/platform/server/db/scoped';
 import type { UploadCheck, UploadRef } from '@/cast/upload-rights';
 import {
+  classifyUpload,
+  isCheckable,
   requireCheckable,
+  requireUploadRights,
   uploadRightsOnRecord,
   type LikenessRequestContext,
 } from './upload-rights';
@@ -143,9 +150,10 @@ async function latestCheckRun(
  * can still offer what fixes it.
  */
 function checkFailure(run: CheckRun): OpenStoryError {
-  const refusal = /^([A-Z][A-Z_]+): ([\s\S]*)$/.exec(run.error ?? '');
-  return refusal
-    ? new OpenStoryError(refusal[2], refusal[1], 400)
+  const [, code, message] =
+    /^([A-Z][A-Z_]+): ([\s\S]*)$/.exec(run.error ?? '') ?? [];
+  return code && message
+    ? new OpenStoryError(message, code, 400)
     : new OpenStoryError(
         'The check for a real person stopped. Try again.',
         'UPLOAD_CHECK_FAILED',
@@ -215,7 +223,7 @@ export async function retryUploadCheck(
   const onRecord = await uploadRightsOnRecord(scopedDb, ref.url);
   if (onRecord) return onRecord;
   const run = await latestCheckRun(scopedDb.teamId, ref.url);
-  if (run && run.status !== 'errored' && run.status !== 'terminated') {
+  if (run && isRunning(run)) {
     return { status: 'checking' };
   }
   if (run && run.attempt >= MAX_ATTEMPTS) {
@@ -225,4 +233,37 @@ export async function retryUploadCheck(
   }
   await startUploadCheck(checkInput(scopedDb, ref, request));
   return { status: 'checking' };
+}
+
+/** A run the engine is still working on (not finished, failed or stopped). */
+function isRunning(run: CheckRun): boolean {
+  return !['complete', 'errored', 'terminated'].includes(run.status);
+}
+
+/**
+ * {@link requireUploadRights}, but an upload with no row is checked here
+ * first instead of refused (#2192). For a request that takes URLs the
+ * caller may never have checked: a past upload, a raw URL, an upload behind
+ * a reused clip. An upload whose run is still going is refused as still
+ * checking, so the vision call never runs (and bills) twice. Another team's
+ * file is never checked; with no row it is refused. A failed check throws;
+ * a real person still needs the sign-off.
+ */
+export async function requireCheckedUploadRights(
+  scopedDb: ScopedDb,
+  urls: string[],
+  request: LikenessRequestContext
+): Promise<Map<string, { depictsRealPerson: boolean }>> {
+  for (const url of new Set(urls)) {
+    if (!isCheckable(url, scopedDb.teamId)) continue;
+    if (await uploadRightsOnRecord(scopedDb, url)) continue;
+    const run = await latestCheckRun(scopedDb.teamId, url);
+    if (run && isRunning(run)) {
+      throw new AttestationRequiredError(
+        'This upload is still being checked for a real person. Try again in a moment.'
+      );
+    }
+    await classifyUpload({ scopedDb, userId: scopedDb.userId, url, request });
+  }
+  return requireUploadRights(scopedDb, urls);
 }
